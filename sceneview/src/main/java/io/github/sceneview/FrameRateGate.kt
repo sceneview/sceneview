@@ -1,0 +1,158 @@
+package io.github.sceneview
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import com.google.android.filament.Scene
+import java.util.WeakHashMap
+
+/**
+ * Frames still drawn after the last invalidation.
+ *
+ * Same budget, and the same reason, as the web SDK's `RenderGate.SETTLE_FRAMES`: Filament finalises
+ * texture uploads, IBL prefiltering and shadow map work across several frames after the change that
+ * triggered them, so a gate that stops on the first clean frame leaves an untextured model — or an
+ * unlit one — on screen until something else happens to wake it. Half a second at 60 Hz is cheap
+ * once, and it is the difference between "render-on-demand" and "render-on-demand, mostly".
+ */
+internal const val SETTLE_FRAMES: Int = 30
+
+/**
+ * Decides, once per frame, whether the GPU submit happens — the Android port of the web SDK's
+ * `RenderGate` (`sceneview-web/src/jsMain/kotlin/io/github/sceneview/web/RenderGate.kt`).
+ *
+ * Two safety properties are deliberate, and both err towards drawing:
+ *
+ * - It starts **dirty**, so the very first frame after attach is always presented.
+ * - Any doubt re-arms the whole settle budget rather than shortening it.
+ *
+ * The gate never decides to *stop the loop*; it only answers "submit this tick?". Parking the
+ * coroutine is [SceneView]'s decision, taken only when [isSettled] reads `true` — i.e. the budget is
+ * spent **and** nothing is pending. That split is what keeps `session.update()`, `updateLoad()` and
+ * the node ticks running on a tick whose GPU work was skipped.
+ *
+ * Not thread-safe by design: every caller is the main/render thread.
+ */
+internal class FrameRateGate(private val settleBudget: Int = SETTLE_FRAMES) {
+
+    // Snapshot state, because parking reads it through `derivedStateOf` and a plain field would
+    // never wake the suspended loop (#3108: the park must be woken by a snapshot apply, not polled).
+    private val dirtyState = mutableStateOf(true)
+
+    private var owed: Int = settleBudget
+
+    /** `true` while an invalidation is waiting to be consumed by the next [shouldRender]. */
+    val isDirty: Boolean get() = dirtyState.value
+
+    /** `true` when the budget is spent and nothing is pending — the only state safe to park in. */
+    val isSettled: Boolean get() = owed <= 0 && !dirtyState.value
+
+    /**
+     * Marks the scene changed. Safe to call from any of the push sources, including several times
+     * per frame — it is idempotent until the next [shouldRender] consumes it.
+     */
+    fun requestRender() {
+        // Guarded write: a scene that invalidates every frame (a playing animation) would otherwise
+        // publish a snapshot apply per frame, waking every observer of this state for nothing.
+        if (!dirtyState.value) dirtyState.value = true
+    }
+
+    /**
+     * Answers "submit this tick?", and re-arms the settle budget when [active] or a pending
+     * invalidation says the picture is still moving.
+     *
+     * @param active whether any *pull* source is live this tick — a gesture in flight, a coasting
+     * manipulator, a playing animation, an async load, a recording. Continuous activity therefore
+     * keeps the budget topped up and renders continuously, without a per-frame [requestRender].
+     */
+    fun shouldRender(active: Boolean): Boolean {
+        if (dirtyState.value || active) {
+            owed = settleBudget
+            if (dirtyState.value) dirtyState.value = false
+        }
+        return owed > 0
+    }
+
+    /** Consumes one frame of the settle budget. Called only when a frame really reached the surface. */
+    fun didRender() {
+        if (owed > 0) owed--
+    }
+}
+
+/**
+ * Wakes a [FrameRatePolicy.OnDemand] scene that changed in a way the library cannot observe.
+ *
+ * Everything the SDK owns — node transforms, animations, gestures, loads, surface changes — already
+ * invalidates on its own. This is the escape hatch for the rest: a Filament material parameter or
+ * light property written directly, an external simulation stepping the scene, or a `PixelCopy` /
+ * screenshot that needs a guaranteed fresh frame on the surface first.
+ *
+ * ```kotlin
+ * val invalidator = rememberRenderInvalidator()
+ * SceneView(renderInvalidator = invalidator, modifier = Modifier.fillMaxSize()) { … }
+ *
+ * // later, after writing straight into Filament:
+ * materialInstance.setParameter("baseColorFactor", color)
+ * invalidator.requestRender()
+ * ```
+ *
+ * Calls made before the view is attached are remembered and applied on attach, so an invalidation
+ * racing composition is never lost.
+ */
+class RenderInvalidator {
+
+    private var gate: FrameRateGate? = null
+    private var pending: Boolean = false
+
+    /** Requests one more rendered frame. Cheap, idempotent, safe to over-call. */
+    fun requestRender() {
+        val currentGate = gate
+        if (currentGate != null) currentGate.requestRender() else pending = true
+    }
+
+    internal fun attach(gate: FrameRateGate) {
+        this.gate = gate
+        if (pending) {
+            pending = false
+            gate.requestRender()
+        }
+    }
+
+    internal fun detach(gate: FrameRateGate) {
+        if (this.gate === gate) this.gate = null
+    }
+}
+
+/**
+ * Remembers a [RenderInvalidator] for the current composition, to pass to
+ * [SceneView]`(renderInvalidator = …)`.
+ */
+@Composable
+fun rememberRenderInvalidator(): RenderInvalidator = remember { RenderInvalidator() }
+
+/**
+ * Maps a Filament [Scene] to the [RenderInvalidator] of the view rendering it, so a
+ * [io.github.sceneview.node.Node] can reach its view's gate from
+ * [io.github.sceneview.node.Node.attachedScene] alone — the one link every managed node has,
+ * including the sub-nodes a glTF hierarchy creates.
+ *
+ * Mirrors `EngineDestroyQueue.of(engine)`: a [WeakHashMap] keyed on the Filament object, so a
+ * destroyed scene's entry disappears with it and no view is kept alive by this registry.
+ */
+internal object SceneRenderInvalidators {
+
+    private val invalidators = WeakHashMap<Scene, RenderInvalidator>()
+
+    @Synchronized
+    fun register(scene: Scene, invalidator: RenderInvalidator) {
+        invalidators[scene] = invalidator
+    }
+
+    @Synchronized
+    fun unregister(scene: Scene) {
+        invalidators.remove(scene)
+    }
+
+    @Synchronized
+    fun of(scene: Scene): RenderInvalidator? = invalidators[scene]
+}
