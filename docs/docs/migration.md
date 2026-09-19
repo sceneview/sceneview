@@ -148,6 +148,37 @@ The state that decides — `isPlaying`, `isReplaying`, "is this band on screen" 
 edge. Going from paused to playing while the loop is parked changes a flag no one is reading;
 request one frame from a `LaunchedEffect` on that flag, and the callback takes it from there.
 
+And it must follow the motion, not a flag only a gesture clears. A `Continuous()` held by
+`isReplaying`, where `isReplaying` goes false only when the user presses Reset, is the same lie as a
+loader that never resolves: the spheres stop bouncing, the flag stays true, and the screen renders a
+frozen picture at 57 fps until someone touches it. Tie the declaration to the thing that is actually
+moving.
+
+### `Node.onFrame` holds the loop open; `SceneView(onFrame = …)` does not
+
+They share a name and nothing else, and the asymmetry is deliberate:
+
+| | when it runs | effect on the loop |
+|---|---|---|
+| `SceneView(onFrame = …)` | after its frame was presented | **none** — it is an observer |
+| `node.onFrame = { … }` | before the frame is drawn | **pins** — a non-null slot asks for a frame every tick |
+
+`Node.onFrame` is a *driver*: `PhysicsNode` steps its simulation there, and a driver that only runs
+when a frame happens could never produce the first one. So setting it is read as "keep rendering",
+and `node.onFrame = null` is how you stop asking. A transform written there is on screen in the same
+frame — it runs ahead of the GPU submit, not after it.
+
+Two consequences worth knowing before you go looking for a leak:
+
+- **A node you hand an `onFrame` to will not let its scene park.** That is the safe default, and it
+  is under your control. If the callback only *observes*, hold the value in Compose state instead.
+- **The library's own per-frame work does not go through that slot** and does not pin anything.
+  `BillboardNode` (and `TextNode`, which is one) re-orients only when the camera has actually moved;
+  a settled `PhysicsNode` reports itself idle; `rememberModelAnimationState` observes without
+  costing you a frame. Before 4.37 every one of them quietly held its scene at full cadence — a
+  screen with two `TextNode`s on it ran at 57 fps on a still picture. None of this needs a change in
+  your code.
+
 ---
 
 ## SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to `CameraControlMode`

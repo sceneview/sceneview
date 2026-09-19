@@ -781,9 +781,58 @@ open class Node protected constructor(
 
     // ---- Scene lifecycle callbacks ----
 
+    /**
+     * Called once per frame, **before** the frame is drawn, to drive this node.
+     *
+     * Setting it means "keep rendering": [isFrameActive] reads a non-null `onFrame` as a standing
+     * request for a frame every tick, so under [io.github.sceneview.FrameRatePolicy.OnDemand] the
+     * scene holding this node will not park while it is set. Clear it (`node.onFrame = null`) to
+     * stop asking. That is the right default for a driver — a callback that only runs when a frame
+     * happens cannot be what makes one happen, so it has to be able to say so up front.
+     *
+     * **This is the opposite of `SceneView(onFrame = …)`, which does not hold the loop open.** That
+     * one is an observer, handed each frame right *after* it was presented. The two share a name
+     * and nothing else; if you are reaching for one to animate something, it is this one.
+     *
+     * Runs inside `SceneView`'s update block, ahead of the GPU submit, so a transform written here
+     * is on screen in the same frame — no one-frame lag.
+     */
     var onFrame: ((frameTimeNanos: Long) -> Unit)? = null
     var onAddedToScene: ((scene: Scene) -> Unit)? = null
     var onRemovedFromScene: ((scene: Scene) -> Unit)? = null
+
+    /**
+     * The library's own per-frame hook, kept apart from the public [onFrame] for one reason: it
+     * does **not** mean "keep rendering".
+     *
+     * [onFrame] is a public single slot, and setting it says "I drive this node from the frame
+     * loop" — so [isFrameActive] treats it as a standing request for frames. That default is the
+     * right one for callers (a node wrongly reported idle freezes), but it is the wrong one for the
+     * library's own use, and the library used it in three places: [BillboardNode] re-orients in
+     * `init`, `SceneScope.PhysicsNode` steps a body, `rememberModelAnimationState` merely *reads*.
+     * Every one of them silently cost its whole scene the idle saving — a screen with two
+     * `TextNode`s held 842 frames per 15 s on a picture that changed 0.001 % (#3718).
+     *
+     * A component that installs this hook must answer for its own activity, either by overriding
+     * [isFrameActive] or by registering a [frameActivityProvider]. Taking the hook and saying
+     * nothing means "I never need a frame of my own".
+     */
+    internal var internalOnFrame: ((frameTimeNanos: Long) -> Unit)? = null
+
+    /**
+     * Extra activity terms OR-ed into [isFrameActive], for library components that attach to a node
+     * they do not own and therefore cannot override the property.
+     *
+     * `SceneScope.PhysicsNode` is the case: it drives an arbitrary caller-supplied node, needs
+     * frames while its body is in flight, and needs to stop asking once the body has settled.
+     */
+    private val frameActivityProviders = mutableListOf<() -> Boolean>()
+
+    /** Registers [provider] as an extra [isFrameActive] term. Returns a handle that removes it. */
+    internal fun addFrameActivityProvider(provider: () -> Boolean): () -> Unit {
+        frameActivityProviders += provider
+        return { frameActivityProviders -= provider }
+    }
 
     // ---- Derived transforms ----
 
@@ -1204,9 +1253,18 @@ open class Node protected constructor(
      *
      * This is the *pull* half of render-on-demand: it is read once per frame and keeps the settle
      * budget topped up for as long as it reads `true`. The base implementation covers a smooth
-     * transform still converging and a user `onFrame` callback — which, unlike `SceneView.onFrame`,
-     * is a per-frame **driver** (`PhysicsNode` steps its simulation there), so its mere presence
-     * means "keep rendering". Subclasses that animate by other means override it.
+     * transform still converging and a user [onFrame] callback. Subclasses that animate by other
+     * means override it.
+     *
+     * **`Node.onFrame` pins the loop; `SceneView(onFrame = …)` does not.** The asymmetry is
+     * deliberate and it is the one thing to remember about the two callbacks that share a name.
+     * `SceneView`'s is an observer, handed each frame *after* it was presented. This one is a
+     * **driver**: `PhysicsNode` steps its simulation here, and a driver that only runs when a frame
+     * happens cannot be what makes one happen. So setting it is read as a standing request for
+     * frames, and clearing it (`node.onFrame = null`) is how you stop asking.
+     *
+     * The library's own per-frame work does not go through it — see [internalOnFrame] — precisely
+     * because "some component is watching frames" must not mean "this scene can never park".
      *
      * Err on the side of `true`: a node wrongly reported idle freezes the scene, while one wrongly
      * reported busy only costs frames.
@@ -1214,6 +1272,7 @@ open class Node protected constructor(
     open val isFrameActive: Boolean
         get() = animationDelegate.smoothTransform != null ||
                 onFrame != null ||
+                frameActivityProviders.any { it() } ||
                 childNodes.any { it.isFrameActive }
 
     // ---- Per-frame lifecycle ----
@@ -1224,6 +1283,10 @@ open class Node protected constructor(
 
         // Propagate to children
         childNodes.forEach { it.onFrame(frameTimeNanos) }
+
+        // Library hook first, so a user callback observing this node sees the library's write-back
+        // of the same frame rather than the previous one.
+        internalOnFrame?.invoke(frameTimeNanos)
 
         // User callback
         onFrame?.invoke(frameTimeNanos)

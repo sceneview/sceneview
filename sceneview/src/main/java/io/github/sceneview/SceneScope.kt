@@ -2117,13 +2117,30 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 initialVelocity = linearVelocity
             )
         }
+        // `internalOnFrame` + an explicit activity term, rather than the public `onFrame` slot.
+        //
+        // Two things were wrong with taking the public slot. It is the caller's — attaching physics
+        // to a node silently discarded whatever the caller had put there. And `Node.isFrameActive`
+        // reads it as a standing request for frames, so a body that had come to rest kept its scene
+        // at full cadence forever: the sphere stack in the animation-physics demo held 878 frames
+        // per 15 s on a picture identical to the byte (#3718).
+        //
+        // `PhysicsBody` already knows when it has nothing left to do — `isAsleep`, which `step`
+        // checks on entry — so the honest term is simply "not asleep". It is also a *pull* term on
+        // purpose: while the body is in flight `node.position = …` pushes a frame per step, but a
+        // body that has just been given a velocity needs the first frame before any step can push
+        // one, and the settle tail has to be topped up by something that survives the vote.
         DisposableEffect(node) {
             var prevFrameTime: Long? = null
-            node.onFrame = { frameTimeNanos ->
+            node.internalOnFrame = { frameTimeNanos ->
                 body.step(frameTimeNanos, prevFrameTime)
                 prevFrameTime = frameTimeNanos
             }
-            onDispose { node.onFrame = null }
+            val removeActivityProvider = node.addFrameActivityProvider { !body.isAsleep }
+            onDispose {
+                node.internalOnFrame = null
+                removeActivityProvider()
+            }
         }
     }
 
