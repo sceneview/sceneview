@@ -373,16 +373,19 @@ SceneView Web uses **Filament.js** — the same rendering engine as Android, com
 ### 1. Install
 
 \`\`\`bash
-npm install @sceneview/sceneview-web
+npm install sceneview-web
 \`\`\`
 
-Or in a Kotlin/JS Gradle project:
+The npm package is the prebuilt browser bundle (global \`sceneview\` namespace).
+For the Kotlin API (\`io.github.sceneview.web.SceneView\`), depend on the module
+itself from a Kotlin/JS Gradle build — \`sceneview-web\` ships on npm only and has
+no Maven coordinate, so it cannot be resolved as a Gradle module dependency:
 \`\`\`kotlin
 kotlin {
     js(IR) { browser(); binaries.executable() }
     sourceSets {
         jsMain.dependencies {
-            implementation("@sceneview/sceneview-web")
+            implementation(project(":sceneview-web"))
         }
     }
 }
@@ -614,7 +617,7 @@ SceneView React Native uses **Fabric/Turbo** to bridge to native SceneView.
 ### 1. Install
 
 \`\`\`bash
-npm install @sceneview/react-native
+npm install @sceneview-sdk/react-native
 # iOS: edit ios/Podfile as in step 3 FIRST — a stock Podfile makes this
 # \`pod install\` fail with "Unable to find a specification for 'SceneViewSwift'"
 cd ios && pod install
@@ -648,7 +651,7 @@ pod 'SceneViewSwift',
 ### 4. Basic 3D Scene
 
 \`\`\`tsx
-import { SceneView } from '@sceneview/react-native';
+import { SceneView } from '@sceneview-sdk/react-native';
 
 export default function My3DScreen() {
   return (
@@ -691,7 +694,7 @@ pod 'SceneViewSwift',
 \`\`\`
 
 \`\`\`bash
-npm install @sceneview/react-native
+npm install @sceneview-sdk/react-native
 cd ios && pod install
 \`\`\`
 
@@ -717,7 +720,7 @@ Add to \`Info.plist\`:
 ### 4. Basic AR Scene
 
 \`\`\`tsx
-import { ARSceneView } from '@sceneview/react-native';
+import { ARSceneView } from '@sceneview-sdk/react-native';
 
 export default function MyARScreen() {
   return (

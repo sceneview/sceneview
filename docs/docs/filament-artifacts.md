@@ -103,7 +103,7 @@ The `sceneview-web` module already has Kotlin/JS bindings for Filament.js:
 Publishing path:
 1. `@sceneview/renderer-webgl` — Phase 1 pure WebGL (artifact-ready)
 2. `@sceneview/renderer-filament` — Phase 2 Filament.js WASM
-3. `@sceneview/sceneview-web` — Full SDK (Kotlin/JS compiled)
+3. `sceneview-web` — Full SDK (Kotlin/JS compiled, published on npm)
 
 ## MCP Tool: `create_3d_artifact`
 

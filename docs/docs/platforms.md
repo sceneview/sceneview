@@ -67,7 +67,7 @@ SceneView Web uses **Filament.js** -- the same Filament rendering engine as Andr
 - **Rendering**: Same PBR quality as Android
 - **WebXR**: AR/VR support via WebXR API
 - **Format**: glTF 2.0 / GLB (same as Android)
-- **Install**: `npm install @sceneview/sceneview-web` or use the Kotlin/JS Gradle module
+- **Install**: `npm install sceneview-web` or use the Kotlin/JS Gradle module
 
 [:octicons-arrow-right-24: Web Quickstart](quickstart-web.md)
 
