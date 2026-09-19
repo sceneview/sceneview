@@ -387,9 +387,12 @@ nothing. It holds full cadence while **any** of these is true — a touch in fli
 manipulator still coasting or easing, a playing glTF animation, a smooth transform, a `VideoNode`
 or `ViewNode` whose surface just received a frame, a sorting `SplatNode`, an async model or
 environment load
-(`modelLoader.progress < 1f`), an active `surfaceMirrorer`, a pending auto-center or auto-fit —
+(`ModelLoader.isLoading`), an active `surfaceMirrorer`, a pending auto-center or auto-fit —
 and it wakes on every one-shot change: a node added, moved or removed, a surface resize, a
-lifecycle resume, a recomposition. Once everything stops it draws a short tail of settle frames
+lifecycle resume. A **recomposition is not one of them**: an invalidation comes from the thing
+that changed, not from the fact that the composable ran again — so a counter that writes Compose
+state from `onFrame` recomposes once per presented frame and is measuring itself, not the scene.
+Once everything stops it draws a short tail of settle frames
 (Filament finalises texture uploads, IBL and shadow work across several frames) and then **parks**:
 the loop suspends on the snapshot rather than polling, so an idle scene schedules no work at all —
 no GPU frame *and* no periodic CPU wake-up.
@@ -436,11 +439,13 @@ resumes the loop directly, so a touch on a parked scene reaches the screen on th
     else — the `isDirty` state, the `dirtyToken`, the `LaunchedEffect { delay(200) }` window the
     old parameter needed — is now the library's job: **delete it**, do not translate it.
 
-`ARSceneView` takes the same parameter and also defaults to `OnDemand`, but gates on something
-else: it presents when ARCore hands it a new camera image (a changed `Frame.timestamp`). The
-ARCore session is still updated every vsync — only the GPU submit is skipped — so tracking,
-anchors and plane detection are unaffected. In practice a live camera feed is rarely idle; what
-this removes is the duplicate frame drawn when ARCore returns the same image twice.
+`ARSceneView` takes **no** `frameRatePolicy` parameter and its loop never parks: a live camera
+feed is never idle, so there is nothing to park. It gained the other half of the mechanism
+instead — the GPU submit is skipped on a vsync where ARCore hands back a duplicate
+`Frame.timestamp` **and** nothing in the virtual scene changed. The ARCore session is still
+updated every vsync, so tracking, anchors and plane detection are unaffected. What this removes
+is the duplicate frame drawn when ARCore returns the same image twice, which is what happens
+whenever the loop outruns the camera.
 
 ---
 

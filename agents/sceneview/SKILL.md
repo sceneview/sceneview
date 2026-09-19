@@ -258,6 +258,16 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
 
 ## Performance / hot paths
 
+**A `SceneView` renders on demand by default (4.38.0+).** `isRendering` is gone;
+`frameRatePolicy = FrameRatePolicy.OnDemand()` is the default, `Continuous()` is the
+old every-vsync behaviour, and `maxFps` caps either mode. The library tracks what
+changes the picture, so never generate a hand-rolled dirty flag — but a write made
+straight into Filament (a `MaterialInstance` parameter, a light through `LightManager`,
+a `Skybox` / `IndirectLight`, bone or morph writes) is invisible to it and needs
+`node.requestRender()` or `rememberRenderInvalidator()` after it. A recomposition is
+not a change, and `ARSceneView` takes no policy. Details:
+[`references/migration.md` § Rendering cadence](references/migration.md).
+
 **Never call a decomposing or allocating getter inside `onFrame` (or any 30–60 Hz
 loop).** Set the whole `node.transform = …` once instead of writing `position` /
 `quaternion` / `scale` one at a time (one-at-a-time writes recompose the matrix and
