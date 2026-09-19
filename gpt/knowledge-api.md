@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.37.0)
+  Source of truth: /llms.txt  (SceneView 4.38.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,46 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.37.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.38.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+
+## Docs
+
+- [Quickstart (Android)](https://sceneview.github.io/docs/quickstart/): add the dependency and render a first model with Jetpack Compose
+- [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): the same path in SwiftUI, with RealityKit and ARKit
+- [Quickstart (Web)](https://sceneview.github.io/docs/quickstart-web/): Kotlin/JS and Filament.js — Alpha
+- [Nodes reference](https://sceneview.github.io/docs/nodes/): every node composable, its signature, and the mistakes it invites
+- [API cheatsheet](https://sceneview.github.io/docs/cheatsheet/): the declarative API on one page
+- [Model formats](https://sceneview.github.io/docs/formats/): glTF, GLB, USDZ, and what converts into what
+- [Platforms](https://sceneview.github.io/docs/platforms/): what each target supports and how mature it is
+- [Recipes](https://sceneview.github.io/docs/recipes/): task-shaped answers to "I want to…"
+- [Migration from Sceneform](https://sceneview.github.io/docs/migration/): the mapping, class by class
+- [Troubleshooting](https://sceneview.github.io/docs/troubleshooting/): symptom, cause, fix
+- [FAQ](https://sceneview.github.io/docs/faq/): the questions that come back
+
+## Reference
+
+- [Full API reference](https://sceneview.github.io/llms.txt): this file — setup, composables, every node type, threading rules, recipes
+- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~12 kB, when the full file will not fit
+- [Generated API docs — 3D](https://sceneview.github.io/api/sceneview/latest/sceneview/): Dokka output for `sceneview`
+- [Generated API docs — AR](https://sceneview.github.io/api/sceneview/latest/arsceneview/): Dokka output for `arsceneview`
+
+## Working with an AI assistant
+
+- [Use SceneView with AI assistants](https://sceneview.github.io/docs/ai-context/): how to hand this file to any assistant, and how to install the MCP server
+- [AI-assisted development](https://sceneview.github.io/docs/ai-development/): the prompts and workflows that produce code which compiles
+
+## Optional
+
+- [Architecture](https://sceneview.github.io/docs/architecture/): how the renderer, the node graph and Compose fit together
+- [Performance](https://sceneview.github.io/docs/performance/): frame budget, quality levels, what costs what
+- [Testing](https://sceneview.github.io/docs/testing/): testing a scene without a device
+- [Integrations](https://sceneview.github.io/docs/integrations/): Sketchfab, Rerun.io and other outside pieces
+- [Comparison with alternatives](https://sceneview.github.io/docs/comparison/): Sceneform, Unity, Filament, model-viewer
+- [Samples](https://sceneview.github.io/docs/samples/): the demo apps and what each one shows
+- [Community](https://sceneview.github.io/docs/community/): where to ask
+- [Changelog](https://sceneview.github.io/docs/changelog/): what changed, release by release
+
+---
 
 ## Core Composables
 
@@ -58,33 +97,44 @@ fun SceneView(
 
 Three policies:
 
-- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
+- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a visibility, geometry or material change, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
 - **`FrameRatePolicy.Continuous()`** — the pre-v4.38.0 behaviour verbatim: a frame every vsync, display-max vote held the whole time. Use it when the scene is driven by something the library cannot see and you do not want to invalidate by hand (an external simulation writing into Filament each frame, a custom `Renderer` hook, a texture updated off-thread).
 - **`maxFps`** — an optional ceiling on **either** mode (`OnDemand(maxFps = 30)`, `Continuous(maxFps = 30)`), never a mode of its own: the type asks two independent questions, *when* may a frame be drawn and *how fast at most*. A capped scene never presents faster than `maxFps` and votes for `maxFps` rather than the display maximum (never above what the panel can do) — for a deliberate cadence, e.g. a 30 fps product turntable on a 120 Hz panel. A cap can only be met on a whole number of vsyncs, so the requested period is rounded **up** to whole vsyncs of the real display: `maxFps = 90` on a 120 Hz panel therefore runs at 60, because 90 is not reachable there and 120 would break the promise. `maxFps` is `null` (the display's cadence, the default) or strictly positive (`require` at construction).
 
-**`ARSceneView` has no `frameRatePolicy` parameter and never parks** — do not generate one. A live camera feed is never idle. Its loop skips only the GPU submit, on a vsync where ARCore returns a duplicate `Frame.timestamp` and nothing in the virtual scene changed; `session.update()` runs every vsync, so tracking, anchors and plane detection are unaffected.
+**Read this before generating any code that changes a scene at runtime — it is the one way `OnDemand` goes wrong, and it fails silently.** Nothing crashes, logs or throws: the screen keeps showing the previous frame, and the user reads it as a dead control.
 
-**A recomposition is not a change.** Invalidation comes from the thing that changed, never from the fact that the composable ran again — so do not generate a screen that writes Compose state from `onFrame` (a frame counter above all) and expects the scene to keep drawing: it recomposes once per presented frame, measures itself rather than the scene, and under `OnDemand` the picture it reports is its own.
+- **Every public mutator of a SceneView type asks for its own frame.** `lightNode.intensity`, `.color`, `.lightDirection`, `.falloff`, `.isShadowCaster`, `setIntensityCandela`, `setSpotLightCone`; `cameraNode.setExposure(…)`, `setProjection`, `setLensProjection`, `focusDistance`, `lookAt`, `projectionTransform`; a node's `transform` / `position` / `quaternion` / `scale`, `isVisible`, `materialInstance`, `setMaterialInstanceAt`, `setGeometry`, `setPriority`, `setCulling`, `setLayerMask`, `setMorphWeights`, `setBonesAsMatrices`, `axisAlignedBoundingBox`, shadow and blend-order flags. Do **not** generate a `requestRender()` after these, and do not reach for `Continuous()` to make them show — they invalidate on their own (`Component.onComponentChanged()`).
+- **Nothing written on a raw Filament object does.** The library hands the object out and never sees it again, so no bookkeeping is left to observe the write. Exhaustively: a `MaterialInstance` parameter written with `setParameter`; a light property written through `LightManager`; a `Skybox` or `IndirectLight` assigned or mutated (`intensity`, `setRotation`) straight on the Filament `Scene`; morph-target weights and bone transforms written through `RenderableManager`; an external `Stream` (camera, video) pushing content; runtime `View` options (bloom, AO, dynamic resolution, blend mode) on a `View` you own. **If the type you are writing to is in `com.google.android.filament`, emit a `requestRender()`.**
 
-**The one case `OnDemand` cannot see** is a mutation made *below* the library's bookkeeping: a Filament `MaterialInstance` parameter, a light intensity, an engine-level edit. Nothing in the scene graph changed, so nothing invalidates and the change is not drawn. Two escape hatches:
+Both escape hatches are main-thread and fire-and-forget, so before a `PixelCopy` or screenshot you request the frame and then wait for your next `onFrame`:
 
 ```kotlin
 // From a node you hold:
 node.requestRender()
 
-// From anywhere else — a material edit, or right before a PixelCopy / screenshot of the surface:
+// From anywhere else — a material or IBL edit, or right before a PixelCopy / screenshot:
 val invalidator = rememberRenderInvalidator()
 SceneView(renderInvalidator = invalidator) { /* … */ }
 // later
-materialInstance.setParameter("baseColorFactor", 1f, 0f, 0f, 1f)
+indirectLight.intensity = 30_000f
 invalidator.requestRender()
 ```
+
+Measured on a parked demo screen (#3718): dragging an *Environment rotation* slider 302° → 100° and an *Exposure* slider 1.00 → 2.72 produced **0** frames and left the viewport lit the old way. Both writes went into an `IndirectLight`. This is the single most likely defect in generated `OnDemand` code.
+
+**`ARSceneView` has no `frameRatePolicy` parameter and never parks** — do not generate one. A live camera feed is never idle. Its loop skips only the GPU submit, on a vsync where ARCore returns a duplicate `Frame.timestamp` and nothing in the virtual scene changed; `session.update()` runs every vsync, so tracking, anchors and plane detection are unaffected.
+
+**A `ViewNode` and a `VideoNode` are driven from outside the library** — an Android `View` hierarchy redrawing on its own schedule, a `MediaPlayer` decoding — so neither can be tracked through the scene graph. Both report themselves active from the one observable fact, every buffer their `SurfaceTexture` receives: an animating view or a playing video holds the full cadence, a finished view or a paused video parks with the rest of the scene (a paused player's **seek** or frame-step is one such buffer, and it is drawn). Neither is "permanently active" — do not generate a warning saying a `ViewNode` costs a screen its idle saving.
+
+**`onFrame` fires only for a *presented* frame, right after it reached the surface — so it can never be what keeps the loop awake.** Do not generate a screen whose animation clock, physics step or turntable is advanced from `onFrame` and relies on nothing but its own next call: under `OnDemand` the scene settles, parks, the callback stops and the motion freezes on open. A screen that drives motion states it — `frameRatePolicy = FrameRatePolicy.Continuous()` while it plays, `OnDemand()` when it pauses — and takes a rising edge (`LaunchedEffect(isPlaying) { if (isPlaying) invalidator.requestRender() }`) because flipping the flag on a parked loop otherwise changes a value nobody reads. A change the *user* just made (a scrub, a chip) is applied **outside** `onFrame`, then `requestRender()`: `onFrame` runs after presentation, so a pose written inside it lands one frame late, and under `OnDemand` that frame never comes.
+
+**`SceneView(onFrame = …)` and `node.onFrame = { … }` are opposites, despite the name.** `SceneView`'s runs *after* its frame was presented and holds the loop open for nothing — it is an observer. `Node.onFrame` runs *before* the frame is drawn and **pins the loop**: `Node.isFrameActive` reads a non-null slot as a standing request for a frame every tick, because it is a driver (`PhysicsNode` steps its simulation there) and a driver that only runs when a frame happens could never produce the first one. So `node.onFrame = null` is how a node stops asking, and a transform written in it is on screen in the same frame, not one late. Do not generate a `node.onFrame` that merely observes — hold the value in Compose state instead, or the scene never parks. The library's own per-frame work does not use that slot and pins nothing: `BillboardNode` and `TextNode` re-orient only when the camera actually moved, a settled `PhysicsNode` reports itself idle, `rememberModelAnimationState` observes for free.
 
 A **new or resized surface** (first attach, app foregrounded, foldable folded/unfolded, split-screen resize) holds no pixels of its own, so the library always presents into it before parking again — you never have to handle a configuration change yourself. An **async model load** finalises correctly too: `ModelLoader.isLoading` is one of the tracked sources, because Filament finishes texture uploads from inside the frame loop. Do not generate `modelLoader.progress < 1f` for this: `progress` reports Filament's progress over the last async resource load and is **0**, not 1, for a loader that was never asked for one — a procedural scene would read as "still loading" forever and never park.
 
 Migration from `isRendering`:
 
-```kotlin
+```kotlin notest before/after comparison table — the left column is the removed API and does not compile by design
 // Before                                    // After
 SceneView(isRendering = true)  { }           SceneView(frameRatePolicy = FrameRatePolicy.Continuous()) { }
 SceneView(isRendering = isDirty) { }         SceneView { }   // OnDemand is the default — delete the dirty-tracking
@@ -3552,6 +3602,14 @@ a consumer's own `onDoubleTap` untouched — the camera and the listener both se
 Repeated double-taps do not dead-end: once the camera sits on the closest allowed distance, the
 next double-tap cycles back to the framing the scene was homed at.
 
+A tap is not an orbit (#3641): one finger only starts orbiting once it has travelled
+`CameraGestureDetector.orbitTouchSlop` pixels — the platform touch slop, which `SceneView` sets
+from `ViewConfiguration.scaledTouchSlop`. A fingertip reports a few sub-pixel moves during any
+tap; without the slop each of them called `grabBegin`, which cancelled the double-tap zoom it had
+just started and handed any idle camera animation over to the user on a mere touch. A custom
+manipulator can therefore treat `grabBegin` as "the user is really dragging". Set the property
+to `0f` on a hand-built detector to get the old third-move behaviour back.
+
 ```kotlin
 // Opt out, or re-tune the step, on the default manipulator:
 val manipulator = rememberCameraManipulator(orbitRadius = 3f)
@@ -4267,7 +4325,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.37.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.38.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4883,7 +4941,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.37.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.38.0")
 ```
 
 Import: `import SceneViewSwift`

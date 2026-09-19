@@ -45,7 +45,7 @@ description: "The #1 open-source 3D & AR SDK. Build immersive 3D and AR experien
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">v4.37.0</span>
+<span class="sv-stat-number">v4.38.0</span>
 <span class="sv-stat-label">Latest Release</span>
 </div>
 
@@ -61,7 +61,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Kotlin (Android)"
 
     ```kotlin
-    // build.gradle: implementation("io.github.sceneview:sceneview:4.37.0")
+    // build.gradle: implementation("io.github.sceneview:sceneview:4.38.0")
 
     SceneView(modifier = Modifier.fillMaxSize()) {
         val model = rememberModelInstance(modelLoader, "models/helmet.glb")
@@ -83,7 +83,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Swift (iOS / macOS / visionOS)"
 
     ```swift
-    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.37.0")
+    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.38.0")
 
     SceneView { root in
         let model = try? await ModelNode.load("helmet.usdz")
@@ -190,7 +190,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:sceneview:4.37.0")
+        implementation("io.github.sceneview:sceneview:4.38.0")
     }
     ```
 
@@ -199,7 +199,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:arsceneview:4.37.0")
+        implementation("io.github.sceneview:arsceneview:4.38.0")
     }
     ```
 
@@ -207,7 +207,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.37.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.38.0")
     ```
 
 === "Web"

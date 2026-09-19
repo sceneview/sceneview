@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS demo: the three tabs share one gutter, one bottom inset and one ground ([#3704](https://github.com/sceneview/sceneview/pull/3704)).** About and Explore hardcoded a 16 pt gutter next to Showcase's 20 pt token, and About sat on system black in dark. About's "Star on GitHub" label went from 1.8:1 to 10.5:1, Explore no longer shows a second search field when pushed from Showcase, its category chips stay on one line with 44 pt targets, and the search field contour and placeholder are readable at rest (6.3:1 and 5.7:1 in dark).
