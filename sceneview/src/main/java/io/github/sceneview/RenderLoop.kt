@@ -60,8 +60,10 @@ internal suspend fun awaitRenderingEnabled(shouldRender: State<Boolean>) {
  *                        a motionless countdown advanced from `update()` would otherwise let the
  *                        loop park, which stops `update()`, which strands the countdown.
  * @param hasActiveNode   Any node in the tree reports [io.github.sceneview.node.Node.isFrameActive].
- * @param isLoading       `modelLoader.progress < 1f`: Filament finalises texture uploads from
- *                        inside the frame loop, so a parked scene would render untextured.
+ * @param isLoading       [io.github.sceneview.loaders.ModelLoader.isLoading]: Filament finalises
+ *                        texture uploads from inside the frame loop, so a parked scene would
+ *                        render untextured. Not `progress < 1f` — see [isAsyncLoadPending] for why
+ *                        that alone held every procedural scene at full cadence forever.
  * @param isMirroring     A [io.github.sceneview.utils.SurfaceMirrorer] has at least one target;
  *                        a recording that drops to 0 fps on an idle scene is a broken recording.
  * @param framingPending  Auto-center or auto-fit has not latched yet — both need presented frames
@@ -109,6 +111,27 @@ internal fun isFramingPending(
     autoFitPending: Boolean
 ): Boolean = (autoCenterContent && autoCenterPending) ||
         (autoFitContent && !hasCameraManipulator && autoFitPending)
+
+/**
+ * The `isLoading` argument of [isSceneFrameActive]: whether an asynchronous resource load still
+ * owes work that only a presented frame can advance.
+ *
+ * Same rule as [isFramingPending], broken the same way: **a pending guard's condition must be
+ * exactly the condition of the work it waits for.** This one was written as
+ * `modelLoader.progress < 1f` alone, and Filament's `ResourceLoader.asyncGetLoadProgress()` returns
+ * **0** — not 1 — for a loader that was never asked to load anything. So every scene built from
+ * geometry and materials rather than from a glTF file (the `materials` and `debug-overlay` demos,
+ * any procedural scene, any scene whose models are already resident) read "0 % loaded, still
+ * loading" for the lifetime of the view: the settle budget was re-armed every tick, the scene held
+ * full cadence, and the display vote stayed at the panel maximum — with nothing visibly wrong on
+ * screen, because the picture was correct, just redrawn 60 times a second for no reason.
+ *
+ * A progress fraction cannot answer "is a load in flight?" on its own, because 0 is both "nothing
+ * started" and "started, nothing done yet". [loadStarted] is the missing half, latched by
+ * [io.github.sceneview.loaders.ModelLoader] across `asyncBeginLoad` / `asyncUpdateLoad`.
+ */
+internal fun isAsyncLoadPending(loadStarted: Boolean, progress: Float): Boolean =
+    loadStarted && progress < 1f
 
 /**
  * The vsync period, in nanoseconds, for a display running at [refreshRate] Hz — or `0` when the

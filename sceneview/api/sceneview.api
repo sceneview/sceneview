@@ -2140,6 +2140,7 @@ public final class io/github/sceneview/loaders/ModelLoader {
 	public final fun getMaterialProvider ()Lcom/google/android/filament/gltfio/UbershaderProvider;
 	public final fun getProgress ()F
 	public final fun getResourceLoader ()Lcom/google/android/filament/gltfio/ResourceLoader;
+	public final fun isLoading ()Z
 	public final fun loadInstancedModel (Ljava/lang/String;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun loadInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun loadInstancedModelAsync (Ljava/lang/String;ILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/Job;

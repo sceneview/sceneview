@@ -356,4 +356,53 @@ class FrameRateGateTest {
             0f
         )
     }
+
+    // --- The `isLoading` pull source -------------------------------------------------------------
+    //
+    // Measured on emulator-5554 before the fix: the `materials` and `debug-overlay` demos presented
+    // 60 frames/s at rest with ZERO `requestRender()` calls, because `isLoading` was
+    // `modelLoader.progress < 1f` and Filament's `asyncGetLoadProgress()` reports 0 — not 1 — for a
+    // loader that was never asked to load anything. Neither screen loads a glTF file.
+
+    @Test
+    fun aSceneThatNeverStartedAnAsyncLoadIsNotLoading() {
+        assertFalse(
+            "a loader that was never asked for an async load reports progress 0, which the old " +
+                "`progress < 1f` read as \"still loading\" for the lifetime of the view — every " +
+                "procedural scene held at full cadence with a correct picture on screen",
+            isAsyncLoadPending(loadStarted = false, progress = 0f)
+        )
+    }
+
+    @Test
+    fun aLoadInFlightKeepsTheSceneActive() {
+        assertTrue(
+            "texture finalisation happens inside the frame loop: parking here renders untextured",
+            isAsyncLoadPending(loadStarted = true, progress = 0f)
+        )
+        assertTrue(isAsyncLoadPending(loadStarted = true, progress = 0.4f))
+    }
+
+    @Test
+    fun aFinishedLoadStopsKeepingTheSceneActive() {
+        assertFalse(isAsyncLoadPending(loadStarted = true, progress = 1f))
+    }
+
+    @Test
+    fun aProceduralSceneAtRestIsNotFrameActive() {
+        // The whole `active` fold, with the terms a `materials`-like scene really has at rest:
+        // no touch, a paused camera, no playing animation, nothing loading, nothing mirroring,
+        // framing latched. This is the assertion the on-device measurement failed.
+        assertFalse(
+            isSceneFrameActive(
+                gestureInFlight = false,
+                cameraMoved = false,
+                cameraPending = false,
+                hasActiveNode = false,
+                isLoading = isAsyncLoadPending(loadStarted = false, progress = 0f),
+                isMirroring = false,
+                framingPending = false
+            )
+        )
+    }
 }

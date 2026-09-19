@@ -979,7 +979,10 @@ fun SceneView(
                                 cameraMoved = cameraMoved,
                                 cameraPending = cameraPending,
                                 hasActiveNode = childNodesRef.get().any { it.isFrameActive },
-                                isLoading = modelLoader.progress < 1f,
+                                // Not `progress < 1f`: Filament reports 0 for a loader that was
+                                // never asked for an async load, which read as "loading" for the
+                                // lifetime of every procedural scene. See [isAsyncLoadPending].
+                                isLoading = modelLoader.isLoading,
                                 isMirroring = surfaceMirrorer?.mirroredSurfaces?.isNotEmpty() == true,
                                 // Exactly the condition of the work this guard waits for — the
                                 // same `if`s the update block above runs the passes under. See

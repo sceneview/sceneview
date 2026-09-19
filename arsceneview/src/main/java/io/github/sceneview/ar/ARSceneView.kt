@@ -1621,7 +1621,10 @@ fun ARSceneView(
                     // advanced this tick reports `isFrameActive` and keeps the budget topped up.
                     sceneChanged = frameRateGate.shouldRender(
                         active = childNodes.any { it.isFrameActive } ||
-                                modelLoader.progress < 1f
+                                // Not `progress < 1f`: a loader that was never asked for an async
+                                // load reports 0, which reads as "loading" forever — see
+                                // [io.github.sceneview.loaders.ModelLoader.isLoading].
+                                modelLoader.isLoading
                     )
                 }
 
