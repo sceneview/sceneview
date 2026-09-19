@@ -52,7 +52,8 @@ SceneView { /* … */ }
   scene, the screen is measuring its own loop rather than the scene's. `DebugStats` holds plain
   fields and `DebugOverlay` reads them on a 250 ms tick, which is the pattern to copy.
 - **A `ViewNode` keeps the scene awake while its view is drawing, and only then.** The hosted
-  Android `View` animates on its own schedule — a ripple, a spinner, a cursor, an inner fling — and
+  Android `View` animates on its own schedule — a ripple, a spinner, a cursor, an inner fling, a
+  recomposition of hosted Compose content — and
   the library cannot see inside it, so the node reports itself active from the one thing that is
   observable: every buffer the view hierarchy queues onto its `SurfaceTexture`. An animating view
   therefore holds the full cadence for as long as it animates, and a view that has finished drawing
