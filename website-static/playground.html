@@ -424,42 +424,37 @@
       margin-top: 8px;
     }
 
+    /* Three equal buttons in a 240px sidebar column. Side by side on one line,
+       "ChatGPT" alone is ~94px of min-content and the row overflowed its panel
+       (273px of content in 240px of room). Icon above label instead: the widest
+       item is then the word, not icon + gap + word, and all three keep exactly
+       the same box — which is the point of this panel. */
     .pg__ai-btn {
-      flex: 1;
+      flex: 1 1 0;
+      min-width: 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      padding: 8px 10px;
+      text-align: center;
+      gap: 4px;
+      padding: 8px 6px;
       border: none;
       border-radius: var(--pg-radius-sm);
       font-size: 0.75rem;
       font-weight: 600;
+      line-height: 1.25;
       font-family: var(--font-body, 'Inter', sans-serif);
       cursor: pointer;
       text-decoration: none;
       transition: all var(--pg-transition);
     }
 
-    .pg__ai-btn--claude {
-      background: #d97757;
-      color: #fff;
-    }
-
-    .pg__ai-btn--claude:hover {
-      background: #c4622e;
-      color: #fff;
-    }
-
-    .pg__ai-btn--chatgpt {
-      background: #10a37f;
-      color: #fff;
-    }
-
-    .pg__ai-btn--chatgpt:hover {
-      background: #0d8a6b;
-      color: #fff;
-    }
+    /* No vendor colour on these two. Claude and ChatGPT are the only assistants
+       that document a ?q= prompt parameter, so they are the only two that can be
+       opened directly — a protocol fact, not a recommendation, and it must not
+       read as one. They share the neutral treatment of "Copy prompt" below,
+       which is the path every other assistant takes. */
 
     .pg__ai-btn svg {
       width: 14px;
@@ -467,11 +462,14 @@
       flex-shrink: 0;
     }
 
+    /* This line now carries the "works with any assistant" message, so it has to
+       be readable rather than decorative: --color-outline measured 3.84:1 on the
+       panel in light, below the 4.5:1 body-text floor. */
     .pg__ai-hint {
       margin-top: 6px;
-      font-size: 0.7rem;
-      color: var(--color-outline, #777b84);
-      line-height: 1.4;
+      font-size: 0.75rem;
+      color: var(--color-on-surface-variant, #5b5f68);
+      line-height: 1.45;
     }
 
     .pg__examples {
@@ -1627,26 +1625,39 @@
       white-space: nowrap;
     }
 
-    .pg__ai-btn--copy {
-      background: rgba(255, 255, 255, 0.10);
+    /* One treatment for all three, taken from .pg__action-btn so the panel and
+       the header agree. Light is the base here, as everywhere in this file;
+       [data-theme="dark"] overrides. The 1px outline is what carries the
+       button boundary — a tinted fill alone does not reach 3:1 on either
+       theme at this surface. */
+    .pg__ai-btn--copy,
+    .pg__ai-btn--claude,
+    .pg__ai-btn--chatgpt {
+      background: var(--color-surface-container, #ecedf6);
+      color: var(--color-on-surface-variant, #5b5f68);
+      border: 1px solid var(--color-outline, #4c5f85);
+    }
+
+    .pg__ai-btn--copy:hover,
+    .pg__ai-btn--claude:hover,
+    .pg__ai-btn--chatgpt:hover {
+      background: var(--color-surface-container-high, #e5e8f1);
+      color: var(--color-on-surface, #2e333a);
+    }
+
+    [data-theme="dark"] .pg__ai-btn--copy,
+    [data-theme="dark"] .pg__ai-btn--claude,
+    [data-theme="dark"] .pg__ai-btn--chatgpt {
+      background: #323a47;
+      color: #c9d1d9;
+      border: 1px solid #8b949e;
+    }
+
+    [data-theme="dark"] .pg__ai-btn--copy:hover,
+    [data-theme="dark"] .pg__ai-btn--claude:hover,
+    [data-theme="dark"] .pg__ai-btn--chatgpt:hover {
+      background: #30363d;
       color: #f0f6fc;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-    }
-
-    .pg__ai-btn--copy:hover {
-      background: rgba(255, 255, 255, 0.16);
-      color: #fff;
-    }
-
-    [data-theme="light"] .pg__ai-btn--copy {
-      background: rgba(15, 23, 42, 0.06);
-      color: #1f2937;
-      border: 1px solid rgba(15, 23, 42, 0.16);
-    }
-
-    [data-theme="light"] .pg__ai-btn--copy:hover {
-      background: rgba(15, 23, 42, 0.11);
-      color: #0f172a;
     }
 
     /* ===== PLATFORM PILLS OVERFLOW ===== */
@@ -1732,7 +1743,7 @@
         <button class="pg__platform-pill" data-platform="flutter" aria-pressed="false">Flutter</button>
         <button class="pg__platform-pill" data-platform="reactnative" aria-pressed="false">React Native</button>
         <button class="pg__platform-pill" data-platform="desktop" aria-pressed="false">Desktop</button>
-        <button class="pg__platform-pill" data-platform="claude" aria-pressed="false">MCP / Claude</button>
+        <button class="pg__platform-pill" data-platform="mcp" aria-pressed="false">MCP</button>
       </div>
       <div class="pg__header-right">
         <button class="pg__action-btn" id="copyBtn" title="Copy code">
@@ -1787,14 +1798,14 @@
               </button>
               <a class="pg__ai-btn pg__ai-btn--claude" id="aiGenClaude" href="#" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
-                Open in Claude
+                Claude
               </a>
               <a class="pg__ai-btn pg__ai-btn--chatgpt" id="aiGenChatGPT" href="#" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.28 9.37a5.9 5.9 0 00-.51-4.85 5.97 5.97 0 00-6.44-2.87A5.9 5.9 0 0010.88 0a5.97 5.97 0 00-5.7 4.15 5.9 5.9 0 00-3.95 2.86 5.97 5.97 0 00.74 7.01 5.9 5.9 0 00.51 4.85 5.97 5.97 0 006.44 2.87A5.9 5.9 0 0013.37 24a5.97 5.97 0 005.7-4.15 5.9 5.9 0 003.95-2.86 5.97 5.97 0 00-.74-7.01zM13.37 22.5a4.43 4.43 0 01-2.85-1.03l.14-.08 4.73-2.73a.77.77 0 00.39-.67v-6.67l2 1.15a.07.07 0 01.04.05v5.53a4.46 4.46 0 01-4.45 4.45zM3.63 18.37a4.43 4.43 0 01-.53-2.98l.14.08 4.73 2.73a.77.77 0 00.77 0l5.78-3.34v2.31a.07.07 0 01-.03.06l-4.79 2.76a4.46 4.46 0 01-6.07-1.62zM2.34 7.87a4.43 4.43 0 012.32-1.95V11.6a.77.77 0 00.39.67l5.78 3.34-2 1.15a.07.07 0 01-.07 0L4 14.01a4.46 4.46 0 01-1.66-6.14zm17.14 3.99l-5.78-3.34 2-1.15a.07.07 0 01.07 0l4.79 2.76a4.46 4.46 0 01-.69 8.05v-5.65a.77.77 0 00-.39-.67zM21.6 9.55l-.14-.08-4.73-2.73a.77.77 0 00-.77 0L10.18 10.08V7.77a.07.07 0 01.03-.06l4.79-2.76a4.46 4.46 0 016.6 4.6zM8.99 13.3l-2-1.15a.07.07 0 01-.04-.06V6.56A4.46 4.46 0 0114.28 3.2l-.14.08-4.73 2.73a.77.77 0 00-.39.67l-.03 6.62zm1.09-2.34L12 9.72l1.92 1.11v2.22L12 14.16l-1.92-1.11v-2.09z"/></svg>
-                Open in ChatGPT
+                ChatGPT
               </a>
             </div>
-            <div class="pg__ai-hint">AI will generate SceneView code for <strong id="aiPlatformLabel">Android</strong></div>
+            <div class="pg__ai-hint">Generates SceneView code for <strong id="aiPlatformLabel">Android</strong>. <em>Copy prompt</em> works with any assistant &mdash; Cursor, Copilot, Codex, Cline, Gemini, JetBrains, whichever you use.</div>
           </div>
         </div>
 
@@ -2058,9 +2069,9 @@
           file: 'ModelViewerScreen.kt', lang: 'Kotlin',
           code: '// Desktop support is a wireframe placeholder.\n// Filament JNI is not yet available for\n// Compose Desktop (JVM/AWT).\n//\n// The desktop sample uses Compose Canvas\n// for wireframe rendering only.\n//\n// For production desktop 3D, consider:\n// - SceneView Web in an embedded browser\n// - Native Filament C++ with JNI bindings\n// - Vulkan/OpenGL direct integration\n\n// Wireframe placeholder:\nimport androidx.compose.foundation.Canvas\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.geometry.Offset\nimport androidx.compose.ui.graphics.Color\n\n@Composable\nfun ModelViewerScreen() {\n    Canvas(modifier = Modifier.fillMaxSize()) {\n        // Wireframe cube placeholder\n        drawLine(Color.Blue, Offset(100f, 100f), Offset(300f, 100f))\n        drawLine(Color.Blue, Offset(300f, 100f), Offset(300f, 300f))\n        drawLine(Color.Blue, Offset(300f, 300f), Offset(100f, 300f))\n        drawLine(Color.Blue, Offset(100f, 300f), Offset(100f, 100f))\n    }\n}'
         },
-        claude: {
+        mcp: {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — Model Viewer\n\n## Prompt to Claude:\n\n> Build me a 3D model viewer Android app\n> using SceneView. Load a GLB model with\n> environment lighting and orbit camera.\n\n## Claude will generate:\n\n```kotlin\nSceneView(\n    modifier = Modifier.fillMaxSize(),\n    engine = engine,\n    environment = rememberEnvironment(\n        envLoader, \"envs/sky.hdr\"\n    ),\n    cameraManipulator = rememberCameraManipulator()\n) {\n    rememberModelInstance(\n        modelLoader, \"models/helmet.glb\"\n    )?.let { ModelNode(modelInstance = it) }\n}\n```\n\n## SceneView MCP Tools:\n- `create_scene` — scaffold a new 3D scene\n- `add_model` — add a GLB/USDZ model node\n- `configure_camera` — set orbit/freeflight\n- `set_environment` — load HDR lighting'
+          code: '# MCP — Model Viewer\n\n## Prompt to your assistant:\n\n> Build me a 3D model viewer Android app\n> using SceneView. Load a GLB model with\n> environment lighting and orbit camera.\n\n## What it generates:\n\n```kotlin\nSceneView(\n    modifier = Modifier.fillMaxSize(),\n    engine = engine,\n    environment = rememberEnvironment(\n        envLoader, \"envs/sky.hdr\"\n    ),\n    cameraManipulator = rememberCameraManipulator()\n) {\n    rememberModelInstance(\n        modelLoader, \"models/helmet.glb\"\n    )?.let { ModelNode(modelInstance = it) }\n}\n```\n\n## SceneView MCP Tools:\n- `create_scene` — scaffold a new 3D scene\n- `add_model` — add a GLB/USDZ model node\n- `configure_camera` — set orbit/freeflight\n- `set_environment` — load HDR lighting'
         }
       },
       'environment-setup': {
@@ -2230,9 +2241,9 @@
           file: 'rerun_desktop.md', lang: 'Markdown',
           code: '# Rerun on desktop\n\nDesktop SceneView is a wireframe placeholder today —\nthere is no Filament renderer running, so there is no\nAR session to log.\n\nIf you want a desktop Rerun workflow for SceneView:\n\n- Use the standalone Python pipeline generated by the\n  `setup_rerun_project` tool of `rerun-3d-mcp`\n  (platform="python"). It gives you a Python sidecar\n  plus a requirements.txt for the Rerun SDK.\n- Drive it from your desktop tooling (post-processing,\n  CI screenshot diffing, dataset inspection).\n- Or use the Rerun Web Viewer embedded in an Electron /\n  Tauri shell if you need a packaged desktop viewer.'
         },
-        claude: {
+        mcp: {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — AR Debug with Rerun\n\n## Prompt to Claude:\n\n> I want to debug an ARCore session in SceneView\n> by streaming camera pose, detected planes and\n> point cloud to the Rerun viewer. Generate a\n> Kotlin composable and a Python sidecar.\n\n## Claude will call rerun-3d-mcp:\n\n```\ngenerate_ar_logger({\n  language: "kotlin",\n  dataTypes: ["pose", "planes", "point_cloud"],\n  rateHz: 10\n})\n\ngenerate_python_sidecar({ port: 9876 })\n```\n\n## rerun-3d-mcp tools:\n- `setup_rerun_project` — scaffold Gradle / SPM / web / Python\n- `generate_ar_logger` — Kotlin or Swift AR streamer\n- `generate_python_sidecar` — TCP \u2192 rerun-sdk bridge\n- `embed_web_viewer` — HTML embed snippet\n- `explain_concept` — .rrd, timelines, entities, archetypes\n\nInstall:\n```\nnpx rerun-3d-mcp\n```'
+          code: '# MCP — AR Debug with Rerun\n\n## Prompt to your assistant:\n\n> I want to debug an ARCore session in SceneView\n> by streaming camera pose, detected planes and\n> point cloud to the Rerun viewer. Generate a\n> Kotlin composable and a Python sidecar.\n\n## What it calls in rerun-3d-mcp:\n\n```\ngenerate_ar_logger({\n  language: "kotlin",\n  dataTypes: ["pose", "planes", "point_cloud"],\n  rateHz: 10\n})\n\ngenerate_python_sidecar({ port: 9876 })\n```\n\n## rerun-3d-mcp tools:\n- `setup_rerun_project` — scaffold Gradle / SPM / web / Python\n- `generate_ar_logger` — Kotlin or Swift AR streamer\n- `generate_python_sidecar` — TCP \u2192 rerun-sdk bridge\n- `embed_web_viewer` — HTML embed snippet\n- `explain_concept` — .rrd, timelines, entities, archetypes\n\nInstall:\n```\nnpx rerun-3d-mcp\n```'
         }
       },
       'primitives': {
@@ -2637,10 +2648,10 @@
           code: '// Desktop — ' + title + '\n//\n// Compose Desktop support is a wireframe\n// placeholder. Filament JNI is not yet\n// available for JVM/AWT targets.\n//\n// For production desktop 3D:\n// - Use SceneView Web in embedded browser\n// - Native Filament C++ with JNI bindings\n// - Vulkan/OpenGL direct integration\n//\n// The desktop sample app demonstrates\n// D-pad navigation and basic wireframe\n// rendering via Compose Canvas.'
         };
       }
-      if (platform === 'claude') {
+      if (platform === 'mcp') {
         return {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — ' + title + '\n\n## Prompt to Claude:\n\n> Help me implement \"' + title + '\" using SceneView.\n> Use the SceneView SDK for Android with\n> Jetpack Compose.\n\n## SceneView MCP Server:\n\nThe sceneview-mcp server provides 32 tools\nfor AI-assisted 3D/AR development:\n\n- `get_setup` — Gradle + manifest setup\n- `get_sample` — compilable code samples\n- `get_node_reference` — node type API reference\n- `validate_code` — check generated code\n- `get_ar_setup` — AR permissions and session\n\n## Install MCP:\n```bash\nnpx sceneview-mcp\n```\n\nOr add to claude_desktop_config.json:\n```json\n{\n  \"mcpServers\": {\n    \"sceneview\": {\n      \"command\": \"npx\",\n      \"args\": [\"sceneview-mcp\"]\n    }\n  }\n}\n```'
+          code: '# MCP — ' + title + '\n\n## Prompt to your assistant:\n\n> Help me implement \"' + title + '\" using SceneView.\n> Use the SceneView SDK for Android with\n> Jetpack Compose.\n\n## SceneView MCP Server:\n\nThe sceneview-mcp server provides 32 tools\nfor AI-assisted 3D/AR development:\n\n- `get_setup` — Gradle + manifest setup\n- `get_sample` — compilable code samples\n- `get_node_reference` — node type API reference\n- `validate_code` — check generated code\n- `get_ar_setup` — AR permissions and session\n\n## Install MCP:\n```bash\nnpx sceneview-mcp\n```\n\nOr add it to your client’s MCP config file:\n```json\n{\n  \"mcpServers\": {\n    \"sceneview\": {\n      \"command\": \"npx\",\n      \"args\": [\"sceneview-mcp\"]\n    }\n  }\n}\n```\n\nThe command and its arguments never change.\nOnly the wrapper differs: VS Code and Copilot\nuse `servers` with \"type\": \"stdio\", Codex uses\na [mcp_servers.*] TOML table. Per-client paths:\nhttps://sceneview.github.io/#ai-setup'
         };
       }
       return ex.android;
@@ -3433,7 +3444,7 @@
           flutter: 'Flutter (Dart + PlatformView)',
           reactnative: 'React Native (TypeScript + Fabric)',
           desktop: 'Desktop (Kotlin + Compose Desktop)',
-          claude: 'any platform'
+          mcp: 'any platform'
         };
         var platLabel = platNames[plat] || plat;
 
@@ -3478,7 +3489,7 @@
         var platNames = {
           android: 'Android', ios: 'iOS', web: 'Web',
           flutter: 'Flutter', reactnative: 'React Native',
-          desktop: 'Desktop', claude: 'any platform'
+          desktop: 'Desktop', mcp: 'any platform'
         };
         aiPlatLabel.textContent = platNames[currentPlatform] || currentPlatform;
       }
@@ -3515,7 +3526,10 @@
       var plat = params.get('platform');
       var model = params.get('model');
 
-      if (plat && ['android', 'ios', 'web', 'flutter', 'reactnative', 'desktop', 'claude'].indexOf(plat) !== -1) {
+      // `claude` was this tab's key until the AI block was made vendor-neutral.
+      // Links shared before that still carry ?platform=claude, so keep the alias.
+      if (plat === 'claude') plat = 'mcp';
+      if (plat && ['android', 'ios', 'web', 'flutter', 'reactnative', 'desktop', 'mcp'].indexOf(plat) !== -1) {
         currentPlatform = plat;
         document.querySelectorAll('.pg__platform-pill').forEach(function(p) {
           p.classList.toggle('pg__platform-pill--active', p.getAttribute('data-platform') === plat);
