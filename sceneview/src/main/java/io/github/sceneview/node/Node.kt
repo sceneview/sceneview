@@ -295,6 +295,16 @@ open class Node protected constructor(
      */
     private fun applyCachedTransform() {
         val composed = Transform(_position, _quaternion, _scale)
+        // Only write what changed (#3718). A per-frame producer keeps writing once its motion has
+        // settled: a physics step re-pushes the resting position of every body, an animation
+        // sampler re-pushes the last keyframe. The matrix is then byte-identical to the one
+        // Filament already holds, so both the JNI write and the notification below are no-ops —
+        // except that the notification calls `requestRender()`, which alone held a settled scene
+        // at full cadence for as long as the stepper ran. `_transform` is the exact matrix last
+        // pushed (this site and the `transform` setter are its only writers), so comparing against
+        // it is comparing against Filament's own state. A null cache means "unknown", and falls
+        // through to the write.
+        if (_transform == composed) return
         transformManager.setTransform(transformInstance, composed)
         // Populate the local-matrix cache with the exact matrix just pushed to Filament, so a
         // subsequent `transform` read is served without a `getTransform()` JNI round-trip (#2405).
