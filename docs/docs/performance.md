@@ -429,6 +429,89 @@ the wake-up, so expect one frame of latency, not zero.
 
     Not applicable to `ARSceneView`: a camera feed is never idle, so there is nothing to park.
 
+### Stop rendering an idle scene — iOS / visionOS
+
+SceneViewSwift ships the same API, `FrameRatePolicy`, with the same two cases and the same
+default. **It does not do the same thing, and the difference is not a detail.**
+
+```swift
+SceneView { /* … */ }                                   // .onDemand() — the default
+SceneView { /* … */ }.frameRatePolicy(.continuous())
+SceneView { /* … */ }.frameRatePolicy(.onDemand(maxFps: 30))
+```
+
+On Android the render loop belongs to SceneView: it drives Filament's
+`beginFrame` / `render` / `endFrame` itself, so parking means **no GPU frame is produced**.
+
+On iOS it does not. `SceneView` is a SwiftUI `RealityView`, and RealityKit owns its render
+loop — there is no public gate, no `isPaused`, no `setNeedsDisplay`, and `ARView.RenderOptions`
+carries no cadence option. `.onDemand` therefore **cannot stop RealityKit from presenting a
+frame**, and the API does not pretend it can.
+
+What it does control is real, and is the whole of what the platform offers:
+
+| | Android (Filament) | iOS / visionOS (RealityKit) |
+|---|---|---|
+| Skip the GPU submit when nothing changed | ✅ | ❌ **not possible** — RealityKit presents every vsync |
+| Park the library's own per-frame work | ✅ | ✅ camera / coast / turntable driver stops |
+| Cadence request | ✅ `Surface.setFrameRate` | ✅ `CADisplayLink.preferredFrameRateRange`; ❌ nothing on macOS |
+| `maxFps` cap | ✅ presents on whole vsync multiples | ⚠️ caps *our* driver and *our* request, not RealityKit's presentation |
+| `maxFps` ≤ 0 | throws | clamped to `1` |
+| `requestRender()` after a raw mutation | **required** — the frame would not be drawn | not required for the pixel to appear |
+
+So: on Android `.onDemand` saves the **GPU**; on iOS it saves SceneViewSwift's **CPU** and lets
+the panel idle. The CPU saving is not nothing — the camera-motion driver was a 60 Hz timer
+running `advance(dt:)` + `applyCamera()` for the lifetime of any scene that had ever coasted —
+but it is a different claim from Android's, and an iOS battery measurement will show a
+different shape.
+
+The per-frame driver now ticks on a `CADisplayLink` rather than a `Task.sleep(16_666_667)`.
+That fixes a second defect on its own: the old sleep was 60 Hz written into the source, with no
+vsync phase, so the camera pose was recomputed off-beat from RealityKit's presentation and the
+turntable juddered at **any** refresh rate.
+
+!!! warning "Above 60 Hz on iPhone needs a key in **your** `Info.plist`"
+    iOS caps an app at 60 fps on ProMotion iPhones unless the app opts in with
+    `CADisableMinimumFrameDurationOnPhone = YES`. It belongs to the host app's bundle — a
+    framework cannot set it for you, so SceneViewSwift cannot do this on your behalf. iPad and
+    Mac do not need the key.
+
+    This path is **not verified above 60 Hz**: it was developed without a ProMotion device, and
+    the Simulator cannot exceed its host's refresh rate. A 2024 developer-forums report that the
+    key has no effect on a `RealityView` is still unanswered by Apple. Treat 120 Hz on iPhone as
+    untested rather than as promised.
+
+!!! note "`SceneRenderInvalidator` — needed less often than on Android"
+    On Android, mutating a raw Filament object while the loop is parked means the change is
+    **never drawn**; `requestRender()` is how the frame happens at all. On iOS nothing is
+    invisible in that sense — write `entity.position` from your own timer and RealityKit
+    presents it on the next vsync with no invalidator anywhere.
+
+    What `SceneRenderInvalidator` changes on iOS is the **cadence**: a parked driver has
+    invalidated its display link, so SceneViewSwift is requesting no particular rate and a
+    variable-refresh-rate panel may idle down under your animation.
+
+    ```swift
+    @StateObject private var invalidator = SceneRenderInvalidator()
+
+    SceneView { root in root.addChild(model) }
+        .renderInvalidator(invalidator)
+        .onReceive(timer) { _ in
+            model.position.y = bounce()
+            invalidator.requestRender()   // hold the cadence while I drive this
+        }
+    ```
+
+    If you are not driving motion from outside the library, you do not need it. If you are and
+    would rather not call it every frame, `.frameRatePolicy(.continuous())` holds the request
+    for the view's lifetime instead.
+
+!!! info "macOS: the cap and the parking, no cadence request"
+    `CADisplayLink.init(target:selector:)` is unavailable on macOS — a display link there must
+    be vended by an `NSView`, `NSWindow` or `NSScreen`, none of which a SwiftUI `RealityView`
+    hands out. On macOS the policy still parks the driver and still caps its rate, but requests
+    no cadence at all.
+
 ---
 
 ## AR-Specific Optimization

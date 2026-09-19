@@ -7,6 +7,90 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 
 ---
 
+## SceneView 4.37.x to 4.38.0 (iOS) — `FrameRatePolicy`, and the camera driver moves to `CADisplayLink`
+
+### New: `.frameRatePolicy(_:)` ([#3108](https://github.com/sceneview/sceneview/issues/3108))
+
+```swift
+enum FrameRatePolicy {
+    case onDemand(maxFps: Int? = nil)    // the default
+    case continuous(maxFps: Int? = nil)
+}
+```
+
+Mirrors the Android `FrameRatePolicy` shipped in the same release, case for case. `.onDemand()`
+is the default on both platforms, so **no call is required** to get the new behaviour.
+
+### What actually changes on iOS
+
+SceneViewSwift's camera-motion driver — the loop that advances a released drag's coast and the
+`.autoRotate(speed:)` turntable — now **stops** once nothing is moving, and the
+`CADisplayLink` it runs on is invalidated with it, so no display cadence is requested while the
+scene is idle. Under `.continuous()` it never stops.
+
+What does **not** change: RealityKit keeps presenting frames. It owns its render loop, there is
+no public gate on it, and `.onDemand` does not and cannot stop it. If you are reading this
+expecting the Android saving — "the GPU stops" — that is not what happens here. See
+[Performance → Stop rendering an idle scene — iOS / visionOS](performance.md#stop-rendering-an-idle-scene-ios-visionos)
+for the full divergence table.
+
+### Behavioural change you may see without changing a line
+
+The driver used to tick on a hard-coded `Task.sleep(16_666_667)` — 60 Hz written into the
+source, with no vsync phase. It now ticks on a `CADisplayLink`, so:
+
+- **Turntable and coast are smoother.** The judder came from recomputing the camera pose off-beat
+  from RealityKit's presentation; the display link fixes the phase.
+- **Motion still integrates against elapsed time**, as before, so a turntable at
+  `autoRotate(speed: 0.2)` turns at 0.2 rad/s on a 60 Hz and a 120 Hz panel alike. Speeds do not
+  need retuning.
+
+### Action required: none, unless you drive the scene yourself
+
+If your app mutates entities from its own timer (an animation SceneViewSwift knows nothing
+about), the change is still drawn — RealityKit presents it regardless. But with the driver
+parked, SceneViewSwift requests no particular refresh rate, and a variable-refresh-rate display
+may idle down under your animation. Two ways to hold it:
+
+```swift
+// Option A — tell the view when you are driving it.
+@StateObject private var invalidator = SceneRenderInvalidator()
+
+SceneView { root in root.addChild(model) }
+    .renderInvalidator(invalidator)
+    .onReceive(timer) { _ in
+        model.position.y = bounce()
+        invalidator.requestRender()
+    }
+
+// Option B — never park.
+SceneView { root in root.addChild(model) }
+    .frameRatePolicy(.continuous())
+```
+
+!!! warning "`requestRender()` does NOT mean the same thing as on Android"
+    On Android it is how the frame gets drawn at all: a raw Filament mutation while the loop is
+    parked is **never presented** without it. On iOS it is a cadence hint and nothing more — your
+    edit appears either way. Porting Android code that calls it everywhere is harmless; porting
+    iOS code to Android by *omitting* it is not.
+
+### `maxFps` ≤ 0 is clamped on iOS, rejected on Android
+
+Kotlin's `require(fps > 0)` throws at construction. A Swift `enum` case has no failable
+construction point, and trapping inside a display-link callback would turn a caller's typo into
+a crash in a shipped app, so `maxFps: 0` and negatives resolve to `1`.
+
+### 120 Hz on iPhone still needs a key in your app
+
+iOS caps an app at 60 fps on ProMotion iPhones unless its `Info.plist` sets
+`CADisableMinimumFrameDurationOnPhone` to `YES`. That key belongs to the **host app's** bundle;
+a framework cannot set it for you. iPad and Mac do not need it.
+
+This path is **not verified above 60 Hz** — developed without a ProMotion device, and the
+Simulator cannot exceed its host's refresh rate.
+
+---
+
 ## SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to `CameraControlMode`
 
 ### Three new `CameraControlMode` cases — `.none`, `.tilt`, `.dolly` ([#1049](https://github.com/sceneview/sceneview/issues/1049))

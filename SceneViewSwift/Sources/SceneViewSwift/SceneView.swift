@@ -1,6 +1,7 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import SwiftUI
 import RealityKit
+import Combine
 
 /// A SwiftUI view for rendering 3D content using RealityKit.
 ///
@@ -169,6 +170,20 @@ public struct SceneView: View {
     // pass and restores the authored orbit angles, without rebuilding content.
     var recenterToken: AnyHashable?
 
+    // How often the library does its own per-frame work, and what display cadence it asks
+    // for. Mirrors Android's `SceneView(frameRatePolicy = …)` parameter. Default
+    // `.onDemand()` — the camera-motion driver parks once nothing is moving. Read
+    // `FrameRatePolicy`'s divergence table before assuming this behaves like Android's:
+    // RealityKit owns the render loop and keeps presenting regardless. Set via
+    // `.frameRatePolicy(_:)`.
+    var frameRatePolicy: FrameRatePolicy = .onDemand()
+
+    // Optional wake-up channel for a host driving the scene from outside the library, so a
+    // parked `.onDemand` driver can be re-armed. `nil` (the default) is right for every
+    // scene whose motion comes from gestures, the turntable or the framing pass. Set via
+    // `.renderInvalidator(_:)`.
+    var renderInvalidator: SceneRenderInvalidator?
+
     /// Creates a 3D scene with imperative content setup.
     ///
     /// - Parameter content: A closure that populates the scene. Receives a root
@@ -221,7 +236,9 @@ public struct SceneView: View {
             requestedCameraPoseGeneration: requestedCameraPoseGeneration,
             onCameraChanged: onCameraChanged,
             cameraGesturesEnabled: cameraGesturesEnabled,
-            onEntityTappedHit: onEntityTappedHit
+            onEntityTappedHit: onEntityTappedHit,
+            frameRatePolicy: frameRatePolicy,
+            renderInvalidator: renderInvalidator
         )
     }
 
@@ -438,6 +455,48 @@ public struct SceneView: View {
     public func renderQuality(_ preset: RenderQuality) -> SceneView {
         var copy = self
         copy.renderQualityPreset = preset
+        return copy
+    }
+
+    /// Sets how often the scene does its per-frame work, and what display cadence it requests.
+    ///
+    /// Mirrors Android's `SceneView(frameRatePolicy = …)` parameter, case for case. The
+    /// default is ``FrameRatePolicy/onDemand(maxFps:)``: the camera-motion driver runs while
+    /// a gesture, a coast, a turntable or a framing pass needs it and parks otherwise.
+    ///
+    /// ```swift
+    /// SceneView { /* ... */ }                                 // .onDemand() — the default
+    /// SceneView { /* ... */ }.frameRatePolicy(.continuous())  // never park
+    /// SceneView { /* ... */ }.frameRatePolicy(.onDemand(maxFps: 30))
+    /// ```
+    ///
+    /// - Important: read ``FrameRatePolicy``'s divergence table first. On iOS this governs
+    ///   **SceneViewSwift's own** per-frame work and its `CADisplayLink` cadence request —
+    ///   it cannot stop RealityKit presenting, because RealityKit owns the render loop and
+    ///   exposes no gate. `.onDemand` is a CPU and refresh-rate saving here, not the GPU
+    ///   saving it is on Android.
+    public func frameRatePolicy(_ policy: FrameRatePolicy) -> SceneView {
+        var copy = self
+        copy.frameRatePolicy = policy
+        return copy
+    }
+
+    /// Attaches a wake-up channel so a host driving the scene itself can re-arm a parked
+    /// ``FrameRatePolicy/onDemand(maxFps:)`` driver.
+    ///
+    /// The counterpart of Android's `SceneView(renderInvalidator = …)`. Needed far less often
+    /// on iOS than on Android — see ``SceneRenderInvalidator`` for exactly what it does and
+    /// does not buy here.
+    ///
+    /// ```swift
+    /// @StateObject private var invalidator = SceneRenderInvalidator()
+    ///
+    /// SceneView { /* ... */ }
+    ///     .renderInvalidator(invalidator)
+    /// ```
+    public func renderInvalidator(_ invalidator: SceneRenderInvalidator) -> SceneView {
+        var copy = self
+        copy.renderInvalidator = invalidator
         return copy
     }
 
@@ -846,6 +905,16 @@ private struct SceneViewRepresentation: View {
     /// ``SceneView/onEntityTapHit(_:)``.
     let onEntityTappedHit: ((SceneTapHit) -> Void)?
 
+    /// Governs the camera-motion driver below: whether it parks when nothing is moving, and
+    /// the `CADisplayLink.preferredFrameRateRange` it carries while it runs. From
+    /// ``SceneView/frameRatePolicy(_:)``; defaults to ``FrameRatePolicy/onDemand(maxFps:)``.
+    let frameRatePolicy: FrameRatePolicy
+
+    /// Host-owned wake-up channel from ``SceneView/renderInvalidator(_:)``. Observed so a
+    /// ``SceneRenderInvalidator/requestRender()`` bumps the driver's task identity and
+    /// restarts it. `nil` for every scene that does not drive its own motion.
+    let renderInvalidator: SceneRenderInvalidator?
+
     /// Mutable camera-orbit state, held in a **reference type** so mutating it
     /// (auto-rotate, drag, pinch) does NOT invalidate the SwiftUI body. The
     /// value default `CameraControls(mode: .orbit)` uses the struct's own
@@ -904,6 +973,12 @@ private struct SceneViewRepresentation: View {
     /// True for the lifetime of a magnify gesture. Suppresses the orbit drag a
     /// two-finger pinch also produces (#3597).
     @State private var isPinching = false
+
+    /// Mirror of ``SceneRenderInvalidator/generation``, part of the camera-motion
+    /// loop's task identity. A host calling `requestRender()` bumps the
+    /// invalidator, this follows, the identity changes and SwiftUI starts a fresh
+    /// driver — the only way to revive a loop that has already returned.
+    @State private var renderRequestGeneration: Int = 0
 
 
     /// Monotonic counter bumped by the content-framing driver task while
@@ -1089,6 +1164,20 @@ private struct SceneViewRepresentation: View {
         )
     }
 
+    /// Stream of ``SceneRenderInvalidator/generation`` values, or an empty one when the host
+    /// attached no invalidator.
+    ///
+    /// `.onReceive` needs a publisher unconditionally, and `Optional.publisher` would deliver
+    /// the invalidator itself rather than its generations — hence the explicit erasure. A
+    /// scene with no invalidator therefore subscribes to a publisher that never fires, which
+    /// is the point: the default `.onDemand()` path must not pay for a feature nobody used.
+    private var renderInvalidatorPublisher: AnyPublisher<Int, Never> {
+        guard let renderInvalidator else {
+            return Empty<Int, Never>(completeImmediately: false).eraseToAnyPublisher()
+        }
+        return renderInvalidator.$generation.eraseToAnyPublisher()
+    }
+
     #if os(visionOS)
     /// visionOS-only: the equirectangular HDR texture loaded for the
     /// immersive-space skybox. `RealityViewContent.environment` is
@@ -1122,7 +1211,12 @@ private struct SceneViewRepresentation: View {
             .simultaneousGesture(entityMagnifyGesture)
             .simultaneousGesture(entityRotateGesture)
             .simultaneousGesture(entityLongPressGesture)
-            .task(id: CameraMotionKey(policy: autoRotatePolicy, coast: coastGeneration)) {
+            .task(id: CameraMotionKey(
+                policy: autoRotatePolicy,
+                coast: coastGeneration,
+                frameRate: frameRatePolicy,
+                renderRequest: renderRequestGeneration
+            )) {
                 // Camera-motion loop — custom modes only (#1049). It is the ONE
                 // writer for motion nobody's finger is driving: the coast a
                 // released drag leaves and the auto-rotation, blended by
@@ -1161,34 +1255,68 @@ private struct SceneViewRepresentation: View {
                     }
                 }
                 appliedCache.autoRotateWasActive = policy.isActive
-                guard cameraControlMode.isCustom,
-                      policy.isActive || camera.inertiaVelocity != .zero else { return }
-                var lastTime = CFAbsoluteTimeGetCurrent()
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 16_666_667) // ~60 fps
-                    let now = CFAbsoluteTimeGetCurrent()
-                    let dt = Float(now - lastTime)
-                    lastTime = now
+                guard cameraControlMode.isCustom else { return }
+
+                // Nothing to drive AND a policy that parks when idle: never start a tick
+                // source at all. This is the cheapest possible `.onDemand` — no display
+                // link, no cadence request, no wake-up — and it is also exactly what this
+                // loop did before `FrameRatePolicy` existed. `.continuous` deliberately
+                // falls through: its whole contract is that the driver runs anyway.
+                let hasMotionToDrive = policy.isActive || camera.inertiaVelocity != .zero
+                guard hasMotionToDrive || frameRatePolicy.ticksWhenIdle else { return }
+
+                // The tick source is a `CADisplayLink` (iOS / visionOS), replacing a
+                // hard-coded `Task.sleep(16_666_667)`. Two things change: the ticks land on
+                // vsync at the display's real rate instead of at a source-literal 60 Hz with
+                // arbitrary phase — the orbit judder recorded against this loop — and the
+                // link carries `preferredFrameRateRange`, the only cadence request iOS
+                // offers. See `FrameRateDriver`.
+                let driver = FrameRateDriver()
+                defer { driver.stop() }
+                var gate = FrameRateGate(policy: frameRatePolicy)
+
+                for await dt in driver.ticks(maxFps: frameRatePolicy.resolvedMaxFps) {
+                    if Task.isCancelled { break }
+
+                    var isCameraMoving = false
                     if isDragging {
                         // The finger is the only writer while it is down. The
                         // auto-rotation restarts from a standstill afterwards.
                         camera.suspendAutoRotation()
-                        continue
+                    } else {
+                        // Mutate the boxed orbit state (no body invalidation —
+                        // #2277) and push the new transform straight onto the
+                        // camera entity. `applyCamera()` only reads `camera` and
+                        // writes `entities.*`, so calling it here reproduces the
+                        // per-frame visual update the `RealityView.update:`
+                        // closure used to give us when this loop forced a body
+                        // re-eval every 16 ms — but now without rebuilding the
+                        // gesture chains, the light-slot diffs, the framing pass,
+                        // or the skybox diff every frame. `.task` is MainActor-
+                        // isolated, so the `@MainActor applyCamera()` call is safe.
+                        isCameraMoving = camera.advance(dt: Float(dt))
+                        applyCamera()
                     }
-                    // Mutate the boxed orbit state (no body invalidation —
-                    // #2277) and push the new transform straight onto the
-                    // camera entity. `applyCamera()` only reads `camera` and
-                    // writes `entities.*`, so calling it here reproduces the
-                    // per-frame visual update the `RealityView.update:`
-                    // closure used to give us when this loop forced a body
-                    // re-eval every 16 ms — but now without rebuilding the
-                    // gesture chains, the light-slot diffs, the framing pass,
-                    // or the skybox diff every frame. `.task` is MainActor-
-                    // isolated, so the `@MainActor applyCamera()` call is safe.
-                    let moving = camera.advance(dt: dt)
-                    applyCamera()
-                    if !moving { break }
+
+                    // Pull sources, asked once per tick — the Android split. A gesture in
+                    // flight and a framing pass that has not latched both hold the driver
+                    // open even on a tick where the camera transform did not change, which
+                    // is why `isCameraMoving` alone is not the whole answer.
+                    let decision = gate.tick(FrameRateActivity(
+                        isGestureInFlight: isDragging || isPinching,
+                        isCameraMoving: isCameraMoving,
+                        isFramingPending: autoCenterContentEnabled && !appliedCache.didCenterContent
+                    ))
+                    driver.updateRequestedMaxFps(decision.requestedMaxFps)
+                    if !decision.isRunning { break }
                 }
+            }
+            .onReceive(renderInvalidatorPublisher) { generation in
+                // A `SceneRenderInvalidator.requestRender()` from the host lands here and
+                // bumps the driver's task identity, which is what restarts a parked loop.
+                // `Empty()` when no invalidator was attached, so a scene that does not use
+                // one subscribes to nothing.
+                renderRequestGeneration = generation
             }
             .task(id: recenterToken) {
                 // Keyed rather than diffed inside `update:` so a recenter is
