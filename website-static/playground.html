@@ -463,11 +463,14 @@
     }
 
     /* No vendor colour on any of them. The rule for getting a button here is
-       "the vendor documents a link that accepts a prefilled prompt", nothing
+       "the assistant has a link that accepts a prefilled prompt", nothing
        else — a protocol fact, not a recommendation, and it must not read as
        one. Three qualify today: claude.ai/new?q=, chatgpt.com/?q= and Codex's
-       codex://new?prompt= (learn.chatgpt.com/docs/reference/commands, which
-       prescribes encodeURIComponent). Alphabetical order, no featured slot.
+       codex://new?prompt=. The Codex one is documented first-party
+       (learn.chatgpt.com/docs/reference/commands, which prescribes
+       encodeURIComponent); we found no first-party page for chatgpt.com/?q=,
+       so re-test these links when touching this panel.
+       Alphabetical order, no featured slot.
        "Copy prompt" comes first because it is the path that works for every
        assistant, including the ones with no link at all. */
 
@@ -2714,7 +2717,7 @@
       });
       descTags.innerHTML = tagsHtml;
 
-      // Assistant links — every vendor that documents a prefilled-prompt link.
+      // Assistant links — every assistant with a prefilled-prompt link.
       // Same URI-encoded prompt for all three; only the parameter name differs.
       var prompt = encodeURIComponent(
         'Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + code
