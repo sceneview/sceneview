@@ -101,6 +101,20 @@ class ContinuousCameraManipulator(
     val isEasing: Boolean get() = ease != null
 
     /**
+     * Forwards the source's own answer, and adds this class's three waiting states: an ease in
+     * flight, the [SETTLING_FRAMES] owed after a freeze, and a cut armed but not yet spent.
+     *
+     * A wrapper that answered only for itself would hide the source's countdown — and the source
+     * here is a [HeroOrbitCameraManipulator] whose idle orbit takes the camera back three seconds
+     * after the last gesture. Under [io.github.sceneview.FrameRatePolicy.OnDemand] the loop must
+     * stay alive across that gap or the hand-back never happens; see
+     * [io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator.isFrameActive].
+     */
+    override val isFrameActive: Boolean
+        get() = source?.isFrameActive == true || isEasing || settlingFrames > 0 ||
+            cutMillis != NO_CUT
+
+    /**
      * Whether the viewport has a subject in it ([driving]). A camera that moves behind a loading
      * cover or in front of an empty stage is not seen moving, and easing it would only make the
      * subject land in a frame that is still travelling: while this is `false` every change is

@@ -910,6 +910,31 @@ class HeroOrbitCameraManipulator(
         }
     }
 
+    /**
+     * `true` while the camera is **waiting** rather than moving: the countdown [settle] runs
+     * between the last gesture and the hand-back, and the ease that carries the user's framing
+     * home afterwards.
+     *
+     * Both advance from [update] / [getTransform], so both only exist while the render loop
+     * runs — and under [io.github.sceneview.FrameRatePolicy.OnDemand] the loop parks about half a
+     * second after the camera stops moving, which is well inside the three seconds
+     * [resumeAfterMillis] asks for. Without this the loop would park on the user's pose and the
+     * idle orbit would never come back: the auto-orbit of #3700 would simply stop existing under
+     * the new default. Worse, whatever woke the loop minutes later would find the deadline missed
+     * by more than `UNWATCHED_MARGIN_NANOS` and cut straight to the authored pose — the very jump
+     * #3700 removed.
+     *
+     * It goes `false` as soon as the hand-back has happened and the ease has landed, so a screen
+     * the user never touches still parks: the cost is the three seconds after a gesture, on a
+     * screen whose turntable is about to render continuously anyway.
+     */
+    override val isFrameActive: Boolean
+        get() = isResumePending || carried.isEasing
+
+    /** The [settle] countdown is armed and has not fired yet. */
+    private val isResumePending: Boolean
+        get() = fallback != null && grabEndTimeNanos != 0L && resumeAfterMillis > 0L
+
     override fun setViewport(width: Int, height: Int) {
         viewportW = width.coerceAtLeast(1)
         viewportH = height.coerceAtLeast(1)

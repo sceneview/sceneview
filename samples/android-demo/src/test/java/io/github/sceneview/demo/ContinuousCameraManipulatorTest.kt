@@ -396,6 +396,56 @@ class ContinuousCameraManipulatorTest {
         }
     }
 
+    // ── Keeping the render loop alive (#3108) ────────────────────────────────────────────────────
+
+    /** A source that says it still owes frames, whatever its pose does. */
+    private class Waiting(var pending: Boolean) : CameraGestureDetector.CameraManipulator {
+        override fun setViewport(width: Int, height: Int) = Unit
+        override fun getTransform(): Transform =
+            lookAt(Position(0f, 0f, 2f), Position(0f, 0f, 0f), Float3(0f, 1f, 0f))
+
+        override fun grabBegin(x: Int, y: Int, strafe: Boolean) = Unit
+        override fun grabUpdate(x: Int, y: Int) = Unit
+        override fun grabEnd() = Unit
+        override fun scrollBegin(x: Int, y: Int, separation: Float) = Unit
+        override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) = Unit
+        override fun scrollEnd() = Unit
+        override fun update(deltaTime: Float) = Unit
+        override val isFrameActive: Boolean get() = pending
+    }
+
+    @Test
+    fun `the source's pending frames are forwarded`() {
+        val source = Waiting(pending = true)
+        val camera = manipulator().apply { drive(source) }
+        camera.frame()
+
+        // The wrapper is idle — a still source, no ease, no cut — but the source is counting down
+        // to hand the camera back to its idle orbit. Answering for itself alone would park the
+        // loop on a countdown that only the loop advances.
+        assertTrue(camera.isFrameActive)
+
+        source.pending = false
+        camera.frame()
+
+        assertFalse(camera.isFrameActive)
+    }
+
+    @Test
+    fun `an ease of its own keeps the loop awake without any source pending`() {
+        val first = Turntable(yawDegrees = 0f)
+        val second = Turntable(yawDegrees = 90f)
+        val camera = manipulator().apply { drive(first) }
+        camera.frame()
+
+        // The default arms an ease; `cut = true` would be the one change nobody can see.
+        camera.drive(second)
+        camera.frame()
+
+        assertTrue("the ease between two sources owes frames", camera.isEasing)
+        assertTrue(camera.isFrameActive)
+    }
+
     private companion object {
         const val FRAME_SECONDS = 1f / 60f
         const val FRAME_NANOS = 16_666_667L
