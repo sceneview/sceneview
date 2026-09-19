@@ -183,6 +183,41 @@ public final class io/github/sceneview/EngineKt {
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
 }
 
+public final class io/github/sceneview/FrameRateGateKt {
+	public static final fun rememberRenderInvalidator (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/RenderInvalidator;
+}
+
+public abstract interface class io/github/sceneview/FrameRatePolicy {
+}
+
+public final class io/github/sceneview/FrameRatePolicy$Capped : io/github/sceneview/FrameRatePolicy {
+	public static final field $stable I
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lio/github/sceneview/FrameRatePolicy$Capped;
+	public static synthetic fun copy$default (Lio/github/sceneview/FrameRatePolicy$Capped;IILjava/lang/Object;)Lio/github/sceneview/FrameRatePolicy$Capped;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFps ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/FrameRatePolicy$Continuous : io/github/sceneview/FrameRatePolicy {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/FrameRatePolicy$Continuous;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/FrameRatePolicy$OnDemand : io/github/sceneview/FrameRatePolicy {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/FrameRatePolicy$OnDemand;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/FramingGate {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/FramingGate$Companion;
@@ -202,6 +237,12 @@ public final class io/github/sceneview/FramingGate$Companion {
 public final class io/github/sceneview/NodeScope : io/github/sceneview/SceneScope {
 	public static final field $stable I
 	public final fun getParentNode ()Lio/github/sceneview/node/Node;
+}
+
+public final class io/github/sceneview/RenderInvalidator {
+	public static final field $stable I
+	public fun <init> ()V
+	public final fun requestRender ()V
 }
 
 public final class io/github/sceneview/RenderQuality : java/lang/Enum {
@@ -281,8 +322,8 @@ public final class io/github/sceneview/SceneFactoriesKt {
 }
 
 public final class io/github/sceneview/SceneKt {
-	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZZLio/github/sceneview/RenderQuality;ZZFLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
-	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZZLio/github/sceneview/RenderQuality;ZZFLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
+	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderQuality;ZZFLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
+	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
 	public static final fun rememberARView (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/View;
 	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final fun rememberCameraNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/node/CameraNode;
@@ -325,13 +366,16 @@ public final class io/github/sceneview/SceneRenderer {
 	public final fun attachToTextureView (Landroid/view/TextureView;ZLandroid/content/Context;Landroid/view/Display;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun attachToTextureView$default (Lio/github/sceneview/SceneRenderer;Landroid/view/TextureView;ZLandroid/content/Context;Landroid/view/Display;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun destroy ()V
+	public final fun getMaxRefreshRate ()Ljava/lang/Float;
 	public final fun getOnSurfaceDestroyed ()Lkotlin/jvm/functions/Function0;
 	public final fun getOnSurfaceReady ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnSurfaceResized ()Lkotlin/jvm/functions/Function2;
 	public final fun getSurfaceMirrorer ()Lio/github/sceneview/utils/SurfaceMirrorer;
 	public final fun getView ()Lcom/google/android/filament/View;
 	public final fun isAttached ()Z
-	public final fun renderFrame (JLkotlin/jvm/functions/Function0;)V
+	public final fun renderFrame (JLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)Z
+	public static synthetic fun renderFrame$default (Lio/github/sceneview/SceneRenderer;JLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Z
+	public final fun setFrameRateVote (F)V
 	public final fun setOnSurfaceDestroyed (Lkotlin/jvm/functions/Function0;)V
 	public final fun setOnSurfaceReady (Lkotlin/jvm/functions/Function1;)V
 	public final fun setOnSurfaceResized (Lkotlin/jvm/functions/Function2;)V
@@ -1498,6 +1542,7 @@ public abstract interface class io/github/sceneview/gesture/CameraGestureDetecto
 	public abstract fun grabBegin (IIZ)V
 	public abstract fun grabEnd ()V
 	public abstract fun grabUpdate (II)V
+	public fun isFrameActive ()Z
 	public abstract fun scrollBegin (IIF)V
 	public abstract fun scrollEnd ()V
 	public abstract fun scrollUpdate (IIFF)V
@@ -1507,6 +1552,7 @@ public abstract interface class io/github/sceneview/gesture/CameraGestureDetecto
 
 public final class io/github/sceneview/gesture/CameraGestureDetector$CameraManipulator$DefaultImpls {
 	public static fun doubleTapZoom (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;IIZ)V
+	public static fun isFrameActive (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;)Z
 }
 
 public final class io/github/sceneview/gesture/CameraGestureDetector$Companion {
@@ -1554,6 +1600,7 @@ public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraMani
 	public fun grabEnd ()V
 	public fun grabUpdate (II)V
 	public final fun isDoubleTapZoomEnabled ()Z
+	public fun isFrameActive ()Z
 	public fun scrollBegin (IIF)V
 	public fun scrollEnd ()V
 	public fun scrollUpdate (IIFF)V
@@ -1603,6 +1650,7 @@ public final class io/github/sceneview/gesture/FovZoomCameraManipulator : io/git
 	public fun grabBegin (IIZ)V
 	public fun grabEnd ()V
 	public fun grabUpdate (II)V
+	public fun isFrameActive ()Z
 	public fun scrollBegin (IIF)V
 	public fun scrollEnd ()V
 	public fun scrollUpdate (IIFF)V
@@ -2567,6 +2615,7 @@ public class io/github/sceneview/node/ModelNode : io/github/sceneview/node/Node 
 	public final fun getSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getSkinCount ()I
 	public final fun getSkinNames ()Ljava/util/List;
+	public fun isFrameActive ()Z
 	public final fun isShadowCaster ()Z
 	public final fun isShadowReceiver ()Z
 	public fun onFrame (J)V
@@ -2759,6 +2808,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public final fun getWorldTransform (Lio/github/sceneview/node/Node;)Ldev/romainguy/kotlin/math/Mat4;
 	public final fun isDestroyed ()Z
 	public fun isEditable ()Z
+	public fun isFrameActive ()Z
 	public final fun isHittable ()Z
 	public fun isPositionEditable ()Z
 	public fun isRotationEditable ()Z
@@ -2806,6 +2856,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public final fun removeChildNode (Lio/github/sceneview/node/Node;)Lio/github/sceneview/node/Node;
 	public final fun removeChildNodes (Ljava/util/Set;)Lio/github/sceneview/node/Node;
 	public final fun removeEditingListener (Lio/github/sceneview/gesture/NodeEditingListener;)V
+	public final fun requestRender ()V
 	public final fun setChildNodes (Ljava/util/Set;)V
 	public final fun setCollider (Lio/github/sceneview/collision/Collider;)V
 	public final fun setCollisionShape (Lio/github/sceneview/collision/CollisionShape;)V
@@ -3171,6 +3222,7 @@ public class io/github/sceneview/node/SplatNode : io/github/sceneview/node/Node 
 	public final fun getSplatCloud ()Lio/github/sceneview/core/splat/SplatCloud;
 	public final fun getSplatCount ()I
 	public final fun getTextureSize ()I
+	public fun isFrameActive ()Z
 	public fun onFrame (J)V
 	public final fun setCameraPositionProvider (Lkotlin/jvm/functions/Function0;)V
 	public final fun setSplatCount (I)V
@@ -3235,6 +3287,7 @@ public class io/github/sceneview/node/VideoNode : io/github/sceneview/node/Plane
 	public final fun getSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getStream ()Lcom/google/android/filament/Stream;
 	public final fun getTexture ()Lcom/google/android/filament/Texture;
+	public fun isFrameActive ()Z
 	public fun setMaterialInstance (Lcom/google/android/filament/MaterialInstance;)V
 	public final fun setPlayer (Landroid/media/MediaPlayer;)V
 }
@@ -3255,6 +3308,7 @@ public final class io/github/sceneview/node/ViewNode : io/github/sceneview/node/
 	public final fun getTexture ()Lcom/google/android/filament/Texture;
 	public final fun getViewSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getWindowManager ()Lio/github/sceneview/node/ViewNode$WindowManager;
+	public fun isFrameActive ()Z
 	public final fun isTouchForwardingEnabled ()Z
 	public fun onAddedToScene (Lcom/google/android/filament/Scene;)V
 	public fun onCapturedTouchEvent (Landroid/view/MotionEvent;)Z

@@ -128,6 +128,18 @@ class ViewNode(
      */
     var isTouchForwardingEnabled: Boolean = true
 
+    /**
+     * Always `true`: an embedded Android [View] redraws on its own schedule — a ripple, a progress
+     * spinner, a blinking cursor, an inner `RecyclerView` fling — and pushes the result into this
+     * node's `SurfaceTexture` without going through anything the library can observe.
+     *
+     * A scene holding a `ViewNode` therefore does not settle under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand]. That is the deliberate trade: a frozen
+     * embedded UI is a bug, while extra frames are only a cost. Scenes that want the idle saving
+     * back should render the view's content as a texture rather than embed a live view.
+     */
+    override val isFrameActive: Boolean get() = true
+
     private val touchForwarder = ViewTouchForwarder(layout)
 
     private val surfaceTexture = SurfaceTexture(0).also { it.detachFromGLContext() }

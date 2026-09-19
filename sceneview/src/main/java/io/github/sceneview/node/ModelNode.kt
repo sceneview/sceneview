@@ -511,6 +511,14 @@ open class ModelNode(
         renderableNodes.forEach { it.setGlobalBlendOrderEnabled(enabled) }
     }
 
+    /**
+     * A glTF animation in flight keeps the scene rendering under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand]: the skinning / morphing write-back happens in
+     * [onFrame] below, which no transform setter goes through, so nothing else would invalidate.
+     */
+    override val isFrameActive: Boolean
+        get() = playingAnimations.isNotEmpty() || super.isFrameActive
+
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
 

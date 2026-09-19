@@ -7,6 +7,64 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 
 ---
 
+## SceneView 4.37.x to 4.38.0 (Android) — `isRendering` replaced by `frameRatePolicy`
+
+### `SceneView(isRendering:)` is removed; render-on-demand is the default ([#3108](https://github.com/sceneview/sceneview/issues/3108))
+
+A `SceneView` no longer renders every vsync for as long as it is composed. The new
+`frameRatePolicy` parameter defaults to `FrameRatePolicy.OnDemand`: the library tracks what makes
+the picture change, holds the display's full cadence while anything is happening, then draws a
+short tail of settle frames and parks the loop.
+
+`isRendering: Boolean` is **removed outright — there is no deprecated overload.** Keeping one
+would have meant two parameters that can disagree about the same thing, and the boolean's whole
+contract ("you work out when the scene is dirty") is precisely what the new default replaces.
+
+```kotlin
+// Before — you computed "is anything dirty" yourself and fed it in
+var isDirty by remember { mutableStateOf(true) }
+LaunchedEffect(dirtyToken) {
+    isDirty = true
+    delay(200)
+    isDirty = false
+}
+SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
+
+// After — that is the library's job now
+SceneView { /* … */ }
+```
+
+**Key differences:**
+
+- `isRendering = true` (or omitting the parameter) becomes
+  `frameRatePolicy = FrameRatePolicy.Continuous` if you genuinely want a frame every vsync. If you
+  never passed the parameter at all, the honest migration is usually to change **nothing** and take
+  the new default.
+- The `isDirty` state, the `dirtyToken`, the `LaunchedEffect { delay(200) }` window — **delete
+  them, do not translate them.** Every source they were standing in for (touch, camera coast,
+  animation, smooth transform, video, `ViewNode`, splat sort, async load, mirrorer, auto-fit, node
+  added/moved/removed, surface resize, lifecycle resume) is now tracked by the library.
+- Pre-compiled consumers must recompile. A caller passing nine or more **positional** arguments
+  gets a type error at slot 9 rather than a silent behaviour change — the slot went from `Boolean`
+  to `FrameRatePolicy`.
+- `FrameRatePolicy.Capped(fps)` is new: render continuously but never faster than `fps`, and vote
+  `fps` to the display rather than the panel maximum.
+- **Direct Filament edits are the one thing the default cannot see.** Setting a `MaterialInstance`
+  parameter or a light intensity happens below the scene graph, so nothing invalidates. Call
+  `node.requestRender()`, or take the new `renderInvalidator` parameter with
+  `rememberRenderInvalidator()` and call `invalidator.requestRender()` after the edit — and before
+  any `PixelCopy` or screenshot of the surface.
+- `ARSceneView` takes the same parameter and also defaults to `OnDemand`, gating on a changed
+  ARCore `Frame.timestamp`. `session.update()` still runs every vsync, so tracking, anchors and
+  plane detection are unaffected.
+
+**Action:** delete the `isRendering` argument and the dirty-tracking behind it. Pass
+`frameRatePolicy = FrameRatePolicy.Continuous` only if your scene is driven by something the
+library cannot observe — an external simulation writing into Filament each frame, a custom
+`Renderer` hook, a texture updated off-thread.
+
+---
+
 ## SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to `CameraControlMode`
 
 ### Three new `CameraControlMode` cases — `.none`, `.tilt`, `.dolly` ([#1049](https://github.com/sceneview/sceneview/issues/1049))

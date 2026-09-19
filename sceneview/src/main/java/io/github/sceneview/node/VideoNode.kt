@@ -136,6 +136,14 @@ open class VideoNode(
             value.setOnVideoSizeChangedListener(onVideoSizeChanged)
         }
 
+    /**
+     * A playing video pushes new frames into the node's `SurfaceTexture` from outside the library,
+     * so nothing else would invalidate — a render-on-demand scene would show a frozen first frame.
+     * `isPlaying` throws on a released player; a released player is not playing.
+     */
+    override val isFrameActive: Boolean
+        get() = runCatching { player.isPlaying }.getOrDefault(false) || super.isFrameActive
+
     private val onVideoSizeChanged = MediaPlayer.OnVideoSizeChangedListener { _, width, height ->
         if (size == null && width > 0 && height > 0) {
             updateGeometry(size = normalize(Size(width.toFloat(), height.toFloat())))

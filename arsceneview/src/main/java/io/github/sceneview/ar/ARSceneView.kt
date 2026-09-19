@@ -115,6 +115,8 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.util.EnumSet
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -1479,6 +1481,24 @@ fun ARSceneView(
         SceneRenderer(engine, view, renderer)
     }
 
+    // AR's clock is the camera, not the scene, so it does not use the dirty-flag gate that
+    // [io.github.sceneview.SceneView] runs on — an AR view is never idle in the sense that one is,
+    // and its loop must never park: `session.update()` is what drives tracking, anchor resolution
+    // and plane detection, and skipping it would stall the session rather than save power. What it
+    // *can* skip is drawing the same picture twice.
+    //
+    // `Config.UpdateMode.LATEST_CAMERA_IMAGE` (the default here) makes `session.update()` return
+    // immediately with whatever frame it holds, so a 60 Hz display in front of a 30 fps camera
+    // gets the *same* frame back on every other vsync: same camera image, same pose, same light
+    // estimate. Re-rendering it costs a full GPU frame to produce an identical picture. ARCore
+    // performs no reprojection between camera images, so an unchanged `Frame.timestamp` is an
+    // exact duplicate test rather than a heuristic — the pose really has not moved.
+    val lastArFrameTimestamp = remember { AtomicLong(0L) }
+    // Frames owed to a surface that holds no pixels yet — first attach, app foregrounded, fold,
+    // split-screen resize. Separate from the timestamp test, because a brand-new swap chain needs
+    // a frame even on a vsync where ARCore returns a duplicate.
+    val arFramesOwed = remember { AtomicInteger(1) }
+
     // Wire resize and surface callbacks — AR needs additional display geometry + plane renderer.
     SideEffect {
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
@@ -1486,6 +1506,9 @@ fun ARSceneView(
             cameraNode.updateProjection()
             arCore.session?.setDisplayGeometry(display.rotation, width, height)
             arPlaneRenderer.viewSize = Size(width, height)
+            // New swap chain, no pixels in it — owe it a frame even if ARCore has nothing new to
+            // say (see `arFramesOwed` below).
+            arFramesOwed.set(1)
         }
         sceneRenderer.onSurfaceReady = { viewHeight ->
             if (cameraGestureDetectorRef.get() == null) {
@@ -1515,7 +1538,13 @@ fun ARSceneView(
                 continue
             }
             withFrameNanos { frameTimeNanos ->
-                sceneRenderer.renderFrame(frameTimeNanos) {
+                var hasNewArFrame = false
+                val presented = sceneRenderer.renderFrame(
+                    frameTimeNanos,
+                    // Evaluated after the update block below, so `hasNewArFrame` reflects the
+                    // `session.update()` that just ran. Gates the GPU submit only.
+                    shouldPresent = { hasNewArFrame || arFramesOwed.get() > 0 }
+                ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
 
                     val childNodes = childNodesRef.get()
@@ -1524,6 +1553,8 @@ fun ARSceneView(
                     arCore.session?.let { session ->
                         try {
                             session.updateOrNull()?.let { frame ->
+                                hasNewArFrame =
+                                    lastArFrameTimestamp.getAndSet(frame.timestamp) != frame.timestamp
                                 onARFrame(
                                     engine = engine,
                                     scene = scene,
@@ -1556,6 +1587,13 @@ fun ARSceneView(
 
                     modelLoader.updateLoad()
                     childNodes.forEach { it.onFrame(frameTimeNanos) }
+                }
+
+                // Pay the surface's debt down only on a frame that really reached it —
+                // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
+                // would leave a new swap chain blank.
+                if (presented && arFramesOwed.get() > 0) {
+                    arFramesOwed.decrementAndGet()
                 }
             }
         }

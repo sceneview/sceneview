@@ -145,12 +145,14 @@ internal class HeroTurntable {
  *    EGL context when this composable leaves — which is what the "Engine destroyed"
  *    line in logcat is. Nothing else on the home screen creates one, and this
  *    composable is only ever composed once, from the first featured page.
- *  - **The scroll is never paid for.** The frame loop is parked ([SceneView]'s
- *    `isRendering`) while the grid is being dragged and once the band has scrolled
- *    away — a still hero costs no GPU frames and no CPU wake-up. The only exception
- *    is the load itself: Filament finalises texture uploads inside the frame loop, so
- *    a model that finished loading during a pause would render untextured, and the
- *    loop is therefore held on until the instance exists.
+ *  - **The scroll is never paid for.** [SceneView] renders on demand, so a still hero
+ *    costs no GPU frames and no CPU wake-up. What keeps it awake here is the turntable
+ *    writing a rotation every frame; while the grid is being dragged, or once the band
+ *    has scrolled away, [rendering] goes `false`, the turntable stops advancing and the
+ *    loop settles and parks by itself. The load needs no special handling — the library
+ *    keeps drawing while `modelLoader.progress < 1f`, because Filament finalises texture
+ *    uploads inside the frame loop and a model that landed during a park would otherwise
+ *    render untextured.
  *  - **Quality is sized to the band, not to the phone.** [RenderQuality.Performance]
  *    on a 320 dp strip that is decoration, not the subject of the screen; the
  *    Cinematic preset belongs to the Model Viewer this page opens.
@@ -165,7 +167,9 @@ internal class HeroTurntable {
  *   frame of every scroll, to move a transform nothing in the composition reads.
  *   Drives the drawn stage only, never layout, so the hero collapses without the
  *   grid's own scroll maths ever depending on a height this composable chose.
- * @param rendering whether the caller wants frames right now (on screen, not being flung).
+ * @param rendering whether the subject should be turning right now (on screen, not being
+ *                  flung). It drives the turntable, and the turntable is what holds the
+ *                  render-on-demand loop awake.
  * @param onVisibilityChange raised with `true` on the first frame there is a model to draw.
  */
 @Composable
@@ -211,7 +215,9 @@ internal fun HomeHeroScene(
     // Filament has to keep drawing until the instance is there whatever the scroll is
     // doing, or the model lands untextured; after that, the caller decides.
     val loaded = modelInstance != null || gaveUp
-    val isRendering = !loaded || rendering
+    // Render-on-demand: "I want frames" is not something the caller states any more, it is
+    // something the scene observes. Not advancing the turntable IS the pause.
+    val advancing = !loaded || rendering
 
     // "Remove animations" is on: the subject is still there, still draggable, it just
     // stops turning on its own. Read once per composition, not per frame.
@@ -267,12 +273,12 @@ internal fun HomeHeroScene(
             // the grid's vertical scroll for the same finger.
             cameraManipulator = null,
             onGestureListener = null,
-            isRendering = isRendering,
             renderQuality = RenderQuality.Performance,
             onFrame = { frameTimeNanos ->
                 val previous = lastFrameNanos[0]
                 lastFrameNanos[0] = frameTimeNanos
                 if (previous == 0L) return@SceneView
+                if (!advancing) return@SceneView
                 val deltaSeconds = ((frameTimeNanos - previous) / 1_000_000_000.0).toFloat()
                     .coerceIn(0f, MAX_FRAME_SECONDS)
                 val yaw = turntable.advance(deltaSeconds, idleTurntable)

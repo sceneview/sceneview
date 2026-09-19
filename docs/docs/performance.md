@@ -363,71 +363,71 @@ SceneView(/* ... */) {
     coroutine. `rememberModelInstance` handles this automatically. For imperative
     code, use `loadModelInstanceAsync`.
 
-### Stop rendering an idle scene
+### Idle scenes stop rendering by themselves
 
-A `SceneView` renders every vsync for as long as it is composed, whether or not anything
-changed. Compose's frame clock does not idle on its own, so a screen showing a static model —
-a product viewer nobody is touching, a board game between turns — keeps the GPU drawing an
-identical frame 60 or 120 times a second. On devices whose Choreographer keeps ticking a
-visually static UI it is a measurable source of battery drain and thermal throttling (#3108).
+**Since 4.38.0 this is the default and there is nothing to configure.** A `SceneView` used to
+render every vsync for as long as it was composed, whether or not anything had changed: Compose's
+frame clock does not idle on its own, so a screen showing a static model — a product viewer nobody
+is touching, a board game between turns — kept the GPU drawing an identical frame 60 or 120 times
+a second. On devices whose Choreographer keeps ticking a visually static UI that is a measurable
+source of battery drain and thermal throttling (#3108).
 
-Pass `isRendering = false` to park the frame loop:
+`frameRatePolicy` now decides when a frame is submitted, and it defaults to
+`FrameRatePolicy.OnDemand`:
 
 ```kotlin
-SceneView(isRendering = sceneIsDirty) { /* … */ }
+SceneView { /* … */ }                                            // OnDemand — the default
+SceneView(frameRatePolicy = FrameRatePolicy.Continuous) { }       // a frame every vsync
+SceneView(frameRatePolicy = FrameRatePolicy.Capped(30)) { }       // never faster than 30 fps
 ```
 
-The loop *suspends* while paused, so an idle scene schedules no work at all — it does not
-trade GPU frames for a polling timer — and it resumes on the recomposition that passes `true`,
-with no restart. The resumed frame lands on the next vsync: `withFrameNanos` is awaited after
-the wake-up, so expect one frame of latency, not zero.
+Under `OnDemand` the library tracks what makes the picture change, so the call site computes
+nothing. It holds full cadence while **any** of these is true — a touch in flight, a camera
+manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding
+`VideoNode`, a `ViewNode`, a sorting `SplatNode`, an async model or environment load
+(`modelLoader.progress < 1f`), an active `surfaceMirrorer`, a pending auto-center or auto-fit —
+and it wakes on every one-shot change: a node added, moved or removed, a surface resize, a
+lifecycle resume, a recomposition. Once everything stops it draws a short tail of settle frames
+(Filament finalises texture uploads, IBL and shadow work across several frames) and then **parks**:
+the loop suspends on the snapshot rather than polling, so an idle scene schedules no work at all —
+no GPU frame *and* no periodic CPU wake-up.
 
-!!! warning "Nothing is presented while `isRendering = false`"
-    A node added or moved, a camera or manipulator change and a material edit all leave the
-    **last drawn frame** on screen until rendering resumes. `onFrame` does not fire either.
+The wake-up is immediate, not one poll tick later: the snapshot apply that publishes the change
+resumes the loop directly, so a touch on a parked scene reaches the screen on the next vsync.
 
-    Two things are *not* merely frozen:
-
-    - A **new or resized surface** holds no pixels of its own — first attach, app foregrounded,
-      foldable folded or unfolded, split-screen resize. Freezing there would mean a blank view,
-      so the library always presents one frame into a new or resized surface even while paused,
-      then parks again. You do not need to flip the flag on a configuration change.
-    - An **async model load does not finalise** while paused. Filament finishes texture uploads
-      from inside the frame loop, so a model whose load completes during a pause renders
-      *untextured* for as long as the scene stays paused. Hold `true` until
-      `modelLoader.progress == 1f`, not until the load call returns.
-
-    So derive the flag from "is anything dirty", holding it `true` for at least one frame after
-    the last mutation — **not** from "is an animation running". An animation flag is already
-    `false` at the instant a one-shot change is published, which strands that change undrawn.
-    And the dirty window itself has to be Compose state **in both directions**: a deadline
-    compared against a clock flips `true` on the mutation that recomposes it and then never
-    flips back, because time crossing a threshold invalidates no composition. The scene then
-    renders forever and the parameter silently does nothing — the app looks correct, which is
-    what makes this one expensive.
+!!! warning "Direct Filament edits are the one thing `OnDemand` cannot see"
+    Setting a `MaterialInstance` parameter, changing a light's intensity, or otherwise mutating a
+    Filament object happens **below** the library's bookkeeping. Nothing in the scene graph
+    changed, so nothing invalidates and your edit is not drawn. Say so explicitly:
 
     ```kotlin
-    // WRONG — a new position, a highlight, a finished load is never drawn.
-    SceneView(isRendering = isAnimating) { /* … */ }
+    // From a node you already hold:
+    node.requestRender()
 
-    // ALSO WRONG — `System.nanoTime()` is not snapshot state. Nothing recomposes when the
-    // window elapses, so this never returns to `false` after the first mutation.
-    SceneView(isRendering = isAnimating || System.nanoTime() < dirtyUntilNanos) { /* … */ }
-
-    // RIGHT — the window is state, and the effect writes it back to false.
-    var isDirty by remember { mutableStateOf(true) }
-    LaunchedEffect(dirtyToken) {          // dirtyToken is bumped by every scene mutation
-        isDirty = true
-        delay(200)
-        isDirty = false
-    }
-    SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
+    // From anywhere else — and before any PixelCopy / screenshot of the surface:
+    val invalidator = rememberRenderInvalidator()
+    SceneView(renderInvalidator = invalidator) { /* … */ }
+    // later, after the edit
+    materialInstance.setParameter("baseColorFactor", 1f, 0f, 0f, 1f)
+    invalidator.requestRender()
     ```
 
-    Note the `mutableStateOf(true)` seed: a scene whose content is set once, before any
-    animation runs, would never render at all if the flag started `false`.
+    A **new or resized surface** is *not* one of these cases: a swap chain is created empty, so
+    first attach, app foregrounded, foldable folded or unfolded and split-screen resize all
+    present a frame before the loop parks again. You never have to handle a configuration change
+    yourself.
 
-    Not applicable to `ARSceneView`: a camera feed is never idle, so there is nothing to park.
+!!! info "Migrating from `isRendering`"
+    `isRendering: Boolean` is **removed**, with no deprecated overload.
+    `isRendering = true` becomes `frameRatePolicy = FrameRatePolicy.Continuous`. Everything
+    else — the `isDirty` state, the `dirtyToken`, the `LaunchedEffect { delay(200) }` window the
+    old parameter needed — is now the library's job: **delete it**, do not translate it.
+
+`ARSceneView` takes the same parameter and also defaults to `OnDemand`, but gates on something
+else: it presents when ARCore hands it a new camera image (a changed `Frame.timestamp`). The
+ARCore session is still updated every vsync — only the GPU submit is skipped — so tracking,
+anchors and plane detection are unaffected. In practice a live camera feed is rarely idle; what
+this removes is the duplicate frame drawn when ARCore returns the same image twice.
 
 ---
 
@@ -567,8 +567,8 @@ Use this checklist before shipping:
 - [ ] **Shadows** — limited to 1-2 shadow-casting lights
 - [ ] **Post-processing** — adapted to device tier, SSAO disabled on low-end
 - [ ] **Compose** — no allocations in composition body, `remember` for stable refs
-- [ ] **Idle scenes** — `isRendering = false` when nothing changes, driven by a dirty
-      signal that outlives the last mutation by a frame (not by an animation flag)
+- [ ] **Idle scenes** — leave `frameRatePolicy` at its `OnDemand` default; call
+      `requestRender()` after any direct Filament edit the scene graph cannot see
 - [ ] **Engine** — single shared Engine, ModelLoader, and MaterialLoader
 - [ ] **AR callbacks** — no allocations in `onSessionUpdated`
 - [ ] **Plane renderer** — disabled after object placement

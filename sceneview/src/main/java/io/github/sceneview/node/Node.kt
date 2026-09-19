@@ -17,6 +17,7 @@ import dev.romainguy.kotlin.math.lookTowards
 import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.FilamentEntity
+import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.animation.NodeAnimator
 import io.github.sceneview.collision.Collider
 import io.github.sceneview.collision.CollisionShape
@@ -1181,6 +1182,40 @@ open class Node protected constructor(
         }
     }
 
+    // ---- Render-on-demand ----
+
+    /**
+     * Asks the [io.github.sceneview.SceneView] rendering this node to draw another frame.
+     *
+     * Only needed under [io.github.sceneview.FrameRatePolicy.OnDemand] — the default — and only for
+     * changes the library cannot observe: a Filament `MaterialInstance` parameter, a light property,
+     * a texture swapped underneath a node. Everything routed through this class (transforms,
+     * animations, attach / detach) already invalidates on its own.
+     *
+     * A no-op while the node is not attached to a scene, and safe to call from any of them.
+     */
+    fun requestRender() {
+        attachedScene?.let { SceneRenderInvalidators.of(it) }?.requestRender()
+    }
+
+    /**
+     * Whether this node (or any descendant) is still changing the picture on its own, and therefore
+     * needs a frame every tick without anyone asking for one.
+     *
+     * This is the *pull* half of render-on-demand: it is read once per frame and keeps the settle
+     * budget topped up for as long as it reads `true`. The base implementation covers a smooth
+     * transform still converging and a user `onFrame` callback — which, unlike `SceneView.onFrame`,
+     * is a per-frame **driver** (`PhysicsNode` steps its simulation there), so its mere presence
+     * means "keep rendering". Subclasses that animate by other means override it.
+     *
+     * Err on the side of `true`: a node wrongly reported idle freezes the scene, while one wrongly
+     * reported busy only costs frames.
+     */
+    open val isFrameActive: Boolean
+        get() = animationDelegate.smoothTransform != null ||
+                onFrame != null ||
+                childNodes.any { it.isFrameActive }
+
     // ---- Per-frame lifecycle ----
 
     open fun onFrame(frameTimeNanos: Long) {
@@ -1203,6 +1238,13 @@ open class Node protected constructor(
      * for all of it's descendants.
      */
     open fun onTransformChanged() {
+        // Push source for render-on-demand: this is the funnel every transform setter goes through,
+        // so one hook here covers manipulator writes, physics steps, smooth transforms, glTF
+        // animation write-back and plain `node.position = …`. Only the node that actually moved
+        // requests a frame — `onWorldTransformChanged` below recurses into descendants to
+        // invalidate their caches, and asking again per descendant would cost a registry lookup per
+        // node of a moved subtree for no extra effect.
+        requestRender()
         onWorldTransformChanged()
     }
 
