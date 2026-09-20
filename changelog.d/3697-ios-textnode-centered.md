@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **SceneViewSwift: `TextNode.centered()` centres the text whatever the call order ([#3697](https://github.com/sceneview/sceneview/pull/3697)).** It moved the entity instead of the mesh, so the documented `.centered().position(p)` left the text uncentred and `.position(p).centered()` sent it back to the world origin. It now re-centres the mesh on the entity's origin: either order works, and calling it twice changes nothing.
