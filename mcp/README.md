@@ -201,13 +201,13 @@ Any client that accepts a Streamable HTTP MCP URL can use it. In claude.ai, that
 **Authless and read-only.** There is no sign-in, no API key and no account: every tool is a pure
 function of the SDK's own documentation, samples and API surface, so there is nothing to
 authenticate and nothing of yours stored. All tools are annotated `readOnlyHint` except
-`generate_3d_model`, which calls an external generation service and is therefore marked
-open-world rather than read-only.
+`generate_3d_model` and `generate_world`, which call an external generation service and are
+therefore marked open-world rather than read-only.
 
 **Prefer it local?** `npx -y sceneview-mcp` runs the exact same server over stdio. The local
 route is the one that reads your project from disk (`analyze_project`) and the one that accepts
-your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the hosted connector, being shared and anonymous,
-cannot.
+your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `WORLDLABS_API_KEY`; the hosted connector, being
+shared and anonymous, cannot.
 
 ### Remote server (Streamable HTTP)
 
@@ -227,9 +227,9 @@ npx sceneview-mcp --http
 | `GET /.well-known/openai-apps-challenge` | OpenAI domain verification — returns `OPENAI_APPS_CHALLENGE_TOKEN` as `text/plain`, `404` when unset |
 | anything else | `404` |
 
-Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOST=0.0.0.0` to expose it, and put HTTPS in front), `OPENAI_APPS_CHALLENGE_TOKEN` (the value OpenAI gives you when you submit the domain). CORS allows any origin. The usual `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `SCENEVIEW_TELEMETRY=0` knobs apply.
+Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOST=0.0.0.0` to expose it, and put HTTPS in front), `OPENAI_APPS_CHALLENGE_TOKEN` (the value OpenAI gives you when you submit the domain). CORS allows any origin. The usual `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `WORLDLABS_API_KEY` / `SCENEVIEW_TELEMETRY=0` knobs apply.
 
-**Everything is free, but not everything is remote.** Three generation tools (`render_3d_preview`, `create_3d_artifact`, `generate_scene`) need your own third-party credentials, which a shared anonymous endpoint cannot hold, so the remote surface omits them and refuses those names at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` path. stdio lists and runs all 32.
+**Everything is free, but not everything is remote.** Four generation tools (`render_3d_preview`, `create_3d_artifact`, `generate_scene`, `generate_world`) need your own third-party credentials, which a shared anonymous endpoint cannot hold, so the remote surface omits them and refuses those names at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` path. stdio lists and runs all 33.
 
 **Inline 3D viewer.** `view_3d_model` returns `structuredContent` plus `_meta.ui.resourceUri = ui://widget/3d-viewer.html`; the widget (SceneView.js + Filament.js, served by `resources/read` with the `text/html;profile=mcp-app` mime type and its `_meta.ui.csp`) renders the model inline in ChatGPT and any MCP Apps host.
 
@@ -254,8 +254,9 @@ your own keys, your own rate limits, or `analyze_project` against a local checko
 
 ## What you get
 
-Every tool is free and there is no API key. The three generation tools that talk to a
-third-party service use *your* credentials; everything else works the moment the server starts.
+Every tool is free and there is no API key. The generation tools that talk to a third-party
+service (`search_models`, `generate_3d_model`, `generate_world`) use *your* credentials;
+everything else works the moment the server starts.
 
 ### Start here
 
@@ -310,6 +311,7 @@ Six tools carry most of what assistants actually do with SceneView. If you read 
 |---|---|
 | `search_models` | Searches Sketchfab for free 3D models (BYOK — set `SKETCHFAB_API_KEY`) |
 | `generate_3d_model` | Generates a brand-new GLB from a text prompt or image via Tripo AI (BYOK — set `TRIPO_API_KEY`) |
+| `generate_world` | Generates a navigable Gaussian-splat 3D world from a text prompt, image or ≤30 s video via World Labs Marble (BYOK — set `WORLDLABS_API_KEY`; local only) |
 | `analyze_project` | Scans a local SceneView project on disk — detects platform, extracts version, flags outdated deps and known anti-patterns |
 | `search_android_docs` | Searches Google's stock Android docs knowledge base (needs the `android` CLI on PATH) |
 | `fetch_android_doc` | Fetches a full Android docs entry by its `kb://...` URI (needs the `android` CLI on PATH) |
@@ -387,6 +389,47 @@ Two quality tiers:
 Call it like `generate_3d_model({ prompt: "a low-poly cactus in a striped pot" })` or `generate_3d_model({ imageUrl: "https://example.com/chair.jpg", quality: "hd" })`. Provide exactly one of `prompt` / `imageUrl`.
 
 **⚠️ The GLB download URL expires ~5 minutes after generation** — download the file immediately and self-host it (e.g. copy it into your app's `assets/models/`). The tool result repeats this warning. Missing key, task failures, rate limits, and poll timeouts (2 min fast / 4 min hd cap) all return clear, actionable messages instead of hanging or crashing.
+
+## `generate_world` — generate the whole space as Gaussian splats
+
+`generate_3d_model` makes one object; `generate_world` makes the *room around it*. It asks
+[World Labs](https://www.worldlabs.ai)' Marble World API for a navigable 3D world from a
+**text prompt**, a **source image** (optionally a 360° panorama) or a **short video clip** of a
+real place, then returns the asset URLs SceneView can load:
+
+| Asset | Format | Load it with |
+|---|---|---|
+| Splats, 100k / 500k / full | `.spz` (gzip SPZ) | Android `SplatNode` (`SplatParser.parse(bytes)`), web `addSplatNode(url)` — **100k on phones** |
+| Collider mesh | GLB, 100–200k triangles | `rememberModelInstance(modelLoader, …)` on every platform — physics, hit-tests, the iOS fallback |
+| 360° panorama | equirectangular image, 2560×1280 | an inverted `SphereNode` with `materialLoader.createImageInstance(...)` (SDR — not the HDR environment loader) |
+
+Three quality tiers:
+
+| `quality` | Marble model | Latency | Approx. cost (September 2026, $1 = 1250 credits) |
+|---|---|---|---|
+| `"draft"` (default) | `marble-1.0-draft` | under a minute | 150–250 credits ≈ $0.12–0.20 |
+| `"standard"` | `marble-1.1` | 1–5 min | 1500 credits ≈ $1.20 |
+| `"large"` | `marble-1.1-plus` | several minutes | 1500–3000 credits ≈ $1.20–2.40 |
+
+**Bring your own key (BYOK), local only.** Create an API key and buy API credits at
+[platform.worldlabs.ai](https://platform.worldlabs.ai) — API credits are **separate** from the
+Marble app's credits — then set `WORLDLABS_API_KEY` in your MCP client config exactly like
+`TRIPO_API_KEY` above. Because one call can spend the key holder's credits and relays the media
+URLs you pass, the tool runs in the local `npx sceneview-mcp` package only; the hosted connector
+refuses it.
+
+Call it like `generate_world({ prompt: "a sunlit Kyoto tea house with tatami floors" })`,
+`generate_world({ imageUrl: "https://example.com/pano.jpg", isPanorama: true })` or
+`generate_world({ videoUrl: "https://example.com/living-room.mp4", quality: "standard" })`.
+Video input: a public https URL to an mp4/mov/webm of at most 30 s and 100 MB — one steady,
+continuous take rotating 180°–360° through the space. The call blocks while polling; when it
+times out it returns the operation id, and `generate_world({ operationId: "…" })` resumes
+without generating (or paying) twice.
+
+Two things the result repeats: Marble worlds use the OpenCV convention, so rotate the splat node
+180° about X (`SplatNode(rotation = Rotation(x = 180f))`); and `SplatParser` reads gzip SPZ v2/v3
+with the degree-0 colour band only, so verify the first world you load and fall back to the
+collider GLB if a file is rejected.
 
 ## `analyze_project` — local project scan
 
@@ -481,7 +524,7 @@ Install Node.js from [nodejs.org](https://nodejs.org/) (LTS recommended). npm an
 
 ### Firewall or proxy issues
 
-The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), and Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called). Everything else works offline.
+The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called), and World Labs (when `WORLDLABS_API_KEY` is set and `generate_world` is called). Everything else works offline.
 
 ```json
 {

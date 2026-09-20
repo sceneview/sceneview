@@ -27,7 +27,7 @@ source by `.claude/scripts/check-sceneview-skill.sh`, and a second copy under
 1. **Skills-only** — zero infrastructure, self-serve, no domain verification. The three
    `SKILL.md` files carry the API contract (`llms.txt` link), recipes, migration guide and
    demo references. Submit this first.
-2. **Skills + MCP** — adds the 32 tools and the inline 3D viewer. Requires a public
+2. **Skills + MCP** — adds the 33 tools and the inline 3D viewer. Requires a public
    production URL serving `sceneview-mcp --http`, domain verification and a CSP
    declaration. The hosted gateway was deleted on 2026-08-31, so this shape waits for an
    explicit hosting decision; nothing in the package assumes one.

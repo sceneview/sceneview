@@ -58,9 +58,9 @@ You agree that:
 ## 9. Price
 
 The Service is free. Every tool is free, there is no subscription, no account
-and no SceneView API key. The optional `SKETCHFAB_API_KEY` and `TRIPO_API_KEY`
-are your own third-party accounts, billed to you by those third parties under
-their own terms.
+and no SceneView API key. The optional `SKETCHFAB_API_KEY`, `TRIPO_API_KEY` and
+`WORLDLABS_API_KEY` are your own third-party accounts, billed to you by those
+third parties under their own terms.
 
 ## 10. Service Availability
 

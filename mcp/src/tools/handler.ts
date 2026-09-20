@@ -46,6 +46,7 @@ import {
 } from "../extra-guides.js";
 import { formatGenerateResult, type GenerateQuality, generateModel } from "../generate-model.js";
 import { formatGeneratedScene, generateScene } from "../generate-scene.js";
+import { formatGenerateWorldResult, generateWorld, type WorldQuality } from "../generate-world.js";
 import { LLMS_TXT } from "../generated/llms-txt.js";
 import { IOS_NODE_TYPE_COUNT, LATEST_SCENEVIEW_RELEASE } from "../generated/version.js";
 import {
@@ -966,6 +967,24 @@ export async function dispatchTool(
       return {
         content: withDisclaimer([{ type: "text", text: genText }]),
         isError: genResult.ok ? undefined : true,
+      };
+    }
+
+    // ── generate_world ───────────────────────────────────────────────────────
+    case "generate_world": {
+      const worldResult = await generateWorld({
+        prompt: args?.prompt as string | undefined,
+        imageUrl: args?.imageUrl as string | undefined,
+        isPanorama: args?.isPanorama === true,
+        videoUrl: args?.videoUrl as string | undefined,
+        quality: args?.quality as WorldQuality | undefined,
+        seed: typeof args?.seed === "number" ? args.seed : undefined,
+        operationId: args?.operationId as string | undefined,
+      });
+      const worldText = formatGenerateWorldResult(worldResult);
+      return {
+        content: withDisclaimer([{ type: "text", text: worldText }]),
+        isError: worldResult.ok ? undefined : true,
       };
     }
 

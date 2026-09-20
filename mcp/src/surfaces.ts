@@ -5,7 +5,7 @@
 // August 2026 and both of its URLs (`/mcp` and `/pricing`) have answered 404
 // ever since, so the upsell that pointed at them was removed.
 //
-// What remains is a surface question, not a price one. Three generation tools
+// What remains is a surface question, not a price one. Four generation tools
 // need per-user credentials and external infrastructure that a shared,
 // anonymous HTTP endpoint has no way to hold, so they run in the local stdio
 // package only. Everything else is served by both surfaces.
@@ -13,15 +13,18 @@
 /**
  * Tools the anonymous remote surface (`--http`, `worker.ts`) does not serve.
  *
- * Not a paywall: these three call out to per-user third-party accounts
- * (Tripo, the preview host) or return heavy generated artifacts, and a shared
- * endpoint has no caller to bill them to. Run `npx sceneview-mcp` locally to
- * use them.
+ * Not a paywall: these call out to per-user third-party accounts (World Labs,
+ * the preview host) or return heavy generated artifacts, and a shared endpoint
+ * has no caller to bill them to. `generate_world` in particular spends up to
+ * ~3000 World Labs credits per call from whatever key the process holds and
+ * relays caller-supplied media URLs, so it must never run behind an anonymous
+ * endpoint. Run `npx sceneview-mcp` locally to use them.
  */
 const LOCAL_ONLY_TOOLS: readonly string[] = [
   "render_3d_preview",
   "create_3d_artifact",
   "generate_scene",
+  "generate_world",
 ] as const;
 
 /** Returns true if the tool is served by the local stdio package only. */
