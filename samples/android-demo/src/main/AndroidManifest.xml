@@ -59,6 +59,9 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+        <!-- Lets getLaunchIntentForPackage() / setPackage() resolve AR Model Viewer for
+             the home grid's "Generate a 3D world" redirect (GenerateWorldRedirect). -->
+        <package android:name="com.gorisse.thomas.arcamera" />
     </queries>
 
     <application

@@ -24,9 +24,10 @@ import org.robolectric.annotation.GraphicsMode
  *
  * Each test runs with [LocalInspectionMode] forced on so the "What's new"
  * loader is skipped — the goldens pin the home chrome (pinned header, hero,
- * category chips, media cards in editorial order, status chips, the closing
- * "Browse online models" card, both palettes, `fontScale = 1.5` reflow and the
- * tablet `Adaptive(220.dp)` column count), not a release's version string.
+ * category chips, media cards in editorial order, status chips, the two closing
+ * cards — "Browse online models" and "Generate a 3D world" — both palettes,
+ * `fontScale = 1.5` reflow and the tablet `Adaptive(220.dp)` column count), not
+ * a release's version string.
  *
  * That last clause was an intention, not a property, until #3666: the freshness
  * chips ("New" / "Updated") and the "What's new in 4.x" featured page are
@@ -130,6 +131,7 @@ class HomeScreenSnapshotTest {
                     onQueryChange = {},
                     onDemoClick = {},
                     onBrowseOnlineClick = {},
+                    onGenerateWorldClick = {},
                     buildVersion = PINNED_BUILD_VERSION,
                 )
             }

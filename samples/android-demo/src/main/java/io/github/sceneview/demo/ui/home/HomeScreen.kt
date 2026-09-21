@@ -122,7 +122,8 @@ object HomeTestTags {
  * The Showcase tab (design spec §2): one `LazyVerticalGrid`, no nested
  * scroll, no background scene. Full-span header spacer, hero and chip row,
  * then every demo as a [DemoMediaCard] in flat editorial [DemoEntry.order],
- * closed by a [BrowseOnlineModelsCard] that opens the online gallery.
+ * closed by a [BrowseOnlineModelsCard] that opens the online gallery and a
+ * [GenerateWorldCard] that leaves for the AR Model Viewer app.
  *
  * The header is a pinned overlay drawn over the grid: transparent while the
  * hero is on screen, `surface` at 94 % plus a bottom hairline once the first
@@ -143,6 +144,7 @@ fun HomeScreen(
     onQueryChange: (String) -> Unit,
     onDemoClick: (String) -> Unit,
     onBrowseOnlineClick: () -> Unit,
+    onGenerateWorldClick: () -> Unit,
     modifier: Modifier = Modifier,
     /**
      * Whether the "since you last tested" list has pending entries. Owned by
@@ -329,6 +331,14 @@ fun HomeScreen(
                 item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
                     BrowseOnlineModelsCard(
                         onClick = onBrowseOnlineClick,
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeIn(cascade.delayFor(cascadeIndex++)),
+                    )
+                }
+                item(key = "generate-world", span = { GridItemSpan(maxLineSpan) }) {
+                    GenerateWorldCard(
+                        onClick = onGenerateWorldClick,
                         modifier = Modifier
                             .animateItem()
                             .cascadeIn(cascade.delayFor(cascadeIndex++)),

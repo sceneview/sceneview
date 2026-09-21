@@ -88,6 +88,7 @@ import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
+import io.github.sceneview.demo.ui.home.GenerateWorldRedirect
 import io.github.sceneview.demo.ui.home.HomeScreen
 import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
 import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
@@ -109,6 +110,8 @@ import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
  */
 @Composable
 fun RootScreen(onDemoClick: (String) -> Unit) {
+    // The home grid's "Generate a 3D world" card leaves for another app.
+    val context = LocalContext.current
     var selectedTab by rememberSaveable { mutableStateOf(RootTab.Showcase) }
     // Tracks whether the AR View tab is in a live camera session. When `true`
     // the bottom NavigationBar is hidden so the AR camera goes truly
@@ -261,6 +264,7 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                         onQueryChange = { query = it },
                         onDemoClick = onDemoClick,
                         onBrowseOnlineClick = { galleryOpen = true },
+                        onGenerateWorldClick = { GenerateWorldRedirect.open(context) },
                         hasUnseenWhatsNew = whatsNewSince.hasUnseen,
                         onWhatsNewSinceClick = { showWhatsNewSince = true },
                     )

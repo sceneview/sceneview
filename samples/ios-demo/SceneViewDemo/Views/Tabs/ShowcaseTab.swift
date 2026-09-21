@@ -7,7 +7,8 @@ import SceneViewSwift
 /// (cube mark + wordmark + search), the `HomeHero`, the category chip row,
 /// then every demo as a `DemoMediaCard` in flat editorial `DemoItem.order`,
 /// closed by a `BrowseOnlineModelsCard` that pushes the online gallery
-/// (`ExploreTab`, embedded) onto this stack.
+/// (`ExploreTab`, embedded) onto this stack and a `GenerateWorldCard` that
+/// leaves the demo for AR Model Viewer (`GenerateWorldRedirect`).
 ///
 /// The header is a pinned overlay drawn over the scroll view: transparent
 /// while the hero is on screen, `surface` at 94 % light / 100 % dark plus a bottom hairline once
@@ -136,6 +137,8 @@ struct ShowcaseTab: View {
                         if !searching {
                             BrowseOnlineModelsCard { showExplore = true }
                                 .staggeredReveal(position: visible.count + 2, revealed: catalogueRevealed)
+                            GenerateWorldCard { GenerateWorldRedirect.open() }
+                                .staggeredReveal(position: visible.count + 3, revealed: catalogueRevealed)
                         }
                     }
                     .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
