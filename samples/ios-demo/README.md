@@ -11,6 +11,8 @@ SwiftUI app for iOS and macOS — browse 3D models, view them in augmented reali
 - Screenshot sharing from both 3D viewer and AR mode
 - Environment presets for different lighting setups
 - 14 interactive 3D scene presets
+- A "Generate a 3D world" card at the end of the Showcase grid that hands the paid World Labs
+  world generation off to AR Model Viewer (docs page today, App Store listing once the iOS app ships)
 
 ## Run
 

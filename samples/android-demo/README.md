@@ -7,7 +7,9 @@ Play Store-ready showcase app demonstrating SceneView's full feature set.
 - **3-tab Material 3 Expressive UI** — Showcase · AR View · About
 - **Showcase home**: a hero card, category filter chips and a grid of media cards
   (one generated light/dark preview image per demo); a closing "Browse online models"
-  card opens the online gallery (Sketchfab / Icosa Gallery / Poly Haven)
+  card opens the online gallery (Sketchfab / Icosa Gallery / Poly Haven), and a
+  "Generate a 3D world" card hands off to AR Model Viewer (deep link, or its Play Store
+  listing when it is not installed) for the paid World Labs world generation
 - **Shared demo chrome**: edge-to-edge scene with a glass back button, identity pill
   and overflow menu on top, and a floating bottom dock whose Controls item opens the
   settings sheet — tap the scene to hide the chrome
