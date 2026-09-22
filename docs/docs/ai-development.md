@@ -304,7 +304,7 @@ The file is maintained alongside the source code and updated with every release.
 
 ## What's in the MCP server
 
-The `sceneview-mcp` package provides 32 tools that AI assistants can call, in
+The `sceneview-mcp` package provides 33 tools that AI assistants can call, in
 five families:
 
 - **Reference** — `get_node_reference`, `get_best_practices`, `get_material_guide`,
@@ -317,7 +317,7 @@ five families:
 - **Migration and diagnosis** — `get_migration_guide`, `migrate_code`,
   `debug_issue`, `get_troubleshooting`
 - **Assets, preview and docs search** — `search_models`, `generate_3d_model`,
-  `view_3d_model`, `render_3d_preview`, `create_3d_artifact`,
+  `generate_world`, `view_3d_model`, `render_3d_preview`, `create_3d_artifact`,
   `search_android_docs`, `fetch_android_doc`
 
 Any MCP client can call them; see [per-tool setup](#per-tool-setup) for the

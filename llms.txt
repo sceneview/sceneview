@@ -5438,6 +5438,58 @@ from the URL — fine for a quick preview, but never ship it (the Tripo URL expi
 generation; bundle the file or re-host it yourself). Prefer `search_models` (free, Sketchfab) before
 generating — generation consumes the user's own Tripo credits.
 
+### Generate a 3D world with AI (World Labs) and walk through it
+
+When the user wants the *space* rather than one object — "recreate my living room from this video",
+"a foggy Kyoto alley at night" — generate a world. The `sceneview-mcp` server's `generate_world` tool
+asks World Labs' Marble World API for a navigable Gaussian-splat world from a text prompt, a source
+image (or a 360° panorama with `isPanorama: true`) or a ≤30 s / ≤100 MB video of a real place (BYOK —
+set `WORLDLABS_API_KEY` in the MCP client config; API credits are bought at platform.worldlabs.ai,
+separately from the Marble app. `quality: "draft"` = marble-1.0-draft, ~150–250 credits ≈ $0.12–0.20
+in under a minute; `"standard"` = marble-1.1, 1500 credits ≈ $1.20 in 1–5 min; `"large"` =
+marble-1.1-plus). Local `npx sceneview-mcp` only — the tool spends the key holder's credits. It returns
+`.spz` splats in three tiers (100k / 500k / full), a collider mesh (GLB, 100–200k triangles) and an
+equirectangular panorama; when it times out it returns the operation id, and calling it again with
+`operationId` resumes without paying twice.
+
+```
+1. MCP: generate_world({ videoUrl: "https://…/living-room.mp4" })
+   // or { prompt: "a sunlit Kyoto tea house" } / { imageUrl: "https://…/pano.jpg", isPanorama: true }
+   → splat URLs (100k / 500k / full), collider GLB, panorama, operation id
+2. Download the 100k .spz (phones) and the collider GLB NOW and self-host them — the links are signed and expire
+```
+
+```kotlin
+// The 100k .spz bytes — downloaded off the main thread (Dispatchers.IO), never on the UI thread
+val spzBytes: ByteArray = …
+val cloud = rememberSplatCloud(spzBytes) { SplatParser.parse(spzBytes) }
+var cameraPosition by remember { mutableStateOf(Position()) }
+SceneView(cameraNode = cameraNode, onFrame = { cameraPosition = cameraNode.worldPosition }) {
+    SplatNode(
+        splatCloud = cloud,
+        rotation = Rotation(x = 180f),               // Marble worlds are OpenCV (+y down, +z forward); Filament is +y up, −z forward
+        cameraPositionProvider = { cameraPosition }, // back-to-front sort while the camera moves
+    )
+}
+```
+
+Rules that keep a generated world working on the first try:
+
+- **100k on phones, 500k on the web/desktop.** The Android renderer re-sorts on the CPU and re-uploads
+  the cloud while the camera moves; 500k is beyond a phone's budget. Marble's `.spz` also carries
+  degree-3 spherical harmonics that `SplatParser` discards (degree-0 colour only, so colours look a
+  little flatter than in the Marble viewer).
+- **Rotate the node, never the arrays.** `SplatNode(rotation = Rotation(x = 180f))` is the whole
+  OpenCV → Filament correction; the painter's sort maps the camera into node space, so sorting stays
+  correct. Verify the orientation on the first world you load.
+- **Keep a fallback.** `SplatParser` reads gzip SPZ v2/v3 and rejects v4 (NGSP) with a clear
+  `SplatParseException`. The collider GLB loads with `rememberModelInstance(modelLoader, …)` on every
+  platform — use it for physics, hit-tests and as the whole story on iOS, which has no splat renderer
+  yet (#2646). The panorama is SDR: map it onto an inverted `SphereNode` with
+  `materialLoader.createImageInstance(...)`, not `createHDREnvironment`.
+- **Web:** `sv.addSplatNode(url).then((world) => world.setRotation(180, 0, 0))` — the viewer fetches and
+  parses the file itself.
+
 ---
 
 <!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/android-demo/scripts/collate-demos.sh -->
@@ -6607,7 +6659,8 @@ equivalent "add MCP server by URL" field. Paste the URL and name it `SceneView`.
 HTTP on `POST /mcp`; `GET /mcp` answers `405`, `GET /health` answers `{"status":"ok"}`.
 
 Use `npx sceneview-mcp` locally instead when you need `analyze_project` (it reads a project from
-disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the shared anonymous endpoint has neither.
+disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `WORLDLABS_API_KEY`; the shared anonymous
+endpoint has none of them.
 
 ### Claude Code plugin (optional, Claude Code only)
 

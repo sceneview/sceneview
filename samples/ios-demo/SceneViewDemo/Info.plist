@@ -249,5 +249,17 @@
 			</array>
 		</dict>
 	</array>
+	<!--
+		Schemes this app is allowed to ask about with
+		`UIApplication.canOpenURL`. Without the entry the call always
+		answers `false`, whatever is installed, so the Showcase grid's
+		"Generate a 3D world" card could never reach an installed AR Model
+		Viewer and would always fall back to the docs page.
+		See `samples/ios-demo/SceneViewDemo/Services/GenerateWorldRedirect.swift`.
+	-->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>armodelviewer</string>
+	</array>
 </dict>
 </plist>

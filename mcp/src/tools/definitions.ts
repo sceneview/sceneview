@@ -765,6 +765,58 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+    name: "generate_world",
+    description:
+      'Generates a navigable 3D WORLD — a Gaussian-splat environment (room, street, landscape), not a single object — from a text prompt, a source image (optionally a 360° panorama) or a short video clip, using World Labs\' Marble World API. Use it when the user wants the space itself ("recreate my living room from this video", "a foggy Kyoto alley at night"); use `generate_3d_model` for one object. Returns asset URLs: `.spz` splats in 100k (phones) / 500k / full resolutions for `SplatNode` (Android) or `addSplatNode(url)` (web), a collider mesh GLB for physics and iOS, and an equirectangular panorama. Quality tiers: "draft" (default, marble-1.0-draft, ~150-250 credits ≈ $0.12-0.20, under a minute), "standard" (marble-1.1, 1500 credits ≈ $1.20, 1-5 min), "large" (marble-1.1-plus, 1500-3000 credits, auto-expanded). The call blocks while polling; on timeout it returns the operation id, and calling again with `operationId` resumes without paying twice. Requires a `WORLDLABS_API_KEY` environment variable (BYOK — worlds are billed to the USER\'S World Labs API credits, bought separately from the Marble app at platform.worldlabs.ai; nothing is charged by SceneView). Video input: public https URL, mp4/mov/webm, ≤30 s, ≤100 MB, one steady 180°-360° take. If the key is missing, the tool returns setup instructions. Local `npx sceneview-mcp` only.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description:
+            'Text description of the world (text→world), e.g. "a sunlit Kyoto tea house with tatami floors". Together with `imageUrl` or `videoUrl` it guides the generation instead. Max 2000 characters.',
+        },
+        imageUrl: {
+          type: "string",
+          description:
+            "Public HTTPS URL of a source image (JPEG, PNG or WebP) to build the world from (image→world). Cannot be combined with `videoUrl`.",
+        },
+        isPanorama: {
+          type: "boolean",
+          description:
+            "Set true when `imageUrl` is a 360° equirectangular panorama. Default false.",
+        },
+        videoUrl: {
+          type: "string",
+          description:
+            "Public HTTPS URL of a source video (mp4, mov or webm; at most 30 seconds and 100 MB; one continuous, steady take rotating 180°-360° through the space) to reconstruct a real place (video→world). Cannot be combined with `imageUrl`.",
+        },
+        quality: {
+          type: "string",
+          enum: ["draft", "standard", "large"],
+          description:
+            '"draft" (default): marble-1.0-draft — cheap preview, ~150-250 credits, under a minute. "standard": marble-1.1 — full quality, 1500 credits, 1-5 min. "large": marble-1.1-plus — bigger auto-expanded world, 1500-3000 credits.',
+        },
+        seed: {
+          type: "number",
+          description: "Optional integer seed for a reproducible generation.",
+        },
+        operationId: {
+          type: "string",
+          description:
+            "Resume an earlier generation that timed out: the operation id from that result. Pass it alone — nothing new is generated or billed.",
+        },
+      },
+      required: [],
+    },
+    annotations: {
+      readOnlyHint: false,
+      openWorldHint: true,
+      destructiveHint: false,
+      title: "Generate a 3D world",
+    },
+  },
+  {
     name: "analyze_project",
     description:
       "Scans a local SceneView project on the user's machine and returns a structured analysis: detected project type (Android, iOS, Web), extracted SceneView dependency version, whether it is outdated vs the latest known release, and any known anti-patterns found by reading source files (threading violations, LightNode trailing-lambda bug, deprecated 2.x APIs, Sceneform imports). Safe: scans at most 30 source files and 500 KB total, never writes to disk. Use this when a user asks 'is my project up to date?', 'what's wrong with my SceneView code?', or when you want a fast sanity check of a project before generating code for it.",

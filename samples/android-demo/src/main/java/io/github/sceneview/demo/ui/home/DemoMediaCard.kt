@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -124,6 +126,61 @@ fun BrowseOnlineModelsCard(
                 Text(stringResource(R.string.home_browse_title), style = SceneViewTokens.Type.card)
                 Text("Discover models from online collections", style = SceneViewTokens.Type.body)
             }
+        }
+    }
+}
+
+/**
+ * The grid item that hands the user over to **AR Model Viewer** for World Labs
+ * world generation — a video, a photo or a sentence becomes a walkable
+ * Gaussian-splat world.
+ *
+ * Same full-span shape as [BrowseOnlineModelsCard], deliberately: this is a
+ * sibling entry on the same grid, not a promotion, so it gets no tint, no badge
+ * and no urgency copy (`DESIGN.md` — support and paid features are stated once
+ * and never pushed). The one difference is the trailing open-in-new glyph, which
+ * is the row's only promise about what a tap does: the generation itself runs in
+ * another app, and its credits are paid there. Same affordance and size as
+ * `AboutActionRow(external = true)`, so "leaves the app" reads the same
+ * everywhere in the demo.
+ *
+ * [GenerateWorldRedirect] owns what "over there" resolves to.
+ */
+@Composable
+fun GenerateWorldCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            Modifier.padding(SceneViewTokens.Space.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+        ) {
+            Icon(Icons.Outlined.ViewInAr, contentDescription = null)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.home_generate_world_title),
+                    style = SceneViewTokens.Type.card,
+                )
+                Text(
+                    stringResource(R.string.home_generate_world_subtitle),
+                    style = SceneViewTokens.Type.body,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                contentDescription = stringResource(R.string.home_generate_world_cd),
+                tint = MaterialTheme.colorScheme.outline,
+                // `about-row-affordance`: the one size open-in-new is drawn at in
+                // this app. A second value here would read as a second icon set.
+                modifier = Modifier.size(SceneViewTokens.About.rowAffordance),
+            )
         }
     }
 }

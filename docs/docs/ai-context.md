@@ -22,7 +22,7 @@ I'm building with SceneView — the Compose-native 3D & AR SDK for Android.
 ## MCP server
 
 The pasted block is a summary. The MCP server gives an assistant the whole
-thing — 32 tools: code generation, validation, samples, model search
+thing — 33 tools: code generation, validation, samples, model search
 (Sketchfab) and the complete API reference.
 
 ```bash

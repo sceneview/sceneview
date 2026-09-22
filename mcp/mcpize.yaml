@@ -5,7 +5,7 @@
 # their built-in per-call billing, marketplace exposure, and 85% revenue share.
 #
 # IMPORTANT design notes:
-# - Every credential is OPTIONAL (every tool is free; the two keys below are
+# - Every credential is OPTIONAL (every tool is free; the three keys below are
 #   bring-your-own third-party accounts). Setting them `required: true` would
 #   block 100% of users at install time.
 # - The startCommand uses `node dist/index.js` directly so MCPize runs the
@@ -16,7 +16,7 @@ version: 1
 name: sceneview-mcp
 description: >-
   Cross-platform 3D & AR MCP for Android (Compose + Filament), iOS / macOS /
-  visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR). 32 free
+  visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR). 33 free
   tools: samples, guides, validator, project analysis, migration, the 3D
   viewer widget, and 3D preview / artifact / scene generation.
 
@@ -54,5 +54,15 @@ credentials:
     docs_url: https://platform.tripo3d.ai/api-keys
     mapping:
       env: TRIPO_API_KEY
+  - name: WORLDLABS_API_KEY
+    required: false
+    description: >-
+      Optional. Bring-your-own World Labs API key to enable `generate_world`
+      (text/image/video -> Gaussian-splat world, billed to your own World Labs
+      API credits). Local stdio only; without it, that single tool is
+      disabled; everything else works.
+    docs_url: https://platform.worldlabs.ai
+    mapping:
+      env: WORLDLABS_API_KEY
 
 credentials_mode: per_user

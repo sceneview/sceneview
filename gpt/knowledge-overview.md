@@ -516,7 +516,8 @@ equivalent "add MCP server by URL" field. Paste the URL and name it `SceneView`.
 HTTP on `POST /mcp`; `GET /mcp` answers `405`, `GET /health` answers `{"status":"ok"}`.
 
 Use `npx sceneview-mcp` locally instead when you need `analyze_project` (it reads a project from
-disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the shared anonymous endpoint has neither.
+disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `WORLDLABS_API_KEY`; the shared anonymous
+endpoint has none of them.
 
 ### Claude Code plugin (optional, Claude Code only)
 

@@ -133,6 +133,7 @@
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
 		C10000000000000000000060 /* AppStoreUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000060 /* AppStoreUpdater.swift */; };
+		C10000000000000000000075 /* GenerateWorldRedirect.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000075 /* GenerateWorldRedirect.swift */; };
 		C10000000000000000000061 /* UpdateBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000061 /* UpdateBanner.swift */; };
 		A10000000000000000002961 /* AssetSourcePill.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002961 /* AssetSourcePill.swift */; };
 		A10000000000000000002967 /* AssetCreditLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002967 /* AssetCreditLine.swift */; };
@@ -178,6 +179,7 @@
 		E10000000000000000000007 /* night_sky.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000007 /* night_sky.hdr */; };
 		ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */; };
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
+		F00000000000000000000081 /* GenerateWorldRedirectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000080 /* GenerateWorldRedirectTests.swift */; };
 		F00000000000000000000077 /* LabeledSliderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000076 /* LabeledSliderTests.swift */; };
 		A20000000000000000003159 /* ReflectionProbesDemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000003158 /* ReflectionProbesDemoTests.swift */; };
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
@@ -240,6 +242,7 @@
 		F10000000000000000000001 /* SceneViewDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000002 /* SceneViewDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneViewDemoUITests.swift; path = SceneViewDemoUITests/SceneViewDemoUITests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
+		F00000000000000000000080 /* GenerateWorldRedirectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GenerateWorldRedirectTests.swift; path = SceneViewDemoTests/GenerateWorldRedirectTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000076 /* LabeledSliderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSliderTests.swift; path = SceneViewDemoTests/LabeledSliderTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000003158 /* ReflectionProbesDemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReflectionProbesDemoTests.swift; path = SceneViewDemoTests/ReflectionProbesDemoTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
@@ -307,6 +310,7 @@
 		C20000000000000000000050 /* DemoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoSheet.swift; path = SceneViewDemo/Views/Components/DemoSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000051 /* CreditsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditsSheet.swift; path = SceneViewDemo/Views/CreditsSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000060 /* AppStoreUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdater.swift; path = SceneViewDemo/Services/AppStoreUpdater.swift; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000075 /* GenerateWorldRedirect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GenerateWorldRedirect.swift; path = SceneViewDemo/Services/GenerateWorldRedirect.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000061 /* UpdateBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UpdateBanner.swift; path = SceneViewDemo/Views/Components/UpdateBanner.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002961 /* AssetSourcePill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourcePill.swift; path = SceneViewDemo/Views/Components/AssetSourcePill.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002967 /* AssetCreditLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetCreditLine.swift; path = SceneViewDemo/Views/Components/AssetCreditLine.swift; sourceTree = SOURCE_ROOT; };
@@ -470,6 +474,7 @@
 				DB0000000000000000000A03 /* GallerySourceRegistry.swift */,
 				E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */,
 				C20000000000000000000060 /* AppStoreUpdater.swift */,
+				C20000000000000000000075 /* GenerateWorldRedirect.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -477,6 +482,7 @@
 			isa = PBXGroup;
 			children = (
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
+				F00000000000000000000080 /* GenerateWorldRedirectTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
 				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
@@ -995,6 +1001,7 @@
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
 				C10000000000000000000060 /* AppStoreUpdater.swift in Sources */,
+				C10000000000000000000075 /* GenerateWorldRedirect.swift in Sources */,
 				C10000000000000000000061 /* UpdateBanner.swift in Sources */,
 				A10000000000000000002961 /* AssetSourcePill.swift in Sources */,
 				A10000000000000000002967 /* AssetCreditLine.swift in Sources */,
@@ -1058,6 +1065,7 @@
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
+				F00000000000000000000081 /* GenerateWorldRedirectTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
 				A20000000000000000003159 /* ReflectionProbesDemoTests.swift in Sources */,
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,

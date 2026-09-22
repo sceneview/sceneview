@@ -40,7 +40,7 @@
  *
  * Configuration (environment): PORT (default 3333), HOST (default
  * 127.0.0.1 — bind 0.0.0.0 explicitly to expose it), and the same
- * SCENEVIEW_TELEMETRY / SKETCHFAB_API_KEY / TRIPO_API_KEY knobs as stdio.
+ * SCENEVIEW_TELEMETRY / SKETCHFAB_API_KEY / TRIPO_API_KEY / WORLDLABS_API_KEY knobs as stdio.
  */
 
 import {

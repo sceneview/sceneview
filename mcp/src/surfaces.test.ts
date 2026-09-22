@@ -14,10 +14,13 @@ import { TOOL_DEFINITIONS } from "./tools/index.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 describe("isLocalOnlyTool", () => {
-  it("is true for the three generation tools", () => {
+  it("is true for the four generation tools", () => {
     expect(isLocalOnlyTool("render_3d_preview")).toBe(true);
     expect(isLocalOnlyTool("create_3d_artifact")).toBe(true);
     expect(isLocalOnlyTool("generate_scene")).toBe(true);
+    // Spends the key holder's World Labs credits and relays caller URLs —
+    // never behind the anonymous endpoint.
+    expect(isLocalOnlyTool("generate_world")).toBe(true);
   });
 
   it("is false for every other declared tool", () => {

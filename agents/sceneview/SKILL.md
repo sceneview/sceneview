@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-09-06'
+  last-updated: '2026-09-20'
   keywords:
   - sceneview
   - 3d
