@@ -25,6 +25,22 @@ import CoreImage
 ///     }
 /// )
 /// ```
+/// Errors surfaced by ``ARSceneView`` through ``ARSceneView/onSessionError(_:)``.
+public enum ARSceneViewError: Error, Sendable, LocalizedError {
+    /// `faceTracking: true` was requested on a device without a TrueDepth
+    /// camera. The view does NOT silently fall back to the rear world-tracking
+    /// camera: nothing is started, and the host is expected to render an
+    /// unsupported-device state.
+    case faceTrackingUnsupported
+
+    public var errorDescription: String? {
+        switch self {
+        case .faceTrackingUnsupported:
+            return "Face tracking is not supported on this device (no TrueDepth camera)."
+        }
+    }
+}
+
 public struct ARSceneView: UIViewRepresentable {
     private var planeDetection: PlaneDetectionMode
     private var showPlaneOverlay: Bool
@@ -34,6 +50,7 @@ public struct ARSceneView: UIViewRepresentable {
     private var cameraExposure: Float?
     private var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
     private var onSessionStarted: ((ARView) -> Void)?
+    private var onSessionError: ((Error, ARView) -> Void)?
     private var imageTrackingDatabase: Set<ARReferenceImage>?
     private var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
     private var onFrame: ((ARFrame, ARView) -> Void)?
@@ -150,6 +167,27 @@ public struct ARSceneView: UIViewRepresentable {
         return copy
     }
 
+    /// Called whenever the AR session cannot run: ARKit reported a session
+    /// failure (camera permission denied, sensor failure…), or the requested
+    /// configuration is unsupported on this device — notably
+    /// ``ARSceneViewError/faceTrackingUnsupported``, where the view starts no
+    /// session at all rather than silently switching to the rear world camera.
+    ///
+    /// Additive and optional: without a handler the SDK keeps printing the
+    /// error to the console as before.
+    ///
+    /// ```swift
+    /// ARSceneView(faceTracking: true)
+    ///     .onSessionError { error, _ in unsupported = true }
+    /// ```
+    public func onSessionError(
+        _ handler: @escaping (Error, ARView) -> Void
+    ) -> ARSceneView {
+        var copy = self
+        copy.onSessionError = handler
+        return copy
+    }
+
     /// Sets an exposure compensation override for the AR camera feed.
     ///
     /// Positive values brighten the rendered scene; negative values darken it. One stop
@@ -245,12 +283,24 @@ public struct ARSceneView: UIViewRepresentable {
     public func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
         arView.automaticallyConfigureSession = false
+        // Wired before the session starts so a configuration that cannot run is
+        // reported to the host on the very first render.
+        context.coordinator.onSessionError = onSessionError
 
         // Configure AR session — face tracking uses the front TrueDepth camera;
         // world tracking uses the rear camera for plane detection / image tracking.
-        if faceTracking, ARFaceTrackingConfiguration.isSupported {
-            let faceConfig = ARFaceTrackingConfiguration()
-            arView.session.run(faceConfig, options: [.resetTracking, .removeExistingAnchors])
+        if faceTracking {
+            // No silent fallback to the rear world camera: a device without a
+            // TrueDepth camera gets an explicit error state, not a different
+            // (and wrong) AR experience.
+            if ARFaceTrackingConfiguration.isSupported {
+                let faceConfig = ARFaceTrackingConfiguration()
+                arView.session.run(faceConfig, options: [.resetTracking, .removeExistingAnchors])
+            } else {
+                let error = ARSceneViewError.faceTrackingUnsupported
+                print("[SceneViewSwift] AR session error: \(error.localizedDescription)")
+                onSessionError?(error, arView)
+            }
         } else {
             let config = ARWorldTrackingConfiguration()
             config.planeDetection = planeDetection.arPlaneDetection
@@ -292,8 +342,10 @@ public struct ARSceneView: UIViewRepresentable {
         context.coordinator.showPlacementReticle = showPlacementReticle
         context.coordinator.groundingShadows = groundingShadows
 
-        // Coaching overlay
-        if showCoachingOverlay {
+        // Coaching overlay. Never on a face-tracking session: its goals are all
+        // plane goals ("Move the device to detect a surface"), which is nonsense
+        // in front of the TrueDepth camera and covers the face feed.
+        if showCoachingOverlay, !faceTracking {
             let coaching = ARCoachingOverlayView()
             coaching.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             coaching.session = arView.session
@@ -336,6 +388,7 @@ public struct ARSceneView: UIViewRepresentable {
         context.coordinator.syncTapRecognizer(on: arView, enabled: onTapOnPlane != nil)
         context.coordinator.onImageDetected = onImageDetected
         context.coordinator.onFrame = onFrame
+        context.coordinator.onSessionError = onSessionError
         // Reactive like the light slots: toggling the flags on a later render
         // takes effect immediately — the per-frame reticle update tears the
         // reticle entity down when the flag turns false.
@@ -547,6 +600,8 @@ public struct ARSceneView: UIViewRepresentable {
         var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
         var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
         var onFrame: ((ARFrame, ARView) -> Void)?
+        /// Host handler for session failures — see ``ARSceneView/onSessionError(_:)``.
+        var onSessionError: ((Error, ARView) -> Void)?
         var planeDetection: PlaneDetectionMode
         // Tracking config that must survive an interruption — previously only
         // `planeDetection` was preserved, so any image database / mesh recon /
@@ -934,7 +989,9 @@ public struct ARSceneView: UIViewRepresentable {
             _ session: ARSession,
             didFailWithError error: Error
         ) {
+            // The print stays as the fallback for hosts that install no handler.
             print("[SceneViewSwift] AR session error: \(error.localizedDescription)")
+            if let arView = arView { onSessionError?(error, arView) }
         }
 
         public func sessionWasInterrupted(_ session: ARSession) {
