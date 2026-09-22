@@ -1,2 +1,0 @@
-<!-- category: Removed -->
-- **The Fog demo is gone from the iOS sample app.** RealityKit has no depth-based fog, and the screen approximated it with a translucent volume parked in front of the camera — a look-alike, and one the "height fog" tag promised outright. A feature that cannot be done faithfully on a platform is removed rather than faked. `sceneview://demo/fog` lands on the honest placeholder.
