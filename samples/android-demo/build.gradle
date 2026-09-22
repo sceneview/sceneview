@@ -141,6 +141,8 @@ android {
                 'META-INF/NOTICE*',
                 'kotlin/**',
                 'DebugProbesKt.bin',
+                // ADK for Kotlin pulls three jars that each ship a jar index.
+                'META-INF/INDEX.LIST',
             ]
         }
     }
