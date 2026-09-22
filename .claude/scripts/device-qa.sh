@@ -120,6 +120,18 @@ source "$SCRIPT_DIR/lib/qa-keys.sh"
 # shellcheck source=lib/qa-connectivity.sh
 source "$SCRIPT_DIR/lib/qa-connectivity.sh"
 
+# ── Resolve adb from the Android SDK, not PATH ─────────────────────────────
+# A bare `adb` only works when it happens to be on PATH. Without this, a host
+# with a perfectly good SDK install still hit a false "adb not on PATH (no
+# Android SDK)" skip below, or a bare `adb -s` call failing rc=127 further in
+# (observed 2026-09-22). Same SDK_ROOT resolution as setup-ar-emulator.sh.
+# Left empty (not exited) when unresolvable: the android/ar legs already skip
+# gracefully when adb is unavailable, and this script's whole point is a
+# best-effort pass across platforms, never a hard stop for one missing SDK.
+ANDROID_SDK_ROOT_RESOLVED="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+ADB="$ANDROID_SDK_ROOT_RESOLVED/platform-tools/adb"
+[[ -x "$ADB" ]] || ADB=""
+
 # The demo debug APK both Android-emulator legs install. Kept as the single
 # canonical path qa-android-demos.sh expects and the CI build-android-apk job
 # restores into. #2343: when a key is present this APK is deleted before each
@@ -468,10 +480,10 @@ record_streamed_subleg() {
 #      here so the lease outlives that subprocess.
 # Echoes the leased serial on stdout; returns 1 if no emulator could be obtained.
 acquire_pool_emulator() {
-  emu_pool_reclaim_stale adb
+  emu_pool_reclaim_stale "$ADB"
   local serial
   # Step 1: lease a free running emulator outright.
-  if serial="$(emu_lease_free_serial adb)" && emu_lease_acquire "$serial" adb; then
+  if serial="$(emu_lease_free_serial "$ADB")" && emu_lease_acquire "$serial" "$ADB"; then
     echo "$serial"
     return 0
   fi
@@ -490,8 +502,8 @@ acquire_pool_emulator() {
   if [[ -z "${serial:-}" ]] && [[ -f "$EMU_LEASE_DIR/last-booted.serial" ]]; then
     serial="$(cat "$EMU_LEASE_DIR/last-booted.serial" 2>/dev/null || true)"
   fi
-  if [[ -z "${serial:-}" ]] || ! emu_serial_alive "$serial" adb; then
-    serial="$(emu_running_serial adb || true)"
+  if [[ -z "${serial:-}" ]] || ! emu_serial_alive "$serial" "$ADB"; then
+    serial="$(emu_running_serial "$ADB" || true)"
   fi
   [[ -n "${serial:-}" ]] || return 1
   # Adopt the lease under this orchestrator's pid. setup-ar-emulator.sh ran with
@@ -499,7 +511,7 @@ acquire_pool_emulator() {
   # ours to take (#2862 — before that, it dropped the lease on exit and the live
   # emulator looked free to every peer). Best-effort: even if a peer grabbed it,
   # the emulator is up and we still target it via ANDROID_SERIAL.
-  emu_lease_acquire "$serial" adb || true
+  emu_lease_acquire "$serial" "$ADB" || true
   echo "$serial"
   return 0
 }
@@ -510,7 +522,7 @@ run_android() {
   local serial=""
   log "=== Android leg ==="
 
-  if ! command -v adb >/dev/null 2>&1; then
+  if [[ -z "$ADB" ]]; then
     record android skipped "adb not on PATH (no Android SDK)" "" 0
     return 0
   fi
@@ -526,7 +538,7 @@ run_android() {
   # Pin every downstream adb / android-CLI / Maestro call to the leased serial.
   export ANDROID_SERIAL="$serial"
 
-  if ! adb -s "$serial" get-state >/dev/null 2>&1; then
+  if ! "$ADB" -s "$serial" get-state >/dev/null 2>&1; then
     record android skipped "leased emulator $serial not responding" "" "$(( $(date +%s) - started ))"
     return 0
   fi
@@ -760,7 +772,7 @@ run_ar() {
   local serial=""
   log "=== AR leg ==="
 
-  if ! command -v adb >/dev/null 2>&1; then
+  if [[ -z "$ADB" ]]; then
     record ar skipped "adb not on PATH (no Android SDK)" "" 0
     return 0
   fi
@@ -770,7 +782,7 @@ run_ar() {
   # that emulator directly (no extra lease, no boot). Otherwise lease one from
   # the RAM-budgeted pool (#1654): a free running emulator, or a fresh pool
   # member if RAM has room. setup-ar-emulator.sh also sideloads ARCore.
-  if [[ -n "${ANDROID_SERIAL:-}" ]] && emu_serial_alive "$ANDROID_SERIAL" adb; then
+  if [[ -n "${ANDROID_SERIAL:-}" ]] && emu_serial_alive "$ANDROID_SERIAL" "$ADB"; then
     serial="$ANDROID_SERIAL"
     log "AR leg reusing the Android leg's pool emulator: $serial"
   elif ! serial="$(acquire_pool_emulator)"; then
@@ -781,7 +793,7 @@ run_ar() {
   # Pin every downstream adb / android-CLI call to the leased serial.
   export ANDROID_SERIAL="$serial"
 
-  if ! adb -s "$serial" get-state >/dev/null 2>&1; then
+  if ! "$ADB" -s "$serial" get-state >/dev/null 2>&1; then
     record ar skipped "leased emulator $serial not responding" "" "$(( $(date +%s) - started ))"
     return 0
   fi
