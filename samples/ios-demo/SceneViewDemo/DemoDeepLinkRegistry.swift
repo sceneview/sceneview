@@ -133,9 +133,9 @@ enum DemoDeepLinkRegistry {
     /// existed still resolves, and the user is told the truth: it is gone, not
     /// pending, and not hiding on Android.
     ///
-    /// - `fog`: depth-based fog was dropped from the SceneView demos; RealityKit
-    ///   exposes no equivalent, so the iOS screen was faked. Removed rather than
-    ///   simulated.
+    /// - `fog`: RealityKit exposes no depth-based fog, so the iOS screen was a
+    ///   translucent volume standing in for it. Removed rather than simulated.
+    ///   Android keeps its Filament fog demo; the removal is iOS-only.
     static let removedIds: [String: String] = [
         "fog": "Fog",
     ]
@@ -175,8 +175,8 @@ enum DemoDeepLinkRegistry {
         }
         if let title = removedIds[id] {
             return AnyView(DeepLinkPlaceholder(
-                headline: "This demo was removed.",
-                detail: "\(title) is no longer part of the SceneView demos, on any platform."
+                headline: "This demo isn\u{2019}t in the iOS app.",
+                detail: "\(title) needs depth-based fog, which RealityKit does not offer, so the iOS screen was removed. The Android app still has it."
             ))
         }
         return AnyView(DeepLinkPlaceholder(
