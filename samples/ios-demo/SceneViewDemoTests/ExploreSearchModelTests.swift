@@ -258,4 +258,43 @@ final class ExploreSearchModelTests: XCTestCase {
     }
 }
 
+/// The browse feeds' bounded wait and "couldn't reach" rule (#3766 P2 §2).
+final class ExploreFeedLoadTests: XCTestCase {
+    func testAnOperationThatAnswersInTimeReturnsItsValue() async throws {
+        let value = try await ExploreFeedLoad.withTimeout(.seconds(2)) { 42 }
+        XCTAssertEqual(value, 42)
+    }
+
+    func testAStalledOperationIsAbandonedAtTheDeadline() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        do {
+            _ = try await ExploreFeedLoad.withTimeout(.milliseconds(100)) {
+                try await Task.sleep(for: .seconds(30))
+                return 0
+            }
+            XCTFail("expected the deadline to win")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertLessThan(clock.now - start, .seconds(5))
+    }
+
+    func testEveryFeedFailingIsUnreachable() {
+        XCTAssertTrue(ExploreFeedLoad.isUnreachable(feedCount: 3, failures: 3, rejected: false))
+    }
+
+    func testOneFeedAnsweringIsNotUnreachable() {
+        XCTAssertFalse(ExploreFeedLoad.isUnreachable(feedCount: 3, failures: 2, rejected: false))
+    }
+
+    func testARejectedKeyKeepsItsOwnBanner() {
+        XCTAssertFalse(ExploreFeedLoad.isUnreachable(feedCount: 2, failures: 2, rejected: true))
+    }
+
+    func testASourceWithNoFeedsIsNeverUnreachable() {
+        XCTAssertFalse(ExploreFeedLoad.isUnreachable(feedCount: 0, failures: 0, rejected: false))
+    }
+}
+
 #endif

@@ -162,7 +162,9 @@ struct DoublePendulumDemo: View {
 
     var body: some View {
         sceneContent
-            .demoChrome { controlsSheet }
+            .demoChrome(accessory: {
+                DemoHint("Chaotic two-link pendulum — shared physics")
+            }) { controlsSheet }
             .onDisappear { coordinator.stop() }
     }
 
@@ -178,20 +180,7 @@ struct DoublePendulumDemo: View {
             // new entities; the `RealityView` itself is never re-created
             // (a `.id(_:)` re-key intermittently left it black, #3008).
             .contentID(generation)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                HStack {
-                    Text("Chaotic two-link pendulum — shared physics")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.6))
-                    Spacer()
-                }
-                .padding()
-            }
         }
-        .background(Color.black)
     }
 
     /// Builds the scene: two metallic links + a brass pivot marker, and starts

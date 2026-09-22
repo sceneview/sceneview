@@ -216,6 +216,33 @@
 # Reconciling the two id sets against these rows is a MANUAL pass. Do it, and
 # update this file (status + reason), in the SAME PR that changes either
 # platform's registry — that's the only thing keeping it honest.
+#
+# ─── iOS-ONLY IDS — the surplus the rows cannot hold (recorded 2026-09-22) ──
+# The left-hand column is Android's canonical set, so an iOS scene id with no
+# Android row has nowhere to live below. These eight resolve on iOS and fall
+# through on Android; each is either a real screen or a documented removal.
+# `check-demo-id-parity.sh` does not read this block — it is for the human
+# doing the manual pass above.
+#   ar-instant-placement        working — estimated-plane placement (tap before
+#                               plane geometry converges), `@iosOnly true`.
+#   ar-lighting                 working — compares the `.mainLight` /
+#                               `.fillLight` modifier presets, `@iosOnly true`.
+#   fog                         REMOVED on iOS — see the `ar-fog` row: RealityKit
+#                               has no depth fog and the translucent-volume
+#                               look-alike was deleted, not kept. The id stays
+#                               in `DemoDeepLinkRegistry.removedIds` so the
+#                               deep link lands on the removal notice.
+#   multi-model                 working — #2239 regroup key kept as its own
+#                               Samples card (streams several models at once).
+#   occlusion-material          working — #2239 regroup key kept as its own
+#                               card; the occluder cuts the sphere since #3766.
+#   placement-reticle-preview   working — non-AR developer preview of the
+#                               placement reticle; retired on Android by #3275.
+#   scene-gallery               working — #2239 regroup key kept as its own
+#                               card (streamed scene picker).
+#   texture-streaming           working — #2239 regroup key kept as its own
+#                               card; the screen is the "Material presets"
+#                               demo (nothing streams, the title says so).
 
 demos:
   # ─── working (30) — iOS has a real, non-placeholder destination ─────────

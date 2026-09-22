@@ -51,7 +51,7 @@ public enum DemoChromeMode {
     case ar
 }
 
-public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
+public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls: View>: View {
     private let title: String?
     private let dock: [DockItem]
     private let accent: DockItem?
@@ -60,6 +60,11 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
     private let chromeMode: DemoChromeMode
     private let stage: Stage
     private let accessory: Accessory
+    /// Trailing end of the identity row — a small state pill (asset source,
+    /// tracking state). It sits in the row so it clears the status bar and the
+    /// Dynamic Island exactly as the title does, instead of each demo overlaying
+    /// it at the top edge of the stage.
+    private let status: Status
     private let controls: Controls
 
     @State private var controlsPresented = false
@@ -80,6 +85,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         chromeMode: DemoChromeMode = .stage,
         @ViewBuilder stage: () -> Stage,
         @ViewBuilder accessory: () -> Accessory = { EmptyView() },
+        @ViewBuilder status: () -> Status = { EmptyView() },
         @ViewBuilder controls: () -> Controls = { EmptyView() }
     ) {
         self.title = title
@@ -90,6 +96,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         self.chromeMode = chromeMode
         self.stage = stage()
         self.accessory = accessory()
+        self.status = status()
         self.controls = controls()
     }
 
@@ -229,6 +236,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
             }
 
             Spacer(minLength: 0)
+
+            status
+                .padding(.trailing, Self.touchSlop)
         }
         .padding(.horizontal, Metrics.margin - Self.touchSlop)
     }

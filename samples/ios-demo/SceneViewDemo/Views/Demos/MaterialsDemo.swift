@@ -44,22 +44,32 @@ struct MaterialsDemo: View {
     }
 
     var body: some View {
-        ZStack {
-            sceneView
-            VStack {
-                Spacer()
-                controls
+        sceneView
+            // Chips, credit line and the asset-source pill are the scaffold's
+            // option strip, legend and status slot: the same chrome as every
+            // other stage demo, dark in both themes (#3766 P2 §3, §5, §6).
+            .demoChrome(
+                accessory: {
+                    VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
+                        DemoOptionStrip(Array(slugs.indices), selection: $selectedIndex) {
+                            slugs[$0].displayName
+                        }
+                        if let legend {
+                            DemoHint(legend)
+                        }
+                    }
+                },
+                status: {
+                    AssetSourceStatus(state: assetSource,
+                                      isPlaceholder: selectedSlug?.fallbackRole == .placeholder)
+                }
+            )
+            .task(id: selectedSlug?.uid) {
+                await loadSelectedSlug()
             }
-        }
-        .assetSourcePill(assetSource,
-                         placeholder: selectedSlug?.fallbackRole == .placeholder)
-        .background(Color.black)
-        .task(id: selectedSlug?.uid) {
-            await loadSelectedSlug()
-        }
-        .task {
-            _ = await SketchfabAssetResolver.shared.prefetchAll(category: "materials")
-        }
+            .task {
+                _ = await SketchfabAssetResolver.shared.prefetchAll(category: "materials")
+            }
     }
 
     @ViewBuilder
@@ -88,23 +98,12 @@ struct MaterialsDemo: View {
             // subject. Same `.studio` preset ModelViewerDemo uses (#2114).
             .environment(.studio)
             .contentID(loadedContentKey)
-            .ignoresSafeArea()
 
             if loadedNode == nil {
-                VStack(spacing: 12) {
+                VStack(spacing: SceneViewTokens.Space.sm) {
                     ProgressView()
-                        .tint(.white)
-                    if let loadError {
-                        Text(loadError)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    } else {
-                        Text("Streaming material…")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
+                        .tint(SceneViewTokens.Glass.onGlass)
+                    DemoHint(loadError ?? "Streaming material…")
                 }
             }
         }
@@ -117,53 +116,16 @@ struct MaterialsDemo: View {
         return selectedSlug?.uid ?? "none"
     }
 
-    private var controls: some View {
-        VStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(slugs.enumerated()), id: \.element.uid) { index, slug in
-                        Button {
-                            selectedIndex = index
-                            #if os(iOS)
-                            SceneViewHaptic.shared.light()
-                            #endif
-                        } label: {
-                            Text(slug.displayName)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(index == selectedIndex ? Color.black : Color.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(
-                                    Capsule()
-                                        .fill(index == selectedIndex ? Color.white : Color.white.opacity(0.12))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-
-            if let slug = selectedSlug {
-                // `tags[0]` is the `KHR_materials_*` extension name in the
-                // curated registry — surface it so the user maps the chip
-                // choice to the extension being demoed.
-                if let ext = slug.tags.first, !ext.isEmpty {
-                    Text(ext)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                }
-                // Credits the model actually on screen — streamed author or the
-                // bundled fallback's own author and licence (#2966).
-                AssetCreditLine(slug: slug, source: assetSource,
-                                style: AnyShapeStyle(.white.opacity(0.75)))
-            }
-        }
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .padding(.horizontal, 16)
-        .padding(.bottom, 24)
+    /// The credit for the model on screen — streamed author or the bundled
+    /// stand-in's own author and licence (#2966), prefixed with the
+    /// `KHR_materials_*` extension the chip demonstrates (`tags[0]` in the
+    /// curated registry).
+    private var legend: String? {
+        guard let slug = selectedSlug else { return nil }
+        let credit = AssetCreditLine.text(slug: slug, source: assetSource)
+        let ext = slug.tags.first.flatMap { $0.isEmpty ? nil : $0 }
+        let parts = [ext, credit].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     @MainActor

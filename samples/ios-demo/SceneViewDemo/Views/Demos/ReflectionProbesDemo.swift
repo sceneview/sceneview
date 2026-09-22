@@ -22,17 +22,10 @@ struct ReflectionProbesDemo: View {
     @State private var probeEnvironment: EnvironmentResource?
 
     var body: some View {
-        ZStack {
-            sceneContent
-            VStack {
-                Spacer()
-                Text("ReflectionProbeNode — local IBL override zone")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.bottom, 12)
-            }
-        }
-        .demoChrome {
+        sceneContent
+        .demoChrome(accessory: {
+            DemoHint("ReflectionProbeNode — local IBL override zone")
+        }) {
             settingsContent
         }
         .task(id: selectedEnvironment) {
