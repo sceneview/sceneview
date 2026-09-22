@@ -4,8 +4,8 @@ import RealityKit
 import ARKit
 import SceneViewSwift
 
-/// Instant Placement demo — tap to place a model before plane detection has fully
-/// converged.
+/// Estimated-plane placement demo — tap to place a model before plane detection
+/// has fully converged.
 ///
 /// Mirrors the Android `ARInstantPlacementDemo` (`samples/android-demo/.../ARInstantPlacementDemo.kt`)
 /// which leverages ARCore's `Config.InstantPlacementMode.LOCAL_Y_UP`. On iOS,
@@ -253,7 +253,7 @@ struct ARInstantPlacementDemo: View {
                 .foregroundStyle(.secondary)
             Text("AR requires a physical device")
                 .font(.headline)
-            Text("Run on iPhone or iPad to test Instant Placement.")
+            Text("Run on iPhone or iPad to place models in AR.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

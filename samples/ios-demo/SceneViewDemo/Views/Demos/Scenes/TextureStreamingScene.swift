@@ -1,6 +1,6 @@
 // @sceneId     texture-streaming
-// @title       Texture Streaming
-// @subtitle    Swap PBR materials at runtime without rebuilding geometry
+// @title       Material presets
+// @subtitle    Swap PBR material presets on a loaded model, no geometry rebuild
 // @category    content
 // @available   true
 // @icon        circle.dotted.and.circle

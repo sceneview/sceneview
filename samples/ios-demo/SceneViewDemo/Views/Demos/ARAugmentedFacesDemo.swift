@@ -4,7 +4,8 @@ import RealityKit
 import ARKit
 import SceneViewSwift
 
-/// AR Augmented Faces demo — mirrors Android's `AugmentedFaceDemo.kt` (#910).
+/// AR face anchor accessories demo — mirrors Android's `AugmentedFaceDemo.kt`
+/// (#910) as far as ARKit allows: the face ANCHOR is tracked, not a mesh.
 ///
 /// Uses ARKit's `ARFaceTrackingConfiguration` (TrueDepth front camera) via
 /// `ARSceneView(faceTracking: true)` to detect and track the user's face.

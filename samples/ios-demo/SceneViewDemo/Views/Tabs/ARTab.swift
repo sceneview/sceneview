@@ -545,8 +545,8 @@ struct FeaturedARDemo: Identifiable {
         ),
         FeaturedARDemo(
             id: "ar-instant-placement",
-            title: "Instant Placement",
-            subtitle: "Place models before plane detection converges",
+            title: "Estimated-plane placement",
+            subtitle: "Tap to place before plane geometry converges",
             icon: "bolt.fill",
             destination: AnyView(ARInstantPlacementDemo())
         ),

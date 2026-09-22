@@ -51,7 +51,7 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 | Image Planes | [`ImagePlaneDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ImagePlaneDemo.swift) | `ImageNode` — textures on planes in 3D space |
 | Billboard | [`BillboardDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/BillboardDemo.swift) | Camera-facing labels and sprites |
 | Video Texture | [`VideoTextureDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/VideoTextureDemo.swift) | `VideoNode` — play / pause / loop video on a 3D plane |
-| Texture Streaming | [`TextureStreamingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/TextureStreamingDemo.swift) | Swap PBR material presets in real time — no geometry rebuild |
+| Material presets | [`TextureStreamingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/TextureStreamingDemo.swift) | Swap PBR material presets in real time — no geometry rebuild |
 
 ### Interaction
 
@@ -82,15 +82,15 @@ AR samples require a physical device with ARKit support (A9+ chip, iOS 18+).
 | Demo | Source | What it shows |
 |---|---|---|
 | AR Placement | [`ARPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPlacementDemo.swift) | Tap-to-place USDZ on a detected plane |
-| AR Instant Placement | [`ARInstantPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARInstantPlacementDemo.swift) | Place without waiting for plane detection |
+| Estimated-plane placement | [`ARInstantPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARInstantPlacementDemo.swift) | Tap-to-place on an estimated plane, before geometry converges |
 | AR Orbital | [`OrbitalARDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OrbitalARDemo.swift) | Orbit camera in AR passthrough mode |
-| AR Lighting | [`ARLightingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARLightingDemo.swift) | ARKit environmental lighting estimation |
+| AR Lighting | [`ARLightingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARLightingDemo.swift) | Compare main / fill light presets on an anchored model |
 | AR Recording | [`ARRecorderDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift) | ReplayKit-backed AR session capture |
 | AR Image Tracking | [`ARImageTrackingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARImageTrackingDemo.swift) | Track printed reference images |
-| Augmented Faces | [`ARAugmentedFacesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARAugmentedFacesDemo.swift) | Front-camera face pose tracking (`AnchorNode.face()`) |
+| Face anchor accessories | [`ARAugmentedFacesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARAugmentedFacesDemo.swift) | Accessories pinned to a tracked face anchor — pose only, no morphable mesh |
 | AR Depth Occlusion | [`ARDepthOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARDepthOcclusionDemo.swift) | LiDAR depth occlusion on supported devices |
 | AR People Occlusion | [`ARPeopleOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift) | Occlude AR content behind real people |
-| AR Body Tracker | [`ARBodyTrackerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift) | Full-body skeleton tracking |
+| Body anchor tracking | [`ARBodyTrackerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift) | Follow a detected body anchor — anchor pose, not per-joint data |
 | AR Scene Mesh | [`ARSceneMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift) | LiDAR scene reconstruction mesh |
 | AR Debug (Rerun) | [`RerunDebugDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RerunDebugDemo.swift) | Live AR debug data streamed to [Rerun.io](https://rerun.io) viewer |
 

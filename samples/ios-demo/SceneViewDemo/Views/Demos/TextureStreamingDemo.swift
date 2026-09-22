@@ -88,7 +88,7 @@ struct TextureStreamingDemo: View {
             }
         }
         .onChange(of: selectedIndex) { _, _ in applySelectedPreset() }
-        .navigationTitle("Texture Streaming")
+        .navigationTitle("Material presets")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

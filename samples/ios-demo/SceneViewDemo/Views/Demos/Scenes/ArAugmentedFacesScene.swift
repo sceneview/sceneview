@@ -1,12 +1,12 @@
 // @sceneId     ar-face
-// @title       Augmented Faces
-// @subtitle    Face mesh tracking and overlays
+// @title       Face anchor accessories
+// @subtitle    Pin accessories to a tracked face anchor
 // @category    ar
 // @available   true
 // @icon        face.smiling.inverse
 // @iosOnly     true
 // @order       25
-// @tags        ar,face,mesh,tracking,augmented-faces
+// @tags        ar,face,anchor,tracking,accessories
 import SwiftUI
 
 enum ArAugmentedFacesScene: DemoScene {
