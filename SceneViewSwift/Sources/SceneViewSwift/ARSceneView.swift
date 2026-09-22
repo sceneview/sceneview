@@ -907,17 +907,44 @@ public struct ARSceneView: UIViewRepresentable {
             print("[SceneViewSwift] AR session interrupted")
         }
 
+        /// Lets ARKit try to relocalize into the world map that was built before
+        /// the interruption instead of dropping it. Without this the session
+        /// silently restarts tracking and every anchor the host placed ends up in
+        /// a new coordinate space.
+        public func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool {
+            true
+        }
+
         public func sessionInterruptionEnded(_ session: ARSession) {
-            print("[SceneViewSwift] AR session interruption ended — resuming with full config")
-            if faceTracking, ARFaceTrackingConfiguration.isSupported {
-                session.run(ARFaceTrackingConfiguration())
+            // The configuration the session still holds is the authoritative one:
+            // it carries whatever the host mutated after `makeUIView` — the
+            // `ARConfiguration` subclass itself, `frameSemantics` (people
+            // occlusion's `.personSegmentationWithDepth`), the exact
+            // `sceneReconstruction` mode (`.meshWithClassification`), extra plane
+            // alignments, a swapped image database. Rebuilding a stock
+            // `ARWorldTrackingConfiguration` here threw all of that away, so
+            // occlusion and mesh classification silently stopped after every
+            // background → foreground cycle even though the host's toggles still
+            // read "on" (#928 follow-up).
+            //
+            // Re-run it WITHOUT `.resetTracking` / `.removeExistingAnchors`:
+            // combined with `sessionShouldAttemptRelocalization` above, ARKit
+            // relocalizes into the existing map and the host's anchors stay put.
+            if let activeConfiguration = session.configuration {
+                print("[SceneViewSwift] AR session interruption ended — resuming the active configuration")
+                session.run(activeConfiguration)
                 return
             }
-            // Re-apply the FULL tracking configuration that was active before the
-            // interruption — previously only `planeDetection` survived, so consumers
-            // doing image tracking / mesh reconstruction / non-default environment
-            // texturing lost those features on every background→foreground cycle.
-            // Closes part of #928 (ARSceneView.sessionInterruptionEnded silent stub).
+
+            // No active configuration means there is nothing to relocalize into
+            // (the session never ran, or ARKit tore it down). Only this path
+            // rebuilds a configuration from the values captured at view creation,
+            // and only this path resets tracking.
+            print("[SceneViewSwift] AR session interruption ended — no active configuration, restarting")
+            if faceTracking, ARFaceTrackingConfiguration.isSupported {
+                session.run(ARFaceTrackingConfiguration(), options: [.resetTracking])
+                return
+            }
             let config = ARWorldTrackingConfiguration()
             config.planeDetection = planeDetection.arPlaneDetection
             config.environmentTexturing = environmentTexturing
@@ -929,12 +956,11 @@ public struct ARSceneView: UIViewRepresentable {
                ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
                 config.sceneReconstruction = .mesh
             }
-            // Reset detected images so they can be re-detected after interruption.
-            // (The anchors themselves are kept — we don't pass .removeExistingAnchors
-            // here because the user's content + AnchorEntity references remain valid
-            // across an interruption per Apple's ARKit guide.)
+            // Tracking is starting from scratch on this path, so the previously
+            // detected image anchors are gone: forget them, otherwise the same
+            // target would never be reported again.
             detectedImageNames.removeAll()
-            session.run(config)
+            session.run(config, options: [.resetTracking])
         }
     }
 }
