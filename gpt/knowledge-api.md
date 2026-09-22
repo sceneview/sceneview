@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.38.0)
+  Source of truth: /llms.txt  (SceneView 4.39.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.38.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.39.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -1187,9 +1187,65 @@ SceneView {
 
 `ARSceneScope` extends `SceneScope` with AR-specific composables. All `SceneScope` nodes (ModelNode, CubeNode, etc.) are also available.
 
-### PlacementScene — one-line tap-to-place (v4.10.0+, #1765)
+### Automatic placement (recommended)
 
-**Start here for AR placement.** `PlacementScene` is the high-level composable that bundles the
+`AutoPlacementScene` is additive: one usable detected plane consumes one placement
+request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
+or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
+centers, and a 0.25–3 m interaction range. It renders no plane grid or reticle.
+
+```kotlin
+import io.github.sceneview.ar.*
+
+val engine = rememberEngine()
+val modelLoader = rememberModelLoader(engine)
+val model = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+val placement = rememberAutoPlacementState()
+AutoPlacementScene(
+    assetReady = model != null,
+    state = placement,
+    engine = engine,
+    modelLoader = modelLoader,
+    surface = PlacementSurface.SURFACE, // WALL accepts vertical planes directly
+    onPlaced = { result -> /* result.anchor, result.plane, result.pose */ },
+) { result ->
+    model?.let { AutoPlacementModel(result, placement, it, scaleToUnits = 0.3f) }
+}
+// Explicit reset retains the asset and the camera session:
+// placement.resetPlacement(android.os.SystemClock.uptimeMillis())
+```
+
+`AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
+while rotating/scaling, and constrains dragging to supported plane geometry. Its
+0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
+trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base.
+
+For asynchronous selection, call `placement.selectModel()` before loading and attach
+only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model
+until its replacement succeeds. Observe `placement.phase`; use `requestPlacement()`,
+`resetPlacement(nowMillis)` and `keepScanning(nowMillis)` for explicit actions. Reset
+removes the wrapper-owned anchor without restarting the camera. Interruption freezes
+manipulation and recovers the existing placement; it does not arm a new request.
+`onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
+capability, tracking, and camera failures. Copy, permissions, asset selection and
+semantic haptics belong to the app.
+
+States match Swift's `ARPlacementPhase`: `INITIALIZING`, `SCANNING`, `NO_SURFACE`,
+`PLACED`, `ADJUSTING`, `TRACKING_LOST`, `RECOVERING`, `RECOVERY_FAILED`, `CAMERA_ERROR`.
+The no-surface and recovery deadlines are both ten seconds. A controller manages one
+object; repeated requests while placed are ignored. Multi-object hosts explicitly own
+separate requests/controllers; tapping empty space never places.
+
+**Manual-placement compatibility:** `PlacementScene`, `WallPlacementScene`
+(`WallPlacement`), `onTapOnPlane`, `ReticleNode` and the placement-reticle options remain
+manual-placement APIs. Their published defaults and tap behavior are unchanged. Use
+them for deliberate manual interactions or diagnostics; new placement flows should
+use `AutoPlacementScene`.
+
+### PlacementScene — manual tap-to-place (v4.10.0+, #1765)
+
+**Legacy manual placement.** For automatic placement start with `AutoPlacementScene` above.
+`PlacementScene` is the manual composable that bundles the
 whole tap-to-place pipeline — Sceneform `ArFragment` parity in one call. It wires an `ARSceneView`
 with plane rendering, a built-in centre-screen **ring reticle** that brightens when a surface is
 ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
@@ -1282,9 +1338,10 @@ white hairline ring over a faint dark contact halo, with a small `#a4c1ff` centr
 only in the *ready* phase (#3570). Reticle colour is a design decision: if you re-tint it, tint
 the dot, not the ring.
 
-### WallPlacementScene — place on a wall, aligned to the floor↔wall edge (#2740)
+### WallPlacementScene — manual wall placement, aligned to the floor↔wall edge (#2740)
 
-**Use this instead of `PlacementScene` for vertical-surface products** — a TV, framed art, a mirror,
+**Legacy manual wall placement.** New automatic wall flows use
+`AutoPlacementScene(surface = PlacementSurface.WALL)`. The manual API remains for vertical-surface products — a TV, framed art, a mirror,
 a shelf. Placing on a wall is harder than dropping a model on the floor: ARCore converges vertical
 planes slowly and noisily, so anchoring at the raw hit pose leaves the object tilted and floating.
 `WallPlacementScene` decouples the two axes the way Amazon "AR View" / IKEA Place do it — orientation
@@ -1465,7 +1522,7 @@ It stays a writable `var` afterwards and the composables re-apply it on recompos
 re-creating the node, so it is safe to drive from state (e.g. 10 Hz on low battery, every
 frame while the user is actively aiming).
 
-### ReticleNode — placement reticle with auto-hide
+### ReticleNode — manual-placement reticle with auto-hide
 
 `ReticleNode` is a **thin wrapper** over `HitResultNode` for "tap to place" UX. It is a
 `HitResultNode` subclass — it delegates the screen-coordinate hit test (including the
@@ -4339,7 +4396,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.38.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.39.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4955,7 +5012,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.38.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.39.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -5253,7 +5310,11 @@ public struct ARSceneView: UIViewRepresentable {
 View modifiers (chainable):
 ```swift
 .onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process
+.onSessionError(_ handler: @escaping (Error, ARView) -> Void) -> ARSceneView  // v4.39.0+ — ARKit session failures (camera permission denied…) and unsupported configurations. Without it the SDK only prints
+.onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
+.onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
+.onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
@@ -5265,6 +5326,21 @@ View modifiers (chainable):
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
 - Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
+
+`onSessionError` notes (v4.39.0+):
+- Called on `session(_:didFailWithError:)` — camera permission denial included — and when the requested configuration cannot run on this device.
+- `faceTracking: true` on a device with no TrueDepth camera reports `ARSceneViewError.faceTrackingUnsupported` and starts NO session; it no longer falls back to the rear world-tracking camera. Render your own unsupported-device state from the handler.
+- Face sessions get no coaching overlay (its goals are all plane goals).
+- `showPlaneOverlay` / `showCoachingOverlay` / `showPlacementReticle` are reactive — toggle the value, never `.id()` the view (a re-key restarts the AR session).
+
+Session lifecycle notes (v4.39.0+):
+- `ARSessionConfiguration` is the whole ask, as one `Equatable` value. The view re-runs ARKit only when that value changes between renders (a `mode` change resets tracking; anything else keeps it) and re-applies the retained configuration after an interruption. Settings or theme changes never restart the camera.
+- `sceneReconstruction` defaults to `.none`: the LiDAR mesh is no longer switched on implicitly on every LiDAR device. Ask for `.mesh` / `.meshWithClassification`; on a device without LiDAR that reports `ARSceneViewError.unsupported(.lidar)` and runs no session.
+- `unmetRequirement()` answers before the view is mounted — render the unsupported state yourself; the SDK never falls back to a lesser session.
+- `.firstFrame` (state `.running`) is the camera on screen, independent of any model load. Report "Loading model…" from your own load, never from the session.
+- The delegate is installed before `session.run`, so `.started` and the first tracking state are never missed.
+- `cameraExposure` installs its post-process once per value and only removes what it installed; with `nil` it never touches `renderCallbacks.postProcess`, so a host-owned post-process survives. It remains rendered-frame brightness, not capture exposure.
 
 `mainLight` / `fillLight` notes (v4.3.0+, `#1138` — iOS half of `#1063`):
 - Mirrors Android's `ARSceneView(mainLightNode = …, fillLightNode = …)` parameters.

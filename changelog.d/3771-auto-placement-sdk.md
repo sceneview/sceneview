@@ -1,4 +1,0 @@
-<!-- category: Added -->
-
-- Add Android `AutoPlacementScene`, `AutoPlacementState`, and grounded `AutoPlacementModel`, plus iOS `AutoPlacementScene` and `ARPlacementController`. Automatic placement consumes one request on the first usable tracked surface, preserves plane and anchor identity, rejects stale asset loads, and exposes tracking recovery and surface-constrained manipulation without a plane grid or reticle. Existing manual-placement APIs keep their behavior.
-- Converge the iOS AR tab, placement catalogue routes, viewer handoff and convenience showcase on one automatic-placement experience, with explicit reset, loading errors, authored-unit preservation for opened files, accessible adjustment controls and a 0.3 m preview for bundled models. Android and iOS use the bundled Toy Car as their shared default.
