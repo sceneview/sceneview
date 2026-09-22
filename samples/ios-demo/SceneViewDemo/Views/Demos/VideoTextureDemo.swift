@@ -122,7 +122,12 @@ struct VideoTextureDemo: View {
         // The previous node is about to leave the scene — stop its player so
         // it does not keep playing audio from a detached entity.
         videoNode?.pause()
-        let node = VideoNode.load("sample", width: 2.4, height: 1.35, loop: isLooping)
+        // The extension is required, not optional: `VideoNode.load` splits the
+        // name on "." and treats the last component as the extension, so
+        // "sample" resolved to an empty base name with extension "sample",
+        // found nothing in the bundle, and fell through to a bogus file path.
+        // The plane rendered black and nothing ever played.
+        let node = VideoNode.load("sample.mp4", width: 2.4, height: 1.35, loop: isLooping)
         node.entity.position = SIMD3(0, 0.3, -3)
         node.muted(isMuted)
         if isPlaying { node.play() }
