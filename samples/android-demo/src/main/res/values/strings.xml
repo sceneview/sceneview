@@ -395,9 +395,9 @@
     <string name="open_model_filter_label">Open in SceneView</string>
     <!-- Shown when a handed-over file cannot be read, or is not a model this app opens. -->
     <string name="open_model_failed">Couldn\'t open that file — SceneView reads .3mf, .glb, .gltf, .stl, .obj and .ply</string>
-    <string name="ar_placement_floor">Floor</string>
+    <string name="ar_placement_floor">Surface</string>
     <string name="ar_placement_wall">Wall</string>
     <string name="ar_placement_wall_model">TV</string>
-    <string name="ar_placement_wall_help">Mount a life-size TV. Scan the floor, find a wall, then align the bottom of the wall to position the screen.</string>
+    <string name="ar_placement_wall_help">Place a TV automatically on a wall. Preview size: 0.3 m longest dimension.</string>
     <string name="demo_ar_session_failed">AR could not start. Return to the catalog and reopen this demo to try again.</string>
 </resources>

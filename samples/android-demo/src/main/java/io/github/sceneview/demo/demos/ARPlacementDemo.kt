@@ -291,7 +291,10 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     }
 
     if (wallMode) {
-        WallPlacementDemo(onBack = onBackPressed)
+        WallPlacementDemo(
+            onBack = onBackPressed,
+            playbackDataset = io.github.sceneview.demo.rememberArPlaybackDataset(),
+        )
         return
     }
 

@@ -6,17 +6,19 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
 
-    <!-- Onboarding phases, mirroring WallPlacementPhase. -->
-    <string name="wall_phase_finding_floor">Point at the floor and move slowly to scan it</string>
-    <string name="wall_phase_finding_wall">Floor locked — now aim at the wall</string>
-    <string name="wall_phase_aligning_edge">Align the orange line with the floor↔wall edge, then tap the wall</string>
-    <string name="wall_phase_placed">Placed — fine-tune with the D-pad, or tap the wall again</string>
+    <string name="wall_title">Wall Placement</string>
+    <string name="wall_phase_scanning">Point at a wall and move slowly.</string>
+    <string name="wall_preview_size">TV · Preview size · 0.3 m longest dimension</string>
+    <string name="wall_reset">Reset placement</string>
+    <string name="wall_scale_down">Scale down</string>
+    <string name="wall_scale_up">Scale up</string>
+    <string name="wall_close_preview">Close preview</string>
 
-    <!-- D-pad fine-adjust content descriptions. -->
-    <string name="wall_dpad_left">Nudge left</string>
-    <string name="wall_dpad_right">Nudge right</string>
-    <string name="wall_dpad_up">Nudge up</string>
-    <string name="wall_dpad_down">Nudge down</string>
+    <!-- Sheet-only accessibility adjustments. -->
+    <string name="wall_dpad_left">Move left</string>
+    <string name="wall_dpad_right">Move right</string>
+    <string name="wall_dpad_up">Move up</string>
+    <string name="wall_dpad_down">Move down</string>
     <string name="wall_dpad_rotate_left">Rotate left</string>
     <string name="wall_dpad_rotate_right">Rotate right</string>
 </resources>

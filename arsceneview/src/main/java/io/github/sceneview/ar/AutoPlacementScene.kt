@@ -2,6 +2,8 @@ package io.github.sceneview.ar
 
 import android.os.SystemClock
 import android.view.MotionEvent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -9,10 +11,6 @@ import androidx.compose.ui.unit.IntSize
 import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
-import dev.romainguy.kotlin.math.Mat4
-import dev.romainguy.kotlin.math.cross
-import dev.romainguy.kotlin.math.dot
-import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
@@ -25,11 +23,11 @@ import io.github.sceneview.math.toQuaternion
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.utils.screenToRay
 import io.github.sceneview.rememberOnGestureListener
 import java.io.File
 
@@ -84,8 +82,11 @@ fun findAutoPlacementSurface(
     val hit = runCatching { frame.hitTest(width / 2f, height / 2f) }.getOrDefault(emptyList())
         .firstOrNull { hit ->
             val plane = hit.trackable as? Plane
-            plane != null && supported(plane) && plane.isPoseInPolygon(hit.hitPose) &&
-                hit.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+            plane != null && plane.subsumedBy == null && UsableSurfacePolicy.accept(
+                surface, plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING,
+                plane.type == Plane.Type.VERTICAL, plane.trackingState == TrackingState.TRACKING,
+                plane.isPoseInPolygon(hit.hitPose), hit.distance,
+            )
         }
     if (hit != null) {
         val hitPlane = hit.trackable as Plane
@@ -110,13 +111,12 @@ fun findAutoPlacementSurface(
 private fun orientedPlacementPose(pose: Pose, plane: Plane, camera: Pose): Pose {
     if (plane.type != Plane.Type.VERTICAL) return pose
     val axis = plane.centerPose.getTransformedAxis(1, 1f)
-    var normal = Float3(axis[0], axis[1], axis[2])
-    val towardCamera = Float3(camera.tx() - pose.tx(), camera.ty() - pose.ty(), camera.tz() - pose.tz())
-    if (dot(normal, towardCamera) < 0f) normal = -normal
-    val gravity = Float3(0f, -1f, 0f)
-    val forward = normalize(gravity - normal * dot(gravity, normal))
-    val right = normalize(cross(normal, forward))
-    val rotation = Mat4(right = right, up = normal, forward = forward).toQuaternion()
+    val wall = directWallPose(
+        Position(pose.tx(), pose.ty(), pose.tz()), Float3(axis[0], axis[1], axis[2]),
+        Float3(camera.tx() - pose.tx(), camera.ty() - pose.ty(), camera.tz() - pose.tz()),
+    )
+    // Keep the existing automatic anchor convention: +Y normal, -Z wall-up.
+    val rotation = wall.rotation * Rotation(x = 90f).toQuaternion()
     return Pose(pose.translation, floatArrayOf(rotation.x, rotation.y, rotation.z, rotation.w))
 }
 
@@ -231,13 +231,80 @@ fun ARSceneScope.AutoPlacementModel(
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
 ) {
+    AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged) {
+        val model = remember(modelInstance, scaleToUnits, assetRotation) {
+            io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
+                quaternion = if (placement.plane.type == Plane.Type.VERTICAL) {
+                    Rotation(x = -90f).toQuaternion() * assetRotation.toQuaternion()
+                } else assetRotation.toQuaternion()
+                // Transform all eight authored bounds corners after the axis correction.
+                val corners = buildList<Position> {
+                    for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
+                        val corner = center +
+                            Position(x * halfExtent.x, y * halfExtent.y, z * halfExtent.z)
+                        add(quaternion * (corner * scale))
+                    }
+                }
+                position = automaticPlacementOffset(corners, placement.plane.type == Plane.Type.VERTICAL)
+                isEditable = true
+                isPositionEditable = false
+                isRotationEditable = false
+                isScaleEditable = false
+            }
+        }
+        NodeLifecycle(model, null)
+    }
+}
+
+/**
+ * Surface-constrained procedural content using the same gestures and state as [AutoPlacementModel].
+ * Author +Y up and +Z front. Put the bottom at y=0 and, for a wall, the back at z=0.
+ * Size content before supplying it (demo preview: 0.3 m longest dimension). Each selectable
+ * child must be editable with position/rotation/scale editing disabled so gestures reach the pivot.
+ * [AutoPlacementState.moveBy], [AutoPlacementState.rotateBy] and [AutoPlacementState.scaleTo]
+ * expose the same validated transforms to accessibility controls. Apply the content callback's
+ * opacity to transparent materials: it fades from zero on placement and out on tracking loss
+ * over 300 ms, without scaling or moving the contact pivot.
+ */
+@Composable
+fun ARSceneScope.AutoPlacementNode(
+    placement: AutoPlacementResult,
+    state: AutoPlacementState,
+    onInvalidMove: (Boolean) -> Unit = {},
+    onScaleChanged: (Int, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    content: @Composable io.github.sceneview.NodeScope.(opacity: Float) -> Unit,
+) {
+    val opacity = remember(placement) { Animatable(0f) }
+    val visible = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
+    LaunchedEffect(visible) { opacity.animateTo(if (visible) 1f else 0f, tween(300)) }
+    AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
+        visibleDuringFade = opacity.value > 0f) {
+        Node(rotation = if (placement.plane.type == Plane.Type.VERTICAL) Rotation(x = -90f) else Rotation()) {
+            content(opacity.value)
+        }
+    }
+}
+
+@Composable
+private fun ARSceneScope.AutomaticPlacementPivot(
+    placement: AutoPlacementResult,
+    state: AutoPlacementState,
+    onInvalidMove: (Boolean) -> Unit,
+    onScaleChanged: (Int, Boolean, Boolean) -> Unit,
+    visibleDuringFade: Boolean? = null,
+    content: @Composable io.github.sceneview.NodeScope.() -> Unit,
+) {
     val invalidMove by rememberUpdatedState(onInvalidMove)
     val scaleChanged by rememberUpdatedState(onScaleChanged)
     val root = remember(engine, placement) {
         AutomaticAnchorNode(engine, placement, state) { invalidMove(it) }
     }
     val visible = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
-    SideEffect { root.isVisible = visible }
+    SideEffect {
+        root.visibleTrackingStates = if (visibleDuringFade != null) TrackingState.values().toSet()
+            else setOf(TrackingState.TRACKING)
+        root.isVisible = visibleDuringFade ?: visible
+    }
     NodeLifecycle(root) {
         val pivot = remember(engine, placement) { object : io.github.sceneview.node.Node(engine) {
             override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
@@ -260,37 +327,31 @@ fun ARSceneScope.AutoPlacementModel(
                 if (state.isAdjusting) {
                     val wasBase = abs(scale.x - 1f) < 0.001f
                     rawScale = (rawScale * (1f + (factor - 1f) * scaleGestureSensitivity)).coerceIn(0.25f, 4f)
-                    val next = rawScale
-                    val atBase = abs(next - 1f) < 0.025f
-                    scale = Scale(if (atBase) 1f else next)
+                    val atBase = abs(rawScale - 1f) < 0.025f
+                    scale = Scale(if (atBase) 1f else rawScale)
+                    state.scaleFactor = scale.x
                     scaleChanged((scale.x * 100).roundToInt(), atBase, atBase && !wasBase)
                 }
                 false
             }
         } }
-        NodeLifecycle(pivot) {
-            val model = remember(modelInstance, scaleToUnits, assetRotation) {
-                io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
-                    quaternion = if (placement.plane.type == Plane.Type.VERTICAL) {
-                        Rotation(x = -90f).toQuaternion() * assetRotation.toQuaternion()
-                    } else assetRotation.toQuaternion()
-                    // Transform all eight authored bounds corners after the axis correction.
-                    val corners = buildList<Position> {
-                        for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
-                            val corner = center +
-                                Position(x * halfExtent.x, y * halfExtent.y, z * halfExtent.z)
-                            add(quaternion * (corner * scale))
-                        }
-                    }
-                    position = automaticPlacementOffset(corners, placement.plane.type == Plane.Type.VERTICAL)
-                    isEditable = true
-                    isPositionEditable = false
-                    isRotationEditable = false
-                    isScaleEditable = false
-                }
+        DisposableEffect(pivot, state) {
+            state.moveAction = root::moveBy
+            state.rotateAction = { pivot.quaternion *= Rotation(y = it).toQuaternion() }
+            state.scaleAction = {
+                val previous = pivot.scale.x
+                pivot.scale = Scale(it)
+                state.scaleFactor = it
+                scaleChanged((it * 100).roundToInt(), it == 1f,
+                    (previous < 1f && it >= 1f) || (previous > 1f && it <= 1f))
             }
-            NodeLifecycle(model, null)
+            onDispose {
+                state.moveAction = null
+                state.rotateAction = null
+                state.scaleAction = null
+            }
         }
+        NodeLifecycle(pivot, content)
     }
 }
 
@@ -300,6 +361,17 @@ internal fun automaticPlacementOffset(corners: List<Position>, wall: Boolean): P
     -corners.minOf { it.y },
     if (wall) -corners.maxOf { it.z } else -(corners.minOf { it.z } + corners.maxOf { it.z }) / 2f,
 )
+
+private fun visiblePlacementPoint(frame: Frame, pose: Pose): Boolean {
+    if (frame.camera.trackingState != TrackingState.TRACKING) return false
+    val camera = frame.camera.pose
+    val distance = ViewportProjection.distance(pose.tx(), pose.ty(), pose.tz(), camera.tx(), camera.ty(), camera.tz())
+    if (distance !in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M) return false
+    val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
+    val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
+    return ViewportProjection.project(ViewportProjection.multiply(projection, view),
+        pose.tx(), pose.ty(), pose.tz())?.isInsideViewport == true
+}
 
 /** Keeps the logical anchor alive while dragging; only a valid finished move replaces it. */
 private class AutomaticAnchorNode(
@@ -313,15 +385,34 @@ private class AutomaticAnchorNode(
     private var interruptedMove = false
     init { isEditable = true }
 
+    /** Accessibility moves obey the same polygon/range/anchor checks as a drag. */
+    fun moveBy(x: Float, y: Float): Boolean {
+        val frame = frame ?: return false
+        if (frame.camera.trackingState != TrackingState.TRACKING ||
+            anchor.trackingState != TrackingState.TRACKING) return false
+        val tangent = pose.rotateVector(floatArrayOf(x, 0f,
+            if (placement.plane.type == Plane.Type.VERTICAL) -y else y))
+        val target = Pose(floatArrayOf(pose.tx() + tangent[0], pose.ty() + tangent[1], pose.tz() + tangent[2]), pose.rotationQuaternion)
+        if (!placement.plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) {
+            invalidMove(true)
+            return false
+        }
+        pending = AutoPlacementCandidate(placement.plane, target)
+        val committed = commitMove()
+        if (!committed) pending = null
+        invalidMove(!committed)
+        return committed
+    }
+
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         val frame = frame ?: return false
-        val hit = frame.hitTest(e).firstOrNull {
-            val plane = it.trackable as? Plane
-            plane != null && plane.type == placement.plane.type && plane.trackingState == TrackingState.TRACKING &&
-                plane.isPoseInPolygon(it.hitPose)
-        } ?: return false
+        if (frame.camera.trackingState != TrackingState.TRACKING || anchor.trackingState != TrackingState.TRACKING) return false
+        val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return false
+        val axis = pose.getTransformedAxis(1, 1f)
+        val grab = wallGrabOffset(Position(pose.tx(), pose.ty(), pose.tz()),
+            Float3(axis[0], axis[1], axis[2]), ray.origin, ray.direction) ?: return false
         if (!state.beginAdjustment()) return false
-        offset = floatArrayOf(pose.tx() - hit.hitPose.tx(), pose.ty() - hit.hitPose.ty(), pose.tz() - hit.hitPose.tz())
+        offset = floatArrayOf(grab.x, grab.y, grab.z)
         pending = null
         interruptedMove = false
         updateAnchorPose = false
@@ -346,12 +437,12 @@ private class AutomaticAnchorNode(
         val plane = hit.trackable as Plane
         // Project grab offset into the new plane to prevent movement out of its surface.
         val normal = plane.centerPose.getTransformedAxis(1, 1f)
-        val dot = delta.indices.sumOf { (delta[it] * normal[it]).toDouble() }.toFloat()
+        val tangent = wallTangentOffset(Position(delta[0], delta[1], delta[2]), Float3(normal[0], normal[1], normal[2]))
         val target = orientedPlacementPose(
-            Pose(FloatArray(3) { hit.hitPose.translation[it] + delta[it] - normal[it] * dot }, pose.rotationQuaternion),
+            Pose(floatArrayOf(hit.hitPose.tx() + tangent.x, hit.hitPose.ty() + tangent.y, hit.hitPose.tz() + tangent.z), pose.rotationQuaternion),
             plane, frame.camera.pose,
         )
-        if (!plane.isPoseInPolygon(target)) { invalidMove(true); return false }
+        if (!plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) { invalidMove(true); return false }
         pending = AutoPlacementCandidate(plane, target)
         pose = target
         invalidMove(false)
@@ -370,7 +461,10 @@ private class AutomaticAnchorNode(
     }
 
     private fun commitMove(): Boolean {
-        val next = pending?.createAnchor() ?: return false
+        val candidate = pending ?: return false
+        val frame = frame ?: return false
+        if (anchor.trackingState != TrackingState.TRACKING || !visiblePlacementPoint(frame, candidate.pose)) return false
+        val next = candidate.createAnchor() ?: return false
         anchor = next.anchor
         placement.anchor = next.anchor
         placement.plane = next.plane
@@ -380,18 +474,27 @@ private class AutomaticAnchorNode(
     }
 
     override fun update(session: Session, frame: Frame) {
-        if (frame.camera.trackingState != TrackingState.TRACKING && !updateAnchorPose) {
-            // Freeze the last valid drag transform. The logical anchor stays alive; a
-            // recovered session may commit that transform to its plane before resuming.
-            interruptedMove = pending != null
-            offset = null
-            state.endAdjustment()
-            if (!interruptedMove) updateAnchorPose = true
-        } else if (interruptedMove && frame.camera.trackingState == TrackingState.TRACKING) {
-            if (commitMove()) {
-                interruptedMove = false
-                updateAnchorPose = true
+        val tracking = frame.camera.trackingState == TrackingState.TRACKING &&
+            anchor.trackingState == TrackingState.TRACKING
+        if (!tracking) {
+            if (!updateAnchorPose) {
+                // Freeze the last valid drag pose without replacing the logical anchor.
+                interruptedMove = pending != null
+                offset = null
+                state.endAdjustment()
+                if (!interruptedMove) updateAnchorPose = true
             }
+            // A still-tracking anchor must not move the content while the camera is limited.
+            // Keep the frozen pose available for the opacity fade, including anchor loss.
+            val followAnchor = updateAnchorPose
+            updateAnchorPose = false
+            super.update(session, frame)
+            updateAnchorPose = followAnchor
+            return
+        }
+        if (interruptedMove && commitMove()) {
+            interruptedMove = false
+            updateAnchorPose = true
         }
         super.update(session, frame)
     }

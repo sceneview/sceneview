@@ -1,0 +1,3 @@
+<!-- category: Changed -->
+- Android and iOS wall demos now place one TV automatically on the first usable vertical plane, without a floor prerequisite, seam guide, placement tap or default D-pad. Both use the shared placement lifecycle, contact-preserving gestures, a 0.3 m preview and sheet-only accessible adjustments. Android forwards ARCore replay datasets.
+- Adds `directWallPose`, alignment-aware `UsableSurfacePolicy.accept`, procedural `AutoPlacementNode`, and accessible `AutoPlacementState` transforms. Existing manual wall helpers and enum semantics are unchanged. Wall shadow limitations are documented; the demos no longer use a procedural shadow blob.

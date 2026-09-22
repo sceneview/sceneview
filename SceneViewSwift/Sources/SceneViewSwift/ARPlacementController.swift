@@ -10,7 +10,7 @@ public enum ARPlacementPhase: String, Sendable {
     case trackingLost, recovering, recoveryFailed, cameraError
 }
 
-public enum ARPlacementAlignment: Sendable { case horizontal, vertical }
+public enum ARPlacementAlignment: Equatable, Sendable { case horizontal, vertical }
 
 /// Keep this ticket with an asynchronous load; obsolete results cannot mutate the scene.
 public struct ARPlacementAssetTicket: Equatable, Sendable {
@@ -190,7 +190,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             : SIMD3<Float>(fitted.center.x, fitted.min.y, fitted.min.z)
         entity.position -= contact
         entity.generateCollisionShapes(recursive: true)
-        ARSceneView.Coordinator.applyGroundingShadow(to: entity)
+        // RealityKit grounding shadows project downward; they are not wall contact shading.
+        if alignment == .horizontal { ARSceneView.Coordinator.applyGroundingShadow(to: entity) }
         return wrapper
     }
 
@@ -316,7 +317,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             } else { discardPendingMove() }
         }
         if search, anchor != nil {
-            let usable = surface.flatMap { plane in
+            let usable = planes.first(where: { $0.identifier == surface?.identifier }).flatMap { plane in
                 pendingPlacementResult.map {
                     valid(plane: plane, point: $0.worldTransform.columns.3.xyz, frame: frame, view: view)
                 }
@@ -436,13 +437,27 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     private func contactTransform(plane: ARPlaneAnchor, point: SIMD3<Float>, camera: simd_float4x4) -> simd_float4x4 {
         var transform = plane.transform
         if alignment == .vertical {
-            var normal = simd_normalize(plane.transform.columns.1.xyz)
-            if simd_dot(normal, camera.columns.3.xyz - point) < 0 { normal = -normal }
-            let right = simd_normalize(simd_cross(SIMD3<Float>(0, 1, 0), normal))
-            let up = simd_normalize(simd_cross(normal, right))
-            transform = simd_float4x4(SIMD4<Float>(right, 0), SIMD4<Float>(up, 0), SIMD4<Float>(normal, 0), SIMD4<Float>(point, 1))
+            transform = Self.wallContactTransform(point: point, normal: plane.transform.columns.1.xyz,
+                                                  towardCamera: camera.columns.3.xyz - point)
         } else { transform.columns.3 = SIMD4<Float>(point, 1) }
         return transform
+    }
+
+    /// Authored +Z faces the camera side, +Y is gravity-up projected into the wall.
+    /// No floor, semantic classification or floor-relative height participates.
+    static func wallContactTransform(point: SIMD3<Float>, normal: SIMD3<Float>,
+                                     towardCamera: SIMD3<Float>) -> simd_float4x4 {
+        var facing = simd_normalize(normal)
+        if simd_dot(facing, towardCamera) < 0 { facing = -facing }
+        let right = simd_normalize(simd_cross(SIMD3<Float>(0, 1, 0), facing))
+        let up = simd_cross(facing, right)
+        return simd_float4x4(SIMD4<Float>(right, 0), SIMD4<Float>(up, 0),
+                             SIMD4<Float>(facing, 0), SIMD4<Float>(point, 1))
+    }
+
+    static func tangentOffset(_ offset: SIMD3<Float>, normal: SIMD3<Float>) -> SIMD3<Float> {
+        let n = simd_normalize(normal)
+        return offset - n * simd_dot(offset, n)
     }
 
     // MARK: Surface-constrained manipulation
@@ -515,7 +530,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             guard let hit = raycast(point, in: view, frame: frame) else { invalidMovement = true; return }
             var proposed = hit.transform
             let n = alignment == .horizontal ? proposed.columns.1.xyz : proposed.columns.2.xyz
-            proposed.columns.3 = SIMD4<Float>(proposed.columns.3.xyz + grabOffset - n * simd_dot(grabOffset, n), 1)
+            proposed.columns.3 = SIMD4<Float>(proposed.columns.3.xyz + Self.tangentOffset(grabOffset, normal: n), 1)
             guard valid(plane: hit.plane, point: proposed.columns.3.xyz, frame: frame, view: view) else { invalidMovement = true; return }
             commitMove(to: proposed, plane: hit.plane)
             invalidMovement = false

@@ -21,6 +21,130 @@ import kotlin.math.sqrt
  */
 class WallPlacementMathTest {
 
+    @Test
+    fun `direct wall placement preserves hit height and faces either camera side`() {
+        val point = Position(0.4f, 1.7f, -2f)
+        for (raw in listOf(Direction(0f, 0f, 1f), Direction(0f, 0f, -1f),
+            normalize(Direction(1f, 0.08f, 1f)))) {
+            for (side in listOf(-1f, 1f)) {
+                val viewer = raw * side
+                val pose = directWallPose(point, raw, viewer)
+                assertEquals(point, pose.position) // No floor height or mount-height input.
+                assertVecEquals(viewer, pose.rotation * Direction(0f, 0f, 1f))
+                val up = pose.rotation * Direction(0f, 1f, 0f)
+                assertTrue(up.y > 0.99f)
+                assertEquals(0f, dev.romainguy.kotlin.math.dot(up, viewer), eps)
+            }
+        }
+    }
+
+    @Test
+    fun `grab offset uses contact plane even when finger is beyond detected boundary`() {
+        val contact = Position(0f, 1f, -2f)
+        val offset = wallGrabOffset(contact, Direction(0f, 0f, 1f), Position(0f, 1f, 0f),
+            normalize(Direction(0.5f, 0.25f, -2f)))!!
+        assertVecEquals(Position(-0.5f, -0.25f, 0f), offset)
+        assertNull(wallGrabOffset(contact, Direction(0f, 0f, 1f), Position(0f), Direction(1f, 0f, 0f)))
+        assertNull(wallGrabOffset(contact, Direction(0f, 0f, 1f), Position(0f), Direction(0f, 0f, 1f)))
+    }
+
+    @Test
+    fun `wall contact survives combined twist scale and transfer to another wall`() {
+        val point = Position(1f, 1.6f, -2f)
+        for (normal in listOf(Direction(0f, 0f, 1f), Direction(-1f, 0f, 0f),
+            normalize(Direction(1f, 0.1f, -1f)))) {
+            val wall = directWallPose(point, normal, normal)
+            val delta = wallTangentOffset(Position(0.2f, -0.1f, 0.3f), normal)
+            assertEquals(0f, dev.romainguy.kotlin.math.dot(delta, normal), eps)
+            for (angle in listOf(-135f, 0f, 35f, 180f)) for (scale in listOf(0.25f, 1f, 4f)) {
+                val twist = dev.romainguy.kotlin.math.Quaternion.fromAxisAngle(Direction(0f, 0f, 1f), angle)
+                val orientation = wall.rotation * twist
+                // Bottom-back origin stays fixed; every back corner remains exactly on the wall.
+                for (x in listOf(-0.15f, 0.15f)) for (y in listOf(0f, 0.176f)) {
+                    val back = point + delta + orientation * (Position(x, y, 0f) * scale)
+                    assertEquals(0f, dev.romainguy.kotlin.math.dot(back - point, normal), eps)
+                    val front = point + delta + orientation * (Position(x, y, 0.012f) * scale)
+                    assertTrue(dev.romainguy.kotlin.math.dot(front - point, normal) > 0f)
+                }
+                assertVecEquals(point + delta, point + delta + orientation * Position(0f))
+            }
+        }
+    }
+
+    @Test
+    fun `wall-only candidate consumes one request and recovers without scanning again`() {
+        val state = AutoPlacementState()
+        state.requestPlacement()
+        val usableWall = UsableSurfacePolicy.accept(PlacementSurface.WALL,
+            isUpwardHorizontalPlane = false, isVerticalPlane = true,
+            isTrackableTracking = true, isPoseInPolygon = true, distanceMeters = 1f)
+        assertTrue(usableWall)
+        assertEquals(FrameEffect.NONE, state.onFrame(FrameInput(0, true, usableWall)) { false })
+        assertFalse(state.hasPlacement) // Failed anchor creation is never a successful placement.
+        assertEquals(FrameEffect.PLACE, state.onFrame(FrameInput(1, true, usableWall)))
+        repeat(30) { state.onFrame(FrameInput(2L + it, true, true, true)) }
+        assertEquals(1, state.placementsCreated)
+        assertEquals(FrameEffect.NONE, state.onBackgroundTap())
+        state.beginAdjustment()
+        state.onFrame(FrameInput(40, false, false, false))
+        assertEquals(PlacementPhase.TRACKING_LOST, state.phase)
+        assertFalse(state.isAdjusting)
+        state.onFrame(FrameInput(41, true, true, false))
+        assertEquals(PlacementPhase.RECOVERING, state.phase)
+        assertFalse(state.wantsSurface)
+        state.onFrame(FrameInput(10_041, true, true, false))
+        assertEquals(PlacementPhase.RECOVERY_FAILED, state.phase)
+        state.onFrame(FrameInput(10_042, true, true, true))
+        assertEquals(PlacementPhase.PLACED, state.phase)
+        assertEquals(1, state.placementsCreated)
+    }
+
+    @Test
+    fun `vertical policy rejects floors invalid geometry paused planes and out of range`() {
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, true, false, true, true, 1f))
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.SURFACE, false, true, true, true, 1f))
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, false, true, 1f))
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, true, false, 1f))
+        for (distance in listOf(0.249f, 3.001f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, true, true, distance))
+        }
+        for (distance in listOf(0.25f, 3f)) {
+            assertTrue(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, true, true, distance))
+        }
+    }
+
+    @Test
+    fun `accessibility transforms require selection and tracking and clamp size`() {
+        val state = AutoPlacementState()
+        var moves = 0
+        var rotation = 0f
+        var scale = 1f
+        state.moveAction = { _, _ -> moves++; true }
+        state.rotateAction = { rotation += it }
+        state.scaleAction = { scale = it }
+        assertFalse(state.moveBy(1f, 0f))
+        state.requestPlacement()
+        state.onFrame(FrameInput(1, true, true))
+        assertTrue(state.moveBy(0.02f, 0f))
+        state.rotateBy(2f)
+        state.scaleTo(8f)
+        assertEquals(4f, scale, eps)
+        state.scaleTo(0f)
+        assertEquals(0.25f, scale, eps)
+        state.scaleTo(Float.NaN)
+        assertEquals(0.25f, scale, eps)
+        state.deselectPlacement()
+        assertFalse(state.moveBy(1f, 0f))
+        state.selectPlacement()
+        state.onFrame(FrameInput(2, false, false, false))
+        assertFalse(state.moveBy(1f, 0f))
+        state.rotateBy(20f)
+        state.scaleTo(2f)
+        assertEquals(1, moves)
+        assertEquals(2f, rotation, eps)
+        assertEquals(0.25f, scale, eps)
+    }
+
     private val eps = 1e-5f
 
     // ── wallYaw / wallFacingRotation ──────────────────────────────────────────────────────────
