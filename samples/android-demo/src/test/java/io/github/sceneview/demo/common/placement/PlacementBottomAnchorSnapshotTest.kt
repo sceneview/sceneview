@@ -351,15 +351,26 @@ class PlacementBottomAnchorSnapshotTest {
         )
 
         /**
-         * Same tolerance, same reason, as `ContactShadowControlsSnapshotTest`: goldens
-         * recorded on macOS are verified on the CI's Linux runners, and the two round some
-         * composited colours differently — a largest single-channel delta of 2/255,
-         * measured on run 35455042711. `maxDistance` rather than a change-percentage so
-         * every pixel stays compared and only sub-perceptual rounding is forgiven.
+         * Same recipe, same reason, as `ContactShadowControlsSnapshotTest`: goldens recorded
+         * on macOS are verified on the CI's Linux runners, and the two round some composited
+         * colours differently. `maxDistance` rather than a change-percentage, so every pixel
+         * stays compared and only sub-perceptual rounding is forgiven.
+         *
+         * The bound is *measured*, not inherited. Run 35723212447 rejected exactly one of
+         * these fourteen goldens, `no-surface-light-white`, and comparing the runner's
+         * `_actual.png` against the macOS golden gives a largest single-channel delta of
+         * **3/255** — on 7 anti-aliased pixels along the card's and the dock's edges, all
+         * three channels drift by 3 at once, a euclidean distance of **0.02038** normalised.
+         * The previous 0.02 (the figure `ContactShadowControlsSnapshotTest` measured for its
+         * own frames) sat 0.0004 under it. 0.03 clears the measurement with the same margin
+         * that file left itself and is still some thirty times under a moved glyph, whose
+         * distances sit near 1.0. Calibrated by dropping the runner's `_actual.png` in as
+         * the golden and running `verifyRoborazziDebug` on macOS, which reproduces the
+         * cross-OS delta locally.
          */
         private val CROSS_PLATFORM_TOLERANT = RoborazziOptions(
             compareOptions = RoborazziOptions.CompareOptions(
-                imageComparator = SimpleImageComparator(maxDistance = 0.02f),
+                imageComparator = SimpleImageComparator(maxDistance = 0.03f),
             ),
         )
     }
