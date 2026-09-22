@@ -363,6 +363,28 @@ final class ARSceneViewTests: XCTestCase {
         )
     }
 
+    func testUnmetRequirementRefusesACombinationARKitRefusesAsAWhole() {
+        // Each option is supported on its own; the pair is not.
+        let pair: ARConfiguration.FrameSemantics = [.personSegmentationWithDepth, .sceneDepth]
+        let device = ARSessionConfiguration.Capabilities(
+            worldTracking: true, faceTracking: true,
+            sceneReconstruction: true, sceneReconstructionWithClassification: true,
+            supportedFrameSemantics: pair,
+            supportsFrameSemanticsCombination: { requested in requested != pair }
+        )
+        XCTAssertNil(ARSessionConfiguration(frameSemantics: [.sceneDepth]).unmetRequirement(capabilities: device))
+        XCTAssertNil(ARSessionConfiguration(frameSemantics: [.personSegmentationWithDepth]).unmetRequirement(capabilities: device))
+        XCTAssertEqual(
+            ARSessionConfiguration(frameSemantics: pair).unmetRequirement(capabilities: device),
+            .frameSemantics(pair),
+            "the whole refused set is the requirement, not an empty difference"
+        )
+        XCTAssertNil(
+            ARSessionConfiguration().unmetRequirement(capabilities: device),
+            "an empty set never consults the combination check"
+        )
+    }
+
     func testMakeARConfigurationCarriesEveryField() throws {
         let image = try makeReferenceImage()
         let config = ARSessionConfiguration(
@@ -577,6 +599,81 @@ final class ARSceneViewTests: XCTestCase {
         XCTAssertEqual(errors, [.unsupported(.lidar)])
         XCTAssertEqual(started, 0)
         XCTAssertEqual(coordinator.appliedConfiguration, configuration, "the live configuration is untouched")
+    }
+
+    func testRefusedChangeIsAFailedEventForTheClosureAndTheObserver() {
+        final class Spy: ARSceneSessionObserver {
+            var events: [ARSessionEvent] = []
+            func arSession(didEmit event: ARSessionEvent, in arView: ARView) { events.append(event) }
+        }
+        let arView = ARView(frame: .zero)
+        let configuration = ARSessionConfiguration(planeDetection: .both)
+        let coordinator = ARSceneView.Coordinator(configuration: configuration)
+        coordinator.arView = arView
+        coordinator.appliedConfiguration = configuration
+        coordinator.sessionDidStart = true
+        coordinator.transition(to: .running, in: arView)
+        let spy = Spy()
+        coordinator.sessionObserver = spy
+        var closureFailures: [ARSceneViewError] = []
+        var states: [ARSessionState] = []
+        coordinator.onSessionEvent = { event, _ in
+            if case .failed(let error) = event, let e = error as? ARSceneViewError { closureFailures.append(e) }
+        }
+        coordinator.onSessionStateChange = { state, _ in states.append(state) }
+
+        let refused = ARSessionConfiguration(planeDetection: .both, sceneReconstruction: .mesh)
+        coordinator.applyIfChanged(refused, on: arView, capabilities: capabilities(lidar: false))
+        coordinator.applyIfChanged(refused, on: arView, capabilities: capabilities(lidar: false))
+
+        XCTAssertEqual(closureFailures, [.unsupported(.lidar)], "reported once, not on every render")
+        XCTAssertEqual(spy.events.count, 1)
+        if case .failed(let error) = spy.events.first, let e = error as? ARSceneViewError {
+            XCTAssertEqual(e, .unsupported(.lidar))
+        } else {
+            XCTFail("the environment observer receives the same `.failed`")
+        }
+        XCTAssertTrue(states.isEmpty, "the live session keeps its state")
+        XCTAssertEqual(coordinator.sessionState, .running)
+    }
+
+    func testASupportedConfigurationRecoversAViewWhoseFirstOneWasRefused() {
+        let arView = ARView(frame: .zero)
+        let refused = ARSessionConfiguration(sceneReconstruction: .mesh)
+        let coordinator = ARSceneView.Coordinator(configuration: refused)
+        coordinator.arView = arView
+        var events: [String] = []
+        coordinator.onSessionEvent = { event, _ in
+            switch event {
+            case .failed: events.append("failed")
+            case .started: events.append("started")
+            default: events.append("other")
+            }
+        }
+
+        // The first render: refused, nothing ran.
+        XCTAssertEqual(
+            ARSceneView.startSession(on: arView, configuration: refused, capabilities: capabilities(lidar: false), coordinator: coordinator),
+            .unsupported(.lidar)
+        )
+        coordinator.refusedConfiguration = refused
+        coordinator.reportFailure(ARSceneViewError.unsupported(.lidar), in: arView)
+        XCTAssertFalse(coordinator.sessionDidStart)
+
+        // An unrelated re-render asking for the same thing reports nothing new.
+        coordinator.applyIfChanged(refused, on: arView, capabilities: capabilities(lidar: false))
+        XCTAssertEqual(events, ["failed"])
+
+        // A later render asks for something this device can run.
+        let supported = ARSessionConfiguration(sceneReconstruction: .none)
+        coordinator.applyIfChanged(supported, on: arView, capabilities: capabilities(lidar: false))
+
+        XCTAssertTrue(coordinator.sessionDidStart, "the session runs without rekeying the view")
+        XCTAssertEqual(coordinator.appliedConfiguration, supported)
+        XCTAssertNil(coordinator.refusedConfiguration)
+        XCTAssertEqual(coordinator.sessionState, .starting)
+        XCTAssertEqual(events, ["failed", "started"])
+        XCTAssertNotNil(arView.session.delegate, "delegate installed by the recovery run")
     }
 
     // MARK: - Exposure post-process ownership

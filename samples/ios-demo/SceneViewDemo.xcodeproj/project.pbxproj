@@ -182,6 +182,7 @@
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
+		F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F000000000000000000000A0 /* ARExperienceModelTests.swift */; };
 		A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002962 /* AssetSourceProbeTests.swift */; };
 		A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002968 /* BundledAssetCreditsTests.swift */; };
 		F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */; };
@@ -244,6 +245,7 @@
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
+		F000000000000000000000A0 /* ARExperienceModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARExperienceModelTests.swift; path = SceneViewDemoTests/ARExperienceModelTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002962 /* AssetSourceProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourceProbeTests.swift; path = SceneViewDemoTests/AssetSourceProbeTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002968 /* BundledAssetCreditsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetCreditsTests.swift; path = SceneViewDemoTests/BundledAssetCreditsTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetPrimBudgetTests.swift; path = SceneViewDemoTests/BundledAssetPrimBudgetTests.swift; sourceTree = SOURCE_ROOT; };
@@ -483,6 +485,7 @@
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
+				F000000000000000000000A0 /* ARExperienceModelTests.swift */,
 				A20000000000000000002962 /* AssetSourceProbeTests.swift */,
 				A20000000000000000002968 /* BundledAssetCreditsTests.swift */,
 				F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */,
@@ -1060,6 +1063,7 @@
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
+				F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */,
 				A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */,
 				A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */,
 				F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */,

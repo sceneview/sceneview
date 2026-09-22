@@ -86,15 +86,36 @@ public struct ARSessionConfiguration: Equatable {
         public var faceTracking: Bool
         public var sceneReconstruction: Bool
         public var sceneReconstructionWithClassification: Bool
+        /// Every frame semantic the device supports on its own — what names
+        /// the missing ones in ``Requirement/frameSemantics(_:)``.
         public var supportedFrameSemantics: ARConfiguration.FrameSemantics
+        /// Whether the device supports a *combination* of frame semantics
+        /// together. ARKit's `supportsFrameSemantics(_:)` takes the whole
+        /// option set because support for each option does not imply support
+        /// for their union (people occlusion with depth plus scene depth, for
+        /// instance). `nil` means "any subset of ``supportedFrameSemantics``",
+        /// which is what a test double wants; ``current`` asks ARKit.
+        public var supportsFrameSemanticsCombination:
+            (@Sendable (ARConfiguration.FrameSemantics) -> Bool)?
+
+        public static func == (lhs: Capabilities, rhs: Capabilities) -> Bool {
+            lhs.worldTracking == rhs.worldTracking
+                && lhs.faceTracking == rhs.faceTracking
+                && lhs.sceneReconstruction == rhs.sceneReconstruction
+                && lhs.sceneReconstructionWithClassification == rhs.sceneReconstructionWithClassification
+                && lhs.supportedFrameSemantics == rhs.supportedFrameSemantics
+        }
 
         public init(
             worldTracking: Bool,
             faceTracking: Bool,
             sceneReconstruction: Bool,
             sceneReconstructionWithClassification: Bool,
-            supportedFrameSemantics: ARConfiguration.FrameSemantics
+            supportedFrameSemantics: ARConfiguration.FrameSemantics,
+            supportsFrameSemanticsCombination:
+                (@Sendable (ARConfiguration.FrameSemantics) -> Bool)? = nil
         ) {
+            self.supportsFrameSemanticsCombination = supportsFrameSemanticsCombination
             self.worldTracking = worldTracking
             self.faceTracking = faceTracking
             self.sceneReconstruction = sceneReconstruction
@@ -120,7 +141,13 @@ public struct ARSessionConfiguration: Equatable {
                 sceneReconstruction: ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh),
                 sceneReconstructionWithClassification:
                     ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification),
-                supportedFrameSemantics: semantics
+                supportedFrameSemantics: semantics,
+                // The requested set is validated as a whole, not option by
+                // option: ARKit does not guarantee that two individually
+                // supported semantics run together.
+                supportsFrameSemanticsCombination: {
+                    ARWorldTrackingConfiguration.supportsFrameSemantics($0)
+                }
             )
         }
     }
@@ -181,6 +208,14 @@ public struct ARSessionConfiguration: Equatable {
             }
             let missing = frameSemantics.subtracting(capabilities.supportedFrameSemantics)
             if !missing.isEmpty { return .frameSemantics(missing) }
+            // Each option is supported on its own; the combination must be
+            // too. When ARKit refuses the set as a whole, the whole set is
+            // the requirement the device cannot meet.
+            if !frameSemantics.isEmpty,
+               let supportsCombination = capabilities.supportsFrameSemanticsCombination,
+               !supportsCombination(frameSemantics) {
+                return .frameSemantics(frameSemantics)
+            }
             return nil
         }
     }

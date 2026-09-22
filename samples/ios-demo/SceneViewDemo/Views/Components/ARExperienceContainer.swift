@@ -210,14 +210,17 @@ final class ARExperienceModel: ObservableObject {
 extension ARExperienceModel: ARSceneSessionObserver {
     func arSession(didEmit event: ARSessionEvent, in arView: ARView) {
         switch event {
-        case .firstFrame, .interruptionEnded:
+        case .firstFrame:
             // The camera is on screen. Model loading is the screen's own
             // business and is reported by the screen ("Loading model…"), never
             // folded into this signal.
             if phase == .starting { phase = .live }
         case .failed(let error):
             phase = .error(Self.errorCopy(for: error))
-        case .started, .trackingStateChanged, .interrupted:
+        case .started, .trackingStateChanged, .interrupted, .interruptionEnded:
+            // `.interruptionEnded` only says ARKit resumed the session; the
+            // next `.firstFrame` says the camera is back on screen. A screen
+            // still starting stays on "Starting camera…" until then.
             break
         }
     }

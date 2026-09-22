@@ -454,14 +454,28 @@ public struct ARSceneView: UIViewRepresentable {
             coordinator: coordinator
         ) {
             print("[SceneViewSwift] AR session error: \(startError.localizedDescription)")
+            coordinator.refusedConfiguration = configuration
             coordinator.reportFailure(startError, in: arView)
             // NOTHING ran: no coaching overlay, no lights — and above all no
             // `onSessionStarted`, which promises a live session and would have
             // had the host add content to a scene that never renders. The
-            // host's error state is the whole content of this view.
+            // host's error state is the whole content of this view — until a
+            // later render asks for a configuration this device can run
+            // (`updateUIView` → `applyIfChanged`).
             return arView
         }
 
+        provisionScene(on: arView, context: context)
+        return arView
+    }
+
+    /// Everything a live session gets once it runs: plane overlay, reticle,
+    /// grounding shadows, coaching overlay, tap recognizer, the two light
+    /// slots, then the host's `onSessionStarted`. Called from `makeUIView`
+    /// when the first configuration runs, and from `updateUIView` when a
+    /// later configuration recovers a view whose first one was refused —
+    /// so the host never has to rekey the view to get its scene back.
+    private func provisionScene(on arView: ARView, context: Context) {
         // Plane visualization.
         //
         // `arView.debugOptions.insert(.showAnchorGeometry)` is a *developer
@@ -506,8 +520,6 @@ public struct ARSceneView: UIViewRepresentable {
 
         // Initial content callback
         onSessionStarted?(arView)
-
-        return arView
     }
 
     /// Legacy entry point kept for the tests and hosts that call it directly:
@@ -591,17 +603,26 @@ public struct ARSceneView: UIViewRepresentable {
         // render gets the recognizer then, and one that drops it gets the
         // recognizer removed so its own gestures are unobstructed.
         coordinator.syncTapRecognizer(on: arView, enabled: onTapOnPlane != nil)
-        // Nothing below applies to a view whose session never started (an
-        // unsupported configuration): no coaching overlay on a dead session, no
-        // post-process on a view that renders nothing.
-        guard coordinator.sessionDidStart else { return }
         // A changed configuration is applied to the live session — planes,
         // image database, mesh, semantics — without a tracking reset, so what
         // the host placed stays where it is. Compared against what THIS view
         // last asked for, never against `session.configuration`: a host that
         // mutates the running configuration itself (people occlusion, mesh
         // classification) is not overridden on the next unrelated render.
+        //
+        // Evaluated even when no session ever ran: a host whose first ask was
+        // refused (LiDAR mesh on a device without one) and now asks for
+        // something this device can run gets its session here, and the scene
+        // it would have got from `makeUIView`.
+        let hadSession = coordinator.sessionDidStart
         coordinator.applyIfChanged(configuration, on: arView)
+        if !hadSession, coordinator.sessionDidStart {
+            provisionScene(on: arView, context: context)
+        }
+        // Nothing below applies to a view whose session never started (an
+        // unsupported configuration): no coaching overlay on a dead session, no
+        // post-process on a view that renders nothing.
+        guard coordinator.sessionDidStart else { return }
         // Reactive like the light slots: toggling any of these flags on a later
         // render takes effect immediately. Before, `showPlaneOverlay` and
         // `showCoachingOverlay` were read once at creation, so hosts rekeyed the
@@ -863,6 +884,9 @@ public struct ARSceneView: UIViewRepresentable {
         /// semantics included — #928), and so `updateUIView` can diff the
         /// host's next value against it. `nil` until the first run.
         var appliedConfiguration: ARSessionConfiguration?
+        /// The last configuration this device refused, so a render that asks
+        /// for the same one again is not reported again. Cleared by a run.
+        var refusedConfiguration: ARSessionConfiguration?
 
         /// The configuration the coordinator was created with — what the
         /// first run uses, and the fallback when nothing has been applied.
@@ -1062,6 +1086,7 @@ public struct ARSceneView: UIViewRepresentable {
                 options: resetTracking ? [.resetTracking, .removeExistingAnchors] : []
             )
             appliedConfiguration = configuration
+            refusedConfiguration = nil
             self.configuration = configuration
             sessionDidStart = true
             awaitingFirstFrame = true
@@ -1071,21 +1096,27 @@ public struct ARSceneView: UIViewRepresentable {
         }
 
         /// Applies `configuration` to the live session when it differs from
-        /// the one last applied. A requirement the device cannot meet is
-        /// reported as a failure and the previous configuration stays live —
-        /// the session is never torn down over a toggle.
+        /// the one last applied — or runs it, when no configuration ever ran.
+        /// A requirement the device cannot meet is reported once, as a
+        /// ``ARSessionEvent/failed(_:)`` event to the closure and the
+        /// environment observer and through the legacy `onSessionError`, and
+        /// the previous configuration stays live — the session is never torn
+        /// down over a toggle, and its state stays what it was.
         @MainActor
         func applyIfChanged(
             _ configuration: ARSessionConfiguration,
             on arView: ARView,
             capabilities: ARSessionConfiguration.Capabilities = .current
         ) {
-            guard configuration != appliedConfiguration else { return }
+            guard configuration != appliedConfiguration,
+                  configuration != refusedConfiguration else { return }
             if let missing = configuration.unmetRequirement(capabilities: capabilities) {
                 let error: ARSceneViewError =
                     missing == .faceTracking ? .faceTrackingUnsupported : .unsupported(missing)
                 print("[SceneViewSwift] AR configuration not applied: \(error.localizedDescription)")
-                if let arView = self.arView { onSessionError?(error, arView) }
+                refusedConfiguration = configuration
+                emit(.failed(error), in: arView)
+                onSessionError?(error, arView)
                 return
             }
             run(
