@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.roborazzi)
@@ -259,6 +260,10 @@ dependencies {
     // SceneView — 3D + AR
     implementation project(":sceneview")
     implementation project(":arsceneview")
+
+    // ADK for Kotlin build probe
+    implementation libs.adk.core
+    ksp libs.adk.processor
 
     // Google Play In-App Updates — Play Core deps come via :samples:common
     // (`api libs.play.app.update*`). Manager + banner live in

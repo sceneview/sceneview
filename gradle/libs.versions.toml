@@ -2,7 +2,9 @@
 # Build tools
 agp = "9.4.0"
 kotlin = "2.4.10"
+ksp = "2.3.12"
 composeMultiplatform = "1.12.0"
+adk = "1.1.0"
 
 # AndroidX Core
 coreKtx = "1.18.0"
@@ -189,6 +191,10 @@ kotlin-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-c
 kotlin-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlin-math = { group = "dev.romainguy", name = "kotlin-math", version.ref = "kotlinMath" }
 
+# ADK for Kotlin
+adk-core = { group = "com.google.adk", name = "google-adk-kotlin-core", version.ref = "adk" }
+adk-processor = { group = "com.google.adk", name = "google-adk-kotlin-processor", version.ref = "adk" }
+
 # Filament
 filament-android = { group = "com.google.android.filament", name = "filament-android", version.ref = "filament" }
 filament-gltfio = { group = "com.google.android.filament", name = "gltfio-android", version.ref = "filament" }
@@ -281,6 +287,7 @@ android-library = { id = "com.android.library", version.ref = "agp" }
 # instead, and declares the target as `kotlin { androidLibrary { } }`.
 android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
