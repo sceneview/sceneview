@@ -334,9 +334,7 @@ struct ARExperienceContainer<Content: View>: View {
         // theme is. SwiftUI applies the bar's colour scheme only to a visible
         // bar background, hence the three modifiers together. A screen that
         // hides the bar (`.demoChrome`) is unaffected.
-        .toolbarBackground(SceneViewTokens.Stage.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .darkHostNavigationBar()
         .onAppear(perform: model.resolve)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.sceneBecameActive() }
@@ -449,9 +447,11 @@ private enum ARStateMotion {
     /// leaves with fade + fall (`duration-short`). Under Reduce Motion the
     /// view keeps the fades only — the caller checks and swaps.
     static var pillTransition: AnyTransition {
+        #if os(iOS)
         if UIAccessibility.isReduceMotionEnabled {
             return .opacity
         }
+        #endif
         return .asymmetric(
             insertion: .opacity.combined(with: .offset(y: SceneViewTokens.Space.sm))
                 .animation(SceneViewTokens.Motion.expressive(SceneViewTokens.Motion.medium)),
@@ -647,5 +647,21 @@ private struct ARStateButton: View {
                 .contentShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private extension View {
+    /// `.navigationBar` toolbar placement is iOS-only; the Mac archive of the
+    /// same target has no host navigation bar to paint (#3768 follow-up).
+    @ViewBuilder
+    func darkHostNavigationBar() -> some View {
+        #if os(iOS)
+        self
+            .toolbarBackground(SceneViewTokens.Stage.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        #else
+        self
+        #endif
     }
 }
