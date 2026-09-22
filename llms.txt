@@ -6397,7 +6397,7 @@ Same public API name on both platforms; the iOS render path differs but the fact
 
 | Symbol | Android renderer | iOS approximation |
 |---|---|---|
-| `FogNode.linear / .exponential` | Filament fog modes | Translucent-sphere shader (`.heightBased` is deprecated on iOS — see #1380) |
+| `FogNode.linear / .exponential` | Filament fog modes | **Deprecated on iOS (v4.39.0+)** — RealityKit has no depth-based fog; the node only draws one translucent sphere, nothing attenuates with distance, and the sphere is picked up by automatic content framing. Avoid it; still compiles through 4.x |
 | `ReflectionProbeNode.box(...) / .sphere(...)` | Volumetric Filament probe | Unbounded `ImageBasedLightReceiverComponent` (volume scope is best-effort) |
 | `CustomMaterial.subsurface(...)` | Filament SSS | PBR `metallic` + `roughness` tuning |
 
@@ -7601,7 +7601,8 @@ public struct ARSceneView: UIViewRepresentable {
 View modifiers (chainable):
 ```swift
 .onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process
+.onSessionError(_ handler: @escaping (Error, ARView) -> Void) -> ARSceneView  // v4.39.0+ — ARKit session failures (camera permission denied…) and unsupported configurations. Without it the SDK only prints
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
@@ -7613,6 +7614,13 @@ View modifiers (chainable):
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
 - Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
+
+`onSessionError` notes (v4.39.0+):
+- Called on `session(_:didFailWithError:)` — camera permission denial included — and when the requested configuration cannot run on this device.
+- `faceTracking: true` on a device with no TrueDepth camera reports `ARSceneViewError.faceTrackingUnsupported` and starts NO session; it no longer falls back to the rear world-tracking camera. Render your own unsupported-device state from the handler.
+- Face sessions get no coaching overlay (its goals are all plane goals).
+- `showPlaneOverlay` / `showCoachingOverlay` / `showPlacementReticle` are reactive — toggle the value, never `.id()` the view (a re-key restarts the AR session).
 
 `mainLight` / `fillLight` notes (v4.3.0+, `#1138` — iOS half of `#1063`):
 - Mirrors Android's `ARSceneView(mainLightNode = …, fillLightNode = …)` parameters.
