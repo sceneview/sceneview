@@ -581,6 +581,79 @@ public final class io/github/sceneview/ar/ActivityARPermissionHandler : io/githu
 	public fun shouldShowPermissionRationale ()Z
 }
 
+public final class io/github/sceneview/ar/AssetTicket {
+	public static final field $stable I
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lio/github/sceneview/ar/AssetTicket;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/AssetTicket;IIILjava/lang/Object;)Lio/github/sceneview/ar/AssetTicket;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSelection ()I
+	public final fun getSession ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/AutoPlacementCandidate {
+	public static final field $stable I
+	public final fun createAnchor ()Lio/github/sceneview/ar/AutoPlacementResult;
+	public final fun getPlane ()Lcom/google/ar/core/Plane;
+	public final fun getPose ()Lcom/google/ar/core/Pose;
+}
+
+public final class io/github/sceneview/ar/AutoPlacementResult {
+	public static final field $stable I
+	public final fun getAnchor ()Lcom/google/ar/core/Anchor;
+	public final fun getPlane ()Lcom/google/ar/core/Plane;
+	public final fun getPose ()Lcom/google/ar/core/Pose;
+}
+
+public final class io/github/sceneview/ar/AutoPlacementSceneKt {
+	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun findAutoPlacementSurface (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;)Lio/github/sceneview/ar/AutoPlacementCandidate;
+	public static synthetic fun findAutoPlacementSurface$default (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;ILjava/lang/Object;)Lio/github/sceneview/ar/AutoPlacementCandidate;
+	public static final fun rememberAutoPlacementState (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/ar/AutoPlacementState;
+}
+
+public final class io/github/sceneview/ar/AutoPlacementState {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/AutoPlacementState$Companion;
+	public static final field NO_SURFACE_TIMEOUT_MS J
+	public static final field RECOVERY_TIMEOUT_MS J
+	public fun <init> ()V
+	public final fun acceptsAsset (Lio/github/sceneview/ar/AssetTicket;)Z
+	public final fun beginAdjustment ()Z
+	public final fun cameraFailed ()V
+	public final fun deselectPlacement ()V
+	public final fun dismiss ()V
+	public final fun endAdjustment ()V
+	public final fun getHasPlacement ()Z
+	public final fun getPhase ()Lio/github/sceneview/ar/PlacementPhase;
+	public final fun getPlacedAtMillis ()J
+	public final fun getPlacementRequested ()Z
+	public final fun getPlacementsCreated ()I
+	public final fun getSelectionGeneration ()I
+	public final fun getSessionGeneration ()I
+	public final fun getTicket ()Lio/github/sceneview/ar/AssetTicket;
+	public final fun getWantsSurface ()Z
+	public final fun isAdjusting ()Z
+	public final fun isSelected ()Z
+	public final fun keepScanning (J)V
+	public final fun onBackgroundTap ()Lio/github/sceneview/ar/FrameEffect;
+	public final fun onFrame (Lio/github/sceneview/ar/FrameInput;Lkotlin/jvm/functions/Function0;)Lio/github/sceneview/ar/FrameEffect;
+	public static synthetic fun onFrame$default (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/FrameInput;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lio/github/sceneview/ar/FrameEffect;
+	public final fun requestPlacement ()V
+	public final fun resetPlacement (J)V
+	public final fun selectModel ()Lio/github/sceneview/ar/AssetTicket;
+	public final fun selectPlacement ()V
+	public final fun withdrawRequest ()V
+}
+
+public final class io/github/sceneview/ar/AutoPlacementState$Companion {
+}
+
 public final class io/github/sceneview/ar/CloudAnchorEntry {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/CloudAnchorEntry$Companion;
@@ -643,6 +716,22 @@ public final class io/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGui
 	public final fun getLambda$818721414$arsceneview_release ()Lkotlin/jvm/functions/Function2;
 }
 
+public final class io/github/sceneview/ar/FallbackCandidate {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/Object;FLio/github/sceneview/ar/Ndc;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun component2 ()F
+	public final fun component3 ()Lio/github/sceneview/ar/Ndc;
+	public final fun copy (Ljava/lang/Object;FLio/github/sceneview/ar/Ndc;)Lio/github/sceneview/ar/FallbackCandidate;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/FallbackCandidate;Ljava/lang/Object;FLio/github/sceneview/ar/Ndc;ILjava/lang/Object;)Lio/github/sceneview/ar/FallbackCandidate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDistanceMeters ()F
+	public final fun getNdc ()Lio/github/sceneview/ar/Ndc;
+	public final fun getPayload ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/ar/FloorWallSeam {
 	public static final field $stable I
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
@@ -654,6 +743,49 @@ public final class io/github/sceneview/ar/FloorWallSeam {
 	public final fun getDirection ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getPoint ()Ldev/romainguy/kotlin/math/Float3;
 	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/FrameEffect : java/lang/Enum {
+	public static final field NONE Lio/github/sceneview/ar/FrameEffect;
+	public static final field PLACE Lio/github/sceneview/ar/FrameEffect;
+	public static final field TRACKING_LOST Lio/github/sceneview/ar/FrameEffect;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/FrameEffect;
+	public static fun values ()[Lio/github/sceneview/ar/FrameEffect;
+}
+
+public final class io/github/sceneview/ar/FrameInput {
+	public static final field $stable I
+	public fun <init> (JZZLjava/lang/Boolean;)V
+	public synthetic fun <init> (JZZLjava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Z
+	public final fun component3 ()Z
+	public final fun component4 ()Ljava/lang/Boolean;
+	public final fun copy (JZZLjava/lang/Boolean;)Lio/github/sceneview/ar/FrameInput;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/FrameInput;JZZLjava/lang/Boolean;ILjava/lang/Object;)Lio/github/sceneview/ar/FrameInput;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnchorTracking ()Ljava/lang/Boolean;
+	public final fun getNowMillis ()J
+	public final fun getSurfaceAvailable ()Z
+	public final fun getTracking ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/Ndc {
+	public static final field $stable I
+	public fun <init> (FF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun copy (FF)Lio/github/sceneview/ar/Ndc;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/Ndc;FFILjava/lang/Object;)Lio/github/sceneview/ar/Ndc;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getX ()F
+	public final fun getY ()F
+	public fun hashCode ()I
+	public final fun isInsideViewport ()Z
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -671,6 +803,21 @@ public final class io/github/sceneview/ar/PlacementHitSource : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/PlacementHitSource;
 	public static fun values ()[Lio/github/sceneview/ar/PlacementHitSource;
+}
+
+public final class io/github/sceneview/ar/PlacementPhase : java/lang/Enum {
+	public static final field ADJUSTING Lio/github/sceneview/ar/PlacementPhase;
+	public static final field CAMERA_ERROR Lio/github/sceneview/ar/PlacementPhase;
+	public static final field INITIALIZING Lio/github/sceneview/ar/PlacementPhase;
+	public static final field NO_SURFACE Lio/github/sceneview/ar/PlacementPhase;
+	public static final field PLACED Lio/github/sceneview/ar/PlacementPhase;
+	public static final field RECOVERING Lio/github/sceneview/ar/PlacementPhase;
+	public static final field RECOVERY_FAILED Lio/github/sceneview/ar/PlacementPhase;
+	public static final field SCANNING Lio/github/sceneview/ar/PlacementPhase;
+	public static final field TRACKING_LOST Lio/github/sceneview/ar/PlacementPhase;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/PlacementPhase;
+	public static fun values ()[Lio/github/sceneview/ar/PlacementPhase;
 }
 
 public final class io/github/sceneview/ar/PlacementReticleStyle : java/lang/Enum {
@@ -708,6 +855,14 @@ public final class io/github/sceneview/ar/PlacementSceneKt {
 	public static final fun placementHit (Lcom/google/ar/core/Frame;Ljava/util/List;Z)Lcom/google/ar/core/HitResult;
 	public static final fun placementHitSource (ZZZ)Lio/github/sceneview/ar/PlacementHitSource;
 	public static final fun shouldShowReticle (ZZZ)Z
+}
+
+public final class io/github/sceneview/ar/PlacementSurface : java/lang/Enum {
+	public static final field SURFACE Lio/github/sceneview/ar/PlacementSurface;
+	public static final field WALL Lio/github/sceneview/ar/PlacementSurface;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/PlacementSurface;
+	public static fun values ()[Lio/github/sceneview/ar/PlacementSurface;
 }
 
 public final class io/github/sceneview/ar/PlacementTrackableKind : java/lang/Enum {
@@ -841,6 +996,23 @@ public final class io/github/sceneview/ar/SharedPreferencesCloudAnchorRegistry :
 }
 
 public final class io/github/sceneview/ar/SharedPreferencesCloudAnchorRegistry$Companion {
+}
+
+public final class io/github/sceneview/ar/UsableSurfacePolicy {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/UsableSurfacePolicy;
+	public static final field MAX_DISTANCE_M F
+	public static final field MIN_DISTANCE_M F
+	public final fun accept (ZZZF)Z
+	public final fun rankFallback (Ljava/util/List;)Ljava/util/List;
+}
+
+public final class io/github/sceneview/ar/ViewportProjection {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/ViewportProjection;
+	public final fun distance (FFFFFF)F
+	public final fun multiply ([F[F)[F
+	public final fun project ([FFFF)Lio/github/sceneview/ar/Ndc;
 }
 
 public final class io/github/sceneview/ar/WallAnchorPose {

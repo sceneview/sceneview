@@ -50,9 +50,11 @@ data class PlacementSpec(
 /** The one committed placement: an ARCore anchor, and the asset standing on it. */
 internal data class PlacedModel(
     val id: Int,
-    val anchor: Anchor,
+    val placement: io.github.sceneview.ar.AutoPlacementResult,
     val spec: PlacementSpec,
-)
+) {
+    val anchor: Anchor get() = placement.anchor
+}
 
 /** Which edit gesture is live on the placed model. */
 enum class PlacementGesture { MOVING, ROTATING, SCALING }
@@ -117,6 +119,12 @@ class TapToPlaceState internal constructor() {
 
     internal var placed: PlacedModel? by mutableStateOf(null)
     internal var nextId: Int = 0
+    internal var modelInstance: io.github.sceneview.model.ModelInstance? by mutableStateOf(null)
+    internal var assetRetry: Int by mutableStateOf(0)
+    var modelLoading: Boolean by mutableStateOf(false)
+        internal set
+    var modelError: Boolean by mutableStateOf(false)
+        internal set
 
     /** `0` or `1` — one object per session. Kept as a count for the dock's enabled state. */
     val placedCount: Int get() = if (placed != null) 1 else 0

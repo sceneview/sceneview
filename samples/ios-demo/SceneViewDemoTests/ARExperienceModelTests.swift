@@ -158,3 +158,29 @@ final class ARExperienceModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .denied)
     }
 }
+
+/// Automatic placement raises `hasPlacement` and `selection` in the same update. One AR event
+/// must produce one vibration: the placement haptic, never that one plus the selection one.
+final class PlacementFeedbackTests: XCTestCase {
+
+    func testAutomaticPlacementPlaysOnlyThePlacementHaptic() {
+        let before = PlacementFeedback(placed: false, selected: false)
+        let after = PlacementFeedback(placed: true, selected: true)
+        XCTAssertEqual(PlacementFeedback.haptic(from: before, to: after), .placed)
+    }
+
+    func testExplicitTapOnAStandingObjectStillPlaysTheSelectionHaptic() {
+        let deselected = PlacementFeedback(placed: true, selected: false)
+        let tapped = PlacementFeedback(placed: true, selected: true)
+        XCTAssertEqual(PlacementFeedback.haptic(from: deselected, to: tapped), .selected)
+    }
+
+    func testNoHapticWithoutATransition() {
+        let placed = PlacementFeedback(placed: true, selected: true)
+        XCTAssertEqual(PlacementFeedback.haptic(from: placed, to: placed), PlacementFeedback.Haptic.none)
+        XCTAssertEqual(
+            PlacementFeedback.haptic(from: placed, to: PlacementFeedback(placed: true, selected: false)),
+            PlacementFeedback.Haptic.none
+        )
+    }
+}

@@ -28,13 +28,19 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-placement
       DEMO_NAME: AR Placement
-      ASSERT_TEXT: "AR requires a physical device"
+      ASSERT_TEXT: "Requires an iPhone with ARKit."
 - runFlow:
     file: flows/ar-demo.yaml
     env:
       DEMO_ID: ar-instant-placement
       DEMO_NAME: AR Instant Placement
-      ASSERT_TEXT: "AR requires a physical device"
+      ASSERT_TEXT: "Requires an iPhone with ARKit."
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: placement-scene
+      DEMO_NAME: One-Call AR
+      ASSERT_TEXT: "Requires an iPhone with ARKit."
 - runFlow:
     file: flows/ar-demo.yaml
     env:
@@ -173,10 +179,6 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: ar-ml-object-label
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: placement-scene
 - runFlow:
     file: flows/placeholder.yaml
     env:

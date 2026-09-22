@@ -100,10 +100,10 @@ struct OpenedFileViewer: View {
                         initialModelUnit: chosenUnit
                     )
                 }
-                .navigationTitle("Tap to Place")
+                .navigationTitle("AR Placement")
                 .navigationBarTitleInline()
             }
-            .environment(\.demoTitle, "Tap to Place")
+            .environment(\.demoTitle, "AR Placement")
         }
         #endif
         .task { await load() }

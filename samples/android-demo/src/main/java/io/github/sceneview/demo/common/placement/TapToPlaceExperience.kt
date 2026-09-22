@@ -3,12 +3,15 @@ package io.github.sceneview.demo.common.placement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.Modifier
 import com.google.android.filament.Engine
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.model.model
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
@@ -63,7 +66,7 @@ fun TapToPlaceExperience(
     // One ticket per (selection, resolution). Keyed on what the row resolves to, so a
     // streamed row is re-offered — with a fresh ticket — the moment its file lands, and a
     // row still downloading offers nothing at all.
-    LaunchedEffect(state, armed?.id, armed?.assetLocation, armed?.pending) {
+    LaunchedEffect(state, armed?.id, armed?.assetLocation, armed?.pending, state.assetRetry) {
         val model = armed ?: return@LaunchedEffect
         if (model.pending) {
             // Nothing to offer yet — and the previous offer must not be placed under this
@@ -73,6 +76,22 @@ fun TapToPlaceExperience(
         }
         val replacing = state.placedCount > 0
         val ticket = state.controller.selectModel()
+        state.controller.withdrawRequest()
+        state.modelLoading = true
+        state.modelError = false
+        val instance = try { modelLoader.loadModelInstance(model.assetLocation) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+        if (!state.controller.acceptsAsset(ticket)) {
+            instance?.let { modelLoader.destroyModel(it.model) }
+            return@LaunchedEffect
+        }
+        state.modelLoading = false
+        if (instance == null) {
+            state.modelError = true
+            return@LaunchedEffect
+        }
+        state.modelInstance = instance
         val accepted = state.offerAsset(
             ticket = ticket,
             spec = PlacementSpec(
@@ -84,6 +103,14 @@ fun TapToPlaceExperience(
         )
         // §2.8 — a picker change that swaps the standing object is a selection.
         if (accepted && replacing) haptic.selection()
+    }
+
+    val ownedInstance = state.modelInstance
+    DisposableEffect(ownedInstance) {
+        onDispose { ownedInstance?.let { modelLoader.destroyModel(it.model) } }
+    }
+    DisposableEffect(state) {
+        onDispose { state.clearAll(); state.modelInstance = null }
     }
 
     Box(modifier = modifier.fillMaxSize()) {

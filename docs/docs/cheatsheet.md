@@ -72,7 +72,62 @@ SceneView(
 
 ---
 
-## ARSceneView
+## Automatic placement (recommended)
+
+`AutoPlacementScene` is additive: one usable detected plane consumes one placement
+request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
+or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
+centers, and a 0.25–3 m interaction range. It renders no plane grid or reticle.
+
+```kotlin
+import io.github.sceneview.ar.*
+
+val engine = rememberEngine()
+val modelLoader = rememberModelLoader(engine)
+val model = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+val placement = rememberAutoPlacementState()
+AutoPlacementScene(
+    assetReady = model != null,
+    state = placement,
+    engine = engine,
+    modelLoader = modelLoader,
+    surface = PlacementSurface.SURFACE, // WALL accepts vertical planes directly
+    onPlaced = { result -> /* result.anchor, result.plane, result.pose */ },
+) { result ->
+    model?.let { AutoPlacementModel(result, placement, it, scaleToUnits = 0.3f) }
+}
+// Explicit reset retains the asset and the camera session:
+// placement.resetPlacement(android.os.SystemClock.uptimeMillis())
+```
+
+`AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
+while rotating/scaling, and constrains dragging to supported plane geometry. Its
+0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
+trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base.
+
+For asynchronous selection, call `placement.selectModel()` before loading and attach
+only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model
+until its replacement succeeds. Observe `placement.phase`; use `requestPlacement()`,
+`resetPlacement(nowMillis)` and `keepScanning(nowMillis)` for explicit actions. Reset
+removes the wrapper-owned anchor without restarting the camera. Interruption freezes
+manipulation and recovers the existing placement; it does not arm a new request.
+`onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
+capability, tracking, and camera failures. Copy, permissions, asset selection and
+semantic haptics belong to the app.
+
+States match Swift's `ARPlacementPhase`: `INITIALIZING`, `SCANNING`, `NO_SURFACE`,
+`PLACED`, `ADJUSTING`, `TRACKING_LOST`, `RECOVERING`, `RECOVERY_FAILED`, `CAMERA_ERROR`.
+The no-surface and recovery deadlines are both ten seconds. A controller manages one
+object; repeated requests while placed are ignored. Multi-object hosts explicitly own
+separate requests/controllers; tapping empty space never places.
+
+**Manual-placement compatibility:** `PlacementScene`, `WallPlacementScene`
+(`WallPlacement`), `onTapOnPlane`, `ReticleNode` and the placement-reticle options remain
+manual-placement APIs. Their published defaults and tap behavior are unchanged. Use
+them for deliberate manual interactions or diagnostics; new placement flows should
+use `AutoPlacementScene`.
+
+## ARSceneView (low-level / manual placement)
 
 ```kotlin
 ARSceneView(

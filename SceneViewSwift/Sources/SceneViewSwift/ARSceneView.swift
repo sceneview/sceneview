@@ -107,6 +107,7 @@ public struct ARSceneView: UIViewRepresentable {
     private var onTrackingStateChange: ((ARTrackingStatus, ARView) -> Void)?
     private var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
     private var onFrame: ((ARFrame, ARView) -> Void)?
+    private var placementController: ARPlacementController?
 
     private var planeDetection: PlaneDetectionMode { configuration.planeDetection }
     private var faceTracking: Bool { configuration.mode == .faceTracking }
@@ -143,15 +144,16 @@ public struct ARSceneView: UIViewRepresentable {
         }
     }
 
-    /// Creates an AR scene with plane detection, image tracking, and tap-to-place.
+    /// Creates a manual-placement AR scene with plane detection, image tracking, and tap-to-place.
+    /// Prefer ``AutoPlacementScene`` for automatic placement with surface-constrained gestures.
     ///
     /// - Parameters:
     ///   - planeDetection: Which plane orientations to detect. Default horizontal.
     ///   - showPlaneOverlay: Whether to visualize detected planes. Default true.
     ///   - showCoachingOverlay: Whether to show coaching when tracking limited. Default true.
     ///   - showPlacementReticle: Whether to show a placement reticle — a small disc,
-    ///     snapped to the real surface at the screen centre, that previews exactly where
-    ///     a tap-to-place tap will land. Runs the same
+    ///     snapped to the real surface at the screen centre for manual placement.
+    ///     Taps raycast their actual touch location; the centre reticle is not a tap preview. Runs the same
     ///     `raycast(from:allowing:.estimatedPlane, alignment:.any)` query as `onTapOnPlane`,
     ///     once per AR frame; the reticle hides whenever the ray misses every surface.
     ///     Orientation is smoothed with a per-frame slerp factor of `0.75` (ARCore Depth
@@ -261,6 +263,13 @@ public struct ARSceneView: UIViewRepresentable {
         self.onTapOnPlane = onTapOnPlane
         self.onImageDetected = onImageDetected
         self.onFrame = onFrame
+    }
+
+    // Internal wiring for the additive high-level wrapper; legacy initializers are unchanged.
+    func automaticPlacement(_ controller: ARPlacementController) -> ARSceneView {
+        var copy = self
+        copy.placementController = controller
+        return copy
     }
 
     /// Called once when the AR session starts. Use to add initial content.
@@ -586,6 +595,10 @@ public struct ARSceneView: UIViewRepresentable {
     /// both `makeUIView` (before the session runs) and `updateUIView`, so a
     /// closure the host supplies on a later render is honoured too.
     private func syncCallbacks(on coordinator: Coordinator, environment: EnvironmentValues) {
+        if coordinator.placementController !== placementController {
+            coordinator.placementController?.dismiss()
+            coordinator.placementController = placementController
+        }
         coordinator.onTapOnPlane = onTapOnPlane
         coordinator.onImageDetected = onImageDetected
         coordinator.onFrame = onFrame
@@ -861,6 +874,7 @@ public struct ARSceneView: UIViewRepresentable {
         /// One `CIContext` per view for the exposure post-process (#exposure).
         let exposureContextCache = ExposureContextCache()
 
+        var placementController: ARPlacementController?
         var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
         var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
         var onFrame: ((ARFrame, ARView) -> Void)?
@@ -1148,6 +1162,7 @@ public struct ARSceneView: UIViewRepresentable {
         /// observer, in that order.
         @MainActor
         func emit(_ event: ARSessionEvent, in arView: ARView) {
+            placementController?.sessionEvent(event)
             onSessionEvent?(event, arView)
             sessionObserver?.arSession(didEmit: event, in: arView)
         }
@@ -1223,6 +1238,8 @@ public struct ARSceneView: UIViewRepresentable {
         /// and the anchor references already `nil`, so there is no double-free.
         @MainActor
         func tearDownScene(in arView: ARView) {
+            placementController?.dismiss()
+            placementController = nil
             // Plane overlays (#2407) — remove each translucent fill anchor from
             // the scene, then drop the strong dictionary references.
             for visualizer in planeOverlays.values {
@@ -1536,6 +1553,7 @@ public struct ARSceneView: UIViewRepresentable {
             // work below safe — and what `assumeIsolated` asserts.
             MainActor.assumeIsolated {
                 noteFrame(trackingState: frame.camera.trackingState, in: arView)
+                placementController?.update(frame: frame, in: arView)
             }
             updatePlacementReticle(in: arView)
             onFrame?(frame, arView)

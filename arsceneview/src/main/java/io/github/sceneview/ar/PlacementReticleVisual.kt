@@ -11,6 +11,9 @@ import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 
 /**
+ * Manual-placement API. Automatic placement uses [AutoPlacementScene] without a reticle.
+ * Existing behavior and defaults are preserved.
+ *
  * The on-surface visual for a placement reticle, and its three observable states.
  *
  * Consumer AR apps — Google Scene Viewer, IKEA Place, Houzz, Pokémon GO — do not draw a solid

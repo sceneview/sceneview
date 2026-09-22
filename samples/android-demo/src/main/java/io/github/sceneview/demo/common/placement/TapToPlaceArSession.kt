@@ -61,6 +61,8 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.findAutoPlacementSurface
+import io.github.sceneview.ar.AutoPlacementResult
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.subsumedBy
@@ -103,7 +105,7 @@ import java.io.File
  * into [TapToPlaceState] for the overlays.
  *
  * The **interaction** model the placed object carries — drag across the surface, twist to
- * turn, pinch against a 100 % real-world-size detent, and a damped arrival — lives in
+ * turn, and pinch against a 100 % base-size detent — lives in
  * [PlacedModelNode], and the decisions behind it in [PlacementInteraction.kt]
  * ([#3326](https://github.com/sceneview/sceneview/issues/3326)).
  *
@@ -179,7 +181,7 @@ fun TapToPlaceArSession(
             playbackDataset = playbackDataset,
             // §2.6 — no plane fill, no reticle. The object itself is the only feedback.
             planeRenderer = false,
-            // Floors only (§2.3): a wall is never a usable surface for this flow.
+            // Upward-facing surfaces only (§2.3); walls use the separate vertical policy.
             planeFindingMode = Config.PlaneFindingMode.HORIZONTAL,
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
             sessionConfiguration = sessionConfiguration,
@@ -203,11 +205,12 @@ fun TapToPlaceArSession(
                 // Search only while a placement is owed: nothing is hit-tested once the
                 // object stands, and nothing before an asset is offered.
                 val surface = if (controller.wantsSurface && tracking && viewportSize != IntSize.Zero) {
-                    findUsableSurface(frame, tracked, viewportSize)
+                    findAutoPlacementSurface(frame, tracked, viewportSize.width, viewportSize.height)
                 } else {
                     null
                 }
                 val now = SystemClock.uptimeMillis()
+                var committed: AutoPlacementResult? = null
                 val effect = controller.onFrame(
                     FrameInput(
                         nowMillis = now,
@@ -216,15 +219,21 @@ fun TapToPlaceArSession(
                         anchorTracking = state.placed?.anchor?.let {
                             it.trackingState == TrackingState.TRACKING
                         },
-                    )
+                    ),
+                    commit = {
+                        if (state.modelInstance == null) false else {
+                            committed = surface?.createAnchor()
+                            committed != null
+                        }
+                    },
                 )
                 when (effect) {
                     FrameEffect.PLACE -> {
                         val spec = state.spec
-                        if (spec != null && surface != null) {
+                        if (spec != null && committed != null) {
                             state.placed = PlacedModel(
                                 id = state.nextId++,
-                                anchor = surface(),
+                                placement = committed!!,
                                 spec = spec,
                             )
                             // Confirm the commit in the hand, and open the one-shot
@@ -235,7 +244,11 @@ fun TapToPlaceArSession(
                         }
                     }
 
-                    FrameEffect.TRACKING_LOST -> haptic.warning()
+                    FrameEffect.TRACKING_LOST -> {
+                        state.activeGesture = null
+                        state.scalePercent = null
+                        haptic.warning()
+                    }
                     FrameEffect.NONE -> Unit
                 }
                 if (state.phase != controller.phase) state.phase = controller.phase
@@ -249,7 +262,13 @@ fun TapToPlaceArSession(
                 // selection chrome to show. A tap on empty space creates nothing; the
                 // controller documents that as a no-op rather than leaving it implicit.
                 onSingleTapConfirmed = { _, node ->
-                    if (node != null) haptic.selection() else state.controller.onBackgroundTap()
+                    if (node != null) {
+                        state.controller.selectPlacement()
+                        haptic.selection()
+                    } else {
+                        state.controller.deselectPlacement()
+                        state.controller.onBackgroundTap()
+                    }
                 },
                 // Surface which gesture is active so the read-out can tell drag-to-move
                 // from twist-to-rotate from pinch-to-scale. `node == null` ⇒ the touch
@@ -283,7 +302,8 @@ fun TapToPlaceArSession(
                 key(placed.id) {
                     PlacedModelNode(
                         placed = placed,
-                        modelLoader = modelLoader,
+                        modelInstance = state.modelInstance,
+                        controller = state.controller,
                         onScaleChanged = { percent, isRealWorldSize, crossedIntoRealWorldSize ->
                             state.scalePercent = percent
                             state.isRealWorldSize = isRealWorldSize
@@ -300,7 +320,9 @@ fun TapToPlaceArSession(
 
             // Contact-shadow catcher per tracked plane (#2241 PR 5). The mesh renders
             // nothing by itself (shadow_receiver.filamat, shadowMultiplier).
-            trackedPlanes.forEach { plane ->
+            val grounded = state.phase == PlacementPhase.PLACED ||
+                state.phase == PlacementPhase.ADJUSTING
+            trackedPlanes.filter { grounded }.forEach { plane ->
                 key(plane) {
                     ShadowReceiverPlane(plane = plane)
                 }
@@ -320,58 +342,6 @@ fun TapToPlaceArSession(
         overlays(state)
     }
 }
-
-/**
- * The §2.3 search, one frame: a ray through the viewport centre first, then the visible
- * tracked floor planes by proximity of their centres. Returns the anchor factory for the
- * surface found, or `null`. Anchors are real plane anchors — never a camera-relative guess.
- */
-private fun findUsableSurface(
-    frame: Frame,
-    tracked: List<Plane>,
-    viewport: IntSize,
-): (() -> Anchor)? {
-    val hits = runCatching { frame.hitTest(viewport.width / 2f, viewport.height / 2f) }
-        .getOrDefault(emptyList())
-    val hit = hits.firstOrNull { result ->
-        val trackable = result.trackable
-        UsableSurfacePolicy.accept(
-            isUpwardHorizontalPlane = trackable is Plane &&
-                trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING,
-            isTrackableTracking = trackable.trackingState == TrackingState.TRACKING,
-            isPoseInPolygon = trackable is Plane && trackable.isPoseInPolygon(result.hitPose),
-            distanceMeters = result.distance,
-        )
-    }
-    if (hit != null) return { hit.createAnchor() }
-
-    val floors = tracked.filter { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-    if (floors.isEmpty()) return null
-    val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
-    val projection = FloatArray(16).also {
-        frame.camera.getProjectionMatrix(it, 0, PROJECTION_NEAR_M, PROJECTION_FAR_M)
-    }
-    val viewProjection = ViewportProjection.multiply(projection, view)
-    val camera = frame.camera.pose
-    val ranked = UsableSurfacePolicy.rankFallback(
-        floors.map { plane ->
-            val centre = plane.centerPose
-            FallbackCandidate(
-                payload = plane,
-                distanceMeters = ViewportProjection.distance(
-                    centre.tx(), centre.ty(), centre.tz(),
-                    camera.tx(), camera.ty(), camera.tz(),
-                ),
-                ndc = ViewportProjection.project(viewProjection, centre.tx(), centre.ty(), centre.tz()),
-            )
-        }
-    )
-    val plane = ranked.firstOrNull() ?: return null
-    return { plane.createAnchor(plane.centerPose) }
-}
-
-private const val PROJECTION_NEAR_M = 0.1f
-private const val PROJECTION_FAR_M = 100f
 
 /**
  * The placement screen's coaching layer — **one** sentence at a time in the readable AR
@@ -461,18 +431,26 @@ fun BoxScope.TapToPlaceStatusOverlays(
         // The decision cards (§2.2): no surface after 10 s, a placement that could not be
         // recovered, a camera that never started.
         PlacementActionCard(
-            card = card,
+            card = if (state.modelLoading || state.modelError) null else card,
             onViewIn3D = onViewIn3D,
             onKeepScanning = { state.keepScanning() },
             onScanAgain = { state.resetPlacement() },
             onRestartSession = onRestartSession,
         )
 
+        if (state.modelError) {
+            Button(onClick = { state.assetRetry++ }) { Text(stringResource(R.string.ar_place_try_again)) }
+        }
+
         // The same dark near-opaque scrim every other AR demo coaches through (#3295). A
         // null `text` animates the pill out. Last in the Column = nearest the dock = the
         // fixed point of the anchor.
         DemoBottomOverlayScope(this, 0.dp).DemoStatusBanner(
-            text = coachingText(coaching),
+            text = when {
+                state.modelLoading -> stringResource(R.string.ar_place_loading_model)
+                state.modelError -> stringResource(R.string.ar_place_model_failed)
+                else -> coachingText(coaching)
+            },
             tone = coachingTone(coaching),
             icon = coachingIcon(coaching),
             modifier = Modifier

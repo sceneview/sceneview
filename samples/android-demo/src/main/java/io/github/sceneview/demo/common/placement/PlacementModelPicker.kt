@@ -152,48 +152,43 @@ data class PlacementModel(
  * loads the fox directly, so nothing is deleted, only re-curated.
  */
 val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
-    // Sizes are the real objects', in metres, on their longest axis — see
-    // PlacementModel.realWorldSizeMeters (#3326). The three Khronos furniture/tableware
-    // rows are authored IN METRES and sit on y = 0, so their number here is the asset's
-    // own measured bounding box rather than an estimate (checked against the GLB).
+    PlacementModel(
+        id = "toy-car",
+        displayName = "Toy Car",
+        assetLocation = "models/khronos_toy_car.glb",
+        realWorldSizeMeters = 0.3f, // documented showcase preview
+    ),
+    // Bundled showcases share a 0.3 m longest-axis preview on Android and iOS.
+    // An explicitly imported or measured viewer selection retains its selected size basis.
     PlacementModel(
         id = "soldier",
         displayName = "Soldier",
         assetLocation = "models/threejs_soldier.glb",
-        realWorldSizeMeters = 1.8f, // an adult, standing
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "velvet-sofa",
         displayName = "Velvet Sofa",
         assetLocation = "models/khronos_glam_velvet_sofa.glb",
-        realWorldSizeMeters = 2.19f, // measured: 2.188 m wide
-        sizeIsMeasured = true,
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "sheen-chair",
         displayName = "Sheen Chair",
         assetLocation = "models/khronos_sheen_chair.glb",
-        realWorldSizeMeters = 0.83f, // measured: 0.827 m wide
-        sizeIsMeasured = true,
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "lantern",
         displayName = "Lantern",
         assetLocation = "models/khronos_lantern.glb",
-        realWorldSizeMeters = 1.6f, // the Khronos asset is a street lantern post
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "olive-dish",
         displayName = "Olive Dish",
         assetLocation = "models/khronos_iridescent_dish.glb",
-        realWorldSizeMeters = 0.53f, // measured: 0.532 m across
-        sizeIsMeasured = true,
-    ),
-    PlacementModel(
-        id = "toy-car",
-        displayName = "Toy Car",
-        assetLocation = "models/khronos_toy_car.glb",
-        realWorldSizeMeters = 0.18f, // it is a toy — it should read as one
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
 )
 

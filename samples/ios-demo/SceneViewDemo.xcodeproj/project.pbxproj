@@ -129,6 +129,7 @@
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000F18 /* DemoScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F18 /* DemoScaffold.swift */; };
 		C10000000000000000000F2A /* ARExperienceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F2A /* ARExperienceContainer.swift */; };
+		C10000000000000000000F2B /* ARPlacementExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F2B /* ARPlacementExperience.swift */; };
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
 		C10000000000000000000060 /* AppStoreUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000060 /* AppStoreUpdater.swift */; };
@@ -305,6 +306,7 @@
 		C20000000000000000000030 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
 		C20000000000000000000F18 /* DemoScaffold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScaffold.swift; path = SceneViewDemo/Views/Components/DemoScaffold.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000F2A /* ARExperienceContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARExperienceContainer.swift; path = SceneViewDemo/Views/Components/ARExperienceContainer.swift; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000F2B /* ARPlacementExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARPlacementExperience.swift; path = SceneViewDemo/Views/Components/ARPlacementExperience.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000050 /* DemoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoSheet.swift; path = SceneViewDemo/Views/Components/DemoSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000051 /* CreditsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditsSheet.swift; path = SceneViewDemo/Views/CreditsSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000060 /* AppStoreUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdater.swift; path = SceneViewDemo/Services/AppStoreUpdater.swift; sourceTree = SOURCE_ROOT; };
@@ -550,6 +552,7 @@
 			isa = PBXGroup;
 			children = (
 				C20000000000000000000F2A /* ARExperienceContainer.swift */,
+				C20000000000000000000F2B /* ARPlacementExperience.swift */,
 				C20000000000000000000F18 /* DemoScaffold.swift */,
 				C20000000000000000000050 /* DemoSheet.swift */,
 				C20000000000000000000061 /* UpdateBanner.swift */,
@@ -992,6 +995,7 @@
 				C100000000000000000000D6 /* DebugOverlayScene.swift in Sources */,
 				ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */,
 				C10000000000000000000F2A /* ARExperienceContainer.swift in Sources */,
+				C10000000000000000000F2B /* ARPlacementExperience.swift in Sources */,
 				C10000000000000000000F18 /* DemoScaffold.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
