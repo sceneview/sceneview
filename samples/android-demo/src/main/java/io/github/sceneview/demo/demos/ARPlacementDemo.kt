@@ -10,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -65,19 +66,16 @@ import java.io.File
  *    surface in the app dropped you into a viewfinder and asked afterwards, through a sheet
  *    floated over a camera that was still converging its first plane.
  * 2. **One flow, not many.** `ar-instant-placement` was a 701-line hand-rolled second
- *    implementation of this same screen — its own placed-model class, its own state holder,
- *    its own model list, its own copy of the #2302 overload-trap KDoc, no reticle, hardcoded
- *    hex colours, and an auto-cycle that placed a *different* model from the one the picker
- *    showed (the exact defect class of
- *    [#2476](https://github.com/sceneview/sceneview/issues/2476)). It is gone. What it
- *    taught — `Config.InstantPlacementMode.LOCAL_Y_UP` and the
- *    `SCREENSPACE_WITH_APPROXIMATE_DISTANCE → FULL_TRACKING` refinement — is a **mode** of
- *    this flow now, chosen on the same screen as the model, and demonstrated better: a real
- *    plane hit still wins when there is one, which the retired demo did not allow.
- * 3. **The UX itself.** The AR half is [TapToPlaceExperience], unchanged and already shared
- *    with the AR View tab (#2482): centre reticle (#1882), one coaching line at a time
- *    (#3326), contact shadows on placed models (#2241/#2657), drag / twist / pinch with a
- *    real-world-size detent, and the plane grid receding once the room has something in it.
+ *    implementation of this same screen (the exact defect class of
+ *    [#2476](https://github.com/sceneview/sceneview/issues/2476)). It is gone, and so is
+ *    the "placement accuracy" mode that briefly replaced it: placement with both a cursor
+ *    and a tap "makes no sense, it must lose half the users" (owner decision, 2026-09-22).
+ * 3. **The UX itself.** The AR half is [TapToPlaceExperience], shared with the AR View tab
+ *    (#2482): the chosen object is placed **automatically** on the first usable floor
+ *    surface — no reticle, no tap, no plane grid (plan §2.1/§2.6) — then one coaching line
+ *    at a time (#3326), contact shadows (#2241), drag / twist / pinch about the grounded
+ *    base with a real-world-size detent, a 10 s "No surface found." card and
+ *    tracking-lost / recovering states.
  *
  * ## The two phases
  *
@@ -98,23 +96,25 @@ import java.io.File
  *  - **The asset-source chip**, reporting where the *armed* row's bytes came from (#2953).
  *  - **The QA tracking-failure shim** ([ForceTrackingFailureMenu], #1881).
  *
- * Model resolution still happens inside the shared session's `onPlaceModel`, at tap time on
- * the main thread — the #2476 invariant, with a single call site.
+ * Model resolution happens in [TapToPlaceExperience], which offers the armed row to the
+ * session with a generation ticket — the #2476 invariant, with a single call site.
  */
 @Composable
 fun ARPlacementDemo(onBack: () -> Unit) {
     val context = LocalContext.current
 
-    // Phase + session options (mode, snap-to-plane, reticle). Saveable, so a rotation in the
-    // camera does not dump the user back onto the chooser.
+    // Phase holder. Saveable, so a rotation in the camera does not dump the user back onto
+    // the chooser.
     val flow = rememberPlacementFlowState()
     var wallMode by androidx.compose.runtime.saveable.rememberSaveable {
         mutableStateOf(DemoSettings.consumeInitialTab() == 1)
     }
 
-    // The shared session owns the placed-model list, anchors and camera/plane/reticle
-    // signals. The demo reads it for Reset; the session writes it on every tap/frame.
-    val state = rememberTapToPlaceState()
+    // The shared session owns the placement, its anchor and the camera/plane signals. The
+    // demo reads it for Reset placement; the session writes it on every frame. Keyed on
+    // `sessionKey` so the camera-error card's *Try again* can recreate the ARCore session.
+    var sessionKey by remember { mutableStateOf(0) }
+    val state = key(sessionKey) { rememberTapToPlaceState() }
 
     // Canonical picker selection, shared with the AR View tab's implementation and with the
     // in-AR sheet — one selection, two surfaces, so they cannot disagree.
@@ -311,12 +311,8 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(top = SceneViewTokens.Space.sm),
             )
-            // Snap-to-plane, Show-reticle and the placement mode all moved to the chooser
-            // (#3405) — they decide how the session behaves, so they belong to setup, not to
-            // a sheet you open after the first tap has already taught you the wrong thing.
-            //
-            // The QA tracking-failure shim stays: it is a debug affordance for a failure you
-            // can only stage while a session is running (#1881).
+            // The QA tracking-failure shim: a debug affordance for a failure you can only
+            // stage while a session is running (#1881). It drives the tracking-lost state.
             ForceTrackingFailureMenu()
         },
         // The two in-session actions, in the dock — where every other demo in the app puts
@@ -324,7 +320,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         // bottom band (and over the camera on the AR View tab): a `primaryContainer` FAB
         // and a `secondaryContainer` disc, i.e. theme colours over a camera frame that has
         // no theme. The dock's Controls item (Settings) is appended by the scaffold, so
-        // this screen's dock is Models · Clear · Settings.
+        // this screen's dock is Models · Reset · Settings.
         dock = listOf(
             DockItem(
                 icon = Icons.Filled.ViewInAr,
@@ -332,27 +328,35 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 caption = stringResource(R.string.ar_dock_models_caption),
                 onClick = picker::openSheet,
             ),
+            // §2.2 *Restarting placement*: removes the anchor, keeps the chosen asset,
+            // scans again.
             DockItem(
                 icon = Icons.Filled.Refresh,
-                label = stringResource(R.string.ar_dock_clear_label),
-                caption = stringResource(R.string.ar_dock_clear_caption),
-                onClick = { state.clearAll() },
+                label = stringResource(R.string.ar_dock_reset_label),
+                caption = stringResource(R.string.ar_dock_reset_caption),
+                onClick = { state.resetPlacement() },
                 enabled = state.placedCount > 0,
             ),
         ),
     ) {
-        TapToPlaceExperience(
-            models = models,
-            picker = picker,
-            state = state,
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            snapToPlane = flow.snapToPlane,
-            showReticle = flow.showReticle,
-            instantPlacement = flow.instantEnabled,
-            floorOnly = true,
-        )
+        key(sessionKey) {
+            TapToPlaceExperience(
+                models = models,
+                picker = picker,
+                state = state,
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                // "View in 3D" on the no-surface card: back to the chooser, where the model
+                // is shown on a still, themed screen.
+                onViewIn3D = onBackPressed,
+                // "Try again" on the camera-error card: a fresh ARCore session.
+                onRestartSession = {
+                    state.clearAll()
+                    sessionKey++
+                },
+            )
+        }
     }
 }
 

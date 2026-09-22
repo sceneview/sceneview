@@ -30,7 +30,6 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -69,7 +68,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
  *
  * @param models Catalogue offered. Same list the AR half will read at tap time.
  * @param picker Hoisted selection, shared with the in-AR sheet so the two cannot disagree.
- * @param flow Phase + options holder; the CTA calls [PlacementFlowState.enterAr].
+ * @param flow Phase holder; the CTA calls [PlacementFlowState.enterAr].
  * @param arSupported `null` while `ArCoreApk.checkAvailability` is still resolving. Gates
  *   the CTA through the pure [placementCtaState].
  * @param onBack Leaves the demo. This screen is the flow's ground floor.
@@ -248,106 +247,12 @@ fun PlacementChooserScreen(
                 }
             }
 
-            Spacer(Modifier.height(SceneViewTokens.Space.md))
-            PlacementModeSection(flow = flow)
             }
             Spacer(Modifier.height(SceneViewTokens.Space.md))
         }
     }
 }
 
-/**
- * The "how does a tap resolve" control — the axis that used to be a whole second demo card
- * (`ar-instant-placement`), now two segments on the screen that already had to exist.
- *
- * It is on the chooser rather than in a settings sheet on purpose: it changes what the very
- * first tap does, so it is a *setup* decision, and a user who discovers it after placing
- * three models has already formed the wrong idea of what the demo does.
- */
-@Composable
-private fun PlacementModeSection(flow: PlacementFlowState) {
-    val modes = listOf(PlacementMode.PLANE, PlacementMode.INSTANT)
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.ar_placement_mode_heading),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(SceneViewTokens.Space.sm))
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            modes.forEachIndexed { index, mode ->
-                SegmentedButton(
-                    selected = mode == flow.mode,
-                    onClick = { flow.mode = mode },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                    label = { Text(stringResource(placementModeLabelRes(mode))) },
-                )
-            }
-        }
-        Spacer(Modifier.height(SceneViewTokens.Space.xs))
-        Text(
-            text = stringResource(placementModeHelpRes(flow.mode)),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        // #1883 / #1882 — the two dev toggles the `ar-placement` demo already had, moved
-        // out of the in-AR settings sheet and onto the setup screen with everything else
-        // that decides how the session behaves before it starts.
-        Spacer(Modifier.height(SceneViewTokens.Space.sm))
-        ChooserToggle(
-            label = stringResource(R.string.ar_placement_snap_to_plane),
-            help = stringResource(
-                if (flow.snapToPlane) {
-                    R.string.ar_placement_snap_to_plane_on
-                } else {
-                    R.string.ar_placement_snap_to_plane_off
-                }
-            ),
-            checked = flow.snapToPlane,
-            onCheckedChange = { flow.snapToPlane = it },
-        )
-        ChooserToggle(
-            label = stringResource(R.string.ar_placement_show_reticle),
-            help = stringResource(R.string.ar_placement_show_reticle_help),
-            checked = flow.showReticle,
-            onCheckedChange = { flow.showReticle = it },
-        )
-    }
-}
-
-@Composable
-private fun ChooserToggle(
-    label: String,
-    help: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Column(modifier = Modifier.padding(top = SceneViewTokens.Space.sm)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = label, style = MaterialTheme.typography.bodyMedium)
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
-        }
-        Text(
-            text = help,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/**
- * The one way into AR, and the one place that says why you cannot go.
- *
- * The button names the model it will place ("Place Velvet Sofa in AR"). A generic "Start AR"
- * would hand the user back the question this whole screen exists to answer — and it is the
- * label a screen-reader user hears, where the visible grid selection is not available as
- * context.
- */
 @Composable
 private fun PlacementChooserCta(
     state: PlacementCtaState,
@@ -430,15 +335,6 @@ private fun PlacementChooserCta(
     }
 }
 
-private fun placementModeLabelRes(mode: PlacementMode): Int = when (mode) {
-    PlacementMode.PLANE -> R.string.ar_placement_mode_plane
-    PlacementMode.INSTANT -> R.string.ar_placement_mode_instant
-}
-
-private fun placementModeHelpRes(mode: PlacementMode): Int = when (mode) {
-    PlacementMode.PLANE -> R.string.ar_placement_mode_plane_help
-    PlacementMode.INSTANT -> R.string.ar_placement_mode_instant_help
-}
 
 private fun placementCtaHelpRes(state: PlacementCtaState): Int? = when (state) {
     PlacementCtaState.READY -> null

@@ -111,7 +111,7 @@ import java.util.UUID
  *
  * Once the user taps "Start AR Camera" we fall through to
  * [io.github.sceneview.demo.common.placement.TapToPlaceExperience] — the ONE
- * tap-to-place screen, shared verbatim with the `ar-placement` demo (#2482).
+ * placement screen, shared verbatim with the `ar-placement` demo (#2482).
  * It brings the whole thing with it: the session engine (centre reticle #1882,
  * texture-settle gating #1435, per-asset rotation correction #1477,
  * PAUSED-surviving anchors, camera-init scrim #2484, unified status vocabulary
@@ -285,7 +285,7 @@ fun ArViewTabContent(
     // a wrapper-level resetSession() API (iOS does the same via arViewID).
     var arSceneId by remember { mutableStateOf(UUID.randomUUID()) }
 
-    // The shared tap-to-place session holder (#2482, PR 3/4). Hoisted here so
+    // The shared placement session holder (#2482, PR 3/4). Hoisted here so
     // `exitArSession` (defined below at an outer scope) can call
     // `state.clearAll()`, while still wrapped in `key(arSceneId)` so a Reset —
     // which bumps `arSceneId` — recreates a fresh holder and drops every placed
@@ -317,10 +317,10 @@ fun ArViewTabContent(
         exitArSession()
     }
 
-    // The one canonical tap-to-place experience (#2482) — the same composable the
+    // The one canonical placement experience (#2482) — the same composable the
     // `ar-placement` demo renders, inside the same chrome. [TapToPlaceExperience] used to
     // float its own back disc and model bar over the camera; both are gone, so this tab
-    // and the demo now share one back arrow, one dock (Models · Clear · Settings) and one
+    // and the demo now share one back arrow, one dock (Models · Reset · Settings) and one
     // picker sheet, and this tab holds no placement UI of its own.
     //
     // The scaffold sits *outside* `key(arSceneId)`: a Reset must recreate the ARCore
@@ -346,11 +346,13 @@ fun ArViewTabContent(
                 caption = stringResource(R.string.ar_dock_models_caption),
                 onClick = picker::openSheet,
             ),
+            // §2.2 *Restarting placement*: removes the anchor, keeps the chosen asset,
+            // scans again.
             DockItem(
                 icon = Icons.Filled.Refresh,
-                label = stringResource(R.string.ar_dock_clear_label),
-                caption = stringResource(R.string.ar_dock_clear_caption),
-                onClick = { state.clearAll() },
+                label = stringResource(R.string.ar_dock_reset_label),
+                caption = stringResource(R.string.ar_dock_reset_caption),
+                onClick = { state.resetPlacement() },
                 enabled = state.placedCount > 0,
             ),
         ),
@@ -363,6 +365,14 @@ fun ArViewTabContent(
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                // "View in 3D" on the no-surface card: leave the camera for the launcher,
+                // whose featured tiles open the 3D demos.
+                onViewIn3D = exitArSession,
+                // "Try again" on the camera-error card: the same hard reset as Settings.
+                onRestartSession = {
+                    state.clearAll()
+                    arSceneId = UUID.randomUUID()
+                },
             )
         }
     }

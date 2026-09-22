@@ -5,42 +5,43 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870.
 
-     #3405 folded `ar-instant-placement` into this demo, so the placement-mode copy lives
-     here now. The four `demo_ar_placement_picker_*` keys that used to sit in this file were
-     only ever read by that retired demo — the canonical picker
-     (`common/placement/PlacementModelPicker.kt`) carries its own — and went with it. -->
+     #3405 folded `ar-instant-placement` into this demo; the placement-mode copy it brought
+     went again when placement became automatic (no cursor, no tap — plan §2.1). -->
 <resources>
     <string name="demo_ar_placement_title">AR Placement</string>
     <string name="demo_ar_placement_subtitle">Place objects on a floor or mount a TV on a wall</string>
 
     <!-- Pre-AR chooser (#3405). The whole point of this screen is that the subject is
          chosen before the camera opens, so its copy is about the choice, not about AR. -->
-    <string name="ar_placement_chooser_headline">Choose an object, then tap a surface</string>
-    <string name="ar_placement_teaches">Choose a floor or wall, then place an object in your space. Move, rotate and resize it to see how it fits.</string>
+    <string name="ar_placement_chooser_headline">Choose an object to place in your space</string>
+    <string name="ar_placement_teaches">Choose a floor or wall object, then point the camera at the ground. It appears on the first surface found. Move, rotate and resize it to see how it fits.</string>
     <string name="ar_placement_cta">Place in AR</string>
     <string name="ar_placement_cta_named">Place %1$s in AR</string>
     <string name="ar_placement_cta_checking">Checking whether this device supports ARCore…</string>
     <string name="ar_placement_cta_unsupported">This device does not support ARCore, so the camera half of this demo cannot run here.</string>
     <string name="ar_placement_cta_no_model">Pick a model first.</string>
 
-    <!-- Placement mode — the axis that used to be the `ar-instant-placement` demo. -->
-    <string name="ar_placement_mode_heading">Placement accuracy</string>
-    <string name="ar_placement_mode_plane">Find a surface</string>
-    <string name="ar_placement_mode_instant">Place instantly</string>
-    <string name="ar_placement_mode_plane_help">Scan first for a precise fit on a detected surface.</string>
-    <string name="ar_placement_mode_instant_help">Place before scanning finishes. The position adjusts as the camera understands the room.</string>
-    <string name="ar_placement_instant_approximating">Approximating</string>
-    <string name="ar_placement_instant_tracked">Tracked</string>
-    <string name="ar_placement_instant_badge">Instant placement · %1$s</string>
-
-    <!-- Session toggles, moved onto the chooser with the rest of the setup (#1882/#1883). -->
-    <string name="ar_placement_snap_to_plane">Use detected surfaces</string>
-    <string name="ar_placement_snap_to_plane_on">Place only on a surface the camera has detected.</string>
-    <string name="ar_placement_snap_to_plane_off">Also allow placement on nearby tracked points.</string>
-    <string name="ar_placement_show_reticle">Show placement cursor</string>
-    <string name="ar_placement_show_reticle_help">Preview where the next tap will place your object.</string>
-
     <!-- In-AR chrome. -->
     <string name="ar_placement_change_model">Change model</string>
-    <string name="ar_placement_catalogue_note">Bundled models work offline. Online models download when selected; a bundled model is shown while they load.</string>
+    <string name="ar_placement_catalogue_note">Bundled models work offline. Online models download when selected and appear once the download completes.</string>
+
+    <!-- Automatic placement (plan §2.2) — the exact copy of the state machine. Shared by
+         the AR View tab and the `ar-placement` demo through `TapToPlaceStatusOverlays`. -->
+    <string name="ar_place_move_slowly">Move slowly to find a surface.</string>
+    <string name="ar_place_tracking_paused">Tracking paused. Move slowly.</string>
+    <string name="ar_place_try_brighter_area">Try a brighter area.</string>
+    <string name="ar_place_finding_placement">Finding your placement…</string>
+    <string name="ar_place_gesture_hint">Drag to move. Pinch or twist to adjust.</string>
+    <string name="ar_place_keep_on_surface">Keep the object on a surface.</string>
+    <string name="ar_place_no_surface_title">No surface found.</string>
+    <string name="ar_place_no_surface_detail">Try a brighter, textured area.</string>
+    <string name="ar_place_view_in_3d">View in 3D</string>
+    <string name="ar_place_keep_scanning">Keep scanning</string>
+    <string name="ar_place_recovery_failed_title">Couldn\'t recover this placement.</string>
+    <string name="ar_place_scan_again">Scan again</string>
+    <string name="ar_place_camera_error_title">Camera couldn\'t start.</string>
+    <string name="ar_place_try_again">Try again</string>
+    <!-- Pinch read-out: "Actual size" only when the asset's size was measured (§2.3). -->
+    <string name="ar_scale_preview_size">Preview size · %1$d%%</string>
+    <string name="ar_scale_actual_size_percent">Actual size · %1$d%%</string>
 </resources>
