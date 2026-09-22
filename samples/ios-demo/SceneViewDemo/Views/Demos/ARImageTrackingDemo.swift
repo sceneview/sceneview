@@ -24,15 +24,33 @@ struct ARImageTrackingDemo: View {
     /// Number of images currently detected.
     @State private var detectedCount: Int = 0
     @State private var arViewRef: ARView? = nil
+    /// True while ARKit still has the target in view. Driven by the per-frame
+    /// anchor state, not by the one-shot detection callback: an image that
+    /// leaves the frame stops being tracked, and the card has to say so.
+    @State private var isTracked: Bool = false
+
+    // MARK: - Reference image
+
+    /// The bundled target, as a file URL — the same one the database is built
+    /// from, so what the card shows is always what ARKit is looking for.
+    static let targetURL: URL? = Bundle.main.url(forResource: "qrcode", withExtension: "png")
+
+    /// The physical width the reference image is registered at. Printing it
+    /// any other size is the single most common reason tracking never fires.
+    static let targetPhysicalWidth: Measurement<UnitLength> =
+        Measurement(value: 0.15, unit: .meters)
+
+    private static let targetImage: UIImage? = {
+        guard let url = targetURL, let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }()
 
     // MARK: - Image database
 
     /// Reference image database built at view-init time from the bundled QR code PNG.
     private static let imageDatabase: Set<ARReferenceImage>? = {
         guard
-            let url = Bundle.main.url(forResource: "qrcode", withExtension: "png"),
-            let data = try? Data(contentsOf: url),
-            let uiImage = UIImage(data: data)
+            let uiImage = targetImage
         else {
             return nil
         }
@@ -96,6 +114,25 @@ struct ARImageTrackingDemo: View {
                 trackingStatus = "Tracking: \(imageName)"
             }
         )
+        // Detection fires once. Tracking is a per-frame fact: `onFrame` is the
+        // only hook the SDK exposes onto live anchor state today, so the status
+        // is read from the image anchors themselves every frame.
+        .onFrame { frame, _ in
+            let imageAnchors = frame.anchors.compactMap { $0 as? ARImageAnchor }
+            let live = imageAnchors.filter(\.isTracked)
+            let nowTracked = !live.isEmpty
+            // Only write on a real change: this runs 60 times a second.
+            guard live.count != detectedCount || nowTracked != isTracked else { return }
+            detectedCount = live.count
+            isTracked = nowTracked
+            if let name = live.first?.referenceImage.name {
+                trackingStatus = "Tracking: \(name)"
+            } else if imageAnchors.isEmpty {
+                trackingStatus = "Point camera at the QR code target"
+            } else {
+                trackingStatus = "Target lost — bring it back into view"
+            }
+        }
     }
     #endif
 
@@ -103,8 +140,8 @@ struct ARImageTrackingDemo: View {
 
     private var statusBar: some View {
         HStack {
-            Image(systemName: detectedCount > 0 ? "checkmark.circle.fill" : "viewfinder")
-                .foregroundStyle(detectedCount > 0 ? .green : .white)
+            Image(systemName: isTracked ? "checkmark.circle.fill" : "viewfinder")
+                .foregroundStyle(isTracked ? .green : .white)
             Text(trackingStatus)
                 .font(.caption)
                 .foregroundStyle(.white)
@@ -116,26 +153,62 @@ struct ARImageTrackingDemo: View {
         .padding(.bottom, 8)
     }
 
-    /// Card showing the reference image so the user knows what to scan.
+    /// Card showing the actual reference image, at the physical size it is
+    /// registered at, with a way to get it onto something printable. A
+    /// generic `qrcode` glyph here told the user nothing: any QR code looked
+    /// like the target, and none but this one tracks.
     private var targetCard: some View {
         HStack(spacing: 12) {
-            Image(systemName: "qrcode")
-                .font(.system(size: 36))
-                .foregroundStyle(.white)
-                .frame(width: 48, height: 48)
+            Group {
+                if let image = Self.targetImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                } else {
+                    Image(systemName: "qrcode")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityLabel("Reference image ARKit is tracking")
+
             VStack(alignment: .leading, spacing: 2) {
                 Text("Target")
                     .font(.caption.bold())
                     .foregroundStyle(.white)
-                Text("Print or display qrcode.png\n(~15 cm wide) and point\nthe camera at it.")
+                Text("Print or display this exact image at \(physicalWidthLabel) wide, then point the camera at it.")
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let url = Self.targetURL {
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                }
+                .accessibilityLabel("Share the reference image")
+                .accessibilityIdentifier("image-target-share")
             }
         }
         .padding(12)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 24)
+    }
+
+    /// The registered physical width, formatted for the user's locale — a
+    /// hardcoded "15 cm" would read wrong wherever inches are the unit.
+    private var physicalWidthLabel: String {
+        Self.targetPhysicalWidth.formatted(
+            .measurement(width: .abbreviated, usage: .general)
+        )
     }
 
     // MARK: - Simulator placeholder
