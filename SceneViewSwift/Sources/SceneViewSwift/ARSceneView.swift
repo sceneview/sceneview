@@ -672,7 +672,13 @@ public struct ARSceneView: UIViewRepresentable {
         var environmentTexturing: ARWorldTrackingConfiguration.EnvironmentTexturing = .automatic
         var faceTracking: Bool = false
         weak var arView: ARView?
-        private var detectedImageNames: Set<String> = []
+        /// Reference-image anchors already handed to `onImageDetected`, keyed by
+        /// ARKit's per-anchor `identifier` — NOT by image name. Keying by name
+        /// meant a target that left and re-entered the camera was reported once
+        /// and never again, and that two prints of the same reference image
+        /// could only ever produce one anchor. Entries are cleared in
+        /// `session(_:didRemove:)`.
+        var trackedImageAnchors: [UUID: String] = [:]
 
         /// Whether detected planes should be visualized with a translucent
         /// overlay. Set from `makeUIView` once plane detection is known.
@@ -1089,9 +1095,9 @@ public struct ARSceneView: UIViewRepresentable {
                 guard let onImageDetected = onImageDetected,
                       let imageAnchor = anchor as? ARImageAnchor,
                       let imageName = imageAnchor.referenceImage.name,
-                      !detectedImageNames.contains(imageName) else { continue }
+                      trackedImageAnchors[imageAnchor.identifier] == nil else { continue }
 
-                detectedImageNames.insert(imageName)
+                trackedImageAnchors[imageAnchor.identifier] = imageName
                 let anchorEntity = AnchorEntity(anchor: imageAnchor)
                 let anchorNode = AnchorNode(entity: anchorEntity)
                 onImageDetected(imageName, anchorNode, arView)
@@ -1108,6 +1114,12 @@ public struct ARSceneView: UIViewRepresentable {
 
         public func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
             for anchor in anchors {
+                // Forget the image anchor so the same target is reported again
+                // if ARKit re-detects it.
+                if let imageAnchor = anchor as? ARImageAnchor {
+                    trackedImageAnchors.removeValue(forKey: imageAnchor.identifier)
+                    continue
+                }
                 guard let planeAnchor = anchor as? ARPlaneAnchor,
                       let visualizer = planeOverlays.removeValue(forKey: planeAnchor.identifier) else { continue }
                 arView?.scene.removeAnchor(visualizer.anchor)
@@ -1179,7 +1191,7 @@ public struct ARSceneView: UIViewRepresentable {
             // Tracking is starting from scratch on this path, so the previously
             // detected image anchors are gone: forget them, otherwise the same
             // target would never be reported again.
-            detectedImageNames.removeAll()
+            trackedImageAnchors.removeAll()
             session.run(config, options: [.resetTracking])
         }
     }
