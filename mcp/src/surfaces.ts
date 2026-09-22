@@ -1,9 +1,18 @@
 // ─── Tool surfaces ────────────────────────────────────────────────────────────
 //
 // Every SceneView MCP tool is free. There is no paid tier, no API key, no
-// gateway: the hosted worker that once served a "Pro" tier was deleted in
-// August 2026 and both of its URLs (`/mcp` and `/pricing`) have answered 404
-// ever since, so the upsell that pointed at them was removed.
+// gateway: the "Pro" tier was retired in August 2026 and `/pricing` has
+// answered 404 ever since, so the upsell that pointed at it was removed.
+//
+// The hosted worker itself is still up, and this comment used to claim
+// otherwise — it said `/mcp` had answered 404 since August too, which was
+// wrong and made `mcp/README.md`'s hosted-endpoint paragraph look stale.
+// Measured 2026-09-22: `GET /health` → 200 `{"status":"ok","version":"4.1.0"}`,
+// `POST /mcp` → a valid `initialize` for `sceneview-mcp` 4.1.0 serving 29
+// tools, `GET /mcp` → 405 (the endpoint is POST-only, which is what a bare
+// browser hit sees). Only `/pricing` is gone. Re-probe with
+// `curl -sS -m 10 -o /dev/null -w '%{http_code}' https://mcp.sceneview.dev/health`
+// before editing this paragraph again.
 //
 // What remains is a surface question, not a price one. Four generation tools
 // need per-user credentials and external infrastructure that a shared,
