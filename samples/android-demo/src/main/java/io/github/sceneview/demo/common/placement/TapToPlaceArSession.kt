@@ -320,7 +320,9 @@ fun TapToPlaceArSession(
 
             // Contact-shadow catcher per tracked plane (#2241 PR 5). The mesh renders
             // nothing by itself (shadow_receiver.filamat, shadowMultiplier).
-            trackedPlanes.filter { state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING }.forEach { plane ->
+            val grounded = state.phase == PlacementPhase.PLACED ||
+                state.phase == PlacementPhase.ADJUSTING
+            trackedPlanes.filter { grounded }.forEach { plane ->
                 key(plane) {
                     ShadowReceiverPlane(plane = plane)
                 }

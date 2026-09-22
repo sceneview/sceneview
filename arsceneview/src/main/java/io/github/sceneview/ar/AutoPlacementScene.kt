@@ -87,7 +87,10 @@ fun findAutoPlacementSurface(
             plane != null && supported(plane) && plane.isPoseInPolygon(hit.hitPose) &&
                 hit.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
         }
-    if (hit != null) return AutoPlacementCandidate(hit.trackable as Plane, orientedPlacementPose(hit.hitPose, hit.trackable as Plane, frame.camera.pose))
+    if (hit != null) {
+        val hitPlane = hit.trackable as Plane
+        return AutoPlacementCandidate(hitPlane, orientedPlacementPose(hit.hitPose, hitPlane, frame.camera.pose))
+    }
     val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
     val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
     val viewProjection = ViewportProjection.multiply(projection, view)
@@ -140,7 +143,7 @@ fun AutoPlacementScene(
     materialLoader: MaterialLoader = rememberMaterialLoader(engine),
     groundShadows: Boolean = true,
     playbackDataset: File? = null,
-    onARCoreAvailability: ((ARCoreAvailability) -> Unit)? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
@@ -167,7 +170,11 @@ fun AutoPlacementScene(
         materialLoader = materialLoader,
         playbackDataset = playbackDataset,
         planeRenderer = false,
-        planeFindingMode = if (surface == PlacementSurface.SURFACE) Config.PlaneFindingMode.HORIZONTAL else Config.PlaneFindingMode.VERTICAL,
+        planeFindingMode = if (surface == PlacementSurface.SURFACE) {
+            Config.PlaneFindingMode.HORIZONTAL
+        } else {
+            Config.PlaneFindingMode.VERTICAL
+        },
         instantPlacementMode = Config.InstantPlacementMode.DISABLED,
         onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
             if (node == null) state.deselectPlacement() else state.selectPlacement()
@@ -258,14 +265,16 @@ fun ARSceneScope.AutoPlacementModel(
         } }
         NodeLifecycle(pivot) {
             val model = remember(modelInstance, scaleToUnits, assetRotation) {
-                ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
+                io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
                     quaternion = if (placement.plane.type == Plane.Type.VERTICAL) {
                         Rotation(x = -90f).toQuaternion() * assetRotation.toQuaternion()
                     } else assetRotation.toQuaternion()
                     // Transform all eight authored bounds corners after the axis correction.
-                    val corners = buildList {
+                    val corners = buildList<Position> {
                         for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
-                            add(quaternion * ((center + Position(x * halfExtent.x, y * halfExtent.y, z * halfExtent.z)) * scale))
+                            val corner = center +
+                                Position(x * halfExtent.x, y * halfExtent.y, z * halfExtent.z)
+                            add(quaternion * (corner * scale))
                         }
                     }
                     position = automaticPlacementOffset(corners, placement.plane.type == Plane.Type.VERTICAL)
@@ -324,7 +333,11 @@ private class AutomaticAnchorNode(
                 it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
         }
         if (hit == null) { invalidMove(true); return false }
-        val delta = offset ?: floatArrayOf(pose.tx() - hit.hitPose.tx(), pose.ty() - hit.hitPose.ty(), pose.tz() - hit.hitPose.tz()).also { offset = it }
+        val delta = offset ?: floatArrayOf(
+            pose.tx() - hit.hitPose.tx(),
+            pose.ty() - hit.hitPose.ty(),
+            pose.tz() - hit.hitPose.tz(),
+        ).also { offset = it }
         val plane = hit.trackable as Plane
         // Project grab offset into the new plane to prevent movement out of its surface.
         val normal = plane.centerPose.getTransformedAxis(1, 1f)

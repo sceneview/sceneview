@@ -362,7 +362,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         guard cameraPoint.z < 0, distance >= 0.25, distance <= 3,
               let screen = view.project(point), view.bounds.contains(screen) else { return false }
         let local = (plane.transform.inverse * SIMD4<Float>(point, 1)).xyz
-        return Self.contains(SIMD2<Float>(local.x, local.z), polygon: UnsafeBufferPointer(start: plane.geometry.boundaryVertices, count: plane.geometry.boundaryVertexCount).map { SIMD2<Float>($0.x, $0.z) })
+        let polygon = plane.geometry.boundaryVertices.map { SIMD2<Float>($0.x, $0.z) }
+        return Self.contains(SIMD2<Float>(local.x, local.z), polygon: polygon)
     }
 
     /// Polygon containment includes boundary points; never substitutes the rectangular extent.

@@ -11,6 +11,7 @@ import com.google.android.filament.Engine
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.model.model
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
