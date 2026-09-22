@@ -27,13 +27,13 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: image
       DEMO_NAME: Image Planes
-      ASSERT_TEXT: "ImageNode.color -- solid-color planes in an arc"
+      ASSERT_TEXT: "ImageNode.color — swap in ImageNode.load for a picture"
 - runFlow:
     file: flows/demo.yaml
     env:
       DEMO_ID: billboard
       DEMO_NAME: Billboard
-      ASSERT_TEXT: "Orbit the camera -- labels always face you"
+      ASSERT_TEXT: "Drag to orbit — the labels keep facing you"
 - runFlow:
     file: flows/demo-settings.yaml
     env:
