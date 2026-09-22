@@ -232,71 +232,78 @@ class AutoPlacementController {
      */
     fun onBackgroundTap(): FrameEffect = FrameEffect.NONE
 
-    fun onFrame(input: FrameInput): FrameEffect {
-        if (dismissed || phase == PlacementPhase.CAMERA_ERROR) return FrameEffect.NONE
-        val now = input.nowMillis
-
-        if (!input.tracking) {
-            if (phase == PlacementPhase.TRACKING_LOST) return FrameEffect.NONE
-            // Remember where to come back to; INITIALIZING has nothing to come back to.
-            phaseBeforeLoss = if (phase == PlacementPhase.INITIALIZING) {
-                PlacementPhase.SCANNING
-            } else {
-                phase
-            }
-            // The search clock does not run in the dark.
-            searchStartedAt = null
-            recoveringSince = null
-            phase = PlacementPhase.TRACKING_LOST
-            return FrameEffect.TRACKING_LOST
-        }
-
-        if (phase == PlacementPhase.TRACKING_LOST) {
-            phase = phaseBeforeLoss
-        }
-
-        if (hasPlacement) {
-            return when (input.anchorTracking) {
-                false -> {
-                    if (phase == PlacementPhase.RECOVERY_FAILED) return FrameEffect.NONE
-                    val since = recoveringSince ?: now.also { recoveringSince = it }
-                    phase = if (now - since >= RECOVERY_TIMEOUT_MS) {
-                        PlacementPhase.RECOVERY_FAILED
-                    } else {
-                        PlacementPhase.RECOVERING
-                    }
-                    FrameEffect.NONE
-                }
-
-                else -> {
-                    recoveringSince = null
-                    phase = PlacementPhase.PLACED
-                    FrameEffect.NONE
-                }
+    fun onFrame(input: FrameInput): FrameEffect = when {
+        dismissed || phase == PlacementPhase.CAMERA_ERROR -> FrameEffect.NONE
+        !input.tracking -> loseTracking()
+        else -> {
+            if (phase == PlacementPhase.TRACKING_LOST) phase = phaseBeforeLoss
+            when {
+                hasPlacement -> followAnchor(input)
+                !placementRequested -> idle()
+                input.surfaceAvailable -> place(input.nowMillis)
+                else -> search(input.nowMillis)
             }
         }
+    }
 
-        if (!placementRequested) {
-            if (phase == PlacementPhase.INITIALIZING) phase = PlacementPhase.SCANNING
-            return FrameEffect.NONE
-        }
-
-        if (input.surfaceAvailable) {
-            placementRequested = false
-            hasPlacement = true
-            placementsCreated++
-            placedAtMillis = now
-            searchStartedAt = null
-            phase = PlacementPhase.PLACED
-            return FrameEffect.PLACE
-        }
-
-        val started = searchStartedAt ?: now.also { searchStartedAt = it }
-        if (phase == PlacementPhase.NO_SURFACE) return FrameEffect.NONE
-        phase = if (now - started >= NO_SURFACE_TIMEOUT_MS) {
-            PlacementPhase.NO_SURFACE
-        } else {
+    private fun loseTracking(): FrameEffect {
+        if (phase == PlacementPhase.TRACKING_LOST) return FrameEffect.NONE
+        // Remember where to come back to; INITIALIZING has nothing to come back to.
+        phaseBeforeLoss = if (phase == PlacementPhase.INITIALIZING) {
             PlacementPhase.SCANNING
+        } else {
+            phase
+        }
+        // The search clock does not run in the dark.
+        searchStartedAt = null
+        recoveringSince = null
+        phase = PlacementPhase.TRACKING_LOST
+        return FrameEffect.TRACKING_LOST
+    }
+
+    /** An object stands: mirror its anchor's tracking, never create a second one. */
+    private fun followAnchor(input: FrameInput): FrameEffect {
+        when {
+            input.anchorTracking != false -> {
+                recoveringSince = null
+                phase = PlacementPhase.PLACED
+            }
+            phase == PlacementPhase.RECOVERY_FAILED -> Unit
+            else -> {
+                val since = recoveringSince ?: input.nowMillis.also { recoveringSince = it }
+                phase = if (input.nowMillis - since >= RECOVERY_TIMEOUT_MS) {
+                    PlacementPhase.RECOVERY_FAILED
+                } else {
+                    PlacementPhase.RECOVERING
+                }
+            }
+        }
+        return FrameEffect.NONE
+    }
+
+    private fun idle(): FrameEffect {
+        if (phase == PlacementPhase.INITIALIZING) phase = PlacementPhase.SCANNING
+        return FrameEffect.NONE
+    }
+
+    private fun place(now: Long): FrameEffect {
+        placementRequested = false
+        hasPlacement = true
+        placementsCreated++
+        placedAtMillis = now
+        searchStartedAt = null
+        phase = PlacementPhase.PLACED
+        return FrameEffect.PLACE
+    }
+
+    private fun search(now: Long): FrameEffect {
+        val started = searchStartedAt ?: now.also { searchStartedAt = it }
+        if (phase != PlacementPhase.NO_SURFACE) {
+            phase = if (now - started >= NO_SURFACE_TIMEOUT_MS) {
+                PlacementPhase.NO_SURFACE
+            } else {
+                PlacementPhase.SCANNING
+            }
         }
         return FrameEffect.NONE
     }

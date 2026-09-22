@@ -264,7 +264,8 @@ class AutoPlacementControllerTest {
         c.onFrame(FrameInput(NO_SURFACE_TIMEOUT_MS, true, surfaceAvailable = false))
         assertEquals(PlacementPhase.NO_SURFACE, c.phase)
         // Detection never stopped: the card is advice, not a gate.
-        assertEquals(FrameEffect.PLACE, c.onFrame(FrameInput(NO_SURFACE_TIMEOUT_MS + 16, true, surfaceAvailable = true)))
+        val later = FrameInput(NO_SURFACE_TIMEOUT_MS + 16, true, surfaceAvailable = true)
+        assertEquals(FrameEffect.PLACE, c.onFrame(later))
         assertEquals(PlacementPhase.PLACED, c.phase)
     }
 

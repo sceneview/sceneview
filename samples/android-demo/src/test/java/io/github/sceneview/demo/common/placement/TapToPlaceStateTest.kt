@@ -28,7 +28,8 @@ class TapToPlaceStateTest {
         assertFalse(state.cameraReady)
 
         // Re-enter: the experience mints a new selection and offers the armed row again.
-        assertTrue("a dismissed holder must accept the next entry's offer", state.offerAsset(state.controller.selectModel(), sofa))
+        val reoffered = state.offerAsset(state.controller.selectModel(), sofa)
+        assertTrue("a dismissed holder must accept the next entry's offer", reoffered)
         assertTrue(state.controller.wantsSurface)
         assertEquals(FrameEffect.PLACE, state.controller.onFrame(FrameInput(16L, true, surfaceAvailable = true)))
         assertEquals(2, state.controller.placementsCreated)
