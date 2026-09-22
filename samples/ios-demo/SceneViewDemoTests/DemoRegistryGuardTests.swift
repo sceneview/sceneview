@@ -180,6 +180,24 @@ final class DemoRegistryGuardTests: XCTestCase {
         }
     }
 
+    /// Removed-on-iOS ids: a feature that cannot be done faithfully here is
+    /// removed, not faked. `fog` shipped as a translucent volume standing in
+    /// for depth-based fog, which RealityKit has no equivalent of, so the
+    /// screen is gone — and must not come back as a card or a live deep link.
+    func testRemovedFeatureIdsAreGoneAndStillReachThePlaceholder() {
+        let removed = ["fog"]
+        for id in removed {
+            XCTAssertNil(GeneratedScenes.destination(for: id),
+                         "'\(id)' was removed on iOS — it must not resolve to a real screen.")
+            XCTAssertFalse(GeneratedScenes.allowedIds.contains(id),
+                           "'\(id)' was removed on iOS — it must not be a catalogue id.")
+            XCTAssertFalse(DemoDeepLinkRegistry.allowedIds.contains(id),
+                           "'\(id)' was removed on iOS — its deep link must not be registered.")
+            // Still honest, never a silent no-op: the placeholder answers.
+            _ = DemoDeepLinkRegistry.destination(for: id)
+        }
+    }
+
     /// Android-only ids — no iOS screen, and therefore no catalogue entry.
     /// A regression pin so one of them doesn't quietly come back as a
     /// coming-soon card (the dead-end class this app deliberately has none of)

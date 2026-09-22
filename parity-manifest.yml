@@ -363,9 +363,10 @@ demos:
     androidStatus: Working
     iosStatus: android-only
     reason: >-
-      No iOS screen — the AR-specific fog demo (#1717) is not ported; distinct
-      from the non-AR `fog` id, which IS working on iOS. Its coming-soon Scene
-      stub was deleted in #3231.
+      Removed on iOS: RealityKit has no depth-based fog. The AR fog demo
+      (#1717) is not ported, and the non-AR `fog` screen — which faked the
+      effect with a translucent volume — was removed rather than kept as a
+      look-alike. Its coming-soon Scene stub was deleted in #3231.
   - id: ar-geospatial-anchors
     androidStatus: KnownIssue
     iosStatus: android-only

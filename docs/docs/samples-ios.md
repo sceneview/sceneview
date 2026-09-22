@@ -1,6 +1,6 @@
 ---
 title: Samples — SceneView for iOS, macOS, visionOS
-description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer, geometry shapes, camera controls, AR tap-to-place, physics, audio, text, fog, reflections, and 50+ more demos."
+description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer, geometry shapes, camera controls, AR tap-to-place, physics, audio, text, reflections, and 50+ more demos."
 ---
 
 # Samples — Apple Platforms
@@ -40,7 +40,6 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 | Lighting | [`LightingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightingDemo.swift) | Directional, point, and spot lights with PBR materials |
 | Movable Light | [`MovableLightDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MovableLightDemo.swift) | Drag a `LightNode` around the scene |
 | Dynamic Sky | [`DynamicSkyDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DynamicSkyDemo.swift) | Time-of-day slider drives `DynamicSkyNode` |
-| Fog | [`FogDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/FogDemo.swift) | Linear / exponential / height-based atmospheric fog |
 | Environment | [`EnvironmentDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/EnvironmentDemo.swift) | HDR environment presets (`.studio`, `.outdoor`, `.night`) |
 
 ### Content
