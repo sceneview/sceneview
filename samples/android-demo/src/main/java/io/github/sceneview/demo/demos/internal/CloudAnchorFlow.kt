@@ -194,7 +194,7 @@ sealed interface CloudAnchorTask {
  * @property step which half of the flow is showing.
  * @property blocker why no Cloud call can succeed at all, or `null`.
  * @property tracking ARCore's camera is tracking.
- * @property anchorPlaced the user has tapped a plane in the Host step.
+ * @property anchorPlaced the controller has placed on a usable surface in the Host step.
  * @property roomQuality ARCore's feature-map estimate around the placed anchor.
  * @property host the host request's lifecycle.
  * @property resolve the resolve request's lifecycle.
@@ -234,7 +234,7 @@ private fun CloudAnchorFlowState.notTrackingStatus(): CloudAnchorStatus =
 
 /** Every action the screen can offer. [allows] decides which of them are live right now. */
 enum class CloudAnchorAction {
-    /** Tap a detected plane to drop the anchor to be hosted. */
+    /** Arm automatic placement on the first usable surface in the Host step. */
     PlaceAnchor,
 
     /** Upload the placed anchor and get a code back. */
@@ -293,6 +293,7 @@ fun CloudAnchorFlowState.allows(action: CloudAnchorAction): Boolean {
             cloudReachable &&
                 step == CloudAnchorStep.Host &&
                 anchorPlaced &&
+                tracking &&
                 roomQuality != RoomQuality.Insufficient &&
                 host !is CloudAnchorTask.Succeeded &&
                 host != CloudAnchorTask.Running
@@ -412,7 +413,7 @@ private fun CloudAnchorFlowState.hostStatus(): CloudAnchorStatus = when {
     )
     !tracking -> notTrackingStatus()
     !anchorPlaced ->
-        CloudAnchorStatus("Tap a surface to place the anchor.", DemoStatusTone.Guidance)
+        CloudAnchorStatus("Move slowly to find a surface.", DemoStatusTone.Guidance)
     roomQuality == RoomQuality.Insufficient ->
         CloudAnchorStatus("Walk around the anchor to map the room.", DemoStatusTone.Guidance)
     roomQuality == RoomQuality.Sufficient ->

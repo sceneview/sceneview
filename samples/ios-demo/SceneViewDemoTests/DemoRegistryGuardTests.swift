@@ -47,6 +47,16 @@ final class DemoRegistryGuardTests: XCTestCase {
 
     // MARK: - Registry shape (non-emptiness, format)
 
+    func testPlacementHasOneCanonicalEntry() {
+        let placementIds: Set<String> = ["ar-placement", "ar-instant-placement", "placement-scene"]
+        XCTAssertEqual(GeneratedScenes.allowedIds.intersection(placementIds), ["ar-placement"])
+        XCTAssertEqual(GeneratedScenes.all().filter { placementIds.contains($0.sceneId) }.count, 1)
+        for removed in ["ar-instant-placement", "placement-scene"] {
+            XCTAssertFalse(DemoDeepLinkRegistry.allowedIds.contains(removed))
+            XCTAssertNil(GeneratedScenes.destination(for: removed))
+        }
+    }
+
     func testAllowedIdsIsNonEmpty() {
         // A regression in the collator (or an empty Scenes dir) would
         // silently ship a zero-demo deep-link gate.

@@ -94,6 +94,23 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-measure
       DEMO_NAME: Measure
+# Measurement has one explicit commit action; tapping the camera never adds points.
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-measure
+      qa_mode: true
+- assertVisible: "Add point"
+- assertVisible: "Aim at a surface, then Add point"
+# Tapping the camera commits nothing: the first-point hint is still on screen.
+- tapOn:
+    point: "50%,50%"
+- assertVisible: "Add point"
+- assertVisible: "Aim at a surface, then Add point"
+- takeScreenshot: "ar-measure-add-point"
+- tapOn: "Navigate back"
 - runFlow:
     file: flows/demo.yaml
     env:

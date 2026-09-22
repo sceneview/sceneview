@@ -15,25 +15,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Stress test for the depth-mode toggle in `ARDepthOcclusionDemo` ([#1777]).
+ * Real-device stress check for the occlusion toggle of the depth comparison screen ([#1777]).
  *
- * Flipping the "Depth occlusion" switch re-keys the whole `ARSceneView` (`key(depthOn)`),
- * which tears down and rebuilds the Filament engine + ARCore camera stream. Doing this
- * rapidly is the worst case for the depth ↔ flat material swap: a queued depth frame
- * arriving mid-rebuild, or an engine that hasn't finished tearing down, can crash the
- * process or strand the renderer in an inconsistent state.
+ * The toggle no longer re-keys the `ARSceneView`: since the demos share the automatic-placement
+ * controller, turning occlusion on and off only flips a renderer flag on the live session, so the
+ * session, the anchor and the placed subject survive. This test flips it [TOGGLE_COUNT] times in a
+ * row and asserts the screen stays alive and the button label follows each flip — the regression
+ * class of #1777 (a rebuild mid-swap killing the renderer) with the cheaper mechanism.
  *
- * This test launches the demo via [DemoHostActivity], opens the settings sheet, then
- * toggles the depth switch **10 times in quick succession** and asserts:
- * 1. The process never dies — the demo title stays on screen for the whole run.
- * 2. The transition spinner (test-tag `depth-transition-spinner`, added in #1777) is
- *    wired — it appears during at least one swap, confirming the user gets feedback.
- *
- * **Environment note:** real depth occlusion needs ARCore Depth-API hardware, which the
- * software-GPU CI emulator does not provide. The toggle, the `key()` remount and the
- * spinner are all independent of depth-support, so this test exercises the *rebuild
- * stability* contract regardless of whether the device actually supports depth — which
- * is exactly the regression class #1777 cares about. Related: pre-existing #1617.
+ * **Environment note:** depth occlusion needs ARCore Depth-API hardware. On a device without it the
+ * screen shows the honest "This feature isn’t available on this device." card and the test is
+ * skipped via `Assume` rather than failing.
  */
 @RunWith(AndroidJUnit4::class)
 class ARDepthOcclusionToggleTest {
@@ -74,43 +66,21 @@ class ARDepthOcclusionToggleTest {
             "Demo '$demoId' never rendered its title bar",
             device.wait(Until.hasObject(By.text(expectedTitle)), timeout)
         )
-        // Let the first AR session + camera stream settle before stressing the toggle.
-        Thread.sleep(6_000)
-
-        // Open the per-demo settings sheet so the depth Switch is in the view tree.
-        val fab = device.findObject(By.res("demo-settings-fab"))
-            ?: device.findObject(By.desc("Demo settings"))
-        assertTrue("Demo settings FAB not found", fab != null)
-        fab!!.click()
-        device.waitForIdle()
-        Thread.sleep(500)
-
-        var spinnerObserved = false
-        repeat(TOGGLE_COUNT) {
-            // The depth Switch carries the "Depth occlusion" label in the sheet.
-            val toggle = device.findObject(By.text("Depth occlusion"))
-                ?: device.findObject(By.clazz("android.widget.Switch"))
-            if (toggle != null) {
-                toggle.click()
-            }
-            // A short window so the `key(depthOn)` remount actually starts before the
-            // next flip — this is the "rapid" stress, not an instant double-tap.
-            if (device.wait(Until.hasObject(By.res("depth-transition-spinner")), 1_200)) {
-                spinnerObserved = true
-            }
-            device.waitForIdle()
+        val toggleReady = device.wait(Until.hasObject(By.text("Turn occlusion off")), timeout)
+        if (!toggleReady) {
+            org.junit.Assume.assumeFalse(
+                "Requires a device with ARCore Depth API",
+                device.hasObject(By.text("This feature isn’t available on this device."))
+            )
         }
-
-        // Process survived the 10-flip stress — the title bar is still on screen.
-        assertTrue(
-            "Demo crashed or was dismissed during rapid depth toggling",
-            device.hasObject(By.text(expectedTitle))
-        )
-        // The transition spinner fired at least once — the user got feedback.
-        assertTrue(
-            "Depth-transition spinner (#1777) never appeared during 10 toggles",
-            spinnerObserved
-        )
+        assertTrue("Supported comparison never became ready", toggleReady)
+        repeat(TOGGLE_COUNT) { index ->
+            val before = if (index % 2 == 0) "Turn occlusion off" else "Turn occlusion on"
+            val after = if (index % 2 == 0) "Turn occlusion on" else "Turn occlusion off"
+            device.findObject(By.text(before)).click()
+            assertTrue("Effect state did not update", device.wait(Until.hasObject(By.text(after)), timeout))
+            assertTrue("Demo dismissed during toggling", device.hasObject(By.text(expectedTitle)))
+        }
     }
 
     companion object {

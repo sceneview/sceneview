@@ -7,4 +7,6 @@
 <resources>
     <string name="demo_ar_people_occlusion_title">People Occlusion</string>
     <string name="demo_ar_people_occlusion_subtitle">Real people hide virtual objects</string>
+    <string name="ar_people_comparison">People in front of the helmet hide it when occlusion is on. ARCore Scene Semantics works outdoors; indoor people may not be detected.</string>
+    <string name="ar_people_requirement">Requires ARCore Scene Semantics and Depth API.</string>
 </resources>

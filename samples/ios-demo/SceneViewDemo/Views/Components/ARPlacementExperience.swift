@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import RealityKit
+import ARKit
 import UIKit
 import SceneViewSwift
 
@@ -26,7 +27,45 @@ struct PlacementFeedback: Equatable {
 /// Assets remain app-owned; generation tickets prevent dismissed or superseded loads
 /// from entering the SDK's scene. Bundled models use the same 0.3 m preview as Android.
 struct ARPlacementExperience: View {
+    enum Occlusion: Equatable {
+        case depth, people
+
+        /// Perception stays enabled while comparing the render effect. Changing the toggle
+        /// never changes this configuration, the session, the anchor or the model.
+        var configuration: ARSessionConfiguration {
+            switch self {
+            case .depth: return ARSessionConfiguration(sceneReconstruction: .mesh)
+            case .people: return ARSessionConfiguration(frameSemantics: [.personSegmentationWithDepth])
+            }
+        }
+
+        /// Asks the running session for this feature's perception option, once, and only
+        /// when the device actually supports it — an unsupported option makes ARKit fail
+        /// the whole session, and the container has already explained the requirement.
+        @MainActor func configurePerception(of view: ARView) {
+            guard configuration.unmetRequirement() == nil else { return }
+            view.session.run(configuration.makeARConfiguration())
+        }
+
+        @MainActor func apply(enabled: Bool, to view: ARView) {
+            switch self {
+            case .depth:
+                if enabled { view.environment.sceneUnderstanding.options.insert(.occlusion) }
+                else { view.environment.sceneUnderstanding.options.remove(.occlusion) }
+            case .people:
+                if enabled { view.renderOptions.remove(.disablePersonOcclusion) }
+                else { view.renderOptions.insert(.disablePersonOcclusion) }
+            }
+        }
+    }
+
+    static let comparisonModel = "khronos_damaged_helmet"
     var wallTV = false
+    private var title: String?
+    private var occlusion: Occlusion?
+    private var featureAccessory: () -> AnyView
+    private var featureControls: () -> AnyView
+    @State private var occlusionEnabled = true
     var initialModel: String? = nil
     var initialModelURL: URL? = nil
     var initialModelUnit: ModelUnit? = nil
@@ -48,7 +87,13 @@ struct ARPlacementExperience: View {
     @State private var showingActualSize = false
 
     init(initialModel: String? = nil, initialModelURL: URL? = nil, initialModelUnit: ModelUnit? = nil,
-         wallTV: Bool = false) {
+         wallTV: Bool = false, title: String? = nil, occlusion: Occlusion? = nil,
+         featureAccessory: @escaping () -> AnyView = { AnyView(EmptyView()) },
+         featureControls: @escaping () -> AnyView = { AnyView(EmptyView()) }) {
+        self.title = title
+        self.occlusion = occlusion
+        self.featureAccessory = featureAccessory
+        self.featureControls = featureControls
         self.wallTV = wallTV
         _controller = StateObject(wrappedValue: ARPlacementController(alignment: wallTV ? .vertical : .horizontal))
         self.initialModel = initialModel
@@ -77,6 +122,7 @@ struct ARPlacementExperience: View {
     }
     private var displayName: String {
         if wallTV { return "TV" }
+        if !usesOpenedFile && modelName == Self.comparisonModel { return "Damaged Helmet" }
         if usesOpenedFile { return initialModelURL!.deletingPathExtension().lastPathComponent }
         return Self.models.first { $0.asset == modelName }?.name
             ?? modelName.replacingOccurrences(of: "_", with: " ").capitalized
@@ -85,14 +131,24 @@ struct ARPlacementExperience: View {
     private var sizeLabel: String { renderedActualSize ? "Actual size" : "Preview size" }
 
     var body: some View {
-        DemoScaffold(wallTV ? "Wall Placement" : "AR Placement", chromeMode: .ar) {
-            AutoPlacementScene(controller: controller, onSessionEvent: { _, view in
-                viewBox.value = view
-            })
+        DemoScaffold(title ?? (wallTV ? "Wall Placement" : "AR Placement"), chromeMode: .ar) {
+            placementScene
         } accessory: {
-            status
+            VStack(spacing: SceneViewTokens.Space.sm) {
+                status
+                if occlusion != nil {
+                    Toggle("Occlusion", isOn: $occlusionEnabled)
+                        .padding(SceneViewTokens.Space.md)
+                        .modifier(PlacementStatusSurface())
+                        .accessibilityIdentifier("ar-occlusion-toggle")
+                }
+                featureAccessory()
+            }
         } controls: {
             controls
+        }
+        .onChange(of: occlusionEnabled) { _, enabled in
+            if let view = viewBox.value { occlusion?.apply(enabled: enabled, to: view) }
         }
         .task(id: assetIdentity) { await loadModel() }
         .onDisappear { controller.dismiss() }
@@ -152,6 +208,20 @@ struct ARPlacementExperience: View {
         }
     }
 
+    // One placement scene for every feature: the SDK's `AutoPlacementScene`, never a
+    // second placement policy. The occlusion demos need one extra perception option
+    // (LiDAR mesh, person segmentation) that the scene does not take as a parameter,
+    // so they apply it to the live session once it is running — `session.run` without
+    // `.resetTracking`, which keeps tracking, the anchor and the placed subject.
+    private var placementScene: some View {
+        AutoPlacementScene(controller: controller) { event, view in
+            viewBox.value = view
+            guard let occlusion else { return }
+            if case .started = event { occlusion.configurePerception(of: view) }
+            occlusion.apply(enabled: occlusionEnabled, to: view)
+        }
+    }
+
     @MainActor private func loadModel() async {
         let ticket = controller.selectModel()
         loading = true
@@ -174,6 +244,7 @@ struct ARPlacementExperience: View {
                 node = try await ModelNode.load(contentsOf: url, unit: initialModelUnit)
             } else {
                 node = try await ModelNode.load(modelName)
+                Self.orientBundledModel(node.entity, named: modelName)
             }
             guard !Task.isCancelled, controller.acceptsAsset(ticket) else { return }
             // Apply grounding to asynchronous content explicitly, independent of the
@@ -268,7 +339,8 @@ struct ARPlacementExperience: View {
             Text("\(sizeLabel) · \(Int(controller.scale * 100))%")
                 .font(SceneViewTokens.TypeScale.caption)
             if loading { Text("Loading model… \(displayName)") }
-            if !wallTV {
+            featureControls()
+            if !wallTV && occlusion == nil {
                 Menu("Pick model") {
                     ForEach(Self.models, id: \.asset) { model in
                         Button(model.name) {
@@ -328,6 +400,14 @@ struct ARPlacementExperience: View {
         }
     }
 
+    /// The USDZ conversion preserves the helmet GLB's authored +90° X node rotation
+    /// after USD's Z-up stage is normalized. Match Android's -90° X asset correction
+    /// before the controller measures bounds and computes the grounded pivot.
+    @MainActor static func orientBundledModel(_ entity: Entity, named name: String) {
+        guard name == comparisonModel else { return }
+        entity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0]) * entity.orientation
+    }
+
     /// Same authored metre geometry and physical material parameters as Android's TV.
     /// This is a procedural TV model, not a simulated camera or placement.
     @MainActor static func makeWallTV() -> Entity {
@@ -361,7 +441,7 @@ private struct PlacementShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
-private struct PlacementStatusSurface: ViewModifier {
+struct PlacementStatusSurface: ViewModifier {
     @Environment(\.colorScheme) private var scheme
     func body(content: Content) -> some View {
         content
@@ -405,7 +485,10 @@ private struct PlacementModelPreview: View {
             do {
                 let loaded: ModelNode
                 if let url { loaded = try await ModelNode.load(contentsOf: url, unit: unit) }
-                else { loaded = try await ModelNode.load(modelName) }
+                else {
+                    loaded = try await ModelNode.load(modelName)
+                    ARPlacementExperience.orientBundledModel(loaded.entity, named: modelName)
+                }
                 guard !Task.isCancelled else { return }
                 if !actualSize { _ = loaded.scaleToUnits(0.3) }
                 model = loaded

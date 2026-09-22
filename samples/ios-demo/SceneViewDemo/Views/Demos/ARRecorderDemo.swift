@@ -44,156 +44,59 @@ struct ARRecorderDemo: View {
     }
 
     var body: some View {
-        ZStack {
-            #if !targetEnvironment(simulator)
-            arSceneView
-                .ignoresSafeArea()
-            #else
-            simulatorPlaceholder
-            #endif
-
-            VStack {
-                Spacer()
-                statusBanner
-                controlsPanel
-                    .padding(.bottom, 30)
-                    .padding(.horizontal, 24)
-            }
-        }
-        .background(Color.black)
+        ARPlacementExperience(
+            initialModel: ARPlacementExperience.comparisonModel,
+            title: "AR Recording",
+            featureAccessory: { AnyView(recordingAction) },
+            featureControls: { AnyView(recordingControls) }
+        )
         .onDisappear(perform: teardown)
     }
 
-    // MARK: - AR view
-
-    #if !targetEnvironment(simulator)
-    private var arSceneView: some View {
-        ARSceneView(
-            planeDetection: .horizontal,
-            showPlaneOverlay: true,
-            showCoachingOverlay: true,
-            onTapOnPlane: { position, arView in
-                // Drop a small unlit cube where the user taps so the
-                // recording has something tracking.
-                let marker = GeometryNode.cube(
-                    size: 0.08,
-                    material: .pbr(color: .systemTeal, metallic: 0.0, roughness: 0.4),
-                    cornerRadius: 0.01
-                )
-                let anchor = AnchorNode.world(position: position)
-                anchor.add(marker.entity)
-                arView.scene.addAnchor(anchor.entity)
+    private var recordingAction: some View {
+        VStack(spacing: SceneViewTokens.Space.sm) {
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(SceneViewTokens.TypeScale.caption)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        )
-    }
-    #endif
-
-    private var simulatorPlaceholder: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "arkit")
-                .font(.system(size: 60))
-                .foregroundStyle(.white.opacity(0.5))
-            Text("AR recording is device-only")
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text("RPScreenRecorder needs ARKit hardware and screen-record permission. Run on a real iPhone or iPad to try this demo.")
-                .font(.caption)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.7))
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - UI
-
-    @ViewBuilder
-    private var statusBanner: some View {
-        if let statusMessage {
-            Text(statusMessage)
-                .font(.caption)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .padding(.bottom, 10)
-                .transition(.opacity)
-        }
-    }
-
-    private var controlsPanel: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 16) {
-                Button(action: toggleRecording) {
-                    HStack(spacing: 8) {
-                        Image(systemName: recorder.isRecording ? "stop.circle.fill" : "record.circle.fill")
-                            .font(.title2)
-                        Text(recorder.isRecording ? "Stop" : "Record")
-                            .font(.body.weight(.semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
-                    .background(recorder.isRecording ? Color.red : Color.accentColor)
-                    .clipShape(Capsule())
-                }
-                .disabled(isTogglingRecording || (!recorder.isAvailable && !recorder.isRecording))
-                .opacity(isTogglingRecording ? 0.6 : 1)
+            Button(action: toggleRecording) {
+                Label(recorder.isRecording ? "Stop" : "Record",
+                      systemImage: recorder.isRecording ? "stop.circle.fill" : "record.circle.fill")
+                    .frame(minHeight: SceneViewTokens.Layout.touchTarget)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(SceneViewTokens.HomeColor.primary)
+            .environment(\.colorScheme, .light)
+            .disabled(isTogglingRecording || (!recorder.isAvailable && !recorder.isRecording))
+            .accessibilityIdentifier("ar-record-toggle")
+        }
+        .padding(SceneViewTokens.Space.md)
+        .modifier(PlacementStatusSurface())
+    }
 
+    private var recordingControls: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
             if let url = recorder.lastOutputURL, isExportable(url) {
-                VStack(spacing: 6) {
-                    Text(url.lastPathComponent)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    HStack(spacing: 10) {
-                        Button(action: { saveToPhotos(url) }) {
-                            Label(isSavingToPhotos ? "Saving…" : "Save to Photos",
-                                  systemImage: "photo.on.rectangle.angled")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(isSavingToPhotos ? Color.accentColor.opacity(0.5) : Color.accentColor)
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isSavingToPhotos)
-
-                        ShareLink(item: url) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(.white.opacity(0.15))
-                                .clipShape(Capsule())
-                        }
-                    }
+                Text(url.lastPathComponent)
+                    .font(SceneViewTokens.TypeScale.caption)
+                Button(action: { saveToPhotos(url) }) {
+                    Label(isSavingToPhotos ? "Saving…" : "Save to Photos",
+                          systemImage: "photo.on.rectangle.angled")
+                }
+                .disabled(isSavingToPhotos)
+                ShareLink(item: url) {
+                    Label("Share", systemImage: "square.and.arrow.up")
                 }
             }
-
             if let url = recorder.lastOutputURL, !isExportable(url) {
                 Text(url == movedToPhotos
                      ? "Saved to Photos — the recording now lives in your library."
                      : "The recording file is no longer on disk.")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .multilineTextAlignment(.center)
             }
-
-            Text("iOS records the screen only (no deterministic playback). The MP4 opens in Photos.")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
+            Text("iOS records screen video. Recordings cannot replay an AR session.")
+                .font(SceneViewTokens.TypeScale.caption)
         }
-        .padding()
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - Actions

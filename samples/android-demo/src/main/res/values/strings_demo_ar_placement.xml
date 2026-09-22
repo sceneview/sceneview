@@ -47,4 +47,10 @@
     <string name="ar_place_loading_model">Loading model…</string>
     <string name="ar_place_model_failed">Model couldn’t load.</string>
     <string name="ar_place_preview_size">Preview size</string>
+
+    <!-- Sheet-only accessibility adjustments of the feature comparison screens. The
+         move/rotate/scale labels are shared with the wall placement demo; only the
+         depth axis differs, because a free-standing subject moves closer, not up. -->
+    <string name="ar_adjust_move_closer">Move closer</string>
+    <string name="ar_adjust_move_farther">Move farther</string>
 </resources>

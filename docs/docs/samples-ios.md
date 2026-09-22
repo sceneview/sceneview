@@ -78,18 +78,22 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 ### AR (iOS only)
 
 AR samples require a physical device with ARKit support (A9+ chip, iOS 18+).
+`ar-placement` is the single placement catalogue entry. Depth occlusion requires LiDAR;
+people occlusion requires supported person segmentation. Every AR card stays in the
+catalogue on every device: opening one on a device that cannot run it shows the honest
+requirement card before any camera starts, rather than the card disappearing.
+Occlusion comparisons keep perception enabled and change only the renderer effect.
 
 | Demo | Source | What it shows |
 |---|---|---|
-| AR Placement | [`ARPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPlacementDemo.swift) | Tap-to-place USDZ on a detected plane |
-| Estimated-plane placement | [`ARInstantPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARInstantPlacementDemo.swift) | Tap-to-place on an estimated plane, before geometry converges |
+| AR Placement | [`ARPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPlacementDemo.swift) | One 0.3 m preview model automatically placed on the first usable horizontal surface; drag, pinch and twist to adjust |
 | AR Orbital | [`OrbitalARDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OrbitalARDemo.swift) | Orbit camera in AR passthrough mode |
 | AR Lighting | [`ARLightingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARLightingDemo.swift) | Compare main / fill light presets on an anchored model |
-| AR Recording | [`ARRecorderDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift) | ReplayKit-backed AR session capture |
+| AR Recording | [`ARRecorderDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift) | Automatically placed subject with explicit ReplayKit Record/Stop controls; screen video, not AR-session playback |
 | AR Image Tracking | [`ARImageTrackingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARImageTrackingDemo.swift) | Track printed reference images |
 | Face anchor accessories | [`ARAugmentedFacesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARAugmentedFacesDemo.swift) | Accessories pinned to a tracked face anchor — pose only, no morphable mesh |
-| AR Depth Occlusion | [`ARDepthOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARDepthOcclusionDemo.swift) | LiDAR depth occlusion on supported devices |
-| AR People Occlusion | [`ARPeopleOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift) | Occlude AR content behind real people |
+| AR Depth Occlusion | [`ARDepthOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARDepthOcclusionDemo.swift) | Bundled helmet placed automatically; toggle LiDAR mesh occlusion without moving or rescaling it |
+| AR People Occlusion | [`ARPeopleOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift) | The same bundled helmet and placement flow; toggle person occlusion without restarting tracking |
 | Body anchor tracking | [`ARBodyTrackerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift) | Follow a detected body anchor — anchor pose, not per-joint data |
 | AR Scene Mesh | [`ARSceneMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift) | LiDAR scene reconstruction mesh |
 | AR Debug (Rerun) | [`RerunDebugDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RerunDebugDemo.swift) | Live AR debug data streamed to [Rerun.io](https://rerun.io) viewer |

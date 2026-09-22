@@ -88,7 +88,7 @@ struct FeaturedARDemo: Identifiable {
     /// demo types share one collection.
     let destination: AnyView
 
-    /// The six headline AR demos shown on the launcher grid. Picked to mirror
+    /// The headline AR demos shown on the launcher grid. Picked to mirror
     /// Android's launcher card set as closely as the iOS port allows — all of
     /// these have a real, shipping iOS destination.
     static let all: [FeaturedARDemo] = [
@@ -98,13 +98,6 @@ struct FeaturedARDemo: Identifiable {
             subtitle: "One object on the first usable surface",
             icon: "arkit",
             destination: AnyView(ARPlacementDemo())
-        ),
-        FeaturedARDemo(
-            id: "ar-instant-placement",
-            title: "Automatic Placement",
-            subtitle: "Place immediately when a surface is usable",
-            icon: "bolt.fill",
-            destination: AnyView(ARInstantPlacementDemo())
         ),
         FeaturedARDemo(
             id: "ar-lighting",
