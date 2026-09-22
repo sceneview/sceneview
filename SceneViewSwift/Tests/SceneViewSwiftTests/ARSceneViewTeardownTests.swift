@@ -128,5 +128,37 @@ final class ARSceneViewTeardownTests: XCTestCase {
         XCTAssertTrue(coordinator.planeOverlays.isEmpty)
         XCTAssertTrue(arView.scene.anchors.isEmpty)
     }
+
+    /// Slice-2 lifecycle: teardown releases the post-process slot only when
+    /// this view installed it, and leaves the coordinator in a state that
+    /// reports nothing as live.
+    @available(iOS 15.0, *)
+    func testDismantleReleasesOwnedPostProcessAndResetsLifecycle() {
+        let (arView, coordinator) = makeWiredCoordinator()
+        coordinator.sessionDidStart = true
+        coordinator.awaitingFirstFrame = true
+        coordinator.applyExposure(1.0, on: arView)
+        XCTAssertTrue(coordinator.ownsPostProcess)
+
+        ARSceneView.dismantleUIView(arView, coordinator: coordinator)
+
+        XCTAssertNil(arView.renderCallbacks.postProcess)
+        XCTAssertFalse(coordinator.ownsPostProcess)
+        XCTAssertNil(coordinator.appliedExposure)
+        XCTAssertFalse(coordinator.sessionDidStart)
+        XCTAssertFalse(coordinator.awaitingFirstFrame)
+        XCTAssertNil(arView.session.delegate)
+    }
+
+    @available(iOS 15.0, *)
+    func testDismantleLeavesAForeignPostProcessAlone() {
+        let (arView, coordinator) = makeWiredCoordinator()
+        arView.renderCallbacks.postProcess = { _ in }   // not ours
+
+        ARSceneView.dismantleUIView(arView, coordinator: coordinator)
+
+        XCTAssertNotNil(arView.renderCallbacks.postProcess,
+                        "the default camera path owns no post-process and erases none")
+    }
 }
 #endif // os(iOS)

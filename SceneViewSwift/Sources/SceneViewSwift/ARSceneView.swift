@@ -34,16 +34,66 @@ public enum ARSceneViewError: Error, Sendable, Equatable, LocalizedError {
     /// unsupported-device state.
     case faceTrackingUnsupported
 
+    /// The ``ARSessionConfiguration`` asked for something this device lacks
+    /// (world tracking on the Simulator, LiDAR, a frame semantic). As with
+    /// ``faceTrackingUnsupported``, nothing is started: the host renders an
+    /// unsupported-device state naming the requirement.
+    case unsupported(ARSessionConfiguration.Requirement)
+
     public var errorDescription: String? {
         switch self {
         case .faceTrackingUnsupported:
             return "Face tracking is not supported on this device (no TrueDepth camera)."
+        case .unsupported(.worldTracking):
+            return "World tracking is not supported on this device."
+        case .unsupported(.faceTracking):
+            return "Face tracking is not supported on this device (no TrueDepth camera)."
+        case .unsupported(.lidar):
+            return "Scene reconstruction requires a LiDAR scanner."
+        case .unsupported(.frameSemantics):
+            return "The requested frame semantics are not supported on this device."
         }
     }
 }
 
+/// Environment slot for the one ``ARSceneSessionObserver`` every ``ARSceneView``
+/// in a subtree reports to — see ``SwiftUI/View/arSessionObserver(_:)``.
+private struct ARSessionObserverKey: EnvironmentKey {
+    static let defaultValue: ARSceneSessionObserver? = nil
+}
+
+extension EnvironmentValues {
+    /// The ``ARSceneSessionObserver`` installed above this view, if any.
+    public var arSessionObserver: ARSceneSessionObserver? {
+        get { self[ARSessionObserverKey.self] }
+        set { self[ARSessionObserverKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Routes every ``ARSessionEvent`` of every ``ARSceneView`` in this
+    /// subtree to `observer`, in addition to the closures the camera view
+    /// itself declares. Lets a container own the permission / starting /
+    /// error presentation for an AR screen it does not build:
+    ///
+    /// ```swift
+    /// ARExperienceContainer {          // observes first frame, failures
+    ///     ARPlacementDemo()             // keeps its own onTapOnPlane etc.
+    /// }
+    /// ```
+    ///
+    /// The SDK holds the observer only through the environment; keep it
+    /// alive for as long as the subtree is on screen.
+    public func arSessionObserver(_ observer: ARSceneSessionObserver?) -> some View {
+        environment(\.arSessionObserver, observer)
+    }
+}
+
 public struct ARSceneView: UIViewRepresentable {
-    private var planeDetection: PlaneDetectionMode
+    /// Everything the session runs. Built by the classic initializer from its
+    /// individual parameters, or passed whole through
+    /// ``init(configuration:showPlaneOverlay:showCoachingOverlay:showPlacementReticle:groundingShadows:cameraExposure:onTapOnPlane:onImageDetected:onFrame:)``.
+    private var configuration: ARSessionConfiguration
     private var showPlaneOverlay: Bool
     private var showCoachingOverlay: Bool
     private var showPlacementReticle: Bool
@@ -52,10 +102,14 @@ public struct ARSceneView: UIViewRepresentable {
     private var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
     private var onSessionStarted: ((ARView) -> Void)?
     private var onSessionError: ((Error, ARView) -> Void)?
-    private var imageTrackingDatabase: Set<ARReferenceImage>?
+    private var onSessionEvent: ((ARSessionEvent, ARView) -> Void)?
+    private var onSessionStateChange: ((ARSessionState, ARView) -> Void)?
+    private var onTrackingStateChange: ((ARTrackingStatus, ARView) -> Void)?
     private var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
     private var onFrame: ((ARFrame, ARView) -> Void)?
-    private var faceTracking: Bool
+
+    private var planeDetection: PlaneDetectionMode { configuration.planeDetection }
+    private var faceTracking: Bool { configuration.mode == .faceTracking }
 
     // Light slot overrides — read once during scene setup and re-applied via
     // `updateUIView` when the caller mutates the modifier value. Defaults to
@@ -150,14 +204,60 @@ public struct ARSceneView: UIViewRepresentable {
         onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
         onFrame: ((ARFrame, ARView) -> Void)? = nil
     ) {
-        self.planeDetection = planeDetection
+        self.init(
+            configuration: ARSessionConfiguration(
+                mode: faceTracking ? .faceTracking : .worldTracking,
+                planeDetection: planeDetection,
+                imageTrackingDatabase: imageTrackingDatabase
+            ),
+            showPlaneOverlay: showPlaneOverlay,
+            showCoachingOverlay: showCoachingOverlay,
+            showPlacementReticle: showPlacementReticle,
+            groundingShadows: groundingShadows,
+            cameraExposure: cameraExposure,
+            onTapOnPlane: onTapOnPlane,
+            onImageDetected: onImageDetected,
+            onFrame: onFrame
+        )
+    }
+
+    /// Creates an AR scene from a whole ``ARSessionConfiguration``.
+    ///
+    /// The configuration is a value: pass a new one on a later render and the
+    /// view applies the difference to the live session — no `.id(...)` rekey,
+    /// no tracking reset unless the ``ARSessionConfiguration/mode`` changed,
+    /// nothing the host placed is dropped. The same value is what the session
+    /// resumes with after an interruption.
+    ///
+    /// ```swift
+    /// ARSceneView(
+    ///     configuration: ARSessionConfiguration(
+    ///         planeDetection: .both,
+    ///         sceneReconstruction: .mesh          // Requires LiDAR — reported, never faked
+    ///     )
+    /// )
+    /// .onSessionStateChange { state, _ in cameraIsLive = (state == .running) }
+    /// ```
+    ///
+    /// The remaining parameters are the ones of the classic initializer and
+    /// mean the same thing.
+    public init(
+        configuration: ARSessionConfiguration,
+        showPlaneOverlay: Bool = true,
+        showCoachingOverlay: Bool = true,
+        showPlacementReticle: Bool = false,
+        groundingShadows: Bool = true,
+        cameraExposure: Float? = nil,
+        onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)? = nil,
+        onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
+        onFrame: ((ARFrame, ARView) -> Void)? = nil
+    ) {
+        self.configuration = configuration
         self.showPlaneOverlay = showPlaneOverlay
         self.showCoachingOverlay = showCoachingOverlay
         self.showPlacementReticle = showPlacementReticle
         self.groundingShadows = groundingShadows
         self.cameraExposure = cameraExposure
-        self.imageTrackingDatabase = imageTrackingDatabase
-        self.faceTracking = faceTracking
         self.onTapOnPlane = onTapOnPlane
         self.onImageDetected = onImageDetected
         self.onFrame = onFrame
@@ -169,6 +269,50 @@ public struct ARSceneView: UIViewRepresentable {
     ) -> ARSceneView {
         var copy = self
         copy.onSessionStarted = handler
+        return copy
+    }
+
+    /// Called with every ``ARSessionEvent`` the view observes, in order:
+    /// `started`, `firstFrame`, tracking changes, interruption begin / end,
+    /// failures. The one callback to take when a host wants the whole
+    /// lifecycle; the modifiers below are projections of it.
+    ///
+    /// Runs on the main actor (ARKit delivers to `ARSceneView`'s delegate on
+    /// the main queue).
+    public func onSessionEvent(
+        _ handler: @escaping (ARSessionEvent, ARView) -> Void
+    ) -> ARSceneView {
+        var copy = self
+        copy.onSessionEvent = handler
+        return copy
+    }
+
+    /// Called when the coarse ``ARSessionState`` changes: `starting` when the
+    /// session is run, `running` on the first camera frame, `interrupted` /
+    /// `running` around an interruption, `failed` on an error. Reported once
+    /// per change.
+    ///
+    /// `running` is the signal that the camera is on screen. It is
+    /// independent of whatever the host is loading: a screen that shows
+    /// "Starting camera…" until this fires and "Loading model…" until its own
+    /// load finishes reports both honestly.
+    public func onSessionStateChange(
+        _ handler: @escaping (ARSessionState, ARView) -> Void
+    ) -> ARSceneView {
+        var copy = self
+        copy.onSessionStateChange = handler
+        return copy
+    }
+
+    /// Called when `ARCamera.trackingState` changes — once per change, not
+    /// per frame. `limited(.excessiveMotion)` / `limited(.insufficientFeatures)`
+    /// are the "Tracking paused. Move slowly." states; `limited(.relocalizing)`
+    /// is "Finding your placement…"; `normal` clears them.
+    public func onTrackingStateChange(
+        _ handler: @escaping (ARTrackingStatus, ARView) -> Void
+    ) -> ARSceneView {
+        var copy = self
+        copy.onTrackingStateChange = handler
         return copy
     }
 
@@ -294,29 +438,29 @@ public struct ARSceneView: UIViewRepresentable {
     public func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
         arView.automaticallyConfigureSession = false
-        // Wired before the session starts so a configuration that cannot run is
-        // reported to the host on the very first render.
-        context.coordinator.onSessionError = onSessionError
+        let coordinator = context.coordinator
+        // Every callback is wired BEFORE the session runs, so the first
+        // delegate message (a failure, the first frame) is never lost between
+        // `session.run` and the assignment that used to follow it.
+        coordinator.arView = arView
+        syncCallbacks(on: coordinator, environment: context.environment)
 
         // Configure AR session — face tracking uses the front TrueDepth camera;
         // world tracking uses the rear camera for plane detection / image tracking.
         if let startError = Self.startSession(
             on: arView,
-            faceTracking: faceTracking,
-            faceTrackingSupported: ARFaceTrackingConfiguration.isSupported,
-            planeDetection: planeDetection,
-            imageTrackingDatabase: imageTrackingDatabase
+            configuration: configuration,
+            capabilities: .current,
+            coordinator: coordinator
         ) {
             print("[SceneViewSwift] AR session error: \(startError.localizedDescription)")
-            onSessionError?(startError, arView)
-            // NOTHING ran: no delegate, no coaching overlay, no lights — and
-            // above all no `onSessionStarted`, which promises a live session and
-            // would have had the host add content to a scene that never renders.
-            // The host's error state is the whole content of this view.
+            coordinator.reportFailure(startError, in: arView)
+            // NOTHING ran: no coaching overlay, no lights — and above all no
+            // `onSessionStarted`, which promises a live session and would have
+            // had the host add content to a scene that never renders. The
+            // host's error state is the whole content of this view.
             return arView
         }
-        context.coordinator.sessionDidStart = true
-        arView.session.delegate = context.coordinator
 
         // Plane visualization.
         //
@@ -349,9 +493,6 @@ public struct ARSceneView: UIViewRepresentable {
         // recognizer the host added to the same `ARView`.
         context.coordinator.syncTapRecognizer(on: arView, enabled: onTapOnPlane != nil)
 
-        // Store reference for coordinator
-        context.coordinator.arView = arView
-
         // Provision both light slots BEFORE the host app's session-started callback
         // runs, so user-supplied content sees the dual-light baseline already in
         // place. Mirrors Android's `ARSceneView { content }` ordering where the
@@ -369,12 +510,11 @@ public struct ARSceneView: UIViewRepresentable {
         return arView
     }
 
-    /// Runs the AR session for this view's parameters, or returns the reason it
-    /// could not be started — in which case **no session was run at all** and
-    /// the caller must not pretend one is live.
-    ///
-    /// `faceTrackingSupported` is injected rather than read here so the
-    /// unsupported path is testable on a Simulator.
+    /// Legacy entry point kept for the tests and hosts that call it directly:
+    /// builds an ``ARSessionConfiguration`` from the individual parameters
+    /// and defers to ``startSession(on:configuration:capabilities:coordinator:)``.
+    /// `faceTrackingSupported` is injected so the unsupported path is
+    /// testable on a Simulator.
     @MainActor
     static func startSession(
         on arView: ARView,
@@ -383,55 +523,85 @@ public struct ARSceneView: UIViewRepresentable {
         planeDetection: PlaneDetectionMode,
         imageTrackingDatabase: Set<ARReferenceImage>?
     ) -> ARSceneViewError? {
-        if faceTracking {
-            // No silent fallback to the rear world camera: a device without a
-            // TrueDepth camera gets an explicit error state, not a different
-            // (and wrong) AR experience.
-            guard faceTrackingSupported else { return .faceTrackingUnsupported }
+        var capabilities = ARSessionConfiguration.Capabilities.current
+        capabilities.faceTracking = faceTrackingSupported
+        return startSession(
+            on: arView,
+            configuration: ARSessionConfiguration(
+                mode: faceTracking ? .faceTracking : .worldTracking,
+                planeDetection: planeDetection,
+                imageTrackingDatabase: imageTrackingDatabase
+            ),
+            capabilities: capabilities,
+            coordinator: nil
+        )
+    }
+
+    /// Runs the AR session for `configuration`, or returns the reason it could
+    /// not be started — in which case **no session was run at all** and the
+    /// caller must not pretend one is live.
+    ///
+    /// `capabilities` is injected rather than read here so every unsupported
+    /// path is testable on a Simulator. When a `coordinator` is given it is
+    /// installed as the session delegate *before* `run`, records the
+    /// configuration it must resume with, and emits ``ARSessionEvent/started(_:)``.
+    @MainActor
+    static func startSession(
+        on arView: ARView,
+        configuration: ARSessionConfiguration,
+        capabilities: ARSessionConfiguration.Capabilities,
+        coordinator: Coordinator?
+    ) -> ARSceneViewError? {
+        // No silent fallback: a device that lacks what the configuration
+        // asks for gets an explicit error state, not a different (and wrong)
+        // AR experience — the rear camera instead of the face camera, or a
+        // "mesh" demo running with no mesh.
+        if let missing = configuration.unmetRequirement(capabilities: capabilities) {
+            return missing == .faceTracking ? .faceTrackingUnsupported : .unsupported(missing)
+        }
+        if let coordinator {
+            coordinator.run(configuration, on: arView, resetTracking: true)
+        } else {
             arView.session.run(
-                ARFaceTrackingConfiguration(),
+                configuration.makeARConfiguration(),
                 options: [.resetTracking, .removeExistingAnchors]
             )
-            return nil
         }
-
-        let config = ARWorldTrackingConfiguration()
-        config.planeDetection = planeDetection.arPlaneDetection
-        // RealityKit's `.automatic` environment texturing is the functional
-        // equivalent of ARCore's `Config.LightEstimationMode.ENVIRONMENTAL_HDR`
-        // (Android default since v4.3.0 / `#1063`) — ARKit auto-builds the
-        // runtime cubemap that drives PBR reflections on metallic + glossy
-        // materials. There is no enum to toggle: it's on by default, off when
-        // unsupported. Closes the env-texturing half of #1138.
-        config.environmentTexturing = .automatic
-
-        // Image tracking
-        if let images = imageTrackingDatabase, !images.isEmpty {
-            config.detectionImages = images
-            config.maximumNumberOfTrackedImages = images.count
-        }
-
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            config.sceneReconstruction = .mesh
-        }
-
-        arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
         return nil
     }
 
+    /// Copies the host's current closures onto the coordinator. Called from
+    /// both `makeUIView` (before the session runs) and `updateUIView`, so a
+    /// closure the host supplies on a later render is honoured too.
+    private func syncCallbacks(on coordinator: Coordinator, environment: EnvironmentValues) {
+        coordinator.onTapOnPlane = onTapOnPlane
+        coordinator.onImageDetected = onImageDetected
+        coordinator.onFrame = onFrame
+        coordinator.onSessionError = onSessionError
+        coordinator.onSessionEvent = onSessionEvent
+        coordinator.onSessionStateChange = onSessionStateChange
+        coordinator.onTrackingStateChange = onTrackingStateChange
+        coordinator.sessionObserver = environment.arSessionObserver
+    }
+
     public func updateUIView(_ arView: ARView, context: Context) {
-        context.coordinator.onTapOnPlane = onTapOnPlane
+        let coordinator = context.coordinator
+        syncCallbacks(on: coordinator, environment: context.environment)
         // Reactive too: a host that supplies `onTapOnPlane` only on a later
         // render gets the recognizer then, and one that drops it gets the
         // recognizer removed so its own gestures are unobstructed.
-        context.coordinator.syncTapRecognizer(on: arView, enabled: onTapOnPlane != nil)
-        context.coordinator.onImageDetected = onImageDetected
-        context.coordinator.onFrame = onFrame
-        context.coordinator.onSessionError = onSessionError
+        coordinator.syncTapRecognizer(on: arView, enabled: onTapOnPlane != nil)
         // Nothing below applies to a view whose session never started (an
         // unsupported configuration): no coaching overlay on a dead session, no
         // post-process on a view that renders nothing.
-        guard context.coordinator.sessionDidStart else { return }
+        guard coordinator.sessionDidStart else { return }
+        // A changed configuration is applied to the live session — planes,
+        // image database, mesh, semantics — without a tracking reset, so what
+        // the host placed stays where it is. Compared against what THIS view
+        // last asked for, never against `session.configuration`: a host that
+        // mutates the running configuration itself (people occlusion, mesh
+        // classification) is not overridden on the next unrelated render.
+        coordinator.applyIfChanged(configuration, on: arView)
         // Reactive like the light slots: toggling any of these flags on a later
         // render takes effect immediately. Before, `showPlaneOverlay` and
         // `showCoachingOverlay` were read once at creation, so hosts rekeyed the
@@ -452,7 +622,7 @@ public struct ARSceneView: UIViewRepresentable {
         // Apply camera exposure override via post-processing (iOS 15.0+).
         // Converts the EV value to a CIColorControls brightness offset and installs
         // (or removes) a post-process render callback on the ARView.
-        applyExposure(cameraExposure, to: arView, coordinator: context.coordinator)
+        coordinator.applyExposure(cameraExposure, on: arView)
 
         // Diff light slots and swap entities when the caller's modifier value
         // changed since last frame. Mirrors the reactive light path in
@@ -597,7 +767,7 @@ public struct ARSceneView: UIViewRepresentable {
     /// blit the source into the target instead of returning early, and the
     /// `CIContext` is created once per view rather than once per frame.
     @available(iOS 15.0, *)
-    private func applyExposurePostProcess(
+    fileprivate static func applyExposurePostProcess(
         _ ev: Float,
         to arView: ARView,
         cache: ExposureContextCache
@@ -633,33 +803,12 @@ public struct ARSceneView: UIViewRepresentable {
         blit.endEncoding()
     }
 
-    private func applyExposure(_ ev: Float?, to arView: ARView, coordinator: Coordinator) {
-        guard let ev = ev else {
-            // Remove any previously installed post-process callback.
-            if #available(iOS 15.0, *) {
-                arView.renderCallbacks.postProcess = nil
-            }
-            return
-        }
-        if #available(iOS 15.0, *) {
-            applyExposurePostProcess(ev, to: arView, cache: coordinator.exposureContextCache)
-        }
-        // On iOS < 15 the value is stored (via the modifier / init) but silently ignored.
-    }
-
     public func makeCoordinator() -> Coordinator {
         Coordinator(
+            configuration: configuration,
             onTapOnPlane: onTapOnPlane,
-            planeDetection: planeDetection,
             onImageDetected: onImageDetected,
-            onFrame: onFrame,
-            imageTrackingDatabase: imageTrackingDatabase,
-            // Mesh reconstruction is implicitly enabled in makeUIView when
-            // supported; mirror the flag here so it's re-applied after an
-            // interruption (closes part of #928).
-            enableMeshReconstruction: true,
-            environmentTexturing: .automatic,
-            faceTracking: faceTracking
+            onFrame: onFrame
         )
     }
 
@@ -696,21 +845,52 @@ public struct ARSceneView: UIViewRepresentable {
         var onFrame: ((ARFrame, ARView) -> Void)?
         /// Host handler for session failures — see ``ARSceneView/onSessionError(_:)``.
         var onSessionError: ((Error, ARView) -> Void)?
+        var onSessionEvent: ((ARSessionEvent, ARView) -> Void)?
+        var onSessionStateChange: ((ARSessionState, ARView) -> Void)?
+        var onTrackingStateChange: ((ARTrackingStatus, ARView) -> Void)?
+        /// The container-level observer from the environment, if any — see
+        /// ``SwiftUI/View/arSessionObserver(_:)``. Weak: the environment value
+        /// is owned by whoever installed it.
+        weak var sessionObserver: ARSceneSessionObserver?
 
         /// Whether `makeUIView` actually ran an AR session. `false` when the
         /// requested configuration is unsupported: the view then installs no
-        /// delegate, no overlays and never calls `onSessionStarted`.
+        /// overlays and never calls `onSessionStarted`.
         var sessionDidStart = false
-        var planeDetection: PlaneDetectionMode
-        // Tracking config that must survive an interruption — previously only
-        // `planeDetection` was preserved, so any image database / mesh recon /
-        // environment-texturing flag was lost the moment the user backgrounded
-        // the app and returned. Closes part of #928. The full set is re-applied
-        // in `sessionInterruptionEnded(_:)` below.
-        var imageTrackingDatabase: Set<ARReferenceImage>?
-        var enableMeshReconstruction: Bool = true
-        var environmentTexturing: ARWorldTrackingConfiguration.EnvironmentTexturing = .automatic
-        var faceTracking: Bool = false
+
+        /// The configuration this view last asked ARKit to run. Retained so
+        /// an interruption resumes with exactly it (image database, mesh,
+        /// semantics included — #928), and so `updateUIView` can diff the
+        /// host's next value against it. `nil` until the first run.
+        var appliedConfiguration: ARSessionConfiguration?
+
+        /// The configuration the coordinator was created with — what the
+        /// first run uses, and the fallback when nothing has been applied.
+        var configuration: ARSessionConfiguration
+
+        /// Last ``ARSessionState`` reported to the host; transitions are
+        /// emitted only when this changes. `internal` for the routing tests.
+        private(set) var sessionState: ARSessionState?
+
+        /// Last tracking status reported; `didUpdate frame` compares against
+        /// it so the host hears one change, not sixty a second.
+        private(set) var trackingStatus: ARTrackingStatus?
+
+        /// `true` between a run / interruption end and the next frame, so
+        /// ``ARSessionEvent/firstFrame`` fires exactly once per resumption.
+        var awaitingFirstFrame = false
+
+        /// Exposure value currently installed (`nil` = none). Diffed by
+        /// `applyExposure` so the post-process closure is built once per
+        /// change, not once per render.
+        var appliedExposure: Float?
+        /// Whether the post-process slot on the `ARView` holds OUR closure.
+        /// Only then does clearing the exposure clear the slot; a callback
+        /// another owner installed is never erased by this view.
+        var ownsPostProcess = false
+
+        var planeDetection: PlaneDetectionMode { configuration.planeDetection }
+        var faceTracking: Bool { configuration.mode == .faceTracking }
         weak var arView: ARView?
         /// Reference-image anchors already handed to `onImageDetected`, keyed by
         /// ARKit's per-anchor `identifier` — NOT by image name. Keying by name
@@ -786,23 +966,218 @@ public struct ARSceneView: UIViewRepresentable {
         var appliedFillSlot: LightSlot?
 
         init(
+            configuration: ARSessionConfiguration,
+            onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)? = nil,
+            onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
+            onFrame: ((ARFrame, ARView) -> Void)? = nil
+        ) {
+            self.configuration = configuration
+            self.onTapOnPlane = onTapOnPlane
+            self.onImageDetected = onImageDetected
+            self.onFrame = onFrame
+        }
+
+        /// Parameter-wise initializer kept for the existing tests; builds the
+        /// equivalent ``ARSessionConfiguration``.
+        convenience init(
             onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?,
             planeDetection: PlaneDetectionMode,
             onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
             onFrame: ((ARFrame, ARView) -> Void)? = nil,
             imageTrackingDatabase: Set<ARReferenceImage>? = nil,
-            enableMeshReconstruction: Bool = true,
+            enableMeshReconstruction: Bool = false,
             environmentTexturing: ARWorldTrackingConfiguration.EnvironmentTexturing = .automatic,
             faceTracking: Bool = false
         ) {
-            self.onTapOnPlane = onTapOnPlane
-            self.planeDetection = planeDetection
-            self.onImageDetected = onImageDetected
-            self.onFrame = onFrame
-            self.imageTrackingDatabase = imageTrackingDatabase
-            self.enableMeshReconstruction = enableMeshReconstruction
-            self.faceTracking = faceTracking
-            self.environmentTexturing = environmentTexturing
+            self.init(
+                configuration: ARSessionConfiguration(
+                    mode: faceTracking ? .faceTracking : .worldTracking,
+                    planeDetection: planeDetection,
+                    imageTrackingDatabase: imageTrackingDatabase,
+                    environmentTexturing: environmentTexturing,
+                    sceneReconstruction: enableMeshReconstruction ? .mesh : .none
+                ),
+                onTapOnPlane: onTapOnPlane,
+                onImageDetected: onImageDetected,
+                onFrame: onFrame
+            )
+        }
+
+        // MARK: - Exposure ownership
+
+        /// Owns the post-process slot only while an exposure override is set.
+        ///
+        /// - `nil` → `nil`: never touches `renderCallbacks.postProcess`. The
+        ///   default camera path installs no filter and does not erase a
+        ///   callback another owner (the host, a recorder) put there.
+        /// - same value: no-op. Before, the closure was rebuilt and
+        ///   reinstalled on every SwiftUI render.
+        /// - new value: installs the closure once, remembers it owns the slot.
+        /// - value → `nil`: removes the callback, but only if it is still ours.
+        @MainActor
+        func applyExposure(_ ev: Float?, on arView: ARView) {
+            guard appliedExposure != ev else { return }
+            appliedExposure = ev
+            guard #available(iOS 15.0, *) else { return }   // stored, silently ignored
+            guard let ev else {
+                if ownsPostProcess {
+                    arView.renderCallbacks.postProcess = nil
+                    ownsPostProcess = false
+                }
+                return
+            }
+            ARSceneView.applyExposurePostProcess(ev, to: arView, cache: exposureContextCache)
+            ownsPostProcess = true
+        }
+
+        // MARK: - Session lifecycle
+
+        /// Runs `configuration` on the view's session with this coordinator
+        /// as delegate — installed BEFORE `run`, so the first delegate message
+        /// cannot be missed — records it as the configuration to resume with,
+        /// and reports `started` / `starting`.
+        ///
+        /// `resetTracking` is `true` for the first run and for a change of
+        /// ``ARSessionConfiguration/Mode``; every other re-run keeps the
+        /// world map and the host's anchors.
+        @MainActor
+        func run(
+            _ configuration: ARSessionConfiguration,
+            on arView: ARView,
+            resetTracking: Bool
+        ) {
+            arView.session.delegate = self
+            self.arView = arView
+            if resetTracking {
+                // Tracking starts from scratch: the detected image anchors are
+                // gone, forget them or the same target is never reported again.
+                trackedImageAnchors.removeAll()
+                for visualizer in planeOverlays.values {
+                    arView.scene.removeAnchor(visualizer.anchor)
+                }
+                planeOverlays.removeAll()
+            }
+            arView.session.run(
+                configuration.makeARConfiguration(),
+                options: resetTracking ? [.resetTracking, .removeExistingAnchors] : []
+            )
+            appliedConfiguration = configuration
+            self.configuration = configuration
+            sessionDidStart = true
+            awaitingFirstFrame = true
+            trackingStatus = nil
+            emit(.started(configuration), in: arView)
+            transition(to: .starting, in: arView)
+        }
+
+        /// Applies `configuration` to the live session when it differs from
+        /// the one last applied. A requirement the device cannot meet is
+        /// reported as a failure and the previous configuration stays live —
+        /// the session is never torn down over a toggle.
+        @MainActor
+        func applyIfChanged(
+            _ configuration: ARSessionConfiguration,
+            on arView: ARView,
+            capabilities: ARSessionConfiguration.Capabilities = .current
+        ) {
+            guard configuration != appliedConfiguration else { return }
+            if let missing = configuration.unmetRequirement(capabilities: capabilities) {
+                let error: ARSceneViewError =
+                    missing == .faceTracking ? .faceTrackingUnsupported : .unsupported(missing)
+                print("[SceneViewSwift] AR configuration not applied: \(error.localizedDescription)")
+                if let arView = self.arView { onSessionError?(error, arView) }
+                return
+            }
+            run(
+                configuration,
+                on: arView,
+                resetTracking: configuration.requiresTrackingReset(from: appliedConfiguration)
+            )
+        }
+
+        /// Reports a failure that prevented the session from starting (or
+        /// stopped it): `failed` state, `failed` event, the legacy
+        /// `onSessionError` closure.
+        @MainActor
+        func reportFailure(_ error: Error, in arView: ARView) {
+            transition(to: .failed, in: arView)
+            emit(.failed(error), in: arView)
+            onSessionError?(error, arView)
+        }
+
+        /// Records and reports a new ``ARSessionState``, once per change.
+        @MainActor
+        func transition(to state: ARSessionState, in arView: ARView) {
+            guard sessionState != state else { return }
+            sessionState = state
+            onSessionStateChange?(state, arView)
+        }
+
+        /// Sends `event` to the view's own closure and to the environment
+        /// observer, in that order.
+        @MainActor
+        func emit(_ event: ARSessionEvent, in arView: ARView) {
+            onSessionEvent?(event, arView)
+            sessionObserver?.arSession(didEmit: event, in: arView)
+        }
+
+        /// Per-frame lifecycle bookkeeping, split from the delegate method so
+        /// the routing is testable without an `ARFrame` (which has no public
+        /// initializer): the first frame after a run / resumption flips the
+        /// state to `running`; a tracking change is reported once.
+        @MainActor
+        func noteFrame(trackingState: ARCamera.TrackingState, in arView: ARView) {
+            if awaitingFirstFrame {
+                awaitingFirstFrame = false
+                emit(.firstFrame, in: arView)
+                transition(to: .running, in: arView)
+            }
+            let status = ARTrackingStatus(trackingState)
+            if status != trackingStatus {
+                trackingStatus = status
+                emit(.trackingStateChanged(status), in: arView)
+                onTrackingStateChange?(status, arView)
+            }
+        }
+
+        /// Interruption bookkeeping, split from the delegate for the same
+        /// reason as ``noteFrame(trackingState:in:)``.
+        @MainActor
+        func noteInterruption(in arView: ARView) {
+            emit(.interrupted, in: arView)
+            transition(to: .interrupted, in: arView)
+        }
+
+        /// Resumes after an interruption with the configuration the session
+        /// was running. Never resets tracking: with
+        /// `sessionShouldAttemptRelocalization` ARKit relocalizes into the
+        /// existing map and the host's anchors stay put. The next frame
+        /// reports `firstFrame` / `running` again.
+        @MainActor
+        func resumeAfterInterruption(_ session: ARSession, in arView: ARView?) {
+            // The configuration the session still holds is the authoritative
+            // one: it carries whatever the host mutated after start —
+            // `frameSemantics` (people occlusion), `sceneReconstruction`
+            // (`.meshWithClassification`), a swapped image database.
+            // Rebuilding a stock configuration here threw all of that away
+            // (#928 follow-up).
+            if let activeConfiguration = session.configuration {
+                session.run(activeConfiguration)
+            } else {
+                // No active configuration means there is nothing to
+                // relocalize into: rebuild from the retained value — the
+                // one the host asked for, image database and all.
+                print("[SceneViewSwift] AR session interruption ended — no active configuration, restarting")
+                trackedImageAnchors.removeAll()
+                session.run(
+                    (appliedConfiguration ?? configuration).makeARConfiguration(),
+                    options: [.resetTracking]
+                )
+            }
+            awaitingFirstFrame = true
+            trackingStatus = nil
+            guard let arView else { return }
+            emit(.interruptionEnded, in: arView)
         }
 
         /// Tears down every RealityKit/ARKit resource this coordinator owns:
@@ -853,11 +1228,21 @@ public struct ARSceneView: UIViewRepresentable {
                 tapRecognizer = nil
             }
 
+            // Exposure post-process — release the slot only if it holds our
+            // closure; another owner's callback is left alone.
+            if ownsPostProcess {
+                if #available(iOS 15.0, *) { arView.renderCallbacks.postProcess = nil }
+                ownsPostProcess = false
+            }
+            appliedExposure = nil
+
             // Stop the AR session so the camera + sensor pipeline goes idle and
             // ARKit drops its hold; detach the delegate so no late frame
             // callback fires into a torn-down coordinator.
             arView.session.pause()
             arView.session.delegate = nil
+            sessionDidStart = false
+            awaitingFirstFrame = false
         }
 
         deinit {
@@ -1103,7 +1488,7 @@ public struct ARSceneView: UIViewRepresentable {
             material.blending = .transparent(opacity: .init(floatLiteral: 0.6))
             let disc = ModelEntity(mesh: mesh, materials: [material])
             // Nudge off the surface along the plane normal so the disc never
-            // z-fights the detected-plane overlay fill (a 1 mm box).
+            // z-fights the detected-plane overlay (a flat plane).
             disc.position.y = 0.002
             anchor.addChild(disc)
             arView.scene.addAnchor(anchor)
@@ -1115,6 +1500,12 @@ public struct ARSceneView: UIViewRepresentable {
 
         public func session(_ session: ARSession, didUpdate frame: ARFrame) {
             guard let arView = arView else { return }
+            // ARKit delivers to `ARSceneView`'s delegate on the main queue (no
+            // `delegateQueue` override), which is what makes the RealityKit
+            // work below safe — and what `assumeIsolated` asserts.
+            MainActor.assumeIsolated {
+                noteFrame(trackingState: frame.camera.trackingState, in: arView)
+            }
             updatePlacementReticle(in: arView)
             onFrame?(frame, arView)
         }
@@ -1172,11 +1563,14 @@ public struct ARSceneView: UIViewRepresentable {
         ) {
             // The print stays as the fallback for hosts that install no handler.
             print("[SceneViewSwift] AR session error: \(error.localizedDescription)")
-            if let arView = arView { onSessionError?(error, arView) }
+            guard let arView = arView else { return }
+            MainActor.assumeIsolated { reportFailure(error, in: arView) }
         }
 
         public func sessionWasInterrupted(_ session: ARSession) {
             print("[SceneViewSwift] AR session interrupted")
+            guard let arView = arView else { return }
+            MainActor.assumeIsolated { noteInterruption(in: arView) }
         }
 
         /// Lets ARKit try to relocalize into the world map that was built before
@@ -1188,51 +1582,8 @@ public struct ARSceneView: UIViewRepresentable {
         }
 
         public func sessionInterruptionEnded(_ session: ARSession) {
-            // The configuration the session still holds is the authoritative one:
-            // it carries whatever the host mutated after `makeUIView` — the
-            // `ARConfiguration` subclass itself, `frameSemantics` (people
-            // occlusion's `.personSegmentationWithDepth`), the exact
-            // `sceneReconstruction` mode (`.meshWithClassification`), extra plane
-            // alignments, a swapped image database. Rebuilding a stock
-            // `ARWorldTrackingConfiguration` here threw all of that away, so
-            // occlusion and mesh classification silently stopped after every
-            // background → foreground cycle even though the host's toggles still
-            // read "on" (#928 follow-up).
-            //
-            // Re-run it WITHOUT `.resetTracking` / `.removeExistingAnchors`:
-            // combined with `sessionShouldAttemptRelocalization` above, ARKit
-            // relocalizes into the existing map and the host's anchors stay put.
-            if let activeConfiguration = session.configuration {
-                print("[SceneViewSwift] AR session interruption ended — resuming the active configuration")
-                session.run(activeConfiguration)
-                return
-            }
-
-            // No active configuration means there is nothing to relocalize into
-            // (the session never ran, or ARKit tore it down). Only this path
-            // rebuilds a configuration from the values captured at view creation,
-            // and only this path resets tracking.
-            print("[SceneViewSwift] AR session interruption ended — no active configuration, restarting")
-            if faceTracking, ARFaceTrackingConfiguration.isSupported {
-                session.run(ARFaceTrackingConfiguration(), options: [.resetTracking])
-                return
-            }
-            let config = ARWorldTrackingConfiguration()
-            config.planeDetection = planeDetection.arPlaneDetection
-            config.environmentTexturing = environmentTexturing
-            if let images = imageTrackingDatabase, !images.isEmpty {
-                config.detectionImages = images
-                config.maximumNumberOfTrackedImages = images.count
-            }
-            if enableMeshReconstruction,
-               ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-                config.sceneReconstruction = .mesh
-            }
-            // Tracking is starting from scratch on this path, so the previously
-            // detected image anchors are gone: forget them, otherwise the same
-            // target would never be reported again.
-            trackedImageAnchors.removeAll()
-            session.run(config, options: [.resetTracking])
+            print("[SceneViewSwift] AR session interruption ended — resuming")
+            MainActor.assumeIsolated { resumeAfterInterruption(session, in: arView) }
         }
     }
 }
@@ -1266,10 +1617,18 @@ final class PlaneVisualizer {
     /// plane's `extent` grows as ARKit refines its estimate.
     private let fill: ModelEntity
 
-    /// Low-opacity tint for the plane fill. A faint white keeps the overlay
-    /// readable against any background without overpainting the camera feed.
-    private static let overlayColor: SimpleMaterial.Color =
-        .init(white: 1.0, alpha: 0.12)
+    /// Tint of the plane overlay. Opaque here on purpose: RealityKit drops
+    /// the base-colour alpha on the unlit material path, so the translucency
+    /// is carried by ``overlayOpacity`` through `material.blending` — the
+    /// same rule the placement reticle follows. With alpha in the colour and
+    /// `.transparent(opacity: 1.0)` in the blending (the previous shipping
+    /// combination), the "12 % white" rendered as a fully opaque white slab
+    /// over the detected surface.
+    private static let overlayColor: SimpleMaterial.Color = .white
+
+    /// Overlay opacity — the "subtle translucent" of the #1557 intent, now
+    /// actually applied.
+    static let overlayOpacity: Float = 0.12
 
     /// Hosts the overlay on an anchor bound to the detected plane's pose,
     /// then sizes the translucent fill to the plane's current extent.
@@ -1291,16 +1650,17 @@ final class PlaneVisualizer {
     /// Resizes and re-centers the overlay to match the latest plane estimate.
     func update(with planeAnchor: ARPlaneAnchor) {
         let extent = planeAnchor.planeExtent
-        // A thin (1 mm) box gives the overlay a flat footprint that conforms
-        // to the detected surface. The plane's local frame is X/Z, so the
-        // box width maps to X and depth to Z.
-        let mesh = MeshResource.generateBox(
-            size: [extent.width, 0.001, extent.height]
+        // A flat plane, not a box: a box has four side faces that catch the
+        // light at grazing angles and read as a raised slab. The plane's
+        // local frame is X/Z, so width maps to X and depth to Z.
+        let mesh = MeshResource.generatePlane(
+            width: extent.width,
+            depth: extent.height
         )
         var material = UnlitMaterial(color: Self.overlayColor)
-        // Transparent blending so the camera feed shows through — the core of
-        // the #1557 fix. Without this the overlay is an opaque fill.
-        material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+        // Transparent blending with the REAL opacity so the camera feed shows
+        // through — the core of the #1557 intent.
+        material.blending = .transparent(opacity: .init(floatLiteral: Self.overlayOpacity))
         fill.model = ModelComponent(mesh: mesh, materials: [material])
         // `center` is the plane center relative to the anchor's transform.
         fill.position = [
