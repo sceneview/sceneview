@@ -173,7 +173,9 @@ private struct PlacementSceneDemoView: View {
         do {
             let node = try await ModelNode.load(Self.modelName)
             _ = node.scaleToUnits(0.3)
-            _ = node.centerOrigin()
+            // Bottom-aligned after scaling, before anchoring — the anchor is ON
+            // the surface, so a centred origin buries the model's lower half.
+            _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             // Explicit — not reliant on ARSceneView's automatic
             // `groundingShadows` application, which only fires for anchors
             // added synchronously inside `onTapOnPlane` (see the

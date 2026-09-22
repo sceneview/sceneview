@@ -181,6 +181,7 @@ struct ARPlacementDemo: View {
                 // Bottom-aligned so the model sits ON the detected plane rather than
                 // straddling it — `-1` on Y selects the bounding box's floor.
                 _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
+                _ = node.withGroundingShadow()
                 let anchor = AnchorNode.world(position: worldPosition)
                 anchor.add(node.entity)
                 arView.scene.addAnchor(anchor.entity)
@@ -201,7 +202,15 @@ struct ARPlacementDemo: View {
                 }
                 let node = try await ModelNode.load(assetName)
                 _ = node.scaleToUnits(0.3)
-                _ = node.centerOrigin()
+                // Bottom-aligned AFTER scaling and BEFORE anchoring: the anchor
+                // sits ON the detected surface, so a centred origin buries the
+                // lower half of the model under the floor. `-1` on Y selects the
+                // bounding box's floor.
+                _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
+                // Applied where the model is actually attached: the SDK's own
+                // `groundingShadows` pass only covers anchors added
+                // synchronously inside `onTapOnPlane`, and this load is async.
+                _ = node.withGroundingShadow()
                 let anchor = AnchorNode.world(position: worldPosition)
                 anchor.add(node.entity)
                 arView.scene.addAnchor(anchor.entity)
@@ -218,7 +227,9 @@ struct ARPlacementDemo: View {
             // bundled cycle's 0.3 m (#2966). Applies to the fallback too — it
             // stands in at the size the label claims.
             _ = node.scaleToUnits(scaleToUnits)
-            _ = node.centerOrigin()
+            // Bottom-aligned after scaling, before anchoring, as above.
+            _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
+            _ = node.withGroundingShadow()
             let anchor = AnchorNode.world(position: worldPosition)
             anchor.add(node.entity)
             arView.scene.addAnchor(anchor.entity)

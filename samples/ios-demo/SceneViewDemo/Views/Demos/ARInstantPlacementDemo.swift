@@ -138,14 +138,20 @@ struct ARInstantPlacementDemo: View {
                 // Honour the slug's real-world size hint, as ARPlacementDemo
                 // does — the bundled cycle alone is normalised to 0.3 m (#2966).
                 _ = node.scaleToUnits(slug.scaleToUnits)
-                _ = node.centerOrigin()
+                _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             } else {
                 let entry = Self.bundledCycle[cycleIndex % Self.bundledCycle.count]
                 cycleIndex += 1
                 node = try await ModelNode.load(entry.name)
                 _ = node.scaleToUnits(0.3)
-                _ = node.centerOrigin()
+                _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             }
+            // Bottom-aligned above, AFTER scaling and BEFORE anchoring: the
+            // anchor sits ON the surface, so a centred origin buries the lower
+            // half of the model. Grounding shadows are applied here, where the
+            // model is actually attached — the SDK's own pass only covers
+            // anchors added synchronously inside `onTapOnPlane`.
+            _ = node.withGroundingShadow()
             let anchor = AnchorNode.world(position: worldPosition)
             anchor.add(node.entity)
             arView.scene.addAnchor(anchor.entity)
