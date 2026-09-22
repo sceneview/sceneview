@@ -82,10 +82,7 @@ trap 'rm -f "$TMP_META"' EXIT
 
 shopt -s nullglob
 scene_count=0
-# One input set drives every registry surface. AR placement is represented only by
-# ArPlacementScene.swift; the two redundant placement scenes have been removed.
-scene_sources=("$SCENES_DIR"/*Scene.swift)
-for f in "${scene_sources[@]}"; do
+for f in "$SCENES_DIR"/*Scene.swift; do
     base="$(basename "$f")"
 
     scene_id=$(grep -m1 '// @sceneId' "$f" | sed -E 's|.*// @sceneId[[:space:]]+||; s/[[:space:]]+$//')
@@ -246,7 +243,7 @@ trap 'rm -f "$TMP_META" "$SORTED_META" "$TMP_FULL"' EXIT
 while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags; do
     # Find the *Scene.swift file whose @sceneId matches.
     type_name=""
-    for f in "${scene_sources[@]}"; do
+    for f in "$SCENES_DIR"/*Scene.swift; do
         fid=$(grep -m1 '// @sceneId' "$f" | sed -E 's|.*// @sceneId[[:space:]]+||; s/[[:space:]]+$//')
         if [ "$fid" = "$scene_id" ]; then
             type_name=$(grep -oE 'enum [A-Za-z0-9]+Scene\b' "$f" | head -n1 | awk '{print $2}')

@@ -43,6 +43,10 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.ar.arcore.hitTestDepth
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -170,6 +174,9 @@ fun ARMeasureDemo(onBack: () -> Unit) {
     // explanation card forever.
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     val cameraStream = rememberARCameraStream(materialLoader)
+    // QA camera backdrop (#3308) — the emulator has no camera stream, so without this the
+    // measuring screen is an empty surface behind its error card, like its sibling demos.
+    val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
     var depthSupported by remember { mutableStateOf(false) }
     var useDepthFallback by remember { mutableStateOf(true) }
     // Why Add point placed nothing, or where the last placed point came from. Both are
@@ -308,7 +315,12 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                     contentColor = SceneViewTokens.Glass.onGlass,
                     shape = MaterialTheme.shapes.large,
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm)) {
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = SceneViewTokens.Space.md,
+                            vertical = SceneViewTokens.Space.sm,
+                        ),
+                    ) {
                         lastSegmentMeters?.let {
                             Text(
                                 text = stringResource(
@@ -369,6 +381,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            if (qaBackdrop) QaCameraBackdrop(seed = "ar-measure")
             ARSceneView(
                 onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize().onSizeChanged {
@@ -378,7 +391,9 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 },
                 engine = engine,
                 materialLoader = materialLoader,
-                cameraStream = cameraStream,
+                isOpaque = !qaCameraBackdropEnabled(),
+                surfaceType = qaCameraBackdropSurfaceType(),
+                cameraStream = if (qaBackdrop) null else cameraStream,
                 cameraNode = cameraNode,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = false,

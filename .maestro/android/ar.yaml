@@ -103,10 +103,12 @@ appId: io.github.sceneview.demo
       demo: ar-measure
       qa_mode: true
 - assertVisible: "Add point"
-- assertNotVisible: "Tap a surface to drop the first point"
+- assertVisible: "Aim at a surface, then Add point"
+# Tapping the camera commits nothing: the first-point hint is still on screen.
 - tapOn:
     point: "50%,50%"
 - assertVisible: "Add point"
+- assertVisible: "Aim at a surface, then Add point"
 - takeScreenshot: "ar-measure-add-point"
 - tapOn: "Navigate back"
 - runFlow:

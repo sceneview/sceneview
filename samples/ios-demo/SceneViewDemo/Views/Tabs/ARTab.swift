@@ -323,7 +323,7 @@ private struct ARLauncherScreen: View {
                 ],
                 spacing: 12
             ) {
-                ForEach(FeaturedARDemo.all.filter { ARExperienceRequirement.forScene(id: $0.id).isSupported }) { demo in
+                ForEach(FeaturedARDemo.all) { demo in
                     Button {
                         onDemoTap(demo)
                     } label: {

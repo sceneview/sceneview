@@ -41,6 +41,7 @@ import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.SceneView
 import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.model
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.common.placement.PlacementActionCard
@@ -469,23 +470,31 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             // configuration blockers get no pill at all: the card below explains them,
             // and a pill repeating the card is the kind of double-voiced chrome #3421
             // was filed about.
-            val placementCard = if (forcedScenario == null && flow.step == CloudAnchorStep.Host && flow.blocker == null) {
+            val hostingUnblocked = flow.step == CloudAnchorStep.Host && flow.blocker == null
+            val placementCard = if (forcedScenario == null && hostingUnblocked) {
                 when (placementState.phase) {
                     PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
                     PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
                     else -> null
                 }
             } else null
-            val placementMessage = if (forcedScenario == null && flow.step == CloudAnchorStep.Host &&
-                hostTask != CloudAnchorTask.Running && flow.blocker == null) {
+            val placementMessage = if (forcedScenario == null && hostingUnblocked &&
+                hostTask != CloudAnchorTask.Running
+            ) {
                 when {
                     modelFailed -> stringResource(R.string.ar_place_model_failed)
                     modelInstance == null -> stringResource(R.string.ar_place_loading_model)
                     placementCard != null -> null
                     invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
-                    placementState.phase == PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused)
-                    placementState.phase == PlacementPhase.RECOVERING -> stringResource(R.string.ar_place_finding_placement)
-                    placementState.phase == PlacementPhase.ADJUSTING -> stringResource(R.string.ar_scale_preview_size, (placementState.scaleFactor * 100).toInt())
+                    placementState.phase == PlacementPhase.TRACKING_LOST ->
+                        stringResource(R.string.ar_place_tracking_paused)
+                    placementState.phase == PlacementPhase.RECOVERING ->
+                        stringResource(R.string.ar_place_finding_placement)
+                    placementState.phase == PlacementPhase.ADJUSTING ->
+                        stringResource(
+                            R.string.ar_scale_preview_size,
+                            (placementState.scaleFactor * 100).toInt(),
+                        )
                     else -> null
                 }
             } else null

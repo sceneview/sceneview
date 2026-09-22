@@ -79,8 +79,9 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 
 AR samples require a physical device with ARKit support (A9+ chip, iOS 18+).
 `ar-placement` is the single placement catalogue entry. Depth occlusion requires LiDAR;
-people occlusion requires supported person segmentation. Unsupported optional cards are
-hidden from discovery, and direct links explain the requirement before opening a camera.
+people occlusion requires supported person segmentation. Every AR card stays in the
+catalogue on every device: opening one on a device that cannot run it shows the honest
+requirement card before any camera starts, rather than the card disappearing.
 Occlusion comparisons keep perception enabled and change only the renderer effect.
 
 | Demo | Source | What it shows |

@@ -14,7 +14,19 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Real-device stress check: renderer-only toggles retain the live comparison screen. */
+/**
+ * Real-device stress check for the occlusion toggle of the depth comparison screen ([#1777]).
+ *
+ * The toggle no longer re-keys the `ARSceneView`: since the demos share the automatic-placement
+ * controller, turning occlusion on and off only flips a renderer flag on the live session, so the
+ * session, the anchor and the placed subject survive. This test flips it [TOGGLE_COUNT] times in a
+ * row and asserts the screen stays alive and the button label follows each flip — the regression
+ * class of #1777 (a rebuild mid-swap killing the renderer) with the cheaper mechanism.
+ *
+ * **Environment note:** depth occlusion needs ARCore Depth-API hardware. On a device without it the
+ * screen shows the honest "This feature isn’t available on this device." card and the test is
+ * skipped via `Assume` rather than failing.
+ */
 @RunWith(AndroidJUnit4::class)
 class ARDepthOcclusionToggleTest {
 

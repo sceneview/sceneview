@@ -45,7 +45,7 @@ class CloudAnchorScenarioTest {
         assertEquals(CloudAnchorStep.Host, state.step)
         assertFalse(state.anchorPlaced)
         assertEquals(CloudAnchorCard.None, state.card())
-        assertEquals("Tap a surface to place the anchor.", state.status().text)
+        assertEquals("Move slowly to find a surface.", state.status().text)
     }
 
     @Test

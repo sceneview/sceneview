@@ -17,8 +17,8 @@
 # way (#3405 — folded into `ar-placement`; the Android deep link still resolves
 # through `DeepLinkRouter.DEMO_ID_ALIASES`). Slice 5 also removes the redundant
 # iOS automatic-placement entries: `ar-placement` is its sole placement route.
-# The former one-call iOS comparison row is removed per that consolidation;
-# Android's existing SDK-wrapper demo remains outside this iOS consolidation.
+# `placement-scene` keeps its row — Android still registers that SDK-wrapper
+# demo — but its iOS status drops to `android-only` with the duplicate scene.
 #
 # `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
 #   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
@@ -63,7 +63,7 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-22): 47 rows, 29 working / 0 stub / 18 android-only.
+# Current slice-5 ledger (2026-09-22): 48 rows, 29 working / 0 stub / 19 android-only.
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -315,13 +315,12 @@ demos:
     androidStatus: Working
     iosStatus: working
     reason: >-
-      The single iOS placement entry, also used by the AR tab. Automatic
-      Placement and One-Call AR duplicate iOS scenes were removed in slice 5.
-    reason: >-
-      Capability caveat on a `working` row: tap-to-place, bottom-aligned on the
-      plane with grounding shadows, is live. The raycast is fixed to
-      `.estimatedPlane` — `ARSceneView` exposes no alignment policy — so there
-      is no "wait for a converged plane" mode as on Android.
+      The single iOS placement entry, also used by the AR tab: the `Automatic
+      Placement` and `One-Call AR` duplicate iOS scenes were removed in slice 5.
+      Capability caveat on a `working` row: the subject is placed automatically
+      on the first usable surface, bottom-aligned with grounding shadows. The
+      raycast is fixed to `.estimatedPlane` — `ARSceneView` exposes no alignment
+      policy — so there is no "wait for a converged plane" mode as on Android.
   - id: ar-plane-node
     androidStatus: Working
     iosStatus: working
@@ -403,11 +402,19 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (18) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
   # these ids no longer get is a Samples card that leads nowhere.
+  - id: placement-scene
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android keeps its one-call `PlacementScene` SDK-wrapper demo. Its iOS
+      duplicate was removed in slice 5: it showed the same automatic placement
+      as `ar-placement`, so the catalogue carried two cards for one screen.
+      The deep link answers with the honest `DeepLinkPlaceholder` on iOS.
   - id: ar-collaborative
     androidStatus: Working
     iosStatus: android-only

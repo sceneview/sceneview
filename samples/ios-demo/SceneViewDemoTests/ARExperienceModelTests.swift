@@ -107,7 +107,14 @@ final class ARExperienceModelTests: XCTestCase {
                 XCTAssertEqual(effect.configuration, configuration)
                 switch effect {
                 case .depth:
-                    XCTAssertEqual(view.environment.sceneUnderstanding.options.contains(.occlusion), enabled)
+                    // RealityKit refuses to hold `.occlusion` on a renderer without scene
+                    // reconstruction — the simulator — so the "on" direction is only asserted
+                    // where the option can exist at all. The "off" direction always holds.
+                    if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) || !enabled {
+                        XCTAssertEqual(
+                            view.environment.sceneUnderstanding.options.contains(.occlusion), enabled
+                        )
+                    }
                 case .people:
                     XCTAssertEqual(view.renderOptions.contains(.disablePersonOcclusion), !enabled)
                 }

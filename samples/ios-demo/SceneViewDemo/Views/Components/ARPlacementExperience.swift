@@ -39,6 +39,14 @@ struct ARPlacementExperience: View {
             }
         }
 
+        /// Asks the running session for this feature's perception option, once, and only
+        /// when the device actually supports it — an unsupported option makes ARKit fail
+        /// the whole session, and the container has already explained the requirement.
+        @MainActor func configurePerception(of view: ARView) {
+            guard configuration.unmetRequirement() == nil else { return }
+            view.session.run(configuration.makeARConfiguration())
+        }
+
         @MainActor func apply(enabled: Bool, to view: ARView) {
             switch self {
             case .depth:
@@ -200,20 +208,17 @@ struct ARPlacementExperience: View {
         }
     }
 
-    @ViewBuilder private var placementScene: some View {
-        if let occlusion {
-            ARSceneView(configuration: occlusion.configuration,
-                        showPlaneOverlay: false, showCoachingOverlay: false,
-                        showPlacementReticle: false)
-                .automaticPlacement(controller)
-                .onSessionEvent { _, view in
-                    viewBox.value = view
-                    occlusion.apply(enabled: occlusionEnabled, to: view)
-                }
-        } else {
-            AutoPlacementScene(controller: controller, onSessionEvent: { _, view in
-                viewBox.value = view
-            })
+    // One placement scene for every feature: the SDK's `AutoPlacementScene`, never a
+    // second placement policy. The occlusion demos need one extra perception option
+    // (LiDAR mesh, person segmentation) that the scene does not take as a parameter,
+    // so they apply it to the live session once it is running — `session.run` without
+    // `.resetTracking`, which keeps tracking, the anchor and the placed subject.
+    private var placementScene: some View {
+        AutoPlacementScene(controller: controller) { event, view in
+            viewBox.value = view
+            guard let occlusion else { return }
+            if case .started = event { occlusion.configurePerception(of: view) }
+            occlusion.apply(enabled: occlusionEnabled, to: view)
         }
     }
 

@@ -33,7 +33,8 @@ internal fun FeaturePlacementScene(
     onSessionUpdated: (Session, Frame) -> Unit = { _, _ -> },
     onSessionFailed: (Exception) -> Unit = {},
     onARCoreAvailability: (ARCoreAvailability?) -> Unit = {},
-    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },
+    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? =
+        { ARCoreAvailabilityOverlay(it) },
     onTrackingFailureChanged: (TrackingFailureReason?) -> Unit = {},
     onPlaced: (AutoPlacementResult) -> Unit = {},
     content: @Composable ARSceneScope.(AutoPlacementResult?) -> Unit,
