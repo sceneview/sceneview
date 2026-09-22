@@ -185,7 +185,9 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// for depth-based fog, which RealityKit has no equivalent of, so the
     /// screen is gone — and must not come back as a card or a live deep link.
     func testRemovedFeatureIdsAreGoneAndStillReachThePlaceholder() {
-        let removed = ["fog"]
+        let removed = Array(DemoDeepLinkRegistry.removedIds.keys)
+        XCTAssertEqual(Set(removed), ["fog"],
+                       "The removed-id table changed — update this pin deliberately.")
         for id in removed {
             XCTAssertNil(GeneratedScenes.destination(for: id),
                          "'\(id)' was removed on iOS — it must not resolve to a real screen.")
@@ -193,8 +195,12 @@ final class DemoRegistryGuardTests: XCTestCase {
                            "'\(id)' was removed on iOS — it must not be a catalogue id.")
             XCTAssertFalse(DemoDeepLinkRegistry.allowedIds.contains(id),
                            "'\(id)' was removed on iOS — its deep link must not be registered.")
-            // Still honest, never a silent no-op: the placeholder answers.
+            // Still honest, never a silent no-op: the placeholder answers, and
+            // the host titles it with the name the demo shipped under rather
+            // than the bare lower-case id.
             _ = DemoDeepLinkRegistry.destination(for: id)
+            XCTAssertEqual(DemoDeepLinkRegistry.title(for: id), DemoDeepLinkRegistry.removedIds[id],
+                           "A removed demo must keep a human title in the host's bar.")
         }
     }
 
