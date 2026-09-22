@@ -1,6 +1,7 @@
 #if os(iOS)
 import XCTest
 import ARKit
+import RealityKit
 @testable import SceneViewSwift
 
 /// Tests for ARSceneView configuration, including camera exposure API parity with Android.
@@ -8,6 +9,26 @@ import ARKit
 // (`LightNode.directional`, `node.entity`, …) are `@MainActor`. (#1054)
 @MainActor
 final class ARSceneViewTests: XCTestCase {
+
+    // MARK: - Session start
+
+    func testUnsupportedFaceTrackingRunsNoSessionAtAll() {
+        let arView = ARView(frame: .zero)
+
+        let error = ARSceneView.startSession(
+            on: arView,
+            faceTracking: true,
+            faceTrackingSupported: false,
+            planeDetection: .horizontal,
+            imageTrackingDatabase: nil
+        )
+
+        XCTAssertEqual(error, .faceTrackingUnsupported)
+        // The regression this guards: `makeUIView` used to carry on after
+        // reporting the error and still call `onSessionStarted`, so the host
+        // added content to a session that was never run.
+        XCTAssertNil(arView.session.configuration)
+    }
 
     // MARK: - Default initialisation
 

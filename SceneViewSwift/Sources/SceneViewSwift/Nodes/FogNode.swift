@@ -9,6 +9,17 @@ import AppKit
 
 /// Atmospheric fog effect simulated with a large translucent sphere.
 ///
+/// - Warning: **Deprecated — this is not fog.** RealityKit exposes no
+///   depth-based fog, and this node does not implement one: it draws a single
+///   large translucent sphere around the scene origin. Nothing attenuates with
+///   distance, `startDistance` / `endDistance` / `density` only resize or
+///   re-tint that sphere, and because the sphere is ordinary scene geometry it
+///   is included in automatic content framing — the camera can frame the "fog
+///   volume" instead of the scene inside it. Remove it from your scene; real
+///   fog needs depth-aware post-processing
+///   (`postProcessEffectContext`), which a future major version may add.
+///   Kept compiling for the whole 4.x line.
+///
 /// Mirrors SceneView Android's `FogNode` — provides linear and exponential fog
 /// modes. Because RealityKit does not expose a native per-view fog API,
 /// `FogNode` places a translucent sphere around the camera origin to approximate
@@ -32,6 +43,17 @@ import AppKit
 ///     content.add(thickFog.entity)
 /// }
 /// ```
+@available(
+    *,
+    deprecated,
+    message: """
+    FogNode is not fog: RealityKit has no depth-based fog, and this node only \
+    draws a large translucent sphere around the scene — nothing attenuates \
+    with distance, and the sphere is picked up by automatic content framing. \
+    Remove it from your scene; a real implementation needs depth-aware \
+    post-processing. Kept compiling for all of 4.x.
+    """
+)
 public struct FogNode: Sendable {
     /// The underlying RealityKit entity representing the fog volume.
     public let entity: ModelEntity

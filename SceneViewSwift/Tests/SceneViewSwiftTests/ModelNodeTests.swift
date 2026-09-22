@@ -269,11 +269,12 @@ final class ModelNodeTests: XCTestCase {
         let entity = ModelEntity(mesh: mesh, materials: [material])
         let node = ModelNode(entity)
 
-        // Scale to zero units — should compute scaleFactor = 0
+        // Zero is not a valid target size: collapsing the model to nothing hid
+        // the caller's mistake, so the call is now a no-op.
         node.scaleToUnits(0.0)
-        XCTAssertEqual(node.entity.scale.x, 0.0, accuracy: 0.001)
-        XCTAssertEqual(node.entity.scale.y, 0.0, accuracy: 0.001)
-        XCTAssertEqual(node.entity.scale.z, 0.0, accuracy: 0.001)
+        XCTAssertEqual(node.entity.scale.x, 1.0, accuracy: 0.001)
+        XCTAssertEqual(node.entity.scale.y, 1.0, accuracy: 0.001)
+        XCTAssertEqual(node.entity.scale.z, 1.0, accuracy: 0.001)
     }
 
     func testScaleToUnitsWithNegativeValue() {
@@ -282,9 +283,10 @@ final class ModelNodeTests: XCTestCase {
         let entity = ModelEntity(mesh: mesh, materials: [material])
         let node = ModelNode(entity)
 
-        // Negative units — should produce negative scale (mirror)
+        // A negative target size mirrored the model (inverted normals, back
+        // faces) instead of sizing it. Rejected, so the node is untouched.
         node.scaleToUnits(-1.0)
-        XCTAssertEqual(node.entity.scale.x, -0.5, accuracy: 0.05)
+        XCTAssertEqual(node.entity.scale.x, 1.0, accuracy: 0.001)
     }
 
     func testScaleToUnitsOnEmptyEntity() {
@@ -295,6 +297,42 @@ final class ModelNodeTests: XCTestCase {
         XCTAssertEqual(node.entity.scale.x, 1.0, accuracy: 0.001)
         XCTAssertEqual(node.entity.scale.y, 1.0, accuracy: 0.001)
         XCTAssertEqual(node.entity.scale.z, 1.0, accuracy: 0.001)
+    }
+
+    func testScaleToUnitsIsIdempotent() {
+        let mesh = MeshResource.generateBox(size: 2.0)
+        let material = SimpleMaterial(color: .white, isMetallic: false)
+        let node = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+
+        node.scaleToUnits(1.0)
+        node.scaleToUnits(1.0)
+
+        // A 2 m cube normalised to 1 m twice stays at 1 m: the second call
+        // measures the already-scaled bounds and multiplies by a correction of
+        // 1.0, instead of overwriting the scale and bouncing back to 2 m.
+        XCTAssertEqual(node.entity.scale.x, 0.5, accuracy: 0.01)
+        XCTAssertEqual(node.entity.scale.y, 0.5, accuracy: 0.01)
+        XCTAssertEqual(node.entity.scale.z, 0.5, accuracy: 0.01)
+        let extents = node.entity.visualBounds(relativeTo: node.entity.parent).extents
+        XCTAssertEqual(max(extents.x, max(extents.y, extents.z)), 1.0, accuracy: 0.01)
+    }
+
+    func testScaleToUnitsMultipliesExistingScale() {
+        let mesh = MeshResource.generateBox(size: 2.0)
+        let material = SimpleMaterial(color: .white, isMetallic: false)
+        let node = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+        // Asset-authored root scaling: the 2 m cube is really a 20 m model.
+        node.scale(10.0)
+
+        node.scaleToUnits(1.0)
+
+        // Bounds are measured with the authored scale applied (20 m), so the
+        // correction is 0.05 and the final scale 10 × 0.05 = 0.5 — the model is
+        // 1 m. The old code overwrote the scale with 1/20 = 0.05 and left a
+        // 10 cm model.
+        XCTAssertEqual(node.entity.scale.x, 0.5, accuracy: 0.01)
+        let extents = node.entity.visualBounds(relativeTo: node.entity.parent).extents
+        XCTAssertEqual(max(extents.x, max(extents.y, extents.z)), 1.0, accuracy: 0.01)
     }
 
     // MARK: - Loading invalid model path

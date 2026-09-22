@@ -232,12 +232,12 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.position()`, `.centered()`, `.withText()` |
 | `ImageNode` | `ImageNode.load("img.png")` | `async throws`, `width:`, `height:`, `.position()` |
 | `BillboardNode` | `BillboardNode(child:)` / `BillboardNode.text(_:fontSize:color:)` | always faces camera |
-| `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()` |
+| `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()`; extensionless names try mp4/mov/m4v, `VideoNode.load(resource:)` throws instead of failing silently |
 | `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
-| `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | atmospheric fog |
+| `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | **deprecated (v4.39.0+)** — not fog: one translucent sphere, no distance attenuation, and it is included in automatic content framing |
 | `ReflectionProbeNode` | `ReflectionProbeNode(position:radius:)` | zone-based IBL |
 
 ---
@@ -541,7 +541,7 @@ silent stub.
 | Symbol | Why iOS can't | Working alternative |
 |---|---|---|
 | `CameraNode.depthOfField(...)` | `PerspectiveCameraComponent` has no DOF | Custom Metal post-process required (out of scope) |
-| `CameraNode.exposure(_:)` | No `exposureCompensation` on `PerspectiveCameraComponent` (verified Xcode 26.x compile failure in #1019) | `ARSceneView(cameraExposure:)` for AR; `SceneView.renderQuality(_:)` to tune IBL for 3D |
+| `CameraNode.exposure(_:)` | No `exposureCompensation` on `PerspectiveCameraComponent` (verified Xcode 26.x compile failure in #1019) | `ARSceneView(cameraExposure:)` for AR — rendered-frame brightness, not capture exposure; `SceneView.renderQuality(_:)` to tune IBL for 3D |
 | `LightNode.shadowColor(_:)` | `DirectionalLightComponent.Shadow` has no `color` property | Use `castsShadow(_:)` + `shadowMaximumDistance(_:)` |
 | `FogNode.heightBased(...)` / `FogNode.heightFalloff` | `UnlitMaterial` cannot vary opacity by world height; no per-view fog API in RealityKit (#1380) | `FogNode.exponential(density:color:)` |
 
@@ -593,7 +593,7 @@ Use as you would on Android; expect minor visual differences.
 
 | Symbol | Android renderer | iOS approximation |
 |---|---|---|
-| `FogNode.linear / .exponential` | Filament fog modes | Translucent-sphere shader (visual approximation; same factory API). `FogNode.heightBased` is deprecated on iOS — see #1380. |
+| `FogNode.linear / .exponential` | Filament fog modes | **Deprecated on iOS (v4.39.0+)**: the translucent-sphere approximation is not fog — no distance attenuation, and the sphere is framed as content. Still compiles through 4.x. |
 | `ReflectionProbeNode.box(...) / .sphere(...)` | Volumetric Filament probe | Unbounded `ImageBasedLightReceiverComponent` (volume scope is best-effort) |
 | `CustomMaterial.subsurface(...)` | Filament SSS | PBR `metallic` + `roughness` tuning |
 

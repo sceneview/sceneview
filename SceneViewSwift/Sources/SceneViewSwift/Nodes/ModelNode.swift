@@ -358,20 +358,37 @@ public struct ModelNode: @unchecked Sendable {
 
     // MARK: - Scale to units (mirrors Android's ModelNode.scaleToUnits)
 
-    /// Scales the model to fit within a cube of the given size.
+    /// Scales the model so its largest dimension measures `units` metres.
     ///
     /// Mirrors Android's `ModelNode(scaleToUnits = 1f)`.
     ///
-    /// - Parameter units: Target size in meters (default 1.0).
+    /// Bounds are measured in the entity's **parent** space, so they already
+    /// include the entity's current scale — including any root scaling authored
+    /// into the imported asset — and the correction is *multiplied* into that
+    /// scale rather than replacing it. Two consequences:
+    ///
+    /// - A model whose asset root is scaled (common in USDZ/glTF exports) ends
+    ///   up the requested size instead of that size times the authored factor.
+    /// - The call is idempotent: normalising a 2 m cube to 1 m twice leaves it
+    ///   at 1 m. Previously the second call measured the already-scaled bounds
+    ///   and then overwrote the scale, sending the model back to 2 m.
+    ///
+    /// A non-finite or non-positive `units`, or a model with no measurable
+    /// bounds (an entity with no mesh), is a no-op: there is no meaningful
+    /// scale for it and silently collapsing the model to zero hid the mistake.
+    ///
+    /// - Parameter units: Target size in meters (default 1.0). Must be finite
+    ///   and greater than zero.
     /// - Returns: Self scaled to fit.
     @discardableResult
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode {
-        let bounds = entity.visualBounds(relativeTo: nil)
-        let extents = bounds.extents
+        guard units.isFinite, units > 0 else { return self }
+        let extents = entity.visualBounds(relativeTo: entity.parent).extents
         let maxExtent = max(extents.x, max(extents.y, extents.z))
-        guard maxExtent > 0 else { return self }
-        let scaleFactor = units / maxExtent
-        return scale(scaleFactor)
+        guard maxExtent.isFinite, maxExtent > 0 else { return self }
+        let correction = units / maxExtent
+        guard correction.isFinite, correction > 0 else { return self }
+        return scale(entity.scale * correction)
     }
 
     // MARK: - Animation (mirrors Android's ModelNode animation API)

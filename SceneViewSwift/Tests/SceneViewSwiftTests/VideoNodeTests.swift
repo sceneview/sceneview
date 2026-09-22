@@ -9,6 +9,74 @@ import AVFoundation
 @MainActor
 final class VideoNodeTests: XCTestCase {
 
+    // MARK: - Resource resolution
+
+    func testExtensionlessNameTriesEveryCommonVideoExtension() {
+        // "sample" used to be parsed as an empty base name with the extension
+        // "sample", so it matched nothing and silently fell back to a
+        // nonexistent file path.
+        do {
+            _ = try VideoNode.resolveVideoURL(named: "sample_video_that_does_not_exist")
+            XCTFail("Expected resolveVideoURL to throw for a missing resource")
+        } catch let VideoNodeError.resourceNotFound(name, triedExtensions) {
+            XCTAssertEqual(name, "sample_video_that_does_not_exist")
+            XCTAssertEqual(triedExtensions, ["mp4", "mov", "m4v"])
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testNameWithExtensionOnlyTriesThatExtension() {
+        do {
+            _ = try VideoNode.resolveVideoURL(named: "missing_clip.mov")
+            XCTFail("Expected resolveVideoURL to throw for a missing resource")
+        } catch let VideoNodeError.resourceNotFound(_, triedExtensions) {
+            XCTAssertEqual(triedExtensions, ["mov"])
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testResolvesAnExistingFileOnDiskWithoutItsExtension() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("clip.m4v")
+        try Data([0x00]).write(to: file)
+
+        let resolved = try VideoNode.resolveVideoURL(
+            named: directory.appendingPathComponent("clip").path
+        )
+        XCTAssertEqual(resolved.lastPathComponent, "clip.m4v")
+    }
+
+    func testResolvesAnExistingFileOnDiskThatHasNoExtension() throws {
+        // A path on disk is a documented input and a file can genuinely have no
+        // extension: the name as given must be checked before the mp4/mov/m4v
+        // variants are tried.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("clip")
+        try Data([0x00]).write(to: file)
+
+        let resolved = try VideoNode.resolveVideoURL(named: file.path)
+        XCTAssertEqual(resolved.lastPathComponent, "clip")
+    }
+
+    func testLoadOfMissingResourceReturnsAnEmptyPlayerRatherThanABogusURL() {
+        let node = VideoNode.load("sample_video_that_does_not_exist")
+        // No item at all — never an AVPlayer pointed at a path that does not
+        // exist, which used to report success while nothing played.
+        XCTAssertNil(node.player.currentItem)
+    }
+
     func testCreateWithPlayer() {
         let player = AVPlayer()
         let node = VideoNode.create(player: player, width: 1.6, height: 0.9)
