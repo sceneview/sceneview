@@ -51,6 +51,10 @@ struct ARInstantPlacementDemo: View {
     /// clear-all control can remove anchors from `arView.scene`.
     @State private var arViewRef: ARViewBox = ARViewBox()
 
+    /// In-flight placement loads, shared with ``ARPlacementDemo`` — see
+    /// ``PlacementTaskTracker``.
+    @State private var placements = PlacementTaskTracker()
+
     /// Reference box for the non-`Sendable`/non-`Equatable` `ARView` so it can
     /// live in SwiftUI `@State` without triggering view-identity churn.
     private final class ARViewBox {
@@ -80,10 +84,15 @@ struct ARInstantPlacementDemo: View {
             ARSceneView(
                 planeDetection: .horizontal,
                 showPlaneOverlay: true,
-                showCoachingOverlay: true,
+                // No coaching overlay here, unlike the other AR demos.
+                // `ARCoachingOverlayView` activates itself before any plane has
+                // converged and covers the camera until one has — which is
+                // precisely the window this demo exists to show. The plane
+                // overlay and the status pill carry the guidance instead.
+                showCoachingOverlay: false,
                 onTapOnPlane: { worldPosition, arView in
-                    Task { @MainActor in
-                        await placeModel(at: worldPosition, in: arView)
+                    placements.run { generation in
+                        await placeModel(at: worldPosition, in: arView, generation: generation)
                     }
                 }
             )
@@ -109,6 +118,7 @@ struct ARInstantPlacementDemo: View {
         // `.ar`: the stage is the camera feed, so the chrome grounds itself
         // per control instead of dimming the frame with scrim bands.
         .demoChrome(chromeMode: .ar) { controlsSheet }
+        .onDisappear { placements.invalidate() }
         .task {
             _ = await SketchfabAssetResolver.shared.prefetchAll(category: "ar_placement")
         }
@@ -120,11 +130,14 @@ struct ARInstantPlacementDemo: View {
     // MARK: - Placement
 
     @MainActor
-    private func placeModel(at worldPosition: SIMD3<Float>, in arView: ARView) async {
+    private func placeModel(at worldPosition: SIMD3<Float>, in arView: ARView, generation: Int) async {
         do {
             let node: ModelNode
             if let slug = selectedSlug, let url = armedURL {
                 node = try await ModelNode.load(contentsOf: url)
+                // Same rule as ARPlacementDemo: a load that finished after
+                // Clear all, or after the screen was left, drops its model.
+                guard placements.isCurrent(generation) else { return }
                 // Honour the slug's real-world size hint, as ARPlacementDemo
                 // does — the bundled cycle alone is normalised to 0.3 m (#2966).
                 _ = node.scaleToUnits(slug.scaleToUnits)
@@ -133,6 +146,7 @@ struct ARInstantPlacementDemo: View {
                 let entry = Self.bundledCycle[cycleIndex % Self.bundledCycle.count]
                 cycleIndex += 1
                 node = try await ModelNode.load(entry.name)
+                guard placements.isCurrent(generation) else { return }
                 _ = node.scaleToUnits(0.3)
                 _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             }
@@ -150,6 +164,8 @@ struct ARInstantPlacementDemo: View {
             #if os(iOS)
             SceneViewHaptic.shared.light()
             #endif
+        } catch is CancellationError {
+            // Retired on purpose — not an error to surface.
         } catch {
             // Silently keep the user in tap-to-retry mode (Android parity).
         }
@@ -159,6 +175,9 @@ struct ARInstantPlacementDemo: View {
     /// Safe to call when nothing is placed — the loop simply does nothing.
     @MainActor
     private func clearAllPlacedModels() {
+        // Retire in-flight loads first, so one cannot attach a model to the
+        // scene the user has just emptied.
+        placements.invalidate()
         if let arView = arViewRef.value {
             for anchor in placedAnchors {
                 arView.scene.removeAnchor(anchor)
@@ -249,19 +268,7 @@ struct ARInstantPlacementDemo: View {
     }
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to place models in AR.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "bolt.fill", message: "Run on iPhone or iPad to place models in AR.")
     }
 
     @MainActor
