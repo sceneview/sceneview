@@ -135,8 +135,8 @@ struct ARDepthColliderDemo: View {
                     DockItem(icon: "arrow.counterclockwise", label: "Reset",
                              enabled: droppedCount > 0) { resetBalls() },
                 ],
-                chromeMode: .ar,
                 onReset: resetBalls,
+                chromeMode: .ar,
                 accessory: { DemoHint(statusText) }
             ) {
                 if isLiDARSupported {
