@@ -130,7 +130,9 @@ private struct ARPoseDemo: View {
             }
         }
         .background(Color.black)
-        .demoChrome { controlsSheet }
+        // `.ar`: the stage is the camera feed, so the chrome grounds itself
+        // per control instead of dimming the frame with scrim bands.
+        .demoChrome(chromeMode: .ar) { controlsSheet }
         .task { await loadLantern() }
     }
 

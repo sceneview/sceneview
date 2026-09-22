@@ -173,7 +173,9 @@ struct ARPlacementDemo: View {
                 }
             }
         }
-        .demoChrome { controlsSheet }
+        // `.ar`: the stage is the camera feed, so the chrome grounds itself
+        // per control instead of dimming the frame with scrim bands.
+        .demoChrome(chromeMode: .ar) { controlsSheet }
         .task {
             _ = await SketchfabAssetResolver.shared.prefetchAll(category: "ar_placement")
         }

@@ -25,11 +25,12 @@ public struct DemoChromeModifier<Controls: View>: ViewModifier {
     let dock: [DockItem]
     let accent: DockItem?
     let onReset: (() -> Void)?
+    let chromeMode: DemoChromeMode
     let controls: () -> Controls
 
     public func body(content: Content) -> some View {
         DemoScaffold(title, dock: dock, accent: accent, onReset: onReset,
-                     stage: { content }, controls: controls)
+                     chromeMode: chromeMode, stage: { content }, controls: controls)
     }
 }
 
@@ -107,10 +108,11 @@ public extension View {
         dock: [DockItem] = [],
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage,
         @ViewBuilder controls: @escaping () -> Controls
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
-                                    controls: controls))
+                                    chromeMode: chromeMode, controls: controls))
     }
 
     /// ``DemoScaffold`` with no controls of the demo's own — the sheet still
@@ -119,9 +121,10 @@ public extension View {
         title: String? = nil,
         dock: [DockItem] = [],
         accent: DockItem? = nil,
-        onReset: (() -> Void)? = nil
+        onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
-                                    controls: { EmptyView() }))
+                                    chromeMode: chromeMode, controls: { EmptyView() }))
     }
 }

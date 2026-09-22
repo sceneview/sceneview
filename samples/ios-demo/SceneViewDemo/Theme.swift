@@ -475,6 +475,32 @@ enum SceneViewTokens {
             max(margin, safeArea + 8)
         }
     }
+
+    /// Chrome tokens for a screen whose stage is the **camera feed**
+    /// (`DESIGN.md` "AR Coaching Overlay" / "AR Overlay Card").
+    ///
+    /// The scrim bands of ``Chrome`` exist because a 3D stage can be any
+    /// brightness. A camera feed is not a stage: darkening 160 pt of sky and
+    /// 220 pt of floor is darkening the thing the user came to look at. Over
+    /// the feed the ground belongs to each control instead — near-opaque,
+    /// exactly the size of what it carries.
+    enum ARChrome {
+        /// `ar-scrim` — theme-independent ground; only the opacity flips,
+        /// because light mode is used outdoors more often.
+        static func scrim(_ scheme: ColorScheme) -> Color {
+            Color.black.opacity(scheme == .dark ? 0.88 : 0.94)
+        }
+        /// `ar-scrim-border` — the hairline that separates the control from a
+        /// busy frame.
+        static func border(_ scheme: ColorScheme) -> Color {
+            Color.white.opacity(scheme == .dark ? 0.10 : 0.16)
+        }
+        static let borderWidth: CGFloat = 1
+        /// `on-ar-scrim` — white in both themes; the ground is the camera.
+        static let onScrim = Color.white
+        /// `on-ar-scrim-dim` — secondary text on the scrim.
+        static let onScrimDim = Color.white.opacity(0.72)
+    }
 }
 
 // MARK: - Color Extension for Light/Dark
@@ -611,9 +637,30 @@ extension View {
 /// on the colour scheme.
 private struct GlassBackground<S: InsettableShape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.arChromeGround) private var arGround
     let shape: S
 
     func body(content: Content) -> some View {
+        if let arGround {
+            // Over a camera feed the control carries its own near-opaque
+            // ground instead of standing on a screen-wide scrim band. Blur is
+            // deliberately absent: `.ultraThinMaterial` samples the live feed,
+            // which is exactly the content the label has to beat.
+            content
+                .background(arGround, in: shape)
+                .overlay(
+                    shape.strokeBorder(
+                        SceneViewTokens.ARChrome.border(colorScheme),
+                        lineWidth: SceneViewTokens.ARChrome.borderWidth
+                    )
+                )
+        } else {
+            glass(content)
+        }
+    }
+
+    @ViewBuilder
+    private func glass(_ content: Content) -> some View {
         content
             // Nearest the content first: ceiling, material, floor.
             .background(colorScheme == .dark ? SceneViewTokens.Glass.ceiling : .clear, in: shape)
@@ -625,5 +672,18 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
                     lineWidth: SceneViewTokens.Glass.borderWidth
                 )
             )
+    }
+}
+
+/// The ground every glass control uses when the stage is a camera feed, or
+/// `nil` on an ordinary 3D stage. Set once by ``DemoScaffold`` in AR mode.
+private struct ARChromeGroundKey: EnvironmentKey {
+    static let defaultValue: Color? = nil
+}
+
+extension EnvironmentValues {
+    var arChromeGround: Color? {
+        get { self[ARChromeGroundKey.self] }
+        set { self[ARChromeGroundKey.self] = newValue }
     }
 }
