@@ -1,6 +1,6 @@
 // @sceneId     placement-scene
-// @title       Automatic Placement
-// @subtitle    One object on the first usable surface
+// @title       One-Call AR
+// @subtitle    The one-call automatic placement bundle
 // @category    ar
 // @available   true
 // @icon        mappin.and.ellipse
