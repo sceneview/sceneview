@@ -249,29 +249,10 @@ struct ARTab: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.10, blue: 0.18),
-                    Color(red: 0.18, green: 0.18, blue: 0.28),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-            VStack(spacing: 16) {
-                Image(systemName: "arkit")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .accessibilityHidden(true)
-                Text("AR requires a physical device")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text("Run on iPhone or iPad to place 3D models in your space.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-        }
+        ARUnavailableStage(
+            icon: "arkit",
+            message: "Run on iPhone or iPad to place 3D models in your space."
+        )
     }
 
     // MARK: - Glass status pill (top center)

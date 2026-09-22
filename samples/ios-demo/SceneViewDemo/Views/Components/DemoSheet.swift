@@ -47,6 +47,50 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - AR stage without a camera
+
+/// What an AR demo shows when there is no camera to draw on: the simulator.
+///
+/// Theme-independent, exactly like the AR chrome that floats over it. Before
+/// this, each demo hand-rolled the same stack with `.secondary` text on
+/// `systemGroupedBackground` — light grey on near-white, which the audit
+/// captures caught as unreadable in light mode, and which put an ordinary app
+/// surface under chrome designed for a camera frame. The ground is the same
+/// deep gradient the AR tab already used.
+struct ARUnavailableStage: View {
+    /// SF Symbol naming the capability the demo would have shown.
+    let icon: String
+    /// One sentence: what a real device would do here.
+    let message: String
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.10, blue: 0.18),
+                    Color(red: 0.18, green: 0.18, blue: 0.28),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            VStack(spacing: SceneViewTokens.Space.md) {
+                Image(systemName: icon)
+                    .font(.system(size: 60))
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                    .accessibilityHidden(true)
+                Text("AR requires a physical device")
+                    .font(.headline)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, SceneViewTokens.Space.xl)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // MARK: - Glass primitives
 
 // The glass itself is `View.glassBackground(in:)` (Theme.swift) — the one

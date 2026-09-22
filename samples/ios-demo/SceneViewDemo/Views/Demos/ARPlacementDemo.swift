@@ -416,19 +416,7 @@ struct ARPlacementDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "viewfinder")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to scan a plane and tap to place models.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "viewfinder", message: "Run on iPhone or iPad to scan a plane and tap to place models.")
     }
 
     // MARK: - Slug resolve

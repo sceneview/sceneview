@@ -264,19 +264,7 @@ private struct PlacementSceneDemoView: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to scan a surface and tap to place a model.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "mappin.and.ellipse", message: "Run on iPhone or iPad to scan a surface and tap to place a model.")
     }
 }
 #endif

@@ -202,20 +202,7 @@ struct ARLightingDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "lightbulb.max.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to compare the three lighting modes.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "lightbulb.max.fill", message: "Run on iPhone or iPad to compare the three lighting modes.")
     }
 }
 #endif

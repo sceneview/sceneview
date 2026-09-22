@@ -229,20 +229,7 @@ struct ARImageTrackingDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "qrcode.viewfinder")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("ARKit image tracking requires a real camera feed.\nRun on iPhone or iPad to track the QR code target.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "qrcode.viewfinder", message: "ARKit image tracking requires a real camera feed.\nRun on iPhone or iPad to track the QR code target.")
     }
 }
 

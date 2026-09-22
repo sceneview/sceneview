@@ -83,20 +83,7 @@ struct ARBodyTrackerDemo: View {
     }
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "figure.walk.motion")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "figure.walk.motion", message: "Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
     }
 }
 
