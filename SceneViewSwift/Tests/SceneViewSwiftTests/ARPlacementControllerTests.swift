@@ -34,6 +34,69 @@ final class ARPlacementControllerTests: XCTestCase {
         }
     }
 
+    /// A slow device needs several frames before RealityKit resolves `AnchorEntity(anchor:)`.
+    /// Those frames must not each create and discard an anchor: one request, one anchor, one commit.
+    func testUnresolvedAnchorIsKeptAcrossFramesAndCommitsExactlyOnce() {
+        var state = armedLifecycle()
+        var anchorsCreated = 0
+        var commits = 0
+        var pendingSince: TimeInterval?
+        let resolvesAtStep = 24
+
+        for step in 0..<60 {
+            let now = 100 + Double(step) / 60
+            let searching = state.frame(now: now,
+                                        tracking: true,
+                                        anchorTracking: state.hasPlacement,
+                                        assetReady: true)
+            guard searching else { continue }
+            guard let since = pendingSince else {
+                anchorsCreated += 1
+                pendingSince = now
+                continue
+            }
+            switch ARPlacementLifecycle.pendingAnchorDecision(anchored: step >= resolvesAtStep,
+                                                              surfaceUsable: true,
+                                                              now: now,
+                                                              since: since) {
+            case .commit:
+                state.commit()
+                commits += 1
+                pendingSince = nil
+            case .wait:
+                break
+            case .reject:
+                pendingSince = nil
+            }
+        }
+
+        XCTAssertEqual(anchorsCreated, 1)
+        XCTAssertEqual(commits, 1)
+        XCTAssertTrue(state.hasPlacement)
+        XCTAssertFalse(state.requested)
+        XCTAssertEqual(state.phase, .placed)
+    }
+
+    func testPendingAnchorIsRejectedOnlyWhenSurfaceDiesOrBudgetExpires() {
+        // Still resolving, surface still usable, inside the budget: keep it.
+        XCTAssertEqual(ARPlacementLifecycle.pendingAnchorDecision(anchored: false, surfaceUsable: true,
+                                                                  now: 100.5, since: 100), .wait)
+        // The surface stopped being usable: reject immediately, whatever the clock says.
+        XCTAssertEqual(ARPlacementLifecycle.pendingAnchorDecision(anchored: false, surfaceUsable: false,
+                                                                  now: 100.5, since: 100), .reject)
+        XCTAssertEqual(ARPlacementLifecycle.pendingAnchorDecision(anchored: true, surfaceUsable: false,
+                                                                  now: 100, since: 100), .reject)
+        // Resolved on a usable surface: commit.
+        XCTAssertEqual(ARPlacementLifecycle.pendingAnchorDecision(anchored: true, surfaceUsable: true,
+                                                                  now: 100, since: 100), .commit)
+        // Never resolved within the documented budget: reject and offer another candidate.
+        let expired = 100 + ARPlacementLifecycle.pendingAnchorTimeout
+        XCTAssertEqual(ARPlacementLifecycle.pendingAnchorDecision(anchored: false, surfaceUsable: true,
+                                                                  now: expired, since: 100), .reject)
+        XCTAssertEqual(ARPlacementLifecycle.pendingAnchorDecision(anchored: false, surfaceUsable: true,
+                                                                  now: expired - 0.001, since: 100), .wait)
+    }
+
     func testDelayedAssetDoesNotConsumeRequestOrStartSearchDeadline() {
         var state = armedLifecycle()
         XCTAssertFalse(state.frame(now: 1, tracking: true, anchorTracking: false, assetReady: false))

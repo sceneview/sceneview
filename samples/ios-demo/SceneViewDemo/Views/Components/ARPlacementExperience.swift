@@ -4,6 +4,24 @@ import RealityKit
 import UIKit
 import SceneViewSwift
 
+/// The two placement facts a haptic decision needs, sampled together so one AR event can only
+/// ever produce one vibration.
+struct PlacementFeedback: Equatable {
+    let placed: Bool
+    let selected: Bool
+
+    enum Haptic: Equatable { case none, placed, selected }
+
+    /// Placement wins the frame it happens on: the controller selects the object it just placed,
+    /// and that selection is not a user action. Selection feedback is therefore reserved for an
+    /// explicit tap on a standing object, exactly as the Android sample does.
+    static func haptic(from old: PlacementFeedback, to new: PlacementFeedback) -> Haptic {
+        if new.placed && !old.placed { return .placed }
+        if new.selected && !old.selected { return .selected }
+        return .none
+    }
+}
+
 /// The single automatic-placement experience used by the tab, catalogue and viewers.
 /// Assets remain app-owned; generation tickets prevent dismissed or superseded loads
 /// from entering the SDK's scene. Bundled models use the same 0.3 m preview as Android.
@@ -78,17 +96,24 @@ struct ARPlacementExperience: View {
                 UserDefaults.standard.set(actual, forKey: Self.sizeBasisKey(url))
             }
         }
-        .onChange(of: controller.hasPlacement) { _, placed in
-            guard placed else { return }
-            SceneViewHaptic.shared.medium()
-            if !hintShown { hintShown = true; showHint = true }
+        // Both observations live in one `onChange` on purpose: automatic placement raises
+        // `hasPlacement` and `selection` in the same update, and two separate observers would
+        // fire `medium()` and `selection()` back to back — one placement, two vibrations. A
+        // single decision point also removes any reliance on modifier evaluation order.
+        .onChange(of: PlacementFeedback(placed: controller.hasPlacement, selected: controller.selection)) { old, new in
+            switch PlacementFeedback.haptic(from: old, to: new) {
+            case .placed:
+                SceneViewHaptic.shared.medium()
+                if !hintShown { hintShown = true; showHint = true }
+            case .selected:
+                SceneViewHaptic.shared.selection()
+            case .none:
+                break
+            }
         }
         .onChange(of: controller.phase) { _, phase in
             if phase == .trackingLost { SceneViewHaptic.shared.warning() }
             if phase == .adjusting { showHint = false }
-        }
-        .onChange(of: controller.selection) { old, selected in
-            if selected && !old { SceneViewHaptic.shared.selection() }
         }
         .onChange(of: controller.scale) { old, value in
             if (old < 1 && value >= 1) || (old > 1 && value <= 1) {

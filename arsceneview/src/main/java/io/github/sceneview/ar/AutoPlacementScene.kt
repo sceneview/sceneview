@@ -157,9 +157,14 @@ fun AutoPlacementScene(
     LaunchedEffect(state, assetReady) {
         if (assetReady) state.requestPlacement() else state.withdrawRequest()
     }
+    // Keyed on [state] alone, the disposal lambda below would capture the `placement` of the
+    // composition that created the effect — normally null. Reading the latest value through
+    // [rememberUpdatedState] is what makes `detach()` actually run when the host navigates away
+    // after a placement, including when the content composes no AnchorNode of its own.
+    val currentPlacement by rememberUpdatedState(placement)
     DisposableEffect(state) {
         onDispose {
-            placement?.anchor?.detach()
+            currentPlacement?.anchor?.detach()
             state.dismiss()
         }
     }

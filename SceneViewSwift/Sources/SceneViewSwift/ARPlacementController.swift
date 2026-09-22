@@ -81,6 +81,29 @@ struct ARPlacementLifecycle {
         if now - searchSince! >= 10 { phase = .noSurface }
         return true
     }
+    /// How long an anchor whose plane is still usable may stay unresolved before it counts as a
+    /// failed attempt. RealityKit resolves `AnchorEntity(anchor:)` asynchronously and a slow
+    /// device can need several frames.
+    static let pendingAnchorTimeout: TimeInterval = 3
+
+    /// What to do with an anchor that was created but that RealityKit has not resolved yet.
+    enum PendingAnchorDecision: Equatable { case commit, wait, reject }
+
+    /// Pure policy for the pending anchor, so the slow-device race can be exercised off-device.
+    /// Rejecting an unresolved anchor on the very next frame would create and discard one anchor
+    /// per frame and never reach ``commit()``, so waiting is the default while the surface holds.
+    static func pendingAnchorDecision(
+        anchored: Bool,
+        surfaceUsable: Bool,
+        now: TimeInterval,
+        since: TimeInterval?
+    ) -> PendingAnchorDecision {
+        guard surfaceUsable else { return .reject }
+        if anchored { return .commit }
+        guard let since, now - since >= pendingAnchorTimeout else { return .wait }
+        return .reject
+    }
+
     mutating func commit() {
         guard requested && !hasPlacement && acceptsFrames else { return }
         requested = false
@@ -110,6 +133,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     private var anchor: AnchorEntity?
     private var surface: ARPlaneAnchor?
     private var pendingPlacementResult: ARPlacementResult?
+    /// Frame timestamp at which the still-unresolved anchor was created. See
+    /// ``ARPlacementLifecycle/pendingAnchorDecision(anchored:surfaceUsable:now:since:)``.
+    private var pendingAnchorSince: TimeInterval?
     private var pendingMove: (anchor: AnchorEntity, plane: ARPlaneAnchor, contact: simd_float4x4, transform: Transform)?
     private var pivot = Entity()
     private var model: Entity?
@@ -220,6 +246,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         anchor = nil
         surface = nil
         pendingPlacementResult = nil
+        pendingAnchorSince = nil
     }
     private func publishPhase() { if phase != lifecycle.phase { phase = lifecycle.phase } }
 
@@ -289,14 +316,27 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             } else { discardPendingMove() }
         }
         if search, anchor != nil {
-            if anchored, let currentPlane = surface, let pendingPlacementResult,
-               valid(plane: currentPlane, point: pendingPlacementResult.worldTransform.columns.3.xyz, frame: frame, view: view) {
+            let usable = surface.flatMap { plane in
+                pendingPlacementResult.map {
+                    valid(plane: plane, point: $0.worldTransform.columns.3.xyz, frame: frame, view: view)
+                }
+            } ?? false
+            switch ARPlacementLifecycle.pendingAnchorDecision(anchored: anchored,
+                                                              surfaceUsable: usable,
+                                                              now: frame.timestamp,
+                                                              since: pendingAnchorSince) {
+            case .commit:
                 result = pendingPlacementResult
-                self.pendingPlacementResult = nil
+                pendingPlacementResult = nil
+                pendingAnchorSince = nil
                 lifecycle.commit()
                 selection = true
-            } else {
-                // An unresolved or no-longer-usable target is a rejected attempt, not placement.
+            case .wait:
+                // RealityKit resolves the plane target asynchronously; the anchor stays as long as
+                // its surface does. Dropping it here would re-create one anchor per frame forever.
+                break
+            case .reject:
+                // The target became unusable, or never resolved within the documented budget.
                 // Release it before offering another candidate on the following update.
                 removeAnchor()
                 result = nil
@@ -309,6 +349,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             view.scene.addAnchor(anchor)
             self.anchor = anchor
             surface = candidate.plane
+            pendingAnchorSince = frame.timestamp
             pendingPlacementResult = .init(surfaceIdentifier: candidate.plane.identifier,
                            anchor: anchor,
                            worldTransform: candidate.transform)
@@ -316,6 +357,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             if anchor.isAnchored {
                 result = pendingPlacementResult
                 pendingPlacementResult = nil
+                pendingAnchorSince = nil
                 lifecycle.commit()
                 selection = true
             }
