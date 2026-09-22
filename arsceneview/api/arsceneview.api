@@ -702,7 +702,7 @@ public final class io/github/sceneview/ar/PlacementReticleVisualKt {
 
 public final class io/github/sceneview/ar/PlacementSceneKt {
 	public static final field INSTANT_APPROXIMATE_DISTANCE_M F
-	public static final fun PlacementScene-c8To9hI (Landroidx/compose/ui/Modifier;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLcom/google/ar/core/Config$PlaneFindingMode;ZZJLio/github/sceneview/ar/PlacementReticleStyle;ZZZLjava/io/File;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun PlacementScene-O_N-pM8 (Landroidx/compose/ui/Modifier;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLcom/google/ar/core/Config$PlaneFindingMode;ZZJLio/github/sceneview/ar/PlacementReticleStyle;ZZZLjava/io/File;Lkotlin/jvm/functions/Function2;FLkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun getDEFAULT_RETICLE_COLOR ()J
 	public static final fun placementHit (Lcom/google/ar/core/Frame;FFZ)Lcom/google/ar/core/HitResult;
 	public static final fun placementHit (Lcom/google/ar/core/Frame;Ljava/util/List;Z)Lcom/google/ar/core/HitResult;

@@ -108,6 +108,9 @@ const PREAMBLE_IMPORTS = [
   "androidx.compose.ui.graphics.Color",
   "androidx.compose.ui.platform.LocalContext",
   "androidx.compose.ui.unit.dp",
+  // The type, not just the builder: signature listings that document a Dp
+  // parameter (PlacementScene's coachingBottomClearance, #3735) name it.
+  "androidx.compose.ui.unit.Dp",
   "androidx.lifecycle.Lifecycle",
   "androidx.lifecycle.compose.LocalLifecycleOwner",
   "com.google.android.filament.*",

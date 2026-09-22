@@ -392,6 +392,9 @@ Box {
         isTracking = isTracking,
         anyPlaneTracked = anyPlaneTracked,
         trackingFailureReason = failure,
+        // Default 16 dp — a gutter sized for a screen whose bottom is empty. If your own
+        // chrome occupies the bottom, name the band it must clear (#3735).
+        bottomClearance = 96.dp + 8.dp,
     )
 }
 ```
@@ -1280,8 +1283,8 @@ Signature:
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
     instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
     showReticle: Boolean = true,             // built-in centre-screen placement reticle
-    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity + centre dot vary searching/hit/locked
+    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
     groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
@@ -1289,6 +1292,9 @@ Signature:
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
+    coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching pill — raise it by the
+                                             // height of your own bottom bar so the pill is not
+                                             // hidden behind it (#3735)
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 )
@@ -1305,6 +1311,14 @@ plane answered, and it comes from `Frame.hitTestInstantPlacement` at a 1 m appro
 placement fires a `LongPress` haptic, so a tap that lands feels different from a tap that misses.
 For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
 manual control drop down to `ARSceneView` + `HitResultNode`.
+
+**If your screen has a bottom bar, tell the coaching guide about it (#3735).** With
+`coaching = true` the onboarding pill sits above the bottom edge with a 16 dp gutter — a gap sized
+for a screen whose bottom is empty. Host it under a dock, a nav bar or a product sheet and the pill
+lands *behind* that chrome, half-legible, exactly when the user most needs it. `PlacementScene` has
+no way to see a bar drawn by its caller, so pass the height yourself:
+`coachingBottomClearance = barHeight + 8.dp` (a spacing token, not a magic number). The parameter is
+purely additive — leave it out and nothing moves.
 
 The built-in reticle is composed only while the camera is `TRACKING`, so it can never render at
 the identity pose before the first hit (#3569). Its default look is deliberately achromatic — a
