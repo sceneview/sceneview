@@ -325,6 +325,15 @@ struct ARExperienceContainer<Content: View>: View {
                 cameraStage
             }
         }
+        // The stage is dark in both themes (the ground is a camera frame, or
+        // `stage-background` before it starts), so a host navigation bar is
+        // painted `stage-background` and reads white over it whatever the app
+        // theme is. SwiftUI applies the bar's colour scheme only to a visible
+        // bar background, hence the three modifiers together. A screen that
+        // hides the bar (`.demoChrome`) is unaffected.
+        .toolbarBackground(SceneViewTokens.Stage.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear(perform: model.resolve)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.sceneBecameActive() }
