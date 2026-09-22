@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.common.placement
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +37,26 @@ import io.github.sceneview.rememberModelLoader
  * The scaffold hosts both surfaces, so the back arrow, the *Models* item and the *Reset
  * placement* item are the same controls in the same places on the AR View tab and in the
  * `ar-placement` demo.
+ *
+ * ## Two composables, one experience
+ *
+ * The session goes in the scaffold's `scene` slot; the coaching layer — the coaching line,
+ * the cards, the read-out — goes in its `sceneOverlay` slot, through
+ * [TapToPlaceExperienceOverlays]. The scaffold paints its bottom scrim *over* `scene`, so
+ * a coaching line composed there is veiled by the same wash that grounds the dock
+ * (measured on the goldens: 4.3:1 falling to 2.3:1 on the pill's own text, where the dock
+ * captions keep 5.4:1). `sceneOverlay` is the `scene` slot's frame and insets, composed
+ * after the scrim — the layer lands where it always did and is painted on the scrim
+ * instead of under it. A host wires the two halves to the same [state]:
+ *
+ * ```kotlin
+ * DemoScaffold(
+ *     …,
+ *     sceneOverlay = { TapToPlaceExperienceOverlays(state = state, onViewIn3D = …) },
+ * ) {
+ *     TapToPlaceExperience(models = models, picker = picker, state = state, onViewIn3D = …)
+ * }
+ * ```
  *
  * @param models Catalogue offered by the picker. May grow/shrink between compositions —
  *   selection is by id, so it cannot be shifted by a row appearing.
@@ -95,8 +116,37 @@ fun TapToPlaceExperience(
             onModelPlaced = onModelPlaced,
             onViewIn3D = onViewIn3D,
             onRestartSession = onRestartSession,
+            // Nothing over the viewport here: this Box is the scaffold's `scene` slot,
+            // under the bottom scrim. The host composes [TapToPlaceExperienceOverlays]
+            // in the scaffold's `sceneOverlay` slot instead — see the class KDoc.
+            overlays = {},
         )
     }
 
     PlacementModelPickerSheet(models = models, picker = picker)
+}
+
+/**
+ * The coaching layer of [TapToPlaceExperience] — [TapToPlaceStatusOverlays] on the same
+ * [state] — for the scaffold's `sceneOverlay` slot, where it is painted above the bottom
+ * scrim rather than through it. Full-viewport: it anchors itself to the bottom edge from
+ * `LocalDemoChromeBottomInset`, which the slot provides exactly as `scene` does.
+ *
+ * A host keys it like the session (`key(sessionKey) { … }`) so a session restart also
+ * restarts the layer's own timers — the gesture-hint window, the start-up stall.
+ *
+ * @param onViewIn3D The no-surface card's primary action; pass the same lambda as the session.
+ * @param onRestartSession The camera-error card's *Try again*; same lambda as the session.
+ */
+@Composable
+fun BoxScope.TapToPlaceExperienceOverlays(
+    state: TapToPlaceState,
+    onViewIn3D: (() -> Unit)? = null,
+    onRestartSession: (() -> Unit)? = null,
+) {
+    TapToPlaceStatusOverlays(
+        state = state,
+        onViewIn3D = onViewIn3D,
+        onRestartSession = onRestartSession,
+    )
 }

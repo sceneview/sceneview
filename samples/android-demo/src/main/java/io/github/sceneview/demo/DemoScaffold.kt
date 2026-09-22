@@ -220,12 +220,28 @@ data class DockItem(
  * two children stack, they never overlap. [bottomOverlayReservesScene] insets
  * the scene by the measured bottom band so the hero object can never descend
  * under it (#2957).
+ *
+ * [sceneOverlay] is the third slot, for what neither Column can hold: a
+ * full-viewport layer the demo positions itself — the placement coaching layer
+ * (coaching line, no-surface and camera-error cards, scale read-out, each
+ * anchored from the bottom inset), or the SDK's plane-discovery guide, whose
+ * hand hint sits at the centre and whose pill sits at the bottom. It has
+ * exactly the `scene` slot's frame and reads the same [LocalDemoChromeTopInset]
+ * / [LocalDemoChromeBottomInset], so a demo moves its overlays from one slot to
+ * the other without touching a single clearance. The difference is the z-order:
+ * it is composed **after** the two scrims and **before** the chrome. Anything a
+ * demo anchored at the bottom of `scene` was painted *through* the bottom scrim
+ * — on #3712's goldens the plane-discovery pill's white text measured 4.3:1
+ * against its own fill at its top row and 2.3:1 at its bottom one on a white
+ * camera frame, while the dock captions on the same scrim kept 5.4:1. In this
+ * slot the overlay sits *on* the scrim like the captions do.
  */
 
 /**
  * Height of the glass identity row (back button + title pill) plus its gutter,
- * provided to the `scene` slot so demos that draw their own top-centre status
- * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome.
+ * provided to the `scene` and `sceneOverlay` slots so demos that draw their own
+ * top-centre status (e.g. the AR "Scanning for surfaces…" pill) can start below
+ * the chrome.
  *
  * Zero outside a [DemoScaffold] — which today means previews only. This line used
  * to read "`ArViewTab` draws the same pill in a plain tab"; that stopped being true
@@ -236,9 +252,11 @@ val LocalDemoChromeTopInset = androidx.compose.runtime.compositionLocalOf { 0.dp
 
 /**
  * The bottom mirror of [LocalDemoChromeTopInset]: how much room the dock band takes,
- * **excluding** the system bars, provided to the `scene` slot so a demo that anchors
- * something at the bottom of the camera — a coaching line, the SDK's plane-discovery
- * pill — lands above the dock instead of behind it.
+ * **excluding** the system bars, provided to the `scene` and `sceneOverlay` slots so
+ * a demo that anchors something at the bottom of the camera — a coaching line, the
+ * SDK's plane-discovery pill — lands above the dock instead of behind it. The two
+ * slots read the same value: which one an overlay lives in decides whether it is
+ * painted under or over the bottom scrim, never where it lands.
  *
  * The value is measured, not a token: the dock's height is `Layout.dockHeight` today,
  * but a chip that wraps at 200 % text makes the band taller, and a constant would not
@@ -271,6 +289,7 @@ fun DemoScaffold(
     topOverlay: (@Composable DemoTopOverlayScope.() -> Unit)? = null,
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     bottomOverlayReservesScene: Boolean = false,
+    sceneOverlay: (@Composable BoxScope.() -> Unit)? = null,
     arSessionFailed: Boolean = false,
     arOverlaysEnabled: Boolean = true,
     dock: List<DockItem> = emptyList(),
@@ -410,17 +429,18 @@ fun DemoScaffold(
             // the viewport is the camera feed) is ready as soon as it is composed.
             val sceneReady = demoSceneReady(firstFrameRendered?.value)
             val sceneReadyContentDescription = stringResource(R.string.demo_scene_ready_cd)
+            // The frame both the `scene` and the `sceneOverlay` slot get — one pair of
+            // values, so the two can never be inset differently.
+            val sceneTopInset = if (bottomOverlayReservesScene) {
+                maxOf(identityRow + statusBarInset, topOverlayBand)
+            } else {
+                0.dp
+            }
+            val sceneBottomInset = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(
-                        top = if (bottomOverlayReservesScene) {
-                            maxOf(identityRow + statusBarInset, topOverlayBand)
-                        } else {
-                            0.dp
-                        },
-                        bottom = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
-                    )
+                    .padding(top = sceneTopInset, bottom = sceneBottomInset)
                     // Observe taps without taking them: the 3D view keeps its drags.
                     .sceneTapToggle(enabled = chromeToggleOnTap && !touchExploration) {
                         chromeToggled = !chromeToggled
@@ -499,7 +519,13 @@ fun DemoScaffold(
             // the scene and never the glass sitting on it; and it outlives the
             // chrome's fade, because a status pill stays on screen after a scene tap
             // has hidden the dock. Sized to the measured band so a pill a demo lifted
-            // clear of the dock still lands on the scrim.
+            // clear of the dock still stands on the scrim.
+            //
+            // "Before the overlays" includes the demo's own: the `sceneOverlay` slot is
+            // composed right after this block. Composed inside `scene` instead, an
+            // overlay is not grounded by the scrim but veiled by it — that is the
+            // dimming #3712's placement goldens caught at 141/255 on the discovery
+            // pill's top text row, and the reason the slot exists.
             val bottomBand = maxOf(
                 SceneViewTokens.Glass.scrimBottomHeight,
                 dockClearance + bottomOverlayBand,
@@ -523,6 +549,28 @@ fun DemoScaffold(
                             )
                         ),
                 )
+            }
+
+            // The demo's full-viewport layer: the `scene` slot's frame and insets, over
+            // both scrims, under the overlay Columns and the chrome. A plain Box with no
+            // pointer input of its own, so a touch that lands on none of the overlay's
+            // children still reaches the scene view beneath — the same rule the
+            // overlays lived under inside `scene`. Gated like the other slots: the
+            // failure card replaces the scene and a disabled AR overlay set hides them.
+            if (sceneOverlay != null && !arSessionFailed && arOverlaysEnabled) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = sceneTopInset, bottom = sceneBottomInset)
+                        .testTag(DemoScaffoldTestTags.SCENE_OVERLAY),
+                ) {
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
+                        LocalDemoChromeBottomInset provides dockBandClearance,
+                    ) {
+                        sceneOverlay()
+                    }
+                }
             }
 
             // Top band: the demo's own overlays below the identity row, then the
@@ -1096,6 +1144,8 @@ object DemoScaffoldTestTags {
     const val LOADING_STALLED = "demo-loading-stalled"
     const val BOTTOM_OVERLAY = "demo-bottom-overlay"
     const val TOP_OVERLAY = "demo-top-overlay"
+    /** The `sceneOverlay` slot's Box — the `scene` frame, painted above both scrims. */
+    const val SCENE_OVERLAY = "demo-scene-overlay"
 }
 
 /**

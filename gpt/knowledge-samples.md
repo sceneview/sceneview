@@ -808,6 +808,7 @@ fun DemoScaffold(
     onBack: () -> Unit,
     controls: (@Composable ColumnScope.() -> Unit)? = null,
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
+    sceneOverlay: (@Composable BoxScope.() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit,
 )
 ```
@@ -815,6 +816,7 @@ fun DemoScaffold(
 - `controls == null` → scene fills the whole viewport, no FAB.
 - `controls != null` → FAB + peek chip + sheet. Controls render inside a vertically-scrolling `Column` so v1 side-panel `controls = { ... }` blocks port unchanged.
 - `bottomOverlay != null` → a floating bottom banner / status pill / answer card, laid out **by the scaffold** so it can never be masked by the bottom-end Settings FAB.
+- `sceneOverlay != null` → a full-viewport layer the demo positions itself (a coaching line or card anchored by `LocalDemoChromeBottomInset`, the SDK's `PlaneDiscoveryGuide`), with the `scene` slot's exact frame and insets but composed **above the scaffold's scrims** and below its chrome. An overlay anchored at the bottom of `scene` is painted through the bottom scrim; in this slot it stands on it, like the dock captions.
 
 **Gestures:** tap FAB or peek chip → opens sheet; long-press peek chip → toggles `DemoSettings.qaMode` (deterministic screenshot mode); drag handle / outside tap / back → dismiss. AR sessions keep tracking underneath while the sheet is open.
 

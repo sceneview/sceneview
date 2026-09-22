@@ -33,6 +33,7 @@ import io.github.sceneview.demo.common.placement.PlacementModel
 import io.github.sceneview.demo.common.placement.PlacementModelSource
 import io.github.sceneview.demo.common.placement.PlacementBackAction
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
+import io.github.sceneview.demo.common.placement.TapToPlaceExperienceOverlays
 import io.github.sceneview.demo.common.placement.placementBackAction
 import io.github.sceneview.demo.common.placement.rememberPlacementFlowState
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
@@ -299,6 +300,13 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
 
+    // "Try again" on the camera-error card: a fresh ARCore session. One lambda for the
+    // session and its coaching layer, which the card belongs to.
+    val restartSession: () -> Unit = {
+        state.clearAll()
+        sessionKey++
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_placement_title),
         // The scaffold's top-start arrow is the same rung as the system gesture: it leaves
@@ -342,6 +350,18 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 enabled = state.placedCount > 0,
             ),
         ),
+        // The coaching layer, above the scaffold's bottom scrim rather than under it —
+        // the session below is the `scene` slot, which that scrim paints over. Keyed like
+        // the session so a restart also restarts the layer's own timers.
+        sceneOverlay = {
+            key(sessionKey) {
+                TapToPlaceExperienceOverlays(
+                    state = state,
+                    onViewIn3D = onBackPressed,
+                    onRestartSession = restartSession,
+                )
+            }
+        },
     ) {
         key(sessionKey) {
             TapToPlaceExperience(
@@ -354,11 +374,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 // "View in 3D" on the no-surface card: back to the chooser, where the model
                 // is shown on a still, themed screen.
                 onViewIn3D = onBackPressed,
-                // "Try again" on the camera-error card: a fresh ARCore session.
-                onRestartSession = {
-                    state.clearAll()
-                    sessionKey++
-                },
+                onRestartSession = restartSession,
             )
         }
     }
