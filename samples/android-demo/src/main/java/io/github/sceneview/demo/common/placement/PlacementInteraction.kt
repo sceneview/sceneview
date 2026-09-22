@@ -412,7 +412,7 @@ fun placementCoaching(
 
     PlacementPhase.RECOVERING -> PlacementCoachingMessage.FINDING_PLACEMENT
 
-    PlacementPhase.PLACED -> when {
+    PlacementPhase.PLACED, PlacementPhase.ADJUSTING -> when {
         dragOffSurface -> PlacementCoachingMessage.KEEP_ON_SURFACE
         gestureHintVisible -> PlacementCoachingMessage.GESTURE_HINT
         else -> null

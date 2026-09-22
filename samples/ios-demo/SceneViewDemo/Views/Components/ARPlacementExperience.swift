@@ -1,0 +1,341 @@
+#if os(iOS)
+import SwiftUI
+import RealityKit
+import UIKit
+import SceneViewSwift
+
+/// The single automatic-placement experience used by the tab, catalogue and viewers.
+/// Assets remain app-owned; generation tickets prevent dismissed or superseded loads
+/// from entering the SDK's scene. Bundled models use the same 0.3 m preview as Android.
+struct ARPlacementExperience: View {
+    var initialModel: String? = nil
+    var initialModelURL: URL? = nil
+    var initialModelUnit: ModelUnit? = nil
+
+    @StateObject private var controller = ARPlacementController()
+    @AppStorage("ar-placement-selected-model") private var rememberedModel = "khronos_toy_car"
+    @State private var selectedModel: String?
+    @State private var placedModelName: String?
+    @State private var placedActualSize = false
+    @State private var loading = true
+    @State private var loadError = false
+    @State private var retry = 0
+    @State private var show3D = false
+    @State private var shareImage: UIImage?
+    @State private var showShare = false
+    @State private var viewBox = PlacementARViewBox()
+    @State private var hintShown = false
+    @State private var showHint = false
+    @State private var showingActualSize = false
+
+    init(initialModel: String? = nil, initialModelURL: URL? = nil, initialModelUnit: ModelUnit? = nil) {
+        self.initialModel = initialModel
+        self.initialModelURL = initialModelURL
+        self.initialModelUnit = initialModelUnit
+        let actual = initialModelURL.map { url in
+            UserDefaults.standard.object(forKey: Self.sizeBasisKey(url)) as? Bool ?? true
+        } ?? false
+        _showingActualSize = State(initialValue: actual)
+    }
+
+    private static func sizeBasisKey(_ url: URL) -> String {
+        "ar-placement-actual-size.\(url.absoluteString)"
+    }
+
+    private static let models = [
+        (asset: "khronos_toy_car", name: "Toy Car"),
+        (asset: "khronos_lantern", name: "Lantern")
+    ]
+
+    private var modelName: String { selectedModel ?? initialModel ?? rememberedModel }
+    private var usesOpenedFile: Bool { selectedModel == nil && initialModelURL != nil }
+    private var actualSize: Bool { usesOpenedFile && showingActualSize }
+    private var assetIdentity: String {
+        "\(usesOpenedFile ? initialModelURL!.absoluteString : modelName)|\(actualSize)|\(retry)"
+    }
+    private var displayName: String {
+        if usesOpenedFile { return initialModelURL!.deletingPathExtension().lastPathComponent }
+        return Self.models.first { $0.asset == modelName }?.name
+            ?? modelName.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+    private var renderedActualSize: Bool { placedModelName == nil ? actualSize : placedActualSize }
+    private var sizeLabel: String { renderedActualSize ? "Actual size" : "Preview size" }
+
+    var body: some View {
+        DemoScaffold("AR Placement", chromeMode: .ar) {
+            AutoPlacementScene(controller: controller, onSessionEvent: { _, view in
+                viewBox.value = view
+            })
+        } accessory: {
+            status
+        } controls: {
+            controls
+        }
+        .task(id: assetIdentity) { await loadModel() }
+        .onDisappear { controller.dismiss() }
+        .onChange(of: showingActualSize) { _, actual in
+            if let url = initialModelURL {
+                UserDefaults.standard.set(actual, forKey: Self.sizeBasisKey(url))
+            }
+        }
+        .onChange(of: controller.hasPlacement) { _, placed in
+            guard placed else { return }
+            SceneViewHaptic.shared.medium()
+            if !hintShown { hintShown = true; showHint = true }
+        }
+        .onChange(of: controller.phase) { _, phase in
+            if phase == .trackingLost { SceneViewHaptic.shared.warning() }
+            if phase == .adjusting { showHint = false }
+        }
+        .onChange(of: controller.selection) { old, selected in
+            if selected && !old { SceneViewHaptic.shared.selection() }
+        }
+        .onChange(of: controller.scale) { old, value in
+            if (old < 1 && value >= 1) || (old > 1 && value <= 1) {
+                SceneViewHaptic.shared.selection()
+            }
+        }
+        .task(id: showHint) {
+            guard showHint else { return }
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            showHint = false
+        }
+        .sheet(isPresented: $showShare) {
+            if let shareImage { PlacementShareSheet(image: shareImage) }
+        }
+        .sheet(isPresented: $show3D) {
+            NavigationStack {
+                PlacementModelPreview(
+                    modelName: modelName,
+                    url: usesOpenedFile ? initialModelURL : nil,
+                    unit: initialModelUnit,
+                    actualSize: actualSize
+                )
+                .navigationTitle(displayName)
+                .navigationBarTitleInline()
+                .toolbar { ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { show3D = false }
+                } }
+            }
+        }
+    }
+
+    @MainActor private func loadModel() async {
+        let ticket = controller.selectModel()
+        loading = true
+        loadError = false
+        do {
+            let node: ModelNode
+            if usesOpenedFile, let url = initialModelURL {
+                node = try await ModelNode.load(contentsOf: url, unit: initialModelUnit)
+            } else {
+                node = try await ModelNode.load(modelName)
+            }
+            guard !Task.isCancelled, controller.acceptsAsset(ticket) else { return }
+            // Apply grounding to asynchronous content explicitly, independent of the
+            // legacy synchronous onTapOnPlane shadow pass.
+            _ = node.withGroundingShadow()
+            node.playAllAnimations()
+            guard controller.setModel(node.entity, ticket: ticket, previewSize: actualSize ? nil : 0.3) else {
+                loading = false
+                loadError = true
+                SceneViewHaptic.shared.error()
+                return
+            }
+            placedModelName = displayName
+            placedActualSize = actualSize
+            loading = false
+        } catch {
+            guard !Task.isCancelled, controller.acceptsAsset(ticket) else { return }
+            loading = false
+            loadError = true
+            SceneViewHaptic.shared.error()
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        if loadError {
+            recoveryCard("Model couldn’t load.", detail: nil, primary: "Try again") { retry += 1 }
+        } else if loading && controller.phase != .initializing {
+            message("Loading model…")
+        } else if controller.phase == .noSurface {
+            recoveryCard("No surface found.", detail: "Try a brighter, textured area.", primary: "View in 3D", action: { show3D = true }) {
+                Button("Keep scanning") { controller.keepScanning() }
+            }
+        } else if controller.phase == .recoveryFailed {
+            recoveryCard("Couldn’t recover this placement.", detail: nil, primary: "Scan again") {
+                controller.resetPlacement()
+            }
+        } else if controller.invalidMovement {
+            message("Keep the object on a surface.")
+        } else {
+            switch controller.phase {
+            case .initializing, .cameraError:
+                // Permission, startup and camera failure belong to ARExperienceContainer.
+                EmptyView()
+            case .scanning: message("Move slowly to find a surface.")
+            case .trackingLost: message("Tracking paused. Move slowly.")
+            case .recovering: message("Finding your placement…")
+            case .adjusting: message("\(renderedActualSize ? "Actual" : "Preview") scale \(Int(controller.scale * 100))%")
+            case .placed:
+                if showHint { message("Drag to move. Pinch or twist to adjust.") }
+            case .noSurface, .recoveryFailed: EmptyView()
+            }
+        }
+    }
+
+    private func message(_ text: String) -> some View {
+        Text(text)
+            .font(SceneViewTokens.TypeScale.bodyMedium)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(SceneViewTokens.Space.md)
+            .modifier(PlacementStatusSurface())
+            .allowsHitTesting(false)
+    }
+
+    private func recoveryCard(_ title: String, detail: String?, primary: String,
+                              action: @escaping () -> Void) -> some View {
+        recoveryCard(title, detail: detail, primary: primary, action: action) { EmptyView() }
+    }
+
+    private func recoveryCard<Secondary: View>(_ title: String, detail: String?, primary: String,
+                                               action: @escaping () -> Void,
+                                               @ViewBuilder secondary: () -> Secondary) -> some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            Text(title).font(SceneViewTokens.TypeScale.card)
+            if let detail { Text(detail).font(SceneViewTokens.TypeScale.body) }
+            Button(primary, action: action)
+                .buttonStyle(.borderedProminent)
+                .tint(SceneViewTokens.HomeColor.primary)
+                .environment(\.colorScheme, .light)
+                .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+            secondary()
+                .buttonStyle(.bordered)
+                .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(SceneViewTokens.Space.md)
+        .modifier(PlacementStatusSurface())
+    }
+
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
+            Text(placedModelName ?? displayName).font(SceneViewTokens.TypeScale.card)
+            Text("\(sizeLabel) · \(Int(controller.scale * 100))%")
+                .font(SceneViewTokens.TypeScale.caption)
+            if loading { Text("Loading model… \(displayName)") }
+            Menu("Pick model") {
+                ForEach(Self.models, id: \.asset) { model in
+                    Button(model.name) {
+                        selectedModel = model.asset
+                        rememberedModel = model.asset
+                        SceneViewHaptic.shared.selection()
+                    }
+                }
+            }
+            if usesOpenedFile {
+                Toggle("Actual size", isOn: $showingActualSize)
+                Text("Preview size uses a 0.3 m longest dimension.")
+                    .font(SceneViewTokens.TypeScale.caption)
+            }
+            Button("Reset placement") { controller.resetPlacement() }
+                .disabled(!controller.hasPlacement)
+            Button("View in 3D") { show3D = true }
+            Button("Share AR screenshot", action: shareScreenshot)
+                .disabled(controller.phase == .initializing)
+            if controller.hasPlacement {
+                Group {
+                    Text("Adjust object").font(SceneViewTokens.TypeScale.card)
+                    adjustment("Move left", "Move right", decrease: { move(-0.05, 0) }, increase: { move(0.05, 0) })
+                    adjustment("Move closer", "Move farther", decrease: { move(0, 0.05) }, increase: { move(0, -0.05) })
+                    adjustment("Rotate left", "Rotate right", decrease: { controller.rotate(by: -.pi / 12) }, increase: { controller.rotate(by: .pi / 12) })
+                    adjustment("Scale down", "Scale up", decrease: { controller.scale(to: controller.scale - 0.1) }, increase: { controller.scale(to: controller.scale + 0.1) })
+                }
+                .disabled(controller.phase != .placed)
+            }
+        }
+    }
+
+    private func adjustment(_ decrement: String, _ increment: String,
+                            decrease: @escaping () -> Void, increase: @escaping () -> Void) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack { Button(decrement, action: decrease); Button(increment, action: increase) }
+            VStack(alignment: .leading) { Button(decrement, action: decrease); Button(increment, action: increase) }
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private func shareScreenshot() {
+        viewBox.value?.snapshot(saveToHDR: false) { image in
+            Task { @MainActor in
+                guard let image, viewBox.value != nil else { return }
+                shareImage = image
+                showShare = true
+            }
+        }
+    }
+
+    private func move(_ x: Float, _ y: Float) {
+        if !controller.move(by: SIMD2<Float>(x, y)) { SceneViewHaptic.shared.error() }
+    }
+}
+
+@MainActor
+private final class PlacementARViewBox { weak var value: ARView? }
+
+private struct PlacementShareSheet: UIViewControllerRepresentable {
+    let image: UIImage
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [image], applicationActivities: nil)
+    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+private struct PlacementStatusSurface: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+            .background(SceneViewTokens.ARChrome.scrim(scheme), in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg))
+            .overlay(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg)
+                .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth))
+    }
+}
+
+/// A real 3D alternative using the selected asset, never a stand-in on load failure.
+private struct PlacementModelPreview: View {
+    let modelName: String
+    let url: URL?
+    let unit: ModelUnit?
+    let actualSize: Bool
+    @State private var model: ModelNode?
+    @State private var failed = false
+
+    var body: some View {
+        ZStack {
+            SceneView { root in
+                if let model { root.addChild(model.entity) }
+            }
+            .environment(.studio)
+            .cameraControls(.orbit)
+            .autoCenterContent(true)
+            if failed { Text("Model couldn’t load.") }
+            else if model == nil { ProgressView("Loading model…") }
+        }
+        .task {
+            do {
+                let loaded: ModelNode
+                if let url { loaded = try await ModelNode.load(contentsOf: url, unit: unit) }
+                else { loaded = try await ModelNode.load(modelName) }
+                guard !Task.isCancelled else { return }
+                if !actualSize { _ = loaded.scaleToUnits(0.3) }
+                model = loaded
+            } catch {
+                guard !Task.isCancelled else { return }
+                failed = true
+            }
+        }
+    }
+}
+#endif

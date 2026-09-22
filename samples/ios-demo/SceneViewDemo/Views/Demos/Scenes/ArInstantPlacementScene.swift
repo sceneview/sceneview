@@ -1,12 +1,12 @@
 // @sceneId     ar-instant-placement
-// @title       Estimated-plane placement
-// @subtitle    Tap to place before plane geometry converges
+// @title       Automatic Placement
+// @subtitle    Place immediately when a surface is usable
 // @category    ar
 // @available   true
 // @icon        bolt.fill
 // @iosOnly     true
 // @order       23
-// @tags        ar,placement,estimated-plane,raycast,anchor
+// @tags        ar,placement,detected-plane,raycast,anchor
 import SwiftUI
 
 enum ArInstantPlacementScene: DemoScene {

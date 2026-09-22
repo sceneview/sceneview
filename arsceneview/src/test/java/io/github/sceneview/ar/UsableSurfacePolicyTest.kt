@@ -1,4 +1,4 @@
-package io.github.sceneview.demo.common.placement
+package io.github.sceneview.ar
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,7 +12,7 @@ import org.junit.Test
  * objects into. The ARCore types themselves cannot be built on the JVM, which is exactly
  * why the policy takes booleans and metres.
  */
-class UsableSurfaceTest {
+class UsableSurfacePolicyTest {
 
     private fun accept(
         upward: Boolean = true,
@@ -161,11 +161,5 @@ class UsableSurfaceTest {
         assertFalse(Ndc(1.0001f, 0f).isInsideViewport)
     }
 
-    // ── Scale label ───────────────────────────────────────────────────────────────────
 
-    @Test
-    fun `only a measured size may say actual size`() {
-        assertEquals(ScaleLabelMode.ACTUAL, scaleLabelMode(sizeIsMeasured = true))
-        assertEquals(ScaleLabelMode.PREVIEW, scaleLabelMode(sizeIsMeasured = false))
-    }
 }

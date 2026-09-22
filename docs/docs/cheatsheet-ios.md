@@ -129,7 +129,70 @@ SceneView { root in
 
 ---
 
-## ARSceneView (AR — iOS only)
+## Automatic placement (recommended — iOS)
+
+`AutoPlacementScene` and `ARPlacementController` place one selected object on the first
+usable tracked plane without a tap, plane fill, or reticle. They accept horizontal
+upward-facing surfaces (including tables, never ceilings), or vertical walls, within
+0.25–3 m. Selection tries the visible viewport center first, then visible detected-plane
+centers ranked by center proximity; every candidate must lie inside its plane polygon.
+
+```swift
+import SwiftUI
+import SceneViewSwift
+
+struct AutomaticPlacement: View {
+    @StateObject private var placement = ARPlacementController(alignment: .horizontal)
+
+    var body: some View {
+        AutoPlacementScene(controller: placement, onSessionEvent: { event, arView in
+            // Capability errors, tracking changes, first frame and interruption events.
+        })
+        .task {
+            let ticket = placement.selectModel()
+            do {
+                let model = try await ModelNode.load("khronos_toy_car")
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                _ = model.withGroundingShadow() // explicit for asynchronously loaded content
+                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+            } catch {
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                // Present a model-load error and retry; never substitute another asset.
+            }
+        }
+    }
+}
+```
+
+- Use `.vertical` for direct wall placement; no floor prerequisite. `result` exposes
+  `surfaceIdentifier`, `anchorIdentifier`, and the oriented `worldTransform`.
+- `previewSize: 0.3` means **Preview size**, a 0.3 m longest dimension. Pass `nil` for
+  **Actual size** when the asset's authored units are trustworthy. Complete nested bounds
+  are grounded; asynchronous models receive collision shapes for selection and gestures.
+- `phase`: `.initializing`, `.scanning`, `.noSurface`, `.placed`, `.adjusting`,
+  `.trackingLost`, `.recovering`, `.recoveryFailed`, `.cameraError`. These correspond
+  directly to Kotlin's `PlacementPhase`. Search and recovery deadlines are ten seconds.
+- `requestPlacement()` arms one request only when empty; `resetPlacement()` removes
+  the owned anchor while retaining the asset and camera; `keepScanning()` starts a new
+  search interval. `dismiss()` invalidates outstanding tickets and releases resources.
+  Teardown invokes dismissal automatically. A controller owns one placement.
+- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:previewSize:)`
+  rejects stale tickets and invalid bounds, keeps the old entity until a successful
+  replacement, and automatically requests placement when empty.
+- Nested meshes are selectable. Drag preserves the grab offset on valid geometry;
+  twist and pinch share the grounded pivot. `selection`, `invalidMovement` and `scale`
+  are observable. `move(by:)`, `rotate(by:)`, and `scale(to:)` provide accessible
+  alternatives; scale is limited to 25–400%. Tracking loss cancels gestures and hides
+  content until the existing anchor recovers. Empty-space taps deselect only.
+- The host owns permission UI, asset errors, labels, recovery actions and haptics.
+  No renderer mutation belongs in a detached/background task.
+
+Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
+APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
+`WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
+examples; there is no automatic fallback to estimated-plane taps.
+
+## ARSceneView (low-level / manual placement — iOS only)
 
 ```swift
 ARSceneView(

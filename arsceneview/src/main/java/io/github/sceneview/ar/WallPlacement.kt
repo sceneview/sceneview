@@ -35,6 +35,9 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
+ * Manual-placement API. Automatic placement uses [AutoPlacementScene] without a reticle.
+ * Existing behavior and defaults are preserved.
+ *
  * AR **wall-placement** flow — place a product flat against a **vertical surface** (TV, framed
  * art, mirror, shelf) and align it to the **floor↔wall edge**, the way best-in-class retail AR
  * (Amazon "AR View", IKEA Place) does it ([#2740](https://github.com/sceneview/sceneview/issues/2740)).

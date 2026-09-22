@@ -35,6 +35,9 @@ import io.github.sceneview.rememberOnGestureListener
 import java.io.File
 
 /**
+ * Manual-placement API. For automatic placement use [AutoPlacementScene].
+ * Published defaults and tap/reticle behavior remain unchanged.
+ *
  * One-line tap-to-place AR scene — the Sceneform `ArFragment` parity bundle
  * ([#1765](https://github.com/sceneview/sceneview/issues/1765)).
  *

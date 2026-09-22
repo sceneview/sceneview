@@ -1,4 +1,4 @@
-package io.github.sceneview.demo.common.placement
+package io.github.sceneview.ar
 
 import io.github.sceneview.ar.AutoPlacementState.Companion.NO_SURFACE_TIMEOUT_MS
 import io.github.sceneview.ar.AutoPlacementState.Companion.RECOVERY_TIMEOUT_MS
@@ -11,7 +11,7 @@ import org.junit.Test
  * The automatic placement decision, pinned on the JVM.
  *
  * The AR emulator replays no ARCore frames, so nothing below can be reached through the
- * UI on CI. [AutoPlacementController] is therefore a pure state machine fed one
+ * UI on CI. [AutoPlacementState] is therefore a pure state machine fed one
  * [FrameInput] per frame, and this file is where the plan's invariants live:
  *
  *  - **one request, one placement** — 100 frames with a surface and any number of
@@ -23,13 +23,13 @@ import org.junit.Test
  *  - the **10 s** timeouts, at exactly 10 s and not a frame before;
  *  - the phase transitions the overlays render.
  */
-class AutoPlacementControllerTest {
+class AutoPlacementStateTest {
 
     // ── One placement per request ─────────────────────────────────────────────────────
 
     @Test
     fun `a request is consumed by exactly one placement across 100 frames`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
 
         val effects = (0 until 100).map { i ->
@@ -46,7 +46,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `repeated background taps never place anything`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, tracking = true, surfaceAvailable = true))
 
@@ -61,7 +61,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `a background tap before any surface does not place either`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         repeat(20) {
             assertEquals(FrameEffect.NONE, c.onBackgroundTap())
@@ -72,7 +72,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `requestPlacement is idempotent while pending and a no-op once placed`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
@@ -83,7 +83,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `nothing searches before an asset is offered`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         assertFalse(c.wantsSurface)
         repeat(10) { c.onFrame(FrameInput(16L * it, true, surfaceAvailable = true)) }
         assertEquals(0, c.placementsCreated)
@@ -94,7 +94,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `tracking loss and recovery cannot create another anchor`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
 
@@ -114,7 +114,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `tracking loss emits its effect once and restores the prior phase`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = false))
         assertEquals(PlacementPhase.SCANNING, c.phase)
@@ -129,7 +129,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `tracking loss does not reset a placement to scanning`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
         c.onFrame(FrameInput(10L, tracking = false, surfaceAvailable = false))
@@ -141,7 +141,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `the no-surface clock does not run while tracking is lost`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = false))
         c.onFrame(FrameInput(5_000L, tracking = false, surfaceAvailable = false))
@@ -158,7 +158,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `a ticket issued before dismiss is refused afterwards`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         val ticket = c.selectModel()
         assertTrue(c.acceptsAsset(ticket))
         c.dismiss()
@@ -172,7 +172,7 @@ class AutoPlacementControllerTest {
     fun `a new selection after dismiss opens a fresh session that places again`() {
         // Codex review of #3766, P1: the host keeps one state across chooser ↔ camera, so
         // Back (dismiss) followed by a re-entry must not leave a bricked controller.
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         val before = c.selectModel()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
@@ -192,7 +192,7 @@ class AutoPlacementControllerTest {
     fun `withdrawing the request stops the search until the next offer`() {
         // Codex review of #3766, P1: a streamed row picked while the previous asset is
         // still scanning must not let a surface place the previous asset.
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.selectModel()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = false))
@@ -214,7 +214,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `withdrawing never touches a standing placement`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
         c.withdrawRequest()
@@ -224,7 +224,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `a ticket is superseded by the next selection`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         val first = c.selectModel()
         val second = c.selectModel()
         assertFalse("the earlier download must not land", c.acceptsAsset(first))
@@ -233,7 +233,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `a request after dismiss is ignored`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.dismiss()
         c.requestPlacement()
         assertFalse(c.placementRequested)
@@ -246,7 +246,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `no surface becomes a card at exactly 10 seconds`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(1_000L, true, surfaceAvailable = false))
         c.onFrame(FrameInput(1_000L + NO_SURFACE_TIMEOUT_MS - 1, true, surfaceAvailable = false))
@@ -258,7 +258,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `the no-surface card still places when a surface finally appears`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = false))
         c.onFrame(FrameInput(NO_SURFACE_TIMEOUT_MS, true, surfaceAvailable = false))
@@ -271,7 +271,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `keep scanning restarts the 10 second clock`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = false))
         c.onFrame(FrameInput(NO_SURFACE_TIMEOUT_MS, true, surfaceAvailable = false))
@@ -287,7 +287,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `keep scanning is a no-op outside the no-surface card`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
         c.keepScanning(1L)
@@ -296,7 +296,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `a paused anchor recovers or fails at exactly 10 seconds`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
 
@@ -314,7 +314,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `an anchor that re-tracks in time goes back to placed`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
         c.onFrame(FrameInput(1_000L, true, surfaceAvailable = false, anchorTracking = false))
@@ -329,7 +329,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `scan again after a failed recovery places once more`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
         c.onFrame(FrameInput(1_000L, true, surfaceAvailable = false, anchorTracking = false))
@@ -347,7 +347,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `the first frame moves initializing to scanning`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         assertEquals(PlacementPhase.INITIALIZING, c.phase)
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = false))
@@ -356,7 +356,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `reset placement from placed drops the anchor and scans again`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(100L, true, surfaceAvailable = true))
         assertEquals(100L, c.placedAtMillis)
@@ -375,7 +375,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `reset placement during tracking loss waits for tracking`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
         c.onFrame(FrameInput(10L, tracking = false, surfaceAvailable = false))
@@ -387,7 +387,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `camera failure is only reachable from initializing`() {
-        val stuck = AutoPlacementController()
+        val stuck = AutoPlacementState()
         stuck.cameraFailed()
         assertEquals(PlacementPhase.CAMERA_ERROR, stuck.phase)
         // Frames after the verdict change nothing — the host recreates the session.
@@ -396,7 +396,7 @@ class AutoPlacementControllerTest {
         assertEquals(PlacementPhase.CAMERA_ERROR, stuck.phase)
         assertEquals(0, stuck.placementsCreated)
 
-        val running = AutoPlacementController()
+        val running = AutoPlacementState()
         running.requestPlacement()
         running.onFrame(FrameInput(0L, true, surfaceAvailable = false))
         running.cameraFailed()
@@ -405,7 +405,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `tracking loss before the first frame returns to scanning`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, tracking = false, surfaceAvailable = false))
         assertEquals(PlacementPhase.TRACKING_LOST, c.phase)
@@ -415,7 +415,7 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `dismiss stops every frame effect`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         c.requestPlacement()
         c.dismiss()
         assertEquals(FrameEffect.NONE, c.onFrame(FrameInput(0L, tracking = false, surfaceAvailable = false)))
@@ -425,12 +425,43 @@ class AutoPlacementControllerTest {
 
     @Test
     fun `the ticket carries both generations`() {
-        val c = AutoPlacementController()
+        val c = AutoPlacementState()
         val t0 = c.ticket
         val t1 = c.selectModel()
         assertEquals(AssetTicket(0, 0), t0)
         assertEquals(AssetTicket(0, 1), t1)
         c.dismiss()
         assertEquals(AssetTicket(1, 1), c.ticket)
+    }
+
+    @Test fun `failed anchor creation keeps request armed and emits no placement`() {
+        val state = AutoPlacementState()
+        state.requestPlacement()
+        assertEquals(FrameEffect.NONE, state.onFrame(FrameInput(0, true, true)) { false })
+        assertTrue(state.wantsSurface)
+        assertFalse(state.hasPlacement)
+        assertEquals(FrameEffect.PLACE, state.onFrame(FrameInput(16, true, true)) { true })
+        var commits = 0
+        repeat(100) { state.onFrame(FrameInput(32, true, true, true)) { commits++; true } }
+        assertEquals(0, commits)
+        assertEquals(1, state.placementsCreated)
+    }
+
+    @Test fun `tracking loss cancels combined gestures without a new placement`() {
+        val state = AutoPlacementState()
+        state.requestPlacement()
+        state.onFrame(FrameInput(0, true, true))
+        assertTrue(state.beginAdjustment())
+        assertTrue(state.beginAdjustment())
+        state.endAdjustment()
+        assertTrue(state.isAdjusting)
+        state.onFrame(FrameInput(16, false, true, false))
+        assertFalse(state.isAdjusting)
+        assertFalse(state.beginAdjustment())
+        state.onFrame(FrameInput(32, true, true, false))
+        assertEquals(PlacementPhase.RECOVERING, state.phase)
+        state.onFrame(FrameInput(48, true, true, true))
+        assertEquals(PlacementPhase.PLACED, state.phase)
+        assertEquals(1, state.placementsCreated)
     }
 }
