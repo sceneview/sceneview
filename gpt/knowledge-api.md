@@ -50,45 +50,6 @@
 
 ---
 
-## Docs
-
-- [Quickstart (Android)](https://sceneview.github.io/docs/quickstart/): add the dependency and render a first model with Jetpack Compose
-- [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): the same path in SwiftUI, with RealityKit and ARKit
-- [Quickstart (Web)](https://sceneview.github.io/docs/quickstart-web/): Kotlin/JS and Filament.js — Alpha
-- [Nodes reference](https://sceneview.github.io/docs/nodes/): every node composable, its signature, and the mistakes it invites
-- [API cheatsheet](https://sceneview.github.io/docs/cheatsheet/): the declarative API on one page
-- [Model formats](https://sceneview.github.io/docs/formats/): glTF, GLB, USDZ, and what converts into what
-- [Platforms](https://sceneview.github.io/docs/platforms/): what each target supports and how mature it is
-- [Recipes](https://sceneview.github.io/docs/recipes/): task-shaped answers to "I want to…"
-- [Migration from Sceneform](https://sceneview.github.io/docs/migration/): the mapping, class by class
-- [Troubleshooting](https://sceneview.github.io/docs/troubleshooting/): symptom, cause, fix
-- [FAQ](https://sceneview.github.io/docs/faq/): the questions that come back
-
-## Reference
-
-- [Full API reference](https://sceneview.github.io/llms.txt): this file — setup, composables, every node type, threading rules, recipes
-- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~12 kB, when the full file will not fit
-- [Generated API docs — 3D](https://sceneview.github.io/api/sceneview/latest/sceneview/): Dokka output for `sceneview`
-- [Generated API docs — AR](https://sceneview.github.io/api/sceneview/latest/arsceneview/): Dokka output for `arsceneview`
-
-## Working with an AI assistant
-
-- [Use SceneView with AI assistants](https://sceneview.github.io/docs/ai-context/): how to hand this file to any assistant, and how to install the MCP server
-- [AI-assisted development](https://sceneview.github.io/docs/ai-development/): the prompts and workflows that produce code which compiles
-
-## Optional
-
-- [Architecture](https://sceneview.github.io/docs/architecture/): how the renderer, the node graph and Compose fit together
-- [Performance](https://sceneview.github.io/docs/performance/): frame budget, quality levels, what costs what
-- [Testing](https://sceneview.github.io/docs/testing/): testing a scene without a device
-- [Integrations](https://sceneview.github.io/docs/integrations/): Sketchfab, Rerun.io and other outside pieces
-- [Comparison with alternatives](https://sceneview.github.io/docs/comparison/): Sceneform, Unity, Filament, model-viewer
-- [Samples](https://sceneview.github.io/docs/samples/): the demo apps and what each one shows
-- [Community](https://sceneview.github.io/docs/community/): where to ask
-- [Changelog](https://sceneview.github.io/docs/changelog/): what changed, release by release
-
----
-
 ## Core Composables
 
 ### SceneView — 3D viewport
