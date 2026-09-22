@@ -1,6 +1,8 @@
 package io.github.sceneview.ar
 
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
+import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.normalize
 import dev.romainguy.kotlin.math.rotation
 import io.github.sceneview.math.Direction
@@ -50,26 +52,35 @@ class WallPlacementMathTest {
 
     @Test
     fun `wall contact survives combined twist scale and transfer to another wall`() {
-        val point = Position(1f, 1.6f, -2f)
         for (normal in listOf(Direction(0f, 0f, 1f), Direction(-1f, 0f, 0f),
             normalize(Direction(1f, 0.1f, -1f)))) {
-            val wall = directWallPose(point, normal, normal)
-            val delta = wallTangentOffset(Position(0.2f, -0.1f, 0.3f), normal)
-            assertEquals(0f, dev.romainguy.kotlin.math.dot(delta, normal), eps)
-            for (angle in listOf(-135f, 0f, 35f, 180f)) for (scale in listOf(0.25f, 1f, 4f)) {
-                val twist = dev.romainguy.kotlin.math.Quaternion.fromAxisAngle(Direction(0f, 0f, 1f), angle)
-                val orientation = wall.rotation * twist
-                // Bottom-back origin stays fixed; every back corner remains exactly on the wall.
-                for (x in listOf(-0.15f, 0.15f)) for (y in listOf(0f, 0.176f)) {
-                    val back = point + delta + orientation * (Position(x, y, 0f) * scale)
-                    assertEquals(0f, dev.romainguy.kotlin.math.dot(back - point, normal), eps)
-                    val front = point + delta + orientation * (Position(x, y, 0.012f) * scale)
-                    assertTrue(dev.romainguy.kotlin.math.dot(front - point, normal) > 0f)
-                }
-                assertVecEquals(point + delta, point + delta + orientation * Position(0f))
-            }
+            assertWallContactSurvivesTwist(Position(1f, 1.6f, -2f), normal)
         }
     }
+
+    /** Every twist/scale combination keeps the bottom-back origin and both back corners on the wall. */
+    private fun assertWallContactSurvivesTwist(point: Position, normal: Direction) {
+        val wall = directWallPose(point, normal, normal)
+        val delta = wallTangentOffset(Position(0.2f, -0.1f, 0.3f), normal)
+        assertEquals(0f, dot(delta, normal), eps)
+        val origin = point + delta
+        for ((orientation, scale) in twistedOrientations(wall.rotation)) {
+            for (corner in BACK_CORNERS) {
+                val back = origin + orientation * (corner * scale)
+                assertEquals(0f, dot(back - point, normal), eps)
+                val front = origin + orientation * ((corner + Position(0f, 0f, 0.012f)) * scale)
+                assertTrue(dot(front - point, normal) > 0f)
+            }
+            assertVecEquals(origin, origin + orientation * Position(0f))
+        }
+    }
+
+    /** The authored rotation twisted around its own facing axis, paired with a uniform scale. */
+    private fun twistedOrientations(base: Quaternion): List<Pair<Quaternion, Float>> =
+        listOf(-135f, 0f, 35f, 180f).flatMap { angle ->
+            val twisted = base * Quaternion.fromAxisAngle(Direction(0f, 0f, 1f), angle)
+            listOf(0.25f, 1f, 4f).map { scale -> twisted to scale }
+        }
 
     @Test
     fun `wall-only candidate consumes one request and recovers without scanning again`() {
@@ -345,5 +356,12 @@ class WallPlacementMathTest {
         assertEquals("x", expected.x, actual.x, eps)
         assertEquals("y", expected.y, actual.y, eps)
         assertEquals("z", expected.z, actual.z, eps)
+    }
+
+    private companion object {
+        /** The two bottom-back corners of the authored 0.30 m wide, 0.176 m tall reference box. */
+        val BACK_CORNERS = listOf(-0.15f, 0.15f).flatMap { x ->
+            listOf(0f, 0.176f).map { y -> Position(x, y, 0f) }
+        }
     }
 }

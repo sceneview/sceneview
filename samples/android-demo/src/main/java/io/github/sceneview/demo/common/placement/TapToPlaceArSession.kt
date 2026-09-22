@@ -80,7 +80,6 @@ import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.theme.md_theme_light_primary
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
@@ -521,7 +520,7 @@ private fun coachingIcon(message: PlacementCoachingMessage?): ImageVector? = whe
  * optional secondary one, on the AR scrim like every other line the screen shows. Built
  * from the same `DESIGN.md` tokens as the coaching pill (`ar-scrim`, `radius-lg`,
  * `over-media-edge`, `dock-item` touch targets), with the primary action filled in the
- * light `primary` role in both themes; actions stack for large text.
+ * theme's `primary` role.
  */
 @Composable
 internal fun PlacementActionCard(
@@ -615,12 +614,12 @@ internal fun PlacementActionCard(
                     color = SceneViewTokens.ArOverlay.onScrimMuted,
                 )
             }
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = SceneViewTokens.Space.sm),
-                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                horizontalAlignment = Alignment.End,
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (secondary != null && onSecondary != null) {
                     TextButton(
@@ -641,8 +640,8 @@ internal fun PlacementActionCard(
                         onClick = onPrimary,
                         shape = buttonShape,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = md_theme_light_primary,
-                            contentColor = SceneViewTokens.ArOverlay.onScrim,
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                         modifier = Modifier
                             .heightIn(min = SceneViewTokens.Layout.touchTarget)

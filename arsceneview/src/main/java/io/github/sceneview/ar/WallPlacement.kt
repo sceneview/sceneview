@@ -85,7 +85,12 @@ fun directWallPose(wallPoint: Position, wallNormal: Direction, towardViewer: Dir
 }
 
 /** Grab offset against the contact plane, even when the model extends past its polygon. */
-internal fun wallGrabOffset(contact: Position, normal: Direction, rayOrigin: Position, rayDirection: Direction): Position? {
+internal fun wallGrabOffset(
+    contact: Position,
+    normal: Direction,
+    rayOrigin: Position,
+    rayDirection: Direction,
+): Position? {
     val denominator = dev.romainguy.kotlin.math.dot(rayDirection, normal)
     if (!denominator.isFinite() || kotlin.math.abs(denominator) < WALL_NORMAL_EPSILON) return null
     val distance = dev.romainguy.kotlin.math.dot(contact - rayOrigin, normal) / denominator

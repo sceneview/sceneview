@@ -388,11 +388,10 @@ private class AutomaticAnchorNode(
     /** Accessibility moves obey the same polygon/range/anchor checks as a drag. */
     fun moveBy(x: Float, y: Float): Boolean {
         val frame = frame ?: return false
-        if (frame.camera.trackingState != TrackingState.TRACKING ||
-            anchor.trackingState != TrackingState.TRACKING) return false
+        if (!isTracking(frame)) return false
         val tangent = pose.rotateVector(floatArrayOf(x, 0f,
             if (placement.plane.type == Plane.Type.VERTICAL) -y else y))
-        val target = Pose(floatArrayOf(pose.tx() + tangent[0], pose.ty() + tangent[1], pose.tz() + tangent[2]), pose.rotationQuaternion)
+        val target = translated(pose, tangent)
         if (!placement.plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) {
             invalidMove(true)
             return false
@@ -405,12 +404,7 @@ private class AutomaticAnchorNode(
     }
 
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {
-        val frame = frame ?: return false
-        if (frame.camera.trackingState != TrackingState.TRACKING || anchor.trackingState != TrackingState.TRACKING) return false
-        val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return false
-        val axis = pose.getTransformedAxis(1, 1f)
-        val grab = wallGrabOffset(Position(pose.tx(), pose.ty(), pose.tz()),
-            Float3(axis[0], axis[1], axis[2]), ray.origin, ray.direction) ?: return false
+        val grab = grabOffset(e) ?: return false
         if (!state.beginAdjustment()) return false
         offset = floatArrayOf(grab.x, grab.y, grab.z)
         pending = null
@@ -437,9 +431,12 @@ private class AutomaticAnchorNode(
         val plane = hit.trackable as Plane
         // Project grab offset into the new plane to prevent movement out of its surface.
         val normal = plane.centerPose.getTransformedAxis(1, 1f)
-        val tangent = wallTangentOffset(Position(delta[0], delta[1], delta[2]), Float3(normal[0], normal[1], normal[2]))
+        val tangent = wallTangentOffset(
+            Position(delta[0], delta[1], delta[2]),
+            Float3(normal[0], normal[1], normal[2]),
+        )
         val target = orientedPlacementPose(
-            Pose(floatArrayOf(hit.hitPose.tx() + tangent.x, hit.hitPose.ty() + tangent.y, hit.hitPose.tz() + tangent.z), pose.rotationQuaternion),
+            translated(hit.hitPose, floatArrayOf(tangent.x, tangent.y, tangent.z)),
             plane, frame.camera.pose,
         )
         if (!plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) { invalidMove(true); return false }
@@ -460,10 +457,34 @@ private class AutomaticAnchorNode(
         state.endAdjustment()
     }
 
+    /** Where the finger grabbed the node against its own contact plane, null when unusable. */
+    private fun grabOffset(e: MotionEvent): Position? {
+        val frame = frame ?: return null
+        if (!isTracking(frame)) return null
+        val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return null
+        val axis = pose.getTransformedAxis(1, 1f)
+        return wallGrabOffset(
+            Position(pose.tx(), pose.ty(), pose.tz()),
+            Float3(axis[0], axis[1], axis[2]), ray.origin, ray.direction,
+        )
+    }
+
+    private fun isTracking(frame: Frame) =
+        frame.camera.trackingState == TrackingState.TRACKING &&
+            anchor.trackingState == TrackingState.TRACKING
+
+    /** [source] shifted by [delta] in world space, keeping this node's authored rotation. */
+    private fun translated(source: Pose, delta: FloatArray) = Pose(
+        floatArrayOf(source.tx() + delta[0], source.ty() + delta[1], source.tz() + delta[2]),
+        pose.rotationQuaternion,
+    )
+
     private fun commitMove(): Boolean {
         val candidate = pending ?: return false
         val frame = frame ?: return false
-        if (anchor.trackingState != TrackingState.TRACKING || !visiblePlacementPoint(frame, candidate.pose)) return false
+        if (anchor.trackingState != TrackingState.TRACKING ||
+            !visiblePlacementPoint(frame, candidate.pose)
+        ) return false
         val next = candidate.createAnchor() ?: return false
         anchor = next.anchor
         placement.anchor = next.anchor

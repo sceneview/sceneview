@@ -23,6 +23,7 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.material.setColor
+import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
@@ -128,7 +129,11 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
                             " " + stringResource(R.string.ar_place_try_brighter_area) else ""
                     PlacementPhase.RECOVERING -> stringResource(R.string.ar_place_finding_placement)
                     PlacementPhase.PLACED -> if (showHint) stringResource(R.string.ar_place_gesture_hint) else null
-                    PlacementPhase.ADJUSTING -> stringResource(R.string.ar_scale_preview_size, (state.scaleFactor * 100).toInt())
+                    PlacementPhase.ADJUSTING ->
+                        stringResource(
+                            R.string.ar_scale_preview_size,
+                            (state.scaleFactor * 100).toInt(),
+                        )
                     else -> null
                 }
             }
@@ -192,9 +197,24 @@ private fun SceneScope.WallTV(opacity: Float = 1f) {
         screen.setColor(Color(0xFF06080C).copy(alpha = opacity))
     }
     Node(scale = Scale(0.3f / 1.26f)) {
-        CubeNode(size = Size(1.26f, 0.74f, 0.04f), position = Position(0f, 0.37f, 0.02f), materialInstance = body,
-            apply = { isEditable = true; isPositionEditable = false; isRotationEditable = false; isScaleEditable = false })
-        CubeNode(size = Size(1.20f, 0.68f, 0.01f), position = Position(0f, 0.37f, 0.045f), materialInstance = screen,
-            apply = { isEditable = true; isPositionEditable = false; isRotationEditable = false; isScaleEditable = false })
+        // The whole TV moves and scales as one: only the parent node takes gestures.
+        val fixedChild: CubeNodeImpl.() -> Unit = {
+            isEditable = true
+            isPositionEditable = false
+            isRotationEditable = false
+            isScaleEditable = false
+        }
+        CubeNode(
+            size = Size(1.26f, 0.74f, 0.04f),
+            position = Position(0f, 0.37f, 0.02f),
+            materialInstance = body,
+            apply = fixedChild,
+        )
+        CubeNode(
+            size = Size(1.20f, 0.68f, 0.01f),
+            position = Position(0f, 0.37f, 0.045f),
+            materialInstance = screen,
+            apply = fixedChild,
+        )
     }
 }
