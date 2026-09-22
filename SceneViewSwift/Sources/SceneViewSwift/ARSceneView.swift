@@ -356,14 +356,11 @@ public struct ARSceneView: UIViewRepresentable {
         // Coaching overlay. Never on a face-tracking session: its goals are all
         // plane goals ("Move the device to detect a surface"), which is nonsense
         // in front of the TrueDepth camera and covers the face feed.
-        if showCoachingOverlay, !faceTracking {
-            let coaching = ARCoachingOverlayView()
-            coaching.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            coaching.session = arView.session
-            coaching.goal = coachingGoal
-            coaching.activatesAutomatically = true
-            arView.addSubview(coaching)
-        }
+        context.coordinator.syncCoachingOverlay(
+            on: arView,
+            enabled: showCoachingOverlay && !faceTracking,
+            goal: coachingGoal
+        )
 
         // Tap gesture — installed ONLY when the host actually consumes taps.
         // A recognizer whose callback does nothing still takes part in gesture
@@ -400,11 +397,22 @@ public struct ARSceneView: UIViewRepresentable {
         context.coordinator.onImageDetected = onImageDetected
         context.coordinator.onFrame = onFrame
         context.coordinator.onSessionError = onSessionError
-        // Reactive like the light slots: toggling the flags on a later render
-        // takes effect immediately — the per-frame reticle update tears the
-        // reticle entity down when the flag turns false.
+        // Reactive like the light slots: toggling any of these flags on a later
+        // render takes effect immediately. Before, `showPlaneOverlay` and
+        // `showCoachingOverlay` were read once at creation, so hosts rekeyed the
+        // whole view (`.id(...)`) to toggle them — which restarted the AR
+        // session and dropped everything placed in it.
         context.coordinator.showPlacementReticle = showPlacementReticle
         context.coordinator.groundingShadows = groundingShadows
+        context.coordinator.syncPlaneOverlay(
+            on: arView,
+            enabled: showPlaneOverlay && planeDetection != .none
+        )
+        context.coordinator.syncCoachingOverlay(
+            on: arView,
+            enabled: showCoachingOverlay && !faceTracking,
+            goal: coachingGoal
+        )
 
         // Apply camera exposure override via post-processing (iOS 15.0+).
         // Converts the EV value to a CIColorControls brightness offset and installs
@@ -670,6 +678,10 @@ public struct ARSceneView: UIViewRepresentable {
         /// overlay. Set from `makeUIView` once plane detection is known.
         var showPlaneOverlay: Bool = false
 
+        /// The coaching overlay currently installed as a subview, if any.
+        /// `internal` so the toggle + teardown contracts are testable.
+        var coachingOverlay: ARCoachingOverlayView?
+
         /// Translucent overlay entities keyed by their `ARPlaneAnchor` id, so
         /// `didUpdate` can resize them and `didRemove` can tear them down.
         /// Cleared by ``tearDownScene(in:)`` on view dismantle (#2407).
@@ -779,6 +791,15 @@ public struct ARSceneView: UIViewRepresentable {
             if let reticle = reticleAnchor { arView.scene.removeAnchor(reticle) }
             reticleAnchor = nil
 
+            // Coaching overlay — detach from the session being paused and drop
+            // the subview, otherwise it outlives the AR session it observes.
+            if let overlay = coachingOverlay {
+                overlay.setActive(false, animated: false)
+                overlay.session = nil
+                overlay.removeFromSuperview()
+                coachingOverlay = nil
+            }
+
             // Tap recognizer — detach so the torn-down coordinator is no longer
             // a gesture target on a view the host may keep alive.
             if let recognizer = tapRecognizer {
@@ -829,6 +850,63 @@ public struct ARSceneView: UIViewRepresentable {
                 detach()
             } else {
                 DispatchQueue.main.sync(execute: detach)
+            }
+        }
+
+        /// Adds, retargets or removes the coaching overlay so exactly one exists
+        /// while `enabled`, and none otherwise. Idempotent; safe to call on
+        /// every `updateUIView`.
+        @MainActor
+        func syncCoachingOverlay(
+            on arView: ARView,
+            enabled: Bool,
+            goal: ARCoachingOverlayView.Goal
+        ) {
+            guard enabled else {
+                if let overlay = coachingOverlay {
+                    overlay.setActive(false, animated: false)
+                    overlay.session = nil
+                    overlay.removeFromSuperview()
+                    coachingOverlay = nil
+                }
+                return
+            }
+            let overlay: ARCoachingOverlayView
+            if let existing = coachingOverlay {
+                overlay = existing
+            } else {
+                overlay = ARCoachingOverlayView()
+                overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                overlay.frame = arView.bounds
+                overlay.session = arView.session
+                overlay.activatesAutomatically = true
+                arView.addSubview(overlay)
+                coachingOverlay = overlay
+            }
+            if overlay.goal != goal { overlay.goal = goal }
+        }
+
+        /// Turns the translucent detected-plane overlays on or off after view
+        /// creation. Turning them on adopts the planes ARKit has already
+        /// detected instead of waiting for the next `didAdd`; turning them off
+        /// removes every overlay anchor currently in the scene.
+        @MainActor
+        func syncPlaneOverlay(on arView: ARView, enabled: Bool) {
+            guard enabled != showPlaneOverlay else { return }
+            showPlaneOverlay = enabled
+            guard enabled else {
+                for visualizer in planeOverlays.values {
+                    arView.scene.removeAnchor(visualizer.anchor)
+                }
+                planeOverlays.removeAll()
+                return
+            }
+            for anchor in arView.session.currentFrame?.anchors ?? [] {
+                guard let planeAnchor = anchor as? ARPlaneAnchor,
+                      planeOverlays[planeAnchor.identifier] == nil else { continue }
+                let visualizer = PlaneVisualizer(planeAnchor: planeAnchor)
+                planeOverlays[planeAnchor.identifier] = visualizer
+                arView.scene.addAnchor(visualizer.anchor)
             }
         }
 
