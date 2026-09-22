@@ -432,6 +432,12 @@ enum SceneViewTokens {
         static let selectedOutlineWidth: CGFloat = 2
         /// `media-aspect` — 5:4 home card media.
         static let mediaAspect: CGFloat = 1.25
+        /// Width of the leading-edge strip that listens for the demo host's
+        /// swipe-to-dismiss. Narrow on purpose: the rest of the screen belongs
+        /// to the scene's own orbit / pan gestures.
+        static let edgeSwipeWidth: CGFloat = 20
+        /// How far that edge drag must travel before it dismisses.
+        static let edgeSwipeDismiss: CGFloat = 64
     }
 
     /// `DESIGN.md` — "Demo Scaffold (iOS)": where the chrome sits, in points.

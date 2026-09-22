@@ -166,6 +166,30 @@ enum DemoDeepLinkRegistry {
             reason: "This demo isn't available in the iOS app yet — open it on Android, or browse the Samples tab for the full iOS catalog."
         ))
     }
+
+    /// The demo's human title, or the id itself when it resolves to the
+    /// placeholder — the placeholder names the id, so the host's bar should too.
+    @MainActor
+    static func title(for id: String) -> String {
+        let canonical = GeneratedScenes.allowedIds.contains(id) ? id : legacyAliases[id]
+        guard let canonical,
+              let title = GeneratedScenes.all().first(where: { $0.sceneId == canonical })?.title
+        else { return id }
+        return title
+    }
+
+    /// A deep-linked demo inside the SAME host the catalogue uses
+    /// (``DemoCover``): a Close control in every case, and the host's
+    /// leading-edge swipe dismissal.
+    ///
+    /// The bare `destination(for:)` is still the resolver; it is not a screen.
+    /// Presenting it directly is what left a hand-rolled AR demo — which draws
+    /// no chrome of its own — with no dismissal affordance at all when it was
+    /// reached from a QR code instead of the catalogue.
+    @MainActor
+    static func cover(for id: String, onClose: @escaping () -> Void) -> DemoCover {
+        DemoCover(title: title(for: id), destination: destination(for: id), onClose: onClose)
+    }
 }
 
 /// Tiny placeholder shown when a deep-link id resolves to no live iOS

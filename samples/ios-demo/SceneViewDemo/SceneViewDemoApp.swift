@@ -221,13 +221,16 @@ struct ContentView: View {
             presentedDemo = DemoLink(id: id)
             pendingDeepLinkDemo = nil
         }
+        // Same host as a catalogue launch (`ShowcaseTab`'s `DemoCover`), so a
+        // deep-linked demo always has a Close control and the edge-swipe
+        // dismissal — see `DemoDeepLinkRegistry.cover(for:onClose:)`.
         #if os(iOS)
         .fullScreenCover(item: $presentedDemo) { link in
-            DemoDeepLinkRegistry.destination(for: link.id)
+            DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
         }
         #else
         .sheet(item: $presentedDemo) { link in
-            DemoDeepLinkRegistry.destination(for: link.id)
+            DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
         }
         #endif
     }
