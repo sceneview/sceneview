@@ -59,6 +59,20 @@ import kotlin.math.absoluteValue
  * What it is **not**: proof that an ARCore session starts, that a surface is found, that
  * the object lands on it. Those need a device. This is proof of *layout and copy* only.
  *
+ * ## Where the overlays are composed
+ *
+ * In the scaffold's `sceneOverlay` slot, as both hosts compose them — not in `scene`. The
+ * scaffold paints its bottom scrim *over* `scene`, and the first goldens of this file
+ * (then photographing the plane-discovery pill, #3712) caught the layer veiled by it: the
+ * pill's white text composited down to 141/255 on its top row and 82/255 on its bottom
+ * one, 4.3:1 falling to 2.3:1 against its own fill on a white frame, while the dock
+ * captions on the same scrim kept 5.4:1. On this file's own goldens the coaching line's
+ * text read 86/255 in `scene` (2.7:1 to 2.9:1 against its fill) and reads 255 in
+ * `sceneOverlay` (19.9:1 on white, 21:1 on black). The slot has exactly the `scene` slot's
+ * frame and clearance, so the anchor arithmetic below is the same either way; what changes
+ * is that the coaching line, the cards and the read-out now stand on the scrim instead of
+ * under it.
+ *
  * ## The states
  *
  *  - **scanning** — "Move slowly to find a surface." — the coaching line alone;
@@ -208,7 +222,10 @@ class PlacementBottomAnchorSnapshotTest {
         assertAnchor(name, scene, navInsetDp, observedNavInset)
     }
 
-    /** The real scaffold, the real dock, the real overlays, over a flat stand-in scene. */
+    /**
+     * The real scaffold, the real dock, the real overlays in the slot both hosts put them
+     * in, over a flat stand-in scene.
+     */
     private fun composeScreen(darkTheme: Boolean, ground: Color) {
         composeRule.setContent {
             observedBottomInsetPx = WindowInsets.safeDrawing.getBottom(LocalDensity.current)
@@ -217,13 +234,18 @@ class PlacementBottomAnchorSnapshotTest {
                     title = "Place in AR",
                     onBack = {},
                     dock = DOCK,
-                    scene = {
-                        Box(Modifier.fillMaxSize().background(ground))
+                    // Where `ARPlacementDemo` and `ArViewTab` compose them: above the
+                    // bottom scrim. Composed inside `scene` instead, the same overlays
+                    // photograph under it — see "Where the overlays are composed".
+                    sceneOverlay = {
                         TapToPlaceStatusOverlays(
                             state = state,
                             onViewIn3D = {},
                             onRestartSession = {},
                         )
+                    },
+                    scene = {
+                        Box(Modifier.fillMaxSize().background(ground))
                     },
                 )
             }

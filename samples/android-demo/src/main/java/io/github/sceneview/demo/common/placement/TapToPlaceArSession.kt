@@ -117,7 +117,10 @@ import java.io.File
  * @param onViewIn3D The no-surface card's primary action. `null` hides the button.
  * @param onRestartSession The camera-error card's *Try again*. `null` hides the button.
  * @param overlays Coaching overlays drawn inside the session's Box, above the viewport.
- *   The default renders [TapToPlaceStatusOverlays].
+ *   The default renders [TapToPlaceStatusOverlays]. Under a [io.github.sceneview.demo.DemoScaffold]
+ *   the session's Box is the `scene` slot, which the scaffold's bottom scrim paints over,
+ *   so a scaffolded host passes `overlays = {}` here and composes the same layer in the
+ *   scaffold's `sceneOverlay` slot instead — see [TapToPlaceExperienceOverlays].
  * @param extraSceneContent Extra AR-scope scene content rendered inside the same
  *   [ARSceneView].
  */

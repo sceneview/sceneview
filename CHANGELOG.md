@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Android demo — the placement coaching layer is no longer painted through the scaffold's bottom scrim.** `DemoScaffold` grounds its dock on a bottom scrim drawn *after* the `scene` slot, and the `ar-placement` demo and the AR View tab composed their coaching line, cards and read-out inside that slot — so the same wash that grounds the dock veiled them. The goldens of #3712 caught it on the plane-discovery pill of the day: white text composited down to 141/255 at its top row and 82/255 at its bottom one, 4.3:1 falling to 2.3:1 against the pill's own fill on a white camera frame, while the dock captions on the same scrim kept 5.4:1. The scaffold gains a third slot, `sceneOverlay`: the `scene` slot's exact frame and `LocalDemoChromeTopInset` / `LocalDemoChromeBottomInset`, composed after both scrims and before the chrome, so a demo moves its overlays there without touching a clearance. `TapToPlaceExperience` is split accordingly — the session stays in `scene` with no overlays of its own, the new `TapToPlaceExperienceOverlays` goes in `sceneOverlay`, both on the same state — and both hosts wire the two halves. On the current goldens the coaching line's white text read 86/255 before the move — 2.7:1 to 2.9:1 against its own fill, on a white or a black frame alike — and the no-surface card's bottom line 4.3:1; on the re-recorded goldens the text is opaque white on all 14: 19.9:1 and 20.5:1 on white, 21:1 on black, with the dock captions unchanged at 5.4:1 and 15.5:1. The layer's translucent fill still shows the scrim's gradient beneath it, as a glass surface standing on a scrim should. The `scrimDock` token is untouched: it is the dock captions' measured ground, and the coaching layer now stands on it too. Known remainder: `placement-scene`'s coaching pill is composed by the SDK inside `PlacementScene`, so it still sits under the scrim until the SDK splits the guide from the viewport.
+
 ## v4.38.0 — 2026-09-19
 
 ### Added

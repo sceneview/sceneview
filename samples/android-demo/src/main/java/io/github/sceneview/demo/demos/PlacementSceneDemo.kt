@@ -317,6 +317,12 @@ private fun PlacementSceneAr(onBack: () -> Unit) {
         // chrome drawn over the camera by the host. Left to its own 16 dp gutter the pill
         // lands under the dock. Same measured value, same source, as the other AR host in
         // this app (#3712) — a real measurement, not a constant.
+        //
+        // Known, and not fixed here: this pill is composed by the SDK *inside* the scene,
+        // i.e. under the scaffold's bottom scrim, so it is painted through the scrim the
+        // way the tap-to-place guide was before it moved to the `sceneOverlay` slot. It
+        // cannot move without an SDK-side split of `PlacementScene`'s coaching from its
+        // viewport (the tracking signals the guide needs stay private to the scene).
         val chromeBottom = LocalDemoChromeBottomInset.current
 
         PlacementScene(

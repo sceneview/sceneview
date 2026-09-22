@@ -20,6 +20,7 @@ fun DemoScaffold(
     onBack: () -> Unit,
     controls: (@Composable ColumnScope.() -> Unit)? = null,
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
+    sceneOverlay: (@Composable BoxScope.() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit,
 )
 ```
@@ -28,6 +29,7 @@ fun DemoScaffold(
 - **`onBack`** — back navigation. The top app bar surfaces a back arrow.
 - **`controls`** — *optional* slot for the demo's controls. Rendered inside a vertically-scrolling `Column` so existing v1 side-panel `controls = { ... }` blocks port unchanged. `null` ⇒ no FAB, scene fills the whole viewport.
 - **`bottomOverlay`** — *optional* slot for a floating bottom banner / status pill / answer card. See [Bottom overlays](#bottom-overlays) — put them here, never at a bare `Alignment.BottomCenter` inside `scene`.
+- **`sceneOverlay`** — *optional* full-viewport layer the demo positions itself (a coaching line or card anchored by `LocalDemoChromeBottomInset`, the SDK's `PlaneDiscoveryGuide`). It has exactly the `scene` slot's frame and insets, but is composed **above the scaffold's scrims** and below its chrome — an overlay anchored at the bottom of `scene` is painted *through* the bottom scrim, one in this slot stands *on* it like the dock's captions.
 - **`scene`** — the trailing-lambda slot for the 3D / AR scene. Receives a `BoxScope`.
 
 ## Bottom overlays

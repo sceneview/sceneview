@@ -78,6 +78,7 @@ import com.google.ar.core.ArCoreApk
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
+import io.github.sceneview.demo.common.placement.TapToPlaceExperienceOverlays
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.ALL_DEMOS
@@ -331,16 +332,19 @@ fun ArViewTabContent(
     // session, not the chrome around it. `RootScreen` has already hidden the tab bar and
     // the system bars for the live session (#2238), so the dock has the bottom band to
     // itself here exactly as it does in the demo.
+    // Hard reset, from the Settings sheet and from the camera-error card's *Try again*:
+    // bumping the UUID recomposes the whole AR subtree, which is the only way to discard
+    // ARCore state without a wrapper-level resetSession() API (iOS does the same via
+    // arViewID).
+    val hardReset: () -> Unit = {
+        state.clearAll()
+        arSceneId = UUID.randomUUID()
+    }
+
     DemoScaffold(
         title = stringResource(R.string.tab_ar_view),
         onBack = exitArSession,
-        // Hard reset, from the Settings sheet: bumping the UUID recomposes the whole AR
-        // subtree, which is the only way to discard ARCore state without a wrapper-level
-        // resetSession() API (iOS does the same via arViewID).
-        onReset = {
-            state.clearAll()
-            arSceneId = UUID.randomUUID()
-        },
+        onReset = hardReset,
         // Same two items, same order, same words as the `ar-placement` demo — the
         // scaffold appends Settings itself.
         dock = listOf(
@@ -360,6 +364,18 @@ fun ArViewTabContent(
                 enabled = state.placedCount > 0,
             ),
         ),
+        // The coaching layer, above the scaffold's bottom scrim rather than under it —
+        // the session below is the `scene` slot, which that scrim paints over. Keyed like
+        // the session so a Reset also restarts the layer's own timers.
+        sceneOverlay = {
+            key(arSceneId) {
+                TapToPlaceExperienceOverlays(
+                    state = state,
+                    onViewIn3D = exitArSession,
+                    onRestartSession = hardReset,
+                )
+            }
+        },
     ) {
         key(arSceneId) {
             TapToPlaceExperience(
@@ -373,10 +389,7 @@ fun ArViewTabContent(
                 // whose featured tiles open the 3D demos.
                 onViewIn3D = exitArSession,
                 // "Try again" on the camera-error card: the same hard reset as Settings.
-                onRestartSession = {
-                    state.clearAll()
-                    arSceneId = UUID.randomUUID()
-                },
+                onRestartSession = hardReset,
             )
         }
     }
