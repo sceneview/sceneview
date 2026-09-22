@@ -7,6 +7,11 @@ import RealityKit
 // Test classes run on the main actor: their RealityKit node factories
 // (`LightNode.directional`, `node.entity`, …) are `@MainActor`. (#1054)
 @MainActor
+// The whole suite exercises the deprecated `FogNode` on purpose — it must keep
+// compiling and behaving for the whole 4.x line. Marking the test case
+// deprecated is how Swift lets a deliberate use of deprecated API stay
+// warning-free.
+@available(*, deprecated)
 final class FogNodeTests: XCTestCase {
 
     // MARK: - Factory methods
