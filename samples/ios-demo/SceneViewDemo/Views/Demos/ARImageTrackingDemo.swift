@@ -28,6 +28,9 @@ struct ARImageTrackingDemo: View {
     /// anchor state, not by the one-shot detection callback: an image that
     /// leaves the frame stops being tracked, and the card has to say so.
     @State private var isTracked: Bool = false
+    /// The overlay ground is theme-independent (the backdrop is a camera
+    /// frame) but its opacity is not — `DESIGN.md` "AR Coaching Overlay".
+    @Environment(\.colorScheme) private var colorScheme
 
     // MARK: - Reference image
 
@@ -144,12 +147,15 @@ struct ARImageTrackingDemo: View {
                 .foregroundStyle(isTracked ? .green : .white)
             Text(trackingStatus)
                 .font(.caption)
-                .foregroundStyle(.white)
+                .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.black.opacity(0.55))
-        .clipShape(Capsule())
+        .padding(.horizontal, SceneViewTokens.Space.md)
+        .padding(.vertical, SceneViewTokens.Space.sm)
+        .background(SceneViewTokens.ARChrome.scrim(colorScheme), in: Capsule())
+        .overlay(
+            Capsule().strokeBorder(SceneViewTokens.ARChrome.border(colorScheme),
+                                   lineWidth: SceneViewTokens.ARChrome.borderWidth)
+        )
         .padding(.bottom, 8)
     }
 
@@ -168,7 +174,7 @@ struct ARImageTrackingDemo: View {
                 } else {
                     Image(systemName: "qrcode")
                         .font(.system(size: 36))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
                 }
             }
             .frame(width: 56, height: 56)
@@ -179,10 +185,10 @@ struct ARImageTrackingDemo: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Target")
                     .font(.caption.bold())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
                 Text("Print or display this exact image at \(physicalWidthLabel) wide, then point the camera at it.")
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -190,17 +196,26 @@ struct ARImageTrackingDemo: View {
                 ShareLink(item: url) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
                         .frame(width: 36, height: 36)
                 }
                 .accessibilityLabel("Share the reference image")
                 .accessibilityIdentifier("image-target-share")
             }
         }
-        .padding(12)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 24)
+        // `ar-scrim`, not `.ultraThinMaterial`: a material resolves near-white
+        // in light mode, and white text on it is unreadable — over a camera
+        // feed the ground has to be near-opaque and theme-independent
+        // (`DESIGN.md` "AR Overlay Card").
+        .padding(SceneViewTokens.Space.md)
+        .background(SceneViewTokens.ARChrome.scrim(colorScheme),
+                    in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg)
+                .strokeBorder(SceneViewTokens.ARChrome.border(colorScheme),
+                              lineWidth: SceneViewTokens.ARChrome.borderWidth)
+        )
+        .padding(.horizontal, SceneViewTokens.Space.lg)
     }
 
     /// The registered physical width, formatted for the user's locale — a
