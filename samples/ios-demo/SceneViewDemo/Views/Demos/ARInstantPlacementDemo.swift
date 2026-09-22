@@ -13,25 +13,18 @@ import SceneViewSwift
 /// `ARView.raycast(...)` against `.estimatedPlane` alignment, which returns hits
 /// before plane geometry has fully converged.
 ///
-/// ### Honest-subset note — what the toggle actually does
+/// ### Honest-subset note — there is no mode to toggle
 ///
 /// `ARSceneView`'s tap raycast (`ARSceneView.swift` `handleTap`) is hardcoded to
-/// `allowing: .estimatedPlane, alignment: .any`. It has no per-call hook to switch
-/// raycast alignment, so **both toggle positions place models through the same
-/// `.estimatedPlane` raycast** — taps always land before plane geometry has fully
-/// converged.
+/// `allowing: .estimatedPlane, alignment: .any`, with no per-call hook to switch
+/// alignment. An earlier "Instant Placement" toggle here only hid the plane and
+/// coaching overlays while placing through that same raycast either way, so it
+/// claimed a mode switch it could not perform — it has been removed rather than
+/// faked. Taps already land on estimated planes, before geometry converges.
 ///
-/// The toggle is therefore a *coaching/overlay* switch, not a raycast-mode switch:
-///
-/// - **Instant Placement ON** — no plane overlay, no coaching overlay. The UI
-///   encourages tapping straight away on the estimated-plane raycast.
-/// - **Instant Placement OFF** — plane overlay + coaching overlay are shown, so
-///   the user can wait for a converged plane before tapping. The raycast itself
-///   is identical; only the visual guidance differs.
-///
-/// A true per-mode `existingPlane` vs `estimatedPlane` switch would require an
-/// alignment parameter on `ARSceneView`'s tap raycast — tracked as a future API
-/// addition rather than faked at the demo layer.
+/// A real `existingPlane` vs `estimatedPlane` policy needs an alignment
+/// parameter on `ARSceneView`'s tap raycast. When the SDK grows one, the choice
+/// comes back as a genuine control.
 ///
 /// ### Streaming pipeline (Stage 2, issue #1152)
 ///
@@ -47,7 +40,6 @@ struct ARInstantPlacementDemo: View {
         ("animated_butterfly", "Butterfly"),
     ]
 
-    @State private var instantEnabled: Bool = true
     @State private var cycleIndex: Int = 0
     @State private var selectedSlug: SketchfabSlug?
     @State private var armedURL: URL?
@@ -85,20 +77,16 @@ struct ARInstantPlacementDemo: View {
     var body: some View {
         ZStack {
             #if !targetEnvironment(simulator)
-            // Rebuild the ARSceneView when the toggle flips so the new raycast
-            // alignment takes effect. Mirrors Android's `key(instantEnabled)`
-            // rebuild.
             ARSceneView(
                 planeDetection: .horizontal,
-                showPlaneOverlay: !instantEnabled,
-                showCoachingOverlay: !instantEnabled,
+                showPlaneOverlay: true,
+                showCoachingOverlay: true,
                 onTapOnPlane: { worldPosition, arView in
                     Task { @MainActor in
                         await placeModel(at: worldPosition, in: arView)
                     }
                 }
             )
-            .id("instant-placement-\(instantEnabled)")
             .ignoresSafeArea()
             #else
             simulatorPlaceholder
@@ -185,19 +173,6 @@ struct ARInstantPlacementDemo: View {
     @ViewBuilder
     private var controlsSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Toggle(isOn: $instantEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(instantEnabled ? "Instant Placement ON" : "Instant Placement OFF")
-                        .font(.subheadline.weight(.semibold))
-                    Text(instantEnabled
-                         ? "Overlays hidden — tap anywhere, ARKit approximates a pose immediately."
-                         : "Plane + coaching overlays shown — wait for a plane, then tap inside it.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .tint(.blue)
-
             Text("Pick what to place")
                 .font(.subheadline.weight(.semibold))
 
@@ -236,7 +211,7 @@ struct ARInstantPlacementDemo: View {
             }
             .disabled(placedCount == 0)
 
-            Text("iOS port note: ARKit doesn't expose ARCore's `InstantPlacementMode.LOCAL_Y_UP` directly. Taps always use an `.estimatedPlane` raycast so they land before planes fully converge. The toggle here only shows/hides the plane + coaching overlays — it does not change the raycast alignment.")
+            Text("iOS port note: ARKit doesn't expose ARCore's `InstantPlacementMode.LOCAL_Y_UP`. Taps here always use an `.estimatedPlane` raycast, so they land before planes fully converge — but that is the only behaviour available, not a mode you can pick.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
