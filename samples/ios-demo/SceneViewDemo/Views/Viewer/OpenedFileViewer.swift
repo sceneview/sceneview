@@ -92,10 +92,14 @@ struct OpenedFileViewer: View {
         #if os(iOS)
         .fullScreenCover(isPresented: $showAR) {
             NavigationStack {
-                ARPlacementDemo(
-                    initialModelURL: workingCopy,
-                    initialModelUnit: chosenUnit
-                )
+                // "View in 3D" on a blocked state returns to this viewer —
+                // the file is already on screen behind the cover.
+                ARExperienceContainer(onViewIn3D: { showAR = false }) {
+                    ARPlacementDemo(
+                        initialModelURL: workingCopy,
+                        initialModelUnit: chosenUnit
+                    )
+                }
                 .navigationTitle("Tap to Place")
                 .navigationBarTitleInline()
             }

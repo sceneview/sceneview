@@ -128,6 +128,7 @@
 		E500000000000000000000D3 /* sample.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000D3 /* sample.mp4 */; };
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000F18 /* DemoScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F18 /* DemoScaffold.swift */; };
+		C10000000000000000000F2A /* ARExperienceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F2A /* ARExperienceContainer.swift */; };
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
 		C10000000000000000000060 /* AppStoreUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000060 /* AppStoreUpdater.swift */; };
@@ -181,6 +182,7 @@
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
+		F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F000000000000000000000A0 /* ARExperienceModelTests.swift */; };
 		A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002962 /* AssetSourceProbeTests.swift */; };
 		A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002968 /* BundledAssetCreditsTests.swift */; };
 		F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */; };
@@ -243,6 +245,7 @@
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
+		F000000000000000000000A0 /* ARExperienceModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARExperienceModelTests.swift; path = SceneViewDemoTests/ARExperienceModelTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002962 /* AssetSourceProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourceProbeTests.swift; path = SceneViewDemoTests/AssetSourceProbeTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002968 /* BundledAssetCreditsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetCreditsTests.swift; path = SceneViewDemoTests/BundledAssetCreditsTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetPrimBudgetTests.swift; path = SceneViewDemoTests/BundledAssetPrimBudgetTests.swift; sourceTree = SOURCE_ROOT; };
@@ -301,6 +304,7 @@
 		F60000000000000000000002 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		C20000000000000000000030 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
 		C20000000000000000000F18 /* DemoScaffold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScaffold.swift; path = SceneViewDemo/Views/Components/DemoScaffold.swift; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000F2A /* ARExperienceContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARExperienceContainer.swift; path = SceneViewDemo/Views/Components/ARExperienceContainer.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000050 /* DemoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoSheet.swift; path = SceneViewDemo/Views/Components/DemoSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000051 /* CreditsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditsSheet.swift; path = SceneViewDemo/Views/CreditsSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000060 /* AppStoreUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdater.swift; path = SceneViewDemo/Services/AppStoreUpdater.swift; sourceTree = SOURCE_ROOT; };
@@ -481,6 +485,7 @@
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
+				F000000000000000000000A0 /* ARExperienceModelTests.swift */,
 				A20000000000000000002962 /* AssetSourceProbeTests.swift */,
 				A20000000000000000002968 /* BundledAssetCreditsTests.swift */,
 				F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */,
@@ -544,6 +549,7 @@
 		C40000000000000000000050 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				C20000000000000000000F2A /* ARExperienceContainer.swift */,
 				C20000000000000000000F18 /* DemoScaffold.swift */,
 				C20000000000000000000050 /* DemoSheet.swift */,
 				C20000000000000000000061 /* UpdateBanner.swift */,
@@ -985,6 +991,7 @@
 				C100000000000000000000D5 /* DebugOverlayDemo.swift in Sources */,
 				C100000000000000000000D6 /* DebugOverlayScene.swift in Sources */,
 				ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */,
+				C10000000000000000000F2A /* ARExperienceContainer.swift in Sources */,
 				C10000000000000000000F18 /* DemoScaffold.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
@@ -1056,6 +1063,7 @@
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
+				F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */,
 				A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */,
 				A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */,
 				F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */,

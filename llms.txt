@@ -6229,8 +6229,44 @@ public struct ARSceneView: UIViewRepresentable {
         onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
         onFrame: ((ARFrame, ARView) -> Void)? = nil
     )
+    // v4.39.0+ — one value for the whole session; see ARSessionConfiguration below
+    public init(
+        configuration: ARSessionConfiguration,
+        showPlaneOverlay: Bool = true,
+        showCoachingOverlay: Bool = true,
+        showPlacementReticle: Bool = false,
+        groundingShadows: Bool = true,
+        cameraExposure: Float? = nil,
+        onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)? = nil,
+        onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
+        onFrame: ((ARFrame, ARView) -> Void)? = nil
+    )
     public func onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
+    public func onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+
+    public func onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+
+    public func onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+
 }
+
+// v4.39.0+ — what the session runs, as one Equatable value
+public struct ARSessionConfiguration: Equatable {
+    public enum Mode { case worldTracking, faceTracking }
+    public enum SceneReconstruction { case none, mesh, meshWithClassification }
+    public enum Requirement: Equatable { case worldTracking, faceTracking, lidar, frameSemantics(ARConfiguration.FrameSemantics) }
+    public init(
+        mode: Mode = .worldTracking,
+        planeDetection: ARSceneView.PlaneDetectionMode = .horizontal,
+        imageTrackingDatabase: Set<ARReferenceImage>? = nil,
+        environmentTexturing: ARWorldTrackingConfiguration.EnvironmentTexturing = .automatic,
+        sceneReconstruction: SceneReconstruction = .none,   // LiDAR mesh is OFF unless asked for
+        frameSemantics: ARConfiguration.FrameSemantics = []
+    )
+    public func unmetRequirement(capabilities: Capabilities = .current) -> Requirement?  // nil = this device can run it
+}
+public enum ARSessionState: Equatable { case starting, running, interrupted, failed }
+public enum ARTrackingStatus: Equatable { case notAvailable, limited(LimitedReason), normal }
+public enum ARSessionEvent { case started(ARSessionConfiguration), firstFrame, trackingStateChanged(ARTrackingStatus), interrupted, interruptionEnded, failed(Error) }
+@MainActor public protocol ARSceneSessionObserver: AnyObject { func arSession(didEmit event: ARSessionEvent, in arView: ARView) }
+extension View { public func arSessionObserver(_ observer: ARSceneSessionObserver?) -> some View }  // environment hook, no per-view wiring
 ```
 
 ### iOS: ModelNode
@@ -7616,6 +7652,9 @@ View modifiers (chainable):
 ```swift
 .onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
 .onSessionError(_ handler: @escaping (Error, ARView) -> Void) -> ARSceneView  // v4.39.0+ — ARKit session failures (camera permission denied…) and unsupported configurations. Without it the SDK only prints
+.onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
+.onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
+.onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
 .cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
@@ -7635,6 +7674,14 @@ View modifiers (chainable):
 - `faceTracking: true` on a device with no TrueDepth camera reports `ARSceneViewError.faceTrackingUnsupported` and starts NO session; it no longer falls back to the rear world-tracking camera. Render your own unsupported-device state from the handler.
 - Face sessions get no coaching overlay (its goals are all plane goals).
 - `showPlaneOverlay` / `showCoachingOverlay` / `showPlacementReticle` are reactive — toggle the value, never `.id()` the view (a re-key restarts the AR session).
+
+Session lifecycle notes (v4.39.0+):
+- `ARSessionConfiguration` is the whole ask, as one `Equatable` value. The view re-runs ARKit only when that value changes between renders (a `mode` change resets tracking; anything else keeps it) and re-applies the retained configuration after an interruption. Settings or theme changes never restart the camera.
+- `sceneReconstruction` defaults to `.none`: the LiDAR mesh is no longer switched on implicitly on every LiDAR device. Ask for `.mesh` / `.meshWithClassification`; on a device without LiDAR that reports `ARSceneViewError.unsupported(.lidar)` and runs no session.
+- `unmetRequirement()` answers before the view is mounted — render the unsupported state yourself; the SDK never falls back to a lesser session.
+- `.firstFrame` (state `.running`) is the camera on screen, independent of any model load. Report "Loading model…" from your own load, never from the session.
+- The delegate is installed before `session.run`, so `.started` and the first tracking state are never missed.
+- `cameraExposure` installs its post-process once per value and only removes what it installed; with `nil` it never touches `renderCallbacks.postProcess`, so a host-owned post-process survives. It remains rendered-frame brightness, not capture exposure.
 
 `mainLight` / `fillLight` notes (v4.3.0+, `#1138` — iOS half of `#1063`):
 - Mirrors Android's `ARSceneView(mainLightNode = …, fillLightNode = …)` parameters.
