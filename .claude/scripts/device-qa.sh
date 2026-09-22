@@ -683,8 +683,16 @@ run_web() {
   log "ensuring Playwright + chromium are installed (samples/web-demo)"
   (
     cd "$webdir"
-    [[ -f package.json ]] || npm init -y >/dev/null 2>&1 || true
-    npm install --no-audit --no-fund --save-dev @playwright/test http-server iwer >/dev/null 2>&1
+    # Install from the committed lockfile so the blocking release gate runs the
+    # Playwright/Chromium pair somebody chose, not whatever npm resolves today
+    # (#3773). Bump the pin in a PR; the unpinned install is only the fallback
+    # for a checkout with no lockfile.
+    if [[ -f package-lock.json ]]; then
+      npm ci --no-audit --no-fund >/dev/null 2>&1
+    else
+      [[ -f package.json ]] || npm init -y >/dev/null 2>&1 || true
+      npm install --no-audit --no-fund --save-dev @playwright/test http-server iwer >/dev/null 2>&1
+    fi
     npx playwright install chromium --with-deps >/dev/null 2>&1 \
       || npx playwright install chromium >/dev/null 2>&1
   ) || {
