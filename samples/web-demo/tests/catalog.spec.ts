@@ -120,7 +120,20 @@ test.describe('Web Demo — catalog coverage', () => {
       // local GPU and a slow software-rasterised CI runner.
       await waitForModelChipIdle(page);
       await dragCanvas(page);
-      await assertRendered(page, `Models tab — card #${i}`);
+      // `full`, not `centre`: the viewer keeps auto-rotating, so a 200px centre
+      // crop samples whatever face of the model happens to be turned towards
+      // the camera when the screenshot lands. Several curated models present a
+      // large flat panel there for part of the sweep — measured over a 10s
+      // rotation on a software-rasterised context, the centre variance of
+      // "Retro Piano" (the last card) ranges 40 → 1368, "Animated Dragon" (the
+      // middle card) 63 → 218, and "Cyberpunk Character" sits at 0.2 the whole
+      // time. That makes a centre crop a rotation-phase lottery against the 64
+      // floor, which is exactly how this test failed the 4.39.0 release gate at
+      // variance 50.0 then 53.0 with nothing under `samples/web-demo/` changed.
+      // The full-canvas variance of the same models never leaves 387 → 1706, so
+      // it keeps the same hard blank-canvas signal at the same threshold — the
+      // floor is NOT lowered, only the sampled region is made rotation-proof.
+      await assertRendered(page, `Models tab — card #${i}`, 'full');
     }
 
     expectNoPageErrors(diag, 'Models tab');
