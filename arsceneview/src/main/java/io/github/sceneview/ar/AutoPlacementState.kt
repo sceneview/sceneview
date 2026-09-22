@@ -73,6 +73,30 @@ data class FrameInput(
 
 class AutoPlacementState {
 
+    /** Current multiplier of the selected preview/authored base size. */
+    var scaleFactor: Float by mutableStateOf(1f)
+        internal set
+
+    internal var moveAction: ((Float, Float) -> Boolean)? = null
+    internal var rotateAction: ((Float) -> Unit)? = null
+    internal var scaleAction: ((Float) -> Unit)? = null
+    private val canManipulate: Boolean
+        get() = isSelected && (phase == PlacementPhase.PLACED || phase == PlacementPhase.ADJUSTING)
+
+    /** Accessibility alternative: metres along the surface's right and up (wall) / forward axes. */
+    fun moveBy(x: Float, y: Float): Boolean = canManipulate && x.isFinite() && y.isFinite() &&
+        moveAction?.invoke(x, y) == true
+
+    /** Accessibility alternative: degrees about the surface normal, preserving contact. */
+    fun rotateBy(degrees: Float) {
+        if (canManipulate && degrees.isFinite()) rotateAction?.invoke(degrees)
+    }
+
+    /** Accessibility alternative: uniform base-size multiplier, clamped to 25–400%. */
+    fun scaleTo(factor: Float) {
+        if (canManipulate && factor.isFinite()) scaleAction?.invoke(factor.coerceIn(0.25f, 4f))
+    }
+
     var phase: PlacementPhase by mutableStateOf(PlacementPhase.INITIALIZING)
         private set
 
@@ -187,6 +211,10 @@ class AutoPlacementState {
         adjustmentCount = 0
         isAdjusting = false
         isSelected = false
+        scaleFactor = 1f
+        moveAction = null
+        rotateAction = null
+        scaleAction = null
         dismissed = true
         sessionGeneration++
         placementRequested = false
@@ -207,6 +235,7 @@ class AutoPlacementState {
         adjustmentCount = 0
         isAdjusting = false
         isSelected = false
+        scaleFactor = 1f
         hasPlacement = false
         placementRequested = true
         recoveringSince = null
@@ -358,6 +387,24 @@ object UsableSurfacePolicy {
             isPoseInPolygon &&
             distanceMeters >= MIN_DISTANCE_M &&
             distanceMeters <= MAX_DISTANCE_M
+
+    /** Additive alignment-aware policy; the original horizontal-only overload is unchanged. */
+    fun accept(
+        surface: PlacementSurface,
+        isUpwardHorizontalPlane: Boolean,
+        isVerticalPlane: Boolean,
+        isTrackableTracking: Boolean,
+        isPoseInPolygon: Boolean,
+        distanceMeters: Float,
+    ): Boolean = accept(
+        isUpwardHorizontalPlane = when (surface) {
+            PlacementSurface.SURFACE -> isUpwardHorizontalPlane
+            PlacementSurface.WALL -> isVerticalPlane
+        },
+        isTrackableTracking = isTrackableTracking,
+        isPoseInPolygon = isPoseInPolygon,
+        distanceMeters = distanceMeters,
+    )
 
     /**
      * Orders the fallback candidates — one per visible tracked plane centre — nearest first,

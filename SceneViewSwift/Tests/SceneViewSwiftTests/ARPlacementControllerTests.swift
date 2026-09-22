@@ -9,6 +9,75 @@ import UIKit
 /// entity assertions exercise RealityKit's real bounds, hierarchy and components.
 @MainActor
 final class ARPlacementControllerTests: XCTestCase {
+    func testWallContactFacesCameraForBothSignsOfNormalWithoutFloor() {
+        let point = SIMD3<Float>(0.4, 1.7, -2)
+        let normals: [SIMD3<Float>] = [[0, 0, 1], [0, 0, -1], simd_normalize([1, 0.08, 1])]
+        for normal in normals {
+            for sign in [Float(-1), 1] {
+                let towardCamera = normal * sign
+                let transform = ARPlacementController.wallContactTransform(point: point, normal: normal,
+                                                                           towardCamera: towardCamera)
+                let front = SIMD3<Float>(transform.columns.2.x, transform.columns.2.y, transform.columns.2.z)
+                let up = SIMD3<Float>(transform.columns.1.x, transform.columns.1.y, transform.columns.1.z)
+                XCTAssertEqual(simd_distance(front, towardCamera), 0, accuracy: 0.00001)
+                XCTAssertGreaterThan(up.y, 0.99)
+                XCTAssertEqual(simd_dot(up, front), 0, accuracy: 0.00001)
+                XCTAssertEqual(transform.columns.3, SIMD4<Float>(point, 1))
+            }
+        }
+    }
+
+    func testWallBackStaysInContactThroughTwistScaleAndMovement() throws {
+        let (model, leaf) = nestedModel()
+        let wrapper = try XCTUnwrap(ARPlacementController.prepare(model, alignment: .vertical, previewSize: 0.3))
+        XCTAssertTrue(leaf.components.has(CollisionComponent.self))
+        XCTAssertNil(leaf.components[GroundingShadowComponent.self], "Downward grounding is not wall shading")
+        let bounds = wrapper.visualBounds(relativeTo: wrapper)
+        let point = SIMD3<Float>(1, 1.6, -2)
+        let normals: [SIMD3<Float>] = [[0, 0, 1], [-1, 0, 0], simd_normalize([1, 0.1, -1])]
+        for normal in normals {
+            let contact = ARPlacementController.wallContactTransform(point: point, normal: normal, towardCamera: normal)
+            let delta = ARPlacementController.tangentOffset([0.2, -0.1, 0.3], normal: normal)
+            XCTAssertEqual(simd_dot(delta, normal), 0, accuracy: 0.00001)
+            for angle in [Float(-2.3), 0, 0.6, .pi] {
+                for scale in [Float(0.25), 1, 4] {
+                    let orientation = simd_quatf(contact) * simd_quatf(angle: angle, axis: [0, 0, 1])
+                    for x in [bounds.min.x, bounds.max.x] {
+                        for y in [bounds.min.y, bounds.max.y] {
+                            let back = point + delta + orientation.act(SIMD3<Float>(x, y, bounds.min.z) * scale)
+                            let front = point + delta + orientation.act(SIMD3<Float>(x, y, bounds.max.z) * scale)
+                            XCTAssertEqual(simd_dot(back - point, normal), 0, accuracy: 0.00001)
+                            XCTAssertGreaterThan(simd_dot(front - point, normal), 0)
+                        }
+                    }
+                    XCTAssertEqual(orientation.act(.zero), .zero)
+                }
+            }
+        }
+    }
+
+    func testVerticalControllerPreparesTVAndArmsExactlyOnePlacementWithoutFloor() {
+        let controller = ARPlacementController(alignment: .vertical)
+        let ticket = controller.selectModel()
+        let (model, _) = nestedModel()
+        XCTAssertTrue(controller.setModel(model, ticket: ticket, previewSize: 0.3))
+        XCTAssertEqual(controller.alignment, .vertical)
+        // Anchoring still requires live ARKit; the decision state requires no floor fact.
+        var state = armedLifecycle()
+        XCTAssertTrue(state.frame(now: 0, tracking: true, anchorTracking: false, assetReady: true))
+        state.commit()
+        for tick in 1...30 {
+            XCTAssertFalse(state.frame(now: Double(tick), tracking: true, anchorTracking: true, assetReady: true))
+        }
+        XCTAssertTrue(state.hasPlacement)
+        XCTAssertFalse(state.requested)
+        _ = state.frame(now: 31, tracking: false, anchorTracking: false, assetReady: true)
+        XCTAssertEqual(state.phase, .trackingLost)
+        _ = state.frame(now: 32, tracking: true, anchorTracking: false, assetReady: true)
+        XCTAssertEqual(state.phase, .recovering)
+        XCTAssertFalse(state.requested)
+    }
+
     private func armedLifecycle() -> ARPlacementLifecycle {
         var state = ARPlacementLifecycle()
         _ = state.select()

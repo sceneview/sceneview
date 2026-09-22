@@ -192,6 +192,35 @@ APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
 `WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
 examples; there is no automatic fallback to estimated-plane taps.
 
+
+### Direct wall placement
+
+Create `ARPlacementController(alignment: .vertical)` and use the same
+`AutoPlacementScene`. Only vertical planes participate; no floor classification,
+seam, mount-height calculation or tap is needed. The first usable wall consumes one
+request only after its plane-associated anchor resolves. New detections cannot move
+an existing placement. An unresolved anchor waits up to three seconds while its surface
+remains usable; failure reports neither placement nor a success haptic.
+
+Author **+Y up, +Z front**. `setModel` uses the complete visual hierarchy to put its
+back (`min.z`) and bottom (`min.y`) at the contact pivot. The contact transform faces
++Z toward the camera side for either detected normal sign, with gravity-up projected
+into the wall. Drag projects the grab offset onto valid wall geometry; twist rotates
+about local +Z, and uniform pinch leaves the back in contact. Tracking loss cancels
+gestures, fades content out and recovers the existing anchor without another placement.
+
+`move(by: [x, y])` moves right/up in metres on walls, `rotate(by:)` uses radians about
+the surface normal, and `scale(to:)` uses a 25–400% base-size multiplier. These are the
+controls-sheet accessibility alternatives to gestures, alongside **Reset placement**.
+The wall demo uses the shared placement shell and a procedural TV with the same two
+boxes, physical material parameters and 0.3 m **Preview size** as Android.
+
+**Wall shading parity:** neither wall demo draws a procedural shadow blob. RealityKit's
+grounding shadow is downward-only and is applied automatically only to horizontal
+placement; it is not wall contact shading. Android's wall-demo shadow receivers are
+disabled to match this scope. Native renderer lighting may differ. Both demos use an
+opacity-only 300 ms reveal/hide; neither scales the object in from zero.
+
 ## ARSceneView (low-level / manual placement — iOS only)
 
 ```swift

@@ -611,6 +611,7 @@ public final class io/github/sceneview/ar/AutoPlacementResult {
 
 public final class io/github/sceneview/ar/AutoPlacementSceneKt {
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun findAutoPlacementSurface (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;)Lio/github/sceneview/ar/AutoPlacementCandidate;
 	public static synthetic fun findAutoPlacementSurface$default (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;ILjava/lang/Object;)Lio/github/sceneview/ar/AutoPlacementCandidate;
@@ -634,6 +635,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getPlacedAtMillis ()J
 	public final fun getPlacementRequested ()Z
 	public final fun getPlacementsCreated ()I
+	public final fun getScaleFactor ()F
 	public final fun getSelectionGeneration ()I
 	public final fun getSessionGeneration ()I
 	public final fun getTicket ()Lio/github/sceneview/ar/AssetTicket;
@@ -641,11 +643,14 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun isAdjusting ()Z
 	public final fun isSelected ()Z
 	public final fun keepScanning (J)V
+	public final fun moveBy (FF)Z
 	public final fun onBackgroundTap ()Lio/github/sceneview/ar/FrameEffect;
 	public final fun onFrame (Lio/github/sceneview/ar/FrameInput;Lkotlin/jvm/functions/Function0;)Lio/github/sceneview/ar/FrameEffect;
 	public static synthetic fun onFrame$default (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/FrameInput;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lio/github/sceneview/ar/FrameEffect;
 	public final fun requestPlacement ()V
 	public final fun resetPlacement (J)V
+	public final fun rotateBy (F)V
+	public final fun scaleTo (F)V
 	public final fun selectModel ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun selectPlacement ()V
 	public final fun withdrawRequest ()V
@@ -1003,6 +1008,7 @@ public final class io/github/sceneview/ar/UsableSurfacePolicy {
 	public static final field INSTANCE Lio/github/sceneview/ar/UsableSurfacePolicy;
 	public static final field MAX_DISTANCE_M F
 	public static final field MIN_DISTANCE_M F
+	public final fun accept (Lio/github/sceneview/ar/PlacementSurface;ZZZZF)Z
 	public final fun accept (ZZZF)Z
 	public final fun rankFallback (Ljava/util/List;)Ljava/util/List;
 }
@@ -1031,6 +1037,7 @@ public final class io/github/sceneview/ar/WallAnchorPose {
 
 public final class io/github/sceneview/ar/WallPlacementKt {
 	public static final fun WallPlacementScene (Landroidx/compose/ui/Modifier;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;FZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun directWallPose (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/ar/WallAnchorPose;
 	public static final fun floorWallSeam (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Lio/github/sceneview/ar/FloorWallSeam;
 	public static final fun nextWallPlacementPhase (ZZZ)Lio/github/sceneview/ar/WallPlacementPhase;
 	public static final fun roomFacingNormal (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;

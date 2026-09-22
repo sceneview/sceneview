@@ -24,6 +24,7 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
@@ -62,6 +63,46 @@ import kotlin.math.sqrt
  * **Threading:** like every SceneView composable, all Filament JNI work happens on the main thread;
  * [onPlaced] runs inside the Compose [ARSceneScope].
  */
+
+/**
+ * Direct wall contact, independent of any floor. Local +Z faces the camera side of the
+ * wall, +Y is gravity-up projected into the wall, and [wallPoint] is preserved exactly.
+ * Unlike [wallAnchorPose], this keeps the full plane normal (including tracking tilt).
+ * Authored content should use +Y up, +Z front, with its back/bottom at the origin.
+ */
+fun directWallPose(wallPoint: Position, wallNormal: Direction, towardViewer: Direction): WallAnchorPose {
+    require(wallNormal.x.isFinite() && wallNormal.y.isFinite() && wallNormal.z.isFinite() &&
+        wallNormal.x * wallNormal.x + wallNormal.z * wallNormal.z > WALL_NORMAL_EPSILON * WALL_NORMAL_EPSILON
+    ) { "A wall normal must be finite and have a horizontal component" }
+    val normal = dev.romainguy.kotlin.math.normalize(roomFacingNormal(wallNormal, towardViewer))
+    val right = dev.romainguy.kotlin.math.normalize(
+        dev.romainguy.kotlin.math.cross(WORLD_UP, normal)
+    )
+    val up = dev.romainguy.kotlin.math.cross(normal, right)
+    return WallAnchorPose(wallPoint, dev.romainguy.kotlin.math.Mat4(
+        right = right, up = up, forward = normal
+    ).toQuaternion())
+}
+
+/** Grab offset against the contact plane, even when the model extends past its polygon. */
+internal fun wallGrabOffset(
+    contact: Position,
+    normal: Direction,
+    rayOrigin: Position,
+    rayDirection: Direction,
+): Position? {
+    val denominator = dev.romainguy.kotlin.math.dot(rayDirection, normal)
+    if (!denominator.isFinite() || kotlin.math.abs(denominator) < WALL_NORMAL_EPSILON) return null
+    val distance = dev.romainguy.kotlin.math.dot(contact - rayOrigin, normal) / denominator
+    if (!distance.isFinite() || distance <= 0f) return null
+    return contact - (rayOrigin + rayDirection * distance)
+}
+
+/** Project a grab offset into a destination wall; depth must never follow the finger. */
+internal fun wallTangentOffset(offset: Position, normal: Direction): Position {
+    val n = dev.romainguy.kotlin.math.normalize(normal)
+    return offset - n * dev.romainguy.kotlin.math.dot(offset, n)
+}
 
 /** World up axis (+Y). Wall normals and the floor↔wall seam are computed relative to it. */
 internal val WORLD_UP: Direction = Direction(0f, 1f, 0f)

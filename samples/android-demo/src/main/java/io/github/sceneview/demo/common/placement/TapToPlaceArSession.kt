@@ -523,7 +523,7 @@ private fun coachingIcon(message: PlacementCoachingMessage?): ImageVector? = whe
  * theme's `primary` role.
  */
 @Composable
-private fun PlacementActionCard(
+internal fun PlacementActionCard(
     card: PlacementCard?,
     onViewIn3D: (() -> Unit)?,
     onKeepScanning: () -> Unit,

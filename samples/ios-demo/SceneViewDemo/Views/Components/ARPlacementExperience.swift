@@ -26,11 +26,12 @@ struct PlacementFeedback: Equatable {
 /// Assets remain app-owned; generation tickets prevent dismissed or superseded loads
 /// from entering the SDK's scene. Bundled models use the same 0.3 m preview as Android.
 struct ARPlacementExperience: View {
+    var wallTV = false
     var initialModel: String? = nil
     var initialModelURL: URL? = nil
     var initialModelUnit: ModelUnit? = nil
 
-    @StateObject private var controller = ARPlacementController()
+    @StateObject private var controller: ARPlacementController
     @AppStorage("ar-placement-selected-model") private var rememberedModel = "khronos_toy_car"
     @State private var selectedModel: String?
     @State private var placedModelName: String?
@@ -46,7 +47,10 @@ struct ARPlacementExperience: View {
     @State private var showHint = false
     @State private var showingActualSize = false
 
-    init(initialModel: String? = nil, initialModelURL: URL? = nil, initialModelUnit: ModelUnit? = nil) {
+    init(initialModel: String? = nil, initialModelURL: URL? = nil, initialModelUnit: ModelUnit? = nil,
+         wallTV: Bool = false) {
+        self.wallTV = wallTV
+        _controller = StateObject(wrappedValue: ARPlacementController(alignment: wallTV ? .vertical : .horizontal))
         self.initialModel = initialModel
         self.initialModelURL = initialModelURL
         self.initialModelUnit = initialModelUnit
@@ -72,6 +76,7 @@ struct ARPlacementExperience: View {
         "\(usesOpenedFile ? initialModelURL!.absoluteString : modelName)|\(actualSize)|\(retry)"
     }
     private var displayName: String {
+        if wallTV { return "TV" }
         if usesOpenedFile { return initialModelURL!.deletingPathExtension().lastPathComponent }
         return Self.models.first { $0.asset == modelName }?.name
             ?? modelName.replacingOccurrences(of: "_", with: " ").capitalized
@@ -80,7 +85,7 @@ struct ARPlacementExperience: View {
     private var sizeLabel: String { renderedActualSize ? "Actual size" : "Preview size" }
 
     var body: some View {
-        DemoScaffold("AR Placement", chromeMode: .ar) {
+        DemoScaffold(wallTV ? "Wall Placement" : "AR Placement", chromeMode: .ar) {
             AutoPlacementScene(controller: controller, onSessionEvent: { _, view in
                 viewBox.value = view
             })
@@ -132,6 +137,7 @@ struct ARPlacementExperience: View {
         .sheet(isPresented: $show3D) {
             NavigationStack {
                 PlacementModelPreview(
+                    wallTV: wallTV,
                     modelName: modelName,
                     url: usesOpenedFile ? initialModelURL : nil,
                     unit: initialModelUnit,
@@ -151,6 +157,18 @@ struct ARPlacementExperience: View {
         loading = true
         loadError = false
         do {
+            if wallTV {
+                guard controller.setModel(Self.makeWallTV(), ticket: ticket, previewSize: 0.3) else {
+                    loading = false
+                    loadError = true
+                    SceneViewHaptic.shared.error()
+                    return
+                }
+                placedModelName = "TV"
+                placedActualSize = false
+                loading = false
+                return
+            }
             let node: ModelNode
             if usesOpenedFile, let url = initialModelURL {
                 node = try await ModelNode.load(contentsOf: url, unit: initialModelUnit)
@@ -199,7 +217,7 @@ struct ARPlacementExperience: View {
             case .initializing, .cameraError:
                 // Permission, startup and camera failure belong to ARExperienceContainer.
                 EmptyView()
-            case .scanning: message("Move slowly to find a surface.")
+            case .scanning: message(wallTV ? "Point at a wall and move slowly." : "Move slowly to find a surface.")
             case .trackingLost: message("Tracking paused. Move slowly.")
             case .recovering: message("Finding your placement…")
             case .adjusting: message("\(renderedActualSize ? "Actual" : "Preview") scale \(Int(controller.scale * 100))%")
@@ -250,14 +268,19 @@ struct ARPlacementExperience: View {
             Text("\(sizeLabel) · \(Int(controller.scale * 100))%")
                 .font(SceneViewTokens.TypeScale.caption)
             if loading { Text("Loading model… \(displayName)") }
-            Menu("Pick model") {
-                ForEach(Self.models, id: \.asset) { model in
-                    Button(model.name) {
-                        selectedModel = model.asset
-                        rememberedModel = model.asset
-                        SceneViewHaptic.shared.selection()
+            if !wallTV {
+                Menu("Pick model") {
+                    ForEach(Self.models, id: \.asset) { model in
+                        Button(model.name) {
+                            selectedModel = model.asset
+                            rememberedModel = model.asset
+                            SceneViewHaptic.shared.selection()
+                        }
                     }
                 }
+            } else {
+                Text("Preview size uses a 0.3 m longest dimension.")
+                    .font(SceneViewTokens.TypeScale.caption)
             }
             if usesOpenedFile {
                 Toggle("Actual size", isOn: $showingActualSize)
@@ -269,12 +292,16 @@ struct ARPlacementExperience: View {
             Button("View in 3D") { show3D = true }
             Button("Share AR screenshot", action: shareScreenshot)
                 .disabled(controller.phase == .initializing)
-            if controller.hasPlacement {
+            if controller.hasPlacement && controller.selection {
                 Group {
                     Text("Adjust object").font(SceneViewTokens.TypeScale.card)
-                    adjustment("Move left", "Move right", decrease: { move(-0.05, 0) }, increase: { move(0.05, 0) })
-                    adjustment("Move closer", "Move farther", decrease: { move(0, 0.05) }, increase: { move(0, -0.05) })
-                    adjustment("Rotate left", "Rotate right", decrease: { controller.rotate(by: -.pi / 12) }, increase: { controller.rotate(by: .pi / 12) })
+                    adjustment("Move left", "Move right", decrease: { move(wallTV ? -0.02 : -0.05, 0) }, increase: { move(wallTV ? 0.02 : 0.05, 0) })
+                    if wallTV {
+                        adjustment("Move down", "Move up", decrease: { move(0, -0.02) }, increase: { move(0, 0.02) })
+                    } else {
+                        adjustment("Move closer", "Move farther", decrease: { move(0, 0.05) }, increase: { move(0, -0.05) })
+                    }
+                    adjustment("Rotate left", "Rotate right", decrease: { controller.rotate(by: wallTV ? -.pi / 90 : -.pi / 12) }, increase: { controller.rotate(by: wallTV ? .pi / 90 : .pi / 12) })
                     adjustment("Scale down", "Scale up", decrease: { controller.scale(to: controller.scale - 0.1) }, increase: { controller.scale(to: controller.scale + 0.1) })
                 }
                 .disabled(controller.phase != .placed)
@@ -299,6 +326,23 @@ struct ARPlacementExperience: View {
                 showShare = true
             }
         }
+    }
+
+    /// Same authored metre geometry and physical material parameters as Android's TV.
+    /// This is a procedural TV model, not a simulated camera or placement.
+    @MainActor static func makeWallTV() -> Entity {
+        let root = Entity()
+        let body = ModelEntity(mesh: .generateBox(size: [1.26, 0.74, 0.04]),
+                               materials: [SimpleMaterial(color: UIColor(red: 32/255, green: 36/255, blue: 42/255, alpha: 1),
+                                                          roughness: 0.8, isMetallic: false)])
+        body.position = [0, 0.37, 0.02]
+        let screen = ModelEntity(mesh: .generateBox(size: [1.20, 0.68, 0.01]),
+                                 materials: [SimpleMaterial(color: UIColor(red: 6/255, green: 8/255, blue: 12/255, alpha: 1),
+                                                            roughness: 0.15, isMetallic: false)])
+        screen.position = [0, 0.37, 0.045]
+        root.addChild(body)
+        root.addChild(screen)
+        return root
     }
 
     private func move(_ x: Float, _ y: Float) {
@@ -330,6 +374,8 @@ private struct PlacementStatusSurface: ViewModifier {
 
 /// A real 3D alternative using the selected asset, never a stand-in on load failure.
 private struct PlacementModelPreview: View {
+    var wallTV = false
+    @State private var television: Entity?
     let modelName: String
     let url: URL?
     let unit: ModelUnit?
@@ -341,14 +387,21 @@ private struct PlacementModelPreview: View {
         ZStack {
             SceneView { root in
                 if let model { root.addChild(model.entity) }
+                if let television { root.addChild(television) }
             }
             .environment(.studio)
             .cameraControls(.orbit)
             .autoCenterContent(true)
             if failed { Text("Model couldn’t load.") }
-            else if model == nil { ProgressView("Loading model…") }
+            else if model == nil && television == nil { ProgressView("Loading model…") }
         }
         .task {
+            if wallTV {
+                let tv = ARPlacementExperience.makeWallTV()
+                tv.scale = SIMD3<Float>(repeating: 0.3 / 1.26)
+                television = tv
+                return
+            }
             do {
                 let loaded: ModelNode
                 if let url { loaded = try await ModelNode.load(contentsOf: url, unit: unit) }

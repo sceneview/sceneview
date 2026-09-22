@@ -1286,6 +1286,48 @@ manual-placement APIs. Their published defaults and tap behavior are unchanged. 
 them for deliberate manual interactions or diagnostics; new placement flows should
 use `AutoPlacementScene`.
 
+
+### Direct wall placement
+
+Use `surface = PlacementSurface.WALL`: detection is vertical-only, with no floor,
+seam alignment or placement tap. The first usable wall creates one real plane anchor.
+New plane detections never move a standing object; drag to a valid alternative wall or
+reset explicitly. Tracking loss retains that placement and enters recovery.
+
+Author wall models with **+Y up and +Z front** (or supply `assetRotation`).
+`AutoPlacementModel` puts the bounding box's back and bottom at the contact pivot and
+faces its front toward the camera side of the wall, even if the detected normal points
+away. Drag projects the grab offset into the destination wall and validates its polygon;
+twist rotates in the wall plane; pinch preserves contact at 25–400% of the base size.
+The anchor frame retains the Android surface convention: +Y is the wall normal and
+−Z points up. `directWallPose(point, normal, towardViewer)` is an additive pure helper
+returning the authored +Y-up/+Z-front frame at the exact wall point; it requires a finite
+normal with a nonzero horizontal component. Legacy `wallAnchorPose`, `wallFacingRotation`,
+`floorWallSeam` and `WallPlacementPhase` keep their floor/seam semantics unchanged.
+
+For procedural geometry, `AutoPlacementNode(result, placement) { opacity -> … }` uses
+that same gesture hierarchy. Supply content already sized (demo: 0.3 m longest dimension),
+with bottom at y=0 and back at z=0. Mark selectable children editable, but disable their
+individual position/rotation/scale editing so gestures reach the contact pivot. Apply
+`opacity` to transparent materials for the 300 ms placement/tracking fade.
+
+Selected-object accessibility alternatives share the gesture constraints:
+`placement.moveBy(x, y)` moves in metres right/up on a wall, `rotateBy(degrees)` twists
+around its normal, and `scaleTo(factor)` changes its base-size multiplier.
+`scaleFactor` is observable. Keep these controls in a sheet, with **Reset placement**.
+`playbackDataset` is forwarded by the Android wall demo; a floor-only replay does not
+validate wall placement.
+
+| Wall-demo rendering | Android | iOS |
+|---|---|---|
+| TV geometry and size | Two boxes, 0.3 m preview | Same dimensions and material parameters |
+| Contact | Back/bottom pivot on the real wall | Same |
+| Wall contact shading | Disabled in the demo; no procedural shadow blob | No wall shadow; RealityKit grounding shadows project downward |
+| Reveal / tracking loss | 300 ms opacity fade | 300 ms opacity fade |
+
+Native renderer lighting can differ. The demo does not claim physically identical
+wall shadows, and never substitutes a synthetic pool for renderer shading.
+
 ### PlacementScene — manual tap-to-place (v4.10.0+, #1765)
 
 **Legacy manual placement.** For automatic placement start with `AutoPlacementScene` above.
@@ -6318,6 +6360,35 @@ Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-pla
 APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
 `WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
 examples; there is no automatic fallback to estimated-plane taps.
+
+### iOS: Direct wall placement
+
+
+Create `ARPlacementController(alignment: .vertical)` and use the same
+`AutoPlacementScene`. Only vertical planes participate; no floor classification,
+seam, mount-height calculation or tap is needed. The first usable wall consumes one
+request only after its plane-associated anchor resolves. New detections cannot move
+an existing placement. An unresolved anchor waits up to three seconds while its surface
+remains usable; failure reports neither placement nor a success haptic.
+
+Author **+Y up, +Z front**. `setModel` uses the complete visual hierarchy to put its
+back (`min.z`) and bottom (`min.y`) at the contact pivot. The contact transform faces
++Z toward the camera side for either detected normal sign, with gravity-up projected
+into the wall. Drag projects the grab offset onto valid wall geometry; twist rotates
+about local +Z, and uniform pinch leaves the back in contact. Tracking loss cancels
+gestures, fades content out and recovers the existing anchor without another placement.
+
+`move(by: [x, y])` moves right/up in metres on walls, `rotate(by:)` uses radians about
+the surface normal, and `scale(to:)` uses a 25–400% base-size multiplier. These are the
+controls-sheet accessibility alternatives to gestures, alongside **Reset placement**.
+The wall demo uses the shared placement shell and a procedural TV with the same two
+boxes, physical material parameters and 0.3 m **Preview size** as Android.
+
+**Wall shading parity:** neither wall demo draws a procedural shadow blob. RealityKit's
+grounding shadow is downward-only and is applied automatically only to horizontal
+placement; it is not wall contact shading. Android's wall-demo shadow receivers are
+disabled to match this scope. Native renderer lighting may differ. Both demos use an
+opacity-only 300 ms reveal/hide; neither scales the object in from zero.
 
 ### iOS: ARSceneView (low-level / manual placement)
 

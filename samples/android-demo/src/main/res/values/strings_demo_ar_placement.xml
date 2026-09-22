@@ -14,7 +14,7 @@
     <!-- Pre-AR chooser (#3405). The whole point of this screen is that the subject is
          chosen before the camera opens, so its copy is about the choice, not about AR. -->
     <string name="ar_placement_chooser_headline">Choose an object to place in your space</string>
-    <string name="ar_placement_teaches">Choose a floor or wall object, then point the camera at the ground. It appears on the first surface found. Move, rotate and resize it to see how it fits.</string>
+    <string name="ar_placement_teaches">Choose a floor or wall object, then point the camera where you want it. It appears on the first surface found. Move, rotate and resize it to see how it fits.</string>
     <string name="ar_placement_cta">Place in AR</string>
     <string name="ar_placement_cta_named">Place %1$s in AR</string>
     <string name="ar_placement_cta_checking">Checking whether this device supports ARCore…</string>
