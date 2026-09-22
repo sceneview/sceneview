@@ -34,6 +34,43 @@ import SceneViewSwift
 ///   has `EntityGestures` but `SceneViewSwift` doesn't yet expose them at
 ///   the iOS demo level — placed models are static once dropped. Tracked
 ///   separately if requested.
+/// Tracks the in-flight placement loads of an AR placement screen.
+///
+/// A tap starts an async model load; "Clear all", a reset or leaving the
+/// screen has to make sure the model that load is still fetching never lands
+/// on the plane afterwards. Cancelling is not enough on its own — a load can
+/// already be past its last suspension point — so every placement also carries
+/// the generation it was started in, and attaches only if that generation is
+/// still current.
+@MainActor
+final class PlacementTaskTracker {
+    private(set) var generation = 0
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+
+    /// Runs `body` with the generation current at the time of the call, and
+    /// keeps a handle on it until it finishes.
+    func run(_ body: @escaping (Int) async -> Void) {
+        let id = UUID()
+        let startedAt = generation
+        tasks[id] = Task { @MainActor [weak self] in
+            await body(startedAt)
+            self?.tasks[id] = nil
+        }
+    }
+
+    /// True while `startedAt` is still the generation the screen is showing.
+    func isCurrent(_ startedAt: Int) -> Bool {
+        startedAt == generation && !Task.isCancelled
+    }
+
+    /// Cancels every in-flight placement and retires their generation.
+    func invalidate() {
+        generation += 1
+        for task in tasks.values { task.cancel() }
+        tasks.removeAll()
+    }
+}
+
 struct ARPlacementDemo: View {
     /// Bundle name (without `.usdz`) of the model every tap places when set —
     /// the Model Viewer's "View in AR" handoff, mirroring Android's
@@ -78,6 +115,7 @@ struct ARPlacementDemo: View {
     /// Weak handle on the live `ARView`, captured from the tap callback, so the
     /// clear-all control can remove anchors from `arView.scene`.
     @State private var arViewRef: ARViewBox = ARViewBox()
+    @State private var placements = PlacementTaskTracker()
 
     /// Reference box for the non-`Sendable`/non-`Equatable` `ARView` so it can
     /// live in SwiftUI `@State` without triggering view-identity churn.
@@ -142,6 +180,11 @@ struct ARPlacementDemo: View {
         .task(id: selectedSlug?.uid) {
             await resolveSelectedSlug()
         }
+        .onDisappear {
+            // Leaving the screen retires every in-flight load: without this a
+            // model can still be attached to a scene the user has left.
+            placements.invalidate()
+        }
     }
 
     // MARK: - AR scene
@@ -153,8 +196,8 @@ struct ARPlacementDemo: View {
             showPlaneOverlay: true,
             showCoachingOverlay: true,
             onTapOnPlane: { worldPosition, arView in
-                Task { @MainActor in
-                    await placeModel(at: worldPosition, in: arView)
+                placements.run { generation in
+                    await placeModel(at: worldPosition, in: arView, generation: generation)
                 }
             }
         )
@@ -164,7 +207,7 @@ struct ARPlacementDemo: View {
     // MARK: - Placement
 
     @MainActor
-    private func placeModel(at worldPosition: SIMD3<Float>, in arView: ARView) async {
+    private func placeModel(at worldPosition: SIMD3<Float>, in arView: ARView, generation: Int) async {
         do {
             let url: URL
             let displayName: String
@@ -178,6 +221,7 @@ struct ARPlacementDemo: View {
                 // shrinking it to a tidy 0.3 m would answer a different question than
                 // the one the user opened it to ask.
                 let node = try await ModelNode.load(contentsOf: opened, unit: initialModelUnit)
+                guard placements.isCurrent(generation) else { return }
                 // Bottom-aligned so the model sits ON the detected plane rather than
                 // straddling it — `-1` on Y selects the bounding box's floor.
                 _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
@@ -201,6 +245,7 @@ struct ARPlacementDemo: View {
                     cycleIndex += 1
                 }
                 let node = try await ModelNode.load(assetName)
+                guard placements.isCurrent(generation) else { return }
                 _ = node.scaleToUnits(0.3)
                 // Bottom-aligned AFTER scaling and BEFORE anchoring: the anchor
                 // sits ON the detected surface, so a centred origin buries the
@@ -222,6 +267,7 @@ struct ARPlacementDemo: View {
                 return
             }
             let node = try await ModelNode.load(contentsOf: url)
+            guard placements.isCurrent(generation) else { return }
             // The slug's real-world size hint is the point of the picker: a
             // coffee mug at 0.10 m and a floor lamp at 1.55 m, not both at the
             // bundled cycle's 0.3 m (#2966). Applies to the fallback too — it
@@ -239,7 +285,10 @@ struct ARPlacementDemo: View {
             SceneViewHaptic.shared.light()
             #endif
             _ = displayName
+        } catch is CancellationError {
+            // The screen moved on — nothing to report.
         } catch {
+            guard placements.isCurrent(generation) else { return }
             lastError = "Could not place model: \(error.localizedDescription)"
         }
     }
@@ -248,6 +297,9 @@ struct ARPlacementDemo: View {
     /// Safe to call when nothing is placed — the loop simply does nothing.
     @MainActor
     private func clearAllPlacedModels() {
+        // Before removing anything: a load still in flight would otherwise
+        // attach its model a second after the user cleared the scene.
+        placements.invalidate()
         if let arView = arViewRef.value {
             for anchor in placedAnchors {
                 arView.scene.removeAnchor(anchor)
@@ -387,11 +439,18 @@ struct ARPlacementDemo: View {
         }
         armedURL = nil
         do {
-            armedURL = try await SketchfabAssetResolver.shared.resolve(slug)
+            let resolved = try await SketchfabAssetResolver.shared.resolve(slug)
+            // The selection may have moved on while this was resolving; arming
+            // then would place the model the user just deselected.
+            guard !Task.isCancelled, selectedSlug?.uid == slug.uid else { return }
+            armedURL = resolved
+        } catch is CancellationError {
+            // Superseded by a newer selection — leave that one's state alone.
         } catch {
             // Silently fall back to bundled cycle for the next tap. The chip
             // stays selected; the user can re-tap to retry once the network is
             // available.
+            guard selectedSlug?.uid == slug.uid else { return }
             armedURL = nil
         }
     }
