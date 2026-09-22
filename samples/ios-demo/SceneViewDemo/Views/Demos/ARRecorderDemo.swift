@@ -25,6 +25,23 @@ struct ARRecorderDemo: View {
     /// a double-tap would enqueue two concurrent saves of the same URL
     /// (two duplicate assets in Photos). Closes reviewer MAJOR on PR #1048.
     @State private var isSavingToPhotos: Bool = false
+    /// The recording that has already been **moved** into the photo library.
+    /// `ARRecorder.saveToPhotoLibrary` moves the source file, and
+    /// `ARRecorder.lastOutputURL` is `private(set)`, so the demo remembers the
+    /// move itself: Share and Save both pointed at a URL with nothing behind
+    /// it for the rest of the session otherwise.
+    @State private var movedToPhotos: URL? = nil
+    /// Serialises start/stop. `recorder.isRecording` only flips once ReplayKit
+    /// answers, so a second tap arriving while a start was still pending read
+    /// "not recording" and started a second one.
+    @State private var isTogglingRecording: Bool = false
+    /// The in-flight "Save to Photos" hop, cancelled on dismissal.
+    @State private var saveTask: Task<Void, Never>? = nil
+
+    /// Whether `url` is still a file this screen can share or save.
+    private func isExportable(_ url: URL) -> Bool {
+        url != movedToPhotos && FileManager.default.fileExists(atPath: url.path)
+    }
 
     var body: some View {
         ZStack {
@@ -44,14 +61,7 @@ struct ARRecorderDemo: View {
             }
         }
         .background(Color.black)
-        .onDisappear {
-            // Cancel any in-flight Task on disappear so awaited
-            // continuations don't try to mutate `statusMessage` /
-            // `lastFileSize` on a destroyed view. The recorder itself
-            // continues; `ARRecorder.stopRecording()` must be called
-            // explicitly to stop capture (closes Agent A MAJOR).
-            activeTask?.cancel()
-        }
+        .onDisappear(perform: teardown)
     }
 
     // MARK: - AR view
@@ -128,10 +138,11 @@ struct ARRecorderDemo: View {
                     .background(recorder.isRecording ? Color.red : Color.accentColor)
                     .clipShape(Capsule())
                 }
-                .disabled(!recorder.isAvailable && !recorder.isRecording)
+                .disabled(isTogglingRecording || (!recorder.isAvailable && !recorder.isRecording))
+                .opacity(isTogglingRecording ? 0.6 : 1)
             }
 
-            if let url = recorder.lastOutputURL {
+            if let url = recorder.lastOutputURL, isExportable(url) {
                 VStack(spacing: 6) {
                     Text(url.lastPathComponent)
                         .font(.caption2.monospaced())
@@ -165,6 +176,15 @@ struct ARRecorderDemo: View {
                 }
             }
 
+            if let url = recorder.lastOutputURL, !isExportable(url) {
+                Text(url == movedToPhotos
+                     ? "Saved to Photos — the recording now lives in your library."
+                     : "The recording file is no longer on disk.")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
+
             Text("iOS records the screen only (no deterministic playback). The MP4 opens in Photos.")
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.6))
@@ -179,10 +199,12 @@ struct ARRecorderDemo: View {
     // MARK: - Actions
 
     private func toggleRecording() {
-        // Cancel any prior in-flight task so we don't end up with two
-        // overlapping start/stop hops mutating state on a disposed view.
-        activeTask?.cancel()
+        // One start/stop hop at a time — the button is disabled while this is
+        // true, and the flag is the backstop for a tap that races the disable.
+        guard !isTogglingRecording else { return }
+        isTogglingRecording = true
         activeTask = Task {
+            defer { isTogglingRecording = false }
             if recorder.isRecording {
                 do {
                     let url = try await recorder.stopRecording()
@@ -206,6 +228,29 @@ struct ARRecorderDemo: View {
         }
     }
 
+    /// Dismissal owns the recording.
+    ///
+    /// Cancelling `activeTask` only detaches this view from the result — it
+    /// cannot stop ReplayKit, which has no cancellation handler behind
+    /// `ARRecorder.startRecording()`. Capture therefore ran on over whatever
+    /// screen came next. Teardown now waits for a **pending start** to settle
+    /// (awaiting the cancelled task, which resumes when ReplayKit calls back)
+    /// and then stops the recorder, in an unstructured task that deliberately
+    /// outlives the view.
+    private func teardown() {
+        saveTask?.cancel()
+        saveTask = nil
+        let pending = activeTask
+        activeTask = nil
+        let recorder = self.recorder
+        Task { @MainActor in
+            pending?.cancel()
+            _ = await pending?.value
+            guard recorder.isRecording else { return }
+            _ = try? await recorder.stopRecording()
+        }
+    }
+
     private func humanFileSize(_ bytes: Int) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
@@ -221,14 +266,19 @@ struct ARRecorderDemo: View {
         // Defensive: extra guard in case @State race lets the action
         // fire while the button is mid-transition to disabled.
         guard !isSavingToPhotos else { return }
-        activeTask?.cancel()
+        // Its own task: cancelling `activeTask` here used to detach a pending
+        // record/stop hop from its result mid-flight.
+        saveTask?.cancel()
         isSavingToPhotos = true
-        activeTask = Task {
+        saveTask = Task {
             defer { isSavingToPhotos = false }
             statusMessage = "Saving to Photos…"
             do {
                 let localID = try await ARRecorder.saveToPhotoLibrary(url)
                 if Task.isCancelled { return }
+                // The save MOVED the file. Retire the URL before anything can
+                // offer it again.
+                movedToPhotos = url
                 if let localID {
                     statusMessage = "Saved to Photos (\(localID))"
                 } else {

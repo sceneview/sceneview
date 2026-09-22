@@ -225,6 +225,12 @@ demos:
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS detects a body and follows the
+      body anchor's pose, but reads no per-joint data — ARKit's 91-joint
+      `ARSkeleton3D` is not surfaced through a SceneView node type. The
+      catalogue names it "Body anchor tracking" for that reason. Android
+      renders the skeleton.
   - id: ar-cloud-anchor
     androidStatus: Working
     iosStatus: working
@@ -245,9 +251,19 @@ demos:
   - id: ar-face
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS tracks the face ANCHOR via
+      TrueDepth and pins accessories to its pose. RealityKit exposes no
+      morphable face mesh through its standard API, so there is no mesh
+      deformation as on Android's ARCore face-mesh shader — the catalogue names
+      it "Face anchor accessories" rather than "Augmented Faces".
   - id: ar-image
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS detects and tracks the bundled
+      reference image and follows its anchor. Runtime image-database editing
+      (adding a user-supplied image at runtime) is not wired up.
   - id: ar-orbital
     androidStatus: Working
     iosStatus: working
@@ -257,6 +273,11 @@ demos:
   - id: ar-placement
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: tap-to-place, bottom-aligned on the
+      plane with grounding shadows, is live. The raycast is fixed to
+      `.estimatedPlane` — `ARSceneView` exposes no alignment policy — so there
+      is no "wait for a converged plane" mode as on Android.
   - id: ar-plane-node
     androidStatus: Working
     iosStatus: working
@@ -269,6 +290,12 @@ demos:
   - id: ar-record-playback
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS records the SCREEN via
+      ReplayKit, not the ARKit session, so there is no session playback as on
+      Android — and ReplayKit offers no cancellation, so a capture is stopped
+      explicitly rather than cancelled. Saving to Photos moves the file out of
+      the app's container.
   - id: ar-rerun
     androidStatus: Working
     iosStatus: working
@@ -363,9 +390,10 @@ demos:
     androidStatus: Working
     iosStatus: android-only
     reason: >-
-      No iOS screen — the AR-specific fog demo (#1717) is not ported; distinct
-      from the non-AR `fog` id, which IS working on iOS. Its coming-soon Scene
-      stub was deleted in #3231.
+      Removed on iOS: RealityKit has no depth-based fog. The AR fog demo
+      (#1717) is not ported, and the non-AR `fog` screen — which faked the
+      effect with a translucent volume — was removed rather than kept as a
+      look-alike. Its coming-soon Scene stub was deleted in #3231.
   - id: ar-geospatial-anchors
     androidStatus: KnownIssue
     iosStatus: android-only

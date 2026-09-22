@@ -4,8 +4,8 @@ import RealityKit
 import ARKit
 import SceneViewSwift
 
-/// Instant Placement demo — tap to place a model before plane detection has fully
-/// converged.
+/// Estimated-plane placement demo — tap to place a model before plane detection
+/// has fully converged.
 ///
 /// Mirrors the Android `ARInstantPlacementDemo` (`samples/android-demo/.../ARInstantPlacementDemo.kt`)
 /// which leverages ARCore's `Config.InstantPlacementMode.LOCAL_Y_UP`. On iOS,
@@ -13,25 +13,18 @@ import SceneViewSwift
 /// `ARView.raycast(...)` against `.estimatedPlane` alignment, which returns hits
 /// before plane geometry has fully converged.
 ///
-/// ### Honest-subset note — what the toggle actually does
+/// ### Honest-subset note — there is no mode to toggle
 ///
 /// `ARSceneView`'s tap raycast (`ARSceneView.swift` `handleTap`) is hardcoded to
-/// `allowing: .estimatedPlane, alignment: .any`. It has no per-call hook to switch
-/// raycast alignment, so **both toggle positions place models through the same
-/// `.estimatedPlane` raycast** — taps always land before plane geometry has fully
-/// converged.
+/// `allowing: .estimatedPlane, alignment: .any`, with no per-call hook to switch
+/// alignment. An earlier "Instant Placement" toggle here only hid the plane and
+/// coaching overlays while placing through that same raycast either way, so it
+/// claimed a mode switch it could not perform — it has been removed rather than
+/// faked. Taps already land on estimated planes, before geometry converges.
 ///
-/// The toggle is therefore a *coaching/overlay* switch, not a raycast-mode switch:
-///
-/// - **Instant Placement ON** — no plane overlay, no coaching overlay. The UI
-///   encourages tapping straight away on the estimated-plane raycast.
-/// - **Instant Placement OFF** — plane overlay + coaching overlay are shown, so
-///   the user can wait for a converged plane before tapping. The raycast itself
-///   is identical; only the visual guidance differs.
-///
-/// A true per-mode `existingPlane` vs `estimatedPlane` switch would require an
-/// alignment parameter on `ARSceneView`'s tap raycast — tracked as a future API
-/// addition rather than faked at the demo layer.
+/// A real `existingPlane` vs `estimatedPlane` policy needs an alignment
+/// parameter on `ARSceneView`'s tap raycast. When the SDK grows one, the choice
+/// comes back as a genuine control.
 ///
 /// ### Streaming pipeline (Stage 2, issue #1152)
 ///
@@ -47,7 +40,6 @@ struct ARInstantPlacementDemo: View {
         ("animated_butterfly", "Butterfly"),
     ]
 
-    @State private var instantEnabled: Bool = true
     @State private var cycleIndex: Int = 0
     @State private var selectedSlug: SketchfabSlug?
     @State private var armedURL: URL?
@@ -58,6 +50,10 @@ struct ARInstantPlacementDemo: View {
     /// Weak handle on the live `ARView`, captured from the tap callback, so the
     /// clear-all control can remove anchors from `arView.scene`.
     @State private var arViewRef: ARViewBox = ARViewBox()
+
+    /// In-flight placement loads, shared with ``ARPlacementDemo`` — see
+    /// ``PlacementTaskTracker``.
+    @State private var placements = PlacementTaskTracker()
 
     /// Reference box for the non-`Sendable`/non-`Equatable` `ARView` so it can
     /// live in SwiftUI `@State` without triggering view-identity churn.
@@ -85,20 +81,21 @@ struct ARInstantPlacementDemo: View {
     var body: some View {
         ZStack {
             #if !targetEnvironment(simulator)
-            // Rebuild the ARSceneView when the toggle flips so the new raycast
-            // alignment takes effect. Mirrors Android's `key(instantEnabled)`
-            // rebuild.
             ARSceneView(
                 planeDetection: .horizontal,
-                showPlaneOverlay: !instantEnabled,
-                showCoachingOverlay: !instantEnabled,
+                showPlaneOverlay: true,
+                // No coaching overlay here, unlike the other AR demos.
+                // `ARCoachingOverlayView` activates itself before any plane has
+                // converged and covers the camera until one has — which is
+                // precisely the window this demo exists to show. The plane
+                // overlay and the status pill carry the guidance instead.
+                showCoachingOverlay: false,
                 onTapOnPlane: { worldPosition, arView in
-                    Task { @MainActor in
-                        await placeModel(at: worldPosition, in: arView)
+                    placements.run { generation in
+                        await placeModel(at: worldPosition, in: arView, generation: generation)
                     }
                 }
             )
-            .id("instant-placement-\(instantEnabled)")
             .ignoresSafeArea()
             #else
             simulatorPlaceholder
@@ -118,7 +115,10 @@ struct ARInstantPlacementDemo: View {
                 Spacer()
             }
         }
-        .demoChrome { controlsSheet }
+        // `.ar`: the stage is the camera feed, so the chrome grounds itself
+        // per control instead of dimming the frame with scrim bands.
+        .demoChrome(chromeMode: .ar) { controlsSheet }
+        .onDisappear { placements.invalidate() }
         .task {
             _ = await SketchfabAssetResolver.shared.prefetchAll(category: "ar_placement")
         }
@@ -130,22 +130,32 @@ struct ARInstantPlacementDemo: View {
     // MARK: - Placement
 
     @MainActor
-    private func placeModel(at worldPosition: SIMD3<Float>, in arView: ARView) async {
+    private func placeModel(at worldPosition: SIMD3<Float>, in arView: ARView, generation: Int) async {
         do {
             let node: ModelNode
             if let slug = selectedSlug, let url = armedURL {
                 node = try await ModelNode.load(contentsOf: url)
+                // Same rule as ARPlacementDemo: a load that finished after
+                // Clear all, or after the screen was left, drops its model.
+                guard placements.isCurrent(generation) else { return }
                 // Honour the slug's real-world size hint, as ARPlacementDemo
                 // does — the bundled cycle alone is normalised to 0.3 m (#2966).
                 _ = node.scaleToUnits(slug.scaleToUnits)
-                _ = node.centerOrigin()
+                _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             } else {
                 let entry = Self.bundledCycle[cycleIndex % Self.bundledCycle.count]
                 cycleIndex += 1
                 node = try await ModelNode.load(entry.name)
+                guard placements.isCurrent(generation) else { return }
                 _ = node.scaleToUnits(0.3)
-                _ = node.centerOrigin()
+                _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             }
+            // Bottom-aligned above, AFTER scaling and BEFORE anchoring: the
+            // anchor sits ON the surface, so a centred origin buries the lower
+            // half of the model. Grounding shadows are applied here, where the
+            // model is actually attached — the SDK's own pass only covers
+            // anchors added synchronously inside `onTapOnPlane`.
+            _ = node.withGroundingShadow()
             let anchor = AnchorNode.world(position: worldPosition)
             anchor.add(node.entity)
             arView.scene.addAnchor(anchor.entity)
@@ -154,6 +164,8 @@ struct ARInstantPlacementDemo: View {
             #if os(iOS)
             SceneViewHaptic.shared.light()
             #endif
+        } catch is CancellationError {
+            // Retired on purpose — not an error to surface.
         } catch {
             // Silently keep the user in tap-to-retry mode (Android parity).
         }
@@ -163,6 +175,9 @@ struct ARInstantPlacementDemo: View {
     /// Safe to call when nothing is placed — the loop simply does nothing.
     @MainActor
     private func clearAllPlacedModels() {
+        // Retire in-flight loads first, so one cannot attach a model to the
+        // scene the user has just emptied.
+        placements.invalidate()
         if let arView = arViewRef.value {
             for anchor in placedAnchors {
                 arView.scene.removeAnchor(anchor)
@@ -179,19 +194,6 @@ struct ARInstantPlacementDemo: View {
     @ViewBuilder
     private var controlsSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Toggle(isOn: $instantEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(instantEnabled ? "Instant Placement ON" : "Instant Placement OFF")
-                        .font(.subheadline.weight(.semibold))
-                    Text(instantEnabled
-                         ? "Overlays hidden — tap anywhere, ARKit approximates a pose immediately."
-                         : "Plane + coaching overlays shown — wait for a plane, then tap inside it.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .tint(.blue)
-
             Text("Pick what to place")
                 .font(.subheadline.weight(.semibold))
 
@@ -230,7 +232,7 @@ struct ARInstantPlacementDemo: View {
             }
             .disabled(placedCount == 0)
 
-            Text("iOS port note: ARKit doesn't expose ARCore's `InstantPlacementMode.LOCAL_Y_UP` directly. Taps always use an `.estimatedPlane` raycast so they land before planes fully converge. The toggle here only shows/hides the plane + coaching overlays — it does not change the raycast alignment.")
+            Text("iOS port note: ARKit doesn't expose ARCore's `InstantPlacementMode.LOCAL_Y_UP`. Taps here always use an `.estimatedPlane` raycast, so they land before planes fully converge — but that is the only behaviour available, not a mode you can pick.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -266,19 +268,7 @@ struct ARInstantPlacementDemo: View {
     }
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to test Instant Placement.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "bolt.fill", message: "Run on iPhone or iPad to place models in AR.")
     }
 
     @MainActor

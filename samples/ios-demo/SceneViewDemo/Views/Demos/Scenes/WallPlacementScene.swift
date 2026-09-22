@@ -305,7 +305,9 @@ struct WallPlacementDemoView: View {
                     .padding(.bottom, 180)
             }
         }
-        .demoChrome { controlsSheet }
+        // `.ar`: the stage is the camera feed, so the chrome grounds itself
+        // per control instead of dimming the frame with scrim bands.
+        .demoChrome(chromeMode: .ar) { controlsSheet }
         // The error capsule is this port's own addition (Android shows no such
         // banner), so it also owns dismissing itself: a user who taps a
         // non-wall once and then walks away must not be left with a red

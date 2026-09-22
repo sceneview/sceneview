@@ -154,20 +154,7 @@ struct ARPeopleOcclusionDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "person.fill.viewfinder")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("People occlusion requires a real camera feed and A12+ chip.\nPlace virtual cubes — walk in front to watch them hide behind real people.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "person.fill.viewfinder", message: "People occlusion requires a real camera feed and A12+ chip.\nPlace virtual cubes — walk in front to watch them hide behind real people.")
     }
 }
 

@@ -142,7 +142,9 @@ private struct PlacementSceneDemoView: View {
                 Spacer()
             }
         }
-        .demoChrome { controlsSheet }
+        // `.ar`: the stage is the camera feed, so the chrome grounds itself
+        // per control instead of dimming the frame with scrim bands.
+        .demoChrome(chromeMode: .ar) { controlsSheet }
     }
 
     // MARK: - AR scene
@@ -173,7 +175,9 @@ private struct PlacementSceneDemoView: View {
         do {
             let node = try await ModelNode.load(Self.modelName)
             _ = node.scaleToUnits(0.3)
-            _ = node.centerOrigin()
+            // Bottom-aligned after scaling, before anchoring — the anchor is ON
+            // the surface, so a centred origin buries the model's lower half.
+            _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             // Explicit — not reliant on ARSceneView's automatic
             // `groundingShadows` application, which only fires for anchors
             // added synchronously inside `onTapOnPlane` (see the
@@ -260,19 +264,7 @@ private struct PlacementSceneDemoView: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to scan a surface and tap to place a model.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "mappin.and.ellipse", message: "Run on iPhone or iPad to scan a surface and tap to place a model.")
     }
 }
 #endif

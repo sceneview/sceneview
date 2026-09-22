@@ -19,13 +19,17 @@ struct VideoTextureDemo: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            sceneView
-            playPauseButton
-        }
-        .background(Color.black)
-        .demoChrome { settingsSheet }
-        .task { buildVideoNode() }
+        sceneView
+            .background(Color.black)
+            // Play/pause belongs in the dock, with the rest of the chrome. As a
+            // free-floating circle in the bottom-right corner it sat in the
+            // home-indicator band, overlapping the dock and hugging the screen
+            // edge instead of respecting the layout's own margins.
+            .demoChrome(dock: [
+                DockItem(icon: isPlaying ? "pause.fill" : "play.fill",
+                         label: isPlaying ? "Pause" : "Play") { togglePlayback() }
+            ]) { settingsSheet }
+            .task { buildVideoNode() }
     }
 
     // MARK: - Scene
@@ -55,29 +59,6 @@ struct VideoTextureDemo: View {
         // left the viewport black on iOS 26 Simulator (#3008).
         .contentID(videoNode.map { ObjectIdentifier($0.entity) })
         .ignoresSafeArea()
-    }
-
-    // MARK: - Play/Pause overlay button
-
-    private var playPauseButton: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Button {
-                    togglePlayback()
-                } label: {
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title2)
-                        .foregroundStyle(.white)
-                        .frame(width: 48, height: 48)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                }
-                .padding(.bottom, 24)
-                .padding(.trailing, 24)
-            }
-        }
     }
 
     // MARK: - Settings sheet
@@ -122,7 +103,12 @@ struct VideoTextureDemo: View {
         // The previous node is about to leave the scene — stop its player so
         // it does not keep playing audio from a detached entity.
         videoNode?.pause()
-        let node = VideoNode.load("sample", width: 2.4, height: 1.35, loop: isLooping)
+        // The extension is required, not optional: `VideoNode.load` splits the
+        // name on "." and treats the last component as the extension, so
+        // "sample" resolved to an empty base name with extension "sample",
+        // found nothing in the bundle, and fell through to a bogus file path.
+        // The plane rendered black and nothing ever played.
+        let node = VideoNode.load("sample.mp4", width: 2.4, height: 1.35, loop: isLooping)
         node.entity.position = SIMD3(0, 0.3, -3)
         node.muted(isMuted)
         if isPlaying { node.play() }

@@ -25,11 +25,12 @@ public struct DemoChromeModifier<Controls: View>: ViewModifier {
     let dock: [DockItem]
     let accent: DockItem?
     let onReset: (() -> Void)?
+    let chromeMode: DemoChromeMode
     let controls: () -> Controls
 
     public func body(content: Content) -> some View {
         DemoScaffold(title, dock: dock, accent: accent, onReset: onReset,
-                     stage: { content }, controls: controls)
+                     chromeMode: chromeMode, stage: { content }, controls: controls)
     }
 }
 
@@ -43,6 +44,50 @@ extension EnvironmentValues {
     var demoTitle: String? {
         get { self[DemoTitleKey.self] }
         set { self[DemoTitleKey.self] = newValue }
+    }
+}
+
+// MARK: - AR stage without a camera
+
+/// What an AR demo shows when there is no camera to draw on: the simulator.
+///
+/// Theme-independent, exactly like the AR chrome that floats over it. Before
+/// this, each demo hand-rolled the same stack with `.secondary` text on
+/// `systemGroupedBackground` — light grey on near-white, which the audit
+/// captures caught as unreadable in light mode, and which put an ordinary app
+/// surface under chrome designed for a camera frame. The ground is the same
+/// deep gradient the AR tab already used.
+struct ARUnavailableStage: View {
+    /// SF Symbol naming the capability the demo would have shown.
+    let icon: String
+    /// One sentence: what a real device would do here.
+    let message: String
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.10, blue: 0.18),
+                    Color(red: 0.18, green: 0.18, blue: 0.28),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            VStack(spacing: SceneViewTokens.Space.md) {
+                Image(systemName: icon)
+                    .font(.system(size: 60))
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                    .accessibilityHidden(true)
+                Text("AR requires a physical device")
+                    .font(.headline)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, SceneViewTokens.Space.xl)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -107,10 +152,11 @@ public extension View {
         dock: [DockItem] = [],
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage,
         @ViewBuilder controls: @escaping () -> Controls
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
-                                    controls: controls))
+                                    chromeMode: chromeMode, controls: controls))
     }
 
     /// ``DemoScaffold`` with no controls of the demo's own — the sheet still
@@ -119,9 +165,10 @@ public extension View {
         title: String? = nil,
         dock: [DockItem] = [],
         accent: DockItem? = nil,
-        onReset: (() -> Void)? = nil
+        onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
-                                    controls: { EmptyView() }))
+                                    chromeMode: chromeMode, controls: { EmptyView() }))
     }
 }

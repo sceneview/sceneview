@@ -294,20 +294,7 @@ struct OrbitalARDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "circle.dotted")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to see 8 models orbit around you.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "circle.dotted", message: "Run on iPhone or iPad to see 8 models orbit around you.")
     }
 
     // MARK: - Status pill

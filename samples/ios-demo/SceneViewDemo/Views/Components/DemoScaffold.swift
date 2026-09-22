@@ -12,7 +12,9 @@ import SceneViewSwift
 /// - the floating dock, 8 pt above the home-indicator safe area (16 pt from the
 ///   edge on a Home-button iPhone) — a demo never pads its own bottom;
 /// - one 16 pt horizontal margin for every block;
-/// - the scrim bands that keep white chrome legible over any scene;
+/// - the scrim bands that keep white chrome legible over any scene — except in
+///   ``DemoChromeMode/ar``, where the stage is a camera feed and each control
+///   carries its own `ar-scrim` ground instead;
 /// - the settings sheet (detents, themed surface, keyboard, Reset / feedback / QA);
 /// - Dynamic Type (chrome capped at XXL, the sheet scales freely), VoiceOver
 ///   order (back → title → scene → accessory → dock) and Reduce Motion.
@@ -36,12 +38,26 @@ import SceneViewSwift
 /// `motion-fade`, the top row drops and the bottom cluster rises on
 /// `motion-spring`, an option change slides the selection on `motion-spring`.
 /// Under Reduce Motion nothing translates or scales — the fades stay.
+/// What the scaffold's stage actually is, and therefore how the chrome grounds
+/// itself.
+public enum DemoChromeMode {
+    /// A 3D scene the app renders. The scrim bands apply: the scene can be any
+    /// brightness, and white chrome has to read over all of them.
+    case stage
+    /// A live camera feed. No bands — darkening 160 pt of sky and 220 pt of
+    /// floor dims the one thing the user pointed the phone at, and it does so
+    /// permanently, on every AR screen. Controls get an `ar-scrim` ground the
+    /// size of themselves instead.
+    case ar
+}
+
 public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
     private let title: String?
     private let dock: [DockItem]
     private let accent: DockItem?
     private let onReset: (() -> Void)?
     private let hasControls: Bool
+    private let chromeMode: DemoChromeMode
     private let stage: Stage
     private let accessory: Accessory
     private let controls: Controls
@@ -51,6 +67,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.demoTitle) private var presenterTitle
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Read here, outside the chrome's pinned dark scheme, so the AR ground
+    /// resolves against the user's real appearance as `DESIGN.md` specifies.
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     public init(
@@ -58,6 +77,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         dock: [DockItem] = [],
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage,
         @ViewBuilder stage: () -> Stage,
         @ViewBuilder accessory: () -> Accessory = { EmptyView() },
         @ViewBuilder controls: () -> Controls = { EmptyView() }
@@ -67,6 +87,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         self.accent = accent
         self.onReset = onReset
         self.hasControls = Controls.self != EmptyView.self
+        self.chromeMode = chromeMode
         self.stage = stage()
         self.accessory = accessory()
         self.controls = controls()
@@ -83,7 +104,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
                     .opacity(entered ? 1 : 0)
                     .accessibilitySortPriority(2)
 
-                scrims
+                if chromeMode == .stage {
+                    scrims
+                }
 
                 chrome(bottomInset: Metrics.dockBottom(safeArea: proxy.safeAreaInsets.bottom)
                        - proxy.safeAreaInsets.bottom)
@@ -161,6 +184,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         // Chrome over media is theme-independent: pin the material and every
         // asset colour to their dark variant so light mode cannot wash it out.
         .environment(\.colorScheme, .dark)
+        .environment(\.arChromeGround,
+                     chromeMode == .ar ? SceneViewTokens.ARChrome.scrim(colorScheme) : nil)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 

@@ -59,9 +59,13 @@ struct ARPlaneNodeDemo: View {
             // our own handlers.
             let forwarder = PlaneDelegate(
                 wrapped: arView.session.delegate,
-                onAdded: { anchor in
+                // `[weak arView]` throughout: the forwarder is retained BY the
+                // ARView as an associated object, so a strong capture here
+                // closes a cycle and the whole AR session outlives the screen.
+                onAdded: { [weak arView] anchor in
                     guard let plane = anchor as? ARPlaneAnchor else { return }
                     DispatchQueue.main.async {
+                        guard let arView else { return }
                         let marker = makeMarker(for: plane, in: arView)
                         planeMarkers[plane.identifier] = marker
                         arView.scene.addAnchor(marker)
@@ -77,11 +81,11 @@ struct ARPlaneNodeDemo: View {
                         planeCount = planeMarkers.count
                     }
                 },
-                onRemoved: { anchor in
+                onRemoved: { [weak arView] anchor in
                     guard let plane = anchor as? ARPlaneAnchor,
                           let marker = planeMarkers[plane.identifier] else { return }
                     DispatchQueue.main.async {
-                        arView.scene.removeAnchor(marker)
+                        arView?.scene.removeAnchor(marker)
                         planeMarkers[plane.identifier] = nil
                         planeCount = planeMarkers.count
                     }
@@ -92,6 +96,26 @@ struct ARPlaneNodeDemo: View {
             // collect it (ARSession holds a weak delegate reference).
             objc_setAssociatedObject(arView, &AssocKey.delegate, forwarder, .OBJC_ASSOCIATION_RETAIN)
         }
+        .onDisappear(perform: teardown)
+    }
+
+    /// Deterministic teardown. Leaving the forwarder installed keeps the
+    /// session delegate pointing at a dead screen, and leaving the associated
+    /// object in place keeps the forwarder — and the markers it holds — alive
+    /// for as long as the ARView lives.
+    private func teardown() {
+        if let arView = capturedARView {
+            if let forwarder = arView.session.delegate as? PlaneDelegate {
+                arView.session.delegate = forwarder.wrapped
+            }
+            objc_setAssociatedObject(arView, &AssocKey.delegate, nil, .OBJC_ASSOCIATION_RETAIN)
+            for marker in planeMarkers.values {
+                arView.scene.removeAnchor(marker)
+            }
+        }
+        planeMarkers.removeAll()
+        planeCount = 0
+        capturedARView = nil
     }
 
     // `objc_setAssociatedObject` needs the address of a global var as its
@@ -121,7 +145,7 @@ struct ARPlaneNodeDemo: View {
     /// Session-delegate forwarder: wraps the existing `ARSceneView` Coordinator
     /// and calls our closures for plane anchors.
     private final class PlaneDelegate: NSObject, ARSessionDelegate {
-        private weak var wrapped: ARSessionDelegate?
+        weak var wrapped: ARSessionDelegate?
         private let onAdded: (ARAnchor) -> Void
         private let onUpdated: (ARAnchor) -> Void
         private let onRemoved: (ARAnchor) -> Void
