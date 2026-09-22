@@ -1,7 +1,16 @@
 package io.github.sceneview.demo.common.placement
 
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
+import dev.romainguy.kotlin.math.degrees
+import dev.romainguy.kotlin.math.inverse
+import dev.romainguy.kotlin.math.length
+import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
+import io.github.sceneview.math.Rotation
 import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 /**
@@ -17,8 +26,184 @@ import kotlin.math.roundToInt
  *    percentage of that size which **snaps back to 100 %** — [PlacementScale];
  *  - it **grows into place** rather than popping in at full size — [PlacementEntrance];
  *  - the screen says **one** short thing at a time, and stops talking once the user has
- *    understood the interaction — [placementCoaching].
+ *    understood the interaction — [placementCoaching];
+ *  - a two-finger twist turns the object **on the floor**, never off it —
+ *    [PlacementRotation] for the algebra, [PlacementHierarchy] for the split of roles
+ *    across the two nodes that makes the algebra hold.
  */
+
+// ── Rotation ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Yaw-only rotation semantics for a placed model
+ * ([#3735](https://github.com/sceneview/sceneview/issues/3735)).
+ *
+ * `NodeGestureDelegate` builds a two-finger twist as `Quaternion.fromAxisAngle(Y_AXIS, …)`
+ * and applies it with `node.quaternion *= rotationDelta` — a **right**-multiplication, so
+ * the delta is expressed in the **node's own local frame**. That is the correct and
+ * documented SDK behaviour, and it is a yaw only for as long as the node's local Y still
+ * points along the anchor's up axis.
+ *
+ * The demo used to break exactly that precondition. The per-asset placement correction
+ * (`DemoMath.placementRotationFor` — `Rotation(x = -90f)` for the Z-up Khronos helmet) was
+ * applied **to the editable node itself**, which lays that node's local Y flat: `Rx(-90)`
+ * maps `(0, 1, 0)` onto `(0, 0, -1)`. Twisting then turned the helmet about a *horizontal*
+ * axis — it tumbled instead of pivoting. Every other bundled model has a zero correction,
+ * which is why only the helmet was ever reported.
+ *
+ * The fix is structural, not arithmetic: the editable node keeps an identity-then-pure-yaw
+ * rotation, and the asset correction moves to a **non-editable content child** underneath
+ * it. The two orientations then compose in the other order, and the twist is a yaw about
+ * the anchor's up axis whatever the asset needed to stand up. See `PivotedModelNode`, the one
+ * composable every placement screen builds that hierarchy through.
+ *
+ * The invariant every function here exists to pin: the rotation a twist applies **in the
+ * anchor's frame** — `current ∘ rest⁻¹`, i.e. [appliedInAnchorFrame] — must be a pure yaw,
+ * so a vector that was vertical before the twist is still vertical after it.
+ */
+object PlacementRotation {
+
+    /** The anchor's up axis, and the only axis a twist may turn the object around. */
+    val UP = Float3(y = 1f)
+
+    /**
+     * Reference direction used to read a yaw angle back out of a quaternion. Mirrors the
+     * SDK's `quaternionYawDegrees`, which projects the rotated `(0, 0, 1)` onto the XZ
+     * plane — meaningful for the pure-yaw quaternions this object deals in.
+     */
+    private val FORWARD = Float3(z = 1f)
+
+    /** The rotation a twist of [degrees] contributes, about [UP]. */
+    fun yawDelta(degrees: Float): Quaternion = Quaternion.fromAxisAngle(UP, degrees)
+
+    /**
+     * Accumulates one twist onto the editable node's local rotation.
+     *
+     * [pivot] starts at identity and only ever gains [yawDelta]s, so it stays a pure yaw
+     * and its local Y stays the anchor's up axis — which is what makes the SDK's
+     * right-multiplication the right thing here. Re-normalized each step so a long drag of
+     * small deltas cannot accumulate float error into a non-unit quaternion.
+     */
+    fun twist(pivot: Quaternion, degrees: Float): Quaternion =
+        normalize(pivot * yawDelta(degrees))
+
+    /**
+     * The content's orientation in the anchor's frame: the editable node's yaw, then the
+     * asset's own standing-up correction.
+     */
+    fun contentOrientation(pivot: Quaternion, assetCorrection: Quaternion): Quaternion =
+        normalize(pivot * assetCorrection)
+
+    /**
+     * The pre-#3735 composition, kept only so the tests can show what it did: the twist
+     * multiplied a node that **already carried** [assetCorrection], putting the correction
+     * on the left and the yaw on the right.
+     */
+    fun legacyContentOrientation(assetCorrection: Quaternion, degrees: Float): Quaternion =
+        normalize(assetCorrection * yawDelta(degrees))
+
+    /**
+     * The rotation the twist actually applied **in the anchor's frame**: `current ∘ rest⁻¹`.
+     *
+     * Asset-agnostic on purpose — it never needs to know which axis the model was authored
+     * up. Whatever the model's rest pose is, the residual must be a pure yaw.
+     */
+    fun appliedInAnchorFrame(current: Quaternion, rest: Quaternion): Quaternion =
+        normalize(current * inverse(rest))
+
+    /** The yaw of [quaternion], in degrees, in `-180..180`. */
+    fun yawDegrees(quaternion: Quaternion): Float {
+        val direction = quaternion * FORWARD
+        return degrees(atan2(direction.x, direction.z))
+    }
+
+    /**
+     * How far [quaternion] tips [UP] away from vertical, in degrees — pitch and roll in a
+     * single number. Zero for any pure yaw; `0` is the whole contract of this file.
+     */
+    fun tiltDegrees(quaternion: Quaternion): Float {
+        val up = quaternion * UP
+        val cosine = (up.y / length(up)).coerceIn(-1f, 1f)
+        return degrees(acos(cosine))
+    }
+}
+
+/**
+ * Which node in a placed model's hierarchy carries which editing right, and which one
+ * carries the asset's standing-up correction
+ * ([#3735](https://github.com/sceneview/sceneview/issues/3735)).
+ *
+ * [PlacementRotation] pins the *algebra* — that composing a yaw with a correction in this
+ * order leaves the twist a yaw. This object pins the *wiring*, and it is the thing
+ * `PivotedModelNode` actually reads to build the two nodes: the flags it sets and the rest
+ * rotation it gives each node come from here and from nowhere else. Putting the correction
+ * back on the node the twist turns is therefore not something a call site can do on its
+ * own — it means editing [pivot] or [content], which is what
+ * [PlacementInteractionTest] asserts against.
+ *
+ * What this cannot pin is that the composable calls it at all, or that Filament builds the
+ * two nodes in that relationship — a Filament node needs an engine and cannot exist on the
+ * JVM. That half is the device pass.
+ */
+object PlacementHierarchy {
+
+    /**
+     * The editable node: the one the finger's twist turns.
+     *
+     * It is deliberately geometry-free, so it is never the node a hit test returns; the
+     * gesture reaches it by bubbling up from the content child, which declines rotation.
+     * Its rest rotation is identity and it only ever accumulates yaw, so its local Y stays
+     * the anchor's up axis — the precondition that makes the SDK's right-multiplied delta
+     * a yaw (see [PlacementRotation]).
+     *
+     * Position is refused so a drag bubbles further up to the `AnchorNode`, the only node
+     * that can move in AR; scale is refused so the pinch stops at the content below, which
+     * owns the real-world-size percentage.
+     */
+    fun pivot(): PlacementNodeRole = PlacementNodeRole(
+        isEditable = true,
+        isPositionEditable = false,
+        isRotationEditable = true,
+        isScaleEditable = false,
+        restRotation = Rotation(),
+    )
+
+    /**
+     * The content node: the one that renders, and the only one with a collider — so it is
+     * the node the finger actually touches, and it must stay `isEditable` for the touch to
+     * be treated as an edit rather than leaking to the camera manipulator.
+     *
+     * It carries [assetCorrection] and refuses rotation, which is the whole fix: the
+     * correction can lay this node's local Y flat as much as the asset needs, because no
+     * twist is ever applied here.
+     */
+    fun content(assetCorrection: Rotation): PlacementNodeRole = PlacementNodeRole(
+        isEditable = true,
+        isPositionEditable = false,
+        isRotationEditable = false,
+        isScaleEditable = true,
+        restRotation = assetCorrection,
+    )
+}
+
+/**
+ * One node's editing rights and rest rotation — see [PlacementHierarchy].
+ *
+ * Every field maps to a property the SDK's `Node` already has. Note that each `is*Editable`
+ * flag is gated by [isEditable] (`get() = isEditable && field`), so `false` there makes the
+ * other three moot; and that a `false` flag does not swallow the gesture, it *forwards* it
+ * to the parent — which is how a node can absorb the touch and edit nothing.
+ */
+data class PlacementNodeRole(
+    val isEditable: Boolean,
+    val isPositionEditable: Boolean,
+    val isRotationEditable: Boolean,
+    val isScaleEditable: Boolean,
+    val restRotation: Rotation,
+) {
+    /** [restRotation] as the SDK stores it — `Node.rotation`'s setter is `fromEuler`. */
+    val restOrientation: Quaternion get() = Quaternion.fromEuler(restRotation)
+}
 
 // ── Scale ────────────────────────────────────────────────────────────────────────────────
 

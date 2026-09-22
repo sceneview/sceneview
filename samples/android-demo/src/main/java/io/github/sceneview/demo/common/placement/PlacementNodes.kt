@@ -11,12 +11,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
+import io.github.sceneview.SceneScope
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 
@@ -29,13 +32,18 @@ import io.github.sceneview.node.ModelNode as ModelNodeImpl
  *
  * 1. **One finger drags the anchor, not the model.** The model node is explicitly
  *    `isPositionEditable = false`, which is what routes the move gesture up to the
- *    [AnchorNode][io.github.sceneview.ar.node.AnchorNode] — the only node in the pair that
+ *    [AnchorNode][io.github.sceneview.ar.node.AnchorNode] — the only node in the trio that
  *    knows how to move in AR (it detaches its anchor on move-begin, follows a per-frame
  *    ARCore hit test, and re-anchors on move-end). Left editable, the model swallowed the
  *    gesture and then failed to move at all: `NodeGestureDelegate.onMove` resolves the drag
  *    against *the parent's collider*, and an `AnchorNode` is a pose with no geometry, so
  *    the hit test returned nothing and every drag was a silent no-op. Dragging a placed
  *    model in AR has therefore never worked; this is the line that fixes it.
+ * 1-bis. **The two-finger twist turns the object on the floor, never off it** (#3735). The
+ *    node the twist edits is a bare [pivot][io.github.sceneview.SceneScope.Node] that holds
+ *    a pure yaw, and the model — with whatever rotation the asset needs to stand up — is a
+ *    **non-editable child** of it. See [PlacementRotation] for why the order matters, and
+ *    the note on the pivot below for how a gesture that lands on the child reaches it.
  * 2. **The drag stays on the surface and keeps the object's facing.** The node's `onMove`
  *    hook writes a translation-only pose instead of letting the raw hit pose through: an
  *    ARCore plane hit's rotation is defined relative to *the cast ray*, so applying it
@@ -118,21 +126,17 @@ internal fun ARSceneScope.PlacedModelNode(
         val textured = rememberTexturesSettled(ready = instance != null)
 
         instance?.let {
-            ModelNode(
+            PivotedModelNode(
                 modelInstance = it,
-                // Real-world size, not a uniform 0.3 m "demo size" (#3326).
-                scaleToUnits = placed.spec.realWorldSizeMeters,
                 // Per-asset placement correction (#1477). `rotationOverride` wins when
                 // supplied; otherwise fall back to the shared helmet −90° X correction.
-                rotation = placed.spec.rotationOverride
+                assetRotation = placed.spec.rotationOverride
                     ?: DemoMath.placementRotationFor(placed.spec.assetLocation),
+                // Real-world size, not a uniform 0.3 m "demo size" (#3326).
+                scaleToUnits = placed.spec.realWorldSizeMeters,
                 isVisible = textured,
-                isEditable = true,
-                apply = {
+                applyContent = {
                     handle.node = this
-                    // The move gesture belongs to the anchor above — see this composable's
-                    // KDoc. Rotation and scale stay here, on the object itself.
-                    isPositionEditable = false
 
                     // `scaleToUnits` has already run in the constructor, so this IS the
                     // 100 % scale.
@@ -186,6 +190,87 @@ internal fun ARSceneScope.PlacedModelNode(
             }
             node.scale = Scale(base)
         }
+    }
+}
+
+/**
+ * The two-node hierarchy every **editable** placed model in this app is built from
+ * ([#3735](https://github.com/sceneview/sceneview/issues/3735)): a geometry-free yaw pivot,
+ * with the model as its non-rotatable content child.
+ *
+ * ## Why two nodes
+ *
+ * `NodeGestureDelegate.onRotate` applies a two-finger twist with `node.quaternion *= delta`
+ * — a **right**-multiplication, so the delta is expressed in the node's **own** frame. That
+ * is a yaw for exactly as long as the node's local Y still points along the anchor's up
+ * axis, and an asset's standing-up correction is precisely what stops that being true: the
+ * Khronos helmet is authored Z-up, so `Rotation(x = -90f)` maps its local Y onto
+ * `(0, 0, -1)` and every twist came out as a pitch. The model tumbled instead of pivoting.
+ *
+ * Splitting the two jobs fixes it whatever the asset: the pivot only ever accumulates yaw
+ * and stays upright, the correction rides a child that no twist is applied to, and the two
+ * compose in the order that leaves the twist a yaw in the anchor's frame.
+ *
+ * No finger ever lands on the pivot — it has no collider. The touch lands on the model,
+ * which stays `isEditable` so `SceneView`'s dispatcher counts it as an edit rather than
+ * leaking the gesture to the camera manipulator, and which declines the axes it must not
+ * own. A declined axis does not swallow the gesture: `NodeGestureDelegate` forwards it to
+ * `node.parent`. So the twist stops at the pivot, a drag carries on past it to the
+ * `AnchorNode` — the only node that can move in AR — and a pinch is claimed by the model
+ * before it ever reaches the pivot.
+ *
+ * ## Why it is a composable and not a snippet
+ *
+ * [#3735](https://github.com/sceneview/sceneview/issues/3735) is as much about the defect
+ * being fixed in one place and left standing in another as about the defect itself. Every
+ * editable node in this app that carries a `DemoMath.placementRotationFor` correction goes
+ * through here — `PlacedModelNode` and `PointAndAskDemo` today — so there is one place to
+ * get it right. The nodes' flags and rest rotations are not written here either: they are
+ * read from [PlacementHierarchy], which is pure and unit-tested, so moving the correction
+ * back onto the node the twist turns means editing an object that has tests pointed at it.
+ *
+ * @param assetRotation the model's own standing-up correction — its business, never the
+ *   user's yaw. Pass `Rotation()` for an asset authored Y-up.
+ * @param applyContent imperative configuration for the **model** node, applied after its
+ *   role's flags so a caller can add a custom `onScale` or capture the node, but late
+ *   enough that overriding `isRotationEditable` here would be visible as exactly that.
+ */
+@Composable
+internal fun SceneScope.PivotedModelNode(
+    modelInstance: ModelInstance,
+    assetRotation: Rotation,
+    scaleToUnits: Float? = null,
+    isVisible: Boolean = true,
+    applyContent: ModelNodeImpl.() -> Unit = {},
+) {
+    val pivotRole = PlacementHierarchy.pivot()
+    val contentRole = PlacementHierarchy.content(assetRotation)
+
+    Node(
+        rotation = pivotRole.restRotation,
+        isEditable = pivotRole.isEditable,
+        apply = {
+            // The per-axis defaults are asymmetric on `Node` — position starts `false`,
+            // rotation and scale start `true` — so every axis is spelled out from the role
+            // rather than half-inherited.
+            isPositionEditable = pivotRole.isPositionEditable
+            isRotationEditable = pivotRole.isRotationEditable
+            isScaleEditable = pivotRole.isScaleEditable
+        },
+    ) {
+        ModelNode(
+            modelInstance = modelInstance,
+            scaleToUnits = scaleToUnits,
+            rotation = contentRole.restRotation,
+            isVisible = isVisible,
+            isEditable = contentRole.isEditable,
+            apply = {
+                isPositionEditable = contentRole.isPositionEditable
+                isRotationEditable = contentRole.isRotationEditable
+                isScaleEditable = contentRole.isScaleEditable
+                applyContent()
+            },
+        )
     }
 }
 
