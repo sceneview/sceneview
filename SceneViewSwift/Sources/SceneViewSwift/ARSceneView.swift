@@ -3,6 +3,7 @@ import SwiftUI
 import RealityKit
 import ARKit
 import CoreImage
+import Metal
 
 /// A SwiftUI view for augmented reality using ARKit + RealityKit.
 ///
@@ -113,9 +114,13 @@ public struct ARSceneView: UIViewRepresentable {
     ///   - imageTrackingDatabase: Set of reference images to detect. Use
     ///     `AugmentedImageNode.createImageDatabase()` or
     ///     `AugmentedImageNode.referenceImages(inGroupNamed:)` to create.
-    ///   - cameraExposure: Optional exposure compensation for the camera feed, in EV
-    ///     (exposure value) stops. When non-nil, a post-processing brightness adjustment
-    ///     is applied to the rendered frame via `ARView.renderCallbacks.postProcess`.
+    ///   - cameraExposure: Optional brightness compensation for the rendered AR frame,
+    ///     in EV (exposure value) stops. When non-nil, a post-processing brightness
+    ///     adjustment is applied to the rendered frame via
+    ///     `ARView.renderCallbacks.postProcess`. This is **rendered-frame brightness,
+    ///     not capture exposure**: it acts on the composited camera feed *and* virtual
+    ///     content after ARKit metered the capture, so it cannot recover blown
+    ///     highlights or crushed shadows.
     ///     Positive values brighten the scene; negative values darken it. A value of `0.0`
     ///     leaves the camera feed unchanged. Pass `nil` (the default) to skip any
     ///     exposure override and rely on ARKit's built-in auto-exposure.
@@ -188,7 +193,13 @@ public struct ARSceneView: UIViewRepresentable {
         return copy
     }
 
-    /// Sets an exposure compensation override for the AR camera feed.
+    /// Sets a brightness compensation override for the rendered AR frame.
+    ///
+    /// **Rendered-frame brightness, not capture exposure.** The adjustment runs on
+    /// the composited frame — camera feed and virtual content alike — after ARKit's
+    /// auto-exposure metered the capture. Use
+    /// `ARConfiguration.configurableCaptureDeviceForPrimaryCamera` for true capture
+    /// exposure control.
     ///
     /// Positive values brighten the rendered scene; negative values darken it. One stop
     /// equals a doubling or halving of brightness. Pass `nil` to remove any override and
@@ -398,7 +409,7 @@ public struct ARSceneView: UIViewRepresentable {
         // Apply camera exposure override via post-processing (iOS 15.0+).
         // Converts the EV value to a CIColorControls brightness offset and installs
         // (or removes) a post-process render callback on the ARView.
-        applyExposure(cameraExposure, to: arView)
+        applyExposure(cameraExposure, to: arView, coordinator: context.coordinator)
 
         // Diff light slots and swap entities when the caller's modifier value
         // changed since last frame. Mirrors the reactive light path in
@@ -523,30 +534,44 @@ public struct ARSceneView: UIViewRepresentable {
 
     // MARK: - Exposure helpers
 
-    /// Applies (or removes) a brightness post-process callback on `arView` to simulate
-    /// the `cameraExposure` EV override from Android's ARSceneView.
+    /// Applies (or removes) a brightness post-process callback on `arView`, the
+    /// RealityKit stand-in for Android's `cameraExposure` EV override.
     ///
-    /// An EV of `+1` doubles perceived brightness (maps to +0.5 CIColorControls
-    /// brightness), an EV of `-1` halves it (maps to -0.5). The mapping is linear and
-    /// intentionally simple — Filament on Android uses physical aperture/shutter/ISO,
-    /// but RealityKit does not expose those parameters, so a CIFilter post-process is
-    /// the closest available approximation.
+    /// **This is rendered-frame brightness, not capture exposure.** The filter runs
+    /// on the composited frame — camera feed *and* virtual content — after ARKit's
+    /// auto-exposure has already metered the capture. It brightens or darkens what
+    /// is on screen; it does not change the camera's shutter/ISO, so it cannot
+    /// recover blown highlights or crushed shadows. Real capture exposure would need
+    /// `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
+    ///
+    /// An EV of `+1` maps to +0.5 `CIColorControls` brightness, `-1` to -0.5, so
+    /// ±2 EV covers the filter's full [-1, 1] range. Filament on Android uses
+    /// physical aperture/shutter/ISO; RealityKit exposes none of those.
+    ///
+    /// Every installed post-process callback MUST write the destination texture or
+    /// RealityKit displays nothing for that frame — a black flicker, or a frozen
+    /// black screen while the condition lasts. Both failure paths below therefore
+    /// blit the source into the target instead of returning early, and the
+    /// `CIContext` is created once per view rather than once per frame.
     @available(iOS 15.0, *)
-    private func applyExposurePostProcess(_ ev: Float, to arView: ARView) {
-        arView.renderCallbacks.postProcess = { [ev] context in
+    private func applyExposurePostProcess(
+        _ ev: Float,
+        to arView: ARView,
+        cache: ExposureContextCache
+    ) {
+        arView.renderCallbacks.postProcess = { [ev, cache] context in
             guard
                 let filter = CIFilter(name: "CIColorControls"),
                 // CIImage(mtlTexture:) is failable — texture format must be supported.
                 let ciImage = CIImage(mtlTexture: context.sourceColorTexture, options: nil)
-            else { return }
-            // Map EV stops to CIColorControls brightness range [-1, 1]:
-            // each EV stop equals 0.5 brightness units so that ±2 EV covers the full range.
+            else { return ARSceneView.passThrough(context) }
             let brightness = NSNumber(value: Double(ev) * 0.5)
             filter.setValue(ciImage, forKey: kCIInputImageKey)
             filter.setValue(brightness, forKey: kCIInputBrightnessKey)
-            guard let outputImage = filter.outputImage else { return }
-            let ciContext = CIContext(mtlDevice: context.device)
-            ciContext.render(
+            guard let outputImage = filter.outputImage else {
+                return ARSceneView.passThrough(context)
+            }
+            cache.context(for: context.device).render(
                 outputImage,
                 to: context.targetColorTexture,
                 commandBuffer: context.commandBuffer,
@@ -556,7 +581,16 @@ public struct ARSceneView: UIViewRepresentable {
         }
     }
 
-    private func applyExposure(_ ev: Float?, to arView: ARView) {
+    /// Copies the unprocessed frame into the destination texture so a failed
+    /// filter degrades to "no exposure adjustment" instead of "no frame".
+    @available(iOS 15.0, *)
+    private static func passThrough(_ context: ARView.PostProcessContext) {
+        guard let blit = context.commandBuffer.makeBlitCommandEncoder() else { return }
+        blit.copy(from: context.sourceColorTexture, to: context.targetColorTexture)
+        blit.endEncoding()
+    }
+
+    private func applyExposure(_ ev: Float?, to arView: ARView, coordinator: Coordinator) {
         guard let ev = ev else {
             // Remove any previously installed post-process callback.
             if #available(iOS 15.0, *) {
@@ -565,7 +599,7 @@ public struct ARSceneView: UIViewRepresentable {
             return
         }
         if #available(iOS 15.0, *) {
-            applyExposurePostProcess(ev, to: arView)
+            applyExposurePostProcess(ev, to: arView, cache: coordinator.exposureContextCache)
         }
         // On iOS < 15 the value is stored (via the modifier / init) but silently ignored.
     }
@@ -596,7 +630,24 @@ public struct ARSceneView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
+    /// Holds the one `CIContext` used by the exposure post-process. Building a
+    /// `CIContext` per frame allocated Metal state 60 times a second; it is
+    /// created on first use and lives as long as the coordinator.
+    final class ExposureContextCache: @unchecked Sendable {
+        private var cached: CIContext?
+
+        func context(for device: MTLDevice) -> CIContext {
+            if let cached = cached { return cached }
+            let context = CIContext(mtlDevice: device)
+            cached = context
+            return context
+        }
+    }
+
     public class Coordinator: NSObject, ARSessionDelegate {
+        /// One `CIContext` per view for the exposure post-process (#exposure).
+        let exposureContextCache = ExposureContextCache()
+
         var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
         var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
         var onFrame: ((ARFrame, ARView) -> Void)?
