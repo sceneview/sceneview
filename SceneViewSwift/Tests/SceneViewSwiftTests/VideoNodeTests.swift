@@ -53,6 +53,23 @@ final class VideoNodeTests: XCTestCase {
         XCTAssertEqual(resolved.lastPathComponent, "clip.m4v")
     }
 
+    func testResolvesAnExistingFileOnDiskThatHasNoExtension() throws {
+        // A path on disk is a documented input and a file can genuinely have no
+        // extension: the name as given must be checked before the mp4/mov/m4v
+        // variants are tried.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("clip")
+        try Data([0x00]).write(to: file)
+
+        let resolved = try VideoNode.resolveVideoURL(named: file.path)
+        XCTAssertEqual(resolved.lastPathComponent, "clip")
+    }
+
     func testLoadOfMissingResourceReturnsAnEmptyPlayerRatherThanABogusURL() {
         let node = VideoNode.load("sample_video_that_does_not_exist")
         // No item at all — never an AVPlayer pointed at a path that does not

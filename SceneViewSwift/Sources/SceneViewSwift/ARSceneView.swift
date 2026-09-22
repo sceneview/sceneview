@@ -27,7 +27,7 @@ import Metal
 /// )
 /// ```
 /// Errors surfaced by ``ARSceneView`` through ``ARSceneView/onSessionError(_:)``.
-public enum ARSceneViewError: Error, Sendable, LocalizedError {
+public enum ARSceneViewError: Error, Sendable, Equatable, LocalizedError {
     /// `faceTracking: true` was requested on a device without a TrueDepth
     /// camera. The view does NOT silently fall back to the rear world-tracking
     /// camera: nothing is started, and the host is expected to render an
@@ -300,41 +300,22 @@ public struct ARSceneView: UIViewRepresentable {
 
         // Configure AR session — face tracking uses the front TrueDepth camera;
         // world tracking uses the rear camera for plane detection / image tracking.
-        if faceTracking {
-            // No silent fallback to the rear world camera: a device without a
-            // TrueDepth camera gets an explicit error state, not a different
-            // (and wrong) AR experience.
-            if ARFaceTrackingConfiguration.isSupported {
-                let faceConfig = ARFaceTrackingConfiguration()
-                arView.session.run(faceConfig, options: [.resetTracking, .removeExistingAnchors])
-            } else {
-                let error = ARSceneViewError.faceTrackingUnsupported
-                print("[SceneViewSwift] AR session error: \(error.localizedDescription)")
-                onSessionError?(error, arView)
-            }
-        } else {
-            let config = ARWorldTrackingConfiguration()
-            config.planeDetection = planeDetection.arPlaneDetection
-            // RealityKit's `.automatic` environment texturing is the functional
-            // equivalent of ARCore's `Config.LightEstimationMode.ENVIRONMENTAL_HDR`
-            // (Android default since v4.3.0 / `#1063`) — ARKit auto-builds the
-            // runtime cubemap that drives PBR reflections on metallic + glossy
-            // materials. There is no enum to toggle: it's on by default, off when
-            // unsupported. Closes the env-texturing half of #1138.
-            config.environmentTexturing = .automatic
-
-            // Image tracking
-            if let images = imageTrackingDatabase, !images.isEmpty {
-                config.detectionImages = images
-                config.maximumNumberOfTrackedImages = images.count
-            }
-
-            if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-                config.sceneReconstruction = .mesh
-            }
-
-            arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+        if let startError = Self.startSession(
+            on: arView,
+            faceTracking: faceTracking,
+            faceTrackingSupported: ARFaceTrackingConfiguration.isSupported,
+            planeDetection: planeDetection,
+            imageTrackingDatabase: imageTrackingDatabase
+        ) {
+            print("[SceneViewSwift] AR session error: \(startError.localizedDescription)")
+            onSessionError?(startError, arView)
+            // NOTHING ran: no delegate, no coaching overlay, no lights — and
+            // above all no `onSessionStarted`, which promises a live session and
+            // would have had the host add content to a scene that never renders.
+            // The host's error state is the whole content of this view.
+            return arView
         }
+        context.coordinator.sessionDidStart = true
         arView.session.delegate = context.coordinator
 
         // Plane visualization.
@@ -388,6 +369,56 @@ public struct ARSceneView: UIViewRepresentable {
         return arView
     }
 
+    /// Runs the AR session for this view's parameters, or returns the reason it
+    /// could not be started — in which case **no session was run at all** and
+    /// the caller must not pretend one is live.
+    ///
+    /// `faceTrackingSupported` is injected rather than read here so the
+    /// unsupported path is testable on a Simulator.
+    @MainActor
+    static func startSession(
+        on arView: ARView,
+        faceTracking: Bool,
+        faceTrackingSupported: Bool,
+        planeDetection: PlaneDetectionMode,
+        imageTrackingDatabase: Set<ARReferenceImage>?
+    ) -> ARSceneViewError? {
+        if faceTracking {
+            // No silent fallback to the rear world camera: a device without a
+            // TrueDepth camera gets an explicit error state, not a different
+            // (and wrong) AR experience.
+            guard faceTrackingSupported else { return .faceTrackingUnsupported }
+            arView.session.run(
+                ARFaceTrackingConfiguration(),
+                options: [.resetTracking, .removeExistingAnchors]
+            )
+            return nil
+        }
+
+        let config = ARWorldTrackingConfiguration()
+        config.planeDetection = planeDetection.arPlaneDetection
+        // RealityKit's `.automatic` environment texturing is the functional
+        // equivalent of ARCore's `Config.LightEstimationMode.ENVIRONMENTAL_HDR`
+        // (Android default since v4.3.0 / `#1063`) — ARKit auto-builds the
+        // runtime cubemap that drives PBR reflections on metallic + glossy
+        // materials. There is no enum to toggle: it's on by default, off when
+        // unsupported. Closes the env-texturing half of #1138.
+        config.environmentTexturing = .automatic
+
+        // Image tracking
+        if let images = imageTrackingDatabase, !images.isEmpty {
+            config.detectionImages = images
+            config.maximumNumberOfTrackedImages = images.count
+        }
+
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            config.sceneReconstruction = .mesh
+        }
+
+        arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+        return nil
+    }
+
     public func updateUIView(_ arView: ARView, context: Context) {
         context.coordinator.onTapOnPlane = onTapOnPlane
         // Reactive too: a host that supplies `onTapOnPlane` only on a later
@@ -397,6 +428,10 @@ public struct ARSceneView: UIViewRepresentable {
         context.coordinator.onImageDetected = onImageDetected
         context.coordinator.onFrame = onFrame
         context.coordinator.onSessionError = onSessionError
+        // Nothing below applies to a view whose session never started (an
+        // unsupported configuration): no coaching overlay on a dead session, no
+        // post-process on a view that renders nothing.
+        guard context.coordinator.sessionDidStart else { return }
         // Reactive like the light slots: toggling any of these flags on a later
         // render takes effect immediately. Before, `showPlaneOverlay` and
         // `showCoachingOverlay` were read once at creation, so hosts rekeyed the
@@ -661,6 +696,11 @@ public struct ARSceneView: UIViewRepresentable {
         var onFrame: ((ARFrame, ARView) -> Void)?
         /// Host handler for session failures — see ``ARSceneView/onSessionError(_:)``.
         var onSessionError: ((Error, ARView) -> Void)?
+
+        /// Whether `makeUIView` actually ran an AR session. `false` when the
+        /// requested configuration is unsupported: the view then installs no
+        /// delegate, no overlays and never calls `onSessionStarted`.
+        var sessionDidStart = false
         var planeDetection: PlaneDetectionMode
         // Tracking config that must survive an interruption — previously only
         // `planeDetection` was preserved, so any image database / mesh recon /

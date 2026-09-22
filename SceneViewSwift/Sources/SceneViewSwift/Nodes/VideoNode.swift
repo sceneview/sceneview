@@ -175,9 +175,13 @@ public struct VideoNode: @unchecked Sendable {
             }
         }
 
+        // The name as given, first and whatever its extension: a path on disk is
+        // a documented input, and a file can genuinely have no extension. Only
+        // if that misses do we try the appended variants for an extensionless
+        // name.
         let fileManager = FileManager.default
         let directURL = URL(fileURLWithPath: name)
-        if !providedExtension.isEmpty, fileManager.fileExists(atPath: directURL.path) {
+        if fileManager.fileExists(atPath: directURL.path) {
             return directURL
         }
         if providedExtension.isEmpty {
