@@ -46,6 +46,8 @@ struct TextureStreamingDemo: View {
     /// teaching: swap the material, keep the geometry.
     @State private var sphereEntity: ModelEntity?
 
+    @Environment(\.colorScheme) private var colorScheme
+
     // MARK: — Body
 
     var body: some View {
@@ -79,12 +81,25 @@ struct TextureStreamingDemo: View {
             .environment(.studio)
             .ignoresSafeArea()
 
-            // Controls overlay at the bottom.
+            // Controls overlay at the bottom. The ground under it is a
+            // photographic skybox, not a theme surface — so the card takes the
+            // AR overlay language (`ar-scrim` + `ar-scrim-border`, white text)
+            // rather than `.regularMaterial`, which was a near-white slab
+            // carrying light-grey text in light mode (DESIGN.md, "AR Overlay
+            // Card": theme-independent, for exactly this reason).
             VStack {
                 Spacer()
                 controlsOverlay
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                            .fill(SceneViewTokens.ARChrome.scrim(colorScheme))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                            .strokeBorder(SceneViewTokens.ARChrome.border(colorScheme),
+                                          lineWidth: SceneViewTokens.ARChrome.borderWidth)
+                    )
+                    .padding(SceneViewTokens.Space.md)
             }
         }
         .onChange(of: selectedIndex) { _, _ in applySelectedPreset() }
@@ -98,50 +113,71 @@ struct TextureStreamingDemo: View {
 
     @ViewBuilder
     private var controlsOverlay: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
             Text("Material")
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                .padding(.horizontal, SceneViewTokens.Space.md)
+                .padding(.top, SceneViewTokens.Space.md)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: SceneViewTokens.Space.sm) {
                     ForEach(Self.presets.indices, id: \.self) { index in
-                        let preset = Self.presets[index]
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedIndex = index
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color(preset.baseColor))
-                                    .frame(width: 12, height: 12)
-                                Text(preset.label)
-                                    .font(.subheadline)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(selectedIndex == index ? .accentColor : .secondary)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(selectedIndex == index ? Color.accentColor : Color.clear, lineWidth: 2)
-                        )
+                        chip(at: index)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, SceneViewTokens.Space.md)
             }
+            // The row is wider than the card: without a fade the last chip
+            // simply looked cut off rather than scrollable.
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 0.88),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .leading, endPoint: .trailing
+                )
+            )
 
             let preset = Self.presets[selectedIndex]
             Text(String(format: "Metallic: %.2f   Roughness: %.2f", preset.metallic, preset.roughness))
                 .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                .padding(.horizontal, SceneViewTokens.Space.md)
+                .padding(.bottom, SceneViewTokens.Space.md)
         }
+    }
+
+    private func chip(at index: Int) -> some View {
+        let preset = Self.presets[index]
+        let selected = selectedIndex == index
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) { selectedIndex = index }
+        } label: {
+            HStack(spacing: SceneViewTokens.Space.xs + 2) {
+                Circle()
+                    .fill(Color(preset.baseColor))
+                    .frame(width: 12, height: 12)
+                Text(preset.label)
+                    .font(.subheadline)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(selected
+                    ? Color.accentColor.opacity(0.35)
+                    : Color.white.opacity(0.08))
+            )
+            .overlay(
+                Capsule().strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(preset.label)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     // MARK: — Helpers
