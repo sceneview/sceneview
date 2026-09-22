@@ -104,38 +104,29 @@
     <string name="ar_reset_scene">Reset scene</string>
     <string name="ar_pick_a_model">Pick a model</string>
     <string name="ar_picker_model_label">Model</string>
-    <!-- Canonical tap-to-place picker (PlacementModelPicker.kt) — shared by the AR View
+    <!-- Canonical placement picker (PlacementModelPicker.kt) — shared by the AR View
          tab and the `ar-placement` demo (#2482). -->
     <string name="ar_picker_streaming">Streaming %1$s…</string>
     <string name="ar_picker_no_model">No model</string>
     <string name="ar_picker_source_streamed">Streamed</string>
     <string name="ar_picker_source_streaming">Streaming…</string>
-    <!-- Dock items of the tap-to-place screen. `*_label` is the accessible name, `*_caption`
+    <!-- Dock items of the placement screen. `*_label` is the accessible name, `*_caption`
          the one word drawn under the icon (DockItem). Both AR surfaces use these, so the
          demo and the AR View tab cannot word the same action differently. -->
     <string name="ar_dock_models_label">Choose a model</string>
     <string name="ar_dock_models_caption">Models</string>
-    <string name="ar_dock_clear_label">Clear every placed model</string>
-    <string name="ar_dock_clear_caption">Clear</string>
+    <string name="ar_dock_reset_label">Reset placement</string>
+    <string name="ar_dock_reset_caption">Reset</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
-    <!-- Placement coaching — ONE line at a time, Scene Viewer parity (#3326).
-         See PlacementInteraction.placementCoaching for which one shows when. -->
-    <string name="ar_coach_generic_model">this model</string>
-    <string name="ar_coach_unavailable">AR couldn\'t start — check that ARCore is available and try again</string>
-    <string name="ar_coach_point_at_surface">Point at a surface to place %1$s</string>
-    <string name="ar_coach_tap_to_place">Tap to place %1$s</string>
-    <string name="ar_coach_gesture_hint">Drag to move · two fingers to turn · pinch to resize</string>
-    <!-- Live pinch read-out, as a percentage of the object's real-world size (#3326). -->
-    <string name="ar_scale_percent">%1$d%%</string>
-    <string name="ar_scale_actual_size">100%% · actual size</string>
+    <!-- Placement coaching copy lives in strings_demo_ar_placement.xml (`ar_place_*`). -->
     <string name="ar_starting_session">Starting AR session…</string>
     <string name="ar_starting_session_subtitle">Hold up — initializing ARCore.</string>
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>
     <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this tab.</string>
 
     <!-- Featured AR demos on the AR launcher -->
-    <string name="featured_ar_placement_title">Tap to Place</string>
-    <string name="featured_ar_placement_subtitle">Tap a detected plane to place a model</string>
+    <string name="featured_ar_placement_title">Place in AR</string>
+    <string name="featured_ar_placement_subtitle">Point at the floor and the model appears</string>
     <string name="featured_ar_face_title">Augmented Faces</string>
     <string name="featured_ar_face_subtitle">Face mesh tracking and overlays</string>
     <string name="featured_ar_cloud_anchor_title">Cloud Anchors</string>
@@ -272,7 +263,7 @@
     <string name="about_feature_3d_title">3D Scenes</string>
     <string name="about_feature_3d_desc">Full Jetpack Compose integration with Filament rendering engine. Load glTF/GLB models, procedural geometry, dynamic skies, and more.</string>
     <string name="about_feature_ar_title">Augmented Reality</string>
-    <string name="about_feature_ar_desc">ARCore-powered tap-to-place, plane detection, image tracking, depth occlusion, and light estimation.</string>
+    <string name="about_feature_ar_desc">ARCore-powered automatic placement, plane detection, image tracking, depth occlusion, and light estimation.</string>
     <string name="about_feature_ai_title">AI-First SDK</string>
     <string name="about_feature_ai_desc">Designed so AI assistants can generate correct 3D/AR code on the first try. Declarative API, comprehensive docs, machine-readable references.</string>
     <string name="about_platforms_title">9 Platforms</string>

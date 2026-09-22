@@ -223,8 +223,18 @@ class PlacementInteractionTest {
         // the finger touches, and `SceneView` leaks the gesture to the camera manipulator
         // unless the hit node counts as editable.
         assertTrue(content.isEditable)
-        // Scale lives here, against this node's own fitted real-world scale.
-        assertTrue(content.isScaleEditable)
+        // The pinch does NOT live here: scaling the corrected child scales about the asset's
+        // authored origin. It bubbles to the grounded pivot (§2.3).
+        assertFalse(content.isScaleEditable)
+    }
+
+    @Test
+    fun `the pinch and the twist share the grounded pivot`() {
+        // §2.3 — both gestures act about the object's base, so the object grows up from the
+        // floor and turns on it. One node owns both, and it is the upright one.
+        val pivot = PlacementHierarchy.pivot()
+        assertTrue(pivot.isScaleEditable)
+        assertTrue(pivot.isRotationEditable)
     }
 
     @Test
@@ -235,8 +245,6 @@ class PlacementInteractionTest {
         // drag arrive there.
         assertFalse(PlacementHierarchy.pivot().isPositionEditable)
         assertFalse(PlacementHierarchy.content(Rotation()).isPositionEditable)
-        // And the pinch must not be claimed by the pivot on its way up.
-        assertFalse(PlacementHierarchy.pivot().isScaleEditable)
     }
 
     // ── PlacementScale: the 100 % detent ────────────────────────────────────
@@ -350,175 +358,99 @@ class PlacementInteractionTest {
         assertTrue(half > midpoint)
     }
 
-    // ── Coaching: one line at a time ────────────────────────────────────────
+    // ── Coaching: one line at a time (plan §2.2 copy) ───────────────────────
+
+    private fun coaching(
+        phase: PlacementPhase,
+        hint: Boolean = false,
+        dragOffSurface: Boolean = false,
+        lowLight: Boolean = false,
+    ) = placementCoaching(phase, gestureHintVisible = hint, dragOffSurface = dragOffSurface, lowLight = lowLight)
 
     @Test
-    fun `the plane discovery guide owns every pre-surface phase`() {
-        // The three states where the guide is on screen must say nothing here, or the user
-        // reads two pills making the same request in different words.
+    fun `scanning says move slowly, and nothing about tapping`() {
+        assertEquals(PlacementCoachingMessage.MOVE_SLOWLY, coaching(PlacementPhase.SCANNING))
+    }
+
+    @Test
+    fun `the phases that show a card say nothing in the pill`() {
+        // A card and a pill on the same phase is the duplication this layer exists to remove.
         listOf(
-            TapToPlaceUxState.INITIALIZING,
-            TapToPlaceUxState.TRACKING_LOST,
-            TapToPlaceUxState.SCANNING,
-        ).forEach { uxState ->
-            assertNull(
-                "$uxState belongs to PlaneDiscoveryGuide",
-                placementCoaching(uxState, placedCount = 0, gestureHintVisible = false),
-            )
+            PlacementPhase.NO_SURFACE,
+            PlacementPhase.RECOVERY_FAILED,
+            PlacementPhase.CAMERA_ERROR,
+        ).forEach { phase ->
+            assertNull("$phase belongs to the card", coaching(phase, hint = true))
+            assertNotEquals(null, placementCard(phase))
         }
     }
 
     @Test
-    fun `aiming asks the user to point, ready invites the tap`() {
+    fun `the init scrim owns the wait, so INITIALIZING says nothing`() {
+        assertNull(coaching(PlacementPhase.INITIALIZING))
+        assertNull(placementCard(PlacementPhase.INITIALIZING))
+    }
+
+    @Test
+    fun `the phases with a pill have no card`() {
+        listOf(
+            PlacementPhase.SCANNING,
+            PlacementPhase.PLACED,
+            PlacementPhase.TRACKING_LOST,
+            PlacementPhase.RECOVERING,
+        ).forEach { phase -> assertNull("$phase has no card", placementCard(phase)) }
+    }
+
+    @Test
+    fun `placed shows the gesture hint once, then goes quiet`() {
+        assertEquals(PlacementCoachingMessage.GESTURE_HINT, coaching(PlacementPhase.PLACED, hint = true))
+        assertNull(coaching(PlacementPhase.PLACED, hint = false))
+    }
+
+    @Test
+    fun `a drag off every surface outranks the hint`() {
         assertEquals(
-            PlacementCoachingMessage.POINT_AT_SURFACE,
-            placementCoaching(TapToPlaceUxState.AIMING, placedCount = 0, gestureHintVisible = false),
+            PlacementCoachingMessage.KEEP_ON_SURFACE,
+            coaching(PlacementPhase.PLACED, hint = true, dragOffSurface = true),
         )
+    }
+
+    @Test
+    fun `tracking lost pauses, and adds the light line only in low light`() {
+        assertEquals(PlacementCoachingMessage.TRACKING_PAUSED, coaching(PlacementPhase.TRACKING_LOST))
         assertEquals(
-            PlacementCoachingMessage.TAP_TO_PLACE,
-            placementCoaching(TapToPlaceUxState.READY, placedCount = 0, gestureHintVisible = false),
+            PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT,
+            coaching(PlacementPhase.TRACKING_LOST, lowLight = true),
         )
-    }
-
-    @Test
-    fun `the screen goes quiet once something is placed and the hint has expired`() {
-        assertNull(
-            placementCoaching(TapToPlaceUxState.READY, placedCount = 1, gestureHintVisible = false),
-        )
-        assertNull(
-            placementCoaching(TapToPlaceUxState.AIMING, placedCount = 3, gestureHintVisible = false),
-        )
-    }
-
-    @Test
-    fun `the gesture hint outranks the placement prompts while its window is open`() {
-        assertEquals(
-            PlacementCoachingMessage.GESTURE_HINT,
-            placementCoaching(TapToPlaceUxState.READY, placedCount = 1, gestureHintVisible = true),
-        )
-        assertEquals(
-            PlacementCoachingMessage.GESTURE_HINT,
-            placementCoaching(TapToPlaceUxState.AIMING, placedCount = 1, gestureHintVisible = true),
-        )
-    }
-
-    // -- Coaching: the "AR never started" fallback ---------------------------
-
-    @Test
-    fun `the init scrim owns the wait, so a fresh INITIALIZING says nothing`() {
-        // While the scrim is still up it is showing a spinner and "Starting camera…".
-        // A second line saying the same thing is the duplication this whole layer removed.
-        assertNull(
-            placementCoaching(
-                TapToPlaceUxState.INITIALIZING,
-                placedCount = 0,
-                gestureHintVisible = false,
-                startupStalled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun `a stalled INITIALIZING says AR could not start`() {
-        // Past the scrim's own timeout it has dismissed itself, and without this the screen
-        // is a black viewport with no words on it and no phase willing to claim it.
-        assertEquals(
-            PlacementCoachingMessage.AR_UNAVAILABLE,
-            placementCoaching(
-                TapToPlaceUxState.INITIALIZING,
-                placedCount = 0,
-                gestureHintVisible = false,
-                startupStalled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `the fallback defaults to off, so it is opt-in per call site`() {
-        assertNull(
-            placementCoaching(
-                TapToPlaceUxState.INITIALIZING,
-                placedCount = 0,
-                gestureHintVisible = false,
-            ),
-        )
-    }
-
-    @Test
-    fun `a stalled flag can never surface once a session has started`() {
-        // The load-bearing invariant. The state machine leaves INITIALIZING on the first
-        // camera frame and never returns, so a stale `true` must be unreachable from every
-        // other state — exhaustively, and under every combination of the other two inputs,
-        // because the alternative is telling a user whose AR is working that it isn't.
-        val started = TapToPlaceUxState.entries.filter { it != TapToPlaceUxState.INITIALIZING }
-        started.forEach { uxState ->
-            listOf(0, 1, 5).forEach { placedCount ->
-                listOf(false, true).forEach { hintVisible ->
-                    assertNotEquals(
-                        "$uxState must never claim AR failed to start",
-                        PlacementCoachingMessage.AR_UNAVAILABLE,
-                        placementCoaching(
-                            uxState = uxState,
-                            placedCount = placedCount,
-                            gestureHintVisible = hintVisible,
-                            startupStalled = true,
-                        ),
-                    )
-                }
-            }
-        }
-    }
-
-    @Test
-    fun `a stalled flag does not disturb the states that follow a started session`() {
-        // Same inputs as the happy-path tests above, with the stale flag set: the answers
-        // must be identical, or the fallback has leaked into the normal vocabulary.
-        assertEquals(
-            PlacementCoachingMessage.POINT_AT_SURFACE,
-            placementCoaching(
-                TapToPlaceUxState.AIMING,
-                placedCount = 0,
-                gestureHintVisible = false,
-                startupStalled = true,
-            ),
-        )
-        assertEquals(
-            PlacementCoachingMessage.TAP_TO_PLACE,
-            placementCoaching(
-                TapToPlaceUxState.READY,
-                placedCount = 0,
-                gestureHintVisible = false,
-                startupStalled = true,
-            ),
-        )
-        assertNull(
-            placementCoaching(
-                TapToPlaceUxState.SCANNING,
-                placedCount = 0,
-                gestureHintVisible = false,
-                startupStalled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `the fallback waits until after the init scrim has given up`() {
-        // Derived, not restated: if the two were equal the scrim's exit and this line's
-        // entrance would race on the same frame, and if this were the smaller number they
-        // would be on screen together saying different things about the same phase.
-        assertTrue(PLACEMENT_STARTUP_STALL_MS > AR_CAMERA_INIT_SCRIM_TIMEOUT_MS)
     }
 
     @Test
     fun `an open hint window cannot resurrect coaching over a lost camera`() {
-        // The guide is showing "move your phone" over a black or drifting frame; a stale
-        // hint window must not stack a second pill on top of it.
-        assertNull(
-            placementCoaching(
-                TapToPlaceUxState.TRACKING_LOST,
-                placedCount = 1,
-                gestureHintVisible = true,
-            ),
+        assertEquals(
+            PlacementCoachingMessage.TRACKING_PAUSED,
+            coaching(PlacementPhase.TRACKING_LOST, hint = true),
         )
+    }
+
+    @Test
+    fun `recovering says it is finding the placement`() {
+        assertEquals(PlacementCoachingMessage.FINDING_PLACEMENT, coaching(PlacementPhase.RECOVERING, hint = true))
+    }
+
+    @Test
+    fun `every phase is either a pill, a card, or the scrim`() {
+        // Exhaustive: no phase may be a black viewport with no words on it, except the one
+        // the init scrim covers.
+        PlacementPhase.entries.filter { it != PlacementPhase.INITIALIZING }.forEach { phase ->
+            val speaks = coaching(phase, hint = true) != null || placementCard(phase) != null
+            assertTrue("$phase says nothing", speaks)
+        }
+    }
+
+    @Test
+    fun `the camera-error fallback waits until after the init scrim has given up`() {
+        // Derived, not restated: if the two were equal the scrim's exit and the card's
+        // entrance would race on the same frame.
+        assertTrue(PLACEMENT_STARTUP_STALL_MS > AR_CAMERA_INIT_SCRIM_TIMEOUT_MS)
     }
 }

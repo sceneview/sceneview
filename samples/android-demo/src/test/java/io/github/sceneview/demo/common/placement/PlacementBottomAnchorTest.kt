@@ -13,7 +13,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
@@ -32,42 +31,23 @@ import org.robolectric.annotation.GraphicsMode
  * The placement screen has **one** bottom anchor, and this pins the arithmetic that makes
  * it one.
  *
- * ## The defect these tests would have caught
+ * The anchored `Column` measures itself with `onSizeChanged` **last** in its modifier
+ * chain, so it reports its content and nothing else — not the window inset, not the
+ * host's `chromeBottom + 16 dp`. Each child of the anchor carries its own 8 dp gutter as
+ * a *top* padding inside its visibility wrapper, so a hidden child contributes exactly
+ * nothing and the bottom-most visible child sits one 16 dp gutter off the dock.
  *
- * The anchored `Column` measures itself with `onSizeChanged` and hands that height back to
- * [io.github.sceneview.ar.PlaneDiscoveryGuide] as part of `bottomClearance`, so the
- * discovery pill rides above whatever the coaching line is saying. `onSizeChanged` reports
- * the size of the node **at its own point in the modifier chain** — everything declared to
- * its right, nothing to its left. Declared *first* it therefore reported the content plus
- * the window inset plus `chromeBottom + 16 dp`; `bottomClearance` then added those same two
- * terms a second time, and the pill climbed `navInset + 96 dp` too high. Worse, an empty
- * `Column` already measured `chromeBottom + 16 dp`, so the `coachStackPx > 0` guard could
- * never be false and the pill paid a gutter for a line that was not on screen.
- *
- * Both halves are asserted here on real bounds, and both are *differential*: nothing below
- * assumes the pill's own height, the banner's own height, or any constant that lives in
- * another module. What they assume is the promise:
+ * Everything below is *differential*: no assumption about the pill's own height, the
+ * banner's own height, or any constant from another module. What is assumed is the
+ * promise:
  *
  *  - the host's bottom chrome is counted **once**, so doubling `chromeBottom` moves the
- *    pill by exactly that much and not twice that much;
- *  - an empty coaching stack measures **zero**, so the guard can fire;
- *  - a non-empty one costs its own measured height and nothing else — the 8 dp gutter is
- *    *inside* that measurement, because each child of the anchor carries its own gutter as
- *    a top padding within its visibility wrapper. It used to sit outside, as a
- *    `spacedBy` on the Column plus a matching term in `bottomClearance`, and that is
- *    precisely what put a hidden child's gutter on screen: `spacedBy` pays a gap between
- *    *children*, not between *visible* ones, so a silent coaching line still bought 8 dp
- *    and the read-out sat 24 dp off the dock instead of 16.
- *
- * ## Why the window inset is not a variable here
+ *    coaching line by exactly that much and not twice that much;
+ *  - an empty coaching stack measures **zero**;
+ *  - a second child costs its own painted height plus one gutter and nothing else.
  *
  * Robolectric reports no navigation inset, so `windowInsetsPadding` contributes 0 dp in
- * every case below and the two navigation modes are indistinguishable from a JVM test.
- * That term is verified by arithmetic in the pull request instead: it enters the sum
- * exactly once, through `windowInsetsPadding` on the Column and on the guide's own pill,
- * and the regression was that `onSizeChanged` re-injected it — which is precisely what
- * [chromeBottom_isCountedExactlyOnce] detects, because the double-counting is the same
- * mechanism for both terms.
+ * every case below; [PlacementBottomAnchorSnapshotTest] dispatches one by hand.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")
@@ -84,26 +64,23 @@ class PlacementBottomAnchorTest {
 
     @Before
     fun setUp() {
-        // Camera up, tracking lost, with a reason: `PlaneDiscoveryGuideState` calls that an
-        // actionable failure and goes to LOST, the one phase where exactly ONE element
-        // carries the guide's modifier — the message pill. No forced override, because
-        // that one is a QA shim and the anchor must hold without it.
         ForcedTrackingFailure.override = null
         state.cameraReady = true
-        state.isTracking = false
-        state.trackingFailureReason = TrackingFailureReason.INSUFFICIENT_LIGHT
-        state.anyPlaneTracked = false
+        state.isTracking = true
+        // SCANNING: the coaching line ("Move slowly to find a surface.") is the one child
+        // on screen, so it is the painted edge above the dock.
+        state.phase = PlacementPhase.SCANNING
 
         composeRule.setContent {
             SceneViewDemoTheme(darkTheme = false) {
                 CompositionLocalProvider(LocalDemoChromeBottomInset provides chromeBottom) {
                     Box(Modifier.fillMaxSize()) {
-                        TapToPlaceStatusOverlays(state = state, nextModelLabel = "Sofa")
+                        TapToPlaceStatusOverlays(state = state)
                     }
                 }
             }
         }
-        composeRule.waitForIdle()
+        settle()
     }
 
     @After
@@ -112,18 +89,15 @@ class PlacementBottomAnchorTest {
     }
 
     @Test
-    fun emptyCoachingStack_measuresZero_soTheGuardCanFire() {
-        // TRACKING_LOST: `placementCoaching` returns null because the guide owns every
-        // pre-surface phase. Nothing in the Column draws, so its content is 0 dp — and
-        // only then is `coachStackPx > 0` a meaningful question.
+    fun emptyCoachingStack_measuresZero() {
+        // INITIALIZING: the init scrim speaks, the anchor says nothing at all.
+        state.phase = PlacementPhase.INITIALIZING
         chromeBottom = DOCK_BAND
-        composeRule.waitForIdle()
+        settle()
 
         assertDp(
-            "the coaching stack is empty in SCANNING, so the Column's content must " +
-                "measure 0 dp. Anything else means `onSizeChanged` is reporting padding " +
-                "— the `coachStackPx > 0` guard can then never be false, and the " +
-                "discovery pill pays a gutter for a line that is not on screen.",
+            "the coaching stack is empty in INITIALIZING, so the Column's content must " +
+                "measure 0 dp. Anything else means `onSizeChanged` is reporting padding.",
             expected = 0.dp,
             actual = coachStackContentHeight(),
         )
@@ -131,81 +105,71 @@ class PlacementBottomAnchorTest {
 
     @Test
     fun chromeBottom_isCountedExactlyOnce() {
-        // The whole blocker in one number. `chromeBottom` reaches the pill through
-        // `bottomClearance`; it must NOT also reach it through the measured stack.
         chromeBottom = 0.dp
-        composeRule.waitForIdle()
-        val withoutDock = pillTop()
+        settle()
+        val withoutDock = lineTop()
 
         chromeBottom = DOCK_BAND
-        composeRule.waitForIdle()
-        val withDock = pillTop()
+        settle()
+        val withDock = lineTop()
 
         assertDp(
             "parking an ${DOCK_BAND.value.toInt()} dp dock under the screen must lift the " +
-                "discovery pill by exactly that much. It moved by ${withoutDock - withDock}. " +
-                "Twice the dock band means `onSizeChanged` sits at the head of the Column's " +
-                "modifier chain again and is reporting the very padding `bottomClearance` " +
-                "then adds a second time.",
+                "coaching line by exactly that much. It moved by ${withoutDock - withDock}.",
             expected = DOCK_BAND,
             actual = withoutDock - withDock,
         )
     }
 
     @Test
-    fun aNonEmptyCoachingStack_costsExactlyItsOwnMeasuredHeight() {
+    fun aSecondChild_costsExactlyItsOwnPaintedHeightPlusOneGutter() {
         chromeBottom = DOCK_BAND
-        composeRule.waitForIdle()
-        val quiet = pillTop()
+        // Just placed: the one-shot gesture hint is the line. A quiet PLACED has no line
+        // at all, so this is the phase in which a read-out can share the anchor with one.
+        state.phase = PlacementPhase.PLACED
+        state.lastPlacedAtMillis = 1L
+        settle(HINT_SAFE_MS)
+        val lineOnly = coachStackContentHeight()
+        val lineTopBefore = lineTop()
 
-        // A live pinch. The read-out is the child of the anchor that can share the screen
-        // with the guide: the coaching *line* never can, by construction — it is null for
-        // every phase the guide speaks in, which is the whole point of the split. The
-        // read-out has no such rule, so "tracking dropped while two fingers were on the
-        // model" puts a pill and a stack on screen at once, and that is the configuration
-        // in which the stacking arithmetic is observable at all.
+        // A live pinch inside the hint window: the read-out stacks above the line.
         state.scalePercent = 120
-        composeRule.waitForIdle()
-        val stacked = pillTop()
-        val stack = coachStackContentHeight()
-
-        assertDp(
-            "the coaching stack must lift the pill by exactly its own measured height. " +
-                "The stack measures $stack and the pill rose by ${quiet - stacked}. Long " +
-                "by a gutter means `bottomClearance` is adding one the stack already " +
-                "contains; short means the guard read a stack that was never zero.",
-            expected = stack,
-            actual = quiet - stacked,
-        )
-
-        // …and the gutter really is in there, rather than quietly gone. The read-out's tag
-        // sits *after* its own top padding, so its bounds are the pill as painted, and the
-        // difference between the two readings is the gutter and nothing else. Without this
-        // the assertion above would still pass with every gutter deleted.
+        settle(HINT_SAFE_MS)
+        val stacked = coachStackContentHeight()
         val readout = composeRule
             .onNodeWithTag(PlacementTestTags.SCALE_READOUT)
             .getUnclippedBoundsInRoot()
+
+        // The read-out's tag sits *after* its own top padding, so its bounds are the pill
+        // as painted; the gutter is the difference and nothing else.
         assertDp(
-            "the stack measures $stack around a read-out painted " +
-                "${readout.bottom - readout.top} tall, a gutter of " +
-                "${stack - (readout.bottom - readout.top)} rather than $GUTTER. The " +
-                "anchor's children each carry their own top gutter inside their " +
-                "visibility wrapper — a hidden child must contribute neither.",
+            "the stack grew by ${stacked - lineOnly} for a read-out painted " +
+                "${readout.bottom - readout.top} tall — a gutter of " +
+                "${stacked - lineOnly - (readout.bottom - readout.top)} rather than $GUTTER.",
             expected = GUTTER,
-            actual = stack - (readout.bottom - readout.top),
+            actual = stacked - lineOnly - (readout.bottom - readout.top),
+        )
+        // …and the line, nearest the dock, did not move: the read-out stacks above it.
+        assertDp(
+            "the coaching line moved by ${lineTopBefore - lineTop()} when the read-out " +
+                "appeared above it — the anchor's fixed point is the bottom edge.",
+            expected = 0.dp,
+            actual = lineTopBefore - lineTop(),
         )
     }
 
+    private fun settle(millis: Long = 2_000) {
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(millis)
+        composeRule.waitForIdle()
+    }
+
     /**
-     * Top edge of the guide's message pill.
-     *
-     * Every padding on the pill's node — window inset, side gutter, `bottomClearance` — is
-     * applied to that same layout node, so its bounds run from the visible top of the pill
-     * to the bottom of the window. The top edge is therefore the pill's real position, and
-     * differences between two of these readings are free of the pill's own height.
+     * Top edge of the coaching line's node. Its tag sits *before* its top gutter, so this
+     * includes the gutter — a constant, cancelled by every difference below.
      */
-    private fun pillTop(): Dp = composeRule
-        .onNodeWithTag(PlacementTestTags.DISCOVERY_GUIDE)
+    private fun lineTop(): Dp = composeRule
+        .onNodeWithTag(PlacementTestTags.COACHING_LINE)
         .getUnclippedBoundsInRoot()
         .top
 
@@ -231,5 +195,8 @@ class PlacementBottomAnchorTest {
         /** `DemoDock`'s measured band on this device: 64 dp of dock + one 16 dp gutter. */
         val DOCK_BAND = 80.dp
         val GUTTER = SceneViewTokens.Space.sm
+
+        /** Past every fade, and two of them still inside the 3.5 s gesture-hint window. */
+        const val HINT_SAFE_MS = 1_000L
     }
 }

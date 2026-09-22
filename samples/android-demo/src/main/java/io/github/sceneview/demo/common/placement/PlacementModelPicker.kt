@@ -61,28 +61,29 @@ import kotlinx.coroutines.launch
  * draws between two catalogue rows.
  *
  * It is surfaced (as a caption on the streamed cards only) because it is the one thing a
- * user cannot infer from a model's name and which changes what happens on a tap: a
- * streamed row may still be downloading, and until it lands the tap places that row's own
- * bundled stand-in rather than nothing at all.
+ * user cannot infer from a model's name and which changes what happens next: a streamed
+ * row may still be downloading, and until it lands nothing is placed — the session keeps
+ * scanning and places the real file when it arrives.
  */
 enum class PlacementModelSource { Bundled, Streamed }
 
 /**
- * One row of the canonical tap-to-place model picker.
+ * One row of the canonical placement model picker.
  *
  * Deliberately *flat* — a resolved [assetLocation] and a display name, never a slug plus
  * a resolver plus an index. Both hosts (the AR View tab and the `ar-placement` demo) build
- * the same list shape, so the picker, the status pill and the placement itself all read
- * the **same** row, which is what makes "what does the next tap place?" answerable with
- * one lookup ([#2476](https://github.com/sceneview/sceneview/issues/2476)).
+ * the same list shape, so the picker and the placement itself read the **same** row, which
+ * is what makes "what is being placed?" answerable with one lookup
+ * ([#2476](https://github.com/sceneview/sceneview/issues/2476)).
  *
  * @param id Stable identity used for selection. Survives a list rebuild — an index does
  *   not, and a streamed row landing mid-session must not shift what is armed.
  * @param assetLocation `assets/`-relative path for a bundled GLB, or a `file://…` URI for
  *   a staged streamed one. NEVER null: a streamed row whose download is still in flight
- *   carries its own bundled fallback here, so a tap is never silently swallowed.
+ *   carries its own bundled fallback here for the picker's thumbnail path.
  * @param pending `true` while a streamed row's download is in flight — drives the
- *   "Streaming …" wording on the bar and on the card. The row stays placeable.
+ *   "Streaming …" wording on the card. A pending row is **not** offered to the session:
+ *   the object appears when the real file has landed, never as a stand-in.
  */
 @Immutable
 data class PlacementModel(
@@ -102,6 +103,13 @@ data class PlacementModel(
      * authored in metres (the Khronos Fox is ~140 units long).
      */
     val realWorldSizeMeters: Float = DEFAULT_REAL_WORLD_SIZE_METERS,
+    /**
+     * Whether [realWorldSizeMeters] is the asset's **measured** size (its own bounding box,
+     * or the bounds of a file the user opened) rather than an estimate of what the real
+     * object would be. Decides the pinch read-out's label: "Actual size" vs "Preview size"
+     * (plan §2.3) — the number never claims more than the asset knows.
+     */
+    val sizeIsMeasured: Boolean = false,
     val source: PlacementModelSource = PlacementModelSource.Bundled,
     val pending: Boolean = false,
 ) {
@@ -116,7 +124,7 @@ data class PlacementModel(
 }
 
 /**
- * The one bundled catalogue both tap-to-place entry points offer.
+ * The one bundled catalogue both placement entry points offer.
  *
  * Before this list existed the AR View tab carried `AR_MODELS` (6 entries, helmet first)
  * and `ARPlacementDemo` carried `MODEL_CYCLE` (5 entries) — two hand-maintained lists for
@@ -159,12 +167,14 @@ val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
         displayName = "Velvet Sofa",
         assetLocation = "models/khronos_glam_velvet_sofa.glb",
         realWorldSizeMeters = 2.19f, // measured: 2.188 m wide
+        sizeIsMeasured = true,
     ),
     PlacementModel(
         id = "sheen-chair",
         displayName = "Sheen Chair",
         assetLocation = "models/khronos_sheen_chair.glb",
         realWorldSizeMeters = 0.83f, // measured: 0.827 m wide
+        sizeIsMeasured = true,
     ),
     PlacementModel(
         id = "lantern",
@@ -177,6 +187,7 @@ val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
         displayName = "Olive Dish",
         assetLocation = "models/khronos_iridescent_dish.glb",
         realWorldSizeMeters = 0.53f, // measured: 0.532 m across
+        sizeIsMeasured = true,
     ),
     PlacementModel(
         id = "toy-car",
@@ -231,6 +242,7 @@ fun resolveRequestedExtraPlacementRow(
     if (matchesCatalogue) return null
     val isOpenedFile = location.startsWith("file://")
     val basename = location.substringAfterLast('/')
+    val measuredSize = openedSizeMeters?.takeIf { isOpenedFile && it.isFinite() && it > 0f }
     return PlacementModel(
         id = if (isOpenedFile) OPENED_FILE_PLACEMENT_ROW_ID else REQUESTED_MODEL_PLACEMENT_ROW_ID,
         displayName = (if (isOpenedFile) openedDisplayName else null)
@@ -238,9 +250,8 @@ fun resolveRequestedExtraPlacementRow(
             ?: (if (isOpenedFile) basename else basename.substringBeforeLast('.'))
                 .ifBlank { "Your file" },
         assetLocation = location,
-        realWorldSizeMeters = openedSizeMeters
-            ?.takeIf { isOpenedFile && it.isFinite() && it > 0f }
-            ?: PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS,
+        realWorldSizeMeters = measuredSize ?: PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS,
+        sizeIsMeasured = measuredSize != null,
     )
 }
 

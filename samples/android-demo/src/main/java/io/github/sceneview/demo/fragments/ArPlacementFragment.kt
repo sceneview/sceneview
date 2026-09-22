@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,9 +15,9 @@ object ArPlacementFragment : DemoFragment {
         titleRes = R.string.demo_ar_placement_title,
         subtitleRes = R.string.demo_ar_placement_subtitle,
         category = DemoCategory.AR_PLACEMENT,
-        icon = Icons.Filled.TouchApp,
+        icon = Icons.Filled.ViewInAr,
         order = 15,
-        tags = setOf("ar", "plane", "tap-to-place", "anchor", "gltf", "model", "floor", "wall", "tv"),
+        tags = setOf("ar", "plane", "auto-place", "anchor", "gltf", "model", "floor", "wall", "tv"),
     )
 
     @Composable

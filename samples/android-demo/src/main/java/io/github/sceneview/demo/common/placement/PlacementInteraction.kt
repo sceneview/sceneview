@@ -14,7 +14,7 @@ import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 /**
- * The headless core of the tap-to-place *interaction* model
+ * The headless core of the placement *interaction* model
  * ([#3326](https://github.com/sceneview/sceneview/issues/3326)) — everything about
  * placing, moving, resizing and coaching that can be decided without Compose, Filament
  * or an ARCore session, so it is pinned by pure-JVM unit tests instead of by a device.
@@ -157,14 +157,16 @@ object PlacementHierarchy {
      * a yaw (see [PlacementRotation]).
      *
      * Position is refused so a drag bubbles further up to the `AnchorNode`, the only node
-     * that can move in AR; scale is refused so the pinch stops at the content below, which
-     * owns the real-world-size percentage.
+     * that can move in AR. Scale is **accepted here**, not on the content: the pivot sits at
+     * the anchor, i.e. at the object's grounded base, so a pinch grows the object up from
+     * the floor instead of about the asset's own origin (which for a centre-origined asset
+     * sinks it into the surface — plan §2.3/§2.4, "grounded pivot").
      */
     fun pivot(): PlacementNodeRole = PlacementNodeRole(
         isEditable = true,
         isPositionEditable = false,
         isRotationEditable = true,
-        isScaleEditable = false,
+        isScaleEditable = true,
         restRotation = Rotation(),
     )
 
@@ -175,13 +177,14 @@ object PlacementHierarchy {
      *
      * It carries [assetCorrection] and refuses rotation, which is the whole fix: the
      * correction can lay this node's local Y flat as much as the asset needs, because no
-     * twist is ever applied here.
+     * twist is ever applied here. It refuses scale too, so a pinch bubbles to the grounded
+     * pivot above it.
      */
     fun content(assetCorrection: Rotation): PlacementNodeRole = PlacementNodeRole(
         isEditable = true,
         isPositionEditable = false,
         isRotationEditable = false,
-        isScaleEditable = true,
+        isScaleEditable = false,
         restRotation = assetCorrection,
     )
 }
@@ -333,98 +336,93 @@ object PlacementEntrance {
 // ── Coaching ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * The one sentence the placement screen is allowed to show, as a value rather than a
- * string — so the decision of *which* is unit-testable and the wording stays in
- * `strings.xml` where it can be translated.
+ * The one sentence the placement screen may show in its pill, as a value rather than a
+ * string — so *which* one is unit-testable and the wording stays in `strings.xml`.
+ *
+ * Exact copy per plan §2.2; nothing here asks the user to tap anything.
  */
 enum class PlacementCoachingMessage {
-    /**
-     * ARCore never started: the flow is still in
-     * [TapToPlaceUxState.INITIALIZING] long after [ARCameraInitScrim]
-     * [gave up][AR_CAMERA_INIT_SCRIM_TIMEOUT_MS] and dismissed itself.
-     *
-     * Without this the screen is a dead end — a black viewport with no words on it,
-     * because the scrim that was explaining the wait has removed itself and every other
-     * coaching state is gated on a session that will never arrive. Saying so is not an
-     * error surface; it is the coaching line telling the truth about the phase it is
-     * already responsible for.
-     */
-    AR_UNAVAILABLE,
+    /** Scanning: "Move slowly to find a surface." */
+    MOVE_SLOWLY,
 
-    /** Camera is up, a surface is tracked, but the reticle is not on one. */
-    POINT_AT_SURFACE,
+    /** Tracking lost: "Tracking paused. Move slowly." */
+    TRACKING_PAUSED,
 
-    /** The reticle is locked on a surface and nothing has been placed yet. */
-    TAP_TO_PLACE,
+    /** Tracking lost in the dark: "Try a brighter area." */
+    TRACKING_PAUSED_LOW_LIGHT,
 
-    /** Just placed — the one-shot "drag / twist / pinch" hint. */
+    /** Camera back, anchor not yet: "Finding your placement…" */
+    FINDING_PLACEMENT,
+
+    /** Just placed: "Drag to move. Pinch or twist to adjust." — once. */
     GESTURE_HINT,
+
+    /** A drag left every usable surface: "Keep the object on a surface." */
+    KEEP_ON_SURFACE,
+}
+
+/** The help cards — the three phases that need a button, not a sentence (plan §2.2). */
+enum class PlacementCard {
+    /** "No surface found." — *View in 3D* / *Keep scanning*. */
+    NO_SURFACE,
+
+    /** "Couldn't recover this placement." — *Scan again*. */
+    RECOVERY_FAILED,
+
+    /** "Camera couldn't start." — *Try again*. */
+    CAMERA_ERROR,
 }
 
 /**
- * How long the flow may sit in [TapToPlaceUxState.INITIALIZING] before the coaching line
- * concedes that AR is not going to start, milliseconds.
- *
- * Derived from the init scrim's own timeout rather than restated, so the two surfaces can
- * never both be talking (or both be silent) after someone tunes one of them: the scrim owns
- * the wait, this owns the second after it gives up.
+ * How long the flow may sit in [PlacementPhase.INITIALIZING] before it concedes that AR is
+ * not going to start, milliseconds. Derived from the init scrim's own timeout, so the scrim
+ * owns the wait and this owns the second after it gives up.
  */
 const val PLACEMENT_STARTUP_STALL_MS = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS + 1_000L
 
-/**
- * How long the post-placement gesture hint stays on screen, milliseconds. Long enough to
- * read three verbs, short enough that it is gone before the user's second placement.
- */
+/** How long the post-placement gesture hint stays on screen, milliseconds. */
 const val PLACEMENT_GESTURE_HINT_MS = 3_500L
 
 /**
- * Picks the single coaching message for the current moment, or `null` for "say nothing".
+ * Picks the single coaching sentence for the current moment, or `null` for "say nothing".
  *
- * The screen used to show three overlapping things at once — the `PlaneDiscoveryGuide`
- * pill, a top status pill and an "Aim at a surface…" hint — two of which said the same
- * thing in different words at the same time. Consumer AR apps show exactly one line, and
- * remove it as soon as the user has demonstrated they no longer need it.
- *
- * The scanning and tracking-lost phases are deliberately **not** handled here: they belong
- * to `PlaneDiscoveryGuide` (the ARCore-Elements onboarding, with its animated hand hint),
- * and duplicating them in a second pill is the collision this function exists to end.
- *
- * The initialising phase belongs to `ARCameraInitScrim` on the same terms — with one
- * exception, which is [PlacementCoachingMessage.AR_UNAVAILABLE]. That scrim dismisses
- * itself after [AR_CAMERA_INIT_SCRIM_TIMEOUT_MS] whether or not a frame ever arrived, so on
- * a device where ARCore cannot start (session creation fails, ARCore missing or too old)
- * the screen would otherwise be left as a black viewport with nothing on it and no phase
- * willing to claim it. Delegation only works while the delegate is still on screen.
- *
- * @param uxState the camera/plane/reticle state machine value.
- * @param placedCount how many models are in the scene.
- * @param gestureHintVisible whether the post-placement hint window is still open.
- * @param startupStalled whether the flow has been stuck in
- *   [TapToPlaceUxState.INITIALIZING] for [PLACEMENT_STARTUP_STALL_MS]. Only consulted in
- *   that state, so a stale `true` can never surface once a session has started — the state
- *   machine leaves `INITIALIZING` on the first camera frame and never returns.
+ * A card phase ([placementCard]) never also speaks in the pill; the placed phase speaks
+ * only for the one-shot hint or while a drag is off-surface. Scanning speaks the whole
+ * time: it is the one instruction the flow needs, because moving the phone *is* the input.
  */
 fun placementCoaching(
-    uxState: TapToPlaceUxState,
-    placedCount: Int,
+    phase: PlacementPhase,
     gestureHintVisible: Boolean,
-    startupStalled: Boolean = false,
-): PlacementCoachingMessage? = when {
-    // Nothing has started yet. The init scrim explains the wait; we only speak if it has
-    // given up and the wait turned out to be permanent.
-    uxState == TapToPlaceUxState.INITIALIZING ->
-        if (startupStalled) PlacementCoachingMessage.AR_UNAVAILABLE else null
+    dragOffSurface: Boolean = false,
+    lowLight: Boolean = false,
+): PlacementCoachingMessage? = when (phase) {
+    PlacementPhase.INITIALIZING,
+    PlacementPhase.NO_SURFACE,
+    PlacementPhase.RECOVERY_FAILED,
+    PlacementPhase.CAMERA_ERROR -> null
 
-    // PlaneDiscoveryGuide owns the rest of the pre-surface phases.
-    uxState == TapToPlaceUxState.TRACKING_LOST ||
-        uxState == TapToPlaceUxState.SCANNING -> null
+    PlacementPhase.SCANNING -> PlacementCoachingMessage.MOVE_SLOWLY
 
-    gestureHintVisible -> PlacementCoachingMessage.GESTURE_HINT
+    PlacementPhase.TRACKING_LOST ->
+        if (lowLight) {
+            PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT
+        } else {
+            PlacementCoachingMessage.TRACKING_PAUSED
+        }
 
-    // Once the user has placed something they have proven they know how; stop coaching.
-    placedCount > 0 -> null
+    PlacementPhase.RECOVERING -> PlacementCoachingMessage.FINDING_PLACEMENT
 
-    uxState == TapToPlaceUxState.AIMING -> PlacementCoachingMessage.POINT_AT_SURFACE
+    PlacementPhase.PLACED -> when {
+        dragOffSurface -> PlacementCoachingMessage.KEEP_ON_SURFACE
+        gestureHintVisible -> PlacementCoachingMessage.GESTURE_HINT
+        else -> null
+    }
+}
 
-    else -> PlacementCoachingMessage.TAP_TO_PLACE
+/** Which help card the phase shows, or `null` — the pill and the card never coexist. */
+fun placementCard(phase: PlacementPhase): PlacementCard? = when (phase) {
+    PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
+    PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
+    PlacementPhase.CAMERA_ERROR -> PlacementCard.CAMERA_ERROR
+    else -> null
 }
