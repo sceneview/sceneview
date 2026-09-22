@@ -18,19 +18,23 @@ import SceneViewSwift
 ///     }
 /// ```
 ///
-/// New demos should build on ``DemoScaffold`` directly: it also takes the
-/// `accessory` slot (option strip, hint) that a modifier cannot express well.
-public struct DemoChromeModifier<Controls: View>: ViewModifier {
+/// The `accessory` (option strip, hint, legend) and `status` (asset-source
+/// pill) slots are the scaffold's, so a finished scene gets the same bottom
+/// cluster and identity row as a scene built on ``DemoScaffold`` directly.
+public struct DemoChromeModifier<Accessory: View, Status: View, Controls: View>: ViewModifier {
     let title: String?
     let dock: [DockItem]
     let accent: DockItem?
     let onReset: (() -> Void)?
     let chromeMode: DemoChromeMode
+    let accessory: () -> Accessory
+    let status: () -> Status
     let controls: () -> Controls
 
     public func body(content: Content) -> some View {
         DemoScaffold(title, dock: dock, accent: accent, onReset: onReset,
-                     chromeMode: chromeMode, stage: { content }, controls: controls)
+                     chromeMode: chromeMode, stage: { content }, accessory: accessory,
+                     status: status, controls: controls)
     }
 }
 
@@ -147,28 +151,40 @@ struct GlassPill<Content: View>: View {
 public extension View {
     /// Wraps the scene in ``DemoScaffold``: back button, identity pill and the
     /// floating dock whose Settings item opens `controls` in a detent sheet.
-    func demoChrome<Controls: View>(
+    func demoChrome<Accessory: View, Status: View, Controls: View>(
         title: String? = nil,
         dock: [DockItem] = [],
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
         chromeMode: DemoChromeMode = .stage,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() },
+        @ViewBuilder status: @escaping () -> Status = { EmptyView() },
         @ViewBuilder controls: @escaping () -> Controls
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
-                                    chromeMode: chromeMode, controls: controls))
+                                    chromeMode: chromeMode, accessory: accessory, status: status,
+                                    controls: controls))
     }
 
     /// ``DemoScaffold`` with no controls of the demo's own — the sheet still
     /// carries Reset, Send feedback and QA mode.
-    func demoChrome(
+    ///
+    /// Disfavoured so that `.demoChrome(accessory: { … }) { controls }` keeps
+    /// binding its trailing closure to `controls` above: with both overloads
+    /// viable, the ranking otherwise preferred this one (no default used) and
+    /// the sheet content landed in the identity row's `status` slot.
+    @_disfavoredOverload
+    func demoChrome<Accessory: View, Status: View>(
         title: String? = nil,
         dock: [DockItem] = [],
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
-        chromeMode: DemoChromeMode = .stage
+        chromeMode: DemoChromeMode = .stage,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() },
+        @ViewBuilder status: @escaping () -> Status = { EmptyView() }
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
-                                    chromeMode: chromeMode, controls: { EmptyView() }))
+                                    chromeMode: chromeMode, accessory: accessory, status: status,
+                                    controls: { EmptyView() }))
     }
 }

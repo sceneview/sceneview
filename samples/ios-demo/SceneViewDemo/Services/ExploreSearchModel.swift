@@ -227,3 +227,35 @@ final class ExploreSearchModel {
         return false
     }
 }
+
+// MARK: - Feed loading
+
+/// The two pure rules behind the browse feeds' "couldn't reach" card (#3766
+/// P2 §2), kept out of the view so they can be tested without a network.
+enum ExploreFeedLoad {
+    /// Runs `operation`, or throws `CancellationError` once `timeout` elapses
+    /// first. The losing side is cancelled — a stalled `URLSession` request
+    /// gets torn down instead of lingering until its own 60 s idle limit.
+    static func withTimeout<T: Sendable>(
+        _ timeout: Duration,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw CancellationError()
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// "Unreachable" means every feed the source advertises failed *and* none
+    /// of them failed because the key was refused — that case has its own
+    /// banner and the card must not double up on it.
+    static func isUnreachable(feedCount: Int, failures: Int, rejected: Bool) -> Bool {
+        feedCount > 0 && failures == feedCount && !rejected
+    }
+}

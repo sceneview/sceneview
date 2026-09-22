@@ -287,27 +287,27 @@ struct WallPlacementDemoView: View {
             simulatorPlaceholder
             #endif
 
-            phaseBanner
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
             if phase == .aligningEdge {
                 alignmentGuide
             }
-
-            if phase == .placed {
-                dPad
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            }
-
-            if let lastError {
-                errorBanner(lastError)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 180)
-            }
         }
         // `.ar`: the stage is the camera feed, so the chrome grounds itself
-        // per control instead of dimming the frame with scrim bands.
-        .demoChrome(chromeMode: .ar) { controlsSheet }
+        // per control instead of dimming the frame with scrim bands. The
+        // coaching line, the error and the d-pad ride the accessory cluster
+        // above the dock — the coaching used to sit at the top edge, under
+        // the status bar (#3766 P2 §4).
+        .demoChrome(chromeMode: .ar, accessory: {
+            VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
+                if phase == .placed {
+                    dPad
+                }
+                if let lastError {
+                    errorBanner(lastError)
+                }
+                DemoHint(phase.coachingText)
+                    .animation(.easeInOut(duration: 0.2), value: phase)
+            }
+        }) { controlsSheet }
         // The error capsule is this port's own addition (Android shows no such
         // banner), so it also owns dismissing itself: a user who taps a
         // non-wall once and then walks away must not be left with a red
@@ -570,28 +570,18 @@ struct WallPlacementDemoView: View {
         return root
     }
 
-    // MARK: - Phase banner
+    // MARK: - Error banner
 
-    private var phaseBanner: some View {
-        Text(phase.coachingText)
-            .font(.callout)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .padding(16)
-            .animation(.easeInOut(duration: 0.2), value: phase)
-    }
-
+    /// `DESIGN.md` "AR Coaching Overlay", Blocked: the error accent on glass.
     private func errorBanner(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+            .font(SceneViewTokens.TypeScale.chromeCaption)
+            .foregroundStyle(SceneViewTokens.ARChrome.danger)
             .multilineTextAlignment(.center)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(Color.red.opacity(0.85), in: Capsule())
-            .foregroundStyle(.white)
-            .padding(.horizontal, 24)
+            .padding(.horizontal, SceneViewTokens.Glass.pillPaddingHorizontal)
+            .padding(.vertical, SceneViewTokens.Space.sm)
+            .frame(minHeight: SceneViewTokens.Glass.pillHeight)
+            .glassBackground(in: Capsule())
     }
 
     // MARK: - Orange alignment guide
@@ -634,9 +624,8 @@ struct WallPlacementDemoView: View {
             }
             dPadButton("chevron.down", label: "Nudge down") { nudge(dx: 0, dy: -Self.nudgeStep) }
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.bottom, 24)
+        .padding(SceneViewTokens.Space.sm)
+        .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
     }
 
     private func dPadButton(
@@ -713,20 +702,8 @@ struct WallPlacementDemoView: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "tv.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.secondary)
-            Text("Wall Placement")
-                .font(.headline)
-            Text("Wall detection needs ARKit world tracking, which does not run on a Simulator. Run on an iPhone or iPad to scan a floor, find a wall, and mount the TV.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "tv.fill",
+                           message: "Run on iPhone or iPad to scan a floor, find a wall and mount the TV.")
     }
 }
 

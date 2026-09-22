@@ -5,8 +5,8 @@ import SceneViewSwift
 /// Collision-based hit testing demo.
 ///
 /// Mirrors the Android `CollisionDemo` — five shapes (cubes and spheres)
-/// are placed in a row. Tapping a shape highlights it; the "Reset Colors"
-/// overlay button clears all highlights.
+/// are placed in a row. Tapping a shape highlights it; the dock's Clear (and
+/// the sheet's Reset) clears all highlights.
 ///
 /// The demo uses `SceneView.onEntityTapped` which resolves to
 /// `SpatialTapGesture().targetedToAnyEntity()` under the hood (see
@@ -40,69 +40,55 @@ struct CollisionHitTestDemo: View {
     private static let highlightColor = UIColor(red: 0.56, green: 0.25, blue: 0.94, alpha: 1.0)
 
     var body: some View {
-        ZStack {
-            SceneView { root in
-                buildScene(root: root)
-            }
-            .onEntityTapped { entity in
-                guard let idxStr = entity.name.components(separatedBy: "_").last,
-                      let idx = Int(idxStr) else { return }
-                if highlightedIndices.contains(idx) {
-                    highlightedIndices.remove(idx)
-                } else {
-                    highlightedIndices.insert(idx)
-                }
-                // Swap material on the entity in-place.
-                if let modelEntity = entity as? ModelEntity {
-                    let color = highlightedIndices.contains(idx)
-                        ? Self.highlightColor
-                        : Self.defaultColor
-                    let material = UnlitMaterial(color: color)
-                    modelEntity.model?.materials = [material]
-                }
-                #if os(iOS)
-                SceneViewHaptic.shared.light()
-                #endif
-            }
-            .cameraControls(.orbit)
-            .environment(.studio)
-            // Reset rebuilds the shapes under the same `RealityView`; a
-            // `.id(_:)` re-key would discard the renderer and intermittently
-            // leave the viewport black on iOS 26 Simulator (#3008).
-            .contentID(sceneKey)
-            .ignoresSafeArea()
-            .background(Color.black)
-
-            // On-screen "Reset Colors" overlay button — mirrors Android's
-            // SceneActionBar CTA so the user always has a way to clear highlights
-            // without opening the settings sheet.
-            VStack {
-                Spacer()
-                HStack {
-                    Text("Tap a shape to highlight it")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.6))
-                    Spacer()
-                    Button {
-                        highlightedIndices.removeAll()
-                        sceneKey = UUID()  // rebuild the content to reset materials
-                        #if os(iOS)
-                        SceneViewHaptic.shared.medium()
-                        #endif
-                    } label: {
-                        Label("Reset Colors", systemImage: "paintbrush.fill")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Capsule())
-                    }
-                    .foregroundStyle(.white)
-                    .accessibilityLabel("Reset all shape highlights")
-                }
-                .padding()
-            }
+        SceneView { root in
+            buildScene(root: root)
         }
+        .onEntityTapped { entity in
+            guard let idxStr = entity.name.components(separatedBy: "_").last,
+                  let idx = Int(idxStr) else { return }
+            if highlightedIndices.contains(idx) {
+                highlightedIndices.remove(idx)
+            } else {
+                highlightedIndices.insert(idx)
+            }
+            // Swap material on the entity in-place.
+            if let modelEntity = entity as? ModelEntity {
+                let color = highlightedIndices.contains(idx)
+                    ? Self.highlightColor
+                    : Self.defaultColor
+                let material = UnlitMaterial(color: color)
+                modelEntity.model?.materials = [material]
+            }
+            #if os(iOS)
+            SceneViewHaptic.shared.light()
+            #endif
+        }
+        .cameraControls(.orbit)
+        .environment(.studio)
+        // Reset rebuilds the shapes under the same `RealityView`; a
+        // `.id(_:)` re-key would discard the renderer and intermittently
+        // leave the viewport black on iOS 26 Simulator (#3008).
+        .contentID(sceneKey)
+        // The scaffold carries the back button, the identity pill, the
+        // legend and Reset — this screen used to draw none of them, so a
+        // deep link landed on a scene with no way out (#3766 P2 §3, §5).
+        .demoChrome(
+            dock: [
+                DockItem(icon: "paintbrush", label: "Clear",
+                         enabled: !highlightedIndices.isEmpty) { resetHighlights() }
+            ],
+            onReset: resetHighlights,
+            accessory: { DemoHint("Tap a shape to highlight it") }
+        )
+    }
+
+    /// Clears every highlight — the dock's Clear and the sheet's Reset.
+    private func resetHighlights() {
+        highlightedIndices.removeAll()
+        sceneKey = UUID()  // rebuild the content to reset materials
+        #if os(iOS)
+        SceneViewHaptic.shared.medium()
+        #endif
     }
 
     // MARK: - Scene building

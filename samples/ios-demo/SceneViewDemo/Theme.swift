@@ -500,6 +500,12 @@ enum SceneViewTokens {
         static let onScrim = Color.white
         /// `on-ar-scrim-dim` — secondary text on the scrim.
         static let onScrimDim = Color.white.opacity(0.72)
+        /// Status accents read on the scrim — the **dark-scheme** values in
+        /// both themes (`DESIGN.md` "AR Coaching Overlay": Blocked #FFB4AB,
+        /// Guidance `warning`, Positive `success`).
+        static let danger = Color(red: 0xFF / 255, green: 0xB4 / 255, blue: 0xAB / 255)
+        static let warning = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
+        static let success = Color(red: 0x16 / 255, green: 0xA3 / 255, blue: 0x4A / 255)
     }
 }
 

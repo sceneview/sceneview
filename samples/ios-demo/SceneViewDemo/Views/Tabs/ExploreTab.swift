@@ -230,6 +230,11 @@ struct ExploreTab: View {
     /// on source switch. A missing key simply drops Sketchfab from the picker
     /// (no banner), matching the Android behaviour (#2095 / #2645).
     @State private var keyRejected = false
+    /// `true` when every feed of the selected source failed to load — timed out,
+    /// offline, 5xx. Distinct from "loaded and empty": the browse area then says
+    /// so in one card with a Retry, above the bundled carousel, instead of the
+    /// heading spinner spinning until the process dies (#3766 P2 §2).
+    @State private var feedsUnreachable = false
     @State private var showSketchfabDisabledInfo = false
     /// When `true`, the Sketchfab feeds filter to `animated=true` (skeletal rigs).
     /// Ignored by the CC sources, which don't expose the flag.
@@ -329,6 +334,18 @@ struct ExploreTab: View {
                         // carousel so the tab is never blank (#2645 / #2700).
                         ForEach(selectedSource.feedKinds, id: \.self) { kind in
                             galleryFeedSection(kind: kind, models: feedsByKind[kind] ?? [])
+                        }
+                        if feedsUnreachable && !isLoadingFeeds {
+                            let failure = ExploreSearchFailure.unreachable(selectedSource.id.displayName)
+                            searchStateCard(
+                                icon: failure.icon,
+                                title: failure.title,
+                                message: failure.message,
+                                action: "Try again"
+                            ) {
+                                Task { await loadFeeds(force: true) }
+                            }
+                            .accessibilityIdentifier("explore-feeds-error")
                         }
                         if allFeedsEmpty && !isLoadingFeeds {
                             bundledFeaturedSection
@@ -537,26 +554,33 @@ struct ExploreTab: View {
         if !force && !feedsByKind.isEmpty { return }
         isLoadingFeeds = true
         keyRejected = false
+        feedsUnreachable = false
         defer { isLoadingFeeds = false }
 
         let animated = animatedOnly && source.supportsAnimatedFilter
         let results = await withTaskGroup(
-            of: (FeedKind, [GalleryModel], Bool).self
-        ) { group -> [(FeedKind, [GalleryModel], Bool)] in
+            of: (FeedKind, [GalleryModel], Bool, Bool).self
+        ) { group -> [(FeedKind, [GalleryModel], Bool, Bool)] in
             for kind in source.feedKinds {
                 group.addTask {
                     do {
-                        let models = try await source.feed(kind: kind, animatedOnly: animated, limit: 10)
-                        return (kind, models, false)
+                        // A source that never answers (simulator with no route,
+                        // captive portal, stalled TLS) used to keep the heading
+                        // spinner alive forever — `URLSession.shared` only
+                        // gives up after 60 s of *silence*, not of waiting.
+                        let models = try await ExploreFeedLoad.withTimeout(Self.feedTimeout) {
+                            try await source.feed(kind: kind, animatedOnly: animated, limit: 10)
+                        }
+                        return (kind, models, false, false)
                     } catch let SketchfabError.requestFailed(statusCode)
                         where statusCode == 401 || statusCode == 403 {
-                        return (kind, [], true)
+                        return (kind, [], true, false)
                     } catch {
-                        return (kind, [], false)
+                        return (kind, [], false, true)
                     }
                 }
             }
-            var collected: [(FeedKind, [GalleryModel], Bool)] = []
+            var collected: [(FeedKind, [GalleryModel], Bool, Bool)] = []
             for await item in group { collected.append(item) }
             return collected
         }
@@ -565,13 +589,20 @@ struct ExploreTab: View {
         guard source.id == selectedSource.id else { return }
         var byKind: [FeedKind: [GalleryModel]] = [:]
         var rejected = false
-        for (kind, models, wasRejected) in results {
+        var failures = 0
+        for (kind, models, wasRejected, failed) in results {
             byKind[kind] = models
             rejected = rejected || wasRejected
+            if failed { failures += 1 }
         }
         feedsByKind = byKind
         keyRejected = rejected
+        feedsUnreachable = ExploreFeedLoad.isUnreachable(
+            feedCount: source.feedKinds.count, failures: failures, rejected: rejected)
     }
+
+    /// How long one feed may take before the tab stops waiting for it.
+    private static let feedTimeout: Duration = .seconds(15)
 
     /// Always-visible search field for `embedded` mode. Styled after the
     /// Showcase header's own field so the two searches in the app look alike.

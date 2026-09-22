@@ -232,20 +232,24 @@ private struct ARCloudAnchorDemo: View {
             simulatorPlaceholder
             #endif
 
-            VStack(spacing: 10) {
-                statusBanner
-                if !isAnchorReady {
-                    resolveIdField
-                }
-                Spacer()
-                actionBar
-            }
-            .padding()
         }
-        .background(Color.black)
         // `.ar`: the stage is the camera feed, so the chrome grounds itself
-        // per control instead of dimming the frame with scrim bands.
-        .demoChrome(chromeMode: .ar) { controlsSheet }
+        // per control instead of dimming the frame with scrim bands. Status,
+        // resolve field and the Host / Resolve pair ride the accessory
+        // cluster above the dock — the status used to sit at the top edge,
+        // under the status bar (#3766 P2 §4).
+        .demoChrome(
+            dock: [
+                DockItem(icon: "icloud.and.arrow.up", label: "Host",
+                         enabled: ARCoreCloud.isAvailable && hostedId == nil, action: host),
+                DockItem(icon: "icloud.and.arrow.down", label: "Resolve",
+                         enabled: ARCoreCloud.isAvailable
+                             && !resolveId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                         action: resolve),
+            ],
+            chromeMode: .ar,
+            accessory: { statusBanner }
+        ) { controlsSheet }
         .task { await loadLantern() }
         .onDisappear {
             // Android: DisposableEffect(node) { onDispose { future.cancel() } }.
@@ -446,21 +450,29 @@ private struct ARCloudAnchorDemo: View {
 
     private var isError: Bool { !ARCoreCloud.isAvailable || operationFailed }
 
+    /// `DESIGN.md` "AR Coaching Overlay": one line on glass, the Blocked
+    /// accent when the backend is missing or the last operation failed.
     private var statusBanner: some View {
-        Text(statusText)
-            .font(.footnote)
-            .multilineTextAlignment(.center)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .frame(maxWidth: 340)
-            .background(isError ? Color.red.opacity(0.85) : Color.accentColor.opacity(0.85))
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+        Label {
+            Text(statusText)
+        } icon: {
+            if isError {
+                Image(systemName: "exclamationmark.triangle.fill")
+            }
+        }
+        .font(SceneViewTokens.TypeScale.chromeCaption)
+        .foregroundStyle(isError ? SceneViewTokens.ARChrome.danger : SceneViewTokens.Glass.onGlass)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, SceneViewTokens.Glass.pillPaddingHorizontal)
+        .padding(.vertical, SceneViewTokens.Space.sm)
+        .frame(minHeight: SceneViewTokens.Glass.pillHeight)
+        .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Glass.pillHeight / 2,
+                                              style: .continuous))
     }
 
-    /// On-screen resolve field — Android moved this out of its settings sheet
-    /// in #2486 precisely so the host → resolve loop is discoverable without
-    /// ever opening the sheet.
+    /// The resolve field lives in the sheet: the chrome never rides the
+    /// keyboard (`DemoScaffold`), so a field in the accessory cluster would
+    /// vanish behind it. The Resolve dock item lights up once an id is in.
     private var resolveIdField: some View {
         TextField("Cloud Anchor ID to resolve", text: $resolveId)
             .textFieldStyle(.roundedBorder)
@@ -471,55 +483,9 @@ private struct ARCloudAnchorDemo: View {
             .disabled(!ARCoreCloud.isAvailable)
     }
 
-    /// Host / Resolve are the demo's primary actions, so they live on-screen
-    /// rather than in the settings sheet (Android #1964 / #1614). Disabled
-    /// only for the genuinely-unavailable cases — no Cloud backend, or Host
-    /// after a successful host — matching Android's `enabled =` conditions.
-    private var actionBar: some View {
-        HStack(spacing: 12) {
-            actionButton("Host", systemImage: "icloud.and.arrow.up",
-                         enabled: ARCoreCloud.isAvailable && hostedId == nil,
-                         action: host)
-            actionButton("Resolve", systemImage: "icloud.and.arrow.down",
-                         enabled: ARCoreCloud.isAvailable,
-                         action: resolve)
-        }
-    }
-
-    private func actionButton(
-        _ label: String,
-        systemImage: String,
-        enabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(label, systemImage: systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(enabled ? Color.accentColor : Color.white.opacity(0.15))
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-    }
-
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "icloud.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.white.opacity(0.5))
-            Text("Cloud Anchors")
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text("Hosting and resolving Cloud Anchors needs ARKit world tracking on a physical device.")
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.7))
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ARUnavailableStage(icon: "icloud.fill",
+                           message: "Run on iPhone or iPad to host a Cloud Anchor and resolve it from another device.")
     }
 
     // MARK: - Settings sheet
@@ -530,11 +496,15 @@ private struct ARCloudAnchorDemo: View {
     private var controlsSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(
-                "Place an anchor and tap Host to share it; paste a shared id in "
-                + "the on-screen field and tap Resolve. The hosted id appears "
-                + "below once Host succeeds — copy it to resolve on another device."
+                "Place an anchor and tap Host to share it; paste a shared id "
+                + "below and tap Resolve. The hosted id appears here once Host "
+                + "succeeds — copy it to resolve on another device."
             )
             .font(.subheadline)
+
+            if !isAnchorReady {
+                resolveIdField
+            }
 
             if let hostedId {
                 Text("Hosted ID")

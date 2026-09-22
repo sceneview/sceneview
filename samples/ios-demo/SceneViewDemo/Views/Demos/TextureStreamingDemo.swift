@@ -46,138 +46,55 @@ struct TextureStreamingDemo: View {
     /// teaching: swap the material, keep the geometry.
     @State private var sphereEntity: ModelEntity?
 
-    @Environment(\.colorScheme) private var colorScheme
-
     // MARK: — Body
 
     var body: some View {
-        ZStack {
-            SceneView { root in
-                let entity = makeSphereEntity(preset: Self.presets[selectedIndex])
-                entity.name = "sphere"
-                root.addChild(entity)
-                // Re-apply once the reference is published: a preset picked
-                // between scene setup and this hop would otherwise be dropped
-                // by `applySelectedPreset()`'s nil guard. Mirrors
-                // `MultiModelDemo`, which calls `syncVisibility()` from the
-                // same hop.
-                Task { @MainActor in
-                    self.sphereEntity = entity
-                    self.applySelectedPreset()
-                }
-            }
-            // Route through the wrapper's IBL path for iOS-catalog consistency
-            // and Android parity — NOT to fix an unlit render. The sphere used
-            // to live in a raw `RealityView` overlay stacked on an empty
-            // `SceneView`; that raw path already lit the presets via RealityKit's
-            // default environment lighting (verified on the simulator 2026-07-23
-            // — gold / silver / copper read as distinct metals). But
-            // `.environment()` is defined on `SceneView`, so the raw path could
-            // never adopt the catalog's studio HDRI. Android hosts these material
-            // variants in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
-            // here is the same studio environment, aligning this demo with the
-            // rest of the iOS catalog (ModelViewerDemo / MaterialsDemo, #2114) and
-            // with Android. Follow-up to the L1.1 IBL sweep (#2805).
-            .environment(.studio)
-            .ignoresSafeArea()
-
-            // Controls overlay at the bottom. The ground under it is a
-            // photographic skybox, not a theme surface — so the card takes the
-            // AR overlay language (`ar-scrim` + `ar-scrim-border`, white text)
-            // rather than `.regularMaterial`, which was a near-white slab
-            // carrying light-grey text in light mode (DESIGN.md, "AR Overlay
-            // Card": theme-independent, for exactly this reason).
-            VStack {
-                Spacer()
-                controlsOverlay
-                    .background(
-                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                            .fill(SceneViewTokens.ARChrome.scrim(colorScheme))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                            .strokeBorder(SceneViewTokens.ARChrome.border(colorScheme),
-                                          lineWidth: SceneViewTokens.ARChrome.borderWidth)
-                    )
-                    .padding(SceneViewTokens.Space.md)
+        SceneView { root in
+            let entity = makeSphereEntity(preset: Self.presets[selectedIndex])
+            entity.name = "sphere"
+            root.addChild(entity)
+            // Re-apply once the reference is published: a preset picked
+            // between scene setup and this hop would otherwise be dropped
+            // by `applySelectedPreset()`'s nil guard. Mirrors
+            // `MultiModelDemo`, which calls `syncVisibility()` from the
+            // same hop.
+            Task { @MainActor in
+                self.sphereEntity = entity
+                self.applySelectedPreset()
             }
         }
+        // Route through the wrapper's IBL path for iOS-catalog consistency
+        // and Android parity — NOT to fix an unlit render. The sphere used
+        // to live in a raw `RealityView` overlay stacked on an empty
+        // `SceneView`; that raw path already lit the presets via RealityKit's
+        // default environment lighting (verified on the simulator 2026-07-23
+        // — gold / silver / copper read as distinct metals). But
+        // `.environment()` is defined on `SceneView`, so the raw path could
+        // never adopt the catalog's studio HDRI. Android hosts these material
+        // variants in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
+        // here is the same studio environment, aligning this demo with the
+        // rest of the iOS catalog (ModelViewerDemo / MaterialsDemo, #2114) and
+        // with Android. Follow-up to the L1.1 IBL sweep (#2805).
+        .environment(.studio)
         .onChange(of: selectedIndex) { _, _ in applySelectedPreset() }
-        .navigationTitle("Material presets")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-    }
-
-    // MARK: — Controls
-
-    @ViewBuilder
-    private var controlsOverlay: some View {
-        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
-            Text("Material")
-                .font(.caption)
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
-                .padding(.horizontal, SceneViewTokens.Space.md)
-                .padding(.top, SceneViewTokens.Space.md)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: SceneViewTokens.Space.sm) {
-                    ForEach(Self.presets.indices, id: \.self) { index in
-                        chip(at: index)
+        // The presets are the scaffold's option strip; the readout under it
+        // is the one line the demo teaches (metallic / roughness swapped on a
+        // live entity). Same chrome as every other stage demo (#3766 P2 §3, §6).
+        .demoChrome(
+            accessory: {
+                VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
+                    DemoOptionStrip(Array(Self.presets.indices), selection: $selectedIndex) {
+                        Self.presets[$0].label
                     }
+                    DemoHint(readout)
                 }
-                .padding(.horizontal, SceneViewTokens.Space.md)
             }
-            // The row is wider than the card: without a fade the last chip
-            // simply looked cut off rather than scrollable.
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: 0.88),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .leading, endPoint: .trailing
-                )
-            )
-
-            let preset = Self.presets[selectedIndex]
-            Text(String(format: "Metallic: %.2f   Roughness: %.2f", preset.metallic, preset.roughness))
-                .font(.caption2)
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
-                .padding(.horizontal, SceneViewTokens.Space.md)
-                .padding(.bottom, SceneViewTokens.Space.md)
-        }
+        )
     }
 
-    private func chip(at index: Int) -> some View {
-        let preset = Self.presets[index]
-        let selected = selectedIndex == index
-        return Button {
-            withAnimation(.easeInOut(duration: 0.2)) { selectedIndex = index }
-        } label: {
-            HStack(spacing: SceneViewTokens.Space.xs + 2) {
-                Circle()
-                    .fill(Color(preset.baseColor))
-                    .frame(width: 12, height: 12)
-                Text(preset.label)
-                    .font(.subheadline)
-                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                Capsule().fill(selected
-                    ? Color.accentColor.opacity(0.35)
-                    : Color.white.opacity(0.08))
-            )
-            .overlay(
-                Capsule().strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(preset.label)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    private var readout: String {
+        let preset = Self.presets[selectedIndex]
+        return String(format: "Metallic %.2f · Roughness %.2f", preset.metallic, preset.roughness)
     }
 
     // MARK: — Helpers

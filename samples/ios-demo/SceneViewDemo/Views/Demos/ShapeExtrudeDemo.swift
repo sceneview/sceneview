@@ -41,17 +41,10 @@ struct ShapeExtrudeDemo: View {
             // `RealityView` — never re-key the view with `.id(_:)`, which
             // intermittently leaves the scene black on iOS 26 Simulator (#3008).
             .contentID(sceneKey)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                Text("ShapeNode — 2D polygon extruded into 3D mesh")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.bottom, 12)
-            }
         }
-        .demoChrome {
+        .demoChrome(accessory: {
+            DemoHint("ShapeNode — 2D polygon extruded into 3D mesh")
+        }) {
             settingsContent
         }
         .onChange(of: selectedPreset) { _, _ in sceneKey = UUID() }
