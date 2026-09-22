@@ -149,6 +149,39 @@ ARSceneView(
 .fillLight(.systemDefault)             // v4.3.0+ — Android-parity 3 000-lux fill on by default
 ```
 
+### Session configuration and lifecycle (v4.39.0+)
+
+One value describes what the session runs; the view re-runs ARKit only when that value
+changes between renders, and re-applies it after an interruption:
+
+```swift
+ARSceneView(
+    configuration: ARSessionConfiguration(
+        mode: .worldTracking,              // or .faceTracking (TrueDepth)
+        planeDetection: .horizontal,
+        sceneReconstruction: .none,        // .mesh / .meshWithClassification need LiDAR — off by default
+        frameSemantics: []                 // e.g. [.personSegmentationWithDepth]
+    ),
+    onTapOnPlane: { position, arView in }
+)
+.onSessionEvent { event, arView in }        // .started(config), .firstFrame, .trackingStateChanged, .interrupted, .interruptionEnded, .failed(error)
+.onSessionStateChange { state, arView in }  // .starting → .running (first camera frame) → .interrupted / .failed
+.onTrackingStateChange { status, arView in } // .notAvailable, .limited(reason), .normal
+.onSessionError { error, arView in }        // ARSceneViewError.unsupported(requirement) — no session was run
+```
+
+- `ARSessionConfiguration().unmetRequirement()` tells you **before** mounting the view what
+  the device lacks (`.worldTracking`, `.faceTracking`, `.lidar`, `.frameSemantics`). An
+  unsupported configuration runs no session and reports `.unsupported` — never a
+  degraded fallback.
+- `.firstFrame` / `.running` mean the camera is on screen. Model loading is your own
+  signal; do not fold it into the session state.
+- A host that wants the events without wiring every view sets
+  `.arSessionObserver(observer)` in the environment (`ARSceneSessionObserver`).
+- `cameraExposure` is a post-process brightness on the rendered frame (camera feed and
+  virtual content together), not a capture exposure. Leave it `nil` on a plain camera
+  path; the view installs nothing and never touches a post-process you own.
+
 Environment texturing defaults to `.automatic` — RealityKit's equivalent of ARCore's
 `ENVIRONMENTAL_HDR` (which became the Android default in v4.3.0, `#1063`). PBR reflections
 are driven by runtime-built environment probes; no configuration knob is exposed.

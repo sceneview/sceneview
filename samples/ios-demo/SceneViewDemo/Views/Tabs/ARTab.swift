@@ -145,7 +145,12 @@ struct ARTab: View {
         }
         .fullScreenCover(item: $presentedDemo) { demo in
             NavigationStack {
-                demo.destination
+                ARExperienceContainer(
+                    requirement: .forScene(id: demo.id),
+                    onBack: { presentedDemo = nil }
+                ) {
+                    demo.destination
+                }
                     .navigationTitle(demo.title)
                     .navigationBarTitleInline()
                     .toolbar {
@@ -162,13 +167,18 @@ struct ARTab: View {
     /// camera session (Polycam / Reality Composer launcher pattern).
     private var liveARView: some View {
         ZStack {
+            // The camera path: permission, capability and "Starting camera…"
+            // belong to the container; the launcher CTA only decides *when*
+            // to enter. On the Simulator the container shows the Unsupported
+            // state — it never mounts a camera view there.
             #if !targetEnvironment(simulator)
-            arSceneView
-                .ignoresSafeArea()
-                .id(arViewID)
+            ARExperienceContainer(onBack: exitArSession) {
+                arSceneView
+                    .ignoresSafeArea()
+            }
+            .id(arViewID)
             #else
-            simulatorPlaceholder
-                .ignoresSafeArea()
+            ARExperienceContainer(onBack: exitArSession) { EmptyView() }
             #endif
 
             // Top status pill — centered horizontally, glass.
@@ -212,7 +222,9 @@ struct ARTab: View {
     private var arSceneView: some View {
         ARSceneView(
             planeDetection: .both,
-            showPlaneOverlay: true,
+            // AR UX plan §2.6: no plane fill on the default placement path —
+            // the coaching overlay and the reticle are the only guidance.
+            showPlaneOverlay: false,
             showCoachingOverlay: true,
             onTapOnPlane: { position, arView in
                 let selected = arModels[selectedModelIndex]
@@ -245,15 +257,6 @@ struct ARTab: View {
         }
     }
     #endif
-
-    // MARK: - Simulator placeholder
-
-    private var simulatorPlaceholder: some View {
-        ARUnavailableStage(
-            icon: "arkit",
-            message: "Run on iPhone or iPad to place 3D models in your space."
-        )
-    }
 
     // MARK: - Glass status pill (top center)
 
