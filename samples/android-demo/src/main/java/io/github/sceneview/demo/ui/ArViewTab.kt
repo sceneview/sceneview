@@ -303,6 +303,10 @@ fun ArViewTabContent(
     // recomposes away.
     val exitArSession: () -> Unit = {
         state.clearAll()
+        // A fresh holder for the next *Start AR Camera*: the state is keyed on
+        // `arSceneId`, not on `sessionStarted`, so without this bump the next
+        // session would inherit the dismissed controller.
+        arSceneId = UUID.randomUUID()
         sessionStarted = false
     }
 

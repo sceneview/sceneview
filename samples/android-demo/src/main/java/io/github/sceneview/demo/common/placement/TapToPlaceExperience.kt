@@ -65,7 +65,12 @@ fun TapToPlaceExperience(
     // row still downloading offers nothing at all.
     LaunchedEffect(state, armed?.id, armed?.assetLocation, armed?.pending) {
         val model = armed ?: return@LaunchedEffect
-        if (model.pending) return@LaunchedEffect
+        if (model.pending) {
+            // Nothing to offer yet — and the previous offer must not be placed under this
+            // row's name while its file downloads.
+            state.holdForPendingAsset()
+            return@LaunchedEffect
+        }
         val replacing = state.placedCount > 0
         val ticket = state.controller.selectModel()
         val accepted = state.offerAsset(

@@ -262,7 +262,11 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     val onBackPressed: () -> Unit = {
         when (placementBackAction(flow.phase)) {
             PlacementBackAction.RETURN_TO_CHOOSER -> {
+                // Close this session generation AND recreate the holder: `state` lives
+                // outside the phase branches, so the next camera entry would otherwise
+                // inherit a dismissed controller and an old phase.
                 state.clearAll()
+                sessionKey++
                 flow.backToChooser()
             }
 

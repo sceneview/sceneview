@@ -138,6 +138,20 @@ class TapToPlaceState internal constructor() {
         return true
     }
 
+    /**
+     * The armed row is still downloading: mint the new selection (so the previous asset's
+     * result is stale) and, while nothing stands, withdraw the previous offer so a surface
+     * found before the download lands does not place the model the picker no longer shows.
+     */
+    internal fun holdForPendingAsset() {
+        controller.selectModel()
+        if (!controller.hasPlacement) {
+            spec = null
+            controller.withdrawRequest()
+            phase = controller.phase
+        }
+    }
+
     /** Remove the anchor, keep the asset, scan again (§2.2 *Restarting placement*). */
     fun resetPlacement(nowMillis: Long = android.os.SystemClock.uptimeMillis()) {
         detachPlacement()
@@ -157,7 +171,10 @@ class TapToPlaceState internal constructor() {
      */
     fun clearAll() {
         detachPlacement()
+        spec = null
         controller.dismiss()
+        phase = controller.phase
+        cameraReady = false
     }
 
     private fun detachPlacement() {

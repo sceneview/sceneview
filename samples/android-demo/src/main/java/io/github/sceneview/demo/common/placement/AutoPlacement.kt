@@ -147,10 +147,31 @@ class AutoPlacementController {
         placementRequested = true
     }
 
-    /** The user picked another model — every in-flight asset result is now stale. */
+    /**
+     * The user picked another model — every in-flight asset result is now stale. Also the
+     * way back into a [dismiss]ed controller: the host keeps one state across chooser ↔
+     * camera round trips, so leaving the camera must not brick the next entry. A ticket
+     * minted before the dismissal still carries the old session generation and stays
+     * refused.
+     */
     fun selectModel(): AssetTicket {
+        dismissed = false
         selectionGeneration++
         return ticket
+    }
+
+    /**
+     * The selection now points at an asset that has not arrived yet (a streamed row still
+     * downloading). Nothing may be placed until it lands: the pending request is withdrawn
+     * so a surface found in the meantime does not stand the *previous* model in the room
+     * under the new row's name. A standing placement is untouched — the swap happens when
+     * the asset lands (§2.2).
+     */
+    fun withdrawRequest() {
+        if (hasPlacement) return
+        placementRequested = false
+        searchStartedAt = null
+        if (phase == PlacementPhase.NO_SURFACE) phase = PlacementPhase.SCANNING
     }
 
     /**
@@ -160,14 +181,20 @@ class AutoPlacementController {
     fun acceptsAsset(ticket: AssetTicket): Boolean =
         !dismissed && ticket == this.ticket
 
-    /** Leave the camera: nothing issued before this may ever populate the scene again. */
+    /**
+     * Leave the camera: nothing issued before this may ever populate the scene again, and
+     * no frame is acted on until the next [selectModel] opens a new session generation.
+     */
     fun dismiss() {
         dismissed = true
         sessionGeneration++
         placementRequested = false
         hasPlacement = false
+        placedAtMillis = 0L
         searchStartedAt = null
         recoveringSince = null
+        phaseBeforeLoss = PlacementPhase.SCANNING
+        phase = PlacementPhase.INITIALIZING
     }
 
     /**

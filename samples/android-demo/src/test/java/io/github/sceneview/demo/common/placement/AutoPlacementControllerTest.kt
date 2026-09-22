@@ -163,10 +163,63 @@ class AutoPlacementControllerTest {
         assertTrue(c.acceptsAsset(ticket))
         c.dismiss()
         assertFalse("a dismissed session accepts nothing", c.acceptsAsset(ticket))
-        assertFalse("not even a ticket minted after dismissal", c.acceptsAsset(c.selectModel()))
         assertFalse(c.wantsSurface)
         assertEquals(FrameEffect.NONE, c.onFrame(FrameInput(0L, true, surfaceAvailable = true)))
         assertEquals(0, c.placementsCreated)
+    }
+
+    @Test
+    fun `a new selection after dismiss opens a fresh session that places again`() {
+        // Codex review of #3766, P1: the host keeps one state across chooser ↔ camera, so
+        // Back (dismiss) followed by a re-entry must not leave a bricked controller.
+        val c = AutoPlacementController()
+        val before = c.selectModel()
+        c.requestPlacement()
+        c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
+        c.dismiss()
+        assertEquals(PlacementPhase.INITIALIZING, c.phase)
+
+        val after = c.selectModel()
+        assertFalse("the pre-dismiss ticket stays stale", c.acceptsAsset(before))
+        assertTrue("the fresh ticket is the live one", c.acceptsAsset(after))
+        c.requestPlacement()
+        assertTrue(c.wantsSurface)
+        assertEquals(FrameEffect.PLACE, c.onFrame(FrameInput(16L, true, surfaceAvailable = true)))
+        assertEquals(2, c.placementsCreated)
+    }
+
+    @Test
+    fun `withdrawing the request stops the search until the next offer`() {
+        // Codex review of #3766, P1: a streamed row picked while the previous asset is
+        // still scanning must not let a surface place the previous asset.
+        val c = AutoPlacementController()
+        c.selectModel()
+        c.requestPlacement()
+        c.onFrame(FrameInput(0L, true, surfaceAvailable = false))
+        c.selectModel()
+        c.withdrawRequest()
+        assertFalse(c.placementRequested)
+        assertFalse(c.wantsSurface)
+        repeat(20) {
+            assertEquals(FrameEffect.NONE, c.onFrame(FrameInput(16L * it, true, surfaceAvailable = true)))
+        }
+        assertEquals(0, c.placementsCreated)
+        assertEquals(PlacementPhase.SCANNING, c.phase)
+
+        // The download lands: one placement, for the new asset's request.
+        c.requestPlacement()
+        assertEquals(FrameEffect.PLACE, c.onFrame(FrameInput(1_000L, true, surfaceAvailable = true)))
+        assertEquals(1, c.placementsCreated)
+    }
+
+    @Test
+    fun `withdrawing never touches a standing placement`() {
+        val c = AutoPlacementController()
+        c.requestPlacement()
+        c.onFrame(FrameInput(0L, true, surfaceAvailable = true))
+        c.withdrawRequest()
+        assertTrue(c.hasPlacement)
+        assertEquals(PlacementPhase.PLACED, c.phase)
     }
 
     @Test
