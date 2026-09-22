@@ -302,12 +302,11 @@ public struct ARSceneView: UIViewRepresentable {
             arView.addSubview(coaching)
         }
 
-        // Tap gesture
-        let tapRecognizer = UITapGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleTap(_:))
-        )
-        arView.addGestureRecognizer(tapRecognizer)
+        // Tap gesture — installed ONLY when the host actually consumes taps.
+        // A recognizer whose callback does nothing still takes part in gesture
+        // recognition, so an unconditional one shadowed / delayed any tap
+        // recognizer the host added to the same `ARView`.
+        context.coordinator.syncTapRecognizer(on: arView, enabled: onTapOnPlane != nil)
 
         // Store reference for coordinator
         context.coordinator.arView = arView
@@ -331,6 +330,10 @@ public struct ARSceneView: UIViewRepresentable {
 
     public func updateUIView(_ arView: ARView, context: Context) {
         context.coordinator.onTapOnPlane = onTapOnPlane
+        // Reactive too: a host that supplies `onTapOnPlane` only on a later
+        // render gets the recognizer then, and one that drops it gets the
+        // recognizer removed so its own gestures are unobstructed.
+        context.coordinator.syncTapRecognizer(on: arView, enabled: onTapOnPlane != nil)
         context.coordinator.onImageDetected = onImageDetected
         context.coordinator.onFrame = onFrame
         // Reactive like the light slots: toggling the flags on a later render
@@ -607,6 +610,12 @@ public struct ARSceneView: UIViewRepresentable {
         // tear down the previous light's `AnchorEntity` before adding a new one.
         // `applied{Main,Fill}Slot` is the cached previous value; the diff is a
         // no-op when it equals the current `LightSlot`.
+        /// The SDK's own tap recognizer, installed only while `onTapOnPlane`
+        /// is non-nil so a host recognizer on the same `ARView` is never
+        /// shadowed by a no-op one. `internal` so tests can assert the
+        /// install/remove contract.
+        var tapRecognizer: UITapGestureRecognizer?
+
         var mainLightAnchor: AnchorEntity?
         var fillLightAnchor: AnchorEntity?
         var appliedMainSlot: LightSlot?
@@ -664,6 +673,13 @@ public struct ARSceneView: UIViewRepresentable {
             if let reticle = reticleAnchor { arView.scene.removeAnchor(reticle) }
             reticleAnchor = nil
 
+            // Tap recognizer — detach so the torn-down coordinator is no longer
+            // a gesture target on a view the host may keep alive.
+            if let recognizer = tapRecognizer {
+                arView.removeGestureRecognizer(recognizer)
+                tapRecognizer = nil
+            }
+
             // Stop the AR session so the camera + sensor pipeline goes idle and
             // ARKit drops its hold; detach the delegate so no late frame
             // callback fires into a torn-down coordinator.
@@ -707,6 +723,24 @@ public struct ARSceneView: UIViewRepresentable {
                 detach()
             } else {
                 DispatchQueue.main.sync(execute: detach)
+            }
+        }
+
+        /// Adds or removes the SDK tap recognizer so exactly one exists while
+        /// `enabled`, and none otherwise. Idempotent.
+        @MainActor
+        func syncTapRecognizer(on arView: ARView, enabled: Bool) {
+            if enabled {
+                guard tapRecognizer == nil else { return }
+                let recognizer = UITapGestureRecognizer(
+                    target: self,
+                    action: #selector(Coordinator.handleTap(_:))
+                )
+                arView.addGestureRecognizer(recognizer)
+                tapRecognizer = recognizer
+            } else if let recognizer = tapRecognizer {
+                arView.removeGestureRecognizer(recognizer)
+                tapRecognizer = nil
             }
         }
 
