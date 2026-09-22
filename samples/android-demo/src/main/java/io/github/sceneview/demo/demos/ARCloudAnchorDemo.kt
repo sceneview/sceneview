@@ -1,12 +1,20 @@
 package io.github.sceneview.demo.demos
 
-import android.view.MotionEvent
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,15 +31,26 @@ import androidx.compose.ui.res.stringResource
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
-import com.google.ar.core.Plane
+import com.google.ar.core.HostCloudAnchorFuture
 import com.google.ar.core.ResolveCloudAnchorFuture
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
-import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARCoreAvailabilityOverlay
-import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
+import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.SceneView
+import io.github.sceneview.ar.PlacementPhase
+import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.haptic.rememberHapticFeedback
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.common.placement.PlacementActionCard
+import io.github.sceneview.demo.common.placement.PlacementCard
+import io.github.sceneview.ar.AutoPlacementResult
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.demo.common.placement.FeaturePlacementScene
+import io.github.sceneview.demo.demos.internal.CloudRequestGeneration
+import io.github.sceneview.math.Position
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
@@ -46,17 +65,13 @@ import io.github.sceneview.demo.common.ForceCloudAnchorScenarioMenu
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedCloudAnchorScenario
 import io.github.sceneview.demo.common.ForcedTrackingFailure
-import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.clipboardText
 import io.github.sceneview.demo.common.copyToClipboard
-import io.github.sceneview.demo.common.qaCameraBackdropEnabled
-import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberHasArcoreApiKey
 import io.github.sceneview.demo.common.rememberIsNetworkAvailable
-import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.shareText
 import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -83,7 +98,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberOnGestureListener
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
@@ -118,7 +133,7 @@ import kotlinx.coroutines.delay
  *  - `ResolveCloudAnchorFuture` was dropped on the floor, against its own KDoc — every
  *    abandoned resolve kept accruing a billing event.
  *
- * All of the decision-making now lives in `demos/internal/CloudAnchorFlow.kt` as pure
+ * Cloud control decision-making lives in `demos/internal/CloudAnchorFlow.kt` as pure
  * functions of one [CloudAnchorFlowState], pinned by `CloudAnchorFlowTest`. This file
  * only wires ARCore signals in and renders what the flow says. That split is what makes
  * the screen testable at all: `emulator-5554` cannot run ARCore (#2754), so the state
@@ -128,6 +143,7 @@ import kotlinx.coroutines.delay
  * `samples/android-demo/ARCORE_CLOUD_SETUP.md`. When it is not, the screen says so in a
  * card instead of offering controls that cannot work (the #3374 pattern).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ARCloudAnchorDemo(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -148,17 +164,22 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     val isNetworkAvailable = rememberIsNetworkAvailable()
 
     // ── Raw ARCore signals ──────────────────────────────────────────────────
-    var localAnchor by remember { mutableStateOf<Anchor?>(null) }
-    var placedAnchorId by remember { mutableStateOf<String?>(null) }
+    val placementState = rememberAutoPlacementState()
+    val haptic = rememberHapticFeedback()
+    var show3D by remember { mutableStateOf(false) }
+    var invalidMove by remember { mutableStateOf(false) }
+    var localPlacement by remember { mutableStateOf<AutoPlacementResult?>(null) }
+    var resolvedAnchor by remember { mutableStateOf<Anchor?>(null) }
+    val requestGeneration = remember { CloudRequestGeneration() }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    var hostFuture by remember { mutableStateOf<HostCloudAnchorFuture?>(null) }
+    var hostAnchor by remember { mutableStateOf<Anchor?>(null) }
     var isTracking by remember { mutableStateOf(false) }
     var cameraReady by remember { mutableStateOf(false) }
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
     var arSession by remember { mutableStateOf<Session?>(null) }
-    var cloudNode by remember { mutableStateOf<CloudAnchorNodeImpl?>(null) }
     var resolveFuture by remember { mutableStateOf<ResolveCloudAnchorFuture?>(null) }
-    val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
 
     // ── Flow state ──────────────────────────────────────────────────────────
     // `rememberSaveable` on the two pieces a rotation must not destroy: a hosted code the
@@ -205,7 +226,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         // too, or the screen would offer to place an anchor while the pill says the room
         // is too dark to see.
         tracking = isTracking && effectiveTrackingFailure == null,
-        anchorPlaced = localAnchor != null,
+        anchorPlaced = localPlacement != null || resolvedAnchor != null,
         roomQuality = roomQuality,
         host = hostTask,
         resolve = resolveTask,
@@ -228,7 +249,28 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     val flow = forcedScenario?.state() ?: liveState
 
     val status = flow.status()
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
+    var modelInstance by remember { mutableStateOf<ModelInstance?>(null) }
+    var modelFailed by remember { mutableStateOf(false) }
+    var modelRetry by remember { mutableStateOf(0) }
+    LaunchedEffect(modelRetry) {
+        val ticket = placementState.selectModel()
+        modelFailed = false
+        val loaded = try { modelLoader.loadModelInstance("models/khronos_lantern.glb") }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+        if (placementState.acceptsAsset(ticket)) {
+            modelInstance = loaded
+            modelFailed = loaded == null
+        } else loaded?.let { modelLoader.destroyModel(it.model) }
+    }
+    DisposableEffect(modelInstance) {
+        val owned = modelInstance
+        onDispose { owned?.let { modelLoader.destroyModel(it.model) } }
+    }
+    LaunchedEffect(placementState.phase) {
+        if (placementState.phase == PlacementPhase.TRACKING_LOST) haptic.warning()
+        if (placementState.phase != PlacementPhase.ADJUSTING) invalidMove = false
+    }
 
     // Clear the "Copied" confirmation after a beat. Android only shows its own clipboard
     // toast from API 33 and this app's minSdk is 28, so the card confirms it itself.
@@ -239,77 +281,116 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         }
     }
 
-    // A resolve accrues a billing event whether anyone is still listening or not, so its
-    // future is cancelled when the screen leaves — required by CloudAnchorNode.resolve's
-    // own KDoc, and simply not done before #3421.
+    // Cancel native requests and reject callbacks delivered after reset or dismissal.
     DisposableEffect(Unit) {
         onDispose {
+            requestGeneration.invalidate()
             resolveFuture?.cancel()
-            cloudNode?.cancelHost()
+            hostFuture?.cancel()
+            resolvedAnchor?.detach()
             // The QA override is a global singleton; leaving the screen must not strand
             // the next visit in a fake state. Re-entering re-reads the intent extra.
             ForcedCloudAnchorScenario.override = null
         }
     }
 
-    val restart = {
-        resolveFuture?.cancel()
-        resolveFuture = null
-        cloudNode?.cancelHost()
-        localAnchor?.detach()
-        localAnchor = null
-        placedAnchorId = null
-        cloudNode = null
+    val clearHostedPlacement = {
+        requestGeneration.invalidate()
+        hostFuture?.cancel()
+        hostFuture = null
+        hostAnchor = null
         hostTask = CloudAnchorTask.Idle
-        resolveTask = CloudAnchorTask.Idle
         hostedCode = null
         roomQuality = RoomQuality.Insufficient
-        codeInput = ""
-        operationCloudStatus = null
         justCopied = false
+        operationCloudStatus = null
+    }
+
+    val restart = {
+        clearHostedPlacement()
+        resolveFuture?.cancel()
+        resolveFuture = null
+        // The placement adapter owns its local anchor; the resolved anchor is ours.
+        placementState.resetPlacement(SystemClock.uptimeMillis())
+        localPlacement = null
+        invalidMove = false
+        resolvedAnchor?.detach()
+        resolvedAnchor = null
+        resolveTask = CloudAnchorTask.Idle
+        codeInput = ""
     }
 
     val onHost = onHost@{
-        val node = cloudNode ?: return@onHost
+        if (!liveState.allows(CloudAnchorAction.Host)) return@onHost
+        val anchor = localPlacement?.anchor ?: return@onHost
         val session = arSession ?: return@onHost
+        if (anchor.trackingState != TrackingState.TRACKING) return@onHost
+        val generation = requestGeneration.current
+        hostAnchor = anchor
         operationCloudStatus = null
         hostTask = CloudAnchorTask.Running
-        node.host(session, ttlDays = CLOUD_ANCHOR_TTL_DAYS) { id, state ->
-            if (state == Anchor.CloudAnchorState.SUCCESS && id != null) {
-                hostedCode = id
-                placedAnchorId = id
-                hostTask = CloudAnchorTask.Succeeded(id)
-            } else {
-                // The shared banner still owns the two reasons every Cloud demo words
-                // identically (rejected key, spent quota); everything else is a Cloud
-                // Anchor failure this screen explains in its own words.
-                operationCloudStatus = state.toCloudServiceStatus("Hosting")
-                hostTask = CloudAnchorTask.Failed(cloudAnchorFailureOf(state.name))
+        try {
+            hostFuture = session.hostCloudAnchorAsync(anchor, CLOUD_ANCHOR_TTL_DAYS) { id, result ->
+                // ARCore completion may arrive on its render thread. Serialize it with
+                // Compose actions/disposal before reading generations or mutating UI state.
+                mainHandler.post {
+                    if (requestGeneration.accepts(generation) && localPlacement?.anchor !== anchor) {
+                        clearHostedPlacement()
+                    } else if (requestGeneration.accepts(generation)) {
+                        hostFuture = null
+                        if (result == Anchor.CloudAnchorState.SUCCESS && id != null) {
+                            hostedCode = id
+                            hostTask = CloudAnchorTask.Succeeded(id)
+                        } else {
+                            operationCloudStatus = result.toCloudServiceStatus("Hosting")
+                            hostTask = CloudAnchorTask.Failed(cloudAnchorFailureOf(result.name))
+                        }
+                    }
+                }
             }
+        } catch (_: Exception) {
+            hostTask = CloudAnchorTask.Failed(cloudAnchorFailureOf("ERROR_INTERNAL"))
         }
         Unit
     }
 
     val onResolve = onResolve@{
+        if (!liveState.allows(CloudAnchorAction.Resolve)) return@onResolve
         val session = arSession ?: return@onResolve
-        val code = flow.trimmedCode
+        val code = liveState.trimmedCode
+        val generation = requestGeneration.current
         operationCloudStatus = null
         resolveTask = CloudAnchorTask.Running
-        resolveFuture = CloudAnchorNodeImpl.resolve(engine, session, code) { state, node ->
-            if (state == Anchor.CloudAnchorState.SUCCESS && node != null) {
-                localAnchor = node.anchor
-                placedAnchorId = code
-                resolveTask = CloudAnchorTask.Succeeded(code)
-            } else {
-                operationCloudStatus = state.toCloudServiceStatus("Resolve")
-                resolveTask = CloudAnchorTask.Failed(cloudAnchorFailureOf(state.name))
+        try {
+            resolveFuture = session.resolveCloudAnchorAsync(code) { anchor, result ->
+                // Always deliver cleanup, even after composition has been disposed: a
+                // cancelled Compose coroutine would strand a late native anchor result.
+                mainHandler.post {
+                    if (!requestGeneration.accepts(generation)) {
+                        anchor?.detach()
+                    } else {
+                        resolveFuture = null
+                        if (result == Anchor.CloudAnchorState.SUCCESS && anchor != null) {
+                            resolvedAnchor?.detach()
+                            resolvedAnchor = anchor
+                            resolveTask = CloudAnchorTask.Succeeded(code)
+                        } else {
+                            anchor?.detach()
+                            operationCloudStatus = result.toCloudServiceStatus("Resolve")
+                            resolveTask = CloudAnchorTask.Failed(cloudAnchorFailureOf(result.name))
+                        }
+                    }
+                }
             }
-            resolveFuture = null
+        } catch (_: Exception) {
+            resolveTask = CloudAnchorTask.Failed(cloudAnchorFailureOf("ERROR_INTERNAL"))
         }
         Unit
     }
 
     val runAction: (CloudAnchorAction) -> Unit = { action ->
+        // Protect Copy/Share even if a gesture ended before the next camera callback.
+        if (hostAnchor != null && localPlacement?.anchor !== hostAnchor) clearHostedPlacement()
         when (action) {
             CloudAnchorAction.Host -> onHost()
             CloudAnchorAction.Resolve -> onResolve()
@@ -330,13 +411,14 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 if (!shared) justCopied = copyToClipboard(context, CODE_CLIP_LABEL, code)
             }
             CloudAnchorAction.PasteCode -> clipboardText(context)?.let { codeInput = it.trim() }
-            // Not action-bar actions: placing is a scene tap, switching steps is the dock.
+            // Placement is automatic; switching steps belongs to the dock.
             CloudAnchorAction.PlaceAnchor, CloudAnchorAction.SwitchStep -> {}
         }
     }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_cloud_anchor_title),
+        chromeToggleOnTap = false,
         onBack = onBack,
         // The way out of any state, including a failed upload. The old screen had none:
         // once an anchor was placed the demo was stuck for the rest of the session.
@@ -349,7 +431,9 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 icon = Icons.Rounded.CloudUpload,
                 label = "Host an anchor",
                 caption = "Host",
-                onClick = { step = CloudAnchorStep.Host },
+                onClick = {
+                    if (step != CloudAnchorStep.Host) { restart(); step = CloudAnchorStep.Host }
+                },
                 enabled = flow.allows(CloudAnchorAction.SwitchStep),
                 selected = flow.step == CloudAnchorStep.Host,
             ),
@@ -357,7 +441,9 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 icon = Icons.Rounded.CloudDownload,
                 label = "Resolve a shared code",
                 caption = "Resolve",
-                onClick = { step = CloudAnchorStep.Resolve },
+                onClick = {
+                    if (step != CloudAnchorStep.Resolve) { restart(); step = CloudAnchorStep.Resolve }
+                },
                 enabled = flow.allows(CloudAnchorAction.SwitchStep),
                 selected = flow.step == CloudAnchorStep.Resolve,
             ),
@@ -371,6 +457,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 text = stringResource(R.string.demo_ar_cloud_anchor_about),
                 style = MaterialTheme.typography.bodyMedium,
             )
+            Text(stringResource(R.string.ar_scale_preview_size, (placementState.scaleFactor * 100).toInt()))
             ForceCloudAnchorScenarioMenu()
             ForceTrackingFailureMenu()
         },
@@ -382,15 +469,35 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             // configuration blockers get no pill at all: the card below explains them,
             // and a pill repeating the card is the kind of double-voiced chrome #3421
             // was filed about.
+            val placementCard = if (forcedScenario == null && flow.step == CloudAnchorStep.Host && flow.blocker == null) {
+                when (placementState.phase) {
+                    PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
+                    PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
+                    else -> null
+                }
+            } else null
+            val placementMessage = if (forcedScenario == null && flow.step == CloudAnchorStep.Host &&
+                hostTask != CloudAnchorTask.Running && flow.blocker == null) {
+                when {
+                    modelFailed -> stringResource(R.string.ar_place_model_failed)
+                    modelInstance == null -> stringResource(R.string.ar_place_loading_model)
+                    placementCard != null -> null
+                    invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
+                    placementState.phase == PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused)
+                    placementState.phase == PlacementPhase.RECOVERING -> stringResource(R.string.ar_place_finding_placement)
+                    placementState.phase == PlacementPhase.ADJUSTING -> stringResource(R.string.ar_scale_preview_size, (placementState.scaleFactor * 100).toInt())
+                    else -> null
+                }
+            } else null
             when {
                 // `CloudServiceStatus.NoNetwork` rather than `cloudStatus`: they are the
                 // same value on a real device, but a QA-forced no-network state has to
                 // render the banner too, and the live `cloudStatus` would say Available.
                 flow.blocker == CloudAnchorBlocker.NoNetwork ->
                     CloudServiceStatusBanner(CloudServiceStatus.NoNetwork)
-                flow.blocker?.needsExplanationCard == true -> Unit
+                flow.blocker?.needsExplanationCard == true || placementCard != null -> Unit
                 else -> DemoStatusBanner(
-                    text = status.text,
+                    text = placementMessage ?: status.text,
                     tone = status.tone,
                     // A completed step keeps the Guidance tone — there is still something
                     // to do next — but must not wear the tone's move-your-device glyph.
@@ -401,6 +508,11 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 )
             }
 
+            if (modelFailed && flow.blocker == null) {
+                TextButton(onClick = { modelRetry++ }) { Text(stringResource(R.string.ar_place_try_again)) }
+            }
+            PlacementActionCard(placementCard, { show3D = true },
+                { placementState.keepScanning(SystemClock.uptimeMillis()) }, restart, restart)
             CloudAnchorFlowCard(
                 card = flow.card(),
                 onCodeChange = { codeInput = it },
@@ -422,44 +534,35 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // QA-only synthetic room behind a translucent AR surface (#3308) — the arm64
-            // emulator has no camera HAL, so without this every AR capture is black.
-            if (qaBackdrop) QaCameraBackdrop(seed = "ar-cloud-anchor")
-
-            ARSceneView(
+            FeaturePlacementScene(
+                assetReady = modelInstance != null && liveState.allows(CloudAnchorAction.PlaceAnchor),
+                state = placementState,
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
-                isOpaque = !qaCameraBackdropEnabled(),
-                surfaceType = qaCameraBackdropSurfaceType(),
-                cameraStream = if (qaBackdrop) null else cameraStream,
+                cameraStream = cameraStream,
                 playbackDataset = arPlaybackDataset,
-                planeRenderer = true,
-                cloudAnchorMode = Config.CloudAnchorMode.ENABLED,
-                // The SDK's "ARCore can't start" card (#3374) is suppressed only while QA
-                // has pinned the screen to a fictional state. `emulator-5554` cannot run
-                // ARCore at all (#2754), so it always publishes a verdict there and the
-                // centred card would sit on top of the very chrome the capture exists to
-                // review — with `api_key_missing` producing two stacked dark cards saying
-                // different things. Nothing is lost: that card has its own previews and
-                // `ARCoreAvailabilityTest`, and this branch is unreachable outside QA
-                // mode, so a real user on a real device always gets it.
-                arCoreAvailabilityOverlay = if (forcedScenario != null) {
-                    null
-                } else {
-                    { ARCoreAvailabilityOverlay(it) }
+                sessionConfiguration = { _, config ->
+                    config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
                 },
+                onPlaced = { localPlacement = it; haptic.medium() },
                 onSessionCreated = { session -> arSession = session },
                 onARCoreAvailability = { arCoreAvailability = it },
+                arCoreAvailabilityOverlay = if (forcedScenario != null) null else { { ARCoreAvailabilityOverlay(it) } },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     cameraReady = true
-                    latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    // Moving to a new surface replaces the native anchor. An uploaded
+                    // code (or upload in flight) belongs to the old placement, never this one.
+                    if (hostAnchor != null && localPlacement?.anchor !== hostAnchor) {
+                        clearHostedPlacement()
+                    }
                     // Room-mapping feedback, the signal the old screen ignored entirely.
                     // Only meaningful once there is an anchor to map *around*, and only
                     // while tracking — ARCore throws otherwise, hence the runCatching.
-                    if (localAnchor != null && hostTask == CloudAnchorTask.Idle) {
+                    if (isTracking && localPlacement?.anchor?.trackingState == TrackingState.TRACKING &&
+                        hostTask == CloudAnchorTask.Idle) {
                         roomQuality = runCatching {
                             session.estimateFeatureMapQualityForHosting(frame.camera.pose)
                                 .toRoomQuality()
@@ -467,34 +570,20 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     }
                 },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
-                onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { event: MotionEvent, _ ->
-                        // One gate, asked of the flow — the same rule the Host button and
-                        // the status line read, so a tap can never place an anchor the
-                        // screen has just said cannot be hosted.
-                        if (flow.allows(CloudAnchorAction.PlaceAnchor)) {
-                            val hit = latestFrame?.hitTest(event)?.firstOrNull { result ->
-                                val trackable = result.trackable
-                                trackable is Plane &&
-                                    trackable.isPoseInPolygon(result.hitPose) &&
-                                    result.distance <= MAX_PLACEMENT_DISTANCE_METRES
-                            }
-                            if (hit != null) localAnchor = hit.createAnchor()
-                        }
+            ) { placement ->
+                modelInstance?.let { instance ->
+                    if (placement != null && resolvedAnchor == null) {
+                        AutoPlacementModel(placement, placementState, instance,
+                            scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
+                            onInvalidMove = { invalidMove = it },
+                            onScaleChanged = { _, _, crossed -> if (crossed) haptic.selection() })
                     }
-                )
-            ) {
-                localAnchor?.let { anchor ->
-                    CloudAnchorNode(
-                        anchor = anchor,
-                        cloudAnchorId = placedAnchorId,
-                        apply = { cloudNode = this },
-                    ) {
-                        modelInstance?.let { instance ->
-                            ModelNode(
-                                modelInstance = instance,
+                    resolvedAnchor?.let { anchor ->
+                        AnchorNode(anchor = anchor) {
+                            ModelNode(modelInstance = instance,
                                 scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
-                            )
+                                centerOrigin = Position(y = -1f),
+                                isVisible = isTracking)
                         }
                     }
                 }
@@ -508,6 +597,16 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             )
         }
     }
+    if (show3D) {
+        ModalBottomSheet(onDismissRequest = { show3D = false }) {
+            Text(stringResource(R.string.ar_place_preview_size), Modifier.padding(SceneViewTokens.Space.md))
+            val preview = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
+            SceneView(Modifier.fillMaxWidth().aspectRatio(1f), engine = engine,
+                modelLoader = modelLoader, materialLoader = materialLoader) {
+                preview?.let { ModelNode(it, scaleToUnits = ANCHOR_MODEL_SIZE_METRES) }
+            }
+        }
+    }
 }
 
 /** Clipboard label for a hosted code — what a clipboard manager shows as its origin. */
@@ -515,9 +614,6 @@ private const val CODE_CLIP_LABEL = "SceneView cloud anchor code"
 
 /** How long the hosted-code card confirms a copy before going back to the expiry line. */
 private const val COPY_CONFIRMATION_MILLIS = 2_000L
-
-/** Furthest plane hit that may take an anchor. Beyond this ARCore's depth is unreliable. */
-private const val MAX_PLACEMENT_DISTANCE_METRES = 5.0f
 
 /** Size the lantern is scaled to at the anchor. */
 private const val ANCHOR_MODEL_SIZE_METRES = 0.3f

@@ -644,8 +644,10 @@ via deep-link as well as the Samples tab.
 | Animation (5-model carousel) | `animation` | `AnimationDemo.swift` | Ported (cinematic camera shots + IBL slider are Android-only) |
 | Model Viewer (Surprise me) | `model-viewer` | `ModelViewerDemo.swift` | Ported |
 | Multi-Model Park | `multi-model` | `MultiModelDemo.swift` | Ported |
-| AR Plane Placement | `ar-placement` | `ARPlacementDemo.swift` | Ported (no per-model editing yet) |
-| AR Instant Placement | (Samples tab) | `ARInstantPlacementDemo.swift` | Ported (approximates via `.estimatedPlane` raycasts) |
+| AR Placement | `ar-placement` | `ARPlacementDemo.swift` | Single automatic-placement entry; 0.3 m preview, surface-constrained drag, pinch and twist |
+| Depth Occlusion | `ar-depth-occlusion` | `ARDepthOcclusionDemo.swift` | Shared automatic placement of the bundled helmet; LiDAR mesh rendering toggle retains pose and scale |
+| People Occlusion | `ar-people-occlusion` | `ARPeopleOcclusionDemo.swift` | Same subject and placement flow; person-segmentation rendering toggle retains pose and scale |
+| AR Recording | `ar-record-playback` | `ARRecorderDemo.swift` | Shared automatic placement; explicit Record/Stop; screen video only, without deterministic AR-session playback |
 | Physics (streamed bodies) | `physics` | `PhysicsDemo.swift` | Ported (bundled cubes + 4 streamed crash-test meshes; capped at 20 active bodies for RealityKit) |
 
 The pre-1194 placeholder shape — `model-viewer` / `multi-model` routing

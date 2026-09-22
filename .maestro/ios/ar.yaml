@@ -32,18 +32,6 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/ar-demo.yaml
     env:
-      DEMO_ID: ar-instant-placement
-      DEMO_NAME: AR Instant Placement
-      ASSERT_TEXT: "Requires an iPhone with ARKit."
-- runFlow:
-    file: flows/ar-demo.yaml
-    env:
-      DEMO_ID: placement-scene
-      DEMO_NAME: One-Call AR
-      ASSERT_TEXT: "Requires an iPhone with ARKit."
-- runFlow:
-    file: flows/ar-demo.yaml
-    env:
       DEMO_ID: ar-orbital
       DEMO_NAME: AR Orbital
       ASSERT_TEXT: "AR requires a physical device"
@@ -56,9 +44,9 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/ar-demo.yaml
     env:
-      DEMO_ID: ar-recording
+      DEMO_ID: ar-record-playback
       DEMO_NAME: AR Recording
-      ASSERT_TEXT: "AR recording is device-only"
+      ASSERT_TEXT: "Requires an iPhone with ARKit and screen recording availability."
 - runFlow:
     file: flows/ar-demo.yaml
     env:
@@ -82,13 +70,13 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-depth-occlusion
       DEMO_NAME: Depth Occlusion
-      ASSERT_TEXT: "AR requires a physical device"
+      ASSERT_TEXT: "Requires LiDAR."
 - runFlow:
     file: flows/ar-demo.yaml
     env:
       DEMO_ID: ar-people-occlusion
       DEMO_NAME: People Occlusion
-      ASSERT_TEXT: "AR requires a physical device"
+      ASSERT_TEXT: "Requires an A12 chip or later."
 - runFlow:
     file: flows/ar-demo.yaml
     env:
@@ -143,10 +131,6 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: ar-pose
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: ar-record-playback
 - runFlow:
     file: flows/placeholder.yaml
     env:

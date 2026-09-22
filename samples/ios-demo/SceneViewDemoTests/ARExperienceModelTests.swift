@@ -72,6 +72,49 @@ final class ARExperienceModelTests: XCTestCase {
 
     // MARK: - Routing
 
+    func testPlacementFeatureRoutesRejectUnsupportedDevicesBeforeCameraPermission() {
+        let routes: [(String, ARExperienceRequirement)] = [
+            ("ar-depth-occlusion", .lidar),
+            ("ar-people-occlusion", .peopleOcclusion),
+            ("ar-record-playback", .recording)
+        ]
+        for (id, requirement) in routes {
+            XCTAssertEqual(ARExperienceRequirement.forScene(id: id), requirement)
+            let model = model(requirement: requirement, isSupported: false, status: .notDetermined)
+            model.resolve()
+            XCTAssertEqual(model.phase, .unsupported(requirement))
+        }
+    }
+
+    func testOcclusionTogglesRetainTheSameAnchorAndSubjectTransform() {
+        let view = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
+        let anchor = AnchorEntity(world: SIMD3<Float>(0.1, 0.2, -1))
+        let subject = ModelEntity(mesh: .generateBox(size: 0.3))
+        subject.scale = SIMD3<Float>(repeating: 1.7)
+        subject.orientation = simd_quatf(angle: .pi / 4, axis: [0, 1, 0])
+        anchor.addChild(subject)
+        view.scene.addAnchor(anchor)
+        let pose = anchor.transformMatrix(relativeTo: nil)
+        let subjectTransform = subject.transform
+
+        for effect: ARPlacementExperience.Occlusion in [.depth, .people] {
+            let configuration = effect.configuration
+            for enabled in [false, true, false, true] {
+                effect.apply(enabled: enabled, to: view)
+                XCTAssertTrue(view.scene.anchors.first === anchor)
+                XCTAssertEqual(anchor.transformMatrix(relativeTo: nil), pose)
+                XCTAssertEqual(subject.transform, subjectTransform)
+                XCTAssertEqual(effect.configuration, configuration)
+                switch effect {
+                case .depth:
+                    XCTAssertEqual(view.environment.sceneUnderstanding.options.contains(.occlusion), enabled)
+                case .people:
+                    XCTAssertEqual(view.renderOptions.contains(.disablePersonOcclusion), !enabled)
+                }
+            }
+        }
+    }
+
     func testUnsupportedWinsOverPermission() {
         let model = model(requirement: .lidar, isSupported: false, status: .notDetermined)
         model.resolve()

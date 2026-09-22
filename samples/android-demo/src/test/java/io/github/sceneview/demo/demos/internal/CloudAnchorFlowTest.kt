@@ -28,6 +28,26 @@ class CloudAnchorFlowTest {
 
     private val tracking = CloudAnchorFlowState(tracking = true)
 
+    @Test
+    fun `automatic local placement never starts a Cloud operation`() {
+        val placed = tracking.copy(anchorPlaced = true, roomQuality = RoomQuality.Good)
+        assertEquals(CloudAnchorTask.Idle, placed.host)
+        assertEquals(CloudAnchorTask.Idle, placed.resolve)
+        assertTrue(placed.allows(CloudAnchorAction.Host))
+        assertFalse(placed.allows(CloudAnchorAction.PlaceAnchor))
+        assertEquals("Host", placed.actionBar().first().label)
+    }
+
+    @Test
+    fun `tracking loss disables hosting while retaining the placement`() {
+        val placed = tracking.copy(anchorPlaced = true, roomQuality = RoomQuality.Good)
+        val paused = placed.copy(tracking = false)
+        assertTrue(paused.anchorPlaced)
+        assertFalse(paused.allows(CloudAnchorAction.Host))
+        assertFalse(paused.allows(CloudAnchorAction.PlaceAnchor))
+        assertTrue(paused.copy(tracking = true).allows(CloudAnchorAction.Host))
+    }
+
     // ── Defaults ────────────────────────────────────────────────────────────
 
     @Test
@@ -140,7 +160,7 @@ class CloudAnchorFlowTest {
     fun `Host is dead until an anchor is placed`() {
         assertFalse(tracking.allows(CloudAnchorAction.Host))
         assertEquals(
-            "Tap a surface to place the anchor.",
+            "Move slowly to find a surface.",
             tracking.status().text,
         )
     }
@@ -493,7 +513,7 @@ class CloudAnchorFlowTest {
         assertEquals("Move the phone slowly to start tracking.", state.status().text)
 
         state = state.copy(tracking = true)
-        assertEquals("Tap a surface to place the anchor.", state.status().text)
+        assertEquals("Move slowly to find a surface.", state.status().text)
         assertTrue(state.allows(CloudAnchorAction.PlaceAnchor))
 
         state = state.copy(anchorPlaced = true)

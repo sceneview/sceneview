@@ -159,7 +159,16 @@ struct ShowcaseTab: View {
                 ExploreTab(embedded: true)
             }
             .onAppear {
-                if scenes.isEmpty { scenes = GeneratedScenes.all() }
+                if scenes.isEmpty {
+                    scenes = GeneratedScenes.all().filter { demo in
+                        #if os(iOS)
+                        let requirement = ARExperienceRequirement.forScene(id: demo.sceneId)
+                        return requirement == .worldTracking || requirement.isSupported
+                        #else
+                        return true
+                        #endif
+                    }
+                }
             }
             .task {
                 // One frame late, so the first layout paints the pre-reveal

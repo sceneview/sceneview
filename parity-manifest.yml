@@ -14,10 +14,11 @@
 # Retired Android ids are DROPPED from this ledger rather than kept with a
 # marker: the left-hand column is "Android's canonical id set", and an id that
 # is no longer canonical has no row to be in. `ar-instant-placement` left this
-# way (#3405 — folded into `ar-placement`, where it is a placement *mode*; the
-# deep link still resolves through `DeepLinkRouter.DEMO_ID_ALIASES`). iOS still
-# ships its own `ar-instant-placement` screen; aligning it with the Android fold
-# is tracked separately.
+# way (#3405 — folded into `ar-placement`; the Android deep link still resolves
+# through `DeepLinkRouter.DEMO_ID_ALIASES`). Slice 5 also removes the redundant
+# iOS automatic-placement entries: `ar-placement` is its sole placement route.
+# The former one-call iOS comparison row is removed per that consolidation;
+# Android's existing SDK-wrapper demo remains outside this iOS consolidation.
 #
 # `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
 #   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
@@ -62,6 +63,10 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
+# Current slice-5 ledger (2026-09-22): 47 rows, 29 working / 0 stub / 18 android-only.
+# The duplicate iOS one-call placement row was removed by explicit product decision;
+# Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
+# Historical recounts below retain their measurement dates.
 # Every tally in this file lives HERE and in the per-section banners below.
 # Do NOT append a new "and now it is X/Y" paragraph when a port lands: that is
 # exactly how this header came to carry four mutually contradictory counts at
@@ -219,12 +224,10 @@
 #
 # ─── iOS-ONLY IDS — the surplus the rows cannot hold (recorded 2026-09-22) ──
 # The left-hand column is Android's canonical set, so an iOS scene id with no
-# Android row has nowhere to live below. These eight resolve on iOS and fall
+# Android row has nowhere to live below. These seven resolve on iOS and fall
 # through on Android; each is either a real screen or a documented removal.
 # `check-demo-id-parity.sh` does not read this block — it is for the human
 # doing the manual pass above.
-#   ar-instant-placement        working — estimated-plane placement (tap before
-#                               plane geometry converges), `@iosOnly true`.
 #   ar-lighting                 working — compares the `.mainLight` /
 #                               `.fillLight` modifier presets, `@iosOnly true`.
 #   fog                         REMOVED on iOS — see the `ar-fog` row: RealityKit
@@ -245,7 +248,7 @@
 #                               demo (nothing streams, the title says so).
 
 demos:
-  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -275,6 +278,12 @@ demos:
   - id: ar-depth-occlusion
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Same bundled Damaged Helmet and 0.3 m preview on both platforms, placed
+      once by the shared controller. Toggles retain the session and transform.
+      Android uses ARCore Depth API pixels; iOS uses LiDAR reconstructed mesh
+      occlusion. The masks and edge quality are not identical. Unsupported
+      devices are blocked before comparison controls appear.
   - id: ar-face
     androidStatus: Working
     iosStatus: working
@@ -297,9 +306,17 @@ demos:
   - id: ar-people-occlusion
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Same automatically placed bundled helmet, with renderer-only toggles.
+      Android requires Scene Semantics plus Depth API and its person classifier
+      is outdoor-trained; iOS requires personSegmentationWithDepth. These are
+      different segmentation providers, not a claim of identical masks.
   - id: ar-placement
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      The single iOS placement entry, also used by the AR tab. Automatic
+      Placement and One-Call AR duplicate iOS scenes were removed in slice 5.
     reason: >-
       Capability caveat on a `working` row: tap-to-place, bottom-aligned on the
       plane with grounding shadows, is live. The raycast is fixed to
@@ -367,9 +384,6 @@ demos:
     androidStatus: Working
     iosStatus: working
   - id: picking-collision
-    androidStatus: Working
-    iosStatus: working
-  - id: placement-scene
     androidStatus: Working
     iosStatus: working
   - id: spatial-audio

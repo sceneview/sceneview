@@ -67,13 +67,13 @@ class DepthOcclusionCopyTest {
     }
 
     @Test
-    fun `tracking with nothing placed asks for the tap`() {
+    fun `tracking with nothing placed uses automatic-placement coaching`() {
         val hint = DepthOcclusionCopy.coachingHint(
             isTracking = true,
             hasPlacedModel = false,
             occlusionOn = true,
         )
-        assertEquals("Tap a flat surface to place the helmet", hint)
+        assertEquals("Move slowly to find a surface.", hint)
     }
 
     @Test
