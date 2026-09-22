@@ -263,8 +263,12 @@ dependencies {
     implementation project(":sceneview")
     implementation project(":arsceneview")
 
-    // ADK for Kotlin build probe
-    implementation libs.adk.core
+    // ADK for Kotlin build probe. The Android artifact drags in kxml2, whose
+    // org.xmlpull.v1.XmlPullParser collides with the platform copy and stops R8.
+    implementation(libs.adk.core) {
+        exclude group: 'net.sf.kxml', module: 'kxml2'
+        exclude group: 'xmlpull', module: 'xmlpull'
+    }
     ksp libs.adk.processor
 
     // Google Play In-App Updates — Play Core deps come via :samples:common
