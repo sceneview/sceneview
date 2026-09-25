@@ -15,7 +15,7 @@ Service is free: there is no account, no subscription and no billing.
 - **No cookies** — The Service does not use cookies of any kind.
 - **No behavioral tracking** — No fingerprinting or cross-session tracking.
 - **No request logging** — Tool arguments, results, and prompt content are never logged or transmitted.
-- **Anonymous telemetry** — sceneview-mcp sends an anonymous, opt-out telemetry ping on the MCP handshake and on each tool call. See the "Telemetry (Free Tier)" section below for what's collected and how to opt out.
+- **Anonymous telemetry** — sceneview-mcp sends an anonymous, opt-out telemetry ping on the MCP handshake and on each tool call. See the "Telemetry" section below for what's collected and how to opt out.
 
 ### Telemetry
 

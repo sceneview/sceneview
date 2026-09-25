@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+
+- **sceneview-mcp: the telemetry endpoint is documented as live, and the last paid-tier wording is gone.** The `mcp-tools-lab` in the telemetry worker's hostname is the Cloudflare account's workers.dev subdomain, not the GitHub org deleted on 2026-08-23; the worker still answers and ingests, so the endpoint is kept and `telemetry.ts` now says why. The `--http` startup line reads "remote tool surface" instead of "free tools only", `PRIVACY.md` no longer points at a "Telemetry (Free Tier)" section that does not exist, and the bot-score comment speaks of usage analytics.

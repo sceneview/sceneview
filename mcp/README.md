@@ -215,7 +215,7 @@ Some hosts cannot spawn a local process: they need MCP's **Streamable HTTP** tra
 
 ```bash
 npx sceneview-mcp --http
-# [sceneview-mcp] v4.x — HTTP (free tools only)
+# [sceneview-mcp] v4.x — HTTP (remote tool surface)
 # [sceneview-mcp] MCP endpoint: http://127.0.0.1:3333/mcp
 ```
 
