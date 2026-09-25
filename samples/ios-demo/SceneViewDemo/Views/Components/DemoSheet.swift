@@ -110,7 +110,7 @@ struct GlassCircle<Content: View>: View {
     var body: some View {
         content()
             .frame(width: SceneViewTokens.Glass.iconButtonSize, height: SceneViewTokens.Glass.iconButtonSize)
-            .glassBackground(in: Circle())
+            .glassBackground(in: Circle(), interactive: true)
             .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
             .contentShape(Circle())
     }
@@ -122,8 +122,13 @@ struct GlassIconButton: View {
     let label: String
     let action: () -> Void
 
+    @State private var taps = 0
+
     var body: some View {
-        Button(action: action) {
+        Button {
+            taps += 1
+            action()
+        } label: {
             GlassCircle {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .semibold))
@@ -131,6 +136,7 @@ struct GlassIconButton: View {
             }
         }
         .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+        .sensoryFeedback(.impact(weight: .light), trigger: taps)
         .accessibilityLabel(label)
     }
 }

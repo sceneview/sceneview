@@ -72,7 +72,7 @@ struct AboutTab: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .glassBackground(in: Capsule())
+            .materialGlassBackground(in: Capsule())
             .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
 
             Text("3D & AR for Jetpack Compose, SwiftUI, and the Web.\nDeclarative, AI-friendly, open source.")
@@ -84,7 +84,7 @@ struct AboutTab: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 16)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
@@ -283,7 +283,7 @@ private struct AboutCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)

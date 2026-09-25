@@ -413,7 +413,7 @@ private struct ARDemoCard: View {
         }
         .frame(maxWidth: .infinity)
         .frame(minHeight: 150, alignment: .top)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)

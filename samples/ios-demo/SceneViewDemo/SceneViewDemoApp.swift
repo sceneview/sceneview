@@ -176,32 +176,29 @@ struct ContentView: View {
         // Showcase · AR View · About — the same three destinations as the
         // Android bottom bar. The online gallery (`ExploreTab`) lives behind
         // the Showcase grid's "Browse online models" card.
+        // `Tab(value:)` (iOS 18) — the values are the old `.tag`s, so the
+        // deep-link and launch-argument routing below keep selecting `0`.
         TabView(selection: $selectedTab) {
-            // `isActive` gates the home hero's live 3D stage: only the visible
-            // tab, with no demo presented over it, may run a scene.
-            ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil)
-                .tabItem {
-                    Label("Showcase", systemImage: "square.grid.2x2.fill")
-                }
-                .tag(0)
-                .accessibilityLabel("Showcase")
+            Tab("Showcase", systemImage: "square.grid.2x2.fill", value: 0) {
+                // `isActive` gates the home hero's live 3D stage: only the visible
+                // tab, with no demo presented over it, may run a scene.
+                ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil)
+                    .accessibilityLabel("Showcase")
+            }
 
             #if os(iOS)
-            ARTab()
-                .tabItem {
-                    Label("AR View", systemImage: "arkit")
-                }
-                .tag(1)
-                .accessibilityLabel("Augmented Reality Viewer")
+            Tab("AR View", systemImage: "arkit", value: 1) {
+                ARTab()
+                    .accessibilityLabel("Augmented Reality Viewer")
+            }
             #endif
 
-            AboutTab()
-                .tabItem {
-                    Label("About", systemImage: "info.circle.fill")
-                }
-                .tag(2)
-                .accessibilityLabel("About This App")
+            Tab("About", systemImage: "info.circle.fill", value: 2) {
+                AboutTab()
+                    .accessibilityLabel("About This App")
+            }
         }
+        .tabBarMinimizesOnScrollDown()
         .tint(SceneViewTheme.primary)
         .task {
             // One-shot: route to the launch-argument demo on first frame so
@@ -232,6 +229,23 @@ struct ContentView: View {
         .sheet(item: $presentedDemo) { link in
             DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
         }
+        #endif
+    }
+}
+
+private extension View {
+    /// iOS 26+: the Liquid Glass tab bar shrinks to its selected item while the
+    /// user scrolls down a tab's content and comes back on scroll up.
+    @ViewBuilder
+    func tabBarMinimizesOnScrollDown() -> some View {
+        #if os(iOS)
+        if #available(iOS 26, *) {
+            self.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            self
+        }
+        #else
+        self
         #endif
     }
 }

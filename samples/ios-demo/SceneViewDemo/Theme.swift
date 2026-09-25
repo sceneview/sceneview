@@ -643,13 +643,32 @@ extension View {
     ///
     /// Use this anywhere chrome sits over media. Themed surfaces inside a page
     /// take `HomeColor.surfaceContainer` instead.
-    func glassBackground<S: InsettableShape>(in shape: S) -> some View {
-        modifier(GlassBackground(shape: shape))
+    ///
+    /// On iOS 26 / macOS 26 and later the stack above is replaced by the
+    /// system's own Liquid Glass (`glassEffect(.regular)`), which samples,
+    /// tints and edges itself against whatever is behind it — the floor,
+    /// ceiling and border were a hand-built approximation of exactly that.
+    /// Pass `interactive: true` on a control (a button, the dock, an option
+    /// strip) so the glass answers the touch; a read-only pill stays still.
+    /// `id` names the shape inside a ``GlassEffectContainer`` so it morphs
+    /// with its neighbours instead of cross-fading (the dock cluster).
+    func glassBackground<S: InsettableShape>(in shape: S, interactive: Bool = false,
+                                             id: String? = nil) -> some View {
+        modifier(GlassBackground(shape: shape, interactive: interactive, id: id, native: true))
     }
 
     /// Edge-to-edge variant for bars that have no corner radius of their own.
     func glassBackground() -> some View {
         self.glassBackground(in: Rectangle())
+    }
+
+    /// The material stack of ``glassBackground(in:interactive:id:)`` on every
+    /// OS version — for cards that sit *in* a page (About, Credits, a recent
+    /// search row) rather than float over media. Apple keeps Liquid Glass to
+    /// the floating navigation layer; a content card made of it competes with
+    /// the chrome it sits under.
+    func materialGlassBackground<S: InsettableShape>(in shape: S) -> some View {
+        modifier(GlassBackground(shape: shape, interactive: false, id: nil, native: false))
     }
 
     /// Apply SceneView card styling
@@ -676,7 +695,11 @@ extension View {
 private struct GlassBackground<S: InsettableShape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.arChromeGround) private var arGround
+    @Environment(\.chromeGlassNamespace) private var glassNamespace
     let shape: S
+    let interactive: Bool
+    let id: String?
+    let native: Bool
 
     func body(content: Content) -> some View {
         if let arGround {
@@ -692,8 +715,23 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
                         lineWidth: SceneViewTokens.ARChrome.borderWidth
                     )
                 )
+        } else if native, #available(iOS 26, macOS 26, visionOS 26, *) {
+            nativeGlass(content)
         } else {
             glass(content)
+        }
+    }
+
+    /// iOS 26+: the system Liquid Glass. `DESIGN.md` — "iOS 26+: native
+    /// glassEffect; below: the material stack".
+    @available(iOS 26, macOS 26, visionOS 26, *)
+    @ViewBuilder
+    private func nativeGlass(_ content: Content) -> some View {
+        let glassed = content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        if let id, let glassNamespace {
+            glassed.glassEffectID(id, in: glassNamespace)
+        } else {
+            glassed
         }
     }
 
@@ -719,9 +757,52 @@ private struct ARChromeGroundKey: EnvironmentKey {
     static let defaultValue: Color? = nil
 }
 
+/// The namespace glass shapes in one ``GlassEffectContainer`` morph within —
+/// set by ``DemoScaffold`` on its bottom cluster (accessory + dock).
+private struct ChromeGlassNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
 extension EnvironmentValues {
     var arChromeGround: Color? {
         get { self[ARChromeGroundKey.self] }
         set { self[ARChromeGroundKey.self] = newValue }
+    }
+
+    var chromeGlassNamespace: Namespace.ID? {
+        get { self[ChromeGlassNamespaceKey.self] }
+        set { self[ChromeGlassNamespaceKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The background of a sheet that rests on a partial detent over the 3D
+    /// stage. iOS 26+: none of our own — the system draws its Liquid Glass
+    /// sheet, so the scene the controls act on stays visible behind them,
+    /// and turns it opaque by itself at the `.large` detent. Below 26:
+    /// `style`, the themed surface the sheet has always had (`DESIGN.md`,
+    /// Demo Scaffold — "iOS 26+: native glass on partial detents").
+    @ViewBuilder
+    func partialSheetBackground<S: ShapeStyle>(_ style: S) -> some View {
+        #if os(iOS)
+        if #available(iOS 26, *) {
+            self
+        } else {
+            self.presentationBackground(style)
+        }
+        #else
+        self.presentationBackground(style)
+        #endif
+    }
+
+    /// Groups the glass shapes below it so they sample one backdrop and morph
+    /// into each other (iOS 26+); a plain pass-through before that.
+    @ViewBuilder
+    func glassEffectGroup(spacing: CGFloat? = nil) -> some View {
+        if #available(iOS 26, macOS 26, visionOS 26, *) {
+            GlassEffectContainer(spacing: spacing) { self }
+        } else {
+            self
+        }
     }
 }
