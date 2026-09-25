@@ -354,3 +354,93 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+  # Xcode 27 canary for the iOS sample demo: the same steps as `demo`, on the
+  # `xcode-27` preview image. This is the job that sees the SwiftUI app — the
+  # package canary (`build-xcode27`) never compiles `@State`/view code — so it
+  # is where iOS 27 SDK SwiftUI and Swift 6 diagnostics surface. Non-blocking,
+  # like `build-xcode27`; see that job for the Xcode path and why the cache
+  # key is separate.
+  build-demo-xcode27:
+    name: Build & Test (iOS sample demo, Xcode 27 preview)
+    runs-on: xcode-27
+    continue-on-error: true
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          for cand in /Applications/Xcode_27.app /Applications/Xcode_27.0.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode 27 installation found in /Applications/"
+          ls -d /Applications/Xcode*.app || true
+          exit 1
+
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          # Assignment form on purpose — see the `build` job (fail-closed).
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
+
+      - name: Cache iOS demo Swift Package dependencies
+        uses: actions/cache@v6
+        with:
+          path: samples/ios-demo/SourcePackages
+          key: spm-xcode27-${{ runner.os }}-demo-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+          restore-keys: |
+            spm-xcode27-${{ runner.os }}-demo-
+
+      - name: Resolve iOS demo dependencies
+        working-directory: samples/ios-demo
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -scheme SceneViewDemo \
+            -project SceneViewDemo.xcodeproj \
+            -clonedSourcePackagesDirPath SourcePackages
+
+      - name: Build & test iOS sample demo
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        working-directory: samples/ios-demo
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project SceneViewDemo.xcodeproj \
+            -scheme SceneViewDemo \
+            -destination "$IOS_DEST" \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+      # See `demo` (#2852): the Simulator build strips every
+      # `#if !targetEnvironment(simulator)` AR branch; this compiles it.
+      - name: "Compile the device code path (no signing) — #2852"
+        if: always()
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        working-directory: samples/ios-demo
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project SceneViewDemo.xcodeproj \
+            -scheme SceneViewDemo \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
