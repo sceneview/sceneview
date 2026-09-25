@@ -118,12 +118,12 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // Warm studio HDR for IBL — a softer, gallery-lit backdrop that sets this
-    // staging apart from a neutral grey studio.
+    // Warm studio HDR — IBL and backdrop both (#3826): with no skybox the framed band
+    // between the title row and the Release pill rendered as a black box.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
         "environments/studio_warm_2k.hdr",
-        createSkybox = false,
+        createSkybox = true,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
     val activeEnvironment = hdrEnvironment ?: fallbackEnvironment

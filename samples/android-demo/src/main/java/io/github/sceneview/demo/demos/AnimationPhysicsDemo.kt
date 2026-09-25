@@ -342,6 +342,7 @@ private fun AnimationSection(
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val context = LocalContext.current
 
@@ -1145,11 +1146,23 @@ private fun AnimationSection(
                 renderInvalidator = renderInvalidator,
                 engine = engine,
                 modelLoader = modelLoader,
+                materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 environment = activeEnvironment,
                 cameraNode = cameraNode,
                 cameraManipulator = activeManipulator,
             ) {
+                // Plinth (#3820): the subject stands on something instead of floating over the
+                // garden. Sized from the measured footprint so every model gets the same margin.
+                val plinthMaterial = rememberMaterialInstance(
+                    materialLoader, SceneViewColors.SurfaceDim, metallic = 0f, roughness = 0.7f,
+                )
+                CylinderNode(
+                    radius = maxOf(subjectSize.x, subjectSize.z) * ANIMATION_PLINTH_RADIUS_FACTOR,
+                    height = ANIMATION_PLINTH_HEIGHT,
+                    materialInstance = plinthMaterial,
+                    position = Position(y = -ANIMATION_PLINTH_HEIGHT / 2f),
+                )
                 modelInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
@@ -1399,9 +1412,17 @@ private fun PhysicsSection(
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
+    // Studio backdrop (#3820): the tray sits in a lit room, never a black void inside the
+    // reserved band.
+    val studioEnvironment = rememberHDREnvironment(
+        environmentLoader,
+        "environments/studio_2k.hdr",
+        createSkybox = true,
+    )
+    val physicsEnvironment = studioEnvironment ?: rememberEnvironment(environmentLoader)
     val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState(engine)
-    val counts = stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions)
+    val counts =stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions)
 
     DemoScaffold(
         title = stringResource(R.string.demo_animation_physics_title),
@@ -1536,6 +1557,7 @@ private fun PhysicsSection(
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
+                environment = physicsEnvironment,
                 cameraNode = cameraNode,
                 // The rig is authored around the origin; re-centring it on its bounds would move
                 // the tray every time a ball flies up.
@@ -1814,13 +1836,15 @@ internal fun trayLocalGravity(pitchDegrees: Float, rollDegrees: Float): Position
 }
 
 /** Look-down of the turntable shot: enough to show the ground under the subject. */
-private const val ANIMATION_ORBIT_ELEVATION_DEGREES = 10f
+private const val ANIMATION_ORBIT_ELEVATION_DEGREES = 14f
 
 /** Share of the frame the subject fills at the fit radius. */
-private const val ANIMATION_FILL = 0.7f
+private const val ANIMATION_FILL = 0.82f
 
 /** Front three-quarter view the turntable starts from, and the QA freeze holds. */
-private const val ANIMATION_START_YAW_DEGREES = 30f
+private const val ANIMATION_START_YAW_DEGREES = 60f
+private const val ANIMATION_PLINTH_RADIUS_FACTOR = 0.75f
+private const val ANIMATION_PLINTH_HEIGHT = 0.04f
 
 /** One full turntable revolution — slow enough that the animation, not the camera, leads. */
 private const val ANIMATION_TURN_MILLIS = 40_000
