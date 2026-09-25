@@ -37,6 +37,8 @@ struct ARPlacementLifecycle {
     var dismissed = false
     var searchSince: TimeInterval?
     var recoverySince: TimeInterval?
+    /// Anchors committed since the last dismissal; `.arHapticFeedback` plays `.placed` on each.
+    var placementsCreated = 0
     var acceptsFrames: Bool { !dismissed && phase != .cameraError }
 
     mutating func select() -> ARPlacementAssetTicket {
@@ -108,6 +110,7 @@ struct ARPlacementLifecycle {
         guard requested && !hasPlacement && acceptsFrames else { return }
         requested = false
         hasPlacement = true
+        placementsCreated += 1
         searchSince = nil
         phase = .placed
     }
@@ -149,6 +152,14 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     private var visibility: Float = 0
     private var visibilityTarget: Float = 0
     private var renderSubscription: (any Cancellable)?
+    /// Elapsed time of the 100 % snap rebound, `nil` when none plays. See ``ARScaleSnap``.
+    private var reboundElapsed: TimeInterval?
+    private var reboundFromAbove = false
+
+    /// Gesture-driven haptic moments (100 % snap, scale limits) for `.arHapticFeedback`.
+    /// Phase, placement and selection moments are derived from the published state instead.
+    let hapticEvents = PassthroughSubject<ARHapticEvent, Never>()
+    var placementsCreated: Int { lifecycle.placementsCreated }
 
     public init(alignment: ARPlacementAlignment = .horizontal) {
         self.alignment = alignment
@@ -206,6 +217,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         removeAnchor()
         pivot.transform = .identity
         scale = 1
+        reboundElapsed = nil
         visibility = 0
         visibilityTarget = 0
         pivot.components.set(OpacityComponent(opacity: 0))
@@ -238,6 +250,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         lastTimestamp = nil
         result = nil
         scale = 1
+        reboundElapsed = nil
         selection = false
         publishPhase()
     }
@@ -267,6 +280,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                     self.visibility = next
                     self.pivot.components.set(OpacityComponent(opacity: next))
                 }
+                self.stepRebound(by: event.deltaTime)
             }
         }
         pivot.components.set(OpacityComponent(opacity: 0))
@@ -581,8 +595,37 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     @objc private func pinch(_ recognizer: UIPinchGestureRecognizer) {
         guard canManipulate else { return }
         if recognizer.state == .began { pinchBaseline = scale; begin(recognizer) }
-        if recognizer.state == .changed { scale(to: pinchBaseline * Float(recognizer.scale)) }
+        if recognizer.state == .changed { pinchScale(to: pinchBaseline * Float(recognizer.scale)) }
         if [.ended, .cancelled, .failed].contains(recognizer.state) { end(recognizer) }
+    }
+    /// The pinch snaps to exactly 100 % within ±4 %, with a short elastic rebound; the public
+    /// ``scale(to:)`` stays exact.
+    private func pinchScale(to raw: Float) {
+        guard raw.isFinite else { return }
+        let previous = scale
+        let step = ARScaleSnap.step(previousDisplayed: previous, raw: raw)
+        scale = step.displayed
+        if step.enteredSnap {
+            reboundFromAbove = previous > 1
+            reboundElapsed = 0
+            hapticEvents.send(.scaleSnapped)
+        } else if !step.snapped {
+            reboundElapsed = nil
+        }
+        if reboundElapsed == nil { pivot.scale = SIMD3<Float>(repeating: scale) }
+        if step.enteredLimit { hapticEvents.send(.limitReached) }
+    }
+    private func stepRebound(by delta: TimeInterval) {
+        guard let elapsed = reboundElapsed else { return }
+        let next = elapsed + delta
+        let elapsedMs = Float(next * 1000)
+        if elapsedMs >= ARScaleSnap.reboundMs {
+            reboundElapsed = nil
+            pivot.scale = SIMD3<Float>(repeating: scale)
+        } else {
+            reboundElapsed = next
+            pivot.scale = SIMD3<Float>(repeating: scale * ARScaleSnap.rebound(elapsedMs: elapsedMs, fromAbove: reboundFromAbove))
+        }
     }
     @objc private func twist(_ recognizer: UIRotationGestureRecognizer) {
         guard canManipulate else { return }
@@ -598,8 +641,12 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// Uniform multiplier of the chosen base size (25–400%), preserving surface contact.
     public func scale(to value: Float) {
         guard canManipulate, value.isFinite else { return }
-        scale = max(0.25, min(4, value))
+        let previous = scale
+        reboundElapsed = nil
+        scale = max(ARScaleSnap.min, min(ARScaleSnap.max, value))
         pivot.scale = SIMD3<Float>(repeating: scale)
+        if (previous < 1 && scale >= 1) || (previous > 1 && scale <= 1) { hapticEvents.send(.scaleSnapped) }
+        if ARScaleSnap.isAtLimit(scale) && !ARScaleSnap.isAtLimit(previous) { hapticEvents.send(.limitReached) }
     }
     /// Accessibility alternative: metres along the detected surface's two tangent axes.
     @discardableResult
@@ -609,7 +656,12 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         var next = contact
         let tangent = alignment == .horizontal ? contact.columns.2.xyz : contact.columns.1.xyz
         next.columns.3 += SIMD4<Float>(contact.columns.0.xyz * offset.x + tangent * offset.y, 0)
-        guard valid(plane: plane, point: next.columns.3.xyz, frame: frame, view: view) else { invalidMovement = true; return false }
+        guard valid(plane: plane, point: next.columns.3.xyz, frame: frame, view: view) else {
+            // Every refused button press is felt, not only the first one that raises the flag.
+            hapticEvents.send(.invalidMove)
+            invalidMovement = true
+            return false
+        }
         commitMove(to: next, plane: plane)
         invalidMovement = false
         return true

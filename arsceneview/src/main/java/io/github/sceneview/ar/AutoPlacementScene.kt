@@ -381,7 +381,10 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             }
         } }
         DisposableEffect(pivot, state) {
-            state.moveAction = root::moveBy
+            state.moveAction = { x, y ->
+                // Every refused button press is felt, not only the first one (throttled per event).
+                root.moveBy(x, y).also { if (!it) state.gestureHapticSink?.invoke(ARHapticEvent.InvalidMove) }
+            }
             state.rotateAction = { pivot.quaternion *= Rotation(y = it).toQuaternion() }
             state.scaleAction = {
                 val previous = pivot.logicalScale
