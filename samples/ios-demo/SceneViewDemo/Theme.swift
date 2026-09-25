@@ -278,6 +278,19 @@ enum SceneViewTokens {
         )
         /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
         static let onPrimary = chipSelectedText
+        /// M3 `secondary-container` — #D9E3F8 / #3D4758, Android's
+        /// `md_theme_*_secondaryContainer`. The About support card, the only
+        /// tinted surface of that screen (`DESIGN.md` "Demo App About").
+        static let secondaryContainer = Color(
+            light: Color(red: 0xD9 / 255, green: 0xE3 / 255, blue: 0xF8 / 255),
+            dark: Color(red: 0x3D / 255, green: 0x47 / 255, blue: 0x58 / 255)
+        )
+        /// M3 `on-secondary-container` — #121C2B / #D9E3F8: 13.3:1 light and
+        /// 7.3:1 dark on `secondaryContainer`.
+        static let onSecondaryContainer = Color(
+            light: Color(red: 0x12 / 255, green: 0x1C / 255, blue: 0x2B / 255),
+            dark: Color(red: 0xD9 / 255, green: 0xE3 / 255, blue: 0xF8 / 255)
+        )
         /// DESIGN.md Status, `danger` — #EA4335 in both themes. A glyph colour
         /// (3.5:1 on `chip-bg` light, 3.8:1 dark), never body text.
         static let danger = Color(red: 0xEA / 255, green: 0x43 / 255, blue: 0x35 / 255)
