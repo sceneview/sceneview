@@ -474,9 +474,9 @@ private fun AnimationSection(
         elevationDegrees = ANIMATION_ORBIT_ELEVATION_DEGREES,
         fill = ANIMATION_FILL,
     )
-    // Eye height above the target for the orbit: a slight look down, so the ground line sits
-    // under the subject instead of cutting through it.
-    val baseYHeight = baseRadius * kotlin.math.tan(Math.toRadians(ANIMATION_ORBIT_ELEVATION_DEGREES.toDouble())).toFloat()
+    // Eye height above the target for the orbit: a slight look down on the subject.
+    val elevationRadians = Math.toRadians(ANIMATION_ORBIT_ELEVATION_DEGREES.toDouble())
+    val baseYHeight = baseRadius * kotlin.math.tan(elevationRadians).toFloat()
     val subjectHeight = subjectSize.y
     // Aim at the middle of the grounded subject: head and feet equidistant from the frame edges.
     val target = remember(subjectHeight) { Position(0f, subjectHeight * 0.5f, 0f) }
