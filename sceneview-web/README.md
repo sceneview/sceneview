@@ -55,6 +55,9 @@ global `sceneview` object it registers on `window`:
 | `sceneview.createViewerFull(canvasId, autoRotate, cameraControls, cameraX, cameraY, cameraZ, fov, lightIntensity)` | Full factory — every option in one call |
 | `sceneview.modelViewer(canvasId, modelUrl)` | One-call helper: create a viewer AND load a model |
 | `sceneview.modelViewerAutoRotate(canvasId, modelUrl, autoRotate)` | Like `modelViewer` with explicit auto-rotate override |
+| `sceneview.isThreeMf(bytes)` | `true` if the `ArrayBuffer` / typed array is a 3MF package |
+| `sceneview.threeMfToGlb(bytes)` | Convert 3MF bytes to GLB bytes (`Uint8Array`); `loadModel` already accepts a `.3mf` URL directly |
+| `sceneview.haptic` | Cross-platform haptic facade (`sceneview.haptic.light()` etc.); no-op where the browser has no vibration API |
 | `sceneview.version` | Library version string |
 
 Every factory returns a `Promise<SceneViewer>`.
@@ -77,6 +80,10 @@ Every factory returns a `Promise<SceneViewer>`.
 | `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`) |
 | `viewer.dispose()` | Release Filament resources |
 
+The viewer also manages individual nodes (`addModelNode`, `addSplatNode`, `addCubeNode`,
+`addSphereNode`, `addLightNode`, `removeNode`, `hitTest`, `setAutoCenterContent`) —
+see [`sceneview-web.d.ts`](sceneview-web.d.ts) for the full typed surface.
+
 ## Features
 
 - Same Filament PBR renderer as Android (compiled to WASM)
@@ -85,11 +92,13 @@ Every factory returns a `Promise<SceneViewer>`.
 - Camera configuration (FOV, position, orbit, zoom limits)
 - Auto-rotation with configurable speed
 - Kotlin/JS DSL API + vanilla JavaScript API
+- WebXR AR / VR from Kotlin/JS (`ARSceneView` / `VRSceneView` in `io.github.sceneview.web.xr`)
 
 ## Requirements
 
 - WebGL2 browser (~95% coverage)
-- No AR support (requires native sensors)
+- AR / VR: a WebXR browser that supports `immersive-ar` / `immersive-vr` (e.g. Chrome on
+  Android, Quest Browser); the plain-JS `sceneview` global has no AR entry point
 
 ## Part of SceneView
 

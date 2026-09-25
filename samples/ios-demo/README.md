@@ -4,8 +4,8 @@ SwiftUI app for iOS and macOS — browse 3D models, view them in augmented reali
 
 ## Features
 
-- 4-tab SwiftUI interface (Explore, AR View, Scenes, About)
-- Model gallery with categories: Vehicles, Creatures, Objects, Scenes
+- 3-tab SwiftUI interface (Showcase, AR View, About) — the same three destinations as the Android demo
+- Model gallery with categories: Vehicles, Creatures, Objects, Scenes, behind the Showcase grid's "Browse online models" card
 - Favorites system (mark and filter favorite models)
 - AR placement: choose a model, tap a surface, place it in your space
 - Screenshot sharing from both 3D viewer and AR mode
