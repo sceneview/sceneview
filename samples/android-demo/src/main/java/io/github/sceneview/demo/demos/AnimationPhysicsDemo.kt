@@ -1158,9 +1158,9 @@ private fun AnimationSection(
                 val plinthMaterial = rememberMaterialInstance(
                     materialLoader, SceneViewColors.SurfaceLight, metallic = 0f, roughness = 0.7f,
                 )
-                CylinderNode(
-                    radius = maxOf(subjectSize.x, subjectSize.z) * ANIMATION_PLINTH_RADIUS_FACTOR,
-                    height = ANIMATION_PLINTH_HEIGHT,
+                val plinthSide = maxOf(subjectSize.x, subjectSize.z) * ANIMATION_PLINTH_SIDE_FACTOR
+                CubeNode(
+                    size = Size(plinthSide, ANIMATION_PLINTH_HEIGHT, plinthSide),
                     materialInstance = plinthMaterial,
                     position = Position(y = -ANIMATION_PLINTH_HEIGHT / 2f),
                 )
@@ -1408,6 +1408,15 @@ private fun PhysicsSection(
             rollAnim.animateTo(0f, tween(400, easing = FastOutSlowInEasing))
         }
     }
+    // Reset from the bottom bar is the whole opening shot: a level tray as well as the opening
+    // balls. Snapped, not eased, so the cue's first roll never runs downhill.
+    val resetAll: () -> Unit = {
+        tiltScope.launch {
+            pitchAnim.snapTo(0f)
+            rollAnim.snapTo(0f)
+        }
+        reset()
+    }
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -1490,7 +1499,7 @@ private fun PhysicsSection(
                 GlassActionPill(
                     icon = Icons.Outlined.RestartAlt,
                     label = stringResource(R.string.demo_animation_physics_reset),
-                    onClick = reset,
+                    onClick = resetAll,
                 )
             }
         },
@@ -1858,7 +1867,7 @@ private const val ANIMATION_START_YAW_DEGREES = 60f
  */
 internal fun neutralStageSkybox(engine: com.google.android.filament.Engine): Skybox =
     Skybox.Builder().color(0.40f, 0.40f, 0.42f, 1.0f).build(engine)
-private const val ANIMATION_PLINTH_RADIUS_FACTOR = 0.75f
+private const val ANIMATION_PLINTH_SIDE_FACTOR = 1.3f
 private const val ANIMATION_PLINTH_HEIGHT = 0.04f
 
 /** One full turntable revolution — slow enough that the animation, not the camera, leads. */
