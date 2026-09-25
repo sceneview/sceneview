@@ -5,8 +5,8 @@ import ARKit
 import UIKit
 import SceneViewSwift
 
-/// The two placement facts a haptic decision needs, sampled together so one AR event can only
-/// ever produce one vibration.
+/// The two placement facts the one-shot gesture hint needs, sampled together so a placement is
+/// never mistaken for a tap. Haptics themselves come from the SDK (`.arHapticFeedback`).
 struct PlacementFeedback: Equatable {
     let placed: Bool
     let selected: Bool
@@ -151,35 +151,24 @@ struct ARPlacementExperience: View {
             if let view = viewBox.value { occlusion?.apply(enabled: enabled, to: view) }
         }
         .task(id: assetIdentity) { await loadModel() }
+        // Placement, tap, 100 % snap, scale limits, off-surface drag, tracking loss and recovery.
+        .arHapticFeedback(controller)
         .onDisappear { controller.dismiss() }
         .onChange(of: showingActualSize) { _, actual in
             if let url = initialModelURL {
                 UserDefaults.standard.set(actual, forKey: Self.sizeBasisKey(url))
             }
         }
-        // Both observations live in one `onChange` on purpose: automatic placement raises
-        // `hasPlacement` and `selection` in the same update, and two separate observers would
-        // fire `medium()` and `selection()` back to back — one placement, two vibrations. A
-        // single decision point also removes any reliance on modifier evaluation order.
+        // One `onChange` on purpose: automatic placement raises `hasPlacement` and `selection`
+        // in the same update, and only the placement opens the gesture hint.
         .onChange(of: PlacementFeedback(placed: controller.hasPlacement, selected: controller.selection)) { old, new in
-            switch PlacementFeedback.haptic(from: old, to: new) {
-            case .placed:
-                SceneViewHaptic.shared.medium()
-                if !hintShown { hintShown = true; showHint = true }
-            case .selected:
-                SceneViewHaptic.shared.selection()
-            case .none:
-                break
+            if PlacementFeedback.haptic(from: old, to: new) == .placed, !hintShown {
+                hintShown = true
+                showHint = true
             }
         }
         .onChange(of: controller.phase) { _, phase in
-            if phase == .trackingLost { SceneViewHaptic.shared.warning() }
             if phase == .adjusting { showHint = false }
-        }
-        .onChange(of: controller.scale) { old, value in
-            if (old < 1 && value >= 1) || (old > 1 && value <= 1) {
-                SceneViewHaptic.shared.selection()
-            }
         }
         .task(id: showHint) {
             guard showHint else { return }
@@ -422,7 +411,8 @@ struct ARPlacementExperience: View {
     }
 
     private func move(_ x: Float, _ y: Float) {
-        if !controller.move(by: SIMD2<Float>(x, y)) { SceneViewHaptic.shared.error() }
+        // A refused move is felt through the SDK's `.invalidMove`.
+        controller.move(by: SIMD2<Float>(x, y))
     }
 }
 

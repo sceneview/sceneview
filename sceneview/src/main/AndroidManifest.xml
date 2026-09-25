@@ -4,8 +4,9 @@
     <!-- Needed to load gltf from network. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Required by HapticEngine for vibrate-based haptic feedback on interaction events.
-         This permission is normal (granted at install time, no user prompt required). -->
+    <!-- Declared on purpose: merged into every consumer app for the vibrator tiers of
+         SceneViewHaptic. Normal permission (granted at install time, no prompt). An app that
+         wants none removes it with tools:node="remove"; the View tiers keep working. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- SceneView requires OpenGLES 3.0 or later for 3D rendering. -->

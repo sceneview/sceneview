@@ -7,6 +7,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementModel
 import io.github.sceneview.ar.AutoPlacementScene
 import io.github.sceneview.ar.PlacementPhase
@@ -16,7 +17,6 @@ import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
@@ -28,8 +28,8 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val instance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
     val state = rememberAutoPlacementState()
-    val haptic = rememberHapticFeedback()
     val playback = rememberArPlaybackDataset()
+    ARHapticFeedback(state)
     DemoScaffold(
         title = stringResource(R.string.demo_placement_scene_title),
         onBack = onBack,
@@ -65,7 +65,6 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             engine = engine,
             modelLoader = modelLoader,
             playbackDataset = playback,
-            onPlaced = { haptic.medium() },
         ) { placement ->
             instance?.let { AutoPlacementModel(placement, state, it) }
         }

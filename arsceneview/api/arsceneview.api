@@ -147,6 +147,10 @@ public final class io/github/sceneview/ar/ARFactoriesKt {
 	public static synthetic fun createAREnvironment$default (Lcom/google/android/filament/Engine;Ljava/nio/Buffer;ILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
 }
 
+public final class io/github/sceneview/ar/ARHapticFeedbackKt {
+	public static final fun ARHapticFeedback (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/haptic/SceneViewHaptic;ZLandroidx/compose/runtime/Composer;II)V
+}
+
 public abstract interface class io/github/sceneview/ar/ARPermissionHandler {
 	public abstract fun checkARCoreAvailability ()Lcom/google/ar/core/ArCoreApk$Availability;
 	public abstract fun hasCameraPermission ()Z

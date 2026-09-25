@@ -63,6 +63,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.findAutoPlacementSurface
 import io.github.sceneview.ar.AutoPlacementResult
+import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.subsumedBy
@@ -81,7 +82,6 @@ import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
-import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
@@ -155,9 +155,9 @@ fun TapToPlaceArSession(
     // and its own receiver are gone (§2.6), so there is never a second coplanar receiver.
     var trackedPlanes by remember { mutableStateOf<List<Plane>>(emptyList()) }
 
-    // §2.8: `medium()` on the first placement, `warning()` once on tracking loss,
-    // `selection()` on the 100 % detent and on selecting the object.
-    val haptic = rememberHapticFeedback()
+    // §2.8: the SDK's semantic AR haptics — placement, selection, the 100 % detent,
+    // scale limits, an off-surface drag, tracking loss and recovery. Opt-in, one line.
+    ARHapticFeedback(state.controller)
 
     // QA camera backdrop (#3308): translucent surface + room photo beneath it when the
     // emulator delivers no camera frame. Inert on a device / when QA mode is off.
@@ -236,9 +236,8 @@ fun TapToPlaceArSession(
                                 placement = committed!!,
                                 spec = spec,
                             )
-                            // Confirm the commit in the hand, and open the one-shot
-                            // "drag / pinch / twist" window.
-                            haptic.medium()
+                            // Open the one-shot "drag / pinch / twist" window. The
+                            // placement haptic comes from ARHapticFeedback.
                             state.lastPlacedAtMillis = now
                             onModelPlaced?.invoke(spec)
                         }
@@ -247,7 +246,6 @@ fun TapToPlaceArSession(
                     FrameEffect.TRACKING_LOST -> {
                         state.activeGesture = null
                         state.scalePercent = null
-                        haptic.warning()
                     }
                     FrameEffect.NONE -> Unit
                 }
@@ -264,7 +262,6 @@ fun TapToPlaceArSession(
                 onSingleTapConfirmed = { _, node ->
                     if (node != null) {
                         state.controller.selectPlacement()
-                        haptic.selection()
                     } else {
                         state.controller.deselectPlacement()
                         state.controller.onBackgroundTap()
@@ -304,12 +301,9 @@ fun TapToPlaceArSession(
                         placed = placed,
                         modelInstance = state.modelInstance,
                         controller = state.controller,
-                        onScaleChanged = { percent, isRealWorldSize, crossedIntoRealWorldSize ->
+                        onScaleChanged = { percent, isRealWorldSize, _ ->
                             state.scalePercent = percent
                             state.isRealWorldSize = isRealWorldSize
-                            // One tick on entering the detent, never a buzz for every
-                            // event spent inside it (§2.8).
-                            if (crossedIntoRealWorldSize) haptic.selection()
                         },
                         onDragOffSurface = { off ->
                             if (state.dragOffSurface != off) state.dragOffSurface = off

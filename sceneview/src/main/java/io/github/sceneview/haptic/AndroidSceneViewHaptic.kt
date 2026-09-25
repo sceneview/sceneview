@@ -1,44 +1,57 @@
 package io.github.sceneview.haptic
 
 import android.os.Build
-import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Default [SceneViewHaptic] implementation backed by an Android [Vibrator].
+ * Default [SceneViewHaptic] implementation backed by the host `View` and an Android [Vibrator].
  *
- * Internally testable: the [engine] parameter is an injection point so JVM
- * unit tests can pass a recording fake (`RecordingHapticEngine`) and assert
- * the exact platform call each preset issues, without needing Robolectric.
+ * Internally testable: [engine] and [view] are injection points so JVM unit tests can pass
+ * recording fakes and assert the exact platform call each preset issues, without Robolectric.
+ *
+ * ### Tiers
+ *
+ * Every preset and every [ARHapticEvent] is a [HapticRecipe]; [resolve] picks the first tier
+ * the device can play — a modern `View.performHapticFeedback` constant, a
+ * `VibrationEffect.Composition`, a predefined effect, a legacy view constant, and for the
+ * presets only, below API 29, the historical one-shot or waveform.
+ *
+ * ### Touch feedback setting
+ *
+ * The view tiers honour the system *Touch feedback* setting natively. The vibrator tiers carry
+ * `USAGE_TOUCH` on API 33+, and below 33 are skipped when the setting is off
+ * ([HapticEngine.touchFeedbackEnabled]). A user who turned touch feedback off feels nothing.
  *
  * ### API 24-25 safety
  *
- * The module `minSdk` is **24**. [android.os.VibrationEffect] is an **API 26
- * (O)** class — referencing any of its static fields on API 24-25 throws
- * `NoClassDefFoundError`, a hard crash on a supported API. This class never
- * names a `VibrationEffect` symbol directly: legacy preset fallbacks pass the
- * API-safe [HAPTIC_DEFAULT_AMPLITUDE] sentinel, and only [SystemHapticEngine]
- * resolves it — inside an `SDK_INT >= O` branch.
+ * The module `minSdk` is **24**. [android.os.VibrationEffect] is an **API 26 (O)** class.
+ * This class never names a `VibrationEffect` symbol: [HapticRecipes] only holds inlined
+ * `static final int` ids, and only [SystemHapticEngine] touches the class, inside `SDK_INT`
+ * branches.
  *
  * No-op behaviour:
- * - `vibratorOrNull = null` → no vibrator on device → every method returns
- *   silently. One `Log.d` is emitted on the first call.
- * - `hasVibratePermission = false` → consumer app didn't add `VIBRATE` →
- *   every method returns silently. One `Log.d` is emitted on the first call.
+ * - no view, and no vibrator or no `VIBRATE` permission → every method returns silently. One
+ *   `Log.d` is emitted on the first call.
  */
 internal class AndroidSceneViewHaptic internal constructor(
     private val engine: HapticEngine?,
     private val hasVibratePermission: Boolean,
+    private val view: HapticViewPerformer? = null,
+    private val sdkInt: Int = engine?.sdkInt ?: Build.VERSION.SDK_INT,
 ) : SceneViewHaptic {
 
     constructor(vibratorOrNull: Vibrator?, hasVibratePermission: Boolean) : this(
-        engine = vibratorOrNull?.let(::SystemHapticEngine),
+        engine = vibratorOrNull?.let { SystemHapticEngine(it) },
         hasVibratePermission = hasVibratePermission,
     )
 
     private val loggedDegradation = AtomicBoolean(false)
+
+    /** Vibrator usable for a *touch* haptic right now. */
+    private val canVibrate: Boolean
+        get() = engine != null && hasVibratePermission && engine.touchFeedbackEnabled
 
     private inline fun whenEnabled(block: HapticEngine.() -> Unit) {
         if (engine == null) {
@@ -53,6 +66,7 @@ internal class AndroidSceneViewHaptic internal constructor(
             )
             return
         }
+        if (!engine.touchFeedbackEnabled) return
         engine.block()
     }
 
@@ -71,59 +85,64 @@ internal class AndroidSceneViewHaptic internal constructor(
         }
     }
 
-    override fun light(): Unit = whenEnabled {
-        if (sdkInt >= Build.VERSION_CODES.Q) {
-            // VibrationEffect.EFFECT_* is only resolved inside this >= Q
-            // branch — never on API 24-25, where the class is absent.
-            playPredefined(VibrationEffect.EFFECT_CLICK)
-        } else {
-            // No EFFECT_CLICK pre-Q; a short single tick is the closest match.
-            // HAPTIC_DEFAULT_AMPLITUDE is API-safe — never resolves a
-            // VibrationEffect symbol on API 24-25.
-            playOneShot(durationMs = 10, amplitude = HAPTIC_DEFAULT_AMPLITUDE)
+    /** The tier chain. Returns the plan it played, for tests. */
+    internal fun play(recipe: HapticRecipe): HapticPlan {
+        val host = view?.takeIf { it.isAvailable }
+        val vibrate = canVibrate
+        val plan = recipe.resolve(sdkInt, host != null, vibrate) { ids ->
+            engine?.arePrimitivesSupported(ids) == true
         }
-    }
-
-    override fun medium(): Unit = whenEnabled {
-        if (sdkInt >= Build.VERSION_CODES.Q) {
-            playPredefined(VibrationEffect.EFFECT_TICK)
-        } else {
-            playOneShot(durationMs = 20, amplitude = HAPTIC_DEFAULT_AMPLITUDE)
+        when (plan) {
+            // The view's answer is not retried: `false` means the user disabled touch feedback.
+            is HapticPlan.View -> host?.perform(plan.constant)
+            is HapticPlan.Composed -> engine?.playComposition(plan.primitives)
+            is HapticPlan.Predefined -> engine?.playPredefined(plan.effectId)
+            is HapticPlan.Legacy -> when (val legacy = plan.vibration) {
+                is LegacyVibration.OneShot ->
+                    engine?.playOneShot(legacy.durationMs, HAPTIC_DEFAULT_AMPLITUDE)
+                is LegacyVibration.Waveform -> engine?.playWaveform(legacy.timings)
+            }
+            HapticPlan.None -> when {
+                host != null || (engine?.touchFeedbackEnabled == false) -> Unit
+                engine == null -> logDegradation("no vibrator on device and no view; calls are no-op")
+                !hasVibratePermission -> logDegradation(
+                    "VIBRATE permission missing and no view; add " +
+                        "<uses-permission android:name=\"android.permission.VIBRATE\" /> " +
+                        "or create the haptic with SceneViewHaptic(view). Calls are no-op."
+                )
+            }
         }
+        return plan
     }
 
-    override fun heavy(): Unit = whenEnabled {
-        if (sdkInt >= Build.VERSION_CODES.Q) {
-            playPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
-        } else {
-            playOneShot(durationMs = 40, amplitude = HAPTIC_DEFAULT_AMPLITUDE)
-        }
+    internal fun play(event: ARHapticEvent): HapticPlan = play(HapticRecipes.of(event))
+
+    override fun light() {
+        play(HapticRecipes.light)
     }
 
-    override fun success(): Unit = whenEnabled {
-        if (sdkInt >= Build.VERSION_CODES.Q) {
-            playPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
-        } else {
-            playWaveform(longArrayOf(0, 30, 80, 30))
-        }
+    override fun medium() {
+        play(HapticRecipes.medium)
     }
 
-    override fun warning(): Unit = whenEnabled {
-        // No `EFFECT_*` for warning — use a triple-tick waveform on every API.
-        playWaveform(longArrayOf(0, 30, 30, 30))
+    override fun heavy() {
+        play(HapticRecipes.heavy)
     }
 
-    override fun error(): Unit = whenEnabled {
-        // No `EFFECT_*` for error — use a longer descending-tick waveform.
-        playWaveform(longArrayOf(0, 50, 30, 50, 30, 50))
+    override fun success() {
+        play(HapticRecipes.success)
     }
 
-    override fun selection(): Unit = whenEnabled {
-        if (sdkInt >= Build.VERSION_CODES.Q) {
-            playPredefined(VibrationEffect.EFFECT_TICK)
-        } else {
-            playOneShot(durationMs = 10, amplitude = HAPTIC_DEFAULT_AMPLITUDE)
-        }
+    override fun warning() {
+        play(HapticRecipes.warning)
+    }
+
+    override fun error() {
+        play(HapticRecipes.error)
+    }
+
+    override fun selection() {
+        play(HapticRecipes.selection)
     }
 
     override fun continuous(intensity: Float, durationMs: Long): Unit = whenEnabled {
@@ -134,10 +153,9 @@ internal class AndroidSceneViewHaptic internal constructor(
 
     override fun pattern(events: List<HapticEvent>): Unit = whenEnabled {
         if (events.isEmpty()) return@whenEnabled
-        // Build alternating off/on timings — first entry is a leading delay,
-        // matching the `[0,30,30,30]` warning layout above. HapticEvent
-        // exposes Int milliseconds; the Vibrator long[] APIs need Long, so
-        // widen here at the single boundary that touches the platform.
+        // Build alternating off/on timings — first entry is a leading delay.
+        // HapticEvent exposes Int milliseconds; the Vibrator long[] APIs need
+        // Long, so widen here at the single boundary that touches the platform.
         val timings = LongArray(events.size * 2)
         val amplitudes = IntArray(events.size * 2)
         for ((i, event) in events.withIndex()) {
