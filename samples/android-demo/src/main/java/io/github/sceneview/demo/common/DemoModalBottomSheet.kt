@@ -84,7 +84,7 @@ fun DemoModalBottomSheet(
                 dialogWindow.isNavigationBarContrastEnforced = false
             }
             onDispose {
-                if (dialogWindow != null && previousEnforced != null) {
+                if (dialogWindow != null && previousEnforced != null && Build.VERSION.SDK_INT >= 29) {
                     dialogWindow.isNavigationBarContrastEnforced = previousEnforced
                 }
             }
