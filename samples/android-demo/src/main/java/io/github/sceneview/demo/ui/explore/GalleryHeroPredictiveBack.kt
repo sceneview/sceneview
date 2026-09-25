@@ -111,21 +111,33 @@ internal fun Modifier.heroBackLayer(back: HeroPredictiveBack, cornerRadius: Dp):
     }
 
 /**
- * The model's gallery thumbnail, faded in over the live scene as the gesture progresses, so the
- * hero lands on the card it came from. Only composed once the finger has moved: an idle viewer
+ * Gesture progress at which the thumbnail starts to cover the live scene. The thumbnail is
+ * framed differently from the orbit camera, so a crossfade over the whole gesture showed a
+ * large ghost of the model over the small live one (emulator QA). The first stretch of the
+ * gesture is a clean shrink; the thumbnail only takes over on the way to the release.
+ */
+private const val THUMBNAIL_FADE_START = 0.6f
+
+/** Thumbnail opacity for a gesture [progress]: 0 until [THUMBNAIL_FADE_START], then linear to 1. */
+internal fun heroBackThumbnailAlpha(progress: Float): Float =
+    ((progress - THUMBNAIL_FADE_START) / (1f - THUMBNAIL_FADE_START)).coerceIn(0f, 1f)
+
+/**
+ * The model's gallery thumbnail, faded in over the live scene at the end of the gesture, so the
+ * hero lands on the card it came from. Only composed once it would be visible: an idle viewer
  * pays nothing for it. The URL is the one the Downloading stage already showed, so it is served
- * from [io.github.sceneview.demo.ui.explore.components.AsyncNetworkImage]'s memory cache.
+ * from [AsyncNetworkImage]'s memory cache.
  */
 @Composable
 internal fun HeroBackThumbnail(back: HeroPredictiveBack, url: String?, contentDescription: String?) {
-    val visible by remember(back) { derivedStateOf { back.progress > 0f } }
+    val visible by remember(back) { derivedStateOf { heroBackThumbnailAlpha(back.progress) > 0f } }
     if (!visible) return
     AsyncNetworkImage(
         url = url,
         contentDescription = contentDescription,
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = back.progress },
+            .graphicsLayer { alpha = heroBackThumbnailAlpha(back.progress) },
         contentScale = ContentScale.Crop,
     )
 }
