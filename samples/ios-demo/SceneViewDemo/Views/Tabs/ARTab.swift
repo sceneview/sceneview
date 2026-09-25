@@ -110,7 +110,7 @@ struct FeaturedARDemo: Identifiable {
         FeaturedARDemo(
             id: "ar-lighting",
             title: "AR Lighting",
-            subtitle: "Compare main / fill light modifier presets",
+            subtitle: "Key and fill light presets on one model",
             icon: "lightbulb.max.fill",
             destination: AnyView(ARLightingDemo())
         ),
