@@ -25,18 +25,14 @@
     </plurals>
 
     <!-- Category filter chips (short labels). One per DemoCategory key, in
-         DEMO_CATEGORIES order; the four AR chips drop the "AR " prefix because the
-         chip row itself is the context and the prefix cost width four times over. -->
+         DEMO_CATEGORIES order; the long form is the section header the chip
+         filters down to. -->
     <string name="category_short_all">All</string>
-    <string name="category_short_viewer">Viewer</string>
-    <string name="category_short_geometry_materials">Geometry</string>
-    <string name="category_short_rendering">Rendering</string>
-    <string name="category_short_interaction">Interaction</string>
-    <string name="category_short_ar_placement">Placement</string>
-    <string name="category_short_ar_tracking">Tracking</string>
-    <string name="category_short_ar_understanding">Understanding</string>
-    <string name="category_short_ar_anchors">Anchors</string>
-    <string name="category_short_platform">Platform</string>
+    <string name="category_short_view_3d">View 3D</string>
+    <string name="category_short_create">Create</string>
+    <string name="category_short_place_ar">Place in AR</string>
+    <string name="category_short_understand">Understand</string>
+    <string name="category_short_dev_tools">Dev tools</string>
 
     <!-- Grid -->
     <string name="home_browse_title">Browse online models</string>

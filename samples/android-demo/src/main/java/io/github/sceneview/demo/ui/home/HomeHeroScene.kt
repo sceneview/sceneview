@@ -2,7 +2,6 @@ package io.github.sceneview.demo.ui.home
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -16,8 +15,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
@@ -36,9 +33,6 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
-import kotlin.math.abs
-import kotlin.math.exp
-import kotlin.math.min
 
 /** The subject of the live home hero — the app's own Model Viewer subject, already bundled. */
 const val HOME_HERO_MODEL: String = "models/khronos_damaged_helmet.glb"
@@ -48,18 +42,6 @@ private const val HERO_LOAD_TIMEOUT_MILLIS = 8_000L
 
 /** Idle turntable speed. A full revolution in 24 s — present, never distracting. */
 private const val HERO_IDLE_DEGREES_PER_SECOND = 15f
-
-/** Degrees of yaw per dp dragged: a screen-width swipe turns the subject about half around. */
-private const val HERO_DEGREES_PER_DP = 0.45f
-
-/** Exponential decay of a fling, per second. */
-private const val HERO_FLING_FRICTION = 3.2f
-
-/** Under this the fling is over and the turntable takes back over. */
-private const val HERO_FLING_CUTOFF_DEGREES_PER_SECOND = 2f
-
-/** Seconds the idle turntable takes to fade back in after a touch. */
-private const val HERO_IDLE_RESUME_SECONDS = 1.6f
 
 /** Elevation of the subject — the 3/4 view `DESIGN.md` frames every preview from. */
 private const val HERO_PITCH_DEGREES = -12f
@@ -71,8 +53,14 @@ private const val HERO_CAMERA_DISTANCE = 2.6f
 private const val HERO_SUBJECT_UNITS = 1.55f
 
 /**
- * Yaw of the hero subject: a slow turntable, a drag that takes it over, and a fling
- * that hands it back.
+ * Yaw of the hero subject: a slow turntable, and nothing else.
+ *
+ * It used to take a horizontal drag and a fling too. That made the hero answer the
+ * same gesture two ways: the card sits in a pager whose page dots say "swipe for
+ * the next card", and a swipe on the card turned the model instead (#3829). The
+ * swipe now belongs to the pager alone, as it does on every featured carousel the
+ * layout borrows from (Play Store, App Store "Today"); orbiting is what the Model
+ * Viewer the card opens is for.
  *
  * Not Compose state, deliberately. It is written once per rendered frame from
  * `SceneView`'s `onFrame` and read only by the Filament node it drives — publishing
@@ -84,43 +72,15 @@ internal class HeroTurntable {
     var yawDegrees: Float = INITIAL_YAW_DEGREES
         private set
 
-    private var flingDegreesPerSecond = 0f
-    private var idleBlend = 1f
-
-    /** A finger is down: the subject follows it exactly, and the turntable steps aside. */
-    fun drag(deltaDegrees: Float) {
-        yawDegrees += deltaDegrees
-        flingDegreesPerSecond = 0f
-        idleBlend = 0f
-    }
-
-    fun fling(degreesPerSecond: Float) {
-        flingDegreesPerSecond = degreesPerSecond
-        idleBlend = 0f
-    }
-
     /**
      * Advances the turntable by [deltaSeconds] and returns the yaw to draw.
      *
-     * [idle] is the system's "remove animations" answer. A fling is the tail of a
-     * gesture the reader started, so it still plays out; the unprompted turntable is
+     * [idle] is the system's "remove animations" answer. The unprompted turntable is
      * exactly the kind of perpetual motion that setting exists to stop, so with
-     * [idle] false the subject simply holds wherever it was left.
+     * [idle] false the subject holds its three-quarter pose.
      */
     fun advance(deltaSeconds: Float, idle: Boolean): Float {
-        if (abs(flingDegreesPerSecond) > HERO_FLING_CUTOFF_DEGREES_PER_SECOND) {
-            yawDegrees += flingDegreesPerSecond * deltaSeconds
-            flingDegreesPerSecond *= exp(-HERO_FLING_FRICTION * deltaSeconds)
-        } else {
-            flingDegreesPerSecond = 0f
-            if (idle) {
-                // The turntable does not snap back on: it fades in over
-                // [HERO_IDLE_RESUME_SECONDS], so letting go of the model does not look
-                // like the app grabbing it.
-                idleBlend = min(1f, idleBlend + deltaSeconds / HERO_IDLE_RESUME_SECONDS)
-                yawDegrees += HERO_IDLE_DEGREES_PER_SECOND * idleBlend * deltaSeconds
-            }
-        }
+        if (idle) yawDegrees += HERO_IDLE_DEGREES_PER_SECOND * deltaSeconds
         return yawDegrees
     }
 
@@ -222,8 +182,8 @@ internal fun HomeHeroScene(
     // something the scene observes. Not advancing the turntable IS the pause.
     val advancing = !loaded || rendering
 
-    // "Remove animations" is on: the subject is still there, still draggable, it just
-    // stops turning on its own. Read once per composition, not per frame.
+    // "Remove animations" is on: the subject is still there, it just stops turning on
+    // its own. Read once per composition, not per frame.
     val idleTurntable = LocalMotionEnabled.current
 
     // …but "not advancing IS the pause" only works in one direction (#3718). The turntable
@@ -236,9 +196,6 @@ internal fun HomeHeroScene(
     LaunchedEffect(advancing, idleTurntable) {
         if (advancing) renderInvalidator.requestRender()
     }
-
-    val density = LocalDensity.current
-    val dragToDegrees = remember(density) { HERO_DEGREES_PER_DP / density.density }
 
     // The stage shrinks and fades as the band leaves, drawn only: no re-measure, so
     // the grid's scroll offset can never depend on a height this collapse produced.
@@ -282,9 +239,9 @@ internal fun HomeHeroScene(
             environmentLoader = environmentLoader,
             environment = environment,
             cameraNode = cameraNode,
-            // No manipulator and no gesture listener: the one gesture this band answers
-            // is the horizontal drag below, and a camera the SDK also moves would fight
-            // the grid's vertical scroll for the same finger.
+            // No manipulator and no gesture listener: the scene answers no gesture at
+            // all. A horizontal drag belongs to the featured pager, a vertical one to
+            // the grid, a tap to the card that opens the Model Viewer (#3829).
             cameraManipulator = null,
             onGestureListener = null,
             renderQuality = RenderQuality.Performance,
@@ -310,24 +267,18 @@ internal fun HomeHeroScene(
             }
         }
 
-        // Drag, on top of the viewport so it sees the finger first. Horizontal only —
-        // `detectHorizontalDragGestures` waits for horizontal touch slop, so a thumb
-        // travelling down the catalogue still reaches the grid untouched, and a tap
-        // never becomes a drag and so still opens the demo underneath.
+        // A touch shield over the viewport. The `SceneView` is an Android `View`, and
+        // the interop layer hands it every touch that lands on it: if it claims the
+        // stream, the pager and the card above it see consumed events and neither
+        // pages nor opens the demo. This sibling sits on top so the hit test stops
+        // here, and it observes without consuming — every event still travels up to
+        // the pager (horizontal swipe), the grid (vertical scroll) and the card (tap).
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(dragToDegrees) {
-                    val tracker = VelocityTracker()
-                    detectHorizontalDragGestures(
-                        onDragStart = { tracker.resetTracking() },
-                        onDragEnd = {
-                            turntable.fling(tracker.calculateVelocity().x * dragToDegrees)
-                        },
-                        onDragCancel = { tracker.resetTracking() },
-                    ) { change, dragAmount ->
-                        tracker.addPosition(change.uptimeMillis, change.position)
-                        turntable.drag(dragAmount * dragToDegrees)
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) awaitPointerEvent()
                     }
                 },
         )

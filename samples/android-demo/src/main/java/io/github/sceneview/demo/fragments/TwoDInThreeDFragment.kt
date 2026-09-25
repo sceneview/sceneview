@@ -21,9 +21,9 @@ object TwoDInThreeDFragment : DemoFragment {
         id = "two-d-in-three-d",
         titleRes = R.string.demo_two_d_in_three_d_title,
         subtitleRes = R.string.demo_two_d_in_three_d_subtitle,
-        category = DemoCategory.GEOMETRY_MATERIALS,
+        category = DemoCategory.CREATE,
         icon = Icons.Filled.Layers,
-        order = 8,
+        order = 14,
         tags = setOf(
             "2d", "viewnode", "compose", "billboard", "quad", "label", "annotation",
             "text", "image", "video", "occlusion",

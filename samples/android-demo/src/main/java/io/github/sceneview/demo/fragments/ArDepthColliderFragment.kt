@@ -14,9 +14,9 @@ object ArDepthColliderFragment : DemoFragment {
         id = "ar-depth-collider",
         titleRes = R.string.demo_ar_depth_collider_title,
         subtitleRes = R.string.demo_ar_depth_collider_subtitle,
-        category = DemoCategory.AR_UNDERSTANDING,
+        category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.ScatterPlot,
-        order = 30,
+        order = 33,
         tags = setOf("ar", "depth", "physics", "collision", "rigid-body"),
         status = io.github.sceneview.demo.DemoStatus.KnownIssue,
     )

@@ -14,9 +14,9 @@ object ArSceneSemanticsFragment : DemoFragment {
         id = "ar-scene-semantics",
         titleRes = R.string.demo_ar_scene_semantics_title,
         subtitleRes = R.string.demo_ar_scene_semantics_subtitle,
-        category = DemoCategory.AR_UNDERSTANDING,
+        category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Park,
-        order = 36,
+        order = 38,
         tags = setOf("ar", "semantics", "segmentation", "labeling", "outdoor"),
     )
 

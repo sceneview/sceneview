@@ -45,7 +45,7 @@ is no longer a shared anchor either.
            id = "my-demo",
            titleRes = R.string.demo_my_demo_title,
            subtitleRes = R.string.demo_my_demo_subtitle,
-           category = DemoCategory.BASICS_3D,
+           category = DemoCategory.VIEW_3D,
            icon = Icons.Filled.Star,
        )
 
