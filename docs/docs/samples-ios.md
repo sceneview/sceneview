@@ -8,7 +8,7 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 !!! tip "Looking for Android samples?"
     See [Samples](samples.md) for Jetpack Compose sample apps with source code.
 
-These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **59 demos** covering every category.
+These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **45 demos** covering every category.
 
 ```swift
 .package(url: "https://github.com/sceneview/sceneview.git", from: "4.39.0")
@@ -28,7 +28,7 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 | Demo | Source | What it shows |
 |---|---|---|
 | Model Viewer | [`ModelViewerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ModelViewerDemo.swift) | Load a USDZ with orbit camera, IBL, and animation |
-| Geometry | [`GeometryDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/GeometryDemo.swift) | Procedural shapes — cube, sphere, cylinder, cone, plane |
+| Geometry | [`GeometryScene.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/GeometryScene.swift) | Procedural shapes — cube, sphere, cylinder, cone, plane |
 | Animation | [`AnimationDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift) | `playAllAnimations()`, `autoRotate`, timeline scrubbing |
 | Multi-Model | [`MultiModelDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MultiModelDemo.swift) | Multiple models loaded and placed in one scene |
 | Scene Gallery | [`SceneGalleryDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/SceneGalleryDemo.swift) | Carousel of USDZ models with Sketchfab integration |
@@ -37,7 +37,7 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Lighting | [`LightingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightingDemo.swift) | Directional, point, and spot lights with PBR materials |
+| Lighting | [`LightTypesScene.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/LightTypesScene.swift) | Directional, point, and spot lights with PBR materials |
 | Movable Light | [`MovableLightDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MovableLightDemo.swift) | Drag a `LightNode` around the scene |
 | Dynamic Sky | [`DynamicSkyDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DynamicSkyDemo.swift) | Time-of-day slider drives `DynamicSkyNode` |
 | Environment | [`EnvironmentDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/EnvironmentDemo.swift) | HDR environment presets (`.studio`, `.outdoor`, `.night`) |

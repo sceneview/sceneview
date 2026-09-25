@@ -222,4 +222,4 @@ fix missing. Its own failing path is exercised on synthetic trees by
 - [Erkko68/filament-kmp](https://github.com/Erkko68/filament-kmp) ·
   [Compose integration strategies](https://github.com/Erkko68/filament-kmp/blob/main/docs/compose/integration-strategies.md)
 - [compose-multiplatform#3810 — external GPU texture interop (open)](https://github.com/JetBrains/compose-multiplatform/issues/3810)
-- [JetBrains lwjgl-integration (experimental)](https://github.com/JetBrains/compose-multiplatform/tree/master/experimental/lwjgl-integration)
+- [JetBrains lwjgl-integration (experimental, removed from `master`; last seen at v1.6.0)](https://github.com/JetBrains/compose-multiplatform/tree/v1.6.0/experimental/lwjgl-integration)

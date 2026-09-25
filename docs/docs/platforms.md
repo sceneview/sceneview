@@ -13,10 +13,10 @@ SceneView uses **native renderers per platform** for the best performance and to
 
 | Platform | Renderer | Framework | Module | Status |
 |---|---|---|---|---|
-| **Android** | Filament | Jetpack Compose | `sceneview` / `arsceneview` | Stable (v4.0.0) |
-| **iOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.0.0) |
-| **macOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.0.0) |
-| **visionOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.0.0) |
+| **Android** | Filament | Jetpack Compose | `sceneview` / `arsceneview` | Stable (v4.39.0) |
+| **iOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.39.0) |
+| **macOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.39.0) |
+| **visionOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.39.0) |
 | **Web** | Filament.js (WASM) | Kotlin/JS | `sceneview-web` | Alpha |
 | **Desktop** | Filament via `SceneViewer` (filament-kmp) | Compose Desktop | `samples/desktop-demo` | Alpha (JDK 22+) |
 | **Android TV** | Filament | Compose TV | `sceneview` | Alpha |
@@ -108,7 +108,7 @@ A Flutter plugin that bridges to native SceneView rendering on both Android (Fil
 
 - **Android**: `ComposeView` hosting `SceneView { }` composable
 - **iOS**: `SceneViewerHostView`, the shared `SceneViewSwift` host, for the 3D path; AR keeps its own platform view
-- **Install**: `flutter_sceneview: ^4.24.0` in pubspec.yaml ([pub.dev](https://pub.dev/packages/flutter_sceneview) — the packages named `sceneview` / `sceneview_flutter` are unrelated third-party uploads)
+- **Install**: `flutter_sceneview: ^4.39.0` in pubspec.yaml ([pub.dev](https://pub.dev/packages/flutter_sceneview) — the packages named `sceneview` / `sceneview_flutter` are unrelated third-party uploads)
 
 [:octicons-arrow-right-24: Flutter Quickstart](quickstart-flutter.md)
 

@@ -21,8 +21,8 @@
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
   <title>SceneView — 3D & AR SDK for Android, iOS, Web, and more</title>
-  <meta name="description" content="SceneView is an open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI, Kotlin/JS, Flutter, and React Native. Ships as a ChatGPT and Codex plugin, and opens the .3mf files AI print flows emit. Powered by Filament and RealityKit.">
-  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, 3D file viewer, glTF, GLB, 3MF, STL, OBJ, PLY, USDZ, AR Model Viewer, Will It Fit, 3MF, 3D printing, visionOS, cross-platform 3D, AI-first SDK, MCP server, model context protocol, AI coding assistant, AI code generation, LLM 3D development, AI 3D development, AI AR development">
+  <meta name="description" content="SceneView is an open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI and the web, plus Flutter and React Native bridges. Built so AI assistants write working code on the first try. Powered by Filament and RealityKit.">
+  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, 3D file viewer, glTF, GLB, 3MF, STL, OBJ, PLY, USDZ, AR Model Viewer, Will It Fit, 3D printing, visionOS, cross-platform 3D, AI-first SDK, MCP server, model context protocol, AI coding assistant, AI code generation, LLM 3D development, AI 3D development, AI AR development">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#005bc1">
@@ -352,7 +352,7 @@
           <div class="stat__label">Platforms</div>
         </div>
         <div class="stat">
-          <div class="stat__number">26+</div>
+          <div class="stat__number">48+</div>
           <div class="stat__label">3D node types</div>
         </div>
         <div class="stat">
@@ -417,29 +417,19 @@
 <span class="syn-blue">SceneView</span>.<span class="syn-blue">modelViewer</span>(<span class="syn-green-light">"canvas"</span>, <span class="syn-green-light">"model.glb"</span>)</code></pre>
           </div>
           <div class="tabs__panel" data-panel="flutter">
-            <pre class="code-block"><code><span class="syn-green"># pubspec.yaml (coming soon on pub.dev)</span>
+            <pre class="code-block"><code><span class="syn-green"># pubspec.yaml</span>
 <span class="syn-purple">dependencies</span>:
-  <span class="syn-blue">sceneview_flutter</span>:
-    <span class="syn-purple">git</span>:
-      <span class="syn-blue">url</span>: <span class="syn-green-light">https://github.com/sceneview/sceneview</span>
-      <span class="syn-blue">path</span>: <span class="syn-green-light">flutter</span></code></pre>
+  <span class="syn-blue">flutter_sceneview</span>: <span class="syn-green-light">^4.39.0</span></code></pre>
           </div>
           <div class="tabs__panel" data-panel="reactnative">
-            <pre class="code-block"><code><span class="syn-green">// package.json</span>
-<span class="syn-green-light">"dependencies"</span>: {
-  <span class="syn-green-light">"react-native-sceneview"</span>: <span class="syn-green-light">"github:sceneview/sceneview#react-native"</span>
-}
-
-<span class="syn-green">// Then run:</span>
-<span class="syn-purple">npm</span> install
+            <pre class="code-block"><code><span class="syn-purple">npm</span> install <span class="syn-green-light">@sceneview-sdk/react-native</span>
 <span class="syn-purple">npx</span> pod-install <span class="syn-green">// iOS only</span></code></pre>
           </div>
           <div class="tabs__panel" data-panel="desktop">
-            <pre class="code-block"><code><span class="syn-green">// Compose Desktop: wireframe placeholder only</span>
-<span class="syn-green">// (no 3D renderer yet &mdash; Filament JVM pending)</span>
-<span class="syn-purple">git</span> clone <span class="syn-green-light">https://github.com/sceneview/sceneview</span>
-<span class="syn-purple">cd</span> sceneview/samples/desktop-demo
-<span class="syn-purple">./gradlew</span> run</code></pre>
+            <pre class="code-block"><code><span class="syn-green">// Compose Desktop &mdash; SceneViewer, Filament via filament-kmp (JDK 22+)</span>
+<span class="syn-purple">dependencies</span> {
+    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview-compose:4.39.0"</span>)
+}</code></pre>
           </div>
         </div>
       </div>
@@ -856,11 +846,11 @@ CLAUDE.md</code></pre>
           <span class="platform-card-v2__renderer">Filament (Vulkan)</span>
         </a>
         <a href="https://github.com/sceneview/sceneview/tree/main/samples/desktop-demo" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--soon">Not&nbsp;yet</span>
-          <img src="assets/brand/jetbrains.svg" alt="" class="platform-card-v2__icon-img platform-card-v2__icon-img--muted">
+          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
+          <img src="assets/brand/jetbrains.svg" alt="" class="platform-card-v2__icon-img">
           <h4 class="platform-card-v2__name">Desktop</h4>
-          <p class="platform-card-v2__desc">Compose Desktop &middot; wireframe placeholder</p>
-          <span class="platform-card-v2__renderer">No 3D renderer yet (Filament JVM pending)</span>
+          <p class="platform-card-v2__desc">Compose Desktop &middot; <code>SceneViewer</code> viewer</p>
+          <span class="platform-card-v2__renderer">Filament (filament-kmp, JDK 22+)</span>
         </a>
         <div class="platform-card-v2 platform-card-v2--soon reveal">
           <span class="platform-card-v2__badge platform-card-v2__badge--soon">Coming Soon</span>
@@ -896,7 +886,7 @@ CLAUDE.md</code></pre>
       <div class="features__grid">
         <div class="feature-card reveal">
           <span class="feature-card__icon material-symbols-outlined">view_in_ar</span>
-          <h3 class="feature-card__title">46+ Node Types</h3>
+          <h3 class="feature-card__title">48+ Node Types</h3>
           <p class="feature-card__text">Models, primitives (cube, sphere, cone, torus, capsule), curves, shapes, text, video, billboard sprites, lights, reflection probes, dynamic sky, fog, physics, and more &mdash; every one a Composable / SwiftUI view.</p>
           <div class="feature-card__chips">
             <span class="feature-card__chip">Android</span>
@@ -967,7 +957,7 @@ CLAUDE.md</code></pre>
         <div class="feature-card reveal">
           <span class="feature-card__icon material-symbols-outlined">vrpano</span>
           <h3 class="feature-card__title">WebXR &mdash; AR &amp; VR</h3>
-          <p class="feature-card__text">Same engine on the web. <code>SceneView.startAR(canvas)</code> for phone passthrough AR with hit-test, anchors, light estimation. <code>startVR(canvas)</code> for headset VR with controllers and reference spaces.</p>
+          <p class="feature-card__text">Same engine on the web. From Kotlin/JS, <code>ARSceneView.create(…)</code> starts phone passthrough AR with hit-test, anchors and light estimation; <code>VRSceneView.create(…)</code> starts headset VR with controllers and reference spaces.</p>
           <div class="feature-card__chips">
             <span class="feature-card__chip">Web</span>
             <span class="feature-card__chip">immersive-ar</span>
@@ -993,8 +983,8 @@ CLAUDE.md</code></pre>
 
         <div class="feature-card reveal">
           <span class="feature-card__icon material-symbols-outlined">deployed_code</span>
-          <h3 class="feature-card__title">Opens the <code>.3mf</code> AI makes</h3>
-          <p class="feature-card__text">Ask a chat assistant for a 3D print and it hands back a <code>.3mf</code> &mdash; a file nothing else on Android views in 3D, let alone in AR. SceneView reads it with no new API: the payload is detected by its ZIP magic and converted to GLB in memory, scaled from millimetres to metres and rotated upright, so a 60&nbsp;mm print is life-size on a real table. The Android demo registers for the type, so a shared file opens straight from the chooser.</p>
+          <h3 class="feature-card__title">Any 3D file, at real size</h3>
+          <p class="feature-card__text">glTF/GLB, OBJ, STL, PLY and 3MF on Android, USDZ on Apple &mdash; all loaded through the same <code>rememberModelInstance</code> call, with units converted so a model shows at real size in AR. The Android demo registers for these types, so a shared file opens straight from the chooser.</p>
           <div class="feature-card__chips">
             <span class="feature-card__chip">3MF</span>
             <span class="feature-card__chip">glTF / GLB</span>
@@ -1271,7 +1261,7 @@ CLAUDE.md</code></pre>
           <div class="try-card__body">
             <span class="try-card__badge try-card__badge--android">Android</span>
             <h3 class="try-card__title">Android Demo</h3>
-            <p class="try-card__text">Material 3 Expressive, 52 demos (18 non-AR + 34 AR)</p>
+            <p class="try-card__text">Material 3 Expressive, 48 demos (18 non-AR + 30 AR)</p>
           </div>
           <span class="material-symbols-outlined try-card__arrow">arrow_forward</span>
         </a>
@@ -1390,7 +1380,7 @@ CLAUDE.md</code></pre>
                 <span class="cta__terminal-cmd">npm install sceneview-mcp</span>
               </div>
               <div class="cta__terminal-output">
-                + sceneview-mcp@4.0.13<br>
+                + sceneview-mcp@4.0.16<br>
                 added 12 packages from 8 contributors and audited 42 packages in 1.2s<br>
                 <br>
                 <span class="cta__terminal-success">Success!</span> Ready to use SceneView in your project.

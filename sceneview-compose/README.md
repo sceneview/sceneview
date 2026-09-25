@@ -43,8 +43,8 @@ platform it covers.
 | Custom materials, shaders, post-processing | the platform-native API |
 | Splat, Video, View, ContactShadow, Physics, Text nodes | the platform-native API |
 
-AR is the important one: 77 of the 178 Kotlin files in `arsceneview` import ARCore
-directly (58 under `src/main`, 19 under `src/test`), and Apple's equivalent is ARKit. There is
+AR is the important one: 82 of the 201 Kotlin files in `arsceneview` import ARCore
+directly (61 under `src/main`, 21 under `src/test`), and Apple's equivalent is ARKit. There is
 no honest common shape.
 
 ## One API, several renderers
@@ -196,7 +196,7 @@ from a Compose Multiplatform resource. Sample: [`samples/desktop-demo`](../sampl
 
 `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`.
 
-`iosX64` (the Intel simulator) is absent because Compose Multiplatform 1.11.1 publishes
+`iosX64` (the Intel simulator) is absent because Compose Multiplatform (1.12.0 here) publishes
 no `iosX64` variant. `sceneview-core` still targets it — it has no Compose dependency —
 so the two modules are not inconsistent.
 
