@@ -104,6 +104,10 @@ private struct MediaCard: View {
                     }
                 }
                 .aspectRatio(SceneViewTokens.Layout.mediaAspect, contentMode: .fit)
+                // Size the media from the card width alone: the card stretches to
+                // its grid row, and a height proposal from that row would shrink
+                // a `.fit` slot narrower than the card.
+                .fixedSize(horizontal: false, vertical: true)
                 .clipped()
                 .overlay {
                     if colorScheme == .dark {
@@ -127,10 +131,12 @@ private struct MediaCard: View {
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, SceneViewTokens.Home.cardTextPaddingTop)
                 .padding(.horizontal, SceneViewTokens.Home.cardTextPaddingHorizontal)
                 .padding(.bottom, SceneViewTokens.Home.cardTextPaddingBottom)
+
+                Spacer(minLength: 0)
             }
             // Fill the grid row so neighbours whose text wraps to different
             // line counts keep the same card height.
