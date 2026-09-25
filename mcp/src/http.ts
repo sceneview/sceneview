@@ -207,7 +207,7 @@ export function startHttpServer(options: HttpServerOptions = {}): Promise<NodeHt
       const address = httpServer.address();
       const boundPort = typeof address === "object" && address ? address.port : port;
       if (log && env.SCENEVIEW_MCP_QUIET !== "1") {
-        log(`[sceneview-mcp] v${PACKAGE_VERSION} — HTTP (free tools only)`);
+        log(`[sceneview-mcp] v${PACKAGE_VERSION} — HTTP (remote tool surface)`);
         log(`[sceneview-mcp] MCP endpoint: http://${host}:${boundPort}${MCP_PATH}`);
         log(`[sceneview-mcp] Health:       http://${host}:${boundPort}${HEALTH_PATH}`);
       }

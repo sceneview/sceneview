@@ -15,7 +15,7 @@
 //     unique developers per client runtime without identifying who they are
 //   - botLikelihood?: float in [0.0, 1.0] computed at the sender side from
 //     environment signals (CI flags, no-TTY, container hints). Worker uses
-//     it to exclude bot traffic from monetization analytics by default.
+//     it to exclude bot traffic from usage analytics by default.
 //
 // What NEVER gets sent:
 //   - IP address (the endpoint strips it server-side; we never send headers)
@@ -32,6 +32,13 @@ import { join } from "node:path";
 
 // Worker implementation: telemetry-worker/ (Hono + D1 + KV rate limiting).
 // Deploy with: cd telemetry-worker && see DEPLOY.md
+//
+// `mcp-tools-lab` in this hostname is the Cloudflare account's workers.dev
+// subdomain, NOT the GitHub org of the same name that was deleted on
+// 2026-08-23. The worker is live and ingesting (checked 2026-09-25: `/health`
+// answers ok, `/v1/stats` counts events from 4.0.16 over the last 24 h).
+// Moving to a custom domain on sceneview.dev needs the worker to answer there
+// first; re-pointing this constant before that would silently drop every event.
 const TELEMETRY_ENDPOINT = "https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/events";
 const TELEMETRY_BATCH_ENDPOINT = "https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/batch";
 
