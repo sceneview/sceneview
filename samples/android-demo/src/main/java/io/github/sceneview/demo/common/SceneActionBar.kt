@@ -14,7 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.theme.SceneViewTokens
 
 /**
  * Shared on-screen action cluster for demo screens (issue
@@ -67,18 +67,26 @@ fun ColumnScope.SceneActionBar(
     modifier: Modifier = Modifier,
 ) {
     // The Column is already inset for the system bars by the slot itself, and it
-    // already spaces its children — so this overload adds only its own gutter, and
-    // aligns start to keep the bar where users learned to find it.
+    // already spaces its children — so this overload adds only its own gutter.
+    //
+    // Centred, not start-aligned (#3835). Everything else in the slot — the status
+    // pill, the AR overlay card, the dock under it — is centred, so a start-aligned
+    // row read as a stray: "Host · Restart" hung off the left edge of a centred
+    // card, "Drop here" under a centred, wrapped sentence. Actions attached to a
+    // centred toast are centred on it.
     SceneActionBarRow(
         actions = actions,
         modifier = modifier
-            .align(Alignment.Start)
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .align(Alignment.CenterHorizontally)
+            .padding(
+                horizontal = SceneViewTokens.Space.md,
+                vertical = SceneViewTokens.Space.xs,
+            ),
     )
 }
 
 /**
- * Scene-lambda placement — pins itself bottom-start of the scene `Box`.
+ * Scene-lambda placement — pins itself bottom-centre of the scene `Box`.
  *
  * Prefer the [ColumnScope] overload in `DemoScaffold(bottomOverlay = …)`: this one
  * shares the bottom band with anything else anchored there, and cannot be told
@@ -92,9 +100,9 @@ fun BoxScope.SceneActionBar(
     SceneActionBarRow(
         actions = actions,
         modifier = modifier
-            .align(Alignment.BottomStart)
+            .align(Alignment.BottomCenter)
             .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(16.dp),
+            .padding(SceneViewTokens.Space.md),
     )
 }
 
@@ -106,7 +114,7 @@ private fun SceneActionBarRow(
     if (actions.isEmpty()) return
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         actions.forEachIndexed { index, action ->

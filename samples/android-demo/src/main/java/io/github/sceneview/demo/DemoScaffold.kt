@@ -71,6 +71,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -837,11 +838,19 @@ private fun BoxScope.DemoDock(
             // ("View in AR") carries the wording.
             trailingContent = if (accent != null) {
                 {
+                    // A 40 dp disc in a 48 dp touch target (#3835). The toolbar's own 8 dp
+                    // content padding is right for the labelled items, whose glyphs sit
+                    // 4 dp inside their 48 dp column — but a 48 dp *filled* disc has no
+                    // inset, so it ended 8 dp from the rounded end and read as touching
+                    // it, while the leading item had 12 dp of air. At `dockAccentSize`
+                    // the disc is 12 dp from the dock edge on every side, concentric
+                    // with the end cap, and both ends of the dock match.
                     FilledIconButton(
                         onClick = accent.onClick,
                         enabled = accent.enabled,
                         modifier = Modifier
-                            .size(SceneViewTokens.Layout.touchTarget)
+                            .minimumInteractiveComponentSize()
+                            .size(SceneViewTokens.Layout.dockAccentSize)
                             .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primary,

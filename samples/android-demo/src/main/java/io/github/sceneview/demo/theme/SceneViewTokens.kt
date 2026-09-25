@@ -471,6 +471,14 @@ object SceneViewTokens {
         val dockHeight = 64.dp
         /** Dock items are [touchTarget] square; their icons are this size. */
         val dockIconSize = 22.dp
+        /**
+         * `dock-accent` — visual diameter of the dock's filled accent disc. Its touch
+         * target stays [touchTarget]. 40 dp inside the 64 dp dock leaves **12 dp on
+         * every side** — the same air as the first labelled item has from the leading
+         * end (8 dp toolbar padding + the item's 4 dp inset). At 48 dp the disc sat
+         * 8 dp from the rounded end and read as touching it (#3835).
+         */
+        val dockAccentSize = 40.dp
         val viewerEnvironmentTile = 72.dp
         val viewerAnimationButton = 48.dp
         val selectedOutlineWidth = 2.dp

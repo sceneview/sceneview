@@ -466,6 +466,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | `dock-icon` | 22dp |
 | `dock-caption` | `type-caption`, 2dp under the icon, one line, never truncated |
 | `dock-items` | at most 4 items + 1 optional accent (primary-tinted) item |
+| `dock-accent` | 40dp filled disc, 48dp touch target, 12dp from the dock edge on every side |
 
 The dock replaces FABs and top app bars in demo screens; its Controls item opens the
 settings sheet. Show/hide uses `motion-spring`; tap on the scene toggles the chrome
@@ -477,9 +478,16 @@ with `motion-fade`.
   one word (`Models`, `Lighting`, `Animate`, `Recenter`, `Settings`); if an action
   needs more than one word to be understood, the wrong action is in the dock. Icon and
   caption share a colour, so a selected toggle reads as one unit.
-- **The accent is the exception.** It is a 48dp filled, primary-tinted button and stays
-  icon-only — a caption would not fit `dock-height`, and its treatment already sets it
-  apart from the labelled items the way a FAB is set apart from a navigation bar.
+- **The accent is the exception.** It is a filled, primary-tinted disc (`dock-accent`,
+  40dp visual in a 48dp touch target) and stays icon-only — a caption would not fit
+  `dock-height`, and its treatment already sets it apart from the labelled items the way
+  a FAB is set apart from a navigation bar. At 40dp it sits 12dp from the dock edge on
+  every side, the same air the first labelled item has at the leading end; a 48dp disc
+  ended 8dp from the rounded cap and read as touching it (#3835).
+- **Everything in a pill is centred on the pill.** A glass surface that is raised to the
+  48dp touch target centres its 36dp content; it never pins it to the top.
+- **Actions under a centred toast or card are centred on it** — never start-aligned
+  under centred text (`SceneActionBar`).
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
 
