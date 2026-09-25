@@ -53,6 +53,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.sample.rememberMaterialInstance
@@ -165,12 +166,30 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
     )
 
     val firstFrame = rememberFirstFrameState(engine)
-    var renderedFrames by remember { mutableIntStateOf(0) }
     // The card's first frames are the empty texture the ComposeView has not drawn into yet;
     // holding the "first frame" signal back keeps the loading veil up until the scene is real.
-    val onWarmedUpFrame: (Long) -> Unit = { frameTimeNanos ->
-        if (renderedFrames < VIEW_NODE_WARMUP_FRAMES) renderedFrames++ else firstFrame.onFrame(frameTimeNanos)
+    //
+    // The warmup needs 18 SceneView frames to actually be *submitted* (#3795). Interactively
+    // that is free: `rememberPausableHeroYaw` keeps the card turning, so the render-on-demand
+    // gate (`FrameRateGate`) sees continuous activity and stays open on its own. In
+    // `DemoSettings.qaMode` the same helper freezes the card at a static yaw for deterministic
+    // screenshots, so nothing here keeps invalidating the scene — the gate settles and parks
+    // after its usual handful of frames, long before 18, and `firstFrame.onFrame` (and the
+    // "Scene ready" semantics it drives) was never reached. `renderInvalidator` is the SDK's
+    // documented escape hatch for exactly this: a change the library cannot observe on its own
+    // (here, "the warmup is not done yet") — request one more frame every tick until
+    // `firstFrame` has latched, the same pattern `MaterialsDemo` and `ModelViewerDemo` use.
+    // [ViewNodeWarmupGate] holds that decision as plain, JVM-testable state.
+    val renderInvalidator = rememberRenderInvalidator()
+    val warmupGate = remember(firstFrame, renderInvalidator) {
+        ViewNodeWarmupGate(
+            warmupFrames = VIEW_NODE_WARMUP_FRAMES,
+            isRendered = { firstFrame.rendered.value },
+            forward = firstFrame.onFrame,
+            requestRender = renderInvalidator::requestRender,
+        )
     }
+    val onWarmedUpFrame: (Long) -> Unit = warmupGate::onFrame
 
     DemoScaffold(
         title = stringResource(R.string.demo_picking_collision_title),
@@ -212,6 +231,7 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 onFrame = onWarmedUpFrame,
+                renderInvalidator = renderInvalidator,
                 engine = engine,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
@@ -449,3 +469,40 @@ internal fun PickedCardContent(
 }
 
 private const val VIEW_NODE_WARMUP_FRAMES = 18
+
+/**
+ * The decision behind [PickingAndCollisionDemo]'s `onWarmedUpFrame` (#3795), held as plain state
+ * so it is testable off-device.
+ *
+ * The first [warmupFrames] SceneView frames are swallowed rather than [forward]ed — they are the
+ * card's ComposeView drawing into its texture for the first time, and forwarding them early would
+ * lift the loading cover over an empty card. Every frame after that goes straight to [forward]
+ * ([io.github.sceneview.demo.FirstFrameState.onFrame]).
+ *
+ * [requestRender] is called once per tick for as long as [isRendered] answers `false` — i.e. for
+ * the whole warmup *and* the couple of frames [io.github.sceneview.demo.FirstFrameState] itself
+ * still needs afterwards. Interactively that call is a no-op in spirit: the card's own auto-rotate
+ * already keeps `SceneView`'s render-on-demand gate open, so frames arrive on their own. But
+ * `DemoSettings.qaMode` freezes that rotation for deterministic screenshots, which was the whole
+ * bug — with nothing left to invalidate the scene, the gate settled and parked after its usual
+ * handful of frames, nowhere near [warmupFrames], and [forward] was never called at all. Explicitly
+ * requesting a frame every tick is what keeps the warmup progressing regardless of what else is (or
+ * is not) animating, the same escape hatch `MaterialsDemo` and `ModelViewerDemo` use for a
+ * Filament-side change the SDK cannot observe on its own.
+ */
+@VisibleForTesting
+internal class ViewNodeWarmupGate(
+    private val warmupFrames: Int,
+    private val isRendered: () -> Boolean,
+    private val forward: (Long) -> Unit,
+    private val requestRender: () -> Unit,
+) {
+    /** How many SceneView frames have been swallowed so far, capped at [warmupFrames]. */
+    var framesSeen: Int = 0
+        private set
+
+    fun onFrame(frameTimeNanos: Long) {
+        if (framesSeen < warmupFrames) framesSeen++ else forward(frameTimeNanos)
+        if (!isRendered()) requestRender()
+    }
+}
