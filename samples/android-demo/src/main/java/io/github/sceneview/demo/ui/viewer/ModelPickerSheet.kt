@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+)
 
 package io.github.sceneview.demo.ui.viewer
 
@@ -127,7 +130,7 @@ fun ModelPickerSheet(
             contentAlignment = Alignment.Center,
         ) {
             if (loading) {
-                CircularProgressIndicator(
+                LoadingIndicator(
                     Modifier.size(SceneViewTokens.Layout.dockIconSize),
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -168,6 +171,6 @@ fun ModelPickerSheet(
             Text(title, style = MaterialTheme.typography.bodyLarge)
             subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         }
-        if (loading) CircularProgressIndicator(Modifier.size(SceneViewTokens.Layout.dockIconSize))
+        if (loading) LoadingIndicator(Modifier.size(SceneViewTokens.Layout.dockIconSize))
     }
 }

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo
 
 import androidx.compose.animation.core.LinearEasing
@@ -14,7 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,11 +65,9 @@ fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.90f))
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(44.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 4.dp,
-            )
+            // M3 Expressive morphing-shape indicator: it reads as "a scene is coming",
+            // where a bare ring reads as "the network is slow".
+            LoadingIndicator(color = MaterialTheme.colorScheme.primary)
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
@@ -235,11 +236,7 @@ fun ARCameraInitScrim(
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
                 .padding(horizontal = 28.dp, vertical = 22.dp),
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(44.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 4.dp,
-            )
+            LoadingIndicator(color = MaterialTheme.colorScheme.primary)
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,

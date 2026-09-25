@@ -1155,10 +1155,9 @@ private fun BoxScope.FirstFrameCover(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
             ) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(SceneViewTokens.Space.xl + SceneViewTokens.Space.sm),
+                // M3 Expressive morphing-shape indicator at its spec size (48 dp).
+                androidx.compose.material3.LoadingIndicator(
                     color = MaterialTheme.colorScheme.primary,
-                    strokeWidth = SceneViewTokens.Space.xs,
                 )
                 if (loadingLabel != null) {
                     Text(

@@ -41,9 +41,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.activity.compose.BackHandler
@@ -89,6 +86,7 @@ import io.github.sceneview.demo.OrbitSpin
 import io.github.sceneview.demo.orbitLabelFadeAlpha
 import io.github.sceneview.demo.orbitYawDeviationDegrees
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
@@ -200,17 +198,12 @@ private fun ModeSelector(
     current: MaterialsMode,
     onModeChange: (MaterialsMode) -> Unit,
 ) {
-    val modes = MaterialsMode.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, m ->
-            SegmentedButton(
-                selected = m == current,
-                onClick = { onModeChange(m) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(stringResource(m.labelRes)) },
-            )
-        }
-    }
+    ConnectedChoiceRow(
+        options = MaterialsMode.entries,
+        selected = current,
+        onSelect = onModeChange,
+        label = { stringResource(it.labelRes) },
+    )
     Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 }
 
