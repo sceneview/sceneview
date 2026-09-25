@@ -37,17 +37,19 @@ struct CustomMeshDemo: View {
                     material: .pbr(color: .systemPink, metallic: 0.9, roughness: 0.1)
                 )
 
-                let meshes: [(name: String, color: SimpleMaterial.Color, x: Float, node: MeshNode?)] = [
-                    ("Pyramid", .systemTeal, -0.35, pyramid),
-                    ("Diamond", .systemPink, 0.35, diamond),
+                let meshes: [(name: String, x: Float, node: MeshNode?)] = [
+                    ("Pyramid", -0.35, pyramid),
+                    ("Diamond", 0.35, diamond),
                 ]
                 for mesh in meshes {
                     guard let node = mesh.node else { continue }
                     root.addChild(node.position([mesh.x, 0, 0]).entity)
 
-                    let label = TextNode(text: mesh.name, fontSize: 0.04, color: mesh.color, depth: 0.005)
+                    // One light neutral, large enough to read on a phone (#3788).
+                    let label = TextNode(text: mesh.name, fontSize: 0.08,
+                                         color: UIColor(SceneViewTokens.Glass.onGlass), depth: 0.005)
                         .centered()
-                        .position([mesh.x, -0.3, 0])
+                        .position([mesh.x, -0.34, 0])
                     root.addChild(label.entity)
                 }
             }
@@ -56,7 +58,7 @@ struct CustomMeshDemo: View {
             // the studio HDR, not drawn in front of it.
             .environment(.custom(name: "Studio", hdrFile: "studio.hdr", showSkybox: false))
         } accessory: {
-            DemoHint("MeshNode.fromVertices — positions, normals, indices")
+            DemoHint("Two solids built point by point from their corners — drag to orbit")
         }
     }
 }

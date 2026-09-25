@@ -43,7 +43,9 @@ struct ShapeExtrudeDemo: View {
             .contentID(sceneKey)
         }
         .demoChrome(accessory: {
-            DemoHint("ShapeNode — 2D polygon extruded into 3D mesh")
+            // The shape's name lives here, in the pill, not as 3D text under the
+            // shape: that label sat below the frame on a phone (#3788).
+            DemoHint("\(selectedPreset.displayName) — a flat outline extruded into a solid")
         }) {
             settingsContent
         }
@@ -84,16 +86,6 @@ struct ShapeExtrudeDemo: View {
         }
 
         root.addChild(shape.entity)
-
-        // Label
-        let label = TextNode(
-            text: preset.displayName,
-            fontSize: 0.055,
-            color: .white,
-            depth: 0.005
-        ).centered()
-        label.entity.position = .init(x: 0, y: -0.85, z: -2)
-        root.addChild(label.entity)
     }
 
     // MARK: - Settings
