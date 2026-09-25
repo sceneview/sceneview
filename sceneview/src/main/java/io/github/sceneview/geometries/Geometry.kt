@@ -15,6 +15,8 @@ import io.github.sceneview.math.Color
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.normalToTangent
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
 
@@ -209,13 +211,51 @@ val List<Geometry.Vertex>.hasNormals get() = any { it.normal != null }
 val List<Geometry.Vertex>.hasUvCoordinates get() = any { it.uvCoordinate != null }
 val List<Geometry.Vertex>.hasColors get() = any { it.color != null }
 
+/**
+ * A fresh **direct** float buffer of [count] floats, filled by [fill] and left ready to read.
+ *
+ * Filament's `setBufferAt` keeps a JNI global reference to the [FloatBuffer] it is handed until
+ * the driver's async copy completes on the render thread. For a heap-backed buffer (plain
+ * `FloatBuffer.allocate`) that reference comes paired with a *second* one to the buffer's backing
+ * `float[]`, because the JNI implementation has to pin the array to read it — twice the live
+ * global refs per upload. A direct buffer is backed by native memory instead of a Java array, so
+ * only the buffer itself needs pinning.
+ *
+ * On geometry that re-uploads every frame — an animated [Tube] such as the marching dashes and
+ * moving trail in the Lines & Paths demo — that difference is the one between a few hundred live
+ * global refs and ART's 51 200-entry cap, which is what
+ * [#3715](https://github.com/sceneview/sceneview/issues/3715) hit on a render thread lagging
+ * behind a loaded GPU.
+ *
+ * Always allocate fresh rather than reusing one buffer across uploads: the copy is asynchronous,
+ * so a reused buffer could be overwritten by the next frame's `put` while Filament is still
+ * reading the previous one — its own class of corruption, already ruled out for `DepthMeshNode`
+ * in #1841 (`arsceneview`'s equivalent per-frame upload path). A short-lived direct allocation
+ * trades a bit of native-heap churn for correctness; GC reclaims it once Filament's copy is done
+ * (or sooner, once the JNI global ref is released).
+ */
+// internal (rather than private) so GeometryDirectBufferUploadTest can pin this contract directly
+// — the Filament Engine can't run on the JVM, but this helper has no Filament dependency at all.
+internal fun directFloatBuffer(count: Int, fill: FloatBuffer.() -> Unit): FloatBuffer =
+    ByteBuffer.allocateDirect(count * Float.SIZE_BYTES)
+        .order(ByteOrder.nativeOrder())
+        .asFloatBuffer()
+        .apply(fill)
+
+/** [directFloatBuffer]'s counterpart for index buffers — see there for why direct matters. */
+internal fun directIntBuffer(count: Int, fill: IntBuffer.() -> Unit): IntBuffer =
+    ByteBuffer.allocateDirect(count * Int.SIZE_BYTES)
+        .order(ByteOrder.nativeOrder())
+        .asIntBuffer()
+        .apply(fill)
+
 fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): Box {
     var bufferIndex = 0
 
     // Create position Buffer
     setBufferAt(
         engine, bufferIndex,
-        FloatBuffer.allocate(vertices.size * kPositionSize).apply {
+        directFloatBuffer(vertices.size * kPositionSize) {
             vertices.forEach { put(it.position.toFloatArray()) }
             // Make sure the cursor is pointing in the right place in the byte buffer
             flip()
@@ -228,7 +268,7 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
         bufferIndex++
         setBufferAt(
             engine, bufferIndex,
-            FloatBuffer.allocate(vertices.size * kTangentSize).apply {
+            directFloatBuffer(vertices.size * kTangentSize) {
                 vertices.forEach { vertex ->
                     val normal = vertex.normal ?: error(
                         "Geometry attribute 'normal' missing on a vertex while other vertices " +
@@ -248,7 +288,7 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
         bufferIndex++
         setBufferAt(
             engine, bufferIndex,
-            FloatBuffer.allocate(vertices.size * kUVSize).apply {
+            directFloatBuffer(vertices.size * kUVSize) {
                 vertices.forEach { vertex ->
                     val uvCoordinate = vertex.uvCoordinate ?: error(
                         "Geometry attribute 'uvCoordinate' missing on a vertex while other " +
@@ -268,7 +308,7 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
         bufferIndex++
         setBufferAt(
             engine, bufferIndex,
-            FloatBuffer.allocate(vertices.size * kColorSize).apply {
+            directFloatBuffer(vertices.size * kColorSize) {
                 vertices.forEach { vertex ->
                     val color = vertex.color ?: error(
                         "Geometry attribute 'color' missing on a vertex while other vertices " +
@@ -300,12 +340,15 @@ fun IndexBuffer.setIndices(
     engine: Engine,
     indices: List<Int>
 ) {
-    // Fill the index buffer with the data
-    setBuffer(engine,
-        IntBuffer.allocate(indices.size).apply {
+    // Fill the index buffer with the data. Direct for the same reason as directFloatBuffer above
+    // — see there.
+    setBuffer(
+        engine,
+        directIntBuffer(indices.size) {
             indices.forEach { put(it) }
             flip()
-        })
+        }
+    )
 }
 
 
