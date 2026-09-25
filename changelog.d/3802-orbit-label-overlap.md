@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+
+- **Android demo: Materials and Contact Shadow Preview labels no longer overlap after an orbit drag ([#3802](https://github.com/sceneview/sceneview/issues/3802)).** Both demos frame a flat wall of captioned subjects for a roughly head-on view; dragging the camera towards broadside collapsed the on-screen gap between neighbours faster than a fixed-width or fixed-position caption could follow, so Materials' sphere captions overlapped in adjacent pairs and Contact Shadow Preview's "Shadow" / "No shadow" labels merged into "NShadow". Both cameras now clamp how far the user can orbit away from their front-on framing, keeping every caption legible and attached to its object at any angle still reachable.

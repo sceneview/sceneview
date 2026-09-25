@@ -517,6 +517,10 @@ private fun StudioSection(
             // user left it — behind the wall, say — it would show nothing. It eases back onto
             // its path instead of cutting to it (#3642).
             resume = HeroOrbitResume.ReturnToAuthoredPath,
+            // Keeps the drag short of the angle where sphere captions start to overlap (#3802).
+            // Inspect's `heroManipulator` above leaves this `null` — a single sphere has no
+            // neighbour to collide with, so its orbit stays free.
+            userMaxAbsYawDegrees = GALLERY_MAX_USER_YAW_DEGREES,
         )
     }
 
@@ -997,6 +1001,16 @@ private const val HERO_Y_HEIGHT: Float = 0.12f
 
 /** Fraction of the frame the gallery wall spans. Leaves the chrome bands their own air. */
 private const val GALLERY_FILL: Float = 0.88f
+
+/**
+ * How far the user may drag the gallery wall away from its front-on framing, in degrees
+ * (#3802). The wall is flat and its captions are sized for a roughly head-on view; a drag
+ * towards broadside collapses the on-screen gap between neighbouring spheres faster than a
+ * fixed-width caption can follow, so adjacent labels overlap and merge. `45°` gives a wide
+ * margin over the auto-sweep's own `24°` amplitude ([MaterialStudio.SWEEP_DEGREES]) while
+ * staying short of the angle where captions start to collide.
+ */
+private const val GALLERY_MAX_USER_YAW_DEGREES: Float = 45f
 
 /** Fraction of the frame the Inspect hero spans — tighter, because there is one subject. */
 private const val HERO_FILL: Float = 0.8f

@@ -44,6 +44,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.YawClampedCameraManipulator
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.environment.Environment
@@ -289,8 +290,22 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
                 // pair in the lower half and the wall TV in the upper half. Seen high and far
                 // (the v1 framing), a floor pool degenerates into a sliver and can never read.
-                orbitHomePosition = Position(x = 0.0f, y = 1.35f, z = 3.3f),
-                targetPosition = Position(x = 0.0f, y = 0.75f, z = -0.5f),
+                //
+                // The "Shadow" / "No shadow" labels are billboards anchored to the box pair's
+                // fixed world positions, [BOX_HALF_SPACING] apart; drag the camera towards
+                // broadside and their screen-space projections converge until the two texts
+                // merge into one illegible blob (#3802, reported as "NShadow"). The room is
+                // built and lit for a roughly head-on view anyway, so clamping the reachable yaw
+                // around the home framing (below) keeps the pair readably apart at every angle
+                // the user can still reach. `orbitHomePosition`/`targetPosition` are not passed
+                // here — `creator` builds the manipulator directly, so they would go unused.
+                creator = {
+                    YawClampedCameraManipulator(
+                        eyePosition = CAMERA_EYE,
+                        target = CAMERA_TARGET,
+                        maxAbsYawDegrees = CAMERA_MAX_USER_YAW_DEGREES,
+                    )
+                },
             ),
         ) {
             // Read the hop clock HERE, inside the content lambda, not in the demo body: this
@@ -604,3 +619,17 @@ private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
  * grounded box has a quad; the comparison depends on the twin's floor staying bare.
  */
 private const val SHADOW_QUAD_METERS = 0.8f
+
+/** Camera eye — see the comment at its `rememberCameraManipulator` call site. */
+private val CAMERA_EYE = Position(x = 0.0f, y = 1.35f, z = 3.3f)
+
+/** Camera orbit target — see the comment at its `rememberCameraManipulator` call site. */
+private val CAMERA_TARGET = Position(x = 0.0f, y = 0.75f, z = -0.5f)
+
+/**
+ * How far the user may drag this camera away from [CAMERA_EYE]'s own yaw (`0°` in
+ * [CAMERA_EYE]/[CAMERA_TARGET]'s convention), in degrees (#3802). Keeps the "Shadow" /
+ * "No shadow" billboards — [BOX_HALF_SPACING] apart in world space — far enough apart on
+ * screen to stay legible; see the comment at the `rememberCameraManipulator` call site.
+ */
+private const val CAMERA_MAX_USER_YAW_DEGREES = 40f

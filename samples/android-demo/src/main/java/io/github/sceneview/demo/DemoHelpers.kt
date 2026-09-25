@@ -30,6 +30,7 @@ import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
 import java.io.File
 import kotlin.math.acos
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -748,6 +749,16 @@ class HeroOrbitCameraManipulator(
     private val resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
     /** How long [HeroOrbitResume.ReturnToAuthoredPath] takes to ease back, in milliseconds. */
     private val resumeBlendMillis: Long = DEFAULT_RESUME_BLEND_MILLIS,
+    /**
+     * Optional clamp on how far the user may drag the orbit away from
+     * [userYawReferenceDegrees], in degrees. `null` (the default) leaves user drag
+     * unrestricted — every existing caller's behaviour. A demo whose subject only reads
+     * correctly near one azimuth (a flat wall of captioned objects, #3802) passes a bound
+     * here instead of teaching every caption to re-measure its own screen-space neighbours.
+     */
+    private val userMaxAbsYawDegrees: Float? = null,
+    /** Yaw, in degrees, [userMaxAbsYawDegrees] is centered on. Unused when that is `null`. */
+    private val userYawReferenceDegrees: Float = 0f,
     /** Monotonic clock, in nanoseconds. The JVM tests drive it by hand. */
     private val nanoTime: () -> Long = System::nanoTime,
     /**
@@ -975,7 +986,11 @@ class HeroOrbitCameraManipulator(
         // that is no longer always the authored target.
         val transform = fb.getTransform()
         val eye = transform.position
-        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot)
+        val pitchClampedEye = clampOrbitEyePitch(eye, fallbackPivot)
+        // #3802: an optional second clamp, off by default — see [userMaxAbsYawDegrees].
+        val clampedEye = userMaxAbsYawDegrees?.let { maxAbsYaw ->
+            clampOrbitEyeAzimuth(pitchClampedEye, fallbackPivot, userYawReferenceDegrees, maxAbsYaw)
+        } ?: pitchClampedEye
         if (clampedEye == eye) return transform
         val mat = dev.romainguy.kotlin.math.lookAt(
             eye = clampedEye,
@@ -1041,6 +1056,39 @@ class HeroOrbitCameraManipulator(
 
         /** Long enough to clear a dropped frame or two, short enough that nobody saw the pose. */
         const val UNWATCHED_MARGIN_NANOS = 1_000L * NANOS_PER_MILLI
+    }
+}
+
+/**
+ * A stock [io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator] whose
+ * user-drag orbit is kept within [maxAbsYawDegrees] of [referenceYawDegrees] around [target],
+ * via [clampOrbitEyeAzimuth] (#3802).
+ *
+ * For demos built on [HeroOrbitCameraManipulator] that clamp lives in its own
+ * `userMaxAbsYawDegrees` parameter; this class is the equivalent for demos that hand
+ * `SceneView` a plain `DefaultCameraManipulator` instead (no idle orbit, no auto-resume), via
+ * `rememberCameraManipulator(..., creator = { YawClampedCameraManipulator(...) })`.
+ */
+internal class YawClampedCameraManipulator(
+    eyePosition: Position?,
+    private val target: Position,
+    private val maxAbsYawDegrees: Float,
+    private val referenceYawDegrees: Float = 0f,
+) : io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
+    eyePosition = eyePosition,
+    targetPosition = target,
+) {
+    override fun getTransform(): io.github.sceneview.math.Transform {
+        val transform = super.getTransform()
+        val eye = transform.position
+        val clampedEye = clampOrbitEyeAzimuth(eye, target, referenceYawDegrees, maxAbsYawDegrees)
+        if (clampedEye == eye) return transform
+        val mat = dev.romainguy.kotlin.math.lookAt(
+            eye = clampedEye,
+            target = target,
+            up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
+        )
+        return io.github.sceneview.math.Transform(mat)
     }
 }
 
@@ -1306,6 +1354,63 @@ internal fun clampOrbitEyePitch(
         x = target.x + hx * newHorizontal,
         y = target.y + newDy,
         z = target.z + hz * newHorizontal,
+    )
+}
+
+/**
+ * Clamps an orbit camera [eye] so its **azimuth** — the yaw around world `+Y`, in the same
+ * convention [HeroOrbitCameraManipulator]'s authored path uses (`x = sin(yaw) * radius`,
+ * `z = cos(yaw) * radius`, both relative to [target]) — stays within [maxAbsYawDegrees] of
+ * [referenceYawDegrees]. Preserves the eye's **radius** and **height above [target]**; returns
+ * [eye] unchanged when it is already in range, when it sits directly above/below [target]
+ * (no azimuth to clamp), or when any component is non-finite.
+ *
+ * ### Why (#3802)
+ *
+ * A flat wall of captioned subjects (Materials' 3×3 sphere grid, Contact Shadow Preview's box
+ * pair) is framed and captioned for a roughly head-on view. Drag the camera towards broadside
+ * and perspective foreshortening collapses the gap between neighbours' screen-space positions
+ * faster than a fixed-width or fixed-position caption accounts for, so adjacent labels overlap
+ * and merge into unreadable text. Clamping the reachable azimuth keeps every subject far enough
+ * apart on screen for its caption to stay legible at any angle the user can still reach.
+ *
+ * @param eye                  orbit eye world position to clamp.
+ * @param target               orbit target the eye looks at / pivots around.
+ * @param referenceYawDegrees  yaw, in degrees, the clamp is centered on (the authored / front-on
+ *                             framing — usually `0`).
+ * @param maxAbsYawDegrees     maximum yaw distance from [referenceYawDegrees] the eye may reach,
+ *                             in degrees.
+ */
+internal fun clampOrbitEyeAzimuth(
+    eye: Position,
+    target: Position,
+    referenceYawDegrees: Float,
+    maxAbsYawDegrees: Float,
+): Position {
+    val dx = eye.x - target.x
+    val dy = eye.y - target.y
+    val dz = eye.z - target.z
+    if (!dx.isFinite() || !dy.isFinite() || !dz.isFinite()) return eye
+
+    val horizontal = sqrt(dx * dx + dz * dz)
+    // Degenerate orbit (eye directly above/below target): no azimuth to clamp.
+    if (horizontal <= 1e-6f) return eye
+
+    val yawDegrees = Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
+    // Delta from the reference, wrapped into [-180, 180) so a clamp centered near +/-180
+    // does not see a false, near-360-degree distance.
+    var delta = (yawDegrees - referenceYawDegrees) % 360f
+    if (delta < -180f) delta += 360f
+    if (delta >= 180f) delta -= 360f
+    val clampedDelta = delta.coerceIn(-maxAbsYawDegrees, maxAbsYawDegrees)
+    // Already within range — return the eye untouched (fast path).
+    if (clampedDelta == delta) return eye
+
+    val clampedYawRad = Math.toRadians((referenceYawDegrees + clampedDelta).toDouble()).toFloat()
+    return Position(
+        x = target.x + sin(clampedYawRad) * horizontal,
+        y = eye.y,
+        z = target.z + cos(clampedYawRad) * horizontal,
     )
 }
 
