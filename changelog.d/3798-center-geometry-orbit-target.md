@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+
+- **Android demo: the Geometry Primitives cluster is centred again, and a drag orbits it in place instead of sliding it across the frame ([#3798](https://github.com/sceneview/sceneview/issues/3798)).** The four primitives are authored at `z = GeometryLayout.TARGET_Z`, but `SceneView`'s default `autoCenterContent = true` re-centres them onto the world origin — the camera's `targetPosition` was still set to the authored `z`, so the orbit pivot sat 1.5 m behind where the cluster actually renders. A drag then orbited the eye around that distant pivot instead of the subject, swinging the cluster across the frame. `targetPosition` now tracks the origin the content is actually centred on.
