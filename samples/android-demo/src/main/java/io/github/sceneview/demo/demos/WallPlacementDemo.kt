@@ -139,7 +139,8 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             }
             DemoStatusBanner(text, tone = DemoStatusTone.Guidance)
             PlacementActionCard(card, { show3D = true },
-                { state.keepScanning(SystemClock.uptimeMillis()) }, ::reset, onRestart)
+                { state.keepScanning(SystemClock.uptimeMillis()) }, ::reset, onRestart,
+                surface = PlacementSurface.WALL)
         },
     ) {
         AutoPlacementScene(
