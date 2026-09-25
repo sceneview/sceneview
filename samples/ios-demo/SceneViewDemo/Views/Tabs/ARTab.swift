@@ -267,20 +267,38 @@ private struct ARLauncherScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.top, SceneViewTokens.Space.sm)
 
-                Button(action: onCtaTap) {
+                if state == .unsupported {
+                    // Nothing to tap, so no button: a status line, as on
+                    // Android's `ArLauncherScreen`. It used to be the primary
+                    // capsule disabled at 50 % opacity — white on a washed-out
+                    // blue, the one message explaining why AR is off, nearly
+                    // invisible in light mode (#3790). `on-surface` on
+                    // `surface-container-high` is 15.3:1 light / 13.5:1 dark.
                     Label(ctaTitle, systemImage: ctaIcon)
                         .font(.headline)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                        .labelStyle(StatusLabelStyle())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(.tint, in: Capsule())
-                        .foregroundStyle(.white)
+                        .padding(.horizontal, SceneViewTokens.Space.md)
+                        .background(SceneViewTokens.HomeColor.chipBackground, in: Capsule())
+                        .padding(.horizontal, 24)
+                        .accessibilityElement(children: .combine)
+                        .accessibilitySortPriority(1)
+                } else {
+                    Button(action: onCtaTap) {
+                        Label(ctaTitle, systemImage: ctaIcon)
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 24)
+                    .accessibilityLabel(ctaTitle)
+                    .accessibilitySortPriority(1)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 24)
-                .disabled(state == .unsupported)
-                .opacity(state == .unsupported ? 0.5 : 1.0)
-                .accessibilityLabel(ctaTitle)
-                .accessibilitySortPriority(1)
 
                 Text(caption)
                     .font(.caption)
@@ -335,6 +353,19 @@ private struct ARLauncherScreen: View {
                 }
             }
             .padding(.horizontal, 24)
+        }
+    }
+}
+
+/// Status line label: the glyph in `danger` (3.5:1 light / 3.8:1 dark on
+/// `surface-container-high`, above the 3:1 a graphic needs), the text in
+/// whatever foreground the caller set.
+private struct StatusLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: SceneViewTokens.Space.sm) {
+            configuration.icon
+                .foregroundStyle(SceneViewTokens.HomeColor.danger)
+            configuration.title
         }
     }
 }

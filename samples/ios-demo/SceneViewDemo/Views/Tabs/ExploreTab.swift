@@ -1211,11 +1211,19 @@ private struct SourceChip: View {
                 .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                // The home filter chips' tokens (`chip-*`). The selected chip
+                // was white on the accent tint, which in dark is #A4C1FF —
+                // 1.8:1 (#3790). `chip-selected-text` on `chip-selected-bg`
+                // is 17.1:1 light / 10.5:1 dark.
                 .background(
-                    isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.tint.opacity(0.12)),
+                    isOn ? SceneViewTokens.HomeColor.chipSelectedBackground
+                        : SceneViewTokens.HomeColor.chipBackground,
                     in: Capsule()
                 )
-                .foregroundStyle(isOn ? AnyShapeStyle(.white) : AnyShapeStyle(.tint))
+                .foregroundStyle(
+                    isOn ? SceneViewTokens.HomeColor.chipSelectedText
+                        : SceneViewTokens.HomeColor.chipText
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title) source, \(isOn ? "selected" : "not selected")")

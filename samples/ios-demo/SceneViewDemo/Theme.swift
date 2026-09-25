@@ -262,6 +262,9 @@ enum SceneViewTokens {
         )
         /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
         static let onPrimary = chipSelectedText
+        /// DESIGN.md Status, `danger` — #EA4335 in both themes. A glyph colour
+        /// (3.5:1 on `chip-bg` light, 3.8:1 dark), never body text.
+        static let danger = Color(red: 0xEA / 255, green: 0x43 / 255, blue: 0x35 / 255)
         /// DESIGN.md Borders, `outline` — #D6DAE0 / #2A3346.
         /// The Cards row specifies this 1 pt contour for elevated surfaces.
         static let outline = Color(
