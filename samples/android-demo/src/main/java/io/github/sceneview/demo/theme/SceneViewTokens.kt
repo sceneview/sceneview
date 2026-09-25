@@ -414,6 +414,15 @@ object SceneViewTokens {
         /** Waiting on the user to move the phone — `warning`. */
         val accentGuidance = Color(0xFFF59E0B)
 
+        /**
+         * A step just finished and needs no more of the user's effort — `success`
+         * ([#3834](https://github.com/sceneview/sceneview/issues/3834)). Distinct from
+         * [accentProgress]: "Well mapped" is not merely further along than "Good enough",
+         * it is the state that unblocks Host, and it read as identical to every other
+         * lavender bar until this was added.
+         */
+        val accentSuccess = Color(0xFF16A34A)
+
         /** Broken until something changes — dark-scheme `error`. */
         val accentBlocked = Color(0xFFFFB4AB)
 

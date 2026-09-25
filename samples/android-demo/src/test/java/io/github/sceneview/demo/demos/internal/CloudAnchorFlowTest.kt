@@ -546,4 +546,48 @@ class CloudAnchorFlowTest {
         state = state.copy(resolve = CloudAnchorTask.Succeeded("ua-abc123def456"))
         assertEquals("Resolved. Look around to find the anchor.", state.status().text)
     }
+
+    // ── Mapping quality only moves forward (#3834) ────────────────────────────
+
+    @Test
+    fun `a better reading replaces the current quality`() {
+        assertEquals(RoomQuality.Sufficient, RoomQuality.Insufficient.advancedBy(RoomQuality.Sufficient))
+        assertEquals(RoomQuality.Good, RoomQuality.Sufficient.advancedBy(RoomQuality.Good))
+        assertEquals(RoomQuality.Good, RoomQuality.Insufficient.advancedBy(RoomQuality.Good))
+    }
+
+    @Test
+    fun `a worse reading never lowers the displayed quality`() {
+        assertEquals(RoomQuality.Good, RoomQuality.Good.advancedBy(RoomQuality.Insufficient))
+        assertEquals(RoomQuality.Good, RoomQuality.Good.advancedBy(RoomQuality.Sufficient))
+        assertEquals(RoomQuality.Sufficient, RoomQuality.Sufficient.advancedBy(RoomQuality.Insufficient))
+    }
+
+    @Test
+    fun `an equal reading is a no-op`() {
+        RoomQuality.entries.forEach { quality ->
+            assertEquals(quality, quality.advancedBy(quality))
+        }
+    }
+
+    @Test
+    fun `a sequence of noisy raw readings settles on the best one seen`() {
+        val readings = listOf(
+            RoomQuality.Insufficient,
+            RoomQuality.Sufficient,
+            RoomQuality.Insufficient, // the #3834 regression: a dip right after a gain
+            RoomQuality.Good,
+            RoomQuality.Sufficient, // another dip, after reaching the top
+            RoomQuality.Insufficient,
+        )
+        var quality = RoomQuality.Insufficient
+        val observed = readings.map { reading ->
+            quality = quality.advancedBy(reading)
+            quality
+        }
+        // Never decreases, step to step.
+        observed.zipWithNext().forEach { (before, after) -> assertTrue(after.ordinal >= before.ordinal) }
+        // And it reached, then held, the best reading the session ever produced.
+        assertEquals(RoomQuality.Good, observed.last())
+    }
 }
