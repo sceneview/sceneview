@@ -4,8 +4,8 @@ import SceneViewSwift
 
 /// Collision-based hit testing demo.
 ///
-/// Mirrors the Android `CollisionDemo` — five shapes (cubes and spheres)
-/// are placed in a row. Tapping a shape highlights it; the dock's Clear (and
+/// Mirrors the Android `PickingAndCollisionDemo` — five shapes (cubes and
+/// spheres) in a two-row zig-zag. Tapping a shape highlights it; the dock's Clear (and
 /// the sheet's Reset) clears all highlights.
 ///
 /// The demo uses `SceneView.onEntityTapped` which resolves to
@@ -23,21 +23,41 @@ struct CollisionHitTestDemo: View {
     private struct ShapeSpec {
         let index: Int
         let isSphere: Bool
-        let x: Float
+        let position: SIMD3<Float>
     }
 
-    private let shapes: [ShapeSpec] = [
-        ShapeSpec(index: 0, isSphere: false, x: -0.60),
-        ShapeSpec(index: 1, isSphere: true,  x: -0.30),
-        ShapeSpec(index: 2, isSphere: false, x:  0.00),
-        ShapeSpec(index: 3, isSphere: true,  x:  0.30),
-        ShapeSpec(index: 4, isSphere: false, x:  0.60),
-    ]
+    /// Android's `PickingLayout` zig-zag (#3329), with a little more air:
+    /// cubes on a low row, spheres on a high one, so neighbours never touch.
+    /// The old single row at x = ±0.6 read as one blue block and lost its
+    /// outer shapes past the edges of a portrait screen (#3787).
+    private static let cubeEdge: Float = 0.22
+    private static let sphereRadius: Float = 0.13
+    private static let columnSpacing: Float = 0.27
+    private let shapes: [ShapeSpec] = (0..<5).map { index in
+        let isSphere = index % 2 == 1
+        return ShapeSpec(
+            index: index,
+            isSphere: isSphere,
+            position: [Float(index - 2) * CollisionHitTestDemo.columnSpacing,
+                       isSphere ? 0 : -0.32,
+                       -2]
+        )
+    }
 
-    /// Default color — SceneView primary blue.
-    private static let defaultColor = UIColor(red: 0.24, green: 0.48, blue: 1.0, alpha: 1.0)
-    /// Highlighted color — SceneView accent purple.
-    private static let highlightColor = UIColor(red: 0.56, green: 0.25, blue: 0.94, alpha: 1.0)
+    /// Lit PBR, as on Android: an unlit fill has no shaded side, so a cube and a
+    /// sphere of the same colour were indistinguishable. Resting shapes cycle
+    /// through the brand ramp; a picked shape turns `info` orange, grows 15 %
+    /// and takes a metallic sheen.
+    private static func material(index: Int, picked: Bool) -> PhysicallyBasedMaterial {
+        let ramp = SceneViewTokens.Stage.shapeRamp
+        var material = PhysicallyBasedMaterial()
+        material.baseColor = .init(tint: picked ? SceneViewTokens.Stage.shapePicked : ramp[index % ramp.count])
+        material.metallic = .init(floatLiteral: picked ? 0.6 : 0.15)
+        material.roughness = .init(floatLiteral: picked ? 0.2 : 0.35)
+        return material
+    }
+
+    private static let pickedScale: Float = 1.15
 
     var body: some View {
         SceneView { root in
@@ -51,13 +71,11 @@ struct CollisionHitTestDemo: View {
             } else {
                 highlightedIndices.insert(idx)
             }
-            // Swap material on the entity in-place.
+            // Swap material and scale on the entity in place.
             if let modelEntity = entity as? ModelEntity {
-                let color = highlightedIndices.contains(idx)
-                    ? Self.highlightColor
-                    : Self.defaultColor
-                let material = UnlitMaterial(color: color)
-                modelEntity.model?.materials = [material]
+                let picked = highlightedIndices.contains(idx)
+                modelEntity.model?.materials = [Self.material(index: idx, picked: picked)]
+                modelEntity.scale = SIMD3(repeating: picked ? Self.pickedScale : 1)
             }
             #if os(iOS)
             SceneViewHaptic.shared.light()
@@ -78,8 +96,15 @@ struct CollisionHitTestDemo: View {
                          enabled: !highlightedIndices.isEmpty) { resetHighlights() }
             ],
             onReset: resetHighlights,
-            accessory: { DemoHint("Tap a shape to highlight it") }
+            accessory: { DemoHint(hint) }
         )
+    }
+
+    /// The pill reports the pick count, like the Android card's "n / 5 shapes lit".
+    private var hint: String {
+        highlightedIndices.isEmpty
+            ? "Tap a shape to pick it"
+            : "\(highlightedIndices.count) of \(shapes.count) picked — tap again to release"
     }
 
     /// Clears every highlight — the dock's Clear and the sheet's Reset.
@@ -97,18 +122,18 @@ struct CollisionHitTestDemo: View {
     /// and whenever `sceneKey` changes (Reset).
     private func buildScene(root: Entity) {
         for spec in shapes {
-            let color = highlightedIndices.contains(spec.index)
-                ? Self.highlightColor
-                : Self.defaultColor
+            let picked = highlightedIndices.contains(spec.index)
+            let material = GeometryMaterial.custom(Self.material(index: spec.index, picked: picked))
             let node: GeometryNode
             if spec.isSphere {
-                node = GeometryNode.sphere(radius: 0.15, color: color, unlit: true)
+                node = GeometryNode.sphere(radius: Self.sphereRadius, material: material)
             } else {
-                node = GeometryNode.cube(size: 0.25, color: color, unlit: true)
+                node = GeometryNode.cube(size: Self.cubeEdge, material: material)
             }
             // Name encodes the spec index so onEntityTapped can look it up.
             node.entity.name = "shape_\(spec.index)"
-            node.entity.position = SIMD3<Float>(spec.x, 0, -2)
+            node.entity.position = spec.position
+            node.entity.scale = SIMD3(repeating: picked ? Self.pickedScale : 1)
             root.addChild(node.entity)
         }
     }

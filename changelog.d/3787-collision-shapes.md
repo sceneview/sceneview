@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+
+- **iOS demo: Collision & Hit Test shows five distinct, lit shapes that fit in portrait ([#3787](https://github.com/sceneview/sceneview/issues/3787)).** The cubes and spheres were unlit, all the same blue, and nearly touching in one row at x = ±0.6, so they read as a single flat block cut off at both screen edges. They now follow Android's two-row zig-zag with visible gaps, use lit PBR in the brand ramp (#005BC1, #6446CD, #A4C1FF, #D2A8FF), and a picked shape turns `info` orange, grows 15 % and gets a metallic sheen. The hint pill counts the picks ("2 of 5 picked"), like Android's card.

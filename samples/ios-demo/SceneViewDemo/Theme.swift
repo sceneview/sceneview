@@ -89,6 +89,22 @@ enum SceneViewTokens {
     /// Model-viewer stage, deliberately identical in light and dark themes (`#0B0F16`).
     enum Stage {
         static let background = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+
+        /// Fills for primitives that must stay apart on the stage — Android's
+        /// `SceneViewColors.Ramp4`: `primary` light #005BC1, `gradient-hero` end
+        /// #6446CD, `primary` dark #A4C1FF, `tertiary` dark #D2A8FF. Fixed in both
+        /// themes, like the stage they sit on.
+        static let shapeRamp: [UIColor] = [
+            UIColor(red: 0x00 / 255, green: 0x5B / 255, blue: 0xC1 / 255, alpha: 1),
+            UIColor(red: 0x64 / 255, green: 0x46 / 255, blue: 0xCD / 255, alpha: 1),
+            UIColor(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255, alpha: 1),
+            UIColor(red: 0xD2 / 255, green: 0xA8 / 255, blue: 0xFF / 255, alpha: 1),
+        ]
+
+        /// A picked primitive — `DESIGN.md` `info` #EA580C, the "informational
+        /// highlight" status colour. Warm and outside `shapeRamp`, so a pick
+        /// reads at a glance against the blue and violet fills.
+        static let shapePicked = UIColor(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255, alpha: 1)
     }
 
     /// `DESIGN.md` — Spatial Gallery overlay colours.
