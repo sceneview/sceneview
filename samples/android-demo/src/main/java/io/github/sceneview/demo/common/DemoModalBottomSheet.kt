@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.core.view.WindowCompat
+import io.github.sceneview.demo.theme.SceneViewTokens
 
 /**
  * The one entry point every demo-app `ModalBottomSheet` goes through (#3716).
@@ -77,6 +78,7 @@ fun DemoModalBottomSheet(
     sheetState: SheetState = rememberModalBottomSheetState(),
     shape: Shape = BottomSheetDefaults.ExpandedShape,
     containerColor: Color = BottomSheetDefaults.ContainerColor,
+    scrimColor: Color = BottomSheetDefaults.ScrimColor,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -98,6 +100,7 @@ fun DemoModalBottomSheet(
         sheetState = sheetState,
         shape = shape,
         containerColor = containerColor,
+        scrimColor = scrimColor,
         properties = ModalBottomSheetProperties(
             securePolicy = SecureFlagPolicy.Inherit,
             isAppearanceLightStatusBars = hostStatusBarsLight,
@@ -123,4 +126,29 @@ fun DemoModalBottomSheet(
         }
         content()
     }
+}
+
+/**
+ * Colours for a sheet you tweak a live scene through (#3827) — the demo settings sheet
+ * and the Model Viewer's Lighting sheet.
+ *
+ * Pass [glassContainerColor] as the container and [NoScrim] as the scrim: the fill is
+ * `surface-container` at the `glass-sheet` opacity for the current theme, so the scene
+ * reads through it, and nothing dims the scene around it. Browsing sheets (model picker,
+ * credits, what's new) keep the opaque default — you read those, you do not watch
+ * something change behind them.
+ */
+object DemoSheetDefaults {
+    /** `glass-sheet`: `surface-container` at 88 % (light) / 90 % (dark). */
+    @Composable
+    fun glassContainerColor(): Color {
+        val scheme = MaterialTheme.colorScheme
+        val isDark = scheme.surface.luminance() < 0.5f
+        return scheme.surfaceContainer.copy(
+            alpha = if (isDark) SceneViewTokens.Glass.sheetAlphaDark else SceneViewTokens.Glass.sheetAlphaLight,
+        )
+    }
+
+    /** No dimming behind a glass sheet — the scene is what you are looking at. */
+    val NoScrim: Color = Color.Transparent
 }
