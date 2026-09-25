@@ -404,13 +404,46 @@ class AutoPlacementControllerTest {
     }
 
     @Test
-    fun `tracking loss before the first frame returns to scanning`() {
+    fun `untracked frames before the first tracked one are start-up, not a loss`() {
+        val c = AutoPlacementController()
+        c.requestPlacement()
+        assertFalse(c.hasCameraFrame)
+        // ARCore delivers a few untracked frames at every session start: no TRACKING_LOST
+        // phase, no warning effect, no "paused" copy.
+        repeat(30) { i ->
+            assertEquals(
+                FrameEffect.NONE,
+                c.onFrame(FrameInput(i * 16L, tracking = false, surfaceAvailable = false)),
+            )
+            assertEquals(PlacementPhase.INITIALIZING, c.phase)
+        }
+        assertTrue(c.hasCameraFrame)
+        c.onFrame(FrameInput(480L, tracking = true, surfaceAvailable = false))
+        assertEquals(PlacementPhase.SCANNING, c.phase)
+        // A real loss after that is still reported, once.
+        assertEquals(FrameEffect.TRACKING_LOST, c.onFrame(FrameInput(496L, false, surfaceAvailable = false)))
+        assertEquals(PlacementPhase.TRACKING_LOST, c.phase)
+        assertEquals(FrameEffect.NONE, c.onFrame(FrameInput(512L, false, surfaceAvailable = false)))
+        c.onFrame(FrameInput(528L, true, surfaceAvailable = false))
+        assertEquals(PlacementPhase.SCANNING, c.phase)
+    }
+
+    @Test
+    fun `camera failure is refused once any frame arrived, even untracked`() {
         val c = AutoPlacementController()
         c.requestPlacement()
         c.onFrame(FrameInput(0L, tracking = false, surfaceAvailable = false))
-        assertEquals(PlacementPhase.TRACKING_LOST, c.phase)
-        c.onFrame(FrameInput(16L, tracking = true, surfaceAvailable = false))
-        assertEquals(PlacementPhase.SCANNING, c.phase)
+        c.cameraFailed()
+        assertEquals(PlacementPhase.INITIALIZING, c.phase)
+    }
+
+    @Test
+    fun `dismiss forgets the camera frame`() {
+        val c = AutoPlacementController()
+        c.onFrame(FrameInput(0L, tracking = true, surfaceAvailable = false))
+        assertTrue(c.hasCameraFrame)
+        c.dismiss()
+        assertFalse(c.hasCameraFrame)
     }
 
     @Test

@@ -17,6 +17,11 @@ public final class io/github/sceneview/ar/ARCameraPermissionState {
 	public final fun getRequest ()Lkotlin/jvm/functions/Function0;
 }
 
+public final class io/github/sceneview/ar/ARCoachingOverlayKt {
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+}
+
 public abstract class io/github/sceneview/ar/ARConfigDowngrade {
 	public static final field $stable I
 }
@@ -585,6 +590,41 @@ public final class io/github/sceneview/ar/ActivityARPermissionHandler : io/githu
 	public fun shouldShowPermissionRationale ()Z
 }
 
+public final class io/github/sceneview/ar/ArGuidanceCue : java/lang/Enum {
+	public static final field INITIALIZING Lio/github/sceneview/ar/ArGuidanceCue;
+	public static final field NONE Lio/github/sceneview/ar/ArGuidanceCue;
+	public static final field RELOCALIZING Lio/github/sceneview/ar/ArGuidanceCue;
+	public static final field SCAN Lio/github/sceneview/ar/ArGuidanceCue;
+	public static final field SURFACE_FOUND Lio/github/sceneview/ar/ArGuidanceCue;
+	public static final field TRACKING_LIMITED Lio/github/sceneview/ar/ArGuidanceCue;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/ArGuidanceCue;
+	public static fun values ()[Lio/github/sceneview/ar/ArGuidanceCue;
+}
+
+public final class io/github/sceneview/ar/ArGuidanceKt {
+	public static final fun rememberArGuidanceState (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
+}
+
+public final class io/github/sceneview/ar/ArGuidanceState {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/ArGuidanceState$Companion;
+	public static final field FOUND_HOLD_MS J
+	public static final field INITIALIZING_DELAY_MS J
+	public static final field MIN_DELAY_MS J
+	public fun <init> ()V
+	public fun <init> (Lio/github/sceneview/ar/PlacementSurface;)V
+	public synthetic fun <init> (Lio/github/sceneview/ar/PlacementSurface;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCue ()Lio/github/sceneview/ar/ArGuidanceCue;
+	public final fun getSurface ()Lio/github/sceneview/ar/PlacementSurface;
+	public final fun isCoaching ()Z
+	public final fun nextTransitionDelayMillis (J)Ljava/lang/Long;
+	public final fun update (Lio/github/sceneview/ar/PlacementPhase;JJ)V
+}
+
+public final class io/github/sceneview/ar/ArGuidanceState$Companion {
+}
+
 public final class io/github/sceneview/ar/AssetTicket {
 	public static final field $stable I
 	public fun <init> (II)V
@@ -616,7 +656,8 @@ public final class io/github/sceneview/ar/AutoPlacementResult {
 public final class io/github/sceneview/ar/AutoPlacementSceneKt {
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
-	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun findAutoPlacementSurface (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;)Lio/github/sceneview/ar/AutoPlacementCandidate;
 	public static synthetic fun findAutoPlacementSurface$default (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;ILjava/lang/Object;)Lio/github/sceneview/ar/AutoPlacementCandidate;
 	public static final fun rememberAutoPlacementState (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/ar/AutoPlacementState;
@@ -634,6 +675,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun deselectPlacement ()V
 	public final fun dismiss ()V
 	public final fun endAdjustment ()V
+	public final fun getHasCameraFrame ()Z
 	public final fun getHasPlacement ()Z
 	public final fun getPhase ()Lio/github/sceneview/ar/PlacementPhase;
 	public final fun getPlacedAtMillis ()J

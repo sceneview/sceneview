@@ -24,7 +24,8 @@ import kotlin.math.roundToInt
  *
  *  - the model is placed at its **real-world size**, and the pinch gesture reports a
  *    percentage of that size which **snaps back to 100 %** — [PlacementScale];
- *  - it **grows into place** rather than popping in at full size — [PlacementEntrance];
+ *  - it **grows into place** rather than popping in at full size — the SDK's
+ *    `AutoPlacementModel` entrance;
  *  - the screen says **one** short thing at a time, and stops talking once the user has
  *    understood the interaction — [placementCoaching];
  *  - a two-finger twist turns the object **on the floor**, never off it —
@@ -303,38 +304,6 @@ object PlacementScale {
         isRealWorldSize && !wasRealWorldSize
 }
 
-// ── Entrance ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * The "grows into place" animation applied to a freshly placed model.
- *
- * A model that appears at full size on the frame its textures land reads as a glitch —
- * there is no moment where the user sees it *arrive*, so the eye reports a pop. Scene
- * Viewer, IKEA Place and Reality Composer all ease the object up from a smaller scale over
- * roughly a quarter of a second, which is short enough to feel instant and long enough for
- * the arrival to register.
- */
-object PlacementEntrance {
-
-    /** Duration of the scale-in, milliseconds. */
-    const val DURATION_MS = 260
-
-    /** Scale fraction the model starts at — deliberately not 0, which reads as a flicker. */
-    const val START_FRACTION = 0.55f
-
-    /**
-     * Eased scale fraction at animation [progress] (`0..1`), to multiply the model's base
-     * scale by. Cubic ease-out: fast out of the gate, settling without overshoot — an
-     * overshoot on a *physical-scale* object reads as the object being the wrong size, not
-     * as bounce.
-     */
-    fun scaleFraction(progress: Float): Float {
-        val t = progress.coerceIn(0f, 1f)
-        val eased = 1f - (1f - t) * (1f - t) * (1f - t)
-        return START_FRACTION + (1f - START_FRACTION) * eased
-    }
-}
-
 // ── Coaching ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -391,13 +360,21 @@ const val PLACEMENT_GESTURE_HINT_MS = 3_500L
  * A card phase ([placementCard]) never also speaks in the pill; the placed phase speaks
  * only for the one-shot hint or while a drag is off-surface. Scanning speaks the whole
  * time: it is the one instruction the flow needs, because moving the phone *is* the input.
+ *
+ * While the SDK's animated coaching overlay is up ([coachingActive], i.e.
+ * `ArGuidanceState.isCoaching`) the pill steps aside — one voice at a time, Apple's HIG rule
+ * for coaching. The one exception is low light: the glyph can say "paused", not *why*.
  */
 fun placementCoaching(
     phase: PlacementPhase,
     gestureHintVisible: Boolean,
     dragOffSurface: Boolean = false,
     lowLight: Boolean = false,
-): PlacementCoachingMessage? = when (phase) {
+    coachingActive: Boolean = false,
+): PlacementCoachingMessage? = if (coachingActive) {
+    PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT
+        .takeIf { phase == PlacementPhase.TRACKING_LOST && lowLight }
+} else when (phase) {
     PlacementPhase.INITIALIZING,
     PlacementPhase.NO_SURFACE,
     PlacementPhase.RECOVERY_FAILED,

@@ -50,6 +50,8 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val state = rememberAutoPlacementState()
+    // The scene draws the animated wall coaching itself; this keeps the pill quiet meanwhile.
+    val guidance = rememberArGuidanceState(state, PlacementSurface.WALL)
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var invalidMove by remember { mutableStateOf(false) }
@@ -116,6 +118,9 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
         bottomOverlay = {
             val text = when {
                 card != null -> null
+                guidance.isCoaching &&
+                    !(state.phase == PlacementPhase.TRACKING_LOST &&
+                        trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) -> null
                 invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
                 else -> when (state.phase) {
                     PlacementPhase.SCANNING -> stringResource(R.string.wall_phase_scanning)
@@ -155,7 +160,9 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
                 onInvalidMove = { invalidMove = it },
             ) { opacity -> WallTV(opacity) }
         }
-        ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING, availability)
+        // Keyed on the first camera frame, not on INITIALIZING: untracked start-up frames
+        // already show the camera, and the coaching overlay speaks over them.
+        ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING && !state.hasCameraFrame, availability)
     }
     if (show3D) {
         DemoModalBottomSheet(onDismissRequest = { show3D = false }) {

@@ -345,7 +345,9 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 ### App Motion (Android demo)
 
 One spring and one fade for the chrome; one shared-axis spec for screen changes and
-one fly-in for a 3D subject's arrival. Nothing else animates.
+one fly-in for a 3D subject's arrival. In AR, the coaching glyph and a placed object's
+entrance (the `motion-coach-*` and `motion-placement-*` tokens below — shipped by the SDK,
+so every AR app gets them). Nothing else animates.
 
 | Token | Value | Usage |
 |---|---|---|
@@ -353,6 +355,13 @@ one fly-in for a 3D subject's arrival. Nothing else animates.
 | `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus, loading-cover crossfade |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
+| `motion-coach-sweep` | 1600ms per sweep, sine, ±18dp travel and ±10° roll | The phone of the AR coaching glyph sweeping over the surface it is looking for. Half speed while tracking is limited |
+| `motion-coach-resolve` | `tween(450ms, ease-expressive)` | The "surface found" beat — the target fills with `primary` and a cube lands on it, held 150ms, then the glyph leaves |
+| `motion-placement-entrance` | `tween(260ms)`, scale 0.55 → 1, cubic ease-out | A placed AR object growing into place about its contact point. Reversed over 300ms (`motion-fade`) when tracking is lost — opaque glTF materials cannot fade, so they shrink |
+
+**Reduced motion.** When the system animator scale is 0 (Android) or Reduce Motion is on
+(iOS), the coaching glyph is drawn as its settled frame — no sweep, no spin — and only the
+fades remain, as on the web (`prefers-reduced-motion`).
 
 ---
 
@@ -606,6 +615,33 @@ The one instruction surface shown over a live camera feed (`DemoStatusBanner` on
 - Accents are the **dark-scheme** values in both themes: they are read on `ar-scrim`.
 - Motion: enters with fade + 8px rise (`duration-medium`, `ease-expressive`), leaves
   with fade + fall (`duration-short`). Nothing to say → nothing on screen.
+
+### AR Coaching Glyph
+
+The animated onboarding shown **centred** over the camera while an AR session starts,
+searches or loses tracking — Apple's `ARCoachingOverlayView` on iOS, its visual twin
+`ARCoachingOverlay` in `arsceneview` on Android. It shows the gesture instead of
+describing it.
+
+- Ground: a 96dp `ar-scrim` disc with the `ar-scrim-border` hairline and `shadow-lg`; an
+  optional one-word caption pill underneath in the same ground (`on-ar-scrim`,
+  `type-caption`), 8dp gap. The full sentence is the accessible name, announced politely.
+- One glyph per cue, strokes in `on-ar-scrim`, accents in the dark-scheme `primary` and
+  `warning`, like the pill:
+
+| Cue | Glyph | Caption |
+|---|---|---|
+| Initializing (after 500ms) | Phone with an orbiting `primary` dot | — |
+| Scan (floor) | Phone sweeping over a dashed diamond (`motion-coach-sweep`) | Scan |
+| Scan (wall) | Phone sweeping in front of a dashed upright rectangle | Scan |
+| Surface found | Target fills with `primary`, a cube lands on it (`motion-coach-resolve`) | — |
+| Tracking limited | The scan glyph at 60%, half speed, a `warning` pause badge | Paused |
+| Relocalizing | The scan glyph with a rotating `warning` circular arrow | Look back |
+
+- **Hide the chrome while it shows** (Apple HIG): status pills and hints step aside while
+  the glyph is up and come back when it leaves. Action cards never do — the glyph is
+  silent whenever a card explains the state.
+- Copy never says "ARKit", "ARCore", "tracking" or "plane": *Scan*, *Paused*, *Look back*.
 
 ### AR Overlay Card
 

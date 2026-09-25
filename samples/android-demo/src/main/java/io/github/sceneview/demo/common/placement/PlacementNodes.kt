@@ -146,12 +146,9 @@ internal fun SceneScope.PivotedModelNode(
  * Deliberately a plain class and not snapshot state — see the `remember` call site.
  */
 internal class PlacedModelHandle {
-    /** The grounded pivot — the node the pinch and the entrance animation scale. */
+    /** The grounded pivot — the node the pinch scales. */
     var node: NodeImpl? = null
 
     /** The pivot scale that renders the model at real-world size, i.e. 100 % (`1f`). */
     var baseScale: Float = 0f
-
-    /** Latch so the arrival animation plays once per placement, not once per recomposition. */
-    var entrancePlayed: Boolean = false
 }

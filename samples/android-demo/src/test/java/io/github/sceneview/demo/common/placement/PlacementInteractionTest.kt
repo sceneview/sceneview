@@ -17,7 +17,7 @@ import org.junit.Test
  *
  * The AR emulator produces no ARCore tracking, so none of this behaviour can be exercised
  * on CI through the UI. Everything that *can* be decided without a camera therefore lives
- * in [PlacementRotation] / [PlacementScale] / [PlacementEntrance] / [placementCoaching] as
+ * in [PlacementRotation] / [PlacementScale] / [placementCoaching] as
  * pure functions, and this is where the contract is pinned.
  *
  * ## What the rotation block below proves, and what it does not
@@ -325,40 +325,6 @@ class PlacementInteractionTest {
         assertFalse(PlacementScale.shouldTickHaptic(wasRealWorldSize = false, isRealWorldSize = false))
     }
 
-    // ── PlacementEntrance ───────────────────────────────────────────────────
-
-    @Test
-    fun `the arrival animation starts small, ends at exactly full size, and never overshoots`() {
-        assertEquals(PlacementEntrance.START_FRACTION, PlacementEntrance.scaleFraction(0f), 1e-6f)
-        assertEquals(1f, PlacementEntrance.scaleFraction(1f), 1e-6f)
-
-        var previous = -1f
-        var t = 0f
-        while (t <= 1f) {
-            val f = PlacementEntrance.scaleFraction(t)
-            assertTrue("must be monotonic — a model that shrinks mid-arrival reads as a glitch", f >= previous)
-            assertTrue("must never overshoot: a physical-scale object bouncing reads as wrong size", f <= 1f)
-            previous = f
-            t += 0.05f
-        }
-    }
-
-    @Test
-    fun `the arrival animation clamps out-of-range progress instead of extrapolating`() {
-        assertEquals(PlacementEntrance.START_FRACTION, PlacementEntrance.scaleFraction(-1f), 1e-6f)
-        assertEquals(1f, PlacementEntrance.scaleFraction(5f), 1e-6f)
-    }
-
-    @Test
-    fun `the arrival animation eases out`() {
-        // Past the halfway point in time, it must be past the halfway point in scale —
-        // that is what "fast out of the gate, settling" means, and it is the difference
-        // between an arrival and a linear ramp.
-        val half = PlacementEntrance.scaleFraction(0.5f)
-        val midpoint = PlacementEntrance.START_FRACTION + (1f - PlacementEntrance.START_FRACTION) / 2f
-        assertTrue(half > midpoint)
-    }
-
     // ── Coaching: one line at a time (plan §2.2 copy) ───────────────────────
 
     private fun coaching(
@@ -367,6 +333,20 @@ class PlacementInteractionTest {
         dragOffSurface: Boolean = false,
         lowLight: Boolean = false,
     ) = placementCoaching(phase, gestureHintVisible = hint, dragOffSurface = dragOffSurface, lowLight = lowLight)
+
+    @Test
+    fun `the pill steps aside while the coaching overlay speaks, except for low light`() {
+        PlacementPhase.entries.forEach { phase ->
+            val expected = PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT
+                .takeIf { phase == PlacementPhase.TRACKING_LOST }
+            assertEquals(
+                phase.name,
+                expected,
+                placementCoaching(phase, gestureHintVisible = true, lowLight = true, coachingActive = true),
+            )
+            assertNull(placementCoaching(phase, gestureHintVisible = true, coachingActive = true))
+        }
+    }
 
     @Test
     fun `scanning says move slowly, and nothing about tapping`() {

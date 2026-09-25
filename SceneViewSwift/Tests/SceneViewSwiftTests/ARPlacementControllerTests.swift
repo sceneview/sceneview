@@ -251,6 +251,33 @@ final class ARPlacementControllerTests: XCTestCase {
         XCTAssertFalse(state.hasPlacement)
     }
 
+    func testUntrackedStartupFramesAreNotATrackingLoss() {
+        var state = armedLifecycle()
+        for tick in 0..<30 {
+            XCTAssertFalse(state.frame(now: Double(tick) / 30, tracking: false, anchorTracking: false, assetReady: true))
+            XCTAssertEqual(state.phase, .initializing)
+        }
+        XCTAssertTrue(state.frame(now: 1, tracking: true, anchorTracking: false, assetReady: true))
+        XCTAssertEqual(state.phase, .scanning)
+        // A real loss after the first tracked frame is still reported.
+        XCTAssertFalse(state.frame(now: 2, tracking: false, anchorTracking: false, assetReady: true))
+        XCTAssertEqual(state.phase, .trackingLost)
+    }
+
+    func testSessionRestartRewindsToInitializingAndArmsOnePlacement() {
+        var state = armedLifecycle()
+        _ = state.frame(now: 0, tracking: true, anchorTracking: false, assetReady: true)
+        state.commit()
+        XCTAssertEqual(state.phase, .placed)
+        state.restartSession()
+        XCTAssertEqual(state.phase, .initializing)
+        XCTAssertFalse(state.hasPlacement)
+        XCTAssertTrue(state.requested)
+        // The restarted session's untracked frames are start-up, not a loss.
+        _ = state.frame(now: 1, tracking: false, anchorTracking: false, assetReady: true)
+        XCTAssertEqual(state.phase, .initializing)
+    }
+
     func testPolygonRejectsConcaveCutoutInsteadOfUsingRectangularExtent() {
         let polygon: [SIMD2<Float>] = [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]]
         XCTAssertTrue(ARPlacementController.contains([0.5, 1.5], polygon: polygon))

@@ -870,7 +870,7 @@ public struct ARSceneView: UIViewRepresentable {
         }
     }
 
-    public class Coordinator: NSObject, ARSessionDelegate {
+    public class Coordinator: NSObject, ARSessionDelegate, ARCoachingOverlayViewDelegate {
         /// One `CIContext` per view for the exposure post-process (#exposure).
         let exposureContextCache = ExposureContextCache()
 
@@ -1345,9 +1345,11 @@ public struct ARSceneView: UIViewRepresentable {
                 if let overlay = coachingOverlay {
                     overlay.setActive(false, animated: false)
                     overlay.session = nil
+                    overlay.delegate = nil
                     overlay.removeFromSuperview()
                     coachingOverlay = nil
                 }
+                placementController?.isCoachingActive = false
                 return
             }
             let overlay: ARCoachingOverlayView
@@ -1358,11 +1360,36 @@ public struct ARSceneView: UIViewRepresentable {
                 overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                 overlay.frame = arView.bounds
                 overlay.session = arView.session
+                overlay.delegate = self
                 overlay.activatesAutomatically = true
                 arView.addSubview(overlay)
                 coachingOverlay = overlay
             }
             if overlay.goal != goal { overlay.goal = goal }
+        }
+
+        // MARK: - ARCoachingOverlayViewDelegate
+
+        // UIKit calls these on the main thread.
+
+        public func coachingOverlayViewWillActivate(_ coachingOverlayView: ARCoachingOverlayView) {
+            MainActor.assumeIsolated { placementController?.isCoachingActive = true }
+        }
+
+        public func coachingOverlayViewDidDeactivate(_ coachingOverlayView: ARCoachingOverlayView) {
+            MainActor.assumeIsolated { placementController?.isCoachingActive = false }
+        }
+
+        /// The overlay's "Start Over" button (shown when relocalization takes too long). With an
+        /// automatic-placement controller, the placement is reset with the session so the object
+        /// is placed again on the next usable surface; otherwise ARKit's default reset.
+        public func coachingOverlayViewDidRequestSessionReset(_ coachingOverlayView: ARCoachingOverlayView) {
+            MainActor.assumeIsolated {
+                placementController?.resetForSessionRestart()
+                guard let session = coachingOverlayView.session,
+                      let configuration = session.configuration else { return }
+                session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+            }
         }
 
         /// Turns the translucent detected-plane overlays on or off after view

@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.ar.ARCoreAvailability
@@ -192,7 +193,7 @@ fun ErrorScrim(
 fun ARCameraInitScrim(
     initializing: Boolean,
     arCoreAvailability: ARCoreAvailability?,
-    label: String = "Starting camera…",
+    label: String = stringResource(R.string.ar_starting_camera),
     timeoutMillis: Long = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS,
 ) {
     // Defensive fallback: force-dismiss even if the first camera frame never reports.

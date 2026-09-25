@@ -407,6 +407,9 @@ STATE's durations, not a fresh copy, or the visual fade desynchronizes from the 
 Platform matrix: **iOS** — use `ARSceneView(showCoachingOverlay: true)` (Apple's first-party
 `ARCoachingOverlayView` IS the onboarding; no port needed). **Web** — coming soon.
 
+With `AutoPlacementScene`, don't add `PlaneDiscoveryGuide`: its built-in `ARCoachingOverlay`
+(`coaching = true`, the default) is the animated onboarding — see "Automatic placement".
+
 ### Scene Understanding — grouped AR rendering flags
 
 `SceneUnderstanding` (`io.github.sceneview.ar.scene.SceneUnderstanding`, v4.10.0+, #1767) groups four scattered AR rendering flags into a single discoverable knob — mirrors RealityKit's `ARView.environment.sceneUnderstanding.options`. Pass it via `ARSceneView(sceneUnderstanding = ...)`; null (default) keeps every individual flag at its current default.
@@ -1259,6 +1262,32 @@ AutoPlacementScene(
 // Explicit reset retains the asset and the camera session:
 // placement.resetPlacement(android.os.SystemClock.uptimeMillis())
 ```
+
+**Coaching overlay (on by default).** `AutoPlacementScene(coaching = true)` draws
+`ARCoachingOverlay` centred over the camera — the Android twin of Apple's
+`ARCoachingOverlayView`: a phone sweeping over a floor diamond (or a wall for
+`PlacementSurface.WALL`) while scanning, a short "surface found" beat (a cube lands on the
+filled target) when the object is placed, a pause glyph when tracking is limited, a "look
+back" arrow while a placed anchor relocalizes. It is silent when a card is due
+(`NO_SURFACE`, `RECOVERY_FAILED`, `CAMERA_ERROR`). Hide your own status pills while it
+shows:
+
+```kotlin
+val placement = rememberAutoPlacementState()
+val guidance = rememberArGuidanceState(placement, PlacementSurface.SURFACE)
+Box(Modifier.fillMaxSize()) {
+    AutoPlacementScene(assetReady = model != null, state = placement /* coaching = true */) { … }
+    if (!guidance.isCoaching) MyStatusPill(placement.phase)   // one voice at a time
+}
+```
+
+`guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
+`SCAN`, `SURFACE_FOUND` (600 ms after a new placement), `TRACKING_LIMITED`,
+`RELOCALIZING`. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
+render `ARCoachingOverlay(guidance)` yourself in any `Box`. The placed model grows in from
+55 % over 260 ms and shrinks away on tracking loss (opaque glTF materials cannot fade).
+`placement.hasCameraFrame` is true from the first camera frame, tracked or not — key a
+"starting camera" cover on it, not on `INITIALIZING`.
 
 `AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
 while rotating/scaling, and constrains dragging to supported plane geometry. Its
@@ -6372,7 +6401,7 @@ struct AutomaticPlacement: View {
     @StateObject private var placement = ARPlacementController(alignment: .horizontal)
 
     var body: some View {
-        AutoPlacementScene(controller: placement, onSessionEvent: { event, arView in
+        AutoPlacementScene(controller: placement, coaching: true, onSessionEvent: { event, arView in
             // Capability errors, tracking changes, first frame and interruption events.
         })
         .task {
@@ -6413,6 +6442,11 @@ struct AutomaticPlacement: View {
   content until the existing anchor recovers. Empty-space taps deselect only.
 - The host owns permission UI, asset errors, labels, recovery actions and haptics.
   No renderer mutation belongs in a detached/background task.
+- `coaching: true` (default) shows Apple's `ARCoachingOverlayView` with the goal matching
+  the alignment (`.horizontalPlane` / `.verticalPlane`). Hide your own status and
+  secondary controls while `placement.isCoachingActive` is true (HIG). Its "Start Over"
+  button resets the placement and re-runs the session. Kotlin twin:
+  `rememberArGuidanceState(placement).isCoaching`.
 
 Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
 APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /

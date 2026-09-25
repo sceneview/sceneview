@@ -53,4 +53,6 @@
          depth axis differs, because a free-standing subject moves closer, not up. -->
     <string name="ar_adjust_move_closer">Move closer</string>
     <string name="ar_adjust_move_farther">Move farther</string>
+    <!-- Shared AR start-up scrim (ARCameraInitScrim), shown until the first camera frame. -->
+    <string name="ar_starting_camera">Starting camera…</string>
 </resources>

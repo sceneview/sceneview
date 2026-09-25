@@ -11,6 +11,7 @@ import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementModel
 import io.github.sceneview.ar.AutoPlacementScene
 import io.github.sceneview.ar.PlacementPhase
+import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberAutoPlacementState
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -28,6 +29,9 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val instance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
     val state = rememberAutoPlacementState()
+    // AutoPlacementScene draws the animated coaching itself (coaching = true, the default);
+    // this only tells the demo when to keep its own pill quiet.
+    val guidance = rememberArGuidanceState(state)
     val playback = rememberArPlaybackDataset()
     ARHapticFeedback(state)
     DemoScaffold(
@@ -36,6 +40,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
         bottomOverlay = {
             val message = when {
                 instance == null -> R.string.ar_place_loading_model
+                guidance.isCoaching -> null
                 state.phase == PlacementPhase.SCANNING -> R.string.ar_place_move_slowly
                 state.phase == PlacementPhase.NO_SURFACE -> R.string.ar_place_no_surface_title
                 state.phase == PlacementPhase.TRACKING_LOST -> R.string.ar_place_tracking_paused

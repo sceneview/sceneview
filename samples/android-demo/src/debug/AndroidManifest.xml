@@ -11,5 +11,11 @@
             android:name=".DemoHostActivity"
             android:exported="true"
             android:theme="@style/Theme.SceneViewDemo" />
+        <!-- Debug-only visual QA of the SDK's AR coaching overlay, no ARCore session needed.
+             See ARCoachingPreviewActivity.kt. -->
+        <activity
+            android:name=".ARCoachingPreviewActivity"
+            android:exported="true"
+            android:theme="@style/Theme.SceneViewDemo" />
     </application>
 </manifest>

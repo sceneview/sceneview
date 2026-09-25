@@ -47,6 +47,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
     val materialLoader = rememberMaterialLoader(engine)
     val stream = rememberARCameraStream(materialLoader)
     val state = rememberAutoPlacementState()
+    val guidance = rememberArGuidanceState(state)
     val control = remember { FeatureComparisonControl(feature != PlacementFeature.STABILIZATION) }
     val haptic = rememberHapticFeedback()
     val playback = rememberArPlaybackDataset()
@@ -175,6 +176,10 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                     model == null -> stringResource(R.string.ar_place_loading_model)
                     effectFailed -> stringResource(R.string.ar_comparison_failed)
                     card != null -> null
+                    // The animated coaching speaks; the pill only adds what it cannot say.
+                    guidance.isCoaching &&
+                        !(state.phase == PlacementPhase.TRACKING_LOST &&
+                            trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) -> null
                     invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
                     state.phase == PlacementPhase.SCANNING -> stringResource(R.string.ar_place_move_slowly)
                     state.phase == PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused) +
@@ -267,6 +272,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                         onInvalidMove = { invalidMove = it })
                 } }
             }
+            ARCoachingOverlay(guidance)
             ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
             if (startupTimedOut && availability == null) {
                 PlacementActionCard(PlacementCard.CAMERA_ERROR, null, {}, ::reset, onRestart)

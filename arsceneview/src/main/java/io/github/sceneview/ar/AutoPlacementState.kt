@@ -8,7 +8,11 @@ import kotlin.math.sqrt
 
 /** Observable automatic-placement phases shared with the Apple placement controller. */
 enum class PlacementPhase {
-    /** No camera frame yet — the init scrim covers this. */
+    /**
+     * No *tracked* camera frame yet. Frames that arrive before tracking starts keep the
+     * session here — they are the normal start-up, not a tracking loss. See
+     * [AutoPlacementState.hasCameraFrame] for "has any frame arrived at all".
+     */
     INITIALIZING,
 
     /** Camera tracking, request pending, searching for a usable surface. */
@@ -32,7 +36,7 @@ enum class PlacementPhase {
     /** [AutoPlacementState.RECOVERY_TIMEOUT_MS] of recovering — offer *Scan again*. */
     RECOVERY_FAILED,
 
-    /** The session never delivered a frame past the init scrim's timeout. */
+    /** The session never delivered a single frame past the init scrim's timeout. */
     CAMERA_ERROR,
 }
 
@@ -125,6 +129,14 @@ class AutoPlacementState {
 
     /** `nowMillis` of the last [FrameEffect.PLACE], `0` when nothing was placed. */
     var placedAtMillis: Long = 0L
+        private set
+
+    /**
+     * At least one camera frame reached [onFrame] this session, tracking or not. The init
+     * scrim keys on this rather than on [PlacementPhase.INITIALIZING], which also covers
+     * the first untracked frames of a normal start.
+     */
+    var hasCameraFrame: Boolean by mutableStateOf(false)
         private set
 
     private var searchStartedAt: Long? = null
@@ -226,6 +238,7 @@ class AutoPlacementState {
         searchStartedAt = null
         recoveringSince = null
         phaseBeforeLoss = PlacementPhase.SCANNING
+        hasCameraFrame = false
         phase = PlacementPhase.INITIALIZING
     }
 
@@ -257,9 +270,12 @@ class AutoPlacementState {
         phase = PlacementPhase.SCANNING
     }
 
-    /** The init scrim gave up and no frame ever came. */
+    /**
+     * The init scrim gave up and no frame ever came. A no-op once any frame arrived: a
+     * session that delivers frames but has not started tracking yet is starting, not broken.
+     */
     fun cameraFailed() {
-        if (phase == PlacementPhase.INITIALIZING) phase = PlacementPhase.CAMERA_ERROR
+        if (phase == PlacementPhase.INITIALIZING && !hasCameraFrame) phase = PlacementPhase.CAMERA_ERROR
     }
 
     /**
@@ -271,8 +287,12 @@ class AutoPlacementState {
     /** The anchor factory must succeed before the request is consumed. Called on the render thread. */
     fun onFrame(input: FrameInput, commit: () -> Boolean = { true }): FrameEffect = when {
         dismissed || phase == PlacementPhase.CAMERA_ERROR -> FrameEffect.NONE
-        !input.tracking -> loseTracking()
+        !input.tracking -> {
+            if (!hasCameraFrame) hasCameraFrame = true
+            loseTracking()
+        }
         else -> {
+            if (!hasCameraFrame) hasCameraFrame = true
             if (phase == PlacementPhase.TRACKING_LOST) phase = phaseBeforeLoss
             when {
                 hasPlacement -> followAnchor(input)
@@ -284,13 +304,12 @@ class AutoPlacementState {
     }
 
     private fun loseTracking(): FrameEffect {
-        if (phase == PlacementPhase.TRACKING_LOST) return FrameEffect.NONE
-        // Remember where to come back to; INITIALIZING has nothing to come back to.
-        phaseBeforeLoss = if (phase == PlacementPhase.INITIALIZING) {
-            PlacementPhase.SCANNING
-        } else {
-            phase
+        // Untracked frames before the first tracked one are the normal start-up: nothing
+        // was lost, so no TRACKING_LOST phase, no warning haptic, no "paused" copy.
+        if (phase == PlacementPhase.TRACKING_LOST || phase == PlacementPhase.INITIALIZING) {
+            return FrameEffect.NONE
         }
+        phaseBeforeLoss = phase
         // The search clock does not run in the dark.
         searchStartedAt = null
         recoveringSince = null
