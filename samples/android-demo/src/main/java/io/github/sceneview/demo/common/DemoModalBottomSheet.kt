@@ -2,6 +2,8 @@
 
 package io.github.sceneview.demo.common
 
+import android.app.Activity
+import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material3.BottomSheetDefaults
@@ -13,6 +15,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -20,6 +23,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.SecureFlagPolicy
+import androidx.core.view.WindowCompat
 
 /**
  * The one entry point every demo-app `ModalBottomSheet` goes through (#3716).
@@ -35,14 +39,30 @@ import androidx.compose.ui.window.SecureFlagPolicy
  * a light band across the bottom of a dark sheet.
  *
  * Fixed here, once, for every sheet in the app:
- * - the appearance flags follow the **theme's** darkness
+ * - the **navigation-bar** appearance flags follow the **sheet's own** darkness
  *   (`MaterialTheme.colorScheme.surface.luminance()`, the same reading `DemoStatusBanner`
  *   and `CloudAnchorCards` use) rather than `isSystemInDarkTheme()` — the app's own theme
- *   can diverge from the OS setting, and reading the OS would answer the wrong question;
+ *   can diverge from the OS setting, and reading the OS would answer the wrong question.
+ *   The nav bar sits directly behind the sheet's own bottom edge (padded, not clipped, by
+ *   content — see below), so the sheet's colour is genuinely what is behind it;
  * - the contrast scrim is switched off on API 29+, exactly as `enableEdgeToEdge()` already
  *   does for the host Activity window: the sheet supplies its own contrast (DESIGN.md's
  *   `surface-container` against `on-surface`), so the system scrim is redundant on top of
- *   a themed surface and is what was producing the mismatch.
+ *   a themed surface and is what was producing the mismatch;
+ * - the **status-bar** appearance flags do *not* follow the sheet's darkness (#3796). A
+ *   *bottom* sheet never reaches the status-bar row — that area is still whatever the host
+ *   Activity window was already showing under its own scrim, which is a themed `surface` on
+ *   most screens but the always-dark 3D/AR stage (`DESIGN.md`'s `stage-background`,
+ *   `#0B0F16` in both themes) on every demo viewer. Deriving the flag from the *sheet's*
+ *   theme answered the wrong question there: in the light theme the sheet is light
+ *   (`isDark == false`), so it requested dark status-bar icons, which then sat on the
+ *   still-dark scene behind the dialog's full-bleed scrim and disappeared. The dialog is a
+ *   separate window from the Activity's, so it does not inherit the Activity's own
+ *   already-correct flag (set once by `enableEdgeToEdge()` for a themed screen, or live by
+ *   `DemoScaffold`'s chrome effect for a stage screen) — this wrapper reads that flag off
+ *   the host window and mirrors it onto the dialog window instead of recomputing it, so the
+ *   answer is correct on both kinds of screen without the wrapper needing to know which
+ *   kind is behind it.
  *
  * Content still owns its own navigation-bar *content* padding
  * (`Modifier.navigationBarsPadding()`, or `WindowInsets.navigationBars` folded into a
@@ -60,6 +80,18 @@ fun DemoModalBottomSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    // Read BEFORE the Dialog exists: `LocalView.current` here is still the caller's own
+    // content view, so this chain reaches the host Activity, not the sheet's own window.
+    // That flag is already correct for whatever the status-bar row actually sits over —
+    // see the class doc — so it is copied, not recomputed from the sheet's theme.
+    val callerView = LocalView.current
+    val hostStatusBarsLight = remember(callerView) {
+        generateSequence(callerView.context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+            ?.window
+            ?.let { WindowCompat.getInsetsController(it, callerView).isAppearanceLightStatusBars }
+    } ?: !isDark
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
@@ -68,7 +100,7 @@ fun DemoModalBottomSheet(
         containerColor = containerColor,
         properties = ModalBottomSheetProperties(
             securePolicy = SecureFlagPolicy.Inherit,
-            isAppearanceLightStatusBars = !isDark,
+            isAppearanceLightStatusBars = hostStatusBarsLight,
             isAppearanceLightNavigationBars = !isDark,
         ),
     ) {
