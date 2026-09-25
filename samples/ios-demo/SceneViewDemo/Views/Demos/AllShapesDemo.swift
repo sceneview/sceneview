@@ -38,7 +38,9 @@ struct GeometryDemo: View {
                     let label = TextNode(text: shape.name, fontSize: 0.075,
                                          color: UIColor(SceneViewTokens.Glass.onGlass), depth: 0.005)
                         .centered()
-                        .position([x, y - 0.24, 0])
+                        // 0.29 below the centre: the orbit camera looks down on the
+                        // lower row, so a cone's base projects past 0.24 onto its label.
+                        .position([x, y - 0.29, 0])
                     root.addChild(label.entity)
                 }
             }
