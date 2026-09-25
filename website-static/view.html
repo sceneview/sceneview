@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- connect-src carries `https:` (like /open/): the model, and the textures and
+       buffers a .gltf references, come from whatever host the link names. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; object-src 'none'">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
+       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
+  <script src="/assets/analytics.js"></script>
+  <title>3D Viewer — open a 3D model from a link | SceneView</title>
+  <meta name="description" content="Open a .glb, .gltf or .3mf model from any https link, in 3D in the browser and in AR on your phone. Free, no upload, no account.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://sceneview.github.io/view">
+  <meta property="og:title" content="SceneView 3D Viewer — open a 3D model from a link">
+  <meta property="og:description" content="Paste the link of a .glb, .gltf or .3mf file and see it in 3D, then in AR on your phone.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sceneview.github.io/view">
+  <meta property="og:image" content="https://sceneview.github.io/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#005bc1">
+  <meta property="og:site_name" content="SceneView">
+  <meta property="og:locale" content="en_US">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ===== 3D VIEWER BY LINK =====
+       Tokens come from styles.css (see DESIGN.md). The only page-local values are the
+       stage colours: DESIGN.md `stage-background-embedded` — #0B0F16 in light, #22293E in
+       dark, where #0B0F16 would sit at 1.01:1 on the page and the stage would vanish. */
+    :root {
+      --vp-stage: #0b0f16;
+      --vp-radius-sm: 12px;
+      --vp-radius-md: 16px;
+      --vp-radius-xl: 28px;
+      --vp-danger: #ea4335;
+    }
+    [data-theme="dark"] {
+      --vp-stage: #22293e;
+    }
+
+    .vp-page {
+      padding-top: var(--nav-height);
+      min-height: 100vh;
+    }
+    .vp-container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px var(--container-padding) 64px;
+    }
+    .vp-sr {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap;
+    }
+    [hidden] { display: none !important; }
+
+    /* ── Empty state ─────────────────────────────────────────────── */
+    .vp-empty { padding-top: 24px; }
+    .vp-title {
+      font-size: clamp(1.75rem, 6vw, 2.75rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-tertiary) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .vp-lead {
+      font-size: clamp(1rem, 2vw, 1.125rem);
+      color: var(--color-on-surface-variant);
+      max-width: 620px;
+      margin-bottom: 24px;
+    }
+    .vp-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vp-input {
+      width: 100%;
+      min-height: 52px;
+      padding: 0 16px;
+      border-radius: var(--vp-radius-sm);
+      border: 1px solid var(--color-outline);
+      background: var(--color-surface-container-lowest);
+      color: var(--color-on-surface);
+      font: inherit;
+      font-size: 1rem;
+    }
+    .vp-input::placeholder { color: var(--color-on-surface-variant); opacity: 0.8; }
+    .vp-input:focus {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 1px;
+      border-color: var(--color-primary);
+    }
+    .vp-input[aria-invalid="true"] { border-color: var(--vp-danger); }
+    .vp-form-error {
+      display: flex; gap: 8px; align-items: flex-start;
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: var(--color-on-surface);
+    }
+    .vp-form-error svg { flex-shrink: 0; color: var(--vp-danger); margin-top: 2px; }
+    .vp-privacy {
+      display: flex; gap: 8px; align-items: flex-start;
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: var(--color-on-surface-variant);
+    }
+    .vp-privacy svg { flex-shrink: 0; margin-top: 2px; }
+
+    .vp-section-title {
+      font-size: 1.125rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 40px 0 16px;
+    }
+    .vp-samples {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .vp-sample {
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--vp-radius-md);
+      overflow: hidden;
+      background: var(--color-surface-container-low);
+      box-shadow: var(--shadow-card);
+      transition: transform var(--duration-short) var(--ease-spring);
+    }
+    .vp-sample:hover { transform: translateY(-2px); }
+    .vp-sample:active { transform: scale(0.97); }
+    .vp-sample:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+    .vp-sample img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      background: var(--vp-stage);
+    }
+    .vp-sample span {
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .vp-format {
+      margin-top: 40px;
+      padding: 16px;
+      border-radius: var(--vp-radius-md);
+      background: var(--color-surface-container-low);
+      border: 1px solid var(--color-outline-variant);
+      font-size: 0.9rem;
+      color: var(--color-on-surface-variant);
+    }
+    .vp-format strong { color: var(--color-on-surface); }
+    .vp-format code {
+      display: block;
+      margin: 8px 0;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--color-on-surface);
+      word-break: break-all;
+    }
+
+    /* ── Viewer state ────────────────────────────────────────────── */
+    .vp-stage {
+      position: relative;
+      width: 100%;
+      height: min(62vh, 520px);
+      min-height: 300px;
+      border-radius: var(--vp-radius-xl);
+      overflow: hidden;
+      background: var(--vp-stage);
+      box-shadow: var(--shadow-card);
+    }
+    #vp-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      cursor: grab;
+    }
+    #vp-canvas:active { cursor: grabbing; }
+    .vp-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 24px;
+      text-align: center;
+      background: var(--vp-stage);
+      color: #ffffff;
+    }
+    .vp-overlay p { color: rgba(255, 255, 255, 0.72); font-size: 0.95rem; max-width: 440px; }
+    .vp-overlay strong { font-size: 1.125rem; font-weight: 700; }
+    .vp-overlay code {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.72);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 6px 10px;
+      border-radius: 8px;
+      max-width: 100%;
+      word-break: break-all;
+    }
+    .vp-overlay .vp-error-icon { color: var(--vp-danger); }
+    .vp-spinner {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: #ffffff;
+      animation: vp-spin 800ms linear infinite;
+    }
+    @keyframes vp-spin { to { transform: rotate(360deg); } }
+    .vp-hint {
+      position: absolute;
+      left: 50%; bottom: 12px;
+      transform: translateX(-50%);
+      z-index: 1;
+      padding: 6px 12px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.14);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24);
+      color: #ffffff;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      pointer-events: none;
+      transition: opacity var(--duration-medium) var(--ease-expressive);
+    }
+    .vp-hint.is-faded { opacity: 0; }
+
+    .vp-meta { margin: 20px 0 16px; min-width: 0; }
+    .vp-name {
+      font-size: clamp(1.25rem, 4vw, 1.75rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .vp-source {
+      margin-top: 4px;
+      font-size: 0.9rem;
+      color: var(--color-on-surface-variant);
+      overflow-wrap: anywhere;
+    }
+
+    .vp-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .vp-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 48px;
+      padding: 0 24px;
+      border-radius: 9999px;
+      font: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      transition: transform var(--duration-short) var(--ease-spring),
+                  background var(--duration-short), box-shadow var(--duration-short);
+    }
+    .vp-btn:active { transform: scale(0.97); }
+    .vp-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+    .vp-btn--primary {
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+      box-shadow: 0 2px 8px rgba(0, 91, 193, 0.3);
+    }
+    .vp-btn--primary:hover { background: var(--color-primary-dim); }
+    .vp-btn--tonal {
+      background: var(--color-surface-container);
+      color: var(--color-on-surface);
+      box-shadow: inset 0 0 0 1px var(--color-outline-variant);
+    }
+    .vp-btn--tonal:hover { background: var(--color-surface-container-high); }
+    .vp-btn--on-stage {
+      background: rgba(255, 255, 255, 0.14);
+      color: #ffffff;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.36);
+    }
+
+    .vp-ar-note {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: var(--color-on-surface-variant);
+    }
+    .vp-ar-note code { font-family: var(--font-mono); font-size: 0.8rem; }
+
+    .vp-qr {
+      margin-top: 16px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      padding: 16px;
+      border-radius: var(--vp-radius-md);
+      background: var(--color-surface-container-low);
+      border: 1px solid var(--color-outline-variant);
+    }
+    .vp-qr__code {
+      flex-shrink: 0;
+      width: 144px; height: 144px;
+      padding: 8px;
+      background: #ffffff;
+      border-radius: var(--vp-radius-sm);
+    }
+    .vp-qr__code svg { width: 100%; height: 100%; display: block; }
+    .vp-qr p { font-size: 0.9rem; color: var(--color-on-surface-variant); }
+    .vp-qr strong { display: block; color: var(--color-on-surface); margin-bottom: 4px; }
+
+    .vp-footnote {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--color-outline-variant);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--color-on-surface-variant);
+    }
+    .vp-footnote a {
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+    .vp-footnote a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    .vp-toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+      transform: translate(-50%, 16px);
+      z-index: 120;
+      padding: 12px 20px;
+      border-radius: 9999px;
+      background: var(--color-inverse-surface);
+      color: var(--color-surface);
+      font-size: 0.9rem;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--duration-short), transform var(--duration-medium) var(--ease-spring);
+    }
+    .vp-toast.is-shown { opacity: 1; transform: translate(-50%, 0); }
+
+    /* ── Wider screens ───────────────────────────────────────────── */
+    @media (min-width: 600px) {
+      .vp-form { flex-direction: row; }
+      .vp-form .vp-btn { flex-shrink: 0; }
+      .vp-samples { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+      .vp-actions { flex-direction: row; flex-wrap: wrap; }
+      .vp-footnote { flex-direction: row; justify-content: space-between; align-items: center; }
+    }
+    @media (min-width: 900px) {
+      .vp-container { padding-top: 40px; }
+      .vp-stage { height: min(68vh, 600px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .vp-spinner { animation-duration: 2.4s; }
+      .vp-sample:hover, .vp-sample:active, .vp-btn:active { transform: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav__container">
+      <a href="/" class="nav__brand" aria-label="SceneView SDK — home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" style="flex-shrink:0">
+          <defs>
+            <linearGradient id="navTopGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8AB4F8"/><stop offset="100%" stop-color="#42A5F5"/></linearGradient>
+            <linearGradient id="navRightGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#005BC1"/></linearGradient>
+            <linearGradient id="navLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#005BC1"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient>
+          </defs>
+          <polygon points="256,272 122,194 122,340 256,418" fill="url(#navLeftGrad)"/>
+          <polygon points="256,272 390,194 390,340 256,418" fill="url(#navRightGrad)"/>
+          <polygon points="256,126 390,204 256,282 122,204" fill="url(#navTopGrad)"/>
+          <polyline points="96,120 96,82 134,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,120 416,82 378,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="96,392 96,430 134,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,392 416,430 378,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>SceneView SDK</span>
+      </a>
+
+      <div class="nav__links" id="navLinks">
+        <a href="/#features" class="nav__link">Features</a>
+        <a href="/showcase.html" class="nav__link">Showcase</a>
+        <a href="/playground.html" class="nav__link">Playground</a>
+        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
+        <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
+        <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav__actions">
+        <a href="https://github.com/sceneview/sceneview" class="nav__icon-btn" target="_blank" rel="noopener" aria-label="View on GitHub">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="nav__hamburger nav__hamburger--mobile" id="hamburgerMobile" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="vp-page">
+    <div class="vp-container">
+
+      <!-- ── Empty state: no ?url= ─────────────────────────────────── -->
+      <section id="vp-empty" class="vp-empty" aria-labelledby="vp-empty-title" hidden>
+        <h1 id="vp-empty-title" class="vp-title">Open a 3D model from a link</h1>
+        <p class="vp-lead">Paste the https link of a <strong>.glb</strong>, <strong>.gltf</strong> or <strong>.3mf</strong> file. It opens here in 3D, and in AR on your phone.</p>
+
+        <form id="vp-form" class="vp-form" novalidate>
+          <label for="vp-input" class="vp-sr">Link to a 3D model</label>
+          <input id="vp-input" class="vp-input" type="url" inputmode="url" name="url"
+                 placeholder="https://example.com/model.glb"
+                 autocomplete="off" autocapitalize="off" spellcheck="false"
+                 aria-describedby="vp-form-error">
+          <button type="submit" class="vp-btn vp-btn--primary">Open in 3D</button>
+        </form>
+        <p id="vp-form-error" class="vp-form-error" role="alert" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-2h2v2Zm0-4h-2V7h2v6Z"/></svg>
+          <span id="vp-form-error-text"></span>
+        </p>
+        <p class="vp-privacy">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span>Your browser loads the file straight from where it is hosted. Nothing is uploaded to SceneView.</span>
+        </p>
+
+        <h2 class="vp-section-title">Or try a sample</h2>
+        <ul class="vp-samples">
+          <li><a class="vp-sample" data-sample="DamagedHelmet.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2FDamagedHelmet.glb">
+            <img src="/models/platforms/thumbnails/DamagedHelmet.webp" alt="" width="256" height="256" loading="lazy"><span>Damaged Helmet</span></a></li>
+          <li><a class="vp-sample" data-sample="SheenChair.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2FSheenChair.glb">
+            <img src="/models/platforms/thumbnails/SheenChair.webp" alt="" width="256" height="256" loading="lazy"><span>Sheen Chair</span></a></li>
+          <li><a class="vp-sample" data-sample="ToonCat.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2FToonCat.glb">
+            <img src="/models/platforms/thumbnails/ToonCat.webp" alt="" width="256" height="256" loading="lazy"><span>Toon Cat</span></a></li>
+          <li><a class="vp-sample" data-sample="photorealistic_guitar.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fphotorealistic_guitar.glb">
+            <img src="/models/platforms/thumbnails/photorealistic_guitar.webp" alt="" width="256" height="256" loading="lazy"><span>Guitar</span></a></li>
+        </ul>
+
+        <div class="vp-format">
+          <strong>Share or generate a link</strong>
+          <code>https://sceneview.github.io/view?url=&lt;encoded https link to a .glb, .gltf or .3mf&gt;</code>
+          Add <code style="display:inline">&amp;usdz=&lt;link to a .usdz&gt;</code> to open AR on iPhone and iPad. The file's host must allow cross-origin requests (CORS).
+        </div>
+      </section>
+
+      <!-- ── Viewer state: ?url= given ─────────────────────────────── -->
+      <section id="vp-viewer" aria-labelledby="vp-name" hidden>
+        <div class="vp-stage" id="vp-stage">
+          <canvas id="vp-canvas" aria-label="3D model — drag to orbit, scroll to zoom"></canvas>
+          <div id="vp-hint" class="vp-hint" hidden>Drag to orbit · scroll to zoom</div>
+
+          <div id="vp-loading" class="vp-overlay" role="status" aria-live="polite">
+            <div class="vp-spinner" aria-hidden="true"></div>
+            <p id="vp-loading-text">Loading the model…</p>
+          </div>
+
+          <div id="vp-error" class="vp-overlay" role="alert" hidden>
+            <svg class="vp-error-icon" viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-2h2v2Zm0-4h-2V7h2v6Z"/></svg>
+            <strong id="vp-error-title">This model could not be opened</strong>
+            <p id="vp-error-text"></p>
+            <code id="vp-error-url"></code>
+            <a class="vp-btn vp-btn--on-stage" id="vp-error-back" href="?">Open another link</a>
+          </div>
+        </div>
+
+        <div class="vp-meta">
+          <h1 id="vp-name" class="vp-name">3D model</h1>
+          <p id="vp-source" class="vp-source"></p>
+        </div>
+
+        <div class="vp-actions" id="vp-actions" hidden>
+          <button type="button" class="vp-btn vp-btn--primary" id="vp-ar" hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z"/><path d="m3 7 9 5 9-5M12 12v10"/></svg>
+            View in AR
+          </button>
+          <button type="button" class="vp-btn vp-btn--tonal" id="vp-copy">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+            Copy link
+          </button>
+          <a class="vp-btn vp-btn--tonal" id="vp-armv" hidden>Open in AR Model Viewer</a>
+        </div>
+        <p id="vp-ar-note" class="vp-ar-note" hidden></p>
+
+        <div id="vp-qr" class="vp-qr" hidden>
+          <div class="vp-qr__code" id="vp-qr-code" aria-hidden="true"></div>
+          <p><strong>Scan with your phone</strong>This link opens the same model on your phone, where you can place it in your room in AR.</p>
+        </div>
+
+        <div class="vp-footnote">
+          <span>Fetched directly from <span id="vp-host">its host</span> by your browser. Nothing is uploaded to SceneView.</span>
+          <a href="?">Open another model</a>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="vp-toast" class="vp-toast" role="status" aria-live="polite"></div>
+
+  <footer class="footer">
+    <div class="footer__container">
+      <div class="footer__grid">
+        <div class="footer__brand-col">
+          <div class="footer__brand-name">SceneView SDK</div>
+          <p class="footer__brand-desc">The architectural logic for building high-performance 3D spatial experiences across all modern platforms.</p>
+          <div class="footer__copyright">&copy; 2026 SceneView SDK. Architectural Logic.</div>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Documentation</h4>
+          <ul class="footer__col-list">
+            <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
+            <li><a href="/showcase.html">Showcase</a></li>
+            <li><a href="/view.html">3D Viewer</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Community</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Legal</h4>
+          <ul class="footer__col-list">
+            <li><a href="/privacy.html">Privacy</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+
+  <!-- 3D viewer by link. No eval, no innerHTML from input: every string that comes
+       from the query string reaches the DOM through textContent or a validated URL. -->
+  <script>
+  (function () {
+    'use strict';
+
+    // Same pair /open/ loads: the site's Filament build and the sceneview.js viewer.
+    var VIEWER_SCRIPTS = ['/js/filament/filament.js', '/js/sceneview.js?v=4.39.0'];
+    // The compiled SceneView KMP core, loaded ONLY to convert a .3mf into a GLB
+    // (`sceneview.threeMfToGlb`), exactly as /open/ does. It never renders.
+    var THREEMF_SCRIPT = '/js/sceneview-web.js?v=4.34.0';
+    // AR Model Viewer declares a verified App Link on https://ar.sceneview.dev/open?url=
+    // (VIEW + BROWSABLE, autoVerify), so an Android intent can hand it the model.
+    var ARMV_PACKAGE = 'com.gorisse.thomas.arcamera';
+    var ARMV_LINK_HOST = 'ar.sceneview.dev';
+    var MAX_URL_LENGTH = 2048;
+    var SUPPORTED = { glb: true, gltf: true, '3mf': true };
+    var KNOWN_UNSUPPORTED = { usdz: 1, usd: 1, obj: 1, stl: 1, fbx: 1, ply: 1, dae: 1, '3ds': 1, blend: 1, step: 1, stp: 1 };
+
+    var params = new URLSearchParams(location.search);
+    var rawUrl = (params.get('url') || '').trim();
+    var rawUsdz = (params.get('usdz') || '').trim();
+
+    var ua = navigator.userAgent || '';
+    var isAndroid = /Android/i.test(ua);
+    var isIOS = /iPad|iPhone|iPod/i.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    var $ = function (id) { return document.getElementById(id); };
+
+    // ── URL validation ────────────────────────────────────────────────
+    // https only. The single exception is this page's own origin, so the samples it
+    // hosts also load when the site is served over plain http on a dev machine.
+    function checkModelUrl(raw) {
+      if (!raw) return { error: 'Paste the link to a .glb, .gltf or .3mf file.' };
+      if (raw.length > MAX_URL_LENGTH) return { error: 'This link is too long.' };
+      var candidate = raw;
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(candidate)) candidate = 'https://' + candidate;
+      var parsed;
+      try { parsed = new URL(candidate); } catch (e) {
+        return { error: 'This is not a valid link.' };
+      }
+      var sameOrigin = parsed.origin === location.origin;
+      if (parsed.protocol !== 'https:' && !sameOrigin) {
+        return { error: parsed.protocol === 'http:'
+          ? 'Only secure https:// links can be opened. Try the same link with https://.'
+          : 'Only https:// links to a 3D file can be opened.' };
+      }
+      if (parsed.username || parsed.password) {
+        return { error: 'Links with a user name or password cannot be opened.' };
+      }
+      return { url: parsed };
+    }
+
+    function extensionOf(url) {
+      var path = url.pathname.toLowerCase();
+      var dot = path.lastIndexOf('.');
+      var slash = path.lastIndexOf('/');
+      return dot > slash ? path.substring(dot + 1) : '';
+    }
+
+    function fileNameOf(url) {
+      var path = url.pathname;
+      var name = path.substring(path.lastIndexOf('/') + 1);
+      try { name = decodeURIComponent(name); } catch (e) { /* keep raw */ }
+      return name || url.hostname;
+    }
+
+    function shareUrlFor(modelUrl, usdzUrl) {
+      var base = location.hostname === 'sceneview.github.io'
+        ? 'https://sceneview.github.io/view'
+        : location.origin + location.pathname;
+      var q = '?url=' + encodeURIComponent(modelUrl);
+      if (usdzUrl) q += '&usdz=' + encodeURIComponent(usdzUrl);
+      return base + q;
+    }
+
+    // ── Theme-aware stage colour ──────────────────────────────────────
+    // DESIGN.md `stage-background-embedded`, in the linear space Filament clears with.
+    function stageClearColor() {
+      return document.documentElement.getAttribute('data-theme') === 'dark'
+        ? [0.0160, 0.0222, 0.0482, 1.0]   // #22293E
+        : [0.0033, 0.0047, 0.0074, 1.0];  // #0B0F16
+    }
+
+    // ── Script loading ────────────────────────────────────────────────
+    var viewerScripts = null;
+    var threeMfScript = null;
+    function loadScript(src) {
+      return new Promise(function (resolve, reject) {
+        var el = document.createElement('script');
+        el.src = src;
+        el.onload = function () { resolve(); };
+        el.onerror = function () { reject(new Error('failed to load ' + src)); };
+        document.head.appendChild(el);
+      });
+    }
+    function loadViewerScripts() {
+      if (!viewerScripts) {
+        viewerScripts = VIEWER_SCRIPTS.reduce(function (chain, src) {
+          return chain.then(function () { return loadScript(src); });
+        }, Promise.resolve());
+      }
+      return viewerScripts;
+    }
+
+    function fail(code, detail) {
+      var err = new Error(detail || code);
+      err.code = code;
+      return err;
+    }
+
+    // ── Download with progress ────────────────────────────────────────
+    function download(url, onProgress) {
+      return fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' })
+        .catch(function () { throw fail('network'); })
+        .then(function (response) {
+          if (!response.ok) throw fail('http', String(response.status));
+          var total = Number(response.headers.get('content-length')) || 0;
+          if (!response.body || !response.body.getReader) return response.arrayBuffer();
+          var reader = response.body.getReader();
+          var chunks = [];
+          var received = 0;
+          function pump() {
+            return reader.read().then(function (step) {
+              if (step.done) {
+                var out = new Uint8Array(received);
+                var offset = 0;
+                chunks.forEach(function (c) { out.set(c, offset); offset += c.length; });
+                return out.buffer;
+              }
+              chunks.push(step.value);
+              received += step.value.length;
+              onProgress(received, total);
+              return pump();
+            });
+          }
+          return pump().catch(function (e) { if (e && e.code) throw e; throw fail('network'); });
+        });
+    }
+
+    // ── Format handling ───────────────────────────────────────────────
+    function sniff(buffer) {
+      var b = new Uint8Array(buffer, 0, Math.min(4, buffer.byteLength));
+      if (b.length === 4 && b[0] === 0x67 && b[1] === 0x6c && b[2] === 0x54 && b[3] === 0x46) return 'glb';
+      if (b.length === 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04) return '3mf';
+      var head = new Uint8Array(buffer, 0, Math.min(64, buffer.byteLength));
+      for (var i = 0; i < head.length; i++) {
+        var c = head[i];
+        if (c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d || c === 0xef || c === 0xbb || c === 0xbf) continue;
+        return c === 0x7b ? 'gltf' : '';
+      }
+      return '';
+    }
+
+    function blobUrl(bytes, type) {
+      return URL.createObjectURL(new Blob([bytes], { type: type }));
+    }
+
+    // A .gltf names its buffers and textures relative to ITSELF, and Filament's own
+    // resource fetch starts decoding before the textures arrive ("Unable to load
+    // resources"). So this page downloads every buffer and image itself and packs the
+    // lot into one GLB, which then loads exactly like a .glb link. JSON.parse only.
+    function decodeDataUri(uri) {
+      var m = /^data:([^;,]*)((?:;[^;,]*)*?)(;base64)?,(.*)$/i.exec(uri);
+      if (!m) throw fail('parse');
+      if (!m[3]) return new TextEncoder().encode(decodeURIComponent(m[4]));
+      var bin;
+      try { bin = atob(m[4]); } catch (e) { throw fail('parse'); }
+      var out = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+
+    function fetchResource(uri, baseUrl) {
+      if (/^data:/i.test(uri)) return Promise.resolve(decodeDataUri(uri));
+      var abs;
+      try { abs = new URL(uri, baseUrl); } catch (e) { return Promise.reject(fail('parse')); }
+      if (abs.protocol !== 'https:' && abs.origin !== location.origin) return Promise.reject(fail('insecure-resource'));
+      return download(abs.href, function () {})
+        .then(function (buf) { return new Uint8Array(buf); })
+        .catch(function (e) {
+          var err = fail('resource', fileNameOf(abs));
+          err.cause = e;
+          throw err;
+        });
+    }
+
+    function imageMime(bytes, fallback) {
+      if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+      if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
+      if (bytes[0] === 0xab && bytes[1] === 0x4b && bytes[2] === 0x54 && bytes[3] === 0x58) return 'image/ktx2';
+      return fallback || 'image/png';
+    }
+
+    function gltfToBlobUrl(buffer, baseUrl) {
+      var json;
+      try {
+        json = JSON.parse(new TextDecoder('utf-8').decode(buffer));
+      } catch (e) {
+        return Promise.reject(fail('parse'));
+      }
+      if (!json || typeof json !== 'object' || !json.asset) return Promise.reject(fail('parse'));
+      var buffers = Array.isArray(json.buffers) ? json.buffers : [];
+      var images = Array.isArray(json.images) ? json.images : [];
+      var imagesToPack = images.filter(function (img) { return img && typeof img.uri === 'string'; });
+
+      return Promise.all([
+        Promise.all(buffers.map(function (b) {
+          if (!b || typeof b.uri !== 'string') return Promise.reject(fail('parse'));
+          return fetchResource(b.uri, baseUrl);
+        })),
+        Promise.all(imagesToPack.map(function (img) { return fetchResource(img.uri, baseUrl); }))
+      ]).then(function (fetched) {
+        var bufferBytes = fetched[0];
+        var imageBytes = fetched[1];
+        var pad4 = function (n) { return (n + 3) & ~3; };
+        var total = 0;
+        var bufferOffsets = bufferBytes.map(function (bytes) { var at = total; total = pad4(total + bytes.length); return at; });
+        var imageOffsets = imageBytes.map(function (bytes) { var at = total; total = pad4(total + bytes.length); return at; });
+        var bin = new Uint8Array(total);
+        bufferBytes.forEach(function (bytes, i) { bin.set(bytes, bufferOffsets[i]); });
+        imageBytes.forEach(function (bytes, i) { bin.set(bytes, imageOffsets[i]); });
+
+        (json.bufferViews || []).forEach(function (view) {
+          if (!view || typeof view.buffer !== 'number' || view.buffer >= bufferOffsets.length) return;
+          view.byteOffset = (view.byteOffset || 0) + bufferOffsets[view.buffer];
+          view.buffer = 0;
+        });
+        json.bufferViews = json.bufferViews || [];
+        imagesToPack.forEach(function (img, i) {
+          var bytes = imageBytes[i];
+          json.bufferViews.push({ buffer: 0, byteOffset: imageOffsets[i], byteLength: bytes.length });
+          img.bufferView = json.bufferViews.length - 1;
+          img.mimeType = imageMime(bytes, img.mimeType);
+          delete img.uri;
+        });
+        if (total > 0) json.buffers = [{ byteLength: total }];
+        else delete json.buffers;
+
+        var jsonBytes = new TextEncoder().encode(JSON.stringify(json));
+        var jsonLen = pad4(jsonBytes.length);
+        var glbLen = 12 + 8 + jsonLen + (total > 0 ? 8 + total : 0);
+        var glb = new Uint8Array(glbLen);
+        var dv = new DataView(glb.buffer);
+        dv.setUint32(0, 0x46546c67, true);   // 'glTF'
+        dv.setUint32(4, 2, true);
+        dv.setUint32(8, glbLen, true);
+        dv.setUint32(12, jsonLen, true);
+        dv.setUint32(16, 0x4e4f534a, true);  // 'JSON'
+        glb.fill(0x20, 20, 20 + jsonLen);
+        glb.set(jsonBytes, 20);
+        if (total > 0) {
+          dv.setUint32(20 + jsonLen, total, true);
+          dv.setUint32(24 + jsonLen, 0x004e4942, true);  // 'BIN\0'
+          glb.set(bin, 28 + jsonLen);
+        }
+        return blobUrl(glb, 'model/gltf-binary');
+      });
+    }
+
+    function threeMfToBlobUrl(buffer) {
+      if (!threeMfScript) threeMfScript = loadViewerScripts().then(function () { return loadScript(THREEMF_SCRIPT); });
+      return threeMfScript.then(function () {
+        var sv = window.sceneview;
+        if (!sv || typeof sv.threeMfToGlb !== 'function') throw fail('converter');
+        if (!sv.isThreeMf(buffer)) throw fail('parse');
+        var glb;
+        try { glb = sv.threeMfToGlb(buffer); } catch (e) { throw fail('parse'); }
+        return blobUrl(glb, 'model/gltf-binary');
+      });
+    }
+
+    // ── Error copy: one true sentence per failure ─────────────────────
+    function describe(err, fileName) {
+      var code = err && err.code;
+      if (code === 'http') {
+        var status = Number(err.message);
+        if (status === 404 || status === 410) return {
+          title: 'File not found',
+          text: 'The host answered HTTP ' + status + ': there is no file at this link. Check that it is complete and still online.'
+        };
+        if (status === 401 || status === 403) return {
+          title: 'Access refused',
+          text: 'The host answered HTTP ' + status + '. The file has to be public for a browser to open it.'
+        };
+        return { title: 'The host returned an error', text: 'The host answered HTTP ' + status + '. Try again later, or check the link.' };
+      }
+      if (code === 'network') return {
+        title: 'The file could not be downloaded',
+        text: 'The host blocked this page from reading it (CORS), or the link is offline. ' +
+              'The file must be served with Access-Control-Allow-Origin, as GitHub raw links and most CDNs do.'
+      };
+      if (code === 'format') return {
+        title: 'Format not supported',
+        text: '“' + fileName + '” is not a file this viewer can open. Use a .glb, .gltf or .3mf link.'
+      };
+      if (code === 'insecure-resource') return {
+        title: 'Insecure file reference',
+        text: 'This .gltf points to buffers or textures over plain http, which the browser refuses to load.'
+      };
+      if (code === 'resource') return {
+        title: 'A file this model needs is missing',
+        text: 'The .gltf refers to “' + err.message + '”, which could not be downloaded next to it. ' +
+              'Check that every .bin and texture is online, or share a single .glb instead.'
+      };
+      if (code === 'engine') return {
+        title: '3D is not available here',
+        text: 'This browser could not start the 3D renderer. WebGL 2 is required — try a recent Chrome, Edge, Firefox or Safari.'
+      };
+      if (code === 'converter') return {
+        title: 'The 3MF converter did not load',
+        text: 'Reload the page to try again.'
+      };
+      return {
+        title: 'This model could not be read',
+        text: 'The file downloaded, but it is not a valid 3D model, or it uses a glTF feature this viewer does not support yet.'
+      };
+    }
+
+    // ── States ────────────────────────────────────────────────────────
+    function showEmpty(prefill, message) {
+      $('vp-empty').hidden = false;
+      $('vp-viewer').hidden = true;
+      if (prefill) $('vp-input').value = prefill;
+      if (message) showFormError(message);
+    }
+
+    function showFormError(message) {
+      $('vp-form-error-text').textContent = message;
+      $('vp-form-error').hidden = false;
+      $('vp-input').setAttribute('aria-invalid', 'true');
+    }
+
+    function showError(err, fileName, url) {
+      var copy = describe(err, fileName);
+      $('vp-loading').hidden = true;
+      $('vp-error-title').textContent = copy.title;
+      $('vp-error-text').textContent = copy.text;
+      $('vp-error-url').textContent = url;
+      $('vp-error').hidden = false;
+      $('vp-actions').hidden = true;
+      $('vp-ar-note').hidden = true;
+      $('vp-qr').hidden = true;
+      $('vp-hint').hidden = true;
+      document.title = copy.title + ' — SceneView 3D Viewer';
+    }
+
+    var toastTimer = null;
+    function toast(text) {
+      var el = $('vp-toast');
+      el.textContent = text;
+      el.classList.add('is-shown');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.classList.remove('is-shown'); }, 2200);
+    }
+
+    // ── Empty state wiring ────────────────────────────────────────────
+    // Samples point at this deployment's own copy, so a preview build or a dev
+    // server shows its own files; the static href is the production fallback.
+    Array.prototype.forEach.call(document.querySelectorAll('.vp-sample'), function (a) {
+      var file = a.getAttribute('data-sample');
+      var own = new URL('/models/platforms/' + file, location.origin).href;
+      a.setAttribute('href', '?url=' + encodeURIComponent(own));
+    });
+
+    $('vp-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var result = checkModelUrl($('vp-input').value.trim());
+      if (result.error) { showFormError(result.error); return; }
+      location.search = '?url=' + encodeURIComponent(result.url.href);
+    });
+    $('vp-input').addEventListener('input', function () {
+      $('vp-form-error').hidden = true;
+      this.removeAttribute('aria-invalid');
+    });
+
+    // ── Route ─────────────────────────────────────────────────────────
+    if (!rawUrl) { showEmpty(); return; }
+
+    var checked = checkModelUrl(rawUrl);
+    if (checked.error) { showEmpty(rawUrl, checked.error); return; }
+
+    var modelUrl = checked.url;
+    var usdzCheck = rawUsdz ? checkModelUrl(rawUsdz) : null;
+    var usdzUrl = usdzCheck && usdzCheck.url && extensionOf(usdzCheck.url) === 'usdz' ? usdzCheck.url.href : null;
+    var fileName = fileNameOf(modelUrl);
+    var ext = extensionOf(modelUrl);
+
+    $('vp-empty').hidden = true;
+    $('vp-viewer').hidden = false;
+    $('vp-name').textContent = fileName;
+    $('vp-source').textContent = modelUrl.hostname;
+    $('vp-host').textContent = modelUrl.hostname;
+    document.title = fileName + ' — SceneView 3D Viewer';
+
+    if (KNOWN_UNSUPPORTED[ext]) {
+      showError(fail('format'), fileName, modelUrl.href);
+      return;
+    }
+
+    // The engine starts while the file downloads — the two are independent.
+    var engineReady = loadViewerScripts()
+      .then(function () {
+        return SceneView.create('vp-canvas', { autoRotate: true, backgroundColor: stageClearColor() });
+      })
+      .catch(function () { throw fail('engine'); });
+    // Silence an unhandled rejection until the download settles and we await it.
+    engineReady.catch(function () {});
+
+    var format = SUPPORTED[ext] ? ext : '';
+    download(modelUrl.href, function (received, total) {
+      var mb = function (n) { return (n / 1048576).toFixed(1); };
+      $('vp-loading-text').textContent = total
+        ? 'Downloading… ' + Math.min(100, Math.round(received / total * 100)) + ' %'
+        : 'Downloading… ' + mb(received) + ' MB';
+    })
+      .then(function (buffer) {
+        var detected = sniff(buffer);
+        if (!format || (format === 'glb' && detected && detected !== 'glb')) format = detected;
+        if (!format) throw fail('format');
+        $('vp-loading-text').textContent = 'Preparing the 3D view…';
+        if (format === 'glb') return blobUrl(buffer, 'model/gltf-binary');
+        if (format === 'gltf') return gltfToBlobUrl(buffer, modelUrl.href);
+        return threeMfToBlobUrl(buffer);
+      })
+      .then(function (viewable) {
+        return engineReady.then(function (viewer) {
+          return viewer.loadModel(viewable).catch(function () { throw fail('parse'); });
+        });
+      })
+      .then(function (viewer) {
+        $('vp-loading').hidden = true;
+        onLoaded(viewer);
+      })
+      .catch(function (err) {
+        console.warn('view: could not open the model', err);
+        showError(err, fileName, modelUrl.href);
+      });
+
+    // ── Loaded: actions ───────────────────────────────────────────────
+    function onLoaded(viewer) {
+      // Follow the theme toggle live, so the stage matches the page in both themes.
+      new MutationObserver(function () {
+        var c = stageClearColor();
+        viewer.setBackgroundColor(c[0], c[1], c[2], c[3]);
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+      var hint = $('vp-hint');
+      hint.textContent = ('ontouchstart' in window) ? 'Drag to orbit' : 'Drag to orbit · scroll to zoom';
+      hint.hidden = false;
+      var fade = function () { hint.classList.add('is-faded'); };
+      $('vp-canvas').addEventListener('pointerdown', fade, { once: true });
+      setTimeout(fade, 4000);
+
+      var share = shareUrlFor(modelUrl.href, usdzUrl);
+      $('vp-actions').hidden = false;
+      $('vp-copy').addEventListener('click', function () { copyText(share); });
+      wireAr(share);
+      wireArmv();
+    }
+
+    function copyText(text) {
+      var done = function () { toast('Link copied'); };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () { legacyCopy(text, done); });
+      } else {
+        legacyCopy(text, done);
+      }
+    }
+    function legacyCopy(text, done) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { toast('Copy failed — copy the address bar instead'); }
+      document.body.removeChild(ta);
+    }
+
+    // "View in AR". sceneview-web's WebXR AR (ARSceneView) is a Kotlin/JS API and is not
+    // exported by the script-tag bundle, so the page hands the model to the platform's
+    // own AR viewer: Quick Look on iOS (needs a USDZ), Scene Viewer on Android (reads
+    // .glb/.gltf itself), and a QR code on desktop to continue on a phone.
+    function wireAr(share) {
+      var arButton = $('vp-ar');
+      var note = $('vp-ar-note');
+      var sceneViewerFormat = format === 'glb' || format === 'gltf';
+
+      if (isIOS) {
+        if (usdzUrl) {
+          arButton.hidden = false;
+          arButton.addEventListener('click', function () {
+            // Quick Look only answers an <a rel="ar"> whose child is an <img>.
+            var a = document.createElement('a');
+            a.setAttribute('rel', 'ar');
+            a.href = usdzUrl;
+            a.appendChild(document.createElement('img'));
+            a.click();
+          });
+        } else {
+          setNote('AR on iPhone and iPad needs a USDZ copy of this model: add ', '&usdz=<link to a .usdz>', ' to this page’s link.');
+        }
+        return;
+      }
+
+      if (isAndroid) {
+        if (sceneViewerFormat) {
+          arButton.hidden = false;
+          arButton.addEventListener('click', function () {
+            var file = 'https://arvr.google.com/scene-viewer/1.0?file=' + encodeURIComponent(modelUrl.href) +
+              '&mode=ar_preferred&title=' + encodeURIComponent(fileName);
+            location.href = 'intent://' + file.replace(/^https:\/\//, '') +
+              '#Intent;scheme=https;package=com.google.android.googlequicksearchbox;' +
+              'action=android.intent.action.VIEW;S.browser_fallback_url=' + encodeURIComponent(location.href) + ';end;';
+          });
+        } else {
+          setNote('Google’s AR viewer only reads .glb and .gltf. Open this .3mf in AR Model Viewer below.');
+        }
+        return;
+      }
+
+      // Desktop: AR happens on a phone, so the button shows where to continue.
+      arButton.hidden = false;
+      arButton.addEventListener('click', function () {
+        var box = $('vp-qr');
+        if (!box.hidden) { box.hidden = true; return; }
+        box.hidden = false;
+        import('/js/qrcode-min.js')
+          .then(function (mod) { return mod.renderQrSvg(share, { size: 128, padding: 0 }); })
+          .then(function (svg) {
+            // renderQrSvg returns SVG markup it generates itself from the encoded bits.
+            $('vp-qr-code').innerHTML = svg;
+          })
+          .catch(function () { $('vp-qr-code').textContent = 'QR code unavailable'; });
+      });
+
+      function setNote(before, code, after) {
+        note.textContent = '';
+        note.appendChild(document.createTextNode(before));
+        if (code) {
+          var c = document.createElement('code');
+          c.textContent = code;
+          note.appendChild(c);
+        }
+        if (after) note.appendChild(document.createTextNode(after));
+        note.hidden = false;
+      }
+    }
+
+    // "Open in AR Model Viewer" — Android only. The app claims
+    // https://ar.sceneview.dev/open?url=<https link>; without it installed the intent
+    // falls back to its Play Store page.
+    function wireArmv() {
+      if (!isAndroid || modelUrl.protocol !== 'https:') return;
+      var link = ARMV_LINK_HOST + '/open?url=' + encodeURIComponent(modelUrl.href);
+      var store = 'https://play.google.com/store/apps/details?id=' + ARMV_PACKAGE;
+      var a = $('vp-armv');
+      a.href = 'intent://' + link + '#Intent;scheme=https;package=' + ARMV_PACKAGE +
+        ';S.browser_fallback_url=' + encodeURIComponent(store) + ';end';
+      a.hidden = false;
+    }
+  })();
+  </script>
+</body>
+</html>

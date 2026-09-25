@@ -62,6 +62,7 @@
     if (path.indexOf('/preview/') === 0 ||
         path.indexOf('/embed/') === 0 ||
         path.indexOf('/open/') === 0 ||
+        path === '/view' || path === '/view.html' ||
         path.indexOf('/rerun/') === 0) return 'viewer';
     return 'website';
   }

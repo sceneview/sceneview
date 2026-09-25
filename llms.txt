@@ -58,6 +58,7 @@ serves a ~12 kB compact overview for a small context window.
 
 - [Use SceneView with AI assistants](https://sceneview.github.io/docs/ai-context/): how to hand this file to any assistant, and how to install the MCP server
 - [AI-assisted development](https://sceneview.github.io/docs/ai-development/): the prompts and workflows that produce code which compiles
+- [Open a 3D model by link](https://sceneview.github.io/view): to show a user a model without writing code, link to `https://sceneview.github.io/view?url=<URL-encoded https link to a .glb, .gltf or .3mf>`, optionally `&usdz=<URL-encoded .usdz>` for AR on iPhone; the file loads straight from its host, which must send CORS headers (GitHub raw links do)
 
 ## Optional
 
