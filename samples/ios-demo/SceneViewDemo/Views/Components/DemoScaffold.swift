@@ -327,13 +327,15 @@ public struct DockItem: Identifiable {
 ///
 /// iOS 26+: the system's prominent glass (`.glassProminent`) tinted from the
 /// `primary` token, so it reads as the same material as the dock it sits in.
-/// Below 26: the filled disc it has always been.
+/// Below 26, and when disabled on any version: the filled disc it has always
+/// been — a disabled `.glassProminent` drops its tint and turned into a dark
+/// grey disc under a dark icon that the dock swallowed.
 private struct AccentButton: View {
     let item: DockItem
     let action: () -> Void
 
     var body: some View {
-        if #available(iOS 26, macOS 26, visionOS 26, *) {
+        if #available(iOS 26, macOS 26, visionOS 26, *), item.enabled {
             Button(action: action) {
                 // The style pads its label on every side; this label size
                 // lands the disc on the same 48 pt as the fallback below.

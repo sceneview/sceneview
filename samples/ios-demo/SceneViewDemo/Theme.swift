@@ -724,10 +724,24 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
 
     /// iOS 26+: the system Liquid Glass. `DESIGN.md` — "iOS 26+: native
     /// glassEffect; below: the material stack".
+    ///
+    /// The 1 pt `glass-border` stays. Over the near-black stage the system
+    /// glass alone measured 1.08:1 fill and 1.34:1 edge against the ground
+    /// (2026-09-26, iPhone 17 Pro Max, iOS 26.3) — the dock was a row of
+    /// floating labels. With the border the edge is 4.0:1 (the material stack
+    /// below 26: 3.1:1). It is drawn
+    /// inside the glass so the interactive press stretches it with the shape.
     @available(iOS 26, macOS 26, visionOS 26, *)
     @ViewBuilder
     private func nativeGlass(_ content: Content) -> some View {
-        let glassed = content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        let glassed = content
+            .overlay(
+                shape.strokeBorder(
+                    SceneViewTokens.Glass.border,
+                    lineWidth: SceneViewTokens.Glass.borderWidth
+                )
+            )
+            .glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
         if let id, let glassNamespace {
             glassed.glassEffectID(id, in: glassNamespace)
         } else {
