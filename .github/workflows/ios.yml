@@ -408,6 +408,9 @@ jobs:
             -project SceneViewDemo.xcodeproj \
             -clonedSourcePackagesDirPath SourcePackages
 
+      # The raw xcodebuild output is teed to $RUNNER_TEMP: xcpretty drops the
+      # Xcode 27 diagnostics it cannot parse, and surfacing them is the point
+      # of this job. The last step lists every unique warning and error.
       - name: Build & test iOS sample demo
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
@@ -422,6 +425,7 @@ jobs:
             -skipPackagePluginValidation \
             -skipMacroValidation \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
+            2>&1 | tee "$RUNNER_TEMP/xcode27-demo-test.log" \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
       # See `demo` (#2852): the Simulator build strips every
@@ -443,4 +447,23 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
+            2>&1 | tee "$RUNNER_TEMP/xcode27-demo-device.log" \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+      - name: List Xcode 27 diagnostics
+        if: always()
+        run: |
+          shopt -s nullglob
+          logs=("$RUNNER_TEMP"/xcode27-demo-*.log)
+          [ ${#logs[@]} -gt 0 ] || { echo "No raw xcodebuild log captured."; exit 0; }
+          diags="$(grep -h -E '^[^ ]+:[0-9]+:[0-9]+: (warning|error): ' "${logs[@]}" \
+            | sed "s#^$GITHUB_WORKSPACE/##" | sort -u || true)"
+          count="$(printf '%s' "$diags" | grep -c . || true)"
+          echo "Unique Xcode 27 diagnostics: $count"
+          printf '%s\n' "$diags"
+          {
+            echo "### Xcode 27 demo diagnostics ($count unique)"
+            echo '```'
+            printf '%s\n' "$diags"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
