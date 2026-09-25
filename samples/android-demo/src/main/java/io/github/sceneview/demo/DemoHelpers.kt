@@ -750,6 +750,15 @@ class HeroOrbitCameraManipulator(
     private val resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
     /** How long [HeroOrbitResume.ReturnToAuthoredPath] takes to ease back, in milliseconds. */
     private val resumeBlendMillis: Long = DEFAULT_RESUME_BLEND_MILLIS,
+    /**
+     * Floor of the polar-angle clamp [userControlTransform] applies to a user drag, passed
+     * straight through to [clampOrbitEyePitch]. The library default (just off the top pole)
+     * is right for a scene with nothing to hide near it; a demo with a floor plane close to
+     * [target] (#3794) tightens this instead.
+     */
+    private val minPolarDegrees: Float = DEFAULT_MIN_ORBIT_POLAR_DEGREES,
+    /** Ceiling of the same clamp — see [minPolarDegrees]. */
+    private val maxPolarDegrees: Float = DEFAULT_MAX_ORBIT_POLAR_DEGREES,
     /** Monotonic clock, in nanoseconds. The JVM tests drive it by hand. */
     private val nanoTime: () -> Long = System::nanoTime,
     /**
@@ -977,7 +986,7 @@ class HeroOrbitCameraManipulator(
         // that is no longer always the authored target.
         val transform = fb.getTransform()
         val eye = transform.position
-        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot)
+        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot, minPolarDegrees, maxPolarDegrees)
         if (clampedEye == eye) return transform
         val mat = dev.romainguy.kotlin.math.lookAt(
             eye = clampedEye,
@@ -1092,6 +1101,13 @@ fun rememberHeroOrbitCameraManipulator(
     resumeAfterMillis: Long = 3_000L,
     resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
     contentShown: Boolean = true,
+    /**
+     * User-drag pitch clamp, forwarded to [HeroOrbitCameraManipulator]. The defaults only keep
+     * the eye off the orbit poles; a demo whose floor sits close to [target] (#3794) passes a
+     * tighter [maxPolarDegrees] so an upward drag cannot carry the camera under it.
+     */
+    minPolarDegrees: Float = DEFAULT_MIN_ORBIT_POLAR_DEGREES,
+    maxPolarDegrees: Float = DEFAULT_MAX_ORBIT_POLAR_DEGREES,
 ): io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
     val continuity = rememberContinuousCameraManipulator(pivot = target)
     // The turntable outlives the manipulator: a new framing rebuilds the latter, and the yaw —
@@ -1104,7 +1120,9 @@ fun rememberHeroOrbitCameraManipulator(
     // keeps it a recomposition input; it is also a remember{} key so the manipulator is
     // rebuilt with the new orbit distance if the zoom changes (e.g. a warm-start onNewIntent).
     val effectiveRadius = DemoSettings.cameraDistance ?: radius
-    val orbit = androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis, resume) {
+    val orbit = androidx.compose.runtime.remember(
+        effectiveRadius, yHeight, target, resumeAfterMillis, resume, minPolarDegrees, maxPolarDegrees,
+    ) {
         HeroOrbitCameraManipulator(
             yawProvider = { if (DemoSettings.qaMode) staticYaw else spin.yawDegrees },
             radius = effectiveRadius,
@@ -1120,6 +1138,8 @@ fun rememberHeroOrbitCameraManipulator(
                     0f
                 }
             },
+            minPolarDegrees = minPolarDegrees,
+            maxPolarDegrees = maxPolarDegrees,
         )
     }
     return continuity.driving(orbit, contentShown = contentShown)
