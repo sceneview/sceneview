@@ -41,7 +41,7 @@ internal fun ARSceneScope.PlacedModelNode(
             state = controller,
             modelInstance = it,
             scaleToUnits = placed.spec.realWorldSizeMeters,
-            assetRotation = placed.spec.rotationOverride ?: DemoMath.placementRotationFor(placed.spec.assetLocation),
+            assetRotation = DemoMath.placementRotationFor(placed.spec.assetLocation),
             onInvalidMove = onDragOffSurface,
             onScaleChanged = onScaleChanged,
         )
@@ -58,9 +58,11 @@ internal fun ARSceneScope.PlacedModelNode(
  * `NodeGestureDelegate.onRotate` applies a two-finger twist with `node.quaternion *= delta`
  * — a **right**-multiplication, so the delta is expressed in the node's **own** frame. That
  * is a yaw for exactly as long as the node's local Y still points along the anchor's up
- * axis, and an asset's standing-up correction is precisely what stops that being true: the
- * Khronos helmet is authored Z-up, so `Rotation(x = -90f)` maps its local Y onto
- * `(0, 0, -1)` and every twist came out as a pitch. The model tumbled instead of pivoting.
+ * axis, and an asset correction that tilts is precisely what stops that being true:
+ * `Rotation(x = -90f)` maps the node's local Y onto `(0, 0, -1)` and every twist comes out
+ * as a pitch. The model tumbles instead of pivoting. (The helmet carried exactly that
+ * correction until #3735 found the correction itself was wrong — see
+ * `DemoMath.placementRotationFor`, which now can only return a yaw.)
  *
  * Splitting the two jobs fixes it whatever the asset: the pivot only ever accumulates yaw
  * and stays upright, the correction rides a child that no twist is applied to, and the two

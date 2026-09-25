@@ -45,11 +45,13 @@ import kotlin.math.roundToInt
  * points along the anchor's up axis.
  *
  * The demo used to break exactly that precondition. The per-asset placement correction
- * (`DemoMath.placementRotationFor` — `Rotation(x = -90f)` for the Z-up Khronos helmet) was
+ * (`DemoMath.placementRotationFor`, then `Rotation(x = -90f)` for the Khronos helmet) was
  * applied **to the editable node itself**, which lays that node's local Y flat: `Rx(-90)`
  * maps `(0, 1, 0)` onto `(0, 0, -1)`. Twisting then turned the helmet about a *horizontal*
  * axis — it tumbled instead of pivoting. Every other bundled model has a zero correction,
- * which is why only the helmet was ever reported.
+ * which is why only the helmet was ever reported. (That correction was itself wrong — it
+ * undid the GLB's own Z-up-to-Y-up root rotation and laid the helmet on its back — and is
+ * gone; the hierarchy below still holds for any asset correction a caller passes.)
  *
  * The fix is structural, not arithmetic: the editable node keeps an identity-then-pure-yaw
  * rotation, and the asset correction moves to a **non-editable content child** underneath
