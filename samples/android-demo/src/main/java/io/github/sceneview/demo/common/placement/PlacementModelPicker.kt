@@ -397,6 +397,31 @@ fun PlacementModelPickerSheet(
     }
 }
 
+/**
+ * The picker card's thumbnail resource for [model], or `null` for the generic AR glyph
+ * ([#3830](https://github.com/sceneview/sceneview/issues/3830)).
+ *
+ * Keyed off [PlacementModel.assetLocation] rather than [PlacementModel.source]: a bundled
+ * row's location is always an `assets/`-relative bundled path, and — per
+ * `ARPlacementDemo`'s model list — a **streamed** row's location is either that same shape
+ * (its own bundled fallback, carried there while the download is pending or unavailable) or
+ * a `file://` URI once the real file has landed. The bundled-path case resolves to a real
+ * generated thumbnail exactly like a bundled row's; the `file://` case has no generated
+ * thumbnail for the downloaded bytes and correctly falls through to the glyph.
+ *
+ * Showing the fallback's picture under a streamed row's name used to be avoided on the
+ * theory that it repeats the #2940 defect (a fallback mistaken for the real asset). That
+ * concern was about **several rows sharing one fallback** — not the case here: the
+ * `ar_placement` category's six fallbacks are pairwise distinct (#2355, #3324), pinned by
+ * `SampleAssetsTest`, and four of the six were deliberately chosen to *resemble* the
+ * streamed model they stand in for ("Coffee Mug" → the iridescent dish, "Wooden End Table"
+ * → the sheen chair, …). A cube glyph on every streamed card was strictly less honest than
+ * the picture of what will actually render if the row is tapped right now.
+ */
+internal fun placementThumbnailResFor(model: PlacementModel): Int? =
+    model.assetLocation.takeUnless { it.startsWith("file://") }
+        ?.let { ModelThumbnails.resourceFor(it.substringAfterLast('/').substringBeforeLast('.')) }
+
 @Composable
 internal fun PlacementModelCard(
     model: PlacementModel,
@@ -436,24 +461,11 @@ internal fun PlacementModelCard(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                // The generated thumbnail of the row's own asset when there is one, the
-                // generic AR glyph otherwise. Before #3324 every card rendered the same
-                // glyph, so the grid was six identical tiles under six labels and the only
-                // way to know what a row looked like was to place it. Streamed rows keep
-                // the glyph: their bytes are not in the APK, so there is no thumbnail to
-                // show that would be honest about what lands.
-                //
-                // Guarded on `Bundled`, and that guard is load-bearing: a streamed row
-                // whose download is still in flight carries its FALLBACK's asset path in
-                // `assetLocation`, so an unguarded lookup finds the fallback's thumbnail
-                // and the card shows "Coffee Mug" over a picture of the olive dish. That
-                // is the #2940 defect drawn as a picture instead of rendered in a frame.
-                val thumbnail = model.source.takeIf { it == PlacementModelSource.Bundled }
-                    ?.let {
-                        ModelThumbnails.resourceFor(
-                            model.assetLocation.substringAfterLast('/').substringBeforeLast('.'),
-                        )
-                    }
+                // The generated thumbnail of what this card's `assetLocation` currently
+                // resolves to, the generic AR glyph otherwise. Before #3324 every card
+                // rendered the same glyph, so the grid was six identical tiles under six
+                // labels and the only way to know what a row looked like was to place it.
+                val thumbnail = placementThumbnailResFor(model)
                 if (thumbnail != null) {
                     Image(
                         painter = painterResource(thumbnail),

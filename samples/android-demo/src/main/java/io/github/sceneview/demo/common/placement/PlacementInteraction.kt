@@ -355,6 +355,22 @@ const val PLACEMENT_STARTUP_STALL_MS = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS + 1_000L
 const val PLACEMENT_GESTURE_HINT_MS = 3_500L
 
 /**
+ * How long the resize read-out lingers after a pinch ends while the model is **not** at
+ * real-world size — a window to tap it back to 100 % instead of pinching back through the
+ * detent by hand ([#3830](https://github.com/sceneview/sceneview/issues/3830), matching AR
+ * Quick Look's persistent "100 %" affordance). Same order of magnitude as
+ * [PLACEMENT_GESTURE_HINT_MS] on purpose — both are "the window closes, try the gesture
+ * again if you missed it" timings.
+ */
+const val PLACEMENT_SCALE_RESET_WINDOW_MS = 3_500L
+
+/**
+ * How long the read-out lingers once the model **is** at real-world size — nothing left to
+ * tap, so this is only a brief confirmation blip rather than a lingering affordance.
+ */
+const val PLACEMENT_SCALE_CONFIRM_MS = 900L
+
+/**
  * Picks the single coaching sentence for the current moment, or `null` for "say nothing".
  *
  * A card phase ([placementCard]) never also speaks in the pill; the placed phase speaks

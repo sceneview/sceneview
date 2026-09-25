@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.common.placement
 
+import io.github.sceneview.demo.ui.viewer.ModelThumbnails
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -130,5 +132,64 @@ class PlacementModelPickerTest {
             openedSizeMeters = 0f,
         )
         assertEquals(PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS, zero?.realWorldSizeMeters)
+    }
+
+    // ── Picker thumbnails (#3830) ───────────────────────────────────────────────────────
+    // The "Pick a model" tray showed a generic cube glyph for every streamed row (Coffee
+    // Mug, Potted Monstera, Crates & Barrels, Wooden End Table, Floor Lamp, Picture Frame)
+    // because the lookup was gated on `source == Bundled`. It is gated on the shape of
+    // `assetLocation` now — see `placementThumbnailResFor`'s doc for why that is safe for
+    // this category specifically (#2355/#3324 pairwise-distinct fallbacks).
+
+    @Test
+    fun `a bundled row resolves its own generated thumbnail`() {
+        val model = PlacementModel(
+            id = "toy-car",
+            displayName = "Toy Car",
+            assetLocation = "models/khronos_toy_car.glb",
+            source = PlacementModelSource.Bundled,
+        )
+        assertEquals(ModelThumbnails.resourceFor("khronos_toy_car"), placementThumbnailResFor(model))
+    }
+
+    @Test
+    fun `a streamed row still pointed at its bundled fallback resolves that fallback's thumbnail`() {
+        // Mirrors ARPlacementDemo's model list: a streamed row that has not (yet) resolved
+        // to a downloaded file carries its slug's `fallbackBundledPath` as `assetLocation`.
+        val coffeeMug = PlacementModel(
+            id = "streamed-coffee-mug",
+            displayName = "Coffee Mug",
+            assetLocation = "models/khronos_iridescent_dish.glb",
+            source = PlacementModelSource.Streamed,
+            pending = true,
+        )
+        val thumbnail = placementThumbnailResFor(coffeeMug)
+        assertEquals(ModelThumbnails.resourceFor("khronos_iridescent_dish"), thumbnail)
+        // A curated fallback must have a real generated thumbnail, not a glyph — otherwise
+        // this test would pass by both sides being null.
+        assertNotNull(thumbnail)
+    }
+
+    @Test
+    fun `a streamed row that has landed as a real file has no thumbnail`() {
+        val landed = PlacementModel(
+            id = "streamed-coffee-mug",
+            displayName = "Coffee Mug",
+            assetLocation = "file:///data/user/0/io.github.sceneview.demo/cache/coffee-mug.glb",
+            source = PlacementModelSource.Streamed,
+            pending = false,
+        )
+        assertNull(placementThumbnailResFor(landed))
+    }
+
+    @Test
+    fun `an asset stem with no generated thumbnail falls back to null, whatever the source`() {
+        val unmapped = PlacementModel(
+            id = "unmapped",
+            displayName = "Unmapped",
+            assetLocation = "models/does_not_exist.glb",
+            source = PlacementModelSource.Bundled,
+        )
+        assertNull(placementThumbnailResFor(unmapped))
     }
 }
