@@ -380,13 +380,16 @@ correct. Specifically:
   docs-only PR runs none of them. (Before #1370 this was three separate
   workflows — `ci.yml`, `pr-check.yml`, `quality-gate.yml` — each with its
   own `changes` job; they are now one workflow with one path-detection job.)
-- **`render-tests.yml`** has its own `pull_request` path filter: only a PR
-  touching `sceneview/**`, `sceneview-core/**`, `arsceneview/src/**` or the
-  Gradle build files runs it, and then only its `android-library-render` job
-  (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216). The demo
-  screenshot, iOS and web legs are push-to-main + nightly + `workflow_dispatch`
-  only. A docs-only PR matches none of the paths, so the workflow does not
-  run at all.
+- **`render-tests.yml`** has its own `pull_request` path filter, and its own
+  `changes` job that gates each leg on its half of that filter. A PR touching
+  `sceneview/**`, `sceneview-core/**`, `arsceneview/**` or the Gradle build
+  files runs the `android-library-render` job
+  (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216); a PR
+  touching `samples/web-demo/**` or `sceneview-web/**` runs the advisory
+  `web-render` Playwright job. The demo screenshot and iOS legs are
+  push-to-main + nightly + `workflow_dispatch` only, and on a push each leg
+  runs only when its platform's paths changed. A docs-only PR matches none of
+  the paths, so the workflow does not run at all.
 - The **`Path filter completed`** job (`changes-verdict` in `ci.yml`) runs
   on every PR whatever it touches, and it is the required check: it resolves
   green once path detection has run. That is how a docs-only PR stays
@@ -409,7 +412,10 @@ were testing was never covered. The one place cancellation is still allowed
 is a pull request on `render-tests.yml`, where a new push to the same PR
 supersedes the previous SHA. The cost is GitHub-hosted minutes proportional
 to the merge rate; if the queue becomes a problem, the lever is the `paths:`
-filter on each workflow, not `cancel-in-progress`.
+filter on each workflow (and `render-tests.yml`'s per-job `changes` gate),
+not `cancel-in-progress`. The web Playwright suite runs on `main` through
+`device-qa.yml`'s blocking web leg only; `render-tests.yml`'s `web-render`
+job, which cannot go red, no longer repeats it on push or at night.
 
 ### Code style
 
