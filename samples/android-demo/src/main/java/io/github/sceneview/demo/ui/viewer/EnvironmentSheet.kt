@@ -23,7 +23,11 @@ import io.github.sceneview.sample.ui.LabeledSlider
 data class ViewerEnvironment(val assetPath: String, val displayName: String) { val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.') }
 
 @Composable fun EnvironmentSheet(environments: List<ViewerEnvironment>, selectedPath: String, intensity: Float, showEnvironment: Boolean, onSelect: (ViewerEnvironment) -> Unit, onIntensity: (Float) -> Unit, onShowEnvironment: (Boolean) -> Unit, onReset: () -> Unit, onDismiss: () -> Unit) {
-    DemoModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl)) {
+    DemoModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl),
+    ) {
         Text("Lighting", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(SceneViewTokens.Space.md), horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
             environments.forEach { env ->
