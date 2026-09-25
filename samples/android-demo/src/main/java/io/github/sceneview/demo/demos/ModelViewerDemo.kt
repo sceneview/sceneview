@@ -577,9 +577,25 @@ private fun SingleModelSection(
     }
     // Back closes transient chrome before leaving the demo.
     val anySheetOpen = animationBarOpen || modelSheetOpen || environmentSheetOpen
-    BackHandler(enabled = anySheetOpen || unitSheetOpen) {
-        animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
-        if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
+    // #3822 — swapping to a bundled model (e.g. "Soldier") from the Models sheet is not a
+    // navigation the back stack knows about either: it is the same screen with different
+    // content. Without this, back from a swapped-in model skipped straight past the demo's
+    // own default (the Damaged Helmet) to the Showcase home. One level at a time: revert to
+    // the default model first, exit only from there. Scoped to the bundled-model swap only —
+    // an opened external file (`openedModel`, a one-shot `val` for the "Open with SceneView"
+    // handoff) is a different, narrower flow this issue does not report on.
+    val modelSwapped = openedModel == null && selectedModel != bundledModels.first()
+    BackHandler(enabled = anySheetOpen || unitSheetOpen || modelSwapped) {
+        when {
+            anySheetOpen || unitSheetOpen -> {
+                animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
+                if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
+            }
+            modelSwapped -> {
+                selectedModel = bundledModels.first()
+                streamedFileUrl = null
+            }
+        }
     }
 
     // One roll, two callers (#3585): the promoted row at the top of the Models sheet and
@@ -1007,6 +1023,14 @@ private fun MultiModelSection(
     onModeChange: (ModelViewerMode) -> Unit,
 ) {
     var modelSheetOpen by remember { mutableStateOf(false) }
+    // #3822 — `mode` (Single/Multi/Gallery) lives in the parent `ModelViewerDemo` composable,
+    // not on the Android back stack, so without this the raw `onBack` handed down from
+    // `MainActivity` skipped straight past "Park scene" to the Showcase home on one press.
+    // Close the sheet first if it is open, otherwise step back to the single-model view —
+    // one level at a time, like every other back gesture in the app.
+    BackHandler {
+        if (modelSheetOpen) modelSheetOpen = false else onModeChange(ModelViewerMode.Single)
+    }
     // One flag per SLOT, not per species — index i pairs with PARK_SLOTS[i] and
     // slugs[i]. A SnapshotStateList keeps the four flags in one stable `remember`
     // slot, so toggling a chip recomposes the scene content without re-running the
@@ -1347,6 +1371,11 @@ private fun GallerySection(
 ) {
     val context = LocalContext.current
     val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
+
+    // #3822 — see the matching handler in `MultiModelSection`: `mode` is not on the Android
+    // back stack, so the raw `onBack` from `MainActivity` skipped straight past "Scene
+    // Gallery" to the Showcase home. Step back to the single-model view first instead.
+    BackHandler { onModeChange(ModelViewerMode.Single) }
 
     // The four curated `gallery` slugs declared in SampleAssets. Stage 2 keeps
     // the chip count low so the offline-fallback footprint stays bounded — Stage
