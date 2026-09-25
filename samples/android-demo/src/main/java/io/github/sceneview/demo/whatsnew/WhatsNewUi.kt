@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -227,7 +228,13 @@ private fun InReviewDemoRow(demo: DemoEntry, onClick: () -> Unit) {
                     text = stringResource(demo.subtitleRes),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    // #3800: the full string never fit one line next to the "In
+                    // review" badge and was hard-clipped mid-sentence. Two lines
+                    // covers every current subtitle; an ellipsis is only a
+                    // safety net if a future one is longer still.
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 16.sp,
                 )
             }
             // Debug-only: the row itself is a user-facing "try this" entry, the
