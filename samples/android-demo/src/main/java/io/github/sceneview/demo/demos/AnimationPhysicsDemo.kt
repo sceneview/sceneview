@@ -335,15 +335,13 @@ private fun AnimationSection(
     // the eye stays on the animation instead of on the camera.
     var cameraMode by remember { mutableStateOf(CameraMode.HERO) }
     // IBL intensity — exposed as a slider so users can dial atmospheric vs neutral.
-    // Default 10_000 lux matches SceneView's balanced IBL default (#1075). The
-    // rooftop_night skybox renders at full HDR luminance, so a lower IBL left the
-    // model reading as a black silhouette against the bright sky (#1468). Range
-    // 0–10_000 still lets users dial down to a darker, atmospheric look.
+    // Default 10_000 lux matches SceneView's balanced IBL default (#1075); a lower
+    // default left the model reading as a black silhouette (#1468). Range 0–10_000
+    // still lets users dial down to a darker, atmospheric look.
     var iblIntensity by remember { mutableFloatStateOf(10_000f) }
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val context = LocalContext.current
 
@@ -389,22 +387,24 @@ private fun AnimationSection(
         selectedAnim = activeModel.defaultAnimationIndex.coerceAtLeast(0)
     }
 
-    // Daylight garden backdrop (#3820): the subject reads against a real place with a ground
-    // line, lit by the same sky it stands under. The dusk rooftop it replaces put a walking
-    // figure on a car park. Skybox on so the scene is never a black void.
+    // Studio stage (#3820), the Sketchfab default: studio HDR light, a neutral grey backdrop.
+    // A photographed place put the subject floating over whatever ground the panorama had (the
+    // garden's pond, the rooftop's car park before it); a plain backdrop has no ground to miss.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
-        "environments/chinese_garden_2k.hdr",
-        createSkybox = true,
+        "environments/studio_2k.hdr",
+        createSkybox = false,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    val lightEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val activeEnvironment = remember(lightEnvironment, stageSkybox) {
+        lightEnvironment.copy(skybox = stageSkybox)
+    }
 
-    // Pin the IBL intensity to the slider value. The rooftop_night skybox renders at
-    // full HDR luminance, so the IBL must stay near SceneView's balanced 10k default
-    // to keep the soldier lit in step with the bright sky behind it (#1468) — a lower
-    // value left the model looking like an unlit black silhouette. Re-runs whenever the
-    // active environment OR the slider value change, so dragging it updates in real time.
+    // Pin the IBL intensity to the slider value — near SceneView's balanced 10k default a
+    // subject is lit, far below it reads as an unlit black silhouette (#1468). Re-runs whenever
+    // the active environment OR the slider value change, so dragging it updates in real time.
     val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(activeEnvironment, iblIntensity) {
         activeEnvironment.indirectLight?.intensity = iblIntensity
@@ -1100,7 +1100,7 @@ private fun AnimationSection(
             }
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
-            // IBL intensity — the rooftop_night HDR is over-bright from cmgen's defaults.
+            // IBL intensity of the studio HDR.
             // 0 lux gives a pitch-black scene (only the directional sun left), 5 000 lux
             // is the atmospheric default, 10 000 lux pushes into over-exposed neutral.
             LabeledSlider(
@@ -1147,23 +1147,11 @@ private fun AnimationSection(
                 renderInvalidator = renderInvalidator,
                 engine = engine,
                 modelLoader = modelLoader,
-                materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 environment = activeEnvironment,
                 cameraNode = cameraNode,
                 cameraManipulator = activeManipulator,
             ) {
-                // Plinth (#3820): the subject stands on something instead of floating over the
-                // garden. Sized from the measured footprint so every model gets the same margin.
-                val plinthMaterial = rememberMaterialInstance(
-                    materialLoader, SceneViewColors.SurfaceLight, metallic = 0f, roughness = 0.7f,
-                )
-                val plinthSide = maxOf(subjectSize.x, subjectSize.z) * ANIMATION_PLINTH_SIDE_FACTOR
-                CubeNode(
-                    size = Size(plinthSide, ANIMATION_PLINTH_HEIGHT, plinthSide),
-                    materialInstance = plinthMaterial,
-                    position = Position(y = -ANIMATION_PLINTH_HEIGHT / 2f),
-                )
                 modelInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
@@ -1867,8 +1855,6 @@ private const val ANIMATION_START_YAW_DEGREES = 60f
  */
 internal fun neutralStageSkybox(engine: com.google.android.filament.Engine): Skybox =
     Skybox.Builder().color(0.40f, 0.40f, 0.42f, 1.0f).build(engine)
-private const val ANIMATION_PLINTH_SIDE_FACTOR = 1.3f
-private const val ANIMATION_PLINTH_HEIGHT = 0.04f
 
 /** One full turntable revolution — slow enough that the animation, not the camera, leads. */
 private const val ANIMATION_TURN_MILLIS = 40_000
