@@ -29,7 +29,9 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.acos
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -1307,6 +1309,80 @@ internal fun clampOrbitEyePitch(
         y = target.y + newDy,
         z = target.z + hz * newHorizontal,
     )
+}
+
+/**
+ * Absolute yaw distance, in degrees, between an orbit eye and [referenceYawDegrees] around
+ * [target] — the same convention [HeroOrbitCameraManipulator]'s authored path uses (`x =
+ * sin(yaw) * radius`, `z = cos(yaw) * radius`, both relative to [target]). Returns `0` when the
+ * eye sits directly above/below [target] (no azimuth to measure) or when any component is
+ * non-finite. The counterpart read (not a clamp) to [clampOrbitEyePitch] — see
+ * [orbitLabelFadeAlpha] for why #3802 wants a measurement here instead of a bound.
+ *
+ * @param eye                  orbit eye world position to measure.
+ * @param target               orbit target the eye looks at / pivots around.
+ * @param referenceYawDegrees  yaw, in degrees, the deviation is measured from (the authored /
+ *                             front-on framing — usually `0`).
+ */
+internal fun orbitYawDeviationDegrees(
+    eye: Position,
+    target: Position,
+    referenceYawDegrees: Float,
+): Float {
+    val dx = eye.x - target.x
+    val dz = eye.z - target.z
+    if (!dx.isFinite() || !dz.isFinite()) return 0f
+
+    val horizontal = sqrt(dx * dx + dz * dz)
+    if (horizontal <= 1e-6f) return 0f
+
+    val yawDegrees = Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
+    // Delta from the reference, wrapped into [-180, 180) so a reference near +/-180 does not
+    // read a false, near-360-degree deviation.
+    var delta = (yawDegrees - referenceYawDegrees) % 360f
+    if (delta < -180f) delta += 360f
+    if (delta >= 180f) delta -= 360f
+    return abs(delta)
+}
+
+/** Yaw deviation, in degrees, below which [orbitLabelFadeAlpha] returns full opacity. */
+internal const val DEFAULT_LABEL_FADE_START_DEGREES: Float = 25f
+
+/** Yaw deviation, in degrees, at and beyond which [orbitLabelFadeAlpha] returns zero. */
+internal const val DEFAULT_LABEL_FADE_END_DEGREES: Float = 45f
+
+/**
+ * Opacity for a caption anchored to a subject on a flat orbit wall, as a function of
+ * [deviationDegrees] — [orbitYawDeviationDegrees] between the camera and the wall's front-on
+ * framing (#3802).
+ *
+ * A flat wall of captioned subjects (Materials' 3×3 sphere grid, Contact Shadow Preview's box
+ * pair) is captioned for a roughly head-on view: drag the camera towards broadside and
+ * perspective foreshortening collapses the gap between neighbours' screen-space positions
+ * faster than a fixed-width or fixed-position caption accounts for, so adjacent labels overlap
+ * and merge into unreadable text (Materials) or merge into one ("NShadow", Contact Shadow
+ * Preview). The orbit itself has to stay completely free — these demos are calibrated against
+ * Sketchfab/Polycam, where nothing ever stops the drag, and Materials exists specifically to
+ * turn a reflection around — so the fix reads the angle instead of bounding it: full opacity
+ * for [fullyVisibleDegrees] either side of front-on, easing smoothly to fully transparent by
+ * [fullyHiddenDegrees], and back the moment the drag returns.
+ *
+ * @param deviationDegrees    yaw distance from the front-on framing, in degrees; see
+ *                            [orbitYawDeviationDegrees].
+ * @param fullyVisibleDegrees deviation up to which the caption is fully opaque.
+ * @param fullyHiddenDegrees  deviation at and beyond which the caption is fully transparent.
+ */
+internal fun orbitLabelFadeAlpha(
+    deviationDegrees: Float,
+    fullyVisibleDegrees: Float = DEFAULT_LABEL_FADE_START_DEGREES,
+    fullyHiddenDegrees: Float = DEFAULT_LABEL_FADE_END_DEGREES,
+): Float {
+    if (deviationDegrees <= fullyVisibleDegrees) return 1f
+    if (deviationDegrees >= fullyHiddenDegrees) return 0f
+    val t = (deviationDegrees - fullyVisibleDegrees) / (fullyHiddenDegrees - fullyVisibleDegrees)
+    // Smoothstep: eases in/out at both ends instead of fading at a constant, visibly linear rate.
+    val eased = t * t * (3f - 2f * t)
+    return 1f - eased
 }
 
 /**
