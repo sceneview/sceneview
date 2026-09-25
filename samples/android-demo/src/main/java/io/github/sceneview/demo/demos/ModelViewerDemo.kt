@@ -757,6 +757,8 @@ private fun SingleModelSection(
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),
         chromeToggleOnTap = true,
+        // The Lighting sheet is glass (#3827): the dock would show through it.
+        dockHidden = environmentSheetOpen,
     ) {
         // The scene fills the viewport edge to edge; the chrome floats over it. Framing
         // therefore needs the band the chrome leaves visible: the identity row at the top

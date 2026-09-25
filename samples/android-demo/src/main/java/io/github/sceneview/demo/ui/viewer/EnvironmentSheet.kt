@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import io.github.sceneview.demo.common.DemoModalBottomSheet
+import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.sample.ui.LabeledSlider
 
@@ -26,8 +27,11 @@ data class ViewerEnvironment(val assetPath: String, val displayName: String) { v
 @Composable fun EnvironmentSheet(environments: List<ViewerEnvironment>, selectedPath: String, intensity: Float, showEnvironment: Boolean, onSelect: (ViewerEnvironment) -> Unit, onIntensity: (Float) -> Unit, onShowEnvironment: (Boolean) -> Unit, onReset: () -> Unit, onDismiss: () -> Unit) {
     DemoModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl),
+        // Glass, no scrim (#3827): the point of this sheet is to watch the model re-light,
+        // and an opaque sheet over a dimming scrim hid the model while you changed it.
+        containerColor = DemoSheetDefaults.glassContainerColor(),
+        scrimColor = DemoSheetDefaults.NoScrim,
+        shape =RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl),
     ) {
         Text("Lighting", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))
         // The row is almost always wider than the viewport (7 bundled environments at

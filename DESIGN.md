@@ -464,6 +464,28 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   after a scene tap has hidden the dock.
 - **There is no overflow menu.** Reset, Send feedback and QA mode live in the
   settings sheet the dock's Controls item opens — one settings surface, not two.
+- **A sheet you tweak the scene through is glass, low and non-modal (#3827).** The
+  settings sheet exists to be watched through: drag a slider, look at what it did.
+  - `sheet-peek`: it rests at **36 % of the window** (or hugs its controls when they
+    are shorter), so the upper two thirds — where every demo frames its hero — stay
+    visible. Dragging up reveals the rest, stopping `space-2xl` under the status bar.
+    A `ModalBottomSheet` cannot do this: its partial detent is fixed at half the
+    screen. The settings sheet is a standard sheet (`BottomSheetScaffold`).
+  - **No scrim**, and the scene above the sheet stays touchable — iOS
+    `presentationBackgroundInteraction(.enabled)`. The sheet carries its own close
+    button, since there is nothing to tap outside it.
+  - `glass-sheet`: `surface-container` at **88 % (light) / 90 % (dark)**, no tonal
+    tint, no shadow. Android has no blur, so the opacity is solved for text over the
+    three grounds a demo can put behind it (stage, mid-grey scene, white AR wall):
+    `on-surface` ≥ 9.5:1 and `on-surface-variant` ≥ 4.5:1 in both themes. Dark is
+    more opaque because its worst ground is the white wall. Light started at 78 %,
+    which passed on contrast, but a lit model read through the chips as a second
+    sharp image; 88 % leaves the scene as a silhouette.
+  - **The dock fades out while a glass sheet is open.** Seen through the glass it
+    read as a row of live buttons that were not there.
+  - The Model Viewer's Lighting sheet uses the same glass fill and no scrim.
+    Browsing sheets (model picker, credits, what's new) stay opaque and modal — you
+    read those, you do not watch something change behind them.
 
 ### Floating Dock (Android demo)
 
@@ -538,7 +560,9 @@ indicator; every value follows the safe area, none is a constant offset from the
   fill-vs-ground and border-vs-ground never drops under **1.43:1** on dark, mid and
   bright grounds (border 3.12:1 on the dark stage).
 - **The sheet is a themed surface, not glass.** `surface-container`, the app's
-  light/dark colours, `outline-subtle` hairline. The stage and its chrome are media and
+  light/dark colours, `outline-subtle` hairline. (Android's settings sheet is
+  `glass-sheet` since #3827 — the translucency iOS gets from its sheet material,
+  Android has to get from opacity; see the Android scaffold section.) The stage and its chrome are media and
   stay dark in both schemes; the sheet is the only part of a demo that follows the theme.
 - **Motion.** Stage fades in (`motion-fade`, 300 ms); chrome rises 12pt (top) / 24pt
   (bottom) on `motion-spring` — measured 333 ms; an option change moves the selection

@@ -181,6 +181,40 @@ object SceneViewTokens {
          * height measured from the screen edge. The chrome sits inside the flat part.
          */
         const val scrimPlateau = 0.55f
+
+        /**
+         * `glass-sheet`, light — `surface-container` at 88 %, with no scrim behind it (#3827).
+         *
+         * A settings sheet exists to be watched through: you drag a slider and look at what
+         * it did to the scene. An opaque sheet over a dimming scrim hid exactly that. There
+         * is still no blur (a `SurfaceView` cannot be sampled), so the fill alone carries
+         * legibility. Composited over the three grounds a demo can put behind it — the
+         * `#0B0F16` stage, a mid-grey scene, a white AR wall — `on-surface` never drops
+         * under 13:1 and `on-surface-variant` never under 7.4:1 (stage is the worst ground
+         * in light). 78 % already passed on contrast (5.8:1), but on the emulator a lit
+         * model read through the chips as a second, sharp image under the labels; 88 %
+         * keeps the scene as a silhouette and the controls as the only thing in focus.
+         */
+        const val sheetAlphaLight = 0.88f
+
+        /**
+         * `glass-sheet`, dark — `surface-container` at 90 %.
+         *
+         * The worst ground flips in dark: a dark sheet over a *white* scene.
+         * At 78 % `on-surface-variant` fell to 3.0:1 there; 90 % holds 4.5:1, and
+         * `on-surface` 9.5:1. Over the dark stage the extra opacity costs nothing visible —
+         * the translucency that matters is over bright content, and it is still there.
+         */
+        const val sheetAlphaDark = 0.90f
+
+        /**
+         * `sheet-peek` — the resting detent of the demo settings sheet, as a fraction of
+         * the window height (#3827). About a third: the header and the first controls are
+         * in reach, and the upper two thirds — where every demo frames its hero — stay
+         * visible and live. Dragging up reveals the rest; a sheet whose controls are
+         * shorter than this hugs them instead.
+         */
+        const val sheetPeekFraction = 0.36f
     }
 
     /**

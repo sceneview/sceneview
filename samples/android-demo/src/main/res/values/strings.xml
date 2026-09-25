@@ -308,6 +308,8 @@
     <string name="demo_settings_fab_cd">Demo settings</string>
     <string name="demo_settings_reset">Reset</string>
     <string name="demo_settings_reset_cd">Reset demo settings to defaults</string>
+    <!-- The settings sheet has no scrim to tap (#3827), so it carries its own close. -->
+    <string name="demo_settings_close_cd">Close settings</string>
     <!-- Predictable per-demo reset action (#1966) -->
     <!--
         Labeled "Reset demo", not "Reset": since #3328 it sits in the same sheet as the
