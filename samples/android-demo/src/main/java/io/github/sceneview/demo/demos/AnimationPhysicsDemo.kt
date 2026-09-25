@@ -12,11 +12,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.theme.SceneViewTokens
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -873,60 +876,90 @@ private fun AnimationSection(
             // Animation picker — one chip per animation defined in the GLB. Names come
             // from the Filament Animator (gltf animation names). Plays only the selected
             // one to avoid the "stacked animations" visual mess of playing all at once.
-            if (animationNames.isNotEmpty()) {
-                Text(stringResource(R.string.demo_animation_physics_clip), style = MaterialTheme.typography.labelLarge)
-                Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    animationNames.forEachIndexed { index, name ->
-                        FilterChip(
-                            selected = selectedAnim == index,
-                            onClick = { selectedAnim = index },
-                            label = { Text(name) }
-                        )
+            //
+            // `AnimatedVisibility(fadeIn/fadeOut)`, not a raw `if` (#3810): the whole
+            // `controls` column already sits under `DemoScaffold`'s own
+            // `animateContentSize()`, and `animationNames` flips from empty to populated
+            // in the same recomposition the model finishes loading in — often while the
+            // sheet's own open animation is still running. A raw `if` inserts this fully
+            // laid-out block in one frame, so `animateContentSize`'s lookahead pass (sized
+            // for the *old*, shorter column) and the actual pass (sized for the *new* one)
+            // disagree for a frame: a child measured against the stale width can paint at
+            // a position its own track hasn't caught up to yet — seen as a slider thumb
+            // floating with no track/label under it. `fadeIn`/`fadeOut` (no
+            // expand/shrink — that would just reintroduce the same size race a second
+            // way) hands the appear/disappear to `AnimatedVisibility`'s own crossfade
+            // instead, which composes the block at its final size from the first frame.
+            AnimatedVisibility(visible = animationNames.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
+                Column {
+                    Text(
+                        stringResource(R.string.demo_animation_physics_clip),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        animationNames.forEachIndexed { index, name ->
+                            FilterChip(
+                                selected = selectedAnim == index,
+                                onClick = { selectedAnim = index },
+                                label = { Text(name) }
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
                 }
-                Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             }
 
-            if (duration > 0f) {
+            // Same race, same fix as above: `duration` goes from `0f` to the clip's real
+            // length the instant the model node loads, which is exactly when this slider
+            // would otherwise snap into the column mid-resize.
+            AnimatedVisibility(visible = duration > 0f, enter = fadeIn(), exit = fadeOut()) {
                 LabeledSlider(
                     label = stringResource(R.string.demo_animation_physics_scrub),
                     value = clipTime.coerceIn(0f, duration),
                     onValueChange = { isPlaying = false; clipTime = it },
-                    valueRange = 0f..duration,
+                    valueRange = 0f..duration.coerceAtLeast(0.0001f),
                     valueText = stringResource(R.string.demo_animation_physics_time, clipTime, duration),
                 )
             }
-            if (animationNames.size > 1) {
-                Text(
-                    stringResource(R.string.demo_animation_physics_blend_to),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                ) {
-                    animationNames.forEachIndexed { index, name ->
-                        if (index != selectedAnim) FilterChip(
-                            selected = blendIndex == index,
-                            onClick = { blendIndex = index },
-                            label = { Text(name) },
-                        )
+            // Same race again: `animationNames.size > 1` flips from `false` to `true`
+            // alongside `animationNames.isNotEmpty()` above, the same instant the model
+            // loads.
+            AnimatedVisibility(visible = animationNames.size > 1, enter = fadeIn(), exit = fadeOut()) {
+                Column {
+                    Text(
+                        stringResource(R.string.demo_animation_physics_blend_to),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                    ) {
+                        animationNames.forEachIndexed { index, name ->
+                            if (index != selectedAnim) FilterChip(
+                                selected = blendIndex == index,
+                                onClick = { blendIndex = index },
+                                label = { Text(name) },
+                            )
+                        }
                     }
+                    LabeledSlider(
+                        label = stringResource(
+                            R.string.demo_animation_physics_blend,
+                            clipName, animationNames.getOrElse(blendIndex) { "" },
+                        ),
+                        value = blendWeight,
+                        onValueChange = { blendWeight = it },
+                        valueRange = 0f..1f,
+                        valueText = stringResource(R.string.demo_animation_physics_weight, (blendWeight * 100).toInt()),
+                    )
                 }
-                LabeledSlider(
-                    label = stringResource(R.string.demo_animation_physics_blend, clipName, animationNames[blendIndex]),
-                    value = blendWeight,
-                    onValueChange = { blendWeight = it },
-                    valueRange = 0f..1f,
-                    valueText = stringResource(R.string.demo_animation_physics_weight, (blendWeight * 100).toInt()),
-                )
             }
             Text(
                 stringResource(R.string.demo_animation_physics_animation_explainer),
