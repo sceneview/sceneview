@@ -485,6 +485,8 @@ fun LightingDemo(onBack: () -> Unit) {
                     yHeight = LightingStage.orbitHeight(orbitRadius),
                     durationMillis = LightingStage.ORBIT_DURATION_MILLIS,
                     staticYaw = LightingStage.STATIC_YAW,
+                    // Keeps an upward drag from carrying the camera under the floor (#3794).
+                    maxPolarDegrees = LightingStage.maxOrbitPolarDegrees(orbitRadius),
                 ),
             ) {
                 // ── The stage: identical on both lighting screens ────────────────────────────

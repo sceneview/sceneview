@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal
 import androidx.compose.ui.graphics.Color
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.tan
@@ -142,6 +143,42 @@ object LightingStage {
      * Deriving the height from the radius keeps the declared elevation true on every device.
      */
     fun orbitHeight(radius: Float): Float = radius * tan(ORBIT_ELEVATION_DEGREES.toRadians())
+
+    /**
+     * Clearance kept between the eye and [FLOOR_TOP] when a user drag pitches the camera all the
+     * way down (#3794). Zero clearance would let the eye reach exactly floor height — level with
+     * a 4 m slab that runs past the frame on every side — which still reads as a wall filling the
+     * screen rather than as "the drag stopped on purpose"; a visible sliver of floor under the
+     * helmet is what tells the two apart.
+     */
+    const val ORBIT_FLOOR_CLEARANCE: Float = 0.05f
+
+    /**
+     * Polar-angle ceiling to pass as `maxPolarDegrees` to
+     * [io.github.sceneview.demo.rememberHeroOrbitCameraManipulator]'s user-drag clamp (#3794).
+     *
+     * The clamp's own default (`179°`) only keeps the eye off the orbit pole, which does nothing
+     * here: [FLOOR_TOP] sits only `[HERO_UNITS] / 2` below the orbit target, so an upward drag
+     * reached it at a polar angle barely past 90° — nowhere near the pole. Below that angle the
+     * camera looked at the floor slab from underneath: an unbroken grey-blue fill with the
+     * helmet, the floor and the sky all gone (#3794's captures).
+     *
+     * Derived from the **sphere** distance a drag preserves — eye to target — not the horizontal
+     * [radius] the idle orbit is authored with: the two differ by `cos(`[ORBIT_ELEVATION_DEGREES]`)`
+     * because the idle orbit also lifts the eye by [orbitHeight], and a drag starting from that
+     * pose keeps its distance to the pivot, not its height.
+     */
+    fun maxOrbitPolarDegrees(radius: Float): Float {
+        val sphereDistance = radius / cos(ORBIT_ELEVATION_DEGREES.toRadians())
+        // A non-positive or non-finite radius has no orbit sphere to clamp against; fall back to
+        // the clamp's own default rather than dividing by it.
+        if (!sphereDistance.isFinite() || sphereDistance <= 0f) {
+            return io.github.sceneview.demo.DEFAULT_MAX_ORBIT_POLAR_DEGREES
+        }
+        val minEyeY = FLOOR_TOP + ORBIT_FLOOR_CLEARANCE
+        val cosPolar = (minEyeY / sphereDistance).coerceIn(-1f, 1f)
+        return Math.toDegrees(acos(cosPolar).toDouble()).toFloat()
+    }
 
     /** One idle orbit lap. Slow — the subject of these screens is the light, not the turntable. */
     const val ORBIT_DURATION_MILLIS: Int = 26_000
