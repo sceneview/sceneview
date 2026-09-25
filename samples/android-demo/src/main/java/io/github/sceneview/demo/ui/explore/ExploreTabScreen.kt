@@ -83,6 +83,7 @@ import io.github.sceneview.demo.ui.explore.components.FeaturedModelCard
 import io.github.sceneview.demo.ui.explore.components.SpatialHero
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
+import io.github.sceneview.demo.ui.demoToggleButtonColors
 import io.github.sceneview.sample.ui.demoCategoryAccent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -648,6 +649,7 @@ private fun CompactBrowseRail(
                         onToggleAnimated()
                     },
                     modifier = Modifier.testTag(ExploreTestTags.ANIMATED_FILTER),
+                    colors = demoToggleButtonColors(),
                 ) {
                     Icon(
                         Icons.Filled.AutoAwesome,

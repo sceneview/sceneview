@@ -9,8 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonColors
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -79,6 +82,7 @@ fun <T> ConnectedChoiceRow(
                 // Three labels share a phone's width: the default 24 dp side padding would
                 // ellipsize "Icosa Gallery" at 1.0× font scale.
                 contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
+                colors = demoToggleButtonColors(),
             ) {
                 Text(
                     text = label(option),
@@ -89,3 +93,15 @@ fun <T> ConnectedChoiceRow(
         }
     }
 }
+
+/**
+ * [ToggleButtonDefaults.colors] with the unchecked container on
+ * `surfaceContainerHighest`. The M3 default is `surfaceContainer`, which the demo's light
+ * theme sets to white — on a white screen the unchecked buttons had no visible shape and the
+ * group read as loose text next to one blue pill.
+ */
+@Composable
+internal fun demoToggleButtonColors(): ToggleButtonColors =
+    ToggleButtonDefaults.colors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+    )
