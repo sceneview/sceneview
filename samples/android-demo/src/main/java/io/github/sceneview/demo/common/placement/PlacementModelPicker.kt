@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -29,7 +30,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -52,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.viewer.ModelThumbnails
 import kotlinx.coroutines.launch
@@ -348,15 +349,19 @@ fun PlacementModelPickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
 
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = { picker.dismissSheet() },
         sheetState = sheetState,
     ) {
         Column(
-            modifier = Modifier.padding(
-                horizontal = SceneViewTokens.Space.md,
-                vertical = SceneViewTokens.Space.sm,
-            ),
+            modifier = Modifier
+                .padding(
+                    horizontal = SceneViewTokens.Space.md,
+                    vertical = SceneViewTokens.Space.sm,
+                )
+                // #3716: the container now reaches the true bottom edge — clear the
+                // navigation bar explicitly instead of relying on the system inset.
+                .navigationBarsPadding(),
         ) {
             Text(
                 text = stringResource(R.string.ar_pick_a_model),

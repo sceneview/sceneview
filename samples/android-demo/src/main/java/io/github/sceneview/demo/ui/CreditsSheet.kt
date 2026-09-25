@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -39,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
 
@@ -86,7 +86,7 @@ fun CreditsSheet(onDismiss: () -> Unit) {
         }
     }
 
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {

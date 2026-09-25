@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -36,7 +37,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -60,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.putVoiceSilenceExtras
 import io.github.sceneview.demo.theme.SceneViewTokens
 import kotlinx.coroutines.launch
@@ -121,7 +122,7 @@ fun BugReportSheet(
         }
     }
 
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
@@ -130,6 +131,9 @@ fun BugReportSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .imePadding()
+                // #3716: the container now reaches the true bottom edge — clear the
+                // navigation bar explicitly instead of relying on the system inset.
+                .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 24.dp),
         ) {

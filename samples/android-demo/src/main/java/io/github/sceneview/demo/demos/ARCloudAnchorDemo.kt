@@ -4,8 +4,10 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
@@ -13,7 +15,6 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -60,6 +61,7 @@ import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.CloudAnchorFlowCard
 import io.github.sceneview.demo.common.CloudServiceStatus
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.CloudServiceStatusBanner
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.ForceCloudAnchorScenarioMenu
@@ -607,12 +609,16 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         }
     }
     if (show3D) {
-        ModalBottomSheet(onDismissRequest = { show3D = false }) {
-            Text(stringResource(R.string.ar_place_preview_size), Modifier.padding(SceneViewTokens.Space.md))
-            val preview = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
-            SceneView(Modifier.fillMaxWidth().aspectRatio(1f), engine = engine,
-                modelLoader = modelLoader, materialLoader = materialLoader) {
-                preview?.let { ModelNode(it, scaleToUnits = ANCHOR_MODEL_SIZE_METRES) }
+        DemoModalBottomSheet(onDismissRequest = { show3D = false }) {
+            // #3716: the container now reaches the true bottom edge — clear the
+            // navigation bar explicitly instead of relying on the system inset.
+            Column(Modifier.navigationBarsPadding()) {
+                Text(stringResource(R.string.ar_place_preview_size), Modifier.padding(SceneViewTokens.Space.md))
+                val preview = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
+                SceneView(Modifier.fillMaxWidth().aspectRatio(1f), engine = engine,
+                    modelLoader = modelLoader, materialLoader = materialLoader) {
+                    preview?.let { ModelNode(it, scaleToUnits = ANCHOR_MODEL_SIZE_METRES) }
+                }
             }
         }
     }

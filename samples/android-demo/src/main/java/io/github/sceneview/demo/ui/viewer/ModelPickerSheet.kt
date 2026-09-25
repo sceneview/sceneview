@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewTokens
 
 data class BundledViewerModel(val assetPath: String, val displayName: String) {
@@ -40,7 +41,7 @@ fun ModelPickerSheet(
     // and the `heightIn(max = …)` cap it had cut the second row's captions while the sheet
     // itself was already at full height (QA round 3). Six bundled models are three rows — the
     // whole sheet scrolls on short screens instead of the grid scrolling inside it.
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,

@@ -16,13 +16,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.sample.ui.LabeledSlider
 
 data class ViewerEnvironment(val assetPath: String, val displayName: String) { val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.') }
 
 @Composable fun EnvironmentSheet(environments: List<ViewerEnvironment>, selectedPath: String, intensity: Float, showEnvironment: Boolean, onSelect: (ViewerEnvironment) -> Unit, onIntensity: (Float) -> Unit, onShowEnvironment: (Boolean) -> Unit, onReset: () -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl)) {
+    DemoModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl)) {
         Text("Lighting", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(SceneViewTokens.Space.md), horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
             environments.forEach { env ->
