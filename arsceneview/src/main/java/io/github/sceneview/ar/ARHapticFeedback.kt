@@ -66,13 +66,19 @@ fun ARHapticFeedback(
 /**
  * Turns [AutoPlacementState] snapshots into [ARHapticEvent]s. Pure, so the table is pinned by
  * JVM tests.
+ *
+ * Reads the same phases as [ArGuidanceState], so a haptic and the coaching cue it accompanies
+ * always change together ([PlacementPhase.TRACKING_LOST] is both [ARHapticEvent.TrackingLost]
+ * and [ArGuidanceCue.TRACKING_LIMITED]). "Tracking was established" is not tracked here: the
+ * state machine never enters [PlacementPhase.TRACKING_LOST] from
+ * [PlacementPhase.INITIALIZING] — untracked start-up frames keep the session initializing — so
+ * the session-start silence has a single source of truth.
  */
 internal class ARHapticTransitions(private val throttleMs: Long = THROTTLE_MS) {
 
     data class Snapshot(val phase: PlacementPhase, val placementsCreated: Int, val isSelected: Boolean)
 
     private var previous: Snapshot? = null
-    private var trackingEstablished = false
     private val lastPlayed = HashMap<ARHapticEvent, Long>()
 
     /** Events for the transition into [snapshot]. The first snapshot only records. */
@@ -80,7 +86,6 @@ internal class ARHapticTransitions(private val throttleMs: Long = THROTTLE_MS) {
         val before = previous
         previous = snapshot
         val events = if (before == null) emptyList() else transition(before, snapshot)
-        if (snapshot.phase in ESTABLISHED) trackingEstablished = true
         return events.filter { accept(it, nowMillis) }
     }
 
@@ -88,8 +93,7 @@ internal class ARHapticTransitions(private val throttleMs: Long = THROTTLE_MS) {
         if (now.placementsCreated > before.placementsCreated) return listOf(ARHapticEvent.Placed)
         if (now.phase != before.phase) {
             val event = when {
-                now.phase == PlacementPhase.TRACKING_LOST ->
-                    ARHapticEvent.TrackingLost.takeIf { trackingEstablished }
+                now.phase == PlacementPhase.TRACKING_LOST -> ARHapticEvent.TrackingLost
                 now.phase in STANDING && before.phase in LOST -> ARHapticEvent.Recovered
                 now.phase == PlacementPhase.NO_SURFACE || now.phase == PlacementPhase.RECOVERY_FAILED ->
                     ARHapticEvent.HelpNeeded
@@ -114,10 +118,6 @@ internal class ARHapticTransitions(private val throttleMs: Long = THROTTLE_MS) {
         private val STANDING = setOf(PlacementPhase.PLACED, PlacementPhase.ADJUSTING)
         private val LOST = setOf(
             PlacementPhase.TRACKING_LOST, PlacementPhase.RECOVERING, PlacementPhase.RECOVERY_FAILED,
-        )
-        private val ESTABLISHED = setOf(
-            PlacementPhase.SCANNING, PlacementPhase.NO_SURFACE, PlacementPhase.PLACED,
-            PlacementPhase.ADJUSTING, PlacementPhase.RECOVERING, PlacementPhase.RECOVERY_FAILED,
         )
     }
 }

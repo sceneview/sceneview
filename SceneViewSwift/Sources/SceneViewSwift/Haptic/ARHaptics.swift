@@ -84,6 +84,11 @@ enum ARScaleSnap {
 #if os(iOS)
 /// Turns ``ARPlacementController`` snapshots into ``ARHapticEvent``s. Pure, so the table is
 /// pinned by unit tests. Mirrors Android's `ARHapticTransitions`.
+///
+/// "Tracking was established" is not tracked here: ``ARPlacementLifecycle`` never enters
+/// `.trackingLost` from `.initializing` — untracked start-up frames, including those of a
+/// coaching "Start Over" restart, keep the session initializing — so the session-start silence
+/// has a single source of truth, shared with the coaching overlay.
 struct ARHapticTransitions {
     struct Snapshot: Equatable {
         var phase: ARPlacementPhase
@@ -95,12 +100,8 @@ struct ARHapticTransitions {
     static let throttle: TimeInterval = 0.4
     private static let standing: Set<ARPlacementPhase> = [.placed, .adjusting]
     private static let lost: Set<ARPlacementPhase> = [.trackingLost, .recovering, .recoveryFailed]
-    private static let established: Set<ARPlacementPhase> = [
-        .scanning, .noSurface, .placed, .adjusting, .recovering, .recoveryFailed,
-    ]
 
     private var previous: Snapshot?
-    private var trackingEstablished = false
     private var lastPlayed: [ARHapticEvent: TimeInterval] = [:]
 
     /// Events for the transition into `snapshot`. The first snapshot only records.
@@ -108,14 +109,13 @@ struct ARHapticTransitions {
         let before = previous
         previous = snapshot
         let events = before.map { transition(from: $0, to: snapshot) } ?? []
-        if Self.established.contains(snapshot.phase) { trackingEstablished = true }
         return events.filter { accept($0, now: now) }
     }
 
     private func transition(from before: Snapshot, to now: Snapshot) -> [ARHapticEvent] {
         if now.placements > before.placements { return [.placed] }
         if now.phase != before.phase {
-            if now.phase == .trackingLost { return trackingEstablished ? [.trackingLost] : [] }
+            if now.phase == .trackingLost { return [.trackingLost] }
             if Self.standing.contains(now.phase) && Self.lost.contains(before.phase) { return [.recovered] }
             if now.phase == .noSurface || now.phase == .recoveryFailed { return [.helpNeeded] }
         }

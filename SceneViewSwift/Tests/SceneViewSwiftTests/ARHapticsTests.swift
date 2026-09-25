@@ -89,9 +89,35 @@ final class ARHapticTransitionsTests: XCTestCase {
         XCTAssertEqual(feed(.placed, placements: 1, selected: true), [])
     }
 
+    /// Drives the real lifecycle one frame and feeds the phase it publishes.
+    private func frame(_ lifecycle: inout ARPlacementLifecycle, tracking: Bool) -> [ARHapticEvent] {
+        clock += 1
+        _ = lifecycle.frame(now: clock, tracking: tracking, anchorTracking: false, assetReady: true)
+        return feed(lifecycle.phase, placements: lifecycle.placementsCreated)
+    }
+
     func testTrackingLostAtSessionStartIsSilent() {
-        _ = feed(.initializing)
-        XCTAssertEqual(feed(.trackingLost), [])
+        // Untracked start-up frames keep the lifecycle `.initializing` (the coaching overlay's
+        // start-up too), so no warning haptic plays before the first tracked frame.
+        var lifecycle = ARPlacementLifecycle()
+        lifecycle.requested = true
+        _ = feed(lifecycle.phase)
+        for _ in 0..<10 { XCTAssertEqual(frame(&lifecycle, tracking: false), []) }
+        XCTAssertEqual(lifecycle.phase, .initializing)
+        XCTAssertEqual(frame(&lifecycle, tracking: true), [])
+        XCTAssertEqual(frame(&lifecycle, tracking: false), [.trackingLost])
+    }
+
+    func testStartOverRestartIsSilentToo() {
+        // Coaching "Start Over" rewinds to `.initializing`: tracking was established before,
+        // yet the restarted session's untracked frames play nothing.
+        var lifecycle = ARPlacementLifecycle()
+        lifecycle.requested = true
+        _ = feed(lifecycle.phase)
+        _ = frame(&lifecycle, tracking: true)
+        lifecycle.restartSession()
+        _ = feed(lifecycle.phase)
+        for _ in 0..<5 { XCTAssertEqual(frame(&lifecycle, tracking: false), []) }
     }
 
     func testTrackingLostAfterTrackingWasEstablishedPlays() {
