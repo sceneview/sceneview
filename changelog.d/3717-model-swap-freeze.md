@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- `rememberModelInstance` no longer freezes the UI and blanks the viewport when swapping to a new model. Both overloads used to reset to `null` — and destroy the previous model's GPU resources — the instant the key (asset path / file location) changed, before the replacement was ready; the previous model now keeps rendering and animating until the new one has actually loaded, and the swap itself costs a single frame. Fixes the Animation & Physics demo's ~3 s freeze when switching streamed models (#3717).

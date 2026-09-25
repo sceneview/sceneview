@@ -28,9 +28,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.withFrameNanos
@@ -1189,8 +1189,12 @@ fun SceneView(
 /**
  * Asynchronously loads a glTF/GLB [ModelInstance] from [assetFileLocation].
  *
- * Returns `null` while loading is in progress, then triggers recomposition once the model is
- * ready. This makes it easy to use with conditional node declarations:
+ * Returns `null` only until the *first* model for this [modelLoader] finishes loading. On a later
+ * [assetFileLocation] change (a swap), the **previously loaded instance keeps being returned** —
+ * never `null` — while the replacement is prepared in the background; the return value flips
+ * directly from the old instance to the new one the frame the replacement is ready (#3717). This
+ * makes it easy to use with conditional node declarations, and the old model keeps rendering
+ * (and animating, if driven from an `Animator` you hold) for the entire swap:
  * ```kotlin
  * SceneView {
  *     rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
@@ -1198,28 +1202,38 @@ fun SceneView(
  *     }
  * }
  * ```
+ * To show a loading indicator during a swap (rather than relying on the old model staying put),
+ * key it on [ModelLoader.isLoading] instead of `instance == null` — the latter no longer flips
+ * during a swap.
+ *
+ * **Threading.** Reading the file's bytes runs on [Dispatchers.IO]. Handing those bytes to
+ * Filament (`modelLoader.createModelInstance`, a JNI call) always runs on the calling
+ * (composition/main) thread — Filament's `AssetLoader`/`ResourceLoader` are not thread-safe, so
+ * this cannot move to a background dispatcher. That JNI call is a few milliseconds; it does not
+ * reproduce the freeze this fixes, which was the *old model's teardown + the new model's swap-in*
+ * both firing at the instant the key changed, before the replacement existed.
  *
  * **Lifecycle & ownership.** This composable owns the [ModelInstance] it produces (and the backing
- * glTF [Model] — a bundle of Filament textures, vertex/index buffers and materials). When
- * [assetFileLocation] changes, the previously produced instance's `Model` is destroyed
- * (`modelLoader.destroyModel(it.model)`) and the new asset is loaded; the old `Model` is also
- * destroyed when this composable leaves the composition. Disposal order relative to a consuming
+ * glTF [Model] — a bundle of Filament textures, vertex/index buffers and materials). The
+ * previously returned instance's `Model` is destroyed (`modelLoader.destroyModel(it.model)`) only
+ * once its replacement has been produced — not eagerly on key change — and also when this
+ * composable leaves the composition. If a swap's load fails (bad bytes, cancelled by a further
+ * key change, Filament rejects the asset), the previous instance is left untouched and keeps
+ * being returned; nothing is destroyed. Disposal order relative to a consuming
  * [SceneScope.ModelNode] is **not** guaranteed: Compose forgets effects in reverse registration
  * order only within one composition, and a node declared in a child composition (a
  * `SubcomposeLayout` slot such as Material3's `Scaffold`, the common case) may detach *after* the
  * `Model` is destroyed. Either order is safe — `Node.destroy()` only touches entity ids and
- * `destroyModel` tolerates already-freed assets — so the renderables are never left dangling.
- * Only a model that finished loading is disposed here: a load cancelled by a key change after
- * `ModelLoader` registered the `Model` but before it was produced stays resident until the
- * loader is cleared. The [ModelLoader]
- * does **not** dedupe by path — each call creates a fresh, independent `Model`; re-loading the same
- * path is a new GPU allocation, not a cache hit. For a model you manage imperatively (outside this
- * composable's keyed lifecycle), use [ModelLoader.loadModelInstanceAsync] and call
- * [ModelLoader.destroyModel] yourself.
+ * `destroyModel` tolerates already-freed assets — so the renderables are never left dangling. The
+ * [ModelLoader] does **not** dedupe by path — each call creates a fresh, independent `Model`;
+ * re-loading the same path is a new GPU allocation, not a cache hit. For a model you manage
+ * imperatively (outside this composable's keyed lifecycle), use
+ * [ModelLoader.loadModelInstanceAsync] and call [ModelLoader.destroyModel] yourself.
  *
  * @param modelLoader       The [ModelLoader] to use.
  * @param assetFileLocation Path to the GLB/glTF file relative to the `assets` folder.
- * @return                  `null` while loading; the loaded [ModelInstance] once ready.
+ * @return                  `null` until the first model is ready; the previous [ModelInstance]
+ *                          while a swap is loading; the new [ModelInstance] once it lands.
  */
 @Composable
 fun rememberModelInstance(
@@ -1227,27 +1241,35 @@ fun rememberModelInstance(
     assetFileLocation: String
 ): ModelInstance? {
     val context = LocalContext.current
-    val instance = produceState<ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = assetFileLocation
-    ) {
-        // Read file bytes on IO, then call Filament APIs back on Main (produceState's context).
+    // Keyed on `modelLoader` only — NOT on `assetFileLocation` — so a swap does not reset this to
+    // null (#3717). `assetFileLocation` changes are instead observed by the `LaunchedEffect` below,
+    // which loads the replacement in the background and only then swaps `instanceState` over,
+    // skipping the null in between.
+    var instanceState by remember(modelLoader) { mutableStateOf<ModelInstance?>(null) }
+    LaunchedEffect(modelLoader, assetFileLocation) {
+        // Read file bytes on IO, then call Filament APIs back on Main (LaunchedEffect's context).
         val buffer = withContext(Dispatchers.IO) {
             runCatching { context.assets.readBuffer(assetFileLocation) }.getOrNull()
-        } ?: return@produceState
-        value = runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
-    }.value
-    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
-    // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
-    // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
-    // produced value fires `onDispose` for the *previous* instance on a key swap and on
-    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
-    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
-    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
-    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
-    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
-    // the Filament JNI contract.
+        } ?: return@LaunchedEffect
+        // A further key change cancels this coroutine before this line — the still-displayed
+        // `instanceState` is left untouched, matching the "failed swap keeps the old model" contract.
+        instanceState = runCatching { modelLoader.createModelInstance(buffer) }.getOrNull() ?: return@LaunchedEffect
+    }
+    // Snapshot into an immutable `val` — same shape as the original `produceState(...).value` read
+    // — so the `onDispose` lambda below closes over *this composition's* value, not a live read of
+    // the mutable state (which would destroy the wrong instance: `onDispose` for the old key would
+    // otherwise observe the already-updated new value by the time it runs).
+    val instance = instanceState
+    // `instance` now only changes once a replacement is actually ready (never resets to null on a
+    // key change), so this `DisposableEffect` — keyed on the produced value itself — destroys the
+    // *previous* instance's `Model` at exactly that moment (Compose calls `onDispose` for the old
+    // key before applying the new one), and on leave-composition (#2459, #3717). No ordering with
+    // the consuming `ModelNode`'s `NodeLifecycle.onDispose` is relied on: reverse-registration
+    // forgetting holds within ONE composition, and the node usually lives in a child one (a
+    // `SubcomposeLayout` slot), so it may detach after `destroyModel` ran. Safe either way —
+    // `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is `runCatching`-guarded
+    // (#2954). `onDispose` runs on the composition (main) thread, satisfying the Filament JNI
+    // contract.
     DisposableEffect(instance) {
         onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
     }
@@ -1265,16 +1287,23 @@ fun rememberModelInstance(
  * For asset paths (no scheme), delegates to the faster asset-based overload.
  * For URLs, downloads the file on IO and creates the model on Main.
  *
+ * Like the asset overload, on a swap ([fileLocation] change) this **keeps returning the
+ * previously loaded instance** — never `null` — while the replacement downloads/decodes and is
+ * handed to Filament; the return value flips directly from old to new once the replacement is
+ * ready (#3717). See the asset overload's KDoc for the full lifecycle, threading and
+ * loading-indicator ([ModelLoader.isLoading]) notes — they apply here unchanged.
+ *
  * **Lifecycle & ownership.** Like the asset overload, this composable owns the produced
- * [ModelInstance] and its backing [Model]: the previous model is destroyed when [fileLocation]
- * changes and on leave-composition, in no guaranteed order relative to a consuming
- * [SceneScope.ModelNode] — safe either way. The [ModelLoader] does not dedupe by path — each
- * distinct [fileLocation] is a fresh
- * GPU allocation. See the asset-path overload for details.
+ * [ModelInstance] and its backing [Model]: the previous model is destroyed only once its
+ * replacement is produced — not eagerly on key change — and on leave-composition, in no
+ * guaranteed order relative to a consuming [SceneScope.ModelNode] — safe either way. A failed
+ * swap leaves the previous instance untouched. The [ModelLoader] does not dedupe by path — each
+ * distinct [fileLocation] is a fresh GPU allocation.
  *
  * @param modelLoader  The [ModelLoader] to use.
  * @param fileLocation Path, URI, or URL to the GLB/glTF file.
- * @return             `null` while loading; the loaded [ModelInstance] once ready.
+ * @return             `null` until the first model is ready; the previous [ModelInstance] while a
+ *                      swap is loading; the new [ModelInstance] once it lands.
  */
 @Composable
 fun rememberModelInstance(
@@ -1290,19 +1319,24 @@ fun rememberModelInstance(
     if (uri.scheme == null) {
         return rememberModelInstance(modelLoader, assetFileLocation = fileLocation)
     }
-    // URL / file URI / content URI → use suspend loadModelInstance which handles http(s)
-    val instance = produceState<ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = fileLocation
-    ) {
-        value = runCatching {
+    // URL / file URI / content URI → use suspend loadModelInstance which handles http(s). Keyed on
+    // `modelLoader` only — NOT on `fileLocation` — so a swap does not reset this to null (#3717);
+    // `fileLocation` changes are instead observed by the `LaunchedEffect` below.
+    var instanceState by remember(modelLoader) { mutableStateOf<ModelInstance?>(null) }
+    LaunchedEffect(modelLoader, fileLocation) {
+        // A further key change cancels this coroutine — `loadModelInstance` (via `ModelLoader`'s
+        // `createOrDestroyOnCancel`/`destroyOnCancel`) tears down a partially-created asset on
+        // cancellation, so `instanceState` is only ever assigned a fully-formed instance.
+        instanceState = runCatching {
             modelLoader.loadModelInstance(fileLocation, resourceResolver)
-        }.getOrNull()
-    }.value
-    // See the asset-path overload: `produceState` skips per-key disposal, so destroy the previous
-    // [Model] on a key swap and on leave-composition (#2459). Disposal is ordered after the
-    // consuming `ModelNode`'s detach, respecting #2424's render-loop coupling.
+        }.getOrNull() ?: return@LaunchedEffect
+    }
+    // Snapshot into an immutable `val` — see the asset overload for why the onDispose lambda must
+    // close over this composition's value rather than live-reading the mutable state.
+    val instance = instanceState
+    // See the asset-path overload: destroy the previous [Model] once the replacement lands, and on
+    // leave-composition (#2459, #3717). Disposal is ordered after the consuming `ModelNode`'s
+    // detach, respecting #2424's render-loop coupling.
     DisposableEffect(instance) {
         onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
     }
