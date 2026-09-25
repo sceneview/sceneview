@@ -244,7 +244,6 @@ struct ARPlacementExperience: View {
                 node = try await ModelNode.load(contentsOf: url, unit: initialModelUnit)
             } else {
                 node = try await ModelNode.load(modelName)
-                Self.orientBundledModel(node.entity, named: modelName)
             }
             guard !Task.isCancelled, controller.acceptsAsset(ticket) else { return }
             // Apply grounding to asynchronous content explicitly, independent of the
@@ -400,13 +399,10 @@ struct ARPlacementExperience: View {
         }
     }
 
-    /// The USDZ conversion preserves the helmet GLB's authored +90° X node rotation
-    /// after USD's Z-up stage is normalized. Match Android's -90° X asset correction
-    /// before the controller measures bounds and computes the grounded pivot.
-    @MainActor static func orientBundledModel(_ entity: Entity, named name: String) {
-        guard name == comparisonModel else { return }
-        entity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0]) * entity.orientation
-    }
+    // No per-asset orientation correction (#3735). The helmet USDZ's +90° X node rotation is
+    // its own Z-up-to-Y-up conversion: RealityKit loads it upright, as the Model Viewer shows
+    // it. The -90° X that used to be applied here mirrored an Android correction that laid
+    // the helmet on its back in AR only; both are gone.
 
     /// Same authored metre geometry and physical material parameters as Android's TV.
     /// This is a procedural TV model, not a simulated camera or placement.
@@ -485,10 +481,7 @@ private struct PlacementModelPreview: View {
             do {
                 let loaded: ModelNode
                 if let url { loaded = try await ModelNode.load(contentsOf: url, unit: unit) }
-                else {
-                    loaded = try await ModelNode.load(modelName)
-                    ARPlacementExperience.orientBundledModel(loaded.entity, named: modelName)
-                }
+                else { loaded = try await ModelNode.load(modelName) }
                 guard !Task.isCancelled else { return }
                 if !actualSize { _ = loaded.scaleToUnits(0.3) }
                 model = loaded

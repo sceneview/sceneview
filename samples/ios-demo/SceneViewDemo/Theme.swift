@@ -89,6 +89,22 @@ enum SceneViewTokens {
     /// Model-viewer stage, deliberately identical in light and dark themes (`#0B0F16`).
     enum Stage {
         static let background = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+
+        /// Fills for primitives that must stay apart on the stage — Android's
+        /// `SceneViewColors.Ramp4`: `primary` light #005BC1, `gradient-hero` end
+        /// #6446CD, `primary` dark #A4C1FF, `tertiary` dark #D2A8FF. Fixed in both
+        /// themes, like the stage they sit on.
+        static let shapeRamp: [UIColor] = [
+            UIColor(red: 0x00 / 255, green: 0x5B / 255, blue: 0xC1 / 255, alpha: 1),
+            UIColor(red: 0x64 / 255, green: 0x46 / 255, blue: 0xCD / 255, alpha: 1),
+            UIColor(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255, alpha: 1),
+            UIColor(red: 0xD2 / 255, green: 0xA8 / 255, blue: 0xFF / 255, alpha: 1),
+        ]
+
+        /// A picked primitive — `DESIGN.md` `info` #EA580C, the "informational
+        /// highlight" status colour. Warm and outside `shapeRamp`, so a pick
+        /// reads at a glance against the blue and violet fills.
+        static let shapePicked = UIColor(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255, alpha: 1)
     }
 
     /// `DESIGN.md` — Spatial Gallery overlay colours.
@@ -275,6 +291,9 @@ enum SceneViewTokens {
             light: Color(red: 0x12 / 255, green: 0x1C / 255, blue: 0x2B / 255),
             dark: Color(red: 0xD9 / 255, green: 0xE3 / 255, blue: 0xF8 / 255)
         )
+        /// DESIGN.md Status, `danger` — #EA4335 in both themes. A glyph colour
+        /// (3.5:1 on `chip-bg` light, 3.8:1 dark), never body text.
+        static let danger = Color(red: 0xEA / 255, green: 0x43 / 255, blue: 0x35 / 255)
         /// DESIGN.md Borders, `outline` — #D6DAE0 / #2A3346.
         /// The Cards row specifies this 1 pt contour for elevated surfaces.
         static let outline = Color(

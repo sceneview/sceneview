@@ -15,6 +15,7 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.placement.PlacementActionCard
@@ -164,11 +165,15 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
         ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING, availability)
     }
     if (show3D) {
-        ModalBottomSheet(onDismissRequest = { show3D = false }) {
-            Text(stringResource(R.string.wall_preview_size), modifier = Modifier.padding(SceneViewTokens.Space.md))
-            SceneView(modifier = Modifier.fillMaxWidth().aspectRatio(1f), engine = engine,
-                modelLoader = modelLoader, materialLoader = materialLoader) { WallTV() }
-            TextButton(onClick = { show3D = false }) { Text(stringResource(R.string.wall_close_preview)) }
+        DemoModalBottomSheet(onDismissRequest = { show3D = false }) {
+            // #3716: the container now reaches the true bottom edge — clear the
+            // navigation bar explicitly, or "Close preview" lands under it.
+            Column(Modifier.navigationBarsPadding()) {
+                Text(stringResource(R.string.wall_preview_size), modifier = Modifier.padding(SceneViewTokens.Space.md))
+                SceneView(modifier = Modifier.fillMaxWidth().aspectRatio(1f), engine = engine,
+                    modelLoader = modelLoader, materialLoader = materialLoader) { WallTV() }
+                TextButton(onClick = { show3D = false }) { Text(stringResource(R.string.wall_close_preview)) }
+            }
         }
     }
 }

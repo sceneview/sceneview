@@ -18,11 +18,19 @@ struct ARTab: View {
     }
 
     var body: some View {
-        ARLauncherScreen(
-            arSupported: arSupported,
-            onStartArSession: { sessionStarted = true },
-            onDemoTap: { presentedDemo = $0 }
-        )
+        // A NavigationStack owns the title, as on the About tab: the large
+        // title collapses into the inline bar over the system scroll-edge
+        // backdrop, so nothing scrolls under the status bar or the Dynamic
+        // Island (#3791). The title used to be a plain `Text` inside the
+        // launcher's scroll view, with no safe-area chrome above it.
+        NavigationStack {
+            ARLauncherScreen(
+                arSupported: arSupported,
+                onStartArSession: { sessionStarted = true },
+                onDemoTap: { presentedDemo = $0 }
+            )
+            .navigationTitle("AR Experiences")
+        }
         .fullScreenCover(isPresented: $sessionStarted) {
             NavigationStack {
                 ARExperienceContainer(onBack: { sessionStarted = false }) {
@@ -229,58 +237,68 @@ private struct ARLauncherScreen: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Hero icon — same gradient + corner radius idiom as the Android
-                // launcher's 56dp box.
-                ZStack {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.accentColor.opacity(0.85),
-                                    .blue.opacity(0.55),
-                                    .purple.opacity(0.45),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                // Compact hero — the icon beside the tagline, as on Android's
+                // `ArLauncherScreen`. The title is the navigation title.
+                HStack(spacing: SceneViewTokens.Space.md) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        SceneViewTheme.primary.opacity(0.85),
+                                        SceneViewTheme.tertiary.opacity(0.70),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .frame(width: 96, height: 96)
-                    Image(systemName: "arkit")
-                        .font(.system(size: 44, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .accessibilityHidden(true)
-                }
-                .padding(.top, 32)
+                            .frame(width: 56, height: 56)
+                        Image(systemName: "arkit")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityHidden(true)
 
-                VStack(spacing: 8) {
-                    Text("AR Experiences")
-                        .font(.title.weight(.bold))
-                        // Bump VoiceOver focus order so the title gets read
-                        // first then the CTA — without this the screen reader
-                        // walks the Spacer / hero / etc before reaching the
-                        // action.
-                        .accessibilitySortPriority(2)
                     Text("Place 3D models in your space, scan faces, anchor to terrain.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, SceneViewTokens.Space.sm)
 
-                Button(action: onCtaTap) {
+                if state == .unsupported {
+                    // Nothing to tap, so no button: a status line, as on
+                    // Android's `ArLauncherScreen`. It used to be the primary
+                    // capsule disabled at 50 % opacity — white on a washed-out
+                    // blue, the one message explaining why AR is off, nearly
+                    // invisible in light mode (#3790). `on-surface` on
+                    // `surface-container-high` is 15.3:1 light / 13.5:1 dark.
                     Label(ctaTitle, systemImage: ctaIcon)
                         .font(.headline)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                        .labelStyle(StatusLabelStyle())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(.tint, in: Capsule())
-                        .foregroundStyle(.white)
+                        .padding(.horizontal, SceneViewTokens.Space.md)
+                        .background(SceneViewTokens.HomeColor.chipBackground, in: Capsule())
+                        .padding(.horizontal, 24)
+                        .accessibilityElement(children: .combine)
+                        .accessibilitySortPriority(1)
+                } else {
+                    Button(action: onCtaTap) {
+                        Label(ctaTitle, systemImage: ctaIcon)
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 24)
+                    .accessibilityLabel(ctaTitle)
+                    .accessibilitySortPriority(1)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 24)
-                .disabled(state == .unsupported)
-                .opacity(state == .unsupported ? 0.5 : 1.0)
-                .accessibilityLabel(ctaTitle)
-                .accessibilitySortPriority(1)
 
                 Text(caption)
                     .font(.caption)
@@ -298,6 +316,7 @@ private struct ARLauncherScreen: View {
             .frame(maxWidth: .infinity)
             .padding(.bottom, 24)
         }
+        .background(SceneViewTokens.HomeColor.surface)
         .onChange(of: scenePhase) { _, phase in
             // Re-sync the CTA when the app returns to the foreground — the
             // user may have flipped the camera switch in Settings.
@@ -334,6 +353,19 @@ private struct ARLauncherScreen: View {
                 }
             }
             .padding(.horizontal, 24)
+        }
+    }
+}
+
+/// Status line label: the glyph in `danger` (3.5:1 light / 3.8:1 dark on
+/// `surface-container-high`, above the 3:1 a graphic needs), the text in
+/// whatever foreground the caller set.
+private struct StatusLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: SceneViewTokens.Space.sm) {
+            configuration.icon
+                .foregroundStyle(SceneViewTokens.HomeColor.danger)
+            configuration.title
         }
     }
 }

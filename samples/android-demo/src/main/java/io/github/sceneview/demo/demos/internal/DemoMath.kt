@@ -200,35 +200,44 @@ internal object DemoMath {
     private fun Float.wrapTo360(): Float = ((this % 360f) + 360f) % 360f
 
     /**
-     * Asset path of the bundled Khronos *DamagedHelmet* GLB. The helmet is the hero
-     * model for the AR placement demos (Cloud Anchor, Tap to Place, Depth Occlusion).
+     * Asset path of the bundled Khronos *DamagedHelmet* GLB — the Model Viewer's hero, the
+     * model "View in AR" hands to the placement screen, and the comparison model of the
+     * Depth / People occlusion demos.
      */
     const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
 
     /**
-     * Default placement rotation to apply to a bundled model the moment it is dropped
-     * onto an AR plane. See [#1477](https://github.com/sceneview/sceneview/issues/1477).
+     * Per-asset yaw, in degrees, that an AR placement adds on top of an asset's loaded glTF
+     * pose. Empty: every bundled asset already faces +Z.
      *
-     * The Khronos *DamagedHelmet* GLB ships with a root-node quaternion of
-     * `(0.7071, 0, 0, 0.7071)` — a +90° rotation about X — left over from its
-     * Blender Z-up export. When the model is placed under an ARCore plane
-     * `AnchorNode` (whose local frame is already Y-up), that residual pitch lands
-     * the helmet **face-down**, nose into the floor, with the gold exhaust nozzle
-     * pointing at the ceiling.
+     * It is a yaw table on purpose — see [placementRotationFor].
+     */
+    private val PLACEMENT_YAW_DEGREES: Map<String, Float> = emptyMap()
+
+    /**
+     * The rotation every AR placement screen puts on a model on top of its loaded glTF pose
+     * — the one seam `PlacedModelNode`, `ARFeatureComparison` and `PointAndAskDemo` read.
      *
-     * Rather than re-author the shared bundled asset — several non-AR demos also
-     * load it and frame it correctly in their own way — every AR placement demo
-     * applies this single correcting rotation at placement time so the helmet
-     * stands upright, visor forward. All other bundled cycle models (fox, lantern,
-     * toy car, shiba) are authored upright and get the identity rotation.
+     * **It can only turn a model, never tilt it.** glTF defines +Y as up and +Z as front,
+     * and gltfio applies every node transform in the file, so a model already stands the way
+     * its author meant as soon as it is loaded. The Model Viewer shows it that way with no
+     * correction; an AR plane anchor is Y-up too, so AR must show it the same way.
+     *
+     * History ([#3735](https://github.com/sceneview/sceneview/issues/3735)): #1477 read the
+     * Khronos *DamagedHelmet*'s root-node quaternion `(0.7071, 0, 0, 0.7071)` (+90° X) as a
+     * leftover and undid it here with `Rotation(x = -90f)`. That quaternion is the file's own
+     * Z-up-to-Y-up conversion — the transform that stands the helmet up. Undoing it laid the
+     * helmet on its back with the visor to the ceiling, in AR only, while the Model Viewer
+     * (which applies nothing, `ModelViewerDemo`) kept showing it upright: "View in AR" put a
+     * different object in the room than the one on screen. Returning a pure yaw makes that
+     * mistake impossible to write back in; an asset that really is authored lying down is
+     * fixed in the file, not here.
      *
      * @param assetPath The bundled asset path passed to `rememberModelInstance`.
-     * @return The local Euler rotation (degrees) to pass to `ModelNode(rotation = …)`.
+     * @return A pure-yaw rotation (degrees) to apply on top of the loaded pose.
      */
-    fun placementRotationFor(assetPath: String): Rotation = when (assetPath) {
-        HELMET_ASSET -> Rotation(x = -90f)
-        else -> Rotation(x = 0f)
-    }
+    fun placementRotationFor(assetPath: String): Rotation =
+        Rotation(y = PLACEMENT_YAW_DEGREES[assetPath] ?: 0f)
 
     /**
      * Tabletop-display rotation used by [io.github.sceneview.demo.demos.ModelViewerDemo]'s

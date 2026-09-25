@@ -10,13 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.github.sceneview.core.threemf.ThreeMfUnit
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewTokens
 import java.util.Locale
 import kotlin.math.abs
@@ -50,7 +50,7 @@ fun ModelUnitSheet(
     onDismiss: () -> Unit,
 ) {
     val suggestedExtent = loadedExtentMeters / loadedUnit.meters * suggested.meters
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
