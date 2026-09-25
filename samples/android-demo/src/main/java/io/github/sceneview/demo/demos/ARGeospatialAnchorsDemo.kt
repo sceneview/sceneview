@@ -237,6 +237,8 @@ private fun TerrainSection(
     // camera and delivered a frame. Until then the ARSceneView surface is bare black,
     // so we cover it with ARCameraInitScrim instead of leaving a frozen-looking screen.
     var cameraReady by remember { mutableStateOf(false) }
+    // Whether ARCameraInitScrim's card is the one saying "Starting camera…" (#3825).
+    var cameraScrimNarrating by remember { mutableStateOf(true) }
     // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
     // then, so the init scrim below has to read the verdict or it covers the SDK's own
     // explanation card forever.
@@ -432,7 +434,21 @@ private fun TerrainSection(
                 // reason and the retry; a second, now false, "Initializing camera…"
                 // underneath it only contradicts it (#3341).
                 arCoreAvailability != null -> Unit
-                !isTracking -> DemoStatusBanner("Initializing camera…", tone = DemoStatusTone.Progress)
+                // One loader at a time (#3825). Until the first camera frame the full-screen
+                // ARCameraInitScrim already says "Starting camera…"; a second pill saying
+                // "Initializing camera…" under it was the same wait narrated twice. Once frames
+                // flow, the step still running is ARCore's motion tracking, and that is what
+                // the pill names. If the scrim's card times out on a stuck start, the pill takes
+                // the camera line over rather than leaving the screen silent.
+                !cameraReady && cameraScrimNarrating -> Unit
+                !cameraReady -> DemoStatusBanner(
+                    stringResource(R.string.ar_starting_camera),
+                    tone = DemoStatusTone.Progress,
+                )
+                !isTracking -> DemoStatusBanner(
+                    stringResource(R.string.ar_tracking_starting),
+                    tone = DemoStatusTone.Progress,
+                )
                 else ->
                     DemoStatusBanner(
                         "Ready — point at the ground and tap \"Drop here\"",
@@ -538,6 +554,7 @@ private fun TerrainSection(
             ARCameraInitScrim(
                 initializing = !cameraReady && sessionError == null,
                 arCoreAvailability = arCoreAvailability,
+                onNarratingChange = { cameraScrimNarrating = it },
             )
         }
     }
@@ -656,6 +673,9 @@ private fun RooftopSection(
     val hasArcoreApiKey = rememberHasArcoreApiKey()
 
     var arSession by remember { mutableStateOf<Session?>(null) }
+    // Flipped on the first onSessionUpdated — ARCore has opened the camera and delivered a
+    // frame. Separates "Starting camera…" from "Starting motion tracking…" (#3825).
+    var cameraReady by remember { mutableStateOf(false) }
     var isTracking by remember { mutableStateOf(false) }
     // #3341: non-null once ARCore has ruled this device out. `isTracking` never flips
     // then, so every "waiting for the camera" line below has to read the verdict or it
@@ -859,7 +879,16 @@ private fun RooftopSection(
                 // reason and the retry; a second, now false, "Initializing camera…"
                 // underneath it only contradicts it (#3341).
                 arCoreAvailability != null -> Unit
-                !isTracking -> DemoStatusBanner("Initializing camera…", tone = DemoStatusTone.Progress)
+                // This section has no full-screen camera scrim, so its single pill narrates
+                // both waits in order (#3825): the camera opening, then motion tracking.
+                !cameraReady -> DemoStatusBanner(
+                    stringResource(R.string.ar_starting_camera),
+                    tone = DemoStatusTone.Progress,
+                )
+                !isTracking -> DemoStatusBanner(
+                    stringResource(R.string.ar_tracking_starting),
+                    tone = DemoStatusTone.Progress,
+                )
                 else ->
                     DemoStatusBanner(
                         "Ready — point at a building and tap \"Drop on roof\"",
@@ -929,6 +958,7 @@ private fun RooftopSection(
                 },
                 onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { session: Session, frame: Frame ->
+                    cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     val earth = session.earth
                     earthTracking = earth?.trackingState == TrackingState.TRACKING

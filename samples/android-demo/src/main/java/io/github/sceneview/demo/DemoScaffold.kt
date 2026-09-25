@@ -1160,7 +1160,7 @@ private fun BoxScope.FirstFrameCover(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 if (loadingLabel != null) {
-                    Text(
+                    io.github.sceneview.demo.ui.NarrationText(
                         text = loadingLabel,
                         style = MaterialTheme.typography.labelLarge,
                         // The cover is the stage colour in both themes, so its text is

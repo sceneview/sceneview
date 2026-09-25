@@ -281,14 +281,26 @@ fun DemoStatusCard(
                         strokeWidth = 2.dp,
                     )
                 }
-                Text(
-                    text = lastText,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    color = SceneViewTokens.ArOverlay.onScrim,
-
-                )
+                // A Progress line with a spinner narrates a step in flight, so its
+                // trailing ellipsis breathes (#3825); every other tone is a settled
+                // sentence and is drawn as is.
+                if (leadingIcon == null) {
+                    io.github.sceneview.demo.ui.NarrationText(
+                        text = lastText,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        color = SceneViewTokens.ArOverlay.onScrim,
+                    )
+                } else {
+                    Text(
+                        text = lastText,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        color = SceneViewTokens.ArOverlay.onScrim,
+                    )
+                }
             }
         }
     }

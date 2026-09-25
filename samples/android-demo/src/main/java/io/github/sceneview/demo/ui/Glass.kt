@@ -214,6 +214,7 @@ fun GlassActionPill(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
+    progress: Float? = null,
     contentDescription: String = label,
 ) {
     val accessibleName = contentDescription
@@ -244,7 +245,18 @@ fun GlassActionPill(
             modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
             contentAlignment = Alignment.Center,
         ) {
-            if (loading) {
+            if (loading && progress != null) {
+                // Determinate once the byte count is known (#3825): a ring that fills says
+                // how long is left, which the morphing indicator cannot.
+                NarrationProgressRing(
+                    progress = progress,
+                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    color = SceneViewTokens.Glass.onGlass,
+                    // The track is the `over-media-edge` ring: the same white that outlines every
+                    // element over media, so the unfilled arc reads without a new colour.
+                    trackColor = SceneViewTokens.Glass.edgeRing,
+                )
+            } else if (loading) {
                 LoadingIndicator(
                     modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
                     color = SceneViewTokens.Glass.onGlass,
@@ -259,7 +271,8 @@ fun GlassActionPill(
             }
         }
         Spacer(Modifier.size(SceneViewTokens.Space.sm))
-        Text(
+        // While loading, the label is the narration of the step in flight (#3825).
+        NarrationText(
             text = label,
             style = MaterialTheme.typography.labelLarge,
             color = SceneViewTokens.Glass.onGlass,
