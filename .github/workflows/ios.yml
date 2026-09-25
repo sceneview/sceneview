@@ -29,6 +29,15 @@ permissions:
   contents: read
 
 jobs:
+  # Two jobs, run in parallel: the SceneViewSwift package (iOS build,
+  # visionOS build, unit tests) and the iOS sample demo (simulator test,
+  # device-path compile). They share nothing at build time — the demo builds
+  # its own copy of the local package in its own DerivedData — and until this
+  # split they ran back to back in one job. Measured 2026-09-18..25 (78 runs):
+  # that job took 14.9 min median, 21.3 min p90, made of ~8.5 min of package
+  # steps and ~10.1 min of demo steps. In parallel the wall clock is the demo
+  # half plus runner setup, ~12 min, and a red half (a live-network test such
+  # as #3811) re-runs alone instead of re-running the whole job.
   build:
     name: Build & Test (iOS)
     runs-on: macos-15
@@ -139,19 +148,45 @@ jobs:
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
+  demo:
+    name: Build & Test (iOS sample demo)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same Xcode preference list and simulator resolver as the `build` job
+      # above — see the comments there (#3174) before changing either.
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "Using Xcode: $(xcode-select -p)"
+          xcodebuild -version
+
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          # Assignment form on purpose — see the `build` job (fail-closed).
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
+
       # Build the iOS sample demo so a missing pbxproj registration on a new
       # demo file fails the PR instead of slipping into main. Caught by
       # Thomas's "tester visuellement impérativement" rule on PR #1042 (file
       # added but not in pbxproj → main broken until 74dccb56). Closes #1044.
       #
-      # `if: always()` on all three steps so the demo build runs even when
-      # the SwiftPM tests above flake — pbxproj regressions are orthogonal
-      # to test correctness, and flaky simulator tests should not hide
-      # demo build failures. The overall job status still goes red if any
-      # step fails (no `continue-on-error: true`), so a real test failure
-      # still blocks merge — this just ensures both signals are surfaced.
+      # This job used to share a job with the SwiftPM tests and carried
+      # `if: always()` so a flaky package test could not hide a demo build
+      # failure. As its own job it reports its own verdict; only the device
+      # compile below keeps `if: always()`, so a red simulator test still
+      # leaves the AR code path compiled and reported.
       - name: Cache iOS demo Swift Package dependencies
-        if: always()
         uses: actions/cache@v6
         with:
           path: samples/ios-demo/SourcePackages
@@ -168,7 +203,6 @@ jobs:
             spm-${{ runner.os }}-demo-
 
       - name: Resolve iOS demo dependencies
-        if: always()
         working-directory: samples/ios-demo
         run: |
           xcodebuild -resolvePackageDependencies \
@@ -177,7 +211,6 @@ jobs:
             -clonedSourcePackagesDirPath SourcePackages
 
       - name: Build & test iOS sample demo (catches missing pbxproj entries)
-        if: always()
         # `xcodebuild test` builds the demo AND runs the `SceneViewDemoTests`
         # unit-test target (wired in #1227) — so a missing pbxproj registration
         # on a new demo file still fails the PR, and the AppStoreUpdater tests
