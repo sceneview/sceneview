@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+
+- **Release: the npm publish jobs can use npm Trusted Publishing ([#3302](https://github.com/sceneview/sceneview/issues/3302)).** Every npm publish since 4.32.0 failed on the `NPM_TOKEN` secret (first `E404`, then `EOTP` after the 2026-08-26 rotation, because the token does not bypass 2FA), so `sceneview-web` and `@sceneview-sdk/react-native` stayed at 4.31.0 and `sceneview-mcp` at 4.0.16. The three publish jobs in `release.yml`, and `mcp-publish.yml`, now request a GitHub OIDC token (`id-token: write`) and run npm 11.20.0, so they publish without a token once each package lists `sceneview/sceneview` + `release.yml` as its trusted publisher on npmjs.com. `NODE_AUTH_TOKEN` stays as the fallback npm uses when the OIDC exchange is refused.

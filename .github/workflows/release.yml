@@ -348,6 +348,25 @@ jobs:
           fi
           echo "Pages build queued — sceneview.github.io will rebuild shortly."
 
+  # ── npm authentication (#3302) ─────────────────────────────────────────────
+  # Every npm publish from 4.32.0 to 4.39.0 failed: first E404 (a granular
+  # NPM_TOKEN that no longer covered the packages), then, after the 2026-08-26
+  # rotation, EOTP — the new token does not bypass the account's 2FA, and CI
+  # cannot answer an authenticator prompt. sceneview-web and
+  # @sceneview-sdk/react-native stayed at 4.31.0, sceneview-mcp at 4.0.16.
+  #
+  # The durable fix is npm Trusted Publishing: the three jobs below request a
+  # GitHub OIDC token (`id-token: write`) and run npm >= 11.5.1, which exchanges
+  # it for a short-lived publish credential when the package lists this
+  # repository + `release.yml` as its trusted publisher. No secret, no expiry,
+  # no 2FA prompt, provenance attached automatically.
+  #
+  # NODE_AUTH_TOKEN stays wired ON PURPOSE: npm tries OIDC first and, when the
+  # exchange is refused (trusted publisher not configured yet), silently falls
+  # back to the token (lib/utils/oidc.js returns undefined on every failure).
+  # So this change is safe to merge before or after the npmjs.com side is set
+  # up — it never makes a publish that works today stop working.
+
   # ── 3. Publish MCP to npm ──────────────────────────────────────────────────
   publish-mcp:
     name: Publish MCP to npm
@@ -356,6 +375,7 @@ jobs:
     needs: [breaking-change-guard]
     permissions:
       contents: read
+      id-token: write # npm Trusted Publishing (OIDC), see the note above publish-mcp (#3302)
     steps:
       - uses: actions/checkout@v7
 
@@ -392,6 +412,12 @@ jobs:
         working-directory: mcp
         run: npm test
 
+      - name: Upgrade npm for Trusted Publishing (OIDC needs npm >= 11.5.1)
+        if: steps.check-mcp.outputs.skip != 'true'
+        run: |
+          npm install -g npm@11.20.0
+          npm --version
+
       - name: Publish
         if: steps.check-mcp.outputs.skip != 'true'
         working-directory: mcp
@@ -416,6 +442,7 @@ jobs:
     needs: [breaking-change-guard]
     permissions:
       contents: read
+      id-token: write # npm Trusted Publishing (OIDC), see the note above publish-mcp (#3302)
     steps:
       - uses: actions/checkout@v7
 
@@ -462,6 +489,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: ./gradlew :sceneview-web:jsBrowserProductionWebpack
+
+      - name: Upgrade npm for Trusted Publishing (OIDC needs npm >= 11.5.1)
+        if: steps.check-web.outputs.skip != 'true'
+        run: |
+          npm install -g npm@11.20.0
+          npm --version
 
       - name: Prepare and publish npm package
         if: steps.check-web.outputs.skip != 'true'
@@ -513,6 +546,7 @@ jobs:
     needs: [breaking-change-guard]
     permissions:
       contents: read
+      id-token: write # npm Trusted Publishing (OIDC), see the note above publish-mcp (#3302)
     steps:
       - uses: actions/checkout@v7
 
@@ -562,6 +596,12 @@ jobs:
           # the v4.1.0 ERESOLVE that #985 had bandaged).
           npm install --no-audit --no-fund
           npm run build
+
+      - name: Upgrade npm for Trusted Publishing (OIDC needs npm >= 11.5.1)
+        if: steps.check-rn.outputs.skip != 'true'
+        run: |
+          npm install -g npm@11.20.0
+          npm --version
 
       - name: Publish to npm
         if: steps.check-rn.outputs.skip != 'true'
