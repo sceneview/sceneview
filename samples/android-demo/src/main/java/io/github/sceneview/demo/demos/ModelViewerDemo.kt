@@ -620,13 +620,25 @@ private fun SingleModelSection(
             // slider could not reach it at all). It is now the same bounds-relative window the
             // pinch is clamped to, so both controls span the subject rather than a guessed metre
             // range.
+            // #3821 — `value` used to clamp into the valid window while `valueText` read the
+            // raw, unclamped distance: whenever a re-frame shifted the window, the thumb
+            // snapped to a bound but the label kept showing the stale unclamped number, so
+            // the two visibly disagreed. Both now read the same clamped value.
+            val clampedSliderDistance = (sliderDistance ?: autoFitRadius)
+                .coerceIn(autoFitRadius * VIEWER_MIN_ZOOM_FACTOR, autoFitRadius * VIEWER_MAX_ZOOM_FACTOR)
             LabeledSlider(
                 label = "Camera distance",
-                value = (sliderDistance ?: autoFitRadius)
-                    .coerceIn(autoFitRadius * VIEWER_MIN_ZOOM_FACTOR, autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
-                onValueChange = { DemoSettings.cameraDistance = it },
+                value = clampedSliderDistance,
+                onValueChange = {
+                    DemoSettings.cameraDistance = it
+                    // Like the IBL intensity fix above (#3718), this write reaches the camera
+                    // manipulator through a plain state read, not a gesture the `OnDemand`
+                    // render loop's own bookkeeping can see — without this the model's on-screen
+                    // size only caught up once some unrelated touch invalidated a frame.
+                    renderInvalidator.requestRender()
+                },
                 valueRange = (autoFitRadius * VIEWER_MIN_ZOOM_FACTOR)..(autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
-                valueText = "%.2f m".format(Locale.US, sliderDistance ?: autoFitRadius),
+                valueText = "%.2f m".format(Locale.US, clampedSliderDistance),
             )
             Row(Modifier.fillMaxWidth().toggleable(spinScene) { spinScene = it }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Spin scene")
@@ -653,6 +665,11 @@ private fun SingleModelSection(
                 // framed home pose while keeping a 4x zoom is not "recentred".
                 DemoSettings.cameraDistance = null
                 recenterGeneration++
+                // #3821 — the flight is read through `EntranceCameraManipulator.getTransform()`
+                // off `entranceProgress` and `fallback`, neither of which the `OnDemand` render
+                // loop's bookkeeping tracks on its own (same class of bug as #3718). Without this
+                // the tap had no visible effect until some unrelated gesture forced a frame.
+                renderInvalidator.requestRender()
             })),
         // The animation bar is always composed when the model has clips, so it can slide
         // in and out with the standard M3 enter/exit instead of appearing and vanishing
@@ -811,7 +828,15 @@ private fun SingleModelSection(
                 activeModelInstance?.let { instance ->
                     // "Spin scene" turns the model about its bounding-box centre, not the glTF
                     // origin: counter-translate the pivot so the centre stays put under the camera.
-                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, -modelYaw)
+                    // #3821 — `rotateAroundCentre` and `Rotation(y = …)` share the same sign
+                    // convention (both clockwise in (x, z) viewed from +Y down, see
+                    // `DemoMath.rotateAroundCentre`'s KDoc). Holding a local point C fixed under a
+                    // node rotation of `modelYaw` needs `position = C - Rotate(modelYaw)·C`, i.e.
+                    // the SAME signed angle passed to both calls. Passing `-modelYaw` here mismatched
+                    // that pairing: the pivot no longer cancelled out, so the whole model swam off
+                    // its centre as it spun — at a glance this read as the environment orbiting
+                    // rather than a clean model-only spin.
+                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, modelYaw)
                     ModelNode(
                         modelInstance = instance,
                         // No `scaleToUnits` — the model renders at its true glTF size and the

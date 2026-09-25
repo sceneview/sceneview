@@ -10,7 +10,9 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.atan
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
 import org.junit.Assert.assertEquals
@@ -248,6 +250,47 @@ class DemoMathTest {
                 "Rotation must preserve distance from centre at yaw=$yaw",
                 expectedDistSq, actualDistSq, eps,
             )
+        }
+    }
+
+    @Test
+    fun `single-model spin keeps the pivot fixed only when translate and rotate signs match`() {
+        // #3821 — ModelViewerDemo's Single-model "Spin scene" counter-translates the mesh's
+        // bounding-box centre `C` so it stays put under the camera while the node itself
+        // rotates by `modelYaw`: `position = C - rotateAroundCentre(C, modelYaw)`, then the
+        // node applies `Rotation(y = modelYaw)` on top. The world position of the pivot is
+        // `position + Rotate(modelYaw)·C`, and it only reduces back to `C` (stays fixed) when
+        // `rotateAroundCentre` is called with the SAME signed angle as the node's own rotation.
+        // The bug called it with `-modelYaw`, breaking the cancellation, so the mesh visibly
+        // swam off its centre as it spun — read at a glance as the environment orbiting rather
+        // than a clean model-only spin.
+        //
+        // `nodeRotated{X,Z}` is a standalone re-derivation of the node's actual right-handed
+        // Y-axis rotation (independent of `rotateAroundCentre`'s own implementation), so this
+        // test would also catch `rotateAroundCentre` and the SDK's `Rotation(y = …)` drifting
+        // to different sign conventions in the future.
+        val centreX = 0.12f
+        val centreZ = -0.34f
+        for (modelYaw in listOf(15f, 90f, 137f, 200f, 270f, 359f)) {
+            val rad = Math.toRadians(modelYaw.toDouble())
+            val cosY = cos(rad).toFloat()
+            val sinY = sin(rad).toFloat()
+            val nodeRotatedX = centreX * cosY + centreZ * sinY
+            val nodeRotatedZ = -centreX * sinY + centreZ * cosY
+
+            // Fixed pairing (the fix): translate by rotateAroundCentre(+modelYaw).
+            val (fixedRx, fixedRz) = DemoMath.rotateAroundCentre(centreX, centreZ, modelYaw)
+            val fixedWorldX = (centreX - fixedRx) + nodeRotatedX
+            val fixedWorldZ = (centreZ - fixedRz) + nodeRotatedZ
+            assertEquals("fixed pairing must hold pivot x at yaw=$modelYaw", centreX, fixedWorldX, eps)
+            assertEquals("fixed pairing must hold pivot z at yaw=$modelYaw", centreZ, fixedWorldZ, eps)
+
+            // Buggy pairing: translate by rotateAroundCentre(-modelYaw) — the pivot drifts.
+            val (buggyRx, buggyRz) = DemoMath.rotateAroundCentre(centreX, centreZ, -modelYaw)
+            val buggyWorldX = (centreX - buggyRx) + nodeRotatedX
+            val buggyWorldZ = (centreZ - buggyRz) + nodeRotatedZ
+            val drift = hypot(buggyWorldX - centreX, buggyWorldZ - centreZ)
+            assertTrue("buggy pairing must drift the pivot at yaw=$modelYaw (drift=$drift)", drift > 0.01f)
         }
     }
 
