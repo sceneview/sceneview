@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.LightManager
+import com.google.android.filament.Skybox
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
@@ -1155,7 +1156,7 @@ private fun AnimationSection(
                 // Plinth (#3820): the subject stands on something instead of floating over the
                 // garden. Sized from the measured footprint so every model gets the same margin.
                 val plinthMaterial = rememberMaterialInstance(
-                    materialLoader, SceneViewColors.SurfaceDim, metallic = 0f, roughness = 0.7f,
+                    materialLoader, SceneViewColors.SurfaceLight, metallic = 0f, roughness = 0.7f,
                 )
                 CylinderNode(
                     radius = maxOf(subjectSize.x, subjectSize.z) * ANIMATION_PLINTH_RADIUS_FACTOR,
@@ -1412,14 +1413,18 @@ private fun PhysicsSection(
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    // Studio backdrop (#3820): the tray sits in a lit room, never a black void inside the
-    // reserved band.
-    val studioEnvironment = rememberHDREnvironment(
+    // Studio stage (#3820): the studio HDR lights the tray, a neutral grey backdrop sits behind
+    // it (Reality Composer's look) — never a black void inside the reserved band, and no room
+    // photograph competing with the balls.
+    val studioLight = rememberHDREnvironment(
         environmentLoader,
         "environments/studio_2k.hdr",
-        createSkybox = true,
-    )
-    val physicsEnvironment = studioEnvironment ?: rememberEnvironment(environmentLoader)
+        createSkybox = false,
+    ) ?: rememberEnvironment(environmentLoader)
+    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    val physicsEnvironment = remember(studioLight, stageSkybox) {
+        studioLight.copy(skybox = stageSkybox)
+    }
     val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState(engine)
     val counts =stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions)
@@ -1587,7 +1592,9 @@ private fun PhysicsSection(
                     direction = io.github.sceneview.math.Direction(-0.3f, -1f, -0.5f),
                     apply = { intensity(5_000f) },
                 )
-                val trayMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.SurfaceDim)
+                val trayMaterial = rememberMaterialInstance(
+                    materialLoader, SceneViewColors.SurfaceLight, metallic = 0f, roughness = 0.8f,
+                )
                 val railMaterial = rememberMaterialInstance(
                     materialLoader, SceneViewColors.AccentDeep, metallic = 0f, roughness = 0.5f,
                 )
@@ -1843,6 +1850,14 @@ private const val ANIMATION_FILL = 0.82f
 
 /** Front three-quarter view the turntable starts from, and the QA freeze holds. */
 private const val ANIMATION_START_YAW_DEGREES = 60f
+
+/**
+ * Solid neutral backdrop for a studio stage. Filament skybox colours are linear: 0.4 reads as a
+ * mid grey (~#A8A8AA), light enough to separate from the stage clear colour, dark enough for a
+ * light floor to stand out. Freed with the engine (`rememberEngine` tears it down).
+ */
+internal fun neutralStageSkybox(engine: com.google.android.filament.Engine): Skybox =
+    Skybox.Builder().color(0.40f, 0.40f, 0.42f, 1.0f).build(engine)
 private const val ANIMATION_PLINTH_RADIUS_FACTOR = 0.75f
 private const val ANIMATION_PLINTH_HEIGHT = 0.04f
 

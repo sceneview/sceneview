@@ -118,15 +118,20 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // Warm studio HDR — IBL and backdrop both (#3826): with no skybox the framed band
-    // between the title row and the Release pill rendered as a black box.
+    // Warm studio HDR for IBL, a neutral grey backdrop behind it (#3826): with no skybox the
+    // framed band between the title row and the Release pill rendered as a black box, and the
+    // HDR's own skybox puts a pixelated ceiling softbox behind the arms.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
         "environments/studio_warm_2k.hdr",
-        createSkybox = true,
+        createSkybox = false,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    val lightEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val activeEnvironment = remember(lightEnvironment, stageSkybox) {
+        lightEnvironment.copy(skybox = stageSkybox)
+    }
 
     // --- Camera auto-framing ---------------------------------------------
     // The tip can reach anywhere within (length1 + length2) of the pivot, so
