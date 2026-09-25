@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo.ui
 
 import androidx.compose.foundation.layout.heightIn
@@ -16,8 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -242,10 +245,9 @@ fun GlassActionPill(
             contentAlignment = Alignment.Center,
         ) {
             if (loading) {
-                CircularProgressIndicator(
+                LoadingIndicator(
                     modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
                     color = SceneViewTokens.Glass.onGlass,
-                    strokeWidth = SceneViewTokens.Glass.borderWidth * 2,
                 )
             } else {
                 Icon(

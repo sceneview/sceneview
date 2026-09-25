@@ -1,4 +1,8 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@file:OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterial3ExpressiveApi::class,
+    ExperimentalSharedTransitionApi::class,
+)
 
 package io.github.sceneview.demo.ui.explore
 
@@ -34,9 +38,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -211,7 +217,7 @@ fun GalleryModelViewerScreen(
                         heroModifier = heroModifier,
                     )
                     is Stage.Rendering -> if (engine == null) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { ContainedLoadingIndicator() }
                     } else RenderContent(
                         file = s.file,
                         model = model,
@@ -268,8 +274,8 @@ private sealed interface Stage {
  * takes over — the 440 dp hero Box keeps its shared bounds across the swap.
  *
  * When the server sends a `Content-Length` header the card switches from an
- * indeterminate [CircularProgressIndicator] to a determinate
- * [LinearProgressIndicator] + `X.X / Y.Y MB` counter so the user knows how
+ * indeterminate M3 Expressive [LoadingIndicator] to a determinate
+ * [LinearWavyProgressIndicator] + `X.X / Y.Y MB` counter so the user knows how
  * long they are waiting (#2232).
  */
 @Composable
@@ -359,12 +365,14 @@ private fun DownloadingContent(
                         if (total > 0L) read.toFloat() / total else null
                     }
                     if (fraction != null) {
-                        LinearProgressIndicator(
+                        // A real byte count exists: the wavy determinate bar, whose
+                        // amplitude flattens out as it approaches 100 %.
+                        LinearWavyProgressIndicator(
                             progress = { fraction },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                     }
                     Spacer(Modifier.height(SceneViewTokens.Space.sm))
                     Text(
@@ -701,7 +709,7 @@ private fun RenderContent(
                         .background(MaterialTheme.colorScheme.surface),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    ContainedLoadingIndicator()
                 }
             }
         }
