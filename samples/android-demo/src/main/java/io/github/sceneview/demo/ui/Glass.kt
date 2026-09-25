@@ -107,6 +107,11 @@ fun GlassSurface(
             .overMediaEdge(shape)
             .clip(shape)
             .background(SceneViewTokens.Glass.surface),
+        // Centred, not the Box default of top-start (#3835). A caller that raises the
+        // surface's minimum size — `GlassActionPill` lifts a 36 dp pill to the 48 dp
+        // touch target — got its content pinned to the top 36 dp, 12 dp off the
+        // pill's vertical centre. A wrap-content surface is unaffected.
+        contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalContentColor provides SceneViewTokens.Glass.onGlass) {
             content()
