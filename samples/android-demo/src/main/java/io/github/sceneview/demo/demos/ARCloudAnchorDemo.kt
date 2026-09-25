@@ -86,6 +86,7 @@ import io.github.sceneview.demo.demos.internal.CloudAnchorStatusIcon
 import io.github.sceneview.demo.demos.internal.CloudAnchorStep
 import io.github.sceneview.demo.demos.internal.CloudAnchorTask
 import io.github.sceneview.demo.demos.internal.RoomQuality
+import io.github.sceneview.demo.demos.internal.advancedBy
 import io.github.sceneview.demo.demos.internal.actionBar
 import io.github.sceneview.demo.demos.internal.allows
 import io.github.sceneview.demo.demos.internal.card
@@ -571,12 +572,15 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     // Room-mapping feedback, the signal the old screen ignored entirely.
                     // Only meaningful once there is an anchor to map *around*, and only
                     // while tracking — ARCore throws otherwise, hence the runCatching.
+                    // The raw per-frame estimate is noisy (#3834): `advancedBy` keeps the
+                    // best reading seen since the last reset, so the meter never appears to
+                    // lose progress. `clearHostedPlacement` resets it for a new anchor.
                     if (isTracking && localPlacement?.anchor?.trackingState == TrackingState.TRACKING &&
                         hostTask == CloudAnchorTask.Idle) {
-                        roomQuality = runCatching {
+                        runCatching {
                             session.estimateFeatureMapQualityForHosting(frame.camera.pose)
                                 .toRoomQuality()
-                        }.getOrDefault(roomQuality)
+                        }.getOrNull()?.let { roomQuality = roomQuality.advancedBy(it) }
                     }
                 },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },

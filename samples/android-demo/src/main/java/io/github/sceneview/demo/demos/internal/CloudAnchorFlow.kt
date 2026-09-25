@@ -71,6 +71,22 @@ enum class RoomQuality {
 }
 
 /**
+ * The better of [this] and [reading] — the mapping meter only ever moves forward while one
+ * anchor is being mapped ([#3834](https://github.com/sceneview/sceneview/issues/3834)).
+ *
+ * `Session.estimateFeatureMapQualityForHosting` is noisy frame to frame: Thomas's
+ * 2026-09-25 QA video caught it reporting "Good enough" then "Mapping" then "Good enough"
+ * again within a couple of frames, with nothing damping the raw value, so the meter read
+ * as if progress had been lost even though the room was, if anything, better mapped than
+ * before. The caller feeds every raw reading through this and keeps the result, so the
+ * displayed quality can only equal or beat the best the session has seen so far. It resets
+ * to [RoomQuality.Insufficient] itself whenever mapping restarts for a new anchor — this
+ * function has no memory of its own.
+ */
+fun RoomQuality.advancedBy(reading: RoomQuality): RoomQuality =
+    if (reading.ordinal > ordinal) reading else this
+
+/**
  * Why no Cloud Anchor call on this build can succeed, independent of what the user does
  * on screen.
  *

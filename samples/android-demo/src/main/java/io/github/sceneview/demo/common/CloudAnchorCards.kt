@@ -329,18 +329,22 @@ const val CLOUD_ANCHOR_CODE_FIELD_TAG = "cloud-anchor-code-field"
  * raw constant. A meter is the right shape because the user's job here is *continuous* —
  * keep walking until it fills — which no sentence conveys as directly.
  *
- * Colour follows the status pill's tone rather than a traffic light: `warning` while the
- * user still has to move, `primary` once ARCore says the map is good enough. The unlit
- * track is the `Button glass` fill, i.e. the same "present but empty" white every other
- * over-media element uses.
+ * Colour is a small traffic light rather than one accent throughout
+ * ([#3834](https://github.com/sceneview/sceneview/issues/3834)): `warning` while the user
+ * still has to move, `primary` once ARCore says hosting can be attempted, and `success`
+ * only for the final "Well mapped" segment — the one state that means stop moving and tap
+ * Host. Before this, "Well mapped" was the same lavender as "Good enough", so Thomas's
+ * 2026-09-25 QA pass never noticed the room had finished mapping. The unlit track is the
+ * `Button glass` fill, i.e. the same "present but empty" white every other over-media
+ * element uses.
  */
 @Composable
 private fun RoomQualityMeter(quality: RoomQuality) {
     val filled = quality.filledSegments()
-    val accent: Color = if (quality == RoomQuality.Insufficient) {
-        SceneViewTokens.ArOverlay.accentGuidance
-    } else {
-        SceneViewTokens.ArOverlay.accentProgress
+    val accent: Color = when (quality) {
+        RoomQuality.Insufficient -> SceneViewTokens.ArOverlay.accentGuidance
+        RoomQuality.Sufficient -> SceneViewTokens.ArOverlay.accentProgress
+        RoomQuality.Good -> SceneViewTokens.ArOverlay.accentSuccess
     }
     Row(
         modifier = Modifier
