@@ -148,6 +148,87 @@ jobs:
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
+  # Xcode 27 canary: the same package steps as `build`, on GitHub's
+  # `xcode-27` preview image (actions/runner-images#14404 — macOS 27 base,
+  # Xcode 27.0 default at /Applications/Xcode_27.app). Non-blocking by design:
+  # it exists to surface Xcode 27 / iOS 27 SDK breakage (Swift 6 diagnostics,
+  # SwiftUI macro changes, new simulator set) before the stable image lands
+  # and before any App Store build has to move. `app-store.yml` and the
+  # self-hosted Xcode lists stay on 26.x until this job is green.
+  build-xcode27:
+    name: Build & Test (iOS, Xcode 27 preview)
+    runs-on: xcode-27
+    continue-on-error: true
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          # DEVELOPER_DIR, not `sudo xcode-select -s`: exported for every later
+          # step, and it fails loudly if the preview image moves the path.
+          for cand in /Applications/Xcode_27.app /Applications/Xcode_27.0.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode 27 installation found in /Applications/"
+          ls -d /Applications/Xcode*.app || true
+          exit 1
+
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          # Assignment form on purpose — see the same step in `build`.
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
+
+      # Separate cache key: `runner.os` is `macOS` on both images, and a
+      # `.build` produced by Xcode 27's toolchain must never be restored into
+      # the Xcode 26 `build` job (or the reverse).
+      - name: Cache Swift Package dependencies
+        uses: actions/cache@v6
+        with:
+          path: SceneViewSwift/.build
+          key: spm-xcode27-${{ runner.os }}-${{ hashFiles('SceneViewSwift/Package.resolved') }}
+          restore-keys: |
+            spm-xcode27-${{ runner.os }}-
+
+      - name: Build Swift Package (iOS)
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme SceneViewSwift \
+            -destination "$IOS_DEST" \
+            -skipMacroValidation \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+      - name: Build Swift Package (visionOS)
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          XROS_SDK="$(xcrun --sdk xros --show-sdk-path)"
+          echo "visionOS SDK: $XROS_SDK"
+          swift build \
+            --sdk "$XROS_SDK" \
+            -Xswiftc -target -Xswiftc arm64-apple-xros2.0
+
+      - name: Run tests
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -scheme SceneViewSwift \
+            -destination "$IOS_DEST" \
+            -skipMacroValidation \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
   demo:
     name: Build & Test (iOS sample demo)
     runs-on: macos-15
