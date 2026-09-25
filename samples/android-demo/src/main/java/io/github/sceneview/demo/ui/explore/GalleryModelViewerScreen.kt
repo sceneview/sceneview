@@ -157,6 +157,9 @@ fun GalleryModelViewerScreen(
         ),
     ) {
         BackHandler(onBack = onDismiss)
+        // Registered after the plain BackHandler so it wins while the live scene is up:
+        // the back gesture then shrinks the hero toward its thumbnail under the finger.
+        val heroBack = rememberHeroPredictiveBack(enabled = stage is Stage.Rendering, onBack = onDismiss)
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
@@ -220,7 +223,8 @@ fun GalleryModelViewerScreen(
                         engine = engine!!,
                         modelLoader = modelLoader!!,
                         environmentLoader = environmentLoader!!,
-                        heroModifier = heroModifier,
+                        heroModifier = heroModifier.heroBackLayer(heroBack, SceneViewTokens.Radius.lg),
+                        heroBack = heroBack,
                     )
                     is Stage.Error -> ErrorContent(
                         message = s.message,
@@ -439,6 +443,7 @@ private fun RenderContent(
     modelLoader: ModelLoader,
     environmentLoader: EnvironmentLoader,
     heroModifier: Modifier = Modifier,
+    heroBack: HeroPredictiveBack? = null,
 ) {
     // Engine + loaders are now hoisted to the sheet root and pre-warmed on
     // Preview → Downloading transition (see KDoc on `engineNeeded` in
@@ -703,6 +708,13 @@ private fun RenderContent(
                 ) {
                     CircularProgressIndicator()
                 }
+            }
+            heroBack?.let {
+                HeroBackThumbnail(
+                    back = it,
+                    url = model.preferredThumbnailUrl(minWidth = 640, maxWidth = 1280),
+                    contentDescription = model.name,
+                )
             }
         }
         Spacer(Modifier.height(SceneViewTokens.Space.sm))
