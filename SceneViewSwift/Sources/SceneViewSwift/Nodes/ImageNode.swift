@@ -61,6 +61,12 @@ public struct ImageNode: Sendable {
     ///   - isLit: Whether the image responds to scene lighting. Default false (unlit).
     /// - Returns: An `ImageNode` displaying the image.
     /// - Throws: If the image cannot be loaded.
+    ///
+    /// Main-actor isolated, like `ModelNode.load`: RealityKit builds the plane
+    /// mesh through an asset manager that asserts it is on the main queue, and a
+    /// nonisolated `async` function resumes after its `await` on the global
+    /// executor — the demo crashed with `_dispatch_assert_queue_fail` (#3788).
+    @MainActor
     public static func load(
         _ name: String,
         width: Float = 1.0,
@@ -82,6 +88,7 @@ public struct ImageNode: Sendable {
     ///   - isLit: Whether the image responds to scene lighting.
     /// - Returns: An `ImageNode` displaying the image.
     /// - Throws: If the image cannot be loaded.
+    @MainActor
     public static func load(
         contentsOf url: URL,
         width: Float = 1.0,

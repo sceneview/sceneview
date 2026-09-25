@@ -24,7 +24,7 @@ struct ReflectionProbesDemo: View {
     var body: some View {
         sceneContent
         .demoChrome(accessory: {
-            DemoHint("ReflectionProbeNode — local IBL override zone")
+            DemoHint("A mirror sphere over three cubes, shiny to matte — all reflect the probe's sky")
         }) {
             settingsContent
         }
@@ -100,11 +100,14 @@ struct ReflectionProbesDemo: View {
             root.addChild(sphere.entity)
         }
 
-        // Three cubes with different metallicness — high metal reflects env vividly, matte doesn't
+        // Three cubes under the sphere, shiny to matte — a row through the
+        // sphere's centre hid the middle one inside it. The 3D caption that
+        // named the gradient was a few points tall and white on a bright sky;
+        // the hint pill says it instead (#3788).
         let positions: [SIMD3<Float>] = [
-            .init(-0.9, 0, -1.5),
-            .init(0, 0, -1.5),
-            .init(0.9, 0, -1.5),
+            .init(-0.6, -0.72, -1.5),
+            .init(0, -0.72, -1.5),
+            .init(0.6, -0.72, -1.5),
         ]
         let metals: [Float] = [0.9, 0.5, 0.1]
         for (i, pos) in positions.enumerated() {
@@ -116,12 +119,6 @@ struct ReflectionProbesDemo: View {
             Self.attach(cube.entity, to: probe)
             root.addChild(cube.entity)
         }
-
-        // Labels
-        let metalLabel = TextNode(text: "High ← Metallic → Low", fontSize: 0.04, color: .white, depth: 0.003)
-            .centered()
-        metalLabel.entity.position = .init(x: 0, y: -0.55, z: -1.5)
-        root.addChild(metalLabel.entity)
     }
 
     // MARK: - Settings
