@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -749,16 +750,6 @@ class HeroOrbitCameraManipulator(
     private val resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
     /** How long [HeroOrbitResume.ReturnToAuthoredPath] takes to ease back, in milliseconds. */
     private val resumeBlendMillis: Long = DEFAULT_RESUME_BLEND_MILLIS,
-    /**
-     * Optional clamp on how far the user may drag the orbit away from
-     * [userYawReferenceDegrees], in degrees. `null` (the default) leaves user drag
-     * unrestricted — every existing caller's behaviour. A demo whose subject only reads
-     * correctly near one azimuth (a flat wall of captioned objects, #3802) passes a bound
-     * here instead of teaching every caption to re-measure its own screen-space neighbours.
-     */
-    private val userMaxAbsYawDegrees: Float? = null,
-    /** Yaw, in degrees, [userMaxAbsYawDegrees] is centered on. Unused when that is `null`. */
-    private val userYawReferenceDegrees: Float = 0f,
     /** Monotonic clock, in nanoseconds. The JVM tests drive it by hand. */
     private val nanoTime: () -> Long = System::nanoTime,
     /**
@@ -986,11 +977,7 @@ class HeroOrbitCameraManipulator(
         // that is no longer always the authored target.
         val transform = fb.getTransform()
         val eye = transform.position
-        val pitchClampedEye = clampOrbitEyePitch(eye, fallbackPivot)
-        // #3802: an optional second clamp, off by default — see [userMaxAbsYawDegrees].
-        val clampedEye = userMaxAbsYawDegrees?.let { maxAbsYaw ->
-            clampOrbitEyeAzimuth(pitchClampedEye, fallbackPivot, userYawReferenceDegrees, maxAbsYaw)
-        } ?: pitchClampedEye
+        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot)
         if (clampedEye == eye) return transform
         val mat = dev.romainguy.kotlin.math.lookAt(
             eye = clampedEye,
@@ -1056,39 +1043,6 @@ class HeroOrbitCameraManipulator(
 
         /** Long enough to clear a dropped frame or two, short enough that nobody saw the pose. */
         const val UNWATCHED_MARGIN_NANOS = 1_000L * NANOS_PER_MILLI
-    }
-}
-
-/**
- * A stock [io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator] whose
- * user-drag orbit is kept within [maxAbsYawDegrees] of [referenceYawDegrees] around [target],
- * via [clampOrbitEyeAzimuth] (#3802).
- *
- * For demos built on [HeroOrbitCameraManipulator] that clamp lives in its own
- * `userMaxAbsYawDegrees` parameter; this class is the equivalent for demos that hand
- * `SceneView` a plain `DefaultCameraManipulator` instead (no idle orbit, no auto-resume), via
- * `rememberCameraManipulator(..., creator = { YawClampedCameraManipulator(...) })`.
- */
-internal class YawClampedCameraManipulator(
-    eyePosition: Position?,
-    private val target: Position,
-    private val maxAbsYawDegrees: Float,
-    private val referenceYawDegrees: Float = 0f,
-) : io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
-    eyePosition = eyePosition,
-    targetPosition = target,
-) {
-    override fun getTransform(): io.github.sceneview.math.Transform {
-        val transform = super.getTransform()
-        val eye = transform.position
-        val clampedEye = clampOrbitEyeAzimuth(eye, target, referenceYawDegrees, maxAbsYawDegrees)
-        if (clampedEye == eye) return transform
-        val mat = dev.romainguy.kotlin.math.lookAt(
-            eye = clampedEye,
-            target = target,
-            up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
-        )
-        return io.github.sceneview.math.Transform(mat)
     }
 }
 
@@ -1358,60 +1312,77 @@ internal fun clampOrbitEyePitch(
 }
 
 /**
- * Clamps an orbit camera [eye] so its **azimuth** — the yaw around world `+Y`, in the same
- * convention [HeroOrbitCameraManipulator]'s authored path uses (`x = sin(yaw) * radius`,
- * `z = cos(yaw) * radius`, both relative to [target]) — stays within [maxAbsYawDegrees] of
- * [referenceYawDegrees]. Preserves the eye's **radius** and **height above [target]**; returns
- * [eye] unchanged when it is already in range, when it sits directly above/below [target]
- * (no azimuth to clamp), or when any component is non-finite.
+ * Absolute yaw distance, in degrees, between an orbit eye and [referenceYawDegrees] around
+ * [target] — the same convention [HeroOrbitCameraManipulator]'s authored path uses (`x =
+ * sin(yaw) * radius`, `z = cos(yaw) * radius`, both relative to [target]). Returns `0` when the
+ * eye sits directly above/below [target] (no azimuth to measure) or when any component is
+ * non-finite. The counterpart read (not a clamp) to [clampOrbitEyePitch] — see
+ * [orbitLabelFadeAlpha] for why #3802 wants a measurement here instead of a bound.
  *
- * ### Why (#3802)
- *
- * A flat wall of captioned subjects (Materials' 3×3 sphere grid, Contact Shadow Preview's box
- * pair) is framed and captioned for a roughly head-on view. Drag the camera towards broadside
- * and perspective foreshortening collapses the gap between neighbours' screen-space positions
- * faster than a fixed-width or fixed-position caption accounts for, so adjacent labels overlap
- * and merge into unreadable text. Clamping the reachable azimuth keeps every subject far enough
- * apart on screen for its caption to stay legible at any angle the user can still reach.
- *
- * @param eye                  orbit eye world position to clamp.
+ * @param eye                  orbit eye world position to measure.
  * @param target               orbit target the eye looks at / pivots around.
- * @param referenceYawDegrees  yaw, in degrees, the clamp is centered on (the authored / front-on
- *                             framing — usually `0`).
- * @param maxAbsYawDegrees     maximum yaw distance from [referenceYawDegrees] the eye may reach,
- *                             in degrees.
+ * @param referenceYawDegrees  yaw, in degrees, the deviation is measured from (the authored /
+ *                             front-on framing — usually `0`).
  */
-internal fun clampOrbitEyeAzimuth(
+internal fun orbitYawDeviationDegrees(
     eye: Position,
     target: Position,
     referenceYawDegrees: Float,
-    maxAbsYawDegrees: Float,
-): Position {
+): Float {
     val dx = eye.x - target.x
-    val dy = eye.y - target.y
     val dz = eye.z - target.z
-    if (!dx.isFinite() || !dy.isFinite() || !dz.isFinite()) return eye
+    if (!dx.isFinite() || !dz.isFinite()) return 0f
 
     val horizontal = sqrt(dx * dx + dz * dz)
-    // Degenerate orbit (eye directly above/below target): no azimuth to clamp.
-    if (horizontal <= 1e-6f) return eye
+    if (horizontal <= 1e-6f) return 0f
 
     val yawDegrees = Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
-    // Delta from the reference, wrapped into [-180, 180) so a clamp centered near +/-180
-    // does not see a false, near-360-degree distance.
+    // Delta from the reference, wrapped into [-180, 180) so a reference near +/-180 does not
+    // read a false, near-360-degree deviation.
     var delta = (yawDegrees - referenceYawDegrees) % 360f
     if (delta < -180f) delta += 360f
     if (delta >= 180f) delta -= 360f
-    val clampedDelta = delta.coerceIn(-maxAbsYawDegrees, maxAbsYawDegrees)
-    // Already within range — return the eye untouched (fast path).
-    if (clampedDelta == delta) return eye
+    return abs(delta)
+}
 
-    val clampedYawRad = Math.toRadians((referenceYawDegrees + clampedDelta).toDouble()).toFloat()
-    return Position(
-        x = target.x + sin(clampedYawRad) * horizontal,
-        y = eye.y,
-        z = target.z + cos(clampedYawRad) * horizontal,
-    )
+/** Yaw deviation, in degrees, below which [orbitLabelFadeAlpha] returns full opacity. */
+internal const val DEFAULT_LABEL_FADE_START_DEGREES: Float = 25f
+
+/** Yaw deviation, in degrees, at and beyond which [orbitLabelFadeAlpha] returns zero. */
+internal const val DEFAULT_LABEL_FADE_END_DEGREES: Float = 45f
+
+/**
+ * Opacity for a caption anchored to a subject on a flat orbit wall, as a function of
+ * [deviationDegrees] — [orbitYawDeviationDegrees] between the camera and the wall's front-on
+ * framing (#3802).
+ *
+ * A flat wall of captioned subjects (Materials' 3×3 sphere grid, Contact Shadow Preview's box
+ * pair) is captioned for a roughly head-on view: drag the camera towards broadside and
+ * perspective foreshortening collapses the gap between neighbours' screen-space positions
+ * faster than a fixed-width or fixed-position caption accounts for, so adjacent labels overlap
+ * and merge into unreadable text (Materials) or merge into one ("NShadow", Contact Shadow
+ * Preview). The orbit itself has to stay completely free — these demos are calibrated against
+ * Sketchfab/Polycam, where nothing ever stops the drag, and Materials exists specifically to
+ * turn a reflection around — so the fix reads the angle instead of bounding it: full opacity
+ * for [fullyVisibleDegrees] either side of front-on, easing smoothly to fully transparent by
+ * [fullyHiddenDegrees], and back the moment the drag returns.
+ *
+ * @param deviationDegrees    yaw distance from the front-on framing, in degrees; see
+ *                            [orbitYawDeviationDegrees].
+ * @param fullyVisibleDegrees deviation up to which the caption is fully opaque.
+ * @param fullyHiddenDegrees  deviation at and beyond which the caption is fully transparent.
+ */
+internal fun orbitLabelFadeAlpha(
+    deviationDegrees: Float,
+    fullyVisibleDegrees: Float = DEFAULT_LABEL_FADE_START_DEGREES,
+    fullyHiddenDegrees: Float = DEFAULT_LABEL_FADE_END_DEGREES,
+): Float {
+    if (deviationDegrees <= fullyVisibleDegrees) return 1f
+    if (deviationDegrees >= fullyHiddenDegrees) return 0f
+    val t = (deviationDegrees - fullyVisibleDegrees) / (fullyHiddenDegrees - fullyVisibleDegrees)
+    // Smoothstep: eases in/out at both ends instead of fading at a constant, visibly linear rate.
+    val eased = t * t * (3f - 2f * t)
+    return 1f - eased
 }
 
 /**

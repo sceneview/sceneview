@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -85,6 +86,8 @@ import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
 import io.github.sceneview.demo.HeroOrbitResume
 import io.github.sceneview.demo.OrbitSpin
+import io.github.sceneview.demo.orbitLabelFadeAlpha
+import io.github.sceneview.demo.orbitYawDeviationDegrees
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.haptic.rememberHapticFeedback
@@ -517,10 +520,6 @@ private fun StudioSection(
             // user left it — behind the wall, say — it would show nothing. It eases back onto
             // its path instead of cutting to it (#3642).
             resume = HeroOrbitResume.ReturnToAuthoredPath,
-            // Keeps the drag short of the angle where sphere captions start to overlap (#3802).
-            // Inspect's `heroManipulator` above leaves this `null` — a single sphere has no
-            // neighbour to collide with, so its orbit stays free.
-            userMaxAbsYawDegrees = GALLERY_MAX_USER_YAW_DEGREES,
         )
     }
 
@@ -941,13 +940,39 @@ private fun StudioSection(
                     val focused = !inspecting && focusIndex == index
                     Text(
                         caption,
-                        modifier = Modifier.offset {
-                            @Suppress("UNUSED_EXPRESSION")
-                            labelFrame
-                            val point = view.worldToScreen(anchor)
-                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                        }.width(captionWidth)
+                        modifier = Modifier
+                            // #3802: the wall is flat and captioned for a roughly head-on
+                            // view; the orbit itself stays completely free (this demo exists
+                            // to turn a reflection around), so instead of bounding the drag,
+                            // neighbouring captions fade out as the camera turns away from
+                            // front-on — they would otherwise converge on screen under
+                            // perspective and overlap. Inspect mode has one subject (or a
+                            // fixed Compare pair) with no neighbour to collide with, so its
+                            // captions stay at full opacity.
+                            .graphicsLayer {
+                                @Suppress("UNUSED_EXPRESSION")
+                                labelFrame
+                                alpha = if (inspecting) {
+                                    1f
+                                } else {
+                                    orbitLabelFadeAlpha(
+                                        orbitYawDeviationDegrees(
+                                            eye = galleryManipulator.getTransform().position,
+                                            // Matches `galleryManipulator`'s own `target`
+                                            // below — the wall pivots around the origin.
+                                            target = Position(0f, 0f, 0f),
+                                            referenceYawDegrees = 0f,
+                                        ),
+                                    )
+                                }
+                            }
+                            .offset {
+                                @Suppress("UNUSED_EXPRESSION")
+                                labelFrame
+                                val point = view.worldToScreen(anchor)
+                                IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
+                                    ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
+                            }.width(captionWidth)
                             .padding(horizontal = SceneViewTokens.Space.xs)
                             .background(
                                 if (focused) {
@@ -1001,16 +1026,6 @@ private const val HERO_Y_HEIGHT: Float = 0.12f
 
 /** Fraction of the frame the gallery wall spans. Leaves the chrome bands their own air. */
 private const val GALLERY_FILL: Float = 0.88f
-
-/**
- * How far the user may drag the gallery wall away from its front-on framing, in degrees
- * (#3802). The wall is flat and its captions are sized for a roughly head-on view; a drag
- * towards broadside collapses the on-screen gap between neighbouring spheres faster than a
- * fixed-width caption can follow, so adjacent labels overlap and merge. `45°` gives a wide
- * margin over the auto-sweep's own `24°` amplitude ([MaterialStudio.SWEEP_DEGREES]) while
- * staying short of the angle where captions start to collide.
- */
-private const val GALLERY_MAX_USER_YAW_DEGREES: Float = 45f
 
 /** Fraction of the frame the Inspect hero spans — tighter, because there is one subject. */
 private const val HERO_FILL: Float = 0.8f
