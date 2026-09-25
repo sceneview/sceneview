@@ -3,7 +3,10 @@ package io.github.sceneview.ar
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -132,6 +135,11 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
  * same [state]. Content is composed on the main thread.
  * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
+ *
+ * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
+ *   "surface found" beat on placement, pause/look-back glyphs when tracking degrades). On by
+ *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
+ *   status chrome while [ArGuidanceState.isCoaching] is true either way.
  */
 @Composable
 fun AutoPlacementScene(
@@ -143,6 +151,7 @@ fun AutoPlacementScene(
     modelLoader: ModelLoader = rememberModelLoader(engine),
     materialLoader: MaterialLoader = rememberMaterialLoader(engine),
     groundShadows: Boolean = true,
+    coaching: Boolean = true,
     playbackDataset: File? = null,
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
@@ -169,52 +178,99 @@ fun AutoPlacementScene(
             state.dismiss()
         }
     }
-    ARSceneView(
-        modifier = modifier.onSizeChanged { viewport = it },
-        engine = engine,
-        modelLoader = modelLoader,
-        materialLoader = materialLoader,
-        playbackDataset = playbackDataset,
-        planeRenderer = false,
-        planeFindingMode = if (surface == PlacementSurface.SURFACE) {
-            Config.PlaneFindingMode.HORIZONTAL
-        } else {
-            Config.PlaneFindingMode.VERTICAL
-        },
-        instantPlacementMode = Config.InstantPlacementMode.DISABLED,
-        onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
-            if (node == null) state.deselectPlacement() else state.selectPlacement()
-        }),
-        onARCoreAvailability = onARCoreAvailability,
-        onTrackingFailureChanged = onTrackingFailureChanged,
-        onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
-        onSessionUpdated = { session, frame ->
-            if (!state.hasPlacement && placement != null) {
-                placement?.anchor?.detach()
-                placement = null
+    Box(modifier = modifier) {
+        ARSceneView(
+            modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            playbackDataset = playbackDataset,
+            planeRenderer = false,
+            planeFindingMode = if (surface == PlacementSurface.SURFACE) {
+                Config.PlaneFindingMode.HORIZONTAL
+            } else {
+                Config.PlaneFindingMode.VERTICAL
+            },
+            instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+            onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
+                if (node == null) state.deselectPlacement() else state.selectPlacement()
+            }),
+            onARCoreAvailability = onARCoreAvailability,
+            onTrackingFailureChanged = onTrackingFailureChanged,
+            onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
+            onSessionUpdated = { session, frame ->
+                if (!state.hasPlacement && placement != null) {
+                    placement?.anchor?.detach()
+                    placement = null
+                }
+                val tracked = session.getAllTrackables(Plane::class.java)
+                    .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
+                if (tracked != planes) planes = tracked
+                val candidate = if (ready && state.wantsSurface) {
+                    findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
+                } else null
+                val effect = state.onFrame(
+                    FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
+                        candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
+                    commit = {
+                        candidate?.createAnchor()?.let { placement = it; true } ?: false
+                    },
+                )
+                if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
+            },
+        ) {
+            placement?.let { result -> key(result) { content(result) } }
+            if (groundShadows && (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)) {
+                planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
             }
-            val tracked = session.getAllTrackables(Plane::class.java)
-                .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
-            if (tracked != planes) planes = tracked
-            val candidate = if (ready && state.wantsSurface) {
-                findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
-            } else null
-            val effect = state.onFrame(
-                FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
-                    candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
-                commit = {
-                    candidate?.createAnchor()?.let { placement = it; true } ?: false
-                },
-            )
-            if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
-        },
-    ) {
-        placement?.let { result -> key(result) { content(result) } }
-        if (groundShadows && (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)) {
-            planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
         }
+        if (coaching) ARCoachingOverlay(rememberArGuidanceState(state, surface))
     }
 }
+
+/**
+ * Binary-compatibility shim for the pre-`coaching` descriptor of [AutoPlacementScene]. The
+ * Compose compiler puts every parameter in the JVM signature, so adding `coaching` retyped
+ * the method (CONTRIBUTING.md — a retyped public symbol is a breaking change). Code compiled
+ * against the old signature gets the coaching overlay, the new default.
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the AutoPlacementScene overload that takes `coaching`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) = AutoPlacementScene(
+    assetReady = assetReady,
+    modifier = modifier,
+    state = state,
+    surface = surface,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    groundShadows = groundShadows,
+    coaching = true,
+    playbackDataset = playbackDataset,
+    onARCoreAvailability = onARCoreAvailability,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onSessionFailed = onSessionFailed,
+    onPlaced = onPlaced,
+    content = content,
+)
 
 /**
  * Grounded model content for [AutoPlacementScene], with a 0.3 m longest-axis preview by
@@ -232,7 +288,9 @@ fun ARSceneScope.AutoPlacementModel(
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
 ) {
-    AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged) {
+    val entrance = rememberPlacementEntrance(placement, state)
+    AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
+        visibleDuringFade = entrance.value > 0f) {
         val model = remember(modelInstance, scaleToUnits, assetRotation) {
             io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
                 quaternion = if (placement.plane.type == Plane.Type.VERTICAL) {
@@ -253,7 +311,11 @@ fun ARSceneScope.AutoPlacementModel(
                 isScaleEditable = false
             }
         }
-        NodeLifecycle(model, null)
+        // Opaque glTF materials cannot fade, so the model grows into place and shrinks away
+        // on tracking loss instead. Scaling about the pivot keeps the contact point fixed.
+        Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {
+            NodeLifecycle(model, null)
+        }
     }
 }
 
@@ -265,7 +327,8 @@ fun ARSceneScope.AutoPlacementModel(
  * [AutoPlacementState.moveBy], [AutoPlacementState.rotateBy] and [AutoPlacementState.scaleTo]
  * expose the same validated transforms to accessibility controls. Apply the content callback's
  * opacity to transparent materials: it fades from zero on placement and out on tracking loss
- * over 300 ms, without scaling or moving the contact pivot.
+ * over 300 ms. The content also grows into place from 55 % (the same entrance as
+ * [AutoPlacementModel]), scaled about the contact pivot so it never leaves the surface.
  */
 @Composable
 fun ARSceneScope.AutoPlacementNode(
@@ -277,10 +340,14 @@ fun ARSceneScope.AutoPlacementNode(
 ) {
     val opacity = remember(placement) { Animatable(0f) }
     val visible = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
-    LaunchedEffect(visible) { opacity.animateTo(if (visible) 1f else 0f, tween(300)) }
+    LaunchedEffect(visible) { opacity.animateTo(if (visible) 1f else 0f, tween(PlacementEntrance.EXIT_MS)) }
+    val entrance = rememberPlacementEntrance(placement, state)
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
-        visibleDuringFade = opacity.value > 0f) {
-        Node(rotation = if (placement.plane.type == Plane.Type.VERTICAL) Rotation(x = -90f) else Rotation()) {
+        visibleDuringFade = opacity.value > 0f || entrance.value > 0f) {
+        Node(
+            rotation = if (placement.plane.type == Plane.Type.VERTICAL) Rotation(x = -90f) else Rotation(),
+            scale = Scale(PlacementEntrance.scaleFraction(entrance.value)),
+        ) {
             content(opacity.value)
         }
     }
@@ -406,6 +473,59 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             }
         }
         NodeLifecycle(pivot, content)
+    }
+}
+
+/**
+ * Entrance progress (0 = hidden, 1 = settled) of a placement: runs up over
+ * [PlacementEntrance.DURATION_MS] when the object becomes visible (placed, or re-tracked)
+ * and back down over [PlacementEntrance.EXIT_MS] when tracking is lost.
+ */
+@Composable
+private fun rememberPlacementEntrance(
+    placement: AutoPlacementResult,
+    state: AutoPlacementState,
+): Animatable<Float, *> {
+    val progress = remember(placement) { Animatable(0f) }
+    val visible = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
+    LaunchedEffect(progress, visible) {
+        progress.animateTo(
+            targetValue = if (visible) 1f else 0f,
+            animationSpec = tween(
+                if (visible) PlacementEntrance.DURATION_MS else PlacementEntrance.EXIT_MS,
+                easing = LinearEasing,
+            ),
+        )
+    }
+    return progress
+}
+
+/**
+ * The "grows into place" entrance of a freshly placed object (`motion-placement-entrance`
+ * in `DESIGN.md`). A model that appears at full size on the frame its anchor lands reads as
+ * a glitch; Scene Viewer, IKEA Place and Reality Composer all ease it up from a smaller scale
+ * over about a quarter of a second — short enough to feel instant, long enough to register.
+ */
+internal object PlacementEntrance {
+
+    /** Duration of the scale-in, milliseconds. */
+    const val DURATION_MS = 260
+
+    /** Duration of the shrink/fade-out on tracking loss (`motion-fade`). */
+    const val EXIT_MS = 300
+
+    /** Scale fraction the object starts at — deliberately not 0, which reads as a flicker. */
+    const val START_FRACTION = 0.55f
+
+    /**
+     * Eased scale fraction at animation [progress] (`0..1`). Cubic ease-out: fast out of the
+     * gate, settling without overshoot — an overshoot on a *physical-scale* object reads as
+     * the object being the wrong size, not as bounce.
+     */
+    fun scaleFraction(progress: Float): Float {
+        val t = progress.coerceIn(0f, 1f)
+        val eased = 1f - (1f - t) * (1f - t) * (1f - t)
+        return START_FRACTION + (1f - START_FRACTION) * eased
     }
 }
 

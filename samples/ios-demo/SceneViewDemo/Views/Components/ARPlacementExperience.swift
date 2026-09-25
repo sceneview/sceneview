@@ -136,13 +136,17 @@ struct ARPlacementExperience: View {
         } accessory: {
             VStack(spacing: SceneViewTokens.Space.sm) {
                 status
-                if occlusion != nil {
-                    Toggle("Occlusion", isOn: $occlusionEnabled)
-                        .padding(SceneViewTokens.Space.md)
-                        .modifier(PlacementStatusSurface())
-                        .accessibilityIdentifier("ar-occlusion-toggle")
+                // Apple's coaching overlay is up: step aside (HIG, "Coaching"). The status
+                // above keeps its cards; its one-line guidance goes quiet on its own.
+                if !controller.isCoachingActive {
+                    if occlusion != nil {
+                        Toggle("Occlusion", isOn: $occlusionEnabled)
+                            .padding(SceneViewTokens.Space.md)
+                            .modifier(PlacementStatusSurface())
+                            .accessibilityIdentifier("ar-occlusion-toggle")
+                    }
+                    featureAccessory()
                 }
-                featureAccessory()
             }
         } controls: {
             controls
@@ -271,6 +275,9 @@ struct ARPlacementExperience: View {
             }
         } else if controller.invalidMovement {
             message("Keep the object on a surface.")
+        } else if controller.isCoachingActive {
+            // The coaching overlay is speaking; one voice at a time.
+            EmptyView()
         } else {
             switch controller.phase {
             case .initializing, .cameraError:

@@ -59,10 +59,20 @@ struct ARPlacementLifecycle {
         recoverySince = nil
         if phase != .initializing && phase != .trackingLost { phase = .scanning }
     }
+    /// The camera session itself restarts (coaching "Start Over", a relocalization reset): the
+    /// placement is reset and the flow starts over from `.initializing`, so the untracked frames
+    /// of the restarted session are start-up, not a loss.
+    mutating func restartSession() {
+        guard !dismissed else { return }
+        reset()
+        phase = .initializing
+    }
     mutating func frame(now: TimeInterval, tracking: Bool, anchorTracking: Bool, assetReady: Bool) -> Bool {
         guard acceptsFrames else { return false }
         guard tracking else {
-            phase = .trackingLost
+            // Untracked frames before the first tracked one are the normal start-up: nothing
+            // was lost, so no `.trackingLost`, no warning haptic, no "paused" copy.
+            if phase != .initializing { phase = .trackingLost }
             searchSince = nil
             recoverySince = nil
             return false
@@ -129,6 +139,11 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     @Published public private(set) var scale: Float = 1
     @Published public private(set) var selection = false
     @Published public private(set) var invalidMovement = false
+    /// Apple's coaching overlay is on screen (``AutoPlacementScene`` `coaching: true`, the
+    /// default). Hide non-essential app UI — status pills, hints, secondary controls — while
+    /// this is true and bring it back when it turns false (Human Interface Guidelines,
+    /// "Coaching"). Kotlin twin: `ArGuidanceState.isCoaching`.
+    @Published public internal(set) var isCoachingActive = false
     public var hasPlacement: Bool { lifecycle.hasPlacement }
 
     private var lifecycle = ARPlacementLifecycle()
@@ -211,6 +226,15 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         guard !lifecycle.dismissed, !hasPlacement else { return }
         lifecycle.requested = true
     }
+    /// Resets the placement for a camera-session restart (``ARSceneView``'s coaching "Start
+    /// Over"). The host re-runs the session; this only rewinds the placement flow.
+    func resetForSessionRestart() {
+        guard !lifecycle.dismissed else { return }
+        resetPlacement()
+        lifecycle.restartSession()
+        publishPhase()
+    }
+
     public func resetPlacement() {
         guard !lifecycle.dismissed else { return }
         cancelGestures()

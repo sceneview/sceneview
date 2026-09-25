@@ -39,12 +39,38 @@ class ARHapticTransitionsTest {
         assertEquals(emptyList<ARHapticEvent>(), feed(PLACED, placements = 1, selected = true))
     }
 
+    /** Drives the real state machine frame by frame and feeds every phase it publishes. */
+    private fun AutoPlacementState.frame(ms: Long, tracking: Boolean): List<ARHapticEvent> {
+        onFrame(FrameInput(ms, tracking, surfaceAvailable = false))
+        clock += 1_000
+        return t.next(Snapshot(phase, placementsCreated, isSelected), clock)
+    }
+
     @Test
     fun trackingLostAtSessionStart_isSilent() {
-        // ARCore reports a lost camera before the first tracked frame: not a loss the user caused.
-        feed(INITIALIZING)
-        assertEquals(emptyList<ARHapticEvent>(), feed(TRACKING_LOST))
-        assertEquals(emptyList<ARHapticEvent>(), feed(SCANNING))
+        // ARCore delivers untracked frames before the first tracked one: not a loss the user
+        // caused. The state machine keeps them INITIALIZING (the coaching overlay's cue source
+        // too), so neither a warning haptic nor a "tracking limited" cue plays.
+        val state = AutoPlacementState()
+        t.next(Snapshot(state.phase, state.placementsCreated, state.isSelected), clock)
+        repeat(10) { assertEquals(emptyList<ARHapticEvent>(), state.frame(it * 16L, tracking = false)) }
+        assertEquals(INITIALIZING, state.phase)
+        assertEquals(emptyList<ARHapticEvent>(), state.frame(160L, tracking = true))
+        assertEquals(listOf(ARHapticEvent.TrackingLost), state.frame(176L, tracking = false))
+    }
+
+    @Test
+    fun startUpFrames_ofAReenteredSession_areSilentToo() {
+        // One state and one ARHapticFeedback survive a chooser/camera round trip: tracking
+        // was established in the first session, yet the next session's start-up is silent.
+        val state = AutoPlacementState()
+        t.next(Snapshot(state.phase, state.placementsCreated, state.isSelected), clock)
+        state.frame(0L, tracking = true)
+        state.dismiss()
+        state.selectModel()
+        state.requestPlacement()
+        repeat(5) { assertEquals(emptyList<ARHapticEvent>(), state.frame(100L + it * 16L, tracking = false)) }
+        assertEquals(INITIALIZING, state.phase)
     }
 
     @Test
