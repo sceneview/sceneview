@@ -12,6 +12,7 @@ import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.gesture.MoveGestureDetector
+import io.github.sceneview.haptic.ARHapticEvent
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
 import io.github.sceneview.loaders.MaterialLoader
@@ -20,7 +21,6 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.toQuaternion
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.ar.node.AnchorNode
@@ -129,7 +129,8 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
  *
  * [state] exposes recovery, reset and explicit request actions. Camera/capability events
- * are forwarded without imposing app copy or haptics. Content is composed on the main thread.
+ * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
+ * same [state]. Content is composed on the main thread.
  * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
  */
 @Composable
@@ -218,7 +219,7 @@ fun AutoPlacementScene(
 /**
  * Grounded model content for [AutoPlacementScene], with a 0.3 m longest-axis preview by
  * default. Pass null [scaleToUnits] to retain authored units. Pinch is limited to 25–400%
- * of that base. The model's complete bounding volume is selectable, including nested meshes.
+ * of that base and snaps to 100 % within ±4 %, with a short elastic rebound. The model's complete bounding volume is selectable, including nested meshes.
  * [assetRotation] corrects authored axes before the grounded bounds are calculated.
  */
 @Composable
@@ -297,7 +298,13 @@ private fun ARSceneScope.AutomaticPlacementPivot(
     val invalidMove by rememberUpdatedState(onInvalidMove)
     val scaleChanged by rememberUpdatedState(onScaleChanged)
     val root = remember(engine, placement) {
-        AutomaticAnchorNode(engine, placement, state) { invalidMove(it) }
+        var wasInvalid = false
+        AutomaticAnchorNode(engine, placement, state) { invalid ->
+            // One tick when the move turns invalid, not one per rejected drag frame.
+            if (invalid && !wasInvalid) state.gestureHapticSink?.invoke(ARHapticEvent.InvalidMove)
+            wasInvalid = invalid
+            invalidMove(invalid)
+        }
     }
     val visible = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
     SideEffect {
@@ -307,6 +314,35 @@ private fun ARSceneScope.AutomaticPlacementPivot(
     }
     NodeLifecycle(root) {
         val pivot = remember(engine, placement) { object : io.github.sceneview.node.Node(engine) {
+            /** The logical scale; [scale] only differs from it during the 100 % rebound. */
+            var logicalScale = 1f
+            private var rebound: Boolean? = null // fromAbove, while a rebound is pending or running
+            private var reboundStartNanos = 0L
+
+            fun startRebound(fromAbove: Boolean) {
+                rebound = fromAbove
+                reboundStartNanos = 0L
+            }
+
+            fun cancelRebound() {
+                rebound = null
+            }
+
+            override val isFrameActive: Boolean get() = rebound != null || super.isFrameActive
+
+            override fun onFrame(frameTimeNanos: Long) {
+                super.onFrame(frameTimeNanos)
+                val fromAbove = rebound ?: return
+                if (reboundStartNanos == 0L) reboundStartNanos = frameTimeNanos
+                val elapsedMs = (frameTimeNanos - reboundStartNanos) / 1_000_000f
+                if (elapsedMs >= ScaleSnap.REBOUND_MS) {
+                    rebound = null
+                    scale = Scale(logicalScale)
+                } else {
+                    scale = Scale(logicalScale * ScaleSnap.rebound(elapsedMs, fromAbove))
+                }
+            }
+
             override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
                 super.onRotateEnd(detector, e)
                 state.endAdjustment()
@@ -318,19 +354,28 @@ private fun ARSceneScope.AutomaticPlacementPivot(
         }.apply {
             isEditable = true
             isPositionEditable = false
-            editableScaleRange = 0.25f..4f
+            editableScaleRange = ScaleSnap.MIN..ScaleSnap.MAX
             onRotateBegin = { _, _ -> state.beginAdjustment() }
             var rawScale = 1f
-            onScaleBegin = { _, _ -> rawScale = scale.x; state.beginAdjustment() }
+            onScaleBegin = { _, _ -> rawScale = logicalScale; state.beginAdjustment() }
             onRotate = { _, _, _ -> state.isAdjusting }
             onScale = { _, _, factor ->
                 if (state.isAdjusting) {
-                    val wasBase = abs(scale.x - 1f) < 0.001f
-                    rawScale = (rawScale * (1f + (factor - 1f) * scaleGestureSensitivity)).coerceIn(0.25f, 4f)
-                    val atBase = abs(rawScale - 1f) < 0.025f
-                    scale = Scale(if (atBase) 1f else rawScale)
-                    state.scaleFactor = scale.x
-                    scaleChanged((scale.x * 100).roundToInt(), atBase, atBase && !wasBase)
+                    val previous = logicalScale
+                    rawScale = (rawScale * (1f + (factor - 1f) * scaleGestureSensitivity))
+                        .coerceIn(ScaleSnap.MIN, ScaleSnap.MAX)
+                    val step = ScaleSnap.step(previous, rawScale)
+                    logicalScale = step.displayed
+                    if (step.enteredSnap) {
+                        startRebound(fromAbove = previous > 1f)
+                        state.gestureHapticSink?.invoke(ARHapticEvent.ScaleSnapped)
+                    } else if (!step.snapped) {
+                        cancelRebound()
+                        scale = Scale(step.displayed)
+                    }
+                    if (step.enteredLimit) state.gestureHapticSink?.invoke(ARHapticEvent.LimitReached)
+                    state.scaleFactor = step.displayed
+                    scaleChanged((step.displayed * 100).roundToInt(), step.snapped, step.enteredSnap)
                 }
                 false
             }
@@ -339,11 +384,17 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             state.moveAction = root::moveBy
             state.rotateAction = { pivot.quaternion *= Rotation(y = it).toQuaternion() }
             state.scaleAction = {
-                val previous = pivot.scale.x
+                val previous = pivot.logicalScale
+                pivot.cancelRebound()
+                pivot.logicalScale = it
                 pivot.scale = Scale(it)
                 state.scaleFactor = it
-                scaleChanged((it * 100).roundToInt(), it == 1f,
-                    (previous < 1f && it >= 1f) || (previous > 1f && it <= 1f))
+                val crossed = (previous < 1f && it >= 1f) || (previous > 1f && it <= 1f)
+                if (crossed) state.gestureHapticSink?.invoke(ARHapticEvent.ScaleSnapped)
+                if (ScaleSnap.isAtLimit(it) && !ScaleSnap.isAtLimit(previous)) {
+                    state.gestureHapticSink?.invoke(ARHapticEvent.LimitReached)
+                }
+                scaleChanged((it * 100).roundToInt(), it == 1f, crossed)
             }
             onDispose {
                 state.moveAction = null

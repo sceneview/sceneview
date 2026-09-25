@@ -22,7 +22,7 @@ import io.github.sceneview.demo.common.placement.PlacementActionCard
 import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.haptic.rememberHapticFeedback
+import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.material.setColor
 import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.math.Position
@@ -50,7 +50,6 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val state = rememberAutoPlacementState()
-    val haptic = rememberHapticFeedback()
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var invalidMove by remember { mutableStateOf(false) }
@@ -58,22 +57,17 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
     var hintShown by remember { mutableStateOf(false) }
     var showHint by remember { mutableStateOf(false) }
     var hadPlacement by remember { mutableStateOf(false) }
-    var wasSelected by remember { mutableStateOf(false) }
 
-    // Sample placement and selection together: one placement produces one haptic.
-    LaunchedEffect(state.hasPlacement, state.isSelected) {
-        if (state.hasPlacement && !hadPlacement) {
-            haptic.medium()
-            if (!hintShown) { hintShown = true; showHint = true }
-        } else if (state.isSelected && !wasSelected) haptic.selection()
+    // Placement, selection, snap, limits, invalid moves and tracking: the SDK's opt-in haptics.
+    ARHapticFeedback(state)
+    LaunchedEffect(state.hasPlacement) {
+        if (state.hasPlacement && !hadPlacement && !hintShown) { hintShown = true; showHint = true }
         hadPlacement = state.hasPlacement
-        wasSelected = state.isSelected
     }
     LaunchedEffect(showHint) {
         if (showHint) { delay(5_000); showHint = false }
     }
     LaunchedEffect(state.phase) {
-        if (state.phase == PlacementPhase.TRACKING_LOST) haptic.warning()
         if (state.phase == PlacementPhase.ADJUSTING) showHint = false
         if (state.phase != PlacementPhase.PLACED && state.phase != PlacementPhase.ADJUSTING) invalidMove = false
     }
@@ -87,7 +81,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
         invalidMove = false
         state.resetPlacement(SystemClock.uptimeMillis())
     }
-    fun move(x: Float, y: Float) { if (!state.moveBy(x, y)) haptic.error() }
+    fun move(x: Float, y: Float) { state.moveBy(x, y) }
     val card = when (state.phase) {
         PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
         PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
@@ -159,7 +153,6 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
         ) { placement ->
             AutoPlacementNode(placement, state,
                 onInvalidMove = { invalidMove = it },
-                onScaleChanged = { _, _, crossed -> if (crossed) haptic.selection() },
             ) { opacity -> WallTV(opacity) }
         }
         ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING, availability)

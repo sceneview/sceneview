@@ -80,6 +80,9 @@ class AutoPlacementState {
     internal var moveAction: ((Float, Float) -> Boolean)? = null
     internal var rotateAction: ((Float) -> Unit)? = null
     internal var scaleAction: ((Float) -> Unit)? = null
+
+    /** Gesture-driven haptic events (snap, limit, invalid move); set by [ARHapticFeedback]. */
+    internal var gestureHapticSink: ((io.github.sceneview.haptic.ARHapticEvent) -> Unit)? = null
     private val canManipulate: Boolean
         get() = isSelected && (phase == PlacementPhase.PLACED || phase == PlacementPhase.ADJUSTING)
 

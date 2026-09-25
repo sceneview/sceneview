@@ -43,11 +43,11 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
-import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.common.placement.PlacementActionCard
 import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.ar.AutoPlacementResult
+import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementModel
 import io.github.sceneview.ar.rememberAutoPlacementState
 import io.github.sceneview.demo.common.placement.FeaturePlacementScene
@@ -168,7 +168,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
 
     // ── Raw ARCore signals ──────────────────────────────────────────────────
     val placementState = rememberAutoPlacementState()
-    val haptic = rememberHapticFeedback()
+    ARHapticFeedback(placementState)
     var show3D by remember { mutableStateOf(false) }
     var invalidMove by remember { mutableStateOf(false) }
     var localPlacement by remember { mutableStateOf<AutoPlacementResult?>(null) }
@@ -271,7 +271,6 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         onDispose { owned?.let { modelLoader.destroyModel(it.model) } }
     }
     LaunchedEffect(placementState.phase) {
-        if (placementState.phase == PlacementPhase.TRACKING_LOST) haptic.warning()
         if (placementState.phase != PlacementPhase.ADJUSTING) invalidMove = false
     }
 
@@ -557,7 +556,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 sessionConfiguration = { _, config ->
                     config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
                 },
-                onPlaced = { localPlacement = it; haptic.medium() },
+                onPlaced = { localPlacement = it },
                 onSessionCreated = { session -> arSession = session },
                 onARCoreAvailability = { arCoreAvailability = it },
                 arCoreAvailabilityOverlay = if (forcedScenario != null) null else { { ARCoreAvailabilityOverlay(it) } },
@@ -586,8 +585,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     if (placement != null && resolvedAnchor == null) {
                         AutoPlacementModel(placement, placementState, instance,
                             scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
-                            onInvalidMove = { invalidMove = it },
-                            onScaleChanged = { _, _, crossed -> if (crossed) haptic.selection() })
+                            onInvalidMove = { invalidMove = it })
                     }
                     resolvedAnchor?.let { anchor ->
                         AnchorNode(anchor = anchor) {

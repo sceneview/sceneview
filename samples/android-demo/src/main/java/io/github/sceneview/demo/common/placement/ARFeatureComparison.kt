@@ -22,6 +22,7 @@ import io.github.sceneview.demo.demos.internal.DepthOcclusionCopy
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.haptic.rememberHapticFeedback
+import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
 import io.github.sceneview.rememberEngine
@@ -63,7 +64,6 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
     var hintShown by remember { mutableStateOf(false) }
     var showHint by remember { mutableStateOf(false) }
     var hadPlacement by remember { mutableStateOf(false) }
-    var wasSelected by remember { mutableStateOf(false) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
 
     LaunchedEffect(retry) {
@@ -80,17 +80,14 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
         }
     }
     DisposableEffect(model) { val owned = model; onDispose { owned?.let { modelLoader.destroyModel(it.model) } } }
-    LaunchedEffect(state.hasPlacement, state.isSelected) {
-        if (state.hasPlacement && !hadPlacement) {
-            haptic.medium()
-            if (!hintShown) { hintShown = true; showHint = true }
-        } else if (state.isSelected && !wasSelected) haptic.selection()
+    // Placement, selection, snap, limits, invalid moves and tracking: the SDK's opt-in haptics.
+    ARHapticFeedback(state, haptic)
+    LaunchedEffect(state.hasPlacement) {
+        if (state.hasPlacement && !hadPlacement && !hintShown) { hintShown = true; showHint = true }
         hadPlacement = state.hasPlacement
-        wasSelected = state.isSelected
     }
     LaunchedEffect(showHint) { if (showHint) { delay(5_000); showHint = false } }
     LaunchedEffect(state.phase) {
-        if (state.phase == PlacementPhase.TRACKING_LOST) haptic.warning()
         if (state.phase == PlacementPhase.ADJUSTING) showHint = false
         if (state.phase != PlacementPhase.PLACED && state.phase != PlacementPhase.ADJUSTING) invalidMove = false
     }
@@ -145,7 +142,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
             TextButton(onClick = ::reset, enabled = state.hasPlacement) { Text(stringResource(R.string.wall_reset)) }
             if (state.hasPlacement && state.isSelected) {
                 val editable = state.phase == PlacementPhase.PLACED
-                fun move(x: Float, y: Float) { if (!state.moveBy(x, y)) haptic.error() }
+                fun move(x: Float, y: Float) { state.moveBy(x, y) }
                 FeatureAdjustment(
                     R.string.wall_dpad_left, R.string.wall_dpad_right, editable,
                     { move(-0.02f, 0f) }, { move(0.02f, 0f) },
@@ -267,8 +264,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                 placement?.let { result -> model?.let { instance ->
                     AutoPlacementModel(result, state, instance,
                         assetRotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
-                        onInvalidMove = { invalidMove = it },
-                        onScaleChanged = { _, _, crossed -> if (crossed) haptic.selection() })
+                        onInvalidMove = { invalidMove = it })
                 } }
             }
             ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
