@@ -7,4 +7,9 @@
 <resources>
     <string name="demo_double_pendulum_title">Double Pendulum</string>
     <string name="demo_double_pendulum_subtitle">Explore two linked arms in chaotic motion</string>
+    <string name="demo_double_pendulum_lead_arm">Lead arm</string>
+    <string name="demo_double_pendulum_trailing_arm">Trailing arm</string>
+    <string name="demo_double_pendulum_gravity">Gravity</string>
+    <string name="demo_double_pendulum_release">Release</string>
+    <string name="demo_double_pendulum_explainer">A chaotic two-link pendulum: tiny changes diverge wildly. The equations of motion run in sceneview-core (shared KMP) — the same simulation drives the iOS demo. The camera frames the full reachable swing, centred on the hinge.</string>
 </resources>
