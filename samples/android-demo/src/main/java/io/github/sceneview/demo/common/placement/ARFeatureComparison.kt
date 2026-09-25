@@ -14,6 +14,7 @@ import io.github.sceneview.ar.*
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.demo.*
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.DemoStatusCard
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -277,22 +278,26 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
         }
     }
     if (show3D) {
-        ModalBottomSheet(onDismissRequest = { show3D = false }) {
-            Text(stringResource(R.string.ar_place_preview_size), Modifier.padding(SceneViewTokens.Space.md))
-            // Separate instance: one Filament entity must never belong to two scenes.
-            val preview = rememberModelInstance(modelLoader, DemoMath.HELMET_ASSET)
-            SceneView(
-                Modifier.fillMaxWidth().aspectRatio(1f),
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-            ) {
-                preview?.let {
-                    ModelNode(
-                        it,
-                        scaleToUnits = 0.3f,
-                        rotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
-                    )
+        DemoModalBottomSheet(onDismissRequest = { show3D = false }) {
+            // #3716: the container now reaches the true bottom edge — clear the
+            // navigation bar explicitly instead of relying on the system inset.
+            Column(Modifier.navigationBarsPadding()) {
+                Text(stringResource(R.string.ar_place_preview_size), Modifier.padding(SceneViewTokens.Space.md))
+                // Separate instance: one Filament entity must never belong to two scenes.
+                val preview = rememberModelInstance(modelLoader, DemoMath.HELMET_ASSET)
+                SceneView(
+                    Modifier.fillMaxWidth().aspectRatio(1f),
+                    engine = engine,
+                    modelLoader = modelLoader,
+                    materialLoader = materialLoader,
+                ) {
+                    preview?.let {
+                        ModelNode(
+                            it,
+                            scaleToUnits = 0.3f,
+                            rotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
+                        )
+                    }
                 }
             }
         }

@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -60,7 +61,6 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.Switch
@@ -108,6 +108,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.GlassIconButton
@@ -203,7 +204,7 @@ data class DockItem(
  * with a Retry action ([onReset]) instead of a blank viewport. AR demos pass
  * `null` on purpose: their viewport is the live camera feed (#1361).
  *
- * **Settings sheet** (the single settings surface, #3328): a [ModalBottomSheet]
+ * **Settings sheet** (the single settings surface, #3328): a [DemoModalBottomSheet]
  * on the theme's `surfaceContainer` with a 28 dp top radius, opened from the
  * dock's Controls item at the detent this demo was last left at (#2084,
  * persisted per demo via [DemoSheetDetentStore]). It stacks the demo's own
@@ -1282,7 +1283,7 @@ private fun DemoSettingsSheet(
     )
     val scope = rememberCoroutineScope()
 
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = {
             scope.launch {
                 sheetState.hide()
@@ -1336,6 +1337,11 @@ private fun DemoSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
+                // The container now reaches the true bottom edge (#3716,
+                // `DemoModalBottomSheet`) — pad the *content* by the navigation-bar
+                // inset instead, so the last row (the QA-mode switch) never sits
+                // under the system bar, in 3-button nav and in gestures alike.
+                .navigationBarsPadding()
                 .padding(bottom = SceneViewTokens.Space.lg),
         ) {
             if (controlsContent != null) {
