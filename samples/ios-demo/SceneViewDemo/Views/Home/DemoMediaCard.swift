@@ -6,8 +6,8 @@ import SwiftUI
 /// Anatomy, top to bottom: a 5:4 media slot (`media-aspect`) showing the
 /// captured preview when the asset catalog has one (`preview_<sceneId>` with a
 /// dark appearance variant, copied from the Android `drawable-nodpi` set) and
-/// the category-tinted SF Symbol tile otherwise; then title (`type-card`, one
-/// line) and subtitle (`type-caption`, weight 400, one line). Light: `surface`
+/// the category-tinted SF Symbol tile otherwise; then title (`type-card`) and
+/// subtitle (`type-caption`, weight 400), both wrapping, never truncated. Light: `surface`
 /// and `outline-subtle`; dark: `surface-container` and `outline`.
 /// 1 pt hairline, 20 pt radius, no shadow, no scrim — the
 /// media is the card. Press scales the card to 0.98 on the one app spring.
@@ -116,20 +116,25 @@ private struct MediaCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                    // Wrap, never truncate — Android's card sets `maxLines =
+                    // Int.MAX_VALUE` on both lines (#3786).
                     Text(title)
                         .font(SceneViewTokens.TypeScale.card)
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle)
                         .font(SceneViewTokens.TypeScale.captionRegular)
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.top, SceneViewTokens.Home.cardTextPaddingTop)
                 .padding(.horizontal, SceneViewTokens.Home.cardTextPaddingHorizontal)
                 .padding(.bottom, SceneViewTokens.Home.cardTextPaddingBottom)
             }
+            // Fill the grid row so neighbours whose text wraps to different
+            // line counts keep the same card height.
+            .frame(maxHeight: .infinity, alignment: .top)
             .background(colorScheme == .dark ? SceneViewTokens.HomeColor.surfaceContainer
                                             : SceneViewTokens.HomeColor.surface)
             .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Home.cardRadius, style: .continuous))
