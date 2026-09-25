@@ -45,8 +45,9 @@ class PlacementInteractionTest {
     // ── PlacementRotation: the twist stays a yaw (#3735) ────────────────────
 
     /**
-     * The Khronos helmet is authored Z-up, so the demo stands it up with a −90° X
-     * correction ([DemoMath.placementRotationFor][io.github.sceneview.demo.demos.internal.DemoMath]).
+     * A tilting asset correction: −90° X, the one the demo applied to the Khronos helmet until
+     * #3735 (the placement seam now only returns yaws, see `DemoMathTest`). Kept as the worst
+     * case for the hierarchy: `PivotedModelNode` still accepts any correction from a caller.
      * Built here the way the SDK builds it — `Quaternion.fromEuler` on a [Rotation], exactly
      * what `Node.rotation`'s setter does.
      */
@@ -138,8 +139,8 @@ class PlacementInteractionTest {
     @Test
     fun `the asset correction never reaches the edited node, whatever the asset`() {
         // The editable node's rotation is a function of the twists and nothing else. Run the
-        // same gesture against four very different corrections — including a `rotationOverride`
-        // shape a caller could pass — and the pivot must come out identical every time, with
+        // same gesture against four very different corrections — including a tilting
+        // correction a caller could pass — and the pivot must come out identical every time, with
         // no tilt for the SDK's local-frame delta to convert into a tumble.
         val corrections = listOf(
             noCorrection,

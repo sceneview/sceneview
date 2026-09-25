@@ -10,7 +10,6 @@ import androidx.compose.runtime.setValue
 import com.google.ar.core.Anchor
 import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARCoreAvailability
-import io.github.sceneview.math.Rotation
 
 /**
  * The asset the session places. Resolved by the host from the armed picker row, offered to
@@ -39,12 +38,6 @@ data class PlacementSpec(
      * "Actual size" and "Preview size" on the read-out ([scaleLabelMode]).
      */
     val sizeIsMeasured: Boolean = false,
-    /**
-     * Optional per-asset rotation override. `null` ⇒ the session applies
-     * [io.github.sceneview.demo.demos.internal.DemoMath.placementRotationFor]
-     * ([#1477](https://github.com/sceneview/sceneview/issues/1477)).
-     */
-    val rotationOverride: Rotation? = null,
 )
 
 /** The one committed placement: an ARCore anchor, and the asset standing on it. */

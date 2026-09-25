@@ -1,7 +1,14 @@
 package io.github.sceneview.demo.demos.internal
 
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
+import io.github.sceneview.demo.common.placement.PlacementRotation
 import io.github.sceneview.demo.sketchfab.SampleAssets
+import io.github.sceneview.math.Rotation
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.atan
 import kotlin.math.hypot
 import kotlin.math.sqrt
@@ -473,48 +480,75 @@ class DemoMathTest {
         assertEquals(0.2f, DemoMath.coverDistance(0.0001f, 0.0001f, defaultVfovDegrees, 1f), eps)
     }
 
-    // ── placementRotationFor (#1477) ────────────────────────────────────────
+    // ── placementRotationFor (#1477 → #3735) ────────────────────────────────
 
-    @Test
-    fun `placementRotationFor corrects the bundled helmet by minus 90 degrees X`() {
-        // The DamagedHelmet GLB ships a residual +90° X root rotation that lands it
-        // face-down on an AR plane — the placement demos undo it with -90° X.
-        val rotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET)
-        assertEquals(-90f, rotation.x, eps)
-        assertEquals(0f, rotation.y, eps)
-        assertEquals(0f, rotation.z, eps)
+    /** The GLB's own root-node quaternion, read from the JSON chunk of the bundled file. */
+    private fun glbRootRotation(glb: File): Quaternion {
+        val bytes = glb.readBytes()
+        val jsonLength = ByteBuffer.wrap(bytes, 12, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        val json = String(bytes, 20, jsonLength, Charsets.UTF_8)
+        val values = Regex("\"rotation\"\\s*:\\s*\\[([^\\]]+)]").find(json)
+            ?.groupValues?.get(1)?.split(',')?.map { it.trim().toFloat() }
+            ?: return Quaternion()
+        // glTF stores [x, y, z, w], the same order as kotlin-math's constructor.
+        return Quaternion(values[0], values[1], values[2], values[3])
     }
 
-    @Test
-    fun `placementRotationFor returns identity for other bundled models`() {
-        // Fox, lantern, toy car, shiba are authored upright — no correction. So are the
-        // three Khronos furniture/tableware models the picker gained in #3324: they are
-        // authored in metres, Y-up, sitting on y = 0, which is why they need no rotation
-        // and why their `realWorldSizeMeters` is the GLB's own measured extent.
-        for (path in listOf(
-            "models/khronos_fox.glb",
-            "models/khronos_glam_velvet_sofa.glb",
-            "models/khronos_iridescent_dish.glb",
-            "models/khronos_lantern.glb",
-            "models/khronos_sheen_chair.glb",
-            "models/khronos_toy_car.glb",
-            "models/shiba.glb",
-        )) {
-            val rotation = DemoMath.placementRotationFor(path)
-            assertEquals("$path x", 0f, rotation.x, eps)
-            assertEquals("$path y", 0f, rotation.y, eps)
-            assertEquals("$path z", 0f, rotation.z, eps)
+    private fun bundledModel(assetPath: String) =
+        repoFile("samples/android-demo/src/main/assets/$assetPath")
+
+    private fun assertSameAxes(message: String, expected: Quaternion, actual: Quaternion) {
+        for (axis in listOf(Float3(x = 1f), Float3(y = 1f), Float3(z = 1f))) {
+            val e = expected * axis
+            val a = actual * axis
+            assertEquals("$message $axis x", e.x, a.x, 1e-5f)
+            assertEquals("$message $axis y", e.y, a.y, 1e-5f)
+            assertEquals("$message $axis z", e.z, a.z, 1e-5f)
         }
     }
 
     @Test
-    fun `placementRotationFor returns identity for streamed file URIs`() {
-        // ARPlacementDemo can place streamed Sketchfab models whose assetLocation is a
-        // `file://` URI — those must never be hit by the helmet-specific correction.
-        val rotation = DemoMath.placementRotationFor("file:///data/user/0/app/cache/streamed.glb")
-        assertEquals(0f, rotation.x, eps)
-        assertEquals(0f, rotation.y, eps)
-        assertEquals(0f, rotation.z, eps)
+    fun `placementRotationFor never tilts a bundled model off its loaded pose`() {
+        // Every GLB in the assets tree, so a model added later is covered on arrival, plus a
+        // streamed file:// URI. glTF is +Y up: a placement may turn a model, never tip it.
+        val bundled = bundledModel("models").listFiles { file -> file.extension == "glb" }!!
+            .map { "models/${it.name}" }
+        assertTrue("the helmet must be among $bundled", DemoMath.HELMET_ASSET in bundled)
+        for (path in bundled + "file:///data/user/0/app/cache/streamed.glb") {
+            val rotation = Quaternion.fromEuler(DemoMath.placementRotationFor(path))
+            assertEquals("$path tilt", 0f, PlacementRotation.tiltDegrees(rotation), 1e-4f)
+        }
+    }
+
+    @Test
+    fun `the helmet stands in AR the way the Model Viewer shows it`() {
+        // The +90° X root quaternion is the file's own Z-up to Y-up conversion. gltfio applies
+        // it on load, which is why the Model Viewer — no correction at all — shows the helmet
+        // upright, visor forward.
+        val root = glbRootRotation(bundledModel(DemoMath.HELMET_ASSET))
+        assertEquals(0.70710677f, root.x, 1e-6f)
+        assertEquals(0f, root.y, 1e-6f)
+        assertEquals(0f, root.z, 1e-6f)
+        assertEquals(0.70710677f, root.w, 1e-6f)
+
+        val viewer = root
+        val ar = Quaternion.fromEuler(DemoMath.placementRotationFor(DemoMath.HELMET_ASSET)) * root
+        assertSameAxes("helmet AR vs viewer", viewer, ar)
+
+        // The regression (#3735): the #1477 correction undid that conversion and tipped the
+        // helmet's up axis a full 90° — on its back, visor to the ceiling, in AR only.
+        val legacy = Quaternion.fromEuler(Rotation(x = -90f))
+        assertEquals(90f, PlacementRotation.tiltDegrees(legacy), 1e-3f)
+    }
+
+    private fun repoFile(relative: String): File {
+        var dir: File? = File("").absoluteFile
+        while (dir != null) {
+            val candidate = File(dir, relative)
+            if (candidate.exists()) return candidate
+            dir = dir.parentFile
+        }
+        throw AssertionError("Could not locate $relative from ${File("").absolutePath}")
     }
 
     // ── ContactShadowPreviewDemo bounce choreography ────────────────────────
