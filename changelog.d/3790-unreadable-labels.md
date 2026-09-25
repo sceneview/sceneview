@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+
+- **iOS demo: two unreadable labels now meet WCAG AA in both themes ([#3790](https://github.com/sceneview/sceneview/issues/3790)).** On a device without ARKit world tracking, the AR View tab no longer shows a disabled button at half opacity: "AR not supported on this device" is a status line in `on-surface` on `surface-container-high` (15.3:1 light, 13.5:1 dark), with a `danger` glyph, as on Android. The AR camera button uses `primary` with `on-primary`, so its label no longer turns white on light blue in dark mode (1.8:1). The Explore source chips take the home filter chips' `chip-*` tokens, so the selected source reads at 17.1:1 in light and 10.5:1 in dark instead of 1.8:1.
