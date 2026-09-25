@@ -8,7 +8,7 @@
 
     <string name="wall_title">Wall Placement</string>
     <string name="wall_phase_scanning">Point at a wall and move slowly.</string>
-    <string name="wall_preview_size">TV · Preview size · 0.3 m longest dimension</string>
+    <string name="wall_preview_size">TV · Preview size</string>
     <string name="wall_reset">Reset placement</string>
     <string name="wall_scale_down">Scale down</string>
     <string name="wall_scale_up">Scale up</string>

@@ -66,6 +66,7 @@ import io.github.sceneview.ar.AutoPlacementResult
 import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.PlacementSurface
 import io.github.sceneview.ar.arcore.subsumedBy
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.ARCoachingOverlay
@@ -530,6 +531,7 @@ internal fun PlacementActionCard(
     onKeepScanning: () -> Unit,
     onScanAgain: () -> Unit,
     onRestartSession: (() -> Unit)?,
+    surface: PlacementSurface = PlacementSurface.SURFACE,
 ) {
     // Latch the last card for the length of the exit animation, as the pill does.
     var lastCard by remember { mutableStateOf(PlacementCard.NO_SURFACE) }
@@ -564,7 +566,11 @@ internal fun PlacementActionCard(
         when (lastCard) {
             PlacementCard.NO_SURFACE -> {
                 title = stringResource(R.string.ar_place_no_surface_title)
-                detail = stringResource(R.string.ar_place_no_surface_detail)
+                detail = if (surface == PlacementSurface.WALL) {
+                    stringResource(R.string.ar_place_no_surface_detail_wall)
+                } else {
+                    stringResource(R.string.ar_place_no_surface_detail)
+                }
                 primary = stringResource(R.string.ar_place_view_in_3d)
                 onPrimary = onViewIn3D
                 secondary = stringResource(R.string.ar_place_keep_scanning)

@@ -400,6 +400,6 @@
     <string name="ar_placement_floor">Surface</string>
     <string name="ar_placement_wall">Wall</string>
     <string name="ar_placement_wall_model">TV</string>
-    <string name="ar_placement_wall_help">Place a TV automatically on a wall. Preview size: 0.3 m longest dimension.</string>
+    <string name="ar_placement_wall_help">Place a TV automatically on a wall. Preview scale — not a real TV\'s size.</string>
     <string name="demo_ar_session_failed">AR could not start. Return to the catalog and reopen this demo to try again.</string>
 </resources>

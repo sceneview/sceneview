@@ -35,6 +35,7 @@
     <string name="ar_place_keep_on_surface">Keep the object on a surface.</string>
     <string name="ar_place_no_surface_title">No surface found.</string>
     <string name="ar_place_no_surface_detail">Try a brighter, textured area.</string>
+    <string name="ar_place_no_surface_detail_wall">Plain walls are harder to find. Try the wall-floor edge, or a wall with a frame or poster.</string>
     <string name="ar_place_view_in_3d">View in 3D</string>
     <string name="ar_place_keep_scanning">Keep scanning</string>
     <string name="ar_place_recovery_failed_title">Couldn\'t recover this placement.</string>
