@@ -42,6 +42,12 @@ object SceneViewColors {
     val SurfaceDim = Color(0xFF161B22)
 
     /**
+     * Light neutral — #e9ecef, DESIGN.md `surface-container-highest` (light). A lit floor or
+     * plinth that brand-blue objects read against; [SurfaceDim] swallows them.
+     */
+    val SurfaceLight = Color(0xFFE9ECEF)
+
+    /**
      * Four-colour ramp used whenever a demo needs a palette of distinct but on-brand swatches
      * (PhysicsDemo spheres, GeometryDemo primitives, LinesPathsDemo lines, …). Walks from
      * [Primary] to [TintSoft] so adjacent elements always contrast enough to read.
