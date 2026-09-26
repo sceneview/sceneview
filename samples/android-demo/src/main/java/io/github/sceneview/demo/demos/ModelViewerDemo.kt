@@ -97,12 +97,10 @@ import io.github.sceneview.core.threemf.ModelUnitGuess
 import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
-import io.github.sceneview.demo.demos.internal.PARK_EYE_HEIGHT
-import io.github.sceneview.demo.demos.internal.PARK_FALLBACK_ASPECT
 import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
 import io.github.sceneview.demo.demos.internal.PARK_SLOTS
 import io.github.sceneview.demo.demos.internal.ParkSlot
-import io.github.sceneview.demo.demos.internal.parkCameraDistance
+import io.github.sceneview.demo.demos.internal.parkCamera
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.driving
@@ -1297,8 +1295,11 @@ private suspend fun pickRandomDownloadableModel(
 // Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that unifies
 // the four assets into one cohesive open-air display.
 //
-// Framing is aspect-aware (#2913): the camera distance is computed per viewport
-// from the formation's own dimensions — see [parkCameraDistance]. Before that the
+// Framing fits the whole formation (#3923): the camera is placed per viewport
+// from the formation's layout bounds, before any model loads — see [parkCamera].
+// Until #3923 it covered the frame with the tallest model instead, which put the
+// lens inside the streamed trees and cropped the fallbacks to two lanterns
+// (#2913 had made that distance aspect-aware). Before #2913 the
 // section aimed a fixed camera at `(0, 0, -1.5)` while the library's
 // `autoCenterContent` had already moved the models onto the world origin, which
 // left the lens ~0.6 m from the content centroid — inside the subject. Whichever
@@ -1497,28 +1498,41 @@ private fun MultiModelSection(
             }
         },
     ) {
-        // BoxWithConstraints, not Box: the camera distance below is computed from the LIVE
-        // viewport aspect (#2913). See PARK_SLOTS / [parkCameraDistance] for the framing rules.
+        // Same visible band as the single-model section: the identity row at the top, the dock
+        // band plus the navigation bar at the bottom.
+        val topInset = LocalDemoChromeTopInset.current
+        val bottomInset = SETTINGS_FAB_RESERVED_SPACE +
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        // BoxWithConstraints, not Box: the framing below depends on the viewport (#2913).
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val viewportAspect = (maxWidth / maxHeight)
-                .takeIf { it.isFinite() && it > 0f } ?: PARK_FALLBACK_ASPECT
-            // `camera_distance` / `?cameraDistance=` still wins when a QA flow or a store
-            // capture sets it — the same override every hero-orbit demo honours. Before #2913
-            // this section ignored it entirely (it built a stock `rememberCameraManipulator`,
-            // which knows nothing about DemoSettings), so the store script's `--ef
-            // camera_distance 6.0` was a silent no-op and probing 2.5 / 3.5 / 4.5 m produced
-            // three identical frames. That is why the extra "could not fix the framing".
-            val orbitDistance = DemoSettings.cameraDistance ?: parkCameraDistance(viewportAspect)
-            val parkManipulator = remember(orbitDistance) {
-                createDefaultCameraManipulator(
-                    // Straight-on, at the mid-height of the tallest model, looking at the
-                    // formation centre — which IS the world origin, see `autoCenterContent`.
-                    eyePosition = Position(0f, PARK_EYE_HEIGHT, orbitDistance),
-                    targetPosition = Position(0f, 0f, 0f),
+            // The whole formation, fitted from its layout bounds before any model loads (#3923),
+            // so nothing moves the camera when the models land. See [parkCamera].
+            //
+            // The insets are measured and can settle a frame or two after the first composition.
+            // They are followed until the first frame is on screen, then held: once the scene is
+            // visible only a new viewport size (rotation, fold, split screen) re-frames it — a new
+            // manipulator, eased into by the section's one camera writer rather than cut to.
+            //
+            // `camera_distance` / `?cameraDistance=` still wins when a QA flow or a store capture
+            // sets it — the same override every hero-orbit demo honours. Before #2913 this section
+            // ignored it, so the store script's `--ef camera_distance 6.0` was a silent no-op.
+            val insetsKey = if (firstFrame.rendered.value) null else topInset to bottomInset
+            val distanceOverride = DemoSettings.cameraDistance
+            val parkView = remember(maxWidth, maxHeight, insetsKey, distanceOverride) {
+                parkCamera(
+                    viewportWidth = maxWidth.value,
+                    viewportHeight = maxHeight.value,
+                    topInset = topInset.value,
+                    bottomInset = bottomInset.value,
+                    distanceOverride = distanceOverride,
                 )
             }
-            // A new aspect (rotation, fold, split screen) is a new distance, hence a new
-            // manipulator — eased into by the section's one camera writer instead of cut to.
+            val parkManipulator = remember(parkView) {
+                createDefaultCameraManipulator(
+                    eyePosition = parkView.eye,
+                    targetPosition = parkView.target,
+                )
+            }
             val cameraManipulator = rememberContinuousCameraManipulator().driving(parkManipulator)
             SceneView(
                 modifier = Modifier.fillMaxSize(),
@@ -1542,10 +1556,9 @@ private fun MultiModelSection(
                 //
                 // sceneYaw rotates each model AROUND that centre by treating its (x, z) as polar
                 // coords, so the formation turns like a turntable. The hero sits 0.2 m off the
-                // pivot, so it sweeps a small circle rather than staying put: the framing covers
-                // PARK_SPAN — the width the whole formation sweeps out — so every phase of the spin
-                // keeps models filling the frame, but the exact composition still breathes as it
-                // turns. Per-model rotation cancels the yaw on its own Y so each piece keeps facing
+                // pivot, so it sweeps a small circle rather than staying put, and the framing
+                // (PARK_BOUNDS, the formation at rest) lets its corners brush the edges mid-spin.
+                // Per-model rotation cancels the yaw on its own Y so each piece keeps facing
                 // the camera.
                 //
                 // Indexed off PARK_SLOTS rather than four named locals, so visibility, loaded
