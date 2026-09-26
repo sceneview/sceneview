@@ -367,8 +367,26 @@ class FramingGate {
 class SceneAutoCenterState {
     private val gate = FramingGate()
 
+    /**
+     * Eases the content root onto a new centre when the content it moves is already on screen
+     * (see [resetKeepingContent]). Frame-thread confined.
+     */
+    private val glide = PositionEase()
+
+    /** Whether the content root has been centred at least once since the last [reset]. */
+    private var hasCentered = false
+
+    /**
+     * Whether the last re-arm kept the content on screen ([resetKeepingContent]) rather than
+     * replacing it ([reset]). Only then does a re-centre glide.
+     */
+    private var contentKept = false
+
     /** `true` once the union diagonal has settled and the centring pass has latched. */
     val didCenter: Boolean get() = gate.latched
+
+    /** `true` while a re-centre glide is moving the content root. */
+    internal val isGliding: Boolean get() = glide.isActive
 
     /**
      * `true` while the pass still needs presented frames to converge — see [FramingGate.isPending].
@@ -376,7 +394,7 @@ class SceneAutoCenterState {
      * pass that cannot run because the scene holds no measurable content must not keep the loop at
      * full cadence, since the content's arrival wakes it anyway.
      */
-    val isFramingPending: Boolean get() = gate.isPending
+    val isFramingPending: Boolean get() = gate.isPending || glide.isActive
 
     /**
      * Runs the centring pass against [contentRoot]. No-op once the gate has latched on a settled
@@ -408,9 +426,43 @@ class SceneAutoCenterState {
         }
         val diagonal = bounds.diagonal
         val framed = gate.shouldFrame(diagonal)
-        if (framed) contentRoot.position = -bounds.center
+        if (framed) {
+            val centred = -bounds.center
+            if (contentKept && hasCentered) {
+                // The content is on screen and stays: a second model joining the scene moves
+                // the union centre, and writing the new offset in one frame jumped the model
+                // the user was looking at. Glide there from wherever the root is now — a
+                // re-target mid-glide continues from the eased position.
+                glide.start(from = contentRoot.position, to = centred)
+            } else {
+                glide.cancel()
+                contentRoot.position = centred
+            }
+            hasCentered = true
+        }
         gate.recordFraming(diagonal)
         return framed
+    }
+
+    /**
+     * Advances a re-centre glide started by [maybeCenter] by [deltaSeconds]. No-op when none is
+     * in flight. Runs before [maybeCenter] each frame, and keeps running after the gate latched —
+     * the latch only means the target stopped moving.
+     *
+     * **Threading:** main thread, like [maybeCenter].
+     */
+    internal fun advanceGlide(contentRoot: Node, deltaSeconds: Float) {
+        glide.advance(deltaSeconds)?.let { contentRoot.position = it }
+    }
+
+    /**
+     * Re-arms the pass for content that was only *added to* — what is on screen stays, so the
+     * re-centre that follows glides instead of jumping. Anything removed is a replacement: call
+     * [reset].
+     */
+    internal fun resetKeepingContent() {
+        gate.reset()
+        contentKept = true
     }
 
     /**
@@ -420,5 +472,8 @@ class SceneAutoCenterState {
      */
     fun reset() {
         gate.reset()
+        glide.cancel()
+        hasCentered = false
+        contentKept = false
     }
 }

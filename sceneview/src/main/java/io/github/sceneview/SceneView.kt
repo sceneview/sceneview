@@ -74,7 +74,6 @@ import io.github.sceneview.node.Node
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.utils.SurfaceMirrorer
 import io.github.sceneview.utils.destroy
-import io.github.sceneview.utils.intervalSeconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -647,10 +646,18 @@ fun SceneView(
                 (prevNodes - newNodes.toSet()).forEach { node ->
                     if (node.parent == contentRoot) node.parent = null
                 }
+                val removedAny = newNodes.toSet().let { kept -> prevNodes.any { it !in kept } }
                 (newNodes - prevNodes.toSet()).forEach { node -> node.parent = contentRoot }
                 // Content changed — re-arm centering / framing so a replaced (possibly smaller)
                 // scene re-frames. A growing union already re-frames via the diagonal gate.
-                autoCenterState.reset()
+                // Nodes only ADDED to a scene already on screen keep that content: the
+                // re-centre it causes glides instead of jumping the model the user is looking
+                // at. Anything removed is a replacement, and a replacement snaps.
+                if (!removedAny && prevNodes.isNotEmpty()) {
+                    autoCenterState.resetKeepingContent()
+                } else {
+                    autoCenterState.reset()
+                }
                 autoFitState.reset()
             } else {
                 (prevNodes - newNodes.toSet()).forEach { nodeManager.removeNode(it) }
@@ -718,6 +725,9 @@ fun SceneView(
     // [FrameRatePolicy.maxFps]. `0L` means "none yet". Distinct from `lastFrameTimeNanosRef`,
     // which tracks every *tick* and feeds the manipulator's delta.
     val lastPresentNanosRef = remember { AtomicLong(0L) }
+    // Glides a runtime manipulator swap from the pose on screen instead of cutting to the new
+    // manipulator's pose (see [CameraSwapContinuity]). Frame-thread confined.
+    val cameraSwapContinuity = remember { CameraSwapContinuity() }
     val gestureDetector = remember(context) { GestureDetector(context = context, listener = null) }
     val cameraGestureDetectorRef = remember { AtomicReference<CameraGestureDetector?>(null) }
 
@@ -970,7 +980,9 @@ fun SceneView(
                 !shouldRender.value && frameRateGate.isSettled -> {
                     // Don't hand the first frame after a long park a delta covering the whole
                     // park: `manipulator.update()` reads this as elapsed time. Zero means "no
-                    // previous frame", which is what a resumed loop actually has.
+                    // previous frame", which is what a resumed loop actually has, and
+                    // [frameDeltaSeconds] turns it into one nominal frame — not into the time
+                    // since zero, which is what `intervalSeconds(null)` used to hand it.
                     lastFrameTimeNanosRef.set(0L)
                     awaitRenderingEnabled(shouldRender)
                 }
@@ -1035,6 +1047,15 @@ fun SceneView(
                         modelLoader.updateLoad()
                         childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
 
+                        // One time step for everything this loop advances itself: capped, so a
+                        // stall does not spend an ease in one frame, and nominal after a park —
+                        // `intervalSeconds(null)` measured from time zero and handed the
+                        // manipulator the whole device uptime. See [frameDeltaSeconds].
+                        val frameDelta = frameDeltaSeconds(
+                            frameTimeNanos,
+                            lastFrameTimeNanosRef.get().takeIf { it != 0L }
+                        ).toFloat()
+
                         // Library-level auto-center (#1026). No-op once the content union has settled
                         // and the gate latched, and skipped while the content bounds are still empty
                         // (async model loads not finished). Runs here so it sees post-`updateLoad`
@@ -1042,6 +1063,9 @@ fun SceneView(
                         // require it. The diagonal-stability gate (#1596) re-runs the pass when an
                         // async model grows the union, so deferred models still re-centre.
                         if (currentAutoCenterContent.value) {
+                            // A re-centre of content already on screen glides (a second model
+                            // joined the scene); a first centring or a replacement snaps.
+                            autoCenterState.advanceGlide(contentRoot, frameDelta)
                             autoCenterState.maybeCenter(contentRoot)
                         }
 
@@ -1054,7 +1078,11 @@ fun SceneView(
                         // the canonical model-viewer one-shot framing. Runs after auto-center so it
                         // frames the already-centred content; the diagonal-stability gate re-frames
                         // when a deferred async model grows the union (#1596).
-                        if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
+                        // Not while a re-centre glide is moving the content: the fit gate latches
+                        // on a stable diagonal within two frames and would frame a mid-glide pose.
+                        if (currentAutoFitContent.value && currentCameraManipulator.value == null &&
+                            !(currentAutoCenterContent.value && autoCenterState.isGliding)
+                        ) {
                             if (currentAutoCenterContent.value) {
                                 autoFitState.maybeFit(
                                     cameraNode, contentRoot, padding = currentFramingPadding.value
@@ -1067,10 +1095,20 @@ fun SceneView(
                             }
                         }
 
-                        currentCameraManipulator.value?.let { manipulator ->
-                            val lastTime = lastFrameTimeNanosRef.get().takeIf { it != 0L }
-                            manipulator.update(frameTimeNanos.intervalSeconds(lastTime).toFloat())
-                            val transform = manipulator.getTransform()
+                        val manipulatorNow = currentCameraManipulator.value
+                        if (manipulatorNow == null) cameraSwapContinuity.clearSource()
+                        manipulatorNow?.let { manipulator ->
+                            manipulator.update(frameDelta)
+                            // A manipulator swapped in at runtime glides from the pose on screen
+                            // onto its own live pose instead of cutting to it.
+                            // Same instance as last frame and no glide in flight → the live pose.
+                            val transform = cameraSwapContinuity.resolve(
+                                manipulator = manipulator,
+                                livePose = manipulator.getTransform(),
+                                deltaSeconds = frameDelta,
+                                canBlend = lastPresentNanosRef.get() != 0L,
+                                shownPose = { cameraNode.transform }
+                            )
                             // A fling sends no MotionEvent while it decelerates, and Filament's
                             // manipulator exposes no "is still moving". Comparing the transform it
                             // produces against the previous frame's is the only signal there is —
@@ -1086,7 +1124,8 @@ fun SceneView(
                             // `update()` — which only runs while the loop runs — so without this
                             // the scene would settle at ~0.5 s, park, and the automatic orbit
                             // would never resume.
-                            cameraPending = manipulator.isFrameActive
+                            cameraPending = manipulator.isFrameActive ||
+                                cameraSwapContinuity.isBlending
                             // Write only on a real change. `Node.transform`'s setter is itself a
                             // *push* invalidation source (`onTransformChanged` → `requestRender`),
                             // so re-writing an identical matrix every tick re-dirties the gate
