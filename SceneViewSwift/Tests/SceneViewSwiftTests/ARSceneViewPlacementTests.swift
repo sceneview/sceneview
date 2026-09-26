@@ -148,5 +148,32 @@ final class ARSceneViewPlacementTests: XCTestCase {
 
         XCTAssertNil(weakReticle, "reticle anchor leaked past teardown (#894)")
     }
+
+    /// Automatic placement joins the same teardown path as legacy reticles;
+    /// delayed asset callbacks cannot resurrect a dismissed AR presentation.
+    func testDismantleCancelsAutomaticPlacementAndPreservesUnownedContent() {
+        let (arView, coordinator) = makeWiredCoordinator()
+        let controller = ARPlacementController()
+        coordinator.placementController = controller
+        controller.attach(to: arView)
+        let ticket = controller.selectModel()
+        let group = Entity()
+        let leaf = ModelEntity(mesh: .generateBox(size: 0.2), materials: [SimpleMaterial()])
+        group.addChild(leaf)
+        XCTAssertTrue(controller.setModel(group, ticket: ticket))
+        XCTAssertTrue(controller.owns(leaf))
+        let unrelatedAnchor = AnchorEntity(world: .zero)
+        arView.scene.addAnchor(unrelatedAnchor)
+
+        ARSceneView.dismantleUIView(arView, coordinator: coordinator)
+
+        XCTAssertNil(coordinator.placementController)
+        XCTAssertFalse(controller.acceptsAsset(ticket))
+        XCTAssertFalse(controller.owns(leaf))
+        XCTAssertFalse(controller.hasPlacement)
+        XCTAssertTrue(arView.scene.anchors.contains(where: { $0 === unrelatedAnchor }))
+        XCTAssertFalse(controller.setModel(group, ticket: ticket))
+    }
+
 }
 #endif // os(iOS)

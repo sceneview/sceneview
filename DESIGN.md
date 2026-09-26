@@ -65,15 +65,38 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
 | `surface` | #ffffff | #0D1117 | Page background |
-| `surface-dim` | #f1f3f5 | #161B22 | Secondary background, cards |
-| `surface-container` | #ffffff | #161c2c | Elevated surfaces |
+| `surface-dim` | #f1f3f5 | #0B0E14 | Recessed ground. In dark this sits *below* the page; see the note under this table |
+| `surface-container-low` | #ffffff | #1B212D | Low-emphasis container |
+| `surface-container` | #ffffff | #232A39 | Cards, bottom sheets, dialogs |
+| `surface-container-high` | #f1f3f5 | #2C3546 | Tiles, chips, thumbnails — a container on a container |
+| `surface-container-highest` | #e9ecef | #354056 | Fields inside a sheet |
 | `stage-scrim-start` | transparent | transparent | Spatial Gallery media scrim start |
 | `stage-scrim-end` | rgba(0,0,0,0.90) | rgba(0,0,0,0.90) | Spatial Gallery media scrim end |
 | `glass-surface` | rgba(255,255,255,0.72) | rgba(255,255,255,0.05) | Floating Spatial Gallery controls |
 | `glass-border` | 1px rgba(255,255,255,0.08) | 1px rgba(255,255,255,0.08) | Floating control outline |
-| `stage-background` | #0B0F16 | #0B0F16 | Model-viewer stage clear colour and hero placeholder field — identical in both themes |
+| `stage-background` | #0B0F16 | #0B0F16 | **Full-screen** 3D stage clear colour — the 3D fills the screen with no page around it, so the value is identical in both themes |
+| `stage-background-embedded` | #0B0F16 | #22293E | A 3D stage **embedded in a card** (home hero, card thumbnails). In dark it takes the elevated container value so the card keeps a visible background against the page; #0B0F16 there sits at 1.01:1 on `surface` and the card disappears |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
+
+**The dark ramp is solved for ratio, not picked by eye.** Contrast ratio compresses at
+the dark end, where `(Y+0.05)` is dominated by the constant: against a `#0D1117` page a
+container needs `L* ≥ 15` before it reaches even **1.25:1**, the point where a fill starts
+to read as a distinct surface. The dark column above was previously three tones — the two
+`surface-container` rows were within 0.9 L\* of each other and of `surface-dim` — so every
+card, sheet and chip was drawn the same colour as its background. Reported as *"you cannot
+see the background of elements at all, unlike light, which makes it confusing."*
+
+Nesting in these products is two deep at most (page → card/sheet → tile/field), so the
+ramp targets that depth rather than stacking 1.25:1 at every step, which would end pale
+grey and off-brand. The two depth-2 pairs that still land at 1.17:1 — a tile inside a
+sheet, a dialog over a sheet — carry an `outline-subtle` hairline instead of more tone.
+
+`surface-dim` is *not* the role for "a tile that must stand out": at the dark end there is
+no room below the page, and elevation reads as lighter. Use a `surface-container-*` role.
+
+Light keeps every value it had except `surface-container-highest`, which gains a step so a
+field inside a sheet separates there too.
 
 ### Demo App Home (Android)
 
@@ -82,8 +105,8 @@ the surface ramp above, not the M3 tonal ramp.
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
-| `chip-bg` | #f1f3f5 (`surface-dim`) | #161B22 | Unselected category chip |
-| `chip-text` | #3d4654 (`on-surface-dim`) | #9ca3af | Unselected chip label |
+| `chip-bg` | #f1f3f5 (`surface-container-high`) | #2C3546 | Unselected category chip |
+| `chip-text` | #3d4654 (`on-surface-dim`) | #a4abb7 | Unselected chip label |
 | `chip-selected-bg` | #1a1a2e (`on-surface`) | #f3f4f6 | Selected category chip |
 | `chip-selected-text` | #ffffff (`surface`) | #0D1117 | Selected chip label |
 | `hero-title` | #ffffff | #ffffff | Hero headline — the hero is an image card that stays dark in both themes |
@@ -91,7 +114,7 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
 | `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid |
-| `outline-subtle` | #ebedf0 | #1f2937 | 1dp card and header hairline (see Borders) |
+| `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
 Catalogue **section headers** (the full-span label above each group of demo cards)
 use `on-surface` at `titleMedium` / `weight-semibold` — no colour of their own, because
@@ -113,7 +136,7 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Value | Usage |
 |---|---|---|
-| `about-mark` | 80dp, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero`), never a Material glyph |
+| `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero` on Android, the `about_mark` image set cut from `AppIcon` on iOS), never a Material glyph or an SF Symbol |
 | `about-row-icon` | 20dp | Leading glyph of an action row |
 | `about-row-affordance` | 16dp open-in-new / 20dp chevron | Trailing glyph — leaves the app, or stays in it. Two sizes because the chevron is the thinner drawing: matched boxes read as two icon sets. |
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
@@ -134,7 +157,7 @@ so the eye lands on the one thing the screen is for.
 | Token | Light | Dark | Usage |
 |---|---|---|---|
 | `on-surface` | #1a1a2e | #f3f4f6 | Primary text |
-| `on-surface-dim` | #3d4654 | #9ca3af | Secondary text |
+| `on-surface-dim` | #3d4654 | #a4abb7 | Secondary text. Lifted with the surface ramp: #9ca3af was 7.45:1 on the dark page but only 3.79:1 on the new lightest container, i.e. it would have failed 4.5:1 exactly where the ramp fix made surfaces lighter |
 | `on-surface-faint` | #5c6370 | #6b7280 | Tertiary text, captions |
 | `on-ar-scrim` | #ffffff | #ffffff | AR coaching overlay text — white in both themes, the ground is the camera |
 | `on-ar-scrim-dim` | rgba(255,255,255,0.72) | rgba(255,255,255,0.72) | AR coaching overlay secondary text |
@@ -143,8 +166,8 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
-| `outline` | #d6dae0 | #2a3346 | Default borders |
-| `outline-subtle` | #ebedf0 | #1f2937 | Light dividers |
+| `outline` | #d6dae0 | #8b95a6 | Default borders, and the boundary that identifies a control (WCAG 1.4.11). #2a3346 was 1.50:1 on the dark page — an unfocused search field was invisible until focused |
+| `outline-subtle` | #ebedf0 | #46516a | Light dividers, and the hairline that separates a container from the container behind it where tone alone cannot |
 
 ### Status
 
@@ -321,8 +344,11 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 
 ### App Motion (Android demo)
 
-One spring and one fade for the chrome; one shared-axis spec for screen changes and
-one fly-in for a 3D subject's arrival. Nothing else animates.
+One spring and one fade for the chrome; one shared-axis spec for screen changes, one
+fly-in for a 3D subject's arrival, and one breathing ellipsis for a step in flight. In AR,
+the coaching glyph and a placed object's entrance (the `motion-coach-*` and
+`motion-placement-*` tokens below — shipped by the SDK, so every AR app gets them).
+Nothing else animates.
 
 | Token | Value | Usage |
 |---|---|---|
@@ -330,6 +356,14 @@ one fly-in for a 3D subject's arrival. Nothing else animates.
 | `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus, loading-cover crossfade |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
+| `motion-coach-sweep` | 1600ms per sweep, sine, ±18dp travel and ±10° roll | The phone of the AR coaching glyph sweeping over the surface it is looking for. Half speed while tracking is limited |
+| `motion-coach-resolve` | `tween(450ms, ease-expressive)` | The "surface found" beat — the target fills with `primary` and a cube lands on it, held 150ms, then the glyph leaves |
+| `motion-placement-entrance` | `tween(260ms)`, scale 0.55 → 1, cubic ease-out | A placed AR object growing into place about its contact point. Reversed over 300ms (`motion-fade`) when tracking is lost — opaque glTF materials cannot fade, so they shrink |
+| `motion-narration` | `1200ms` linear loop, opacity only (0.25 → 1) | The trailing ellipsis of a loading line (`NarrationText`): the light runs across the three dots. The line names the step the code is really in — "Searching Sketchfab…", "Downloading *name* (3.2 MB)…", "Decoding the model…" — never a timed script. One loader per screen — the M3 Expressive `LoadingIndicator`, or a `CircularWavyProgressIndicator` ring once the byte count is known. Static `…` under reduced motion |
+
+**Reduced motion.** When the system animator scale is 0 (Android) or Reduce Motion is on
+(iOS), the coaching glyph is drawn as its settled frame — no sweep, no spin — and only the
+fades remain, as on the web (`prefers-reduced-motion`).
 
 ---
 
@@ -368,8 +402,8 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 | Token | Value | Usage |
 |---|---|---|
-| `glass-surface` (over media) | rgba(255,255,255,0.08) | Back button, identity pill, dock |
-| `glass-border` | 1px rgba(255,255,255,0.08) | Outline of every glass element |
+| `glass-surface` (over media) | rgba(255,255,255,0.14) | Back button, identity pill, dock — **0.14, not 0.08, wherever there is no backdrop blur**; see below |
+| `over-media-edge` | 1px rgba(255,255,255,0.36) **+** 1px rgba(0,0,0,0.75) outside it | The edge of every element that floats over media — dock, pills, cards, chips. Drawn **outside** the fill; replaces `glass-border` |
 | `on-glass` | #ffffff | Icons and labels on glass |
 | `on-glass-muted` | rgba(255,255,255,0.72) | Secondary label on glass |
 | `chrome-scrim` | rgba(0,0,0,0.60) → transparent | Ground under the chrome bands |
@@ -378,6 +412,48 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 - **No blur on Android.** A `SurfaceView` cannot be sampled by a Compose render
   effect, so glass over the scene is fill + border only. Do not emulate blur.
+- **Which is why the fill is 0.14, not 0.08.** 8 % white is a value borrowed from
+  surfaces that back it with a real backdrop blur, where the blur separates the
+  panel from the media by *structure* and the fill was never doing the work alone.
+  Without blur it has to, and at 8 % it cannot: measured over the `#0B0F16` stage
+  that is **1.20:1**, and 1.14:1 over a 60 %-scrimmed camera feed. 0.14 clears
+  1.25:1 on both grounds with margin (1.47:1 and 1.35:1) while still reading as
+  glass rather than a solid sheet. Web and iOS keep 0.08 wherever they have a
+  genuine `backdrop-filter` — see *Demo Scaffold (iOS demo)*.
+- **The edge is two bands, and it is drawn outside.** 1.25:1 is a *fill* bar; the
+  line that identifies a control is WCAG 1.4.11's **3:1**. The old 1px 0.24 white
+  border failed it for a reason no opacity could fix: `Modifier.border` strokes
+  *inside* the bounds, over the panel's own 14 % white fill — white on that fill is
+  **1.03:1**, invisible by construction, on every ground and in both themes. Over
+  media, the ground is not ours to choose (a white wall, a night room), so no single
+  colour passes either: 36 % white is 1.4:1 on `#F5F5F5`, 75 % black is 1.5:1 on
+  `#050505`. `over-media-edge` therefore pairs them — white ring straddling the
+  boundary, black halo 1px further out, both on the media — so the room can only
+  lose to one band at a time. What carries the boundary changes with the room, and
+  that is the point — on a bright ground the halo separates from the media (9.9:1 on
+  `#F5F5F5`), on a dark one the two bands separate from each other (3.27:1 on
+  `#050505`, where the halo against the media is only 1.02:1). Computed by sRGB
+  source-over compositing of the token alphas over five camera grounds, worst
+  adjacency per ground:
+
+  | ground | ring \| halo | halo \| media | ring \| fill |
+  |---|---|---|---|
+  | `#F5F5F5` white wall | 10.20:1 | 9.89:1 | 1.03:1 |
+  | `#CFC8BD` pale carpet | 9.32:1 | 7.68:1 | 1.18:1 |
+  | `#8A6F55` wood floor | 6.90:1 | 3.60:1 | 1.69:1 |
+  | `#1E1B18` dim room | 3.93:1 | 1.18:1 | 2.90:1 |
+  | `#050505` night | 3.27:1 | 1.02:1 | 3.23:1 |
+  | `#000000` black, the floor | **3.14:1** | 1.00:1 | 3.27:1 |
+
+  The worst ground is pure black, and there the boundary still reads from both
+  sides: **3.14:1** outward against the media, **3.27:1** inward against the panel's
+  own fill. Verified on device, not only on paper — captured on the emulator over the
+  black AR backdrop, the bands render rgb(92) over the media and rgb(115) over the
+  fill, which is 36 % white composited over each, to the unit. The single-band border
+  this replaces reached 1.01–1.28:1 on the same grounds.
+
+  Bright grounds are still the untested half: no emulator here starts an ARCore
+  session, so the white-wall column is arithmetic, not a photograph.
 - **The chrome bands sit on `chrome-scrim`.** White on media reads only when the
   media is dark, and a demo scene can be any brightness — a near-white studio
   erases an 8 % white fill and white glyphs alike. The top band (160dp) and the
@@ -390,6 +466,28 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   after a scene tap has hidden the dock.
 - **There is no overflow menu.** Reset, Send feedback and QA mode live in the
   settings sheet the dock's Controls item opens — one settings surface, not two.
+- **A sheet you tweak the scene through is glass, low and non-modal (#3827).** The
+  settings sheet exists to be watched through: drag a slider, look at what it did.
+  - `sheet-peek`: it rests at **36 % of the window** (or hugs its controls when they
+    are shorter), so the upper two thirds — where every demo frames its hero — stay
+    visible. Dragging up reveals the rest, stopping `space-2xl` under the status bar.
+    A `ModalBottomSheet` cannot do this: its partial detent is fixed at half the
+    screen. The settings sheet is a standard sheet (`BottomSheetScaffold`).
+  - **No scrim**, and the scene above the sheet stays touchable — iOS
+    `presentationBackgroundInteraction(.enabled)`. The sheet carries its own close
+    button, since there is nothing to tap outside it.
+  - `glass-sheet`: `surface-container` at **88 % (light) / 90 % (dark)**, no tonal
+    tint, no shadow. Android has no blur, so the opacity is solved for text over the
+    three grounds a demo can put behind it (stage, mid-grey scene, white AR wall):
+    `on-surface` ≥ 9.5:1 and `on-surface-variant` ≥ 4.5:1 in both themes. Dark is
+    more opaque because its worst ground is the white wall. Light started at 78 %,
+    which passed on contrast, but a lit model read through the chips as a second
+    sharp image; 88 % leaves the scene as a silhouette.
+  - **The dock fades out while a glass sheet is open.** Seen through the glass it
+    read as a row of live buttons that were not there.
+  - The Model Viewer's Lighting sheet uses the same glass fill and no scrim.
+    Browsing sheets (model picker, credits, what's new) stay opaque and modal — you
+    read those, you do not watch something change behind them.
 
 ### Floating Dock (Android demo)
 
@@ -401,6 +499,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | `dock-icon` | 22dp |
 | `dock-caption` | `type-caption`, 2dp under the icon, one line, never truncated |
 | `dock-items` | at most 4 items + 1 optional accent (primary-tinted) item |
+| `dock-accent` | 40dp filled disc, 48dp touch target, 12dp from the dock edge on every side |
 
 The dock replaces FABs and top app bars in demo screens; its Controls item opens the
 settings sheet. Show/hide uses `motion-spring`; tap on the scene toggles the chrome
@@ -412,11 +511,78 @@ with `motion-fade`.
   one word (`Models`, `Lighting`, `Animate`, `Recenter`, `Settings`); if an action
   needs more than one word to be understood, the wrong action is in the dock. Icon and
   caption share a colour, so a selected toggle reads as one unit.
-- **The accent is the exception.** It is a 48dp filled, primary-tinted button and stays
-  icon-only — a caption would not fit `dock-height`, and its treatment already sets it
-  apart from the labelled items the way a FAB is set apart from a navigation bar.
+- **The accent is the exception.** It is a filled, primary-tinted disc (`dock-accent`,
+  40dp visual in a 48dp touch target) and stays icon-only — a caption would not fit
+  `dock-height`, and its treatment already sets it apart from the labelled items the way
+  a FAB is set apart from a navigation bar. At 40dp it sits 12dp from the dock edge on
+  every side, the same air the first labelled item has at the leading end; a 48dp disc
+  ended 8dp from the rounded cap and read as touching it (#3835).
+- **Everything in a pill is centred on the pill.** A glass surface that is raised to the
+  48dp touch target centres its 36dp content; it never pins it to the top.
+- **Actions under a centred toast or card are centred on it** — never start-aligned
+  under centred text (`SceneActionBar`).
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
+
+### Demo Scaffold (iOS demo)
+
+`DemoScaffold` is the one SwiftUI shell every iOS demo screen stands in: the scene
+full-bleed, the chrome above it, one settings sheet. A demo passes its `SceneView` and,
+at most, one accessory and its controls — it never places chrome, reads a safe area or
+presents a sheet itself. Same tokens as the two Android sections above; what differs is
+listed here.
+
+| Token | Value | Usage |
+|---|---|---|
+| `glass-surface` (iOS) | rgba(255,255,255,0.08) under `.ultraThinMaterial` | Floor — what the blur cannot fall under over dark media |
+| `glass-ceiling` (iOS, dark scheme) | rgba(42,43,44,0.60) over the material | Ceiling — what the blur cannot rise above over bright media |
+| `glass-border` | 1pt rgba(255,255,255,0.24) | iOS keeps a hairline border: `.ultraThinMaterial` is a real blur, so the border is read against a panel the blur has already separated from the media. Android has no blur and replaced this token with `over-media-edge` (above) |
+| `dock-caption` (iOS) | `caption2` / 500 | Five captioned items + the accent fit 402pt; at larger Dynamic Type sizes the dock falls back to icons, the accessibility label stays |
+
+**Bottom of the screen, in points** (measured on the 402 × 874pt iPhone 17, 34pt home
+indicator; every value follows the safe area, none is a constant offset from the edge):
+
+| Element | Value |
+|---|---|
+| Dock bottom edge → screen bottom | `max(16, safe-area + 8)` = **42pt** (16pt with a home button) |
+| Dock height | 64pt |
+| Accessory (option strip / hint) → dock | 12pt |
+| Option strip height | 48pt (44pt segments) |
+| Horizontal margin, every chrome block | 16pt |
+| Back button → safe-area top | 8pt |
+| Settings sheet, resting | hugs the measured controls + 24pt inset top and bottom, capped at half the screen; never a fraction that can cut a control |
+| Settings sheet, last control → sheet edge | 24pt + the bottom safe area (68pt visual on iPhone 17) |
+| Shared rows (Reset · Send feedback · QA mode) | below the fold, `safe-area + 8pt` past the resting edge; scroll or expand to reach them |
+
+- **iOS 26+: native `glassEffect`; below: the material stack.** On iOS 26 and later every
+  chrome surface over the stage (back button, identity pill, dock, option strip, hint) is
+  the system's Liquid Glass — `.regular`, `.interactive()` on controls — and the dock
+  cluster is one `GlassEffectContainer`, so the accessory and the dock morph into each
+  other. The dock accent is `.glassProminent` tinted `primary`. Below 26 the floor /
+  material / ceiling / border stack below still applies. Content cards inside a page
+  (About, Credits) keep the stack on every version, and AR chrome keeps its `ar-scrim`
+  ground. Android keeps its own glass fill — an accepted divergence.
+- **A material is not a colour — it needs a floor and a ceiling.** `.ultraThinMaterial`
+  is a blur of what is behind it. Over dark media it resolves to nearly black (hence
+  the 8 % floor); over a bright studio backdrop the dark-scheme material resolves to
+  the backdrop itself — measured **1.01:1**, a pill with no edge. The ceiling is the
+  dark-scheme counterpart of the floor, and with the 24 % border the better of
+  fill-vs-ground and border-vs-ground never drops under **1.43:1** on dark, mid and
+  bright grounds (border 3.12:1 on the dark stage).
+- **The sheet follows the theme — iOS 26+: native glass on the partial detents; below:
+  a themed surface.** On iOS 26 and later the sheet takes no background of its own, so
+  the resting detent is the system's glass sheet and the scene stays visible behind the
+  controls; the system turns it opaque at `.large`. Below 26 it is `surface-container`,
+  the app's light/dark colours, `outline-subtle` hairline. (Android's settings sheet is
+  `glass-sheet` since #3827 — the translucency iOS gets from its sheet material,
+  Android has to get from opacity; see the Android scaffold section.) The stage and its
+  chrome are media and stay dark in both schemes; the sheet is the only part of a demo
+  that follows the theme.
+- **Motion.** Stage fades in (`motion-fade`, 300 ms); chrome rises 12pt (top) / 24pt
+  (bottom) on `motion-spring` — measured 333 ms; an option change moves the selection
+  capsule on the same spring. Under Reduce Motion the travel is dropped and the opacity
+  fade stays.
+- **VoiceOver order** is back, title, scene, accessory, dock — Settings last.
 
 ---
 
@@ -495,6 +661,33 @@ The one instruction surface shown over a live camera feed (`DemoStatusBanner` on
 - Accents are the **dark-scheme** values in both themes: they are read on `ar-scrim`.
 - Motion: enters with fade + 8px rise (`duration-medium`, `ease-expressive`), leaves
   with fade + fall (`duration-short`). Nothing to say → nothing on screen.
+
+### AR Coaching Glyph
+
+The animated onboarding shown **centred** over the camera while an AR session starts,
+searches or loses tracking — Apple's `ARCoachingOverlayView` on iOS, its visual twin
+`ARCoachingOverlay` in `arsceneview` on Android. It shows the gesture instead of
+describing it.
+
+- Ground: a 96dp `ar-scrim` disc with the `ar-scrim-border` hairline and `shadow-lg`; an
+  optional one-word caption pill underneath in the same ground (`on-ar-scrim`,
+  `type-caption`), 8dp gap. The full sentence is the accessible name, announced politely.
+- One glyph per cue, strokes in `on-ar-scrim`, accents in the dark-scheme `primary` and
+  `warning`, like the pill:
+
+| Cue | Glyph | Caption |
+|---|---|---|
+| Initializing (after 500ms) | Phone with an orbiting `primary` dot | — |
+| Scan (floor) | Phone sweeping over a dashed diamond (`motion-coach-sweep`) | Scan |
+| Scan (wall) | Phone sweeping in front of a dashed upright rectangle | Scan |
+| Surface found | Target fills with `primary`, a cube lands on it (`motion-coach-resolve`) | — |
+| Tracking limited | The scan glyph at 60%, half speed, a `warning` pause badge | Paused |
+| Relocalizing | The scan glyph with a rotating `warning` circular arrow | Look back |
+
+- **Hide the chrome while it shows** (Apple HIG): status pills and hints step aside while
+  the glyph is up and come back when it leaves. Action cards never do — the glyph is
+  silent whenever a card explains the state.
+- Copy never says "ARKit", "ARCore", "tracking" or "plane": *Scan*, *Paused*, *Look back*.
 
 ### AR Overlay Card
 

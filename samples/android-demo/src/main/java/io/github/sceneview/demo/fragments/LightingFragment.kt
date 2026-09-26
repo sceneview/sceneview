@@ -21,9 +21,9 @@ object LightingFragment : DemoFragment {
         id = "lighting",
         titleRes = R.string.demo_lighting_title,
         subtitleRes = R.string.demo_lighting_subtitle,
-        category = DemoCategory.RENDERING,
+        category = DemoCategory.CREATE,
         icon = Icons.Filled.Lightbulb,
-        order = 10,
+        order = 11,
         tags = setOf("light", "hdr", "ibl", "studio", "key", "sun", "shadow", "pbr"),
         // #3496 rebuilt the screen as a three-rig showcase over a shared stage.
         updatedIn = "4.35.0",

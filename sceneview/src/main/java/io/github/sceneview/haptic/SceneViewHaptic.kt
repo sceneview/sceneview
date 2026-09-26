@@ -7,10 +7,11 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 
 /**
  * Lightweight, semantic haptic feedback for SceneView demos and apps.
@@ -22,14 +23,25 @@ import androidx.compose.ui.platform.LocalContext
  * and on Web (`navigator.vibrate(...)` fallback) so cross-platform code paths
  * stay symmetric — see the platform mapping table on [HapticPreset].
  *
- * ### Permissions
+ * ### Permissions and settings
  *
- * Android requires `<uses-permission android:name="android.permission.VIBRATE" />`
- * in the **consumer app's** manifest. The `sceneview` library does not
- * auto-merge it — apps that don't want haptic feedback shouldn't carry the
- * permission. When the permission is missing (or the device has no vibrator),
- * **every method is a no-op** and a single `Log.d("SceneViewHaptic", …)` line
- * is emitted on first call. The API never throws.
+ * The `sceneview` library manifest **declares**
+ * `<uses-permission android:name="android.permission.VIBRATE" />`, so it is merged into every
+ * consumer app (it is a normal, install-time permission — no prompt). An app that wants no
+ * vibrator access removes it with `tools:node="remove"`; the haptic created by
+ * [rememberHapticFeedback] or `SceneViewHaptic(view)` then keeps the `View` tiers
+ * (`View.performHapticFeedback`, no permission needed) and drops the vibrator ones. With
+ * neither a view nor the permission (or no vibrator), **every method is a no-op** and a single
+ * `Log.d("SceneViewHaptic", …)` line is emitted on first call. The API never throws.
+ *
+ * Every haptic honours the system *Touch feedback* setting: when the user turned it off,
+ * nothing vibrates.
+ *
+ * ### Semantic AR events
+ *
+ * [play] with an [ARHapticEvent] plays the SDK's recipe for a placement-flow moment (placed,
+ * scale snapped to 100 %, tracking lost, …). `ARHapticFeedback(state)` in `arsceneview`
+ * plays them automatically; it is opt-in.
  *
  * ### Usage
  *
@@ -108,20 +120,13 @@ public interface SceneViewHaptic {
 }
 
 /**
- * Remember a [SceneViewHaptic] scoped to the current composition's [Context].
+ * Remember a [SceneViewHaptic] bound to the current composition's host `View`.
  *
- * The returned instance is safe to call from any thread but is most useful
- * from gesture callbacks and Compose `onClick` handlers. If the device has
- * no vibrator, or the consumer app didn't declare
- * `android.permission.VIBRATE`, every call becomes a silent no-op (one
- * `Log.d` line is emitted on the first call so missing-permission
- * misconfigurations are still discoverable in logcat).
- *
- * Add the permission to the consumer app's manifest to opt in:
- *
- * ```xml
- * <uses-permission android:name="android.permission.VIBRATE" />
- * ```
+ * Presets and [ARHapticEvent]s play through `View.performHapticFeedback` where a platform
+ * constant fits, then through the vibrator (see [HapticPreset] for the mapping). The instance
+ * is safe to call from any thread but is most useful from gesture callbacks and Compose
+ * `onClick` handlers. The library manifest declares `android.permission.VIBRATE`; on a device
+ * without a vibrator every vibrator tier becomes a silent no-op.
  *
  * ```kotlin
  * val haptic = rememberHapticFeedback()
@@ -135,12 +140,8 @@ public interface SceneViewHaptic {
  */
 @Composable
 public fun rememberHapticFeedback(): SceneViewHaptic {
-    val context = LocalContext.current
-    // SceneViewHaptic(context) resolves context.applicationContext internally,
-    // so the instance is independent of the (possibly Activity-scoped)
-    // LocalContext — key on the stable applicationContext, not LocalContext,
-    // to avoid a needless rebuild on a configuration change.
-    val haptic = remember(context.applicationContext) { SceneViewHaptic(context) }
+    val view = LocalView.current
+    val haptic = remember(view) { SceneViewHaptic(view) }
     DisposableEffect(haptic) {
         onDispose { haptic.cancel() }
     }
@@ -149,17 +150,48 @@ public fun rememberHapticFeedback(): SceneViewHaptic {
 
 /**
  * Construct a [SceneViewHaptic] outside a `@Composable` (for imperative code
- * paths — non-Compose Views, ARCore listeners, etc.). Inside `@Composable`
- * prefer [rememberHapticFeedback].
+ * paths — ARCore listeners, services, etc.). Without a `View` only the vibrator tiers are
+ * available; prefer `SceneViewHaptic(view)` when a view is at hand, and
+ * [rememberHapticFeedback] inside `@Composable`.
  */
-public fun SceneViewHaptic(context: Context): SceneViewHaptic {
+public fun SceneViewHaptic(context: Context): SceneViewHaptic = createHaptic(context, view = null)
+
+/**
+ * Construct a [SceneViewHaptic] bound to [view] — the preferred factory for classic Views.
+ *
+ * Haptics go through `View.performHapticFeedback` first (honours *Touch feedback*, needs no
+ * permission), then through the vibrator. The view is held weakly.
+ */
+public fun SceneViewHaptic(view: View): SceneViewHaptic = createHaptic(view.context, view)
+
+private fun createHaptic(context: Context, view: View?): SceneViewHaptic {
     val appContext = context.applicationContext ?: context
     val vibrator = resolveVibrator(appContext)
-    val hasPermission = hasVibratePermission(appContext)
     return AndroidSceneViewHaptic(
-        vibratorOrNull = vibrator,
-        hasVibratePermission = hasPermission,
+        engine = vibrator?.let { SystemHapticEngine(it, appContext.contentResolver) },
+        hasVibratePermission = hasVibratePermission(appContext),
+        view = view?.let(::WeakViewHapticPerformer),
     )
+}
+
+/**
+ * Play the SDK's recipe for a semantic AR [event] — see [ARHapticEvent] for the tiers.
+ *
+ * On a custom [SceneViewHaptic] implementation the event maps to the closest preset
+ * (`Placed` → [SceneViewHaptic.medium], `Recovered` → [SceneViewHaptic.success], …).
+ */
+public fun SceneViewHaptic.play(event: ARHapticEvent) {
+    if (this is AndroidSceneViewHaptic) {
+        play(HapticRecipes.of(event))
+        return
+    }
+    when (event) {
+        ARHapticEvent.Placed -> medium()
+        ARHapticEvent.Selected, ARHapticEvent.ScaleSnapped -> selection()
+        ARHapticEvent.LimitReached, ARHapticEvent.InvalidMove -> light()
+        ARHapticEvent.TrackingLost, ARHapticEvent.HelpNeeded -> warning()
+        ARHapticEvent.Recovered -> success()
+    }
 }
 
 internal const val SCENEVIEW_HAPTIC_TAG: String = "SceneViewHaptic"

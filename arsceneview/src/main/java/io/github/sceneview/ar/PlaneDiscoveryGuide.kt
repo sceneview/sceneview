@@ -19,9 +19,14 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -40,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.ar.core.TrackingFailureReason
@@ -322,6 +328,10 @@ fun rememberPlaneDiscoveryGuideState(
  * @param modifier applied to the guide's own overlay elements (not to a root container —
  *   the guide composes directly into the parent `Box`).
  * @param state hoisted timing config + derived phase; see [rememberPlaneDiscoveryGuideState].
+ * @param bottomClearance room to leave between the message pill and the bottom of the safe
+ *   area. The pill already clears the system bars on its own; this is what the **host's**
+ *   own bottom chrome takes — a dock, a toolbar, a call-to-action — which the guide has no
+ *   way to measure. Default 16 dp, i.e. a plain gutter for a host with nothing down there.
  * @param hintMessage overrides the "Move your phone to find a surface" copy. Null = default.
  * @param helpLabel overrides the "Need help?" affordance label. Null = default.
  * @param onHelp custom "Need help?" tap handler (e.g. open your own docs/sheet). Null =
@@ -338,6 +348,7 @@ fun BoxScope.PlaneDiscoveryGuide(
     trackingFailureReason: TrackingFailureReason? = null,
     modifier: Modifier = Modifier,
     state: PlaneDiscoveryGuideState = rememberPlaneDiscoveryGuideState(),
+    bottomClearance: Dp = GUIDE_BOTTOM_CLEARANCE,
     hintMessage: String? = null,
     helpLabel: String? = null,
     onHelp: (() -> Unit)? = null,
@@ -368,6 +379,7 @@ fun BoxScope.PlaneDiscoveryGuide(
         trackingFailureReason = trackingFailureReason,
         modifier = modifier,
         durations = state.durations,
+        bottomClearance = bottomClearance,
         hintMessage = hintMessage,
         helpLabel = helpLabel,
         onHelp = onHelp,
@@ -396,6 +408,7 @@ fun BoxScope.PlaneDiscoveryGuideOverlay(
     trackingFailureReason: TrackingFailureReason? = null,
     modifier: Modifier = Modifier,
     durations: PlaneDiscoveryGuideDurations = PlaneDiscoveryGuideDurations(),
+    bottomClearance: Dp = GUIDE_BOTTOM_CLEARANCE,
     hintMessage: String? = null,
     helpLabel: String? = null,
     onHelp: (() -> Unit)? = null,
@@ -447,12 +460,20 @@ fun BoxScope.PlaneDiscoveryGuideOverlay(
         shownMessage = liveMessage
         shownHelpLabel = liveHelpLabel
     }
+    // The pill's anchor. It is inset-aware and it takes its clearance from the host,
+    // because neither of those can be a constant here: the guide does not know how tall
+    // the navigation bar is, and it cannot know what the host parks above it.
     AnimatedVisibility(
         visible = pillVisible,
         modifier = modifier
             .align(Alignment.BottomCenter)
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 40.dp),
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                )
+            )
+            .padding(horizontal = GUIDE_GUTTER)
+            .padding(bottom = bottomClearance),
         enter = fadeIn(tween(durations.fadeInMs.toInt())),
         exit = fadeOut(tween(durations.fadeOutMs.toInt())),
     ) {
@@ -563,6 +584,28 @@ private fun GuideMessagePill(
         }
     }
 }
+
+/**
+ * Side margin of the message pill.
+ *
+ * 16 dp, the Material list/side gutter, so a host that lays its own AR chrome out on a
+ * 16 dp grid gets the pill on the same grid instead of inset a further 8 dp from it. It
+ * was 24 dp, which lined up with nothing on either side.
+ */
+private val GUIDE_GUTTER = 16.dp
+
+/**
+ * Default room kept between the pill and the bottom of the **safe** area.
+ *
+ * This is a breathing gap, not a reservation: a host that parks anything at the bottom of
+ * the screen — a toolbar, a dock, a call-to-action — passes its own height plus its own
+ * gutter as `bottomClearance`, because the guide cannot see it.
+ *
+ * The old value was 40 dp measured from the raw window edge with no inset at all, which
+ * put the pill *under* the gesture bar on a modern device and under any host chrome on
+ * every device. See the migration note in the changelog.
+ */
+internal val GUIDE_BOTTOM_CLEARANCE = 16.dp
 
 // Translucent scrim colors — fixed (not theme-derived) because the overlay always sits on a
 // live camera feed, where a dark pill + white text is legible in both light and dark themes.

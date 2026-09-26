@@ -16,8 +16,8 @@ A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next
 
 ```kotlin
 // build.gradle
-implementation("io.github.sceneview:sceneview:4.36.0")     // 3D
-implementation("io.github.sceneview:arsceneview:4.36.0")    // AR + 3D
+implementation("io.github.sceneview:sceneview:4.40.0")     // 3D
+implementation("io.github.sceneview:arsceneview:4.40.0")    // AR + 3D
 ```
 
 ---
@@ -72,7 +72,104 @@ SceneView(
 
 ---
 
-## ARSceneView
+## Automatic placement (recommended)
+
+`AutoPlacementScene` is additive: one usable detected plane consumes one placement
+request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
+or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
+centers, and a 0.25–3 m interaction range. It renders no plane grid or reticle.
+
+```kotlin
+import io.github.sceneview.ar.*
+
+val engine = rememberEngine()
+val modelLoader = rememberModelLoader(engine)
+val model = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+val placement = rememberAutoPlacementState()
+AutoPlacementScene(
+    assetReady = model != null,
+    state = placement,
+    engine = engine,
+    modelLoader = modelLoader,
+    surface = PlacementSurface.SURFACE, // WALL accepts vertical planes directly
+    onPlaced = { result -> /* result.anchor, result.plane, result.pose */ },
+) { result ->
+    model?.let { AutoPlacementModel(result, placement, it, scaleToUnits = 0.3f) }
+}
+// Explicit reset retains the asset and the camera session:
+// placement.resetPlacement(android.os.SystemClock.uptimeMillis())
+```
+
+`AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
+while rotating/scaling, and constrains dragging to supported plane geometry. Its
+0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
+trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base.
+
+For asynchronous selection, call `placement.selectModel()` before loading and attach
+only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model
+until its replacement succeeds. Observe `placement.phase`; use `requestPlacement()`,
+`resetPlacement(nowMillis)` and `keepScanning(nowMillis)` for explicit actions. Reset
+removes the wrapper-owned anchor without restarting the camera. Interruption freezes
+manipulation and recovers the existing placement; it does not arm a new request.
+`onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
+capability, tracking, and camera failures. Copy, permissions, asset selection and
+semantic haptics belong to the app.
+
+States match Swift's `ARPlacementPhase`: `INITIALIZING`, `SCANNING`, `NO_SURFACE`,
+`PLACED`, `ADJUSTING`, `TRACKING_LOST`, `RECOVERING`, `RECOVERY_FAILED`, `CAMERA_ERROR`.
+The no-surface and recovery deadlines are both ten seconds. A controller manages one
+object; repeated requests while placed are ignored. Multi-object hosts explicitly own
+separate requests/controllers; tapping empty space never places.
+
+**Manual-placement compatibility:** `PlacementScene`, `WallPlacementScene`
+(`WallPlacement`), `onTapOnPlane`, `ReticleNode` and the placement-reticle options remain
+manual-placement APIs. Their published defaults and tap behavior are unchanged. Use
+them for deliberate manual interactions or diagnostics; new placement flows should
+use `AutoPlacementScene`.
+
+
+### Direct wall placement
+
+Use `surface = PlacementSurface.WALL`: detection is vertical-only, with no floor,
+seam alignment or placement tap. The first usable wall creates one real plane anchor.
+New plane detections never move a standing object; drag to a valid alternative wall or
+reset explicitly. Tracking loss retains that placement and enters recovery.
+
+Author wall models with **+Y up and +Z front** (or supply `assetRotation`).
+`AutoPlacementModel` puts the bounding box's back and bottom at the contact pivot and
+faces its front toward the camera side of the wall, even if the detected normal points
+away. Drag projects the grab offset into the destination wall and validates its polygon;
+twist rotates in the wall plane; pinch preserves contact at 25–400% of the base size.
+The anchor frame retains the Android surface convention: +Y is the wall normal and
+−Z points up. `directWallPose(point, normal, towardViewer)` is an additive pure helper
+returning the authored +Y-up/+Z-front frame at the exact wall point; it requires a finite
+normal with a nonzero horizontal component. Legacy `wallAnchorPose`, `wallFacingRotation`,
+`floorWallSeam` and `WallPlacementPhase` keep their floor/seam semantics unchanged.
+
+For procedural geometry, `AutoPlacementNode(result, placement) { opacity -> … }` uses
+that same gesture hierarchy. Supply content already sized (demo: 0.3 m longest dimension),
+with bottom at y=0 and back at z=0. Mark selectable children editable, but disable their
+individual position/rotation/scale editing so gestures reach the contact pivot. Apply
+`opacity` to transparent materials for the 300 ms placement/tracking fade.
+
+Selected-object accessibility alternatives share the gesture constraints:
+`placement.moveBy(x, y)` moves in metres right/up on a wall, `rotateBy(degrees)` twists
+around its normal, and `scaleTo(factor)` changes its base-size multiplier.
+`scaleFactor` is observable. Keep these controls in a sheet, with **Reset placement**.
+`playbackDataset` is forwarded by the Android wall demo; a floor-only replay does not
+validate wall placement.
+
+| Wall-demo rendering | Android | iOS |
+|---|---|---|
+| TV geometry and size | Two boxes, 0.3 m preview | Same dimensions and material parameters |
+| Contact | Back/bottom pivot on the real wall | Same |
+| Wall contact shading | Disabled in the demo; no procedural shadow blob | No wall shadow; RealityKit grounding shadows project downward |
+| Reveal / tracking loss | 300 ms opacity fade | 300 ms opacity fade |
+
+Native renderer lighting can differ. The demo does not claim physically identical
+wall shadows, and never substitutes a synthetic pool for renderer shading.
+
+## ARSceneView (low-level / manual placement)
 
 ```kotlin
 ARSceneView(

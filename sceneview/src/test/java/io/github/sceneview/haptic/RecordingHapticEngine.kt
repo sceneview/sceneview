@@ -6,7 +6,11 @@ package io.github.sceneview.haptic
  * preset → platform mapping can be pinned on a pure JVM unit test (no
  * Robolectric).
  */
-internal class RecordingHapticEngine(override val sdkInt: Int) : HapticEngine {
+internal class RecordingHapticEngine(
+    override val sdkInt: Int,
+    private val primitivesSupported: Boolean = false,
+    override val touchFeedbackEnabled: Boolean = true,
+) : HapticEngine {
     private val _calls = mutableListOf<HapticCall>()
     val calls: List<HapticCall> get() = _calls
 
@@ -26,8 +30,23 @@ internal class RecordingHapticEngine(override val sdkInt: Int) : HapticEngine {
         _calls += HapticCall.OneShot(durationMs, amplitude)
     }
 
+    override fun playComposition(primitives: List<HapticPrimitive>) {
+        _calls += HapticCall.Composed(primitives)
+    }
+
+    override fun arePrimitivesSupported(ids: IntArray): Boolean = primitivesSupported
+
     override fun cancel() {
         _calls += HapticCall.Cancel
+    }
+}
+
+/** Records every `View.performHapticFeedback` constant; answers [answer]. */
+internal class RecordingViewPerformer(private val answer: Boolean = true) : HapticViewPerformer {
+    val constants = mutableListOf<Int>()
+    override fun perform(constant: Int): Boolean {
+        constants += constant
+        return answer
     }
 }
 
@@ -59,5 +78,6 @@ internal sealed class HapticCall {
             "AmplitudeWaveform(timings=${timings.toList()}, amplitudes=${amplitudes.toList()}, repeat=$repeat)"
     }
     data class OneShot(val durationMs: Long, val amplitude: Int) : HapticCall()
+    data class Composed(val primitives: List<HapticPrimitive>) : HapticCall()
     object Cancel : HapticCall()
 }

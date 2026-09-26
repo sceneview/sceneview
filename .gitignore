@@ -192,6 +192,15 @@ docs/site/
 # (`mcp/src/generated/llms-txt.ts`) and #1976 (`GeneratedDemos.kt`).
 docs/docs/llms.txt
 
+# Same reason, same build step: `docs.yml` copies the root `CONTRIBUTING.md`
+# into `docs/docs/contributing.md` immediately before `mkdocs build`, so
+# anything committed at that path is overwritten on every deploy and never
+# reaches the published site. The mirror was tracked and had silently
+# diverged from the root file (#3720); the root file is the only source
+# worth editing. (`docs/docs/changelog.md` is copied by the same step and is
+# still tracked — same latent trap, left alone here to keep this PR scoped.)
+docs/docs/contributing.md
+
 # ── Environment & secrets ─────────────────────────────────
 .env
 .env.local
@@ -294,6 +303,8 @@ tools/qa-screenshots/android/*
 # keep the before/after overlap evidence for the legend-chip fix (#2957) — a
 # "fixed on the emulator" claim with no frame anyone opened is what #2931 shipped
 !tools/qa-screenshots/2957-legend-overlap
+# keep the light/dark "Scene ready" evidence for the Picking & Collision qa_mode fix (#3795)
+!tools/qa-screenshots/3795-picking-scene-ready
 
 # Google Drive / iCloud Drive sync-conflict duplicates.
 # When the same file is touched concurrently in two checkouts of a synced

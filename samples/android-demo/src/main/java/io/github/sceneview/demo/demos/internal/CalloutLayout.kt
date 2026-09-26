@@ -96,7 +96,7 @@ internal object CalloutLayout {
         Callout(
             id = "visor",
             title = "Visor",
-            body = "Base colour and metallic-roughness, 2048² each.",
+            body = "Base color and metallic-roughness, 2048² each.",
             angleDegrees = -58f,
             height = 0.27f,
         ),

@@ -60,7 +60,7 @@
     <string name="gallery_not_downloadable">This model isn\'t available to download from its source.</string>
     <string name="sketchfab_loading_model">Loading %s…</string>
     <string name="sketchfab_streaming_from">Streaming from Sketchfab · rendering in SceneView</string>
-    <!-- Multi-source generalisation of sketchfab_streaming_from (#2645): %s is
+    <!-- Multi-source generalization of sketchfab_streaming_from (#2645): %s is
          the origin catalog display name (Sketchfab / Icosa Gallery / Poly Haven). -->
     <string name="gallery_streaming_from">Streaming from %s · rendering in SceneView</string>
     <string name="sketchfab_rendered_by">Rendered by SceneView · %s polys</string>
@@ -104,31 +104,29 @@
     <string name="ar_reset_scene">Reset scene</string>
     <string name="ar_pick_a_model">Pick a model</string>
     <string name="ar_picker_model_label">Model</string>
-    <!-- Canonical tap-to-place picker (PlacementModelPicker.kt) — shared by the AR View
+    <!-- Canonical placement picker (PlacementModelPicker.kt) — shared by the AR View
          tab and the `ar-placement` demo (#2482). -->
     <string name="ar_picker_streaming">Streaming %1$s…</string>
     <string name="ar_picker_no_model">No model</string>
     <string name="ar_picker_source_streamed">Streamed</string>
     <string name="ar_picker_source_streaming">Streaming…</string>
+    <!-- Dock items of the placement screen. `*_label` is the accessible name, `*_caption`
+         the one word drawn under the icon (DockItem). Both AR surfaces use these, so the
+         demo and the AR View tab cannot word the same action differently. -->
+    <string name="ar_dock_models_label">Choose a model</string>
+    <string name="ar_dock_models_caption">Models</string>
+    <string name="ar_dock_reset_label">Reset placement</string>
+    <string name="ar_dock_reset_caption">Reset</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
-    <!-- Placement coaching — ONE line at a time, Scene Viewer parity (#3326).
-         See PlacementInteraction.placementCoaching for which one shows when. -->
-    <string name="ar_coach_generic_model">this model</string>
-    <string name="ar_coach_unavailable">AR couldn\'t start — check that ARCore is available and try again</string>
-    <string name="ar_coach_point_at_surface">Point at a surface to place %1$s</string>
-    <string name="ar_coach_tap_to_place">Tap to place %1$s</string>
-    <string name="ar_coach_gesture_hint">Drag to move · two fingers to turn · pinch to resize</string>
-    <!-- Live pinch read-out, as a percentage of the object's real-world size (#3326). -->
-    <string name="ar_scale_percent">%1$d%%</string>
-    <string name="ar_scale_actual_size">100%% · actual size</string>
+    <!-- Placement coaching copy lives in strings_demo_ar_placement.xml (`ar_place_*`). -->
     <string name="ar_starting_session">Starting AR session…</string>
     <string name="ar_starting_session_subtitle">Hold up — initializing ARCore.</string>
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>
     <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this tab.</string>
 
     <!-- Featured AR demos on the AR launcher -->
-    <string name="featured_ar_placement_title">Tap to Place</string>
-    <string name="featured_ar_placement_subtitle">Tap a detected plane to place a model</string>
+    <string name="featured_ar_placement_title">Place in AR</string>
+    <string name="featured_ar_placement_subtitle">Point at the floor and the model appears</string>
     <string name="featured_ar_face_title">Augmented Faces</string>
     <string name="featured_ar_face_subtitle">Face mesh tracking and overlays</string>
     <string name="featured_ar_cloud_anchor_title">Cloud Anchors</string>
@@ -190,17 +188,14 @@
     <string name="category_ar">AR</string>
     <string name="category_interactive">Interactive</string>
 
-    <!-- Catalogue section headers — one per DemoCategory key, drawn as a full-span
-         header on the home grid and as the long label in search results (#2239). -->
-    <string name="category_viewer">Viewer</string>
-    <string name="category_geometry_materials">Geometry &amp; Materials</string>
-    <string name="category_rendering">Rendering</string>
-    <string name="category_interaction">Interaction</string>
-    <string name="category_ar_placement">AR Placement</string>
-    <string name="category_ar_tracking">AR Tracking</string>
-    <string name="category_ar_understanding">AR Understanding</string>
-    <string name="category_ar_anchors">AR Anchors</string>
-    <string name="category_platform">Platform</string>
+    <!-- Catalog section headers — one per DemoCategory key, drawn as a full-span
+         header on the home grid and as the long label in search results (#2239,
+         regrouped from nine sections to five in #3836). -->
+    <string name="category_view_3d">View in 3D</string>
+    <string name="category_create">Create &amp; record</string>
+    <string name="category_place_ar">Place in AR</string>
+    <string name="category_understand">Understand the world</string>
+    <string name="category_dev_tools">Developer tools</string>
 
     <!-- Sample demo titles (legacy keys preserved for backwards compatibility) -->
     <string name="demo_animations">Animations</string>
@@ -254,7 +249,7 @@
     <string name="about_group_legal">Legal</string>
     <string name="about_source_title">Source on GitHub</string>
     <string name="about_release_notes">Release notes</string>
-    <string name="about_license_title">Licence: Apache-2.0</string>
+    <string name="about_license_title">License: Apache-2.0</string>
     <string name="about_credits_attribution">Credits &amp; model attribution</string>
     <string name="about_footer">Made with ♥ by Thomas Gorisse and the SceneView contributors</string>
     <string name="about_built_with">Built with Google Filament and ARCore</string>
@@ -265,7 +260,7 @@
     <string name="about_feature_3d_title">3D Scenes</string>
     <string name="about_feature_3d_desc">Full Jetpack Compose integration with Filament rendering engine. Load glTF/GLB models, procedural geometry, dynamic skies, and more.</string>
     <string name="about_feature_ar_title">Augmented Reality</string>
-    <string name="about_feature_ar_desc">ARCore-powered tap-to-place, plane detection, image tracking, depth occlusion, and light estimation.</string>
+    <string name="about_feature_ar_desc">ARCore-powered automatic placement, plane detection, image tracking, depth occlusion, and light estimation.</string>
     <string name="about_feature_ai_title">AI-First SDK</string>
     <string name="about_feature_ai_desc">Designed so AI assistants can generate correct 3D/AR code on the first try. Declarative API, comprehensive docs, machine-readable references.</string>
     <string name="about_platforms_title">9 Platforms</string>
@@ -305,15 +300,22 @@
     <string name="demo_loading_stalled_title">Still loading…</string>
     <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
     <string name="demo_loading_retry">Retry</string>
+    <!-- Loading narration (#3825): each line names the step the code is in at that moment,
+         and a trailing ellipsis is animated by NarrationText. Never add a line for a step
+         the code does not actually run. -->
+    <string name="demo_loading_generic">Loading…</string>
+    <string name="ar_tracking_starting">Starting motion tracking — move your phone slowly…</string>
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_open">Open demo settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>
     <string name="demo_settings_reset">Reset</string>
     <string name="demo_settings_reset_cd">Reset demo settings to defaults</string>
+    <!-- The settings sheet has no scrim to tap (#3827), so it carries its own close. -->
+    <string name="demo_settings_close_cd">Close settings</string>
     <!-- Predictable per-demo reset action (#1966) -->
     <!--
-        Labelled "Reset demo", not "Reset": since #3328 it sits in the same sheet as the
-        header's settings-scoped "Reset", and two identically-labelled buttons doing
+        Labeled "Reset demo", not "Reset": since #3328 it sits in the same sheet as the
+        header's settings-scoped "Reset", and two identically-labeled buttons doing
         different things is exactly the confusion the merge set out to remove.
     -->
     <string name="demo_reset_action">Reset demo</string>
@@ -397,9 +399,9 @@
     <string name="open_model_filter_label">Open in SceneView</string>
     <!-- Shown when a handed-over file cannot be read, or is not a model this app opens. -->
     <string name="open_model_failed">Couldn\'t open that file — SceneView reads .3mf, .glb, .gltf, .stl, .obj and .ply</string>
-    <string name="ar_placement_floor">Floor</string>
+    <string name="ar_placement_floor">Surface</string>
     <string name="ar_placement_wall">Wall</string>
     <string name="ar_placement_wall_model">TV</string>
-    <string name="ar_placement_wall_help">Mount a life-size TV. Scan the floor, find a wall, then align the bottom of the wall to position the screen.</string>
-    <string name="demo_ar_session_failed">AR could not start. Return to the catalogue and reopen this demo to try again.</string>
+    <string name="ar_placement_wall_help">Place a TV automatically on a wall. Preview scale — not a real TV\'s size.</string>
+    <string name="demo_ar_session_failed">AR could not start. Return to the catalog and reopen this demo to try again.</string>
 </resources>

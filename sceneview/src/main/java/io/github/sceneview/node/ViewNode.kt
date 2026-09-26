@@ -5,19 +5,25 @@ import android.content.ContextWrapper
 import android.graphics.Canvas
 import android.graphics.PixelFormat
 import android.graphics.PorterDuff
+import android.graphics.Rect
 import android.graphics.SurfaceTexture
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.View
+import android.view.ViewParent
 import android.view.WindowManager.LayoutParams
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.setViewTreeFullyDrawnReporterOwner
 import androidx.activity.setViewTreeOnBackPressedDispatcherOwner
 import androidx.annotation.LayoutRes
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -128,10 +134,37 @@ class ViewNode(
      */
     var isTouchForwardingEnabled: Boolean = true
 
+    /**
+     * An embedded Android [View] redraws on its own schedule — a ripple, a progress spinner, a
+     * blinking cursor, an inner `RecyclerView` fling — and pushes the result into this node's
+     * `SurfaceTexture` without going through anything the library can observe.
+     *
+     * This used to be a flat `true`, and it was never a frozen picture: it was the whole scene
+     * never settling. One decorative label hosted in a `ViewNode` held every other node at full
+     * cadence for as long as it existed — measured on emulator-5554 at **57 fps on a scene nobody
+     * was touching**, which is the entire saving [io.github.sceneview.FrameRatePolicy.OnDemand]
+     * exists for, spent on a label that had not changed a pixel since it was laid out.
+     *
+     * The view's own surface answers exactly the question the flat `true` was standing in for:
+     * [SurfaceFrameSignal] latches every buffer the view hierarchy queues, so an animating view
+     * keeps the loop at full cadence for as long as it animates, and a view that has finished
+     * drawing lets the scene park with it. Nothing about the embedded UI is frozen — the loop is
+     * simply not awake for frames the view is not producing.
+     */
+    override val isFrameActive: Boolean
+        get() = frameSignal.isActive() || super.isFrameActive
+
     private val touchForwarder = ViewTouchForwarder(layout)
 
-    private val surfaceTexture = SurfaceTexture(0).also { it.detachFromGLContext() }
-    private val surface = Surface(surfaceTexture)
+    // internal, not private: read by ViewNodeTest to assert the release ordering fixed by #3734.
+    internal val surfaceTexture = SurfaceTexture(0).also { it.detachFromGLContext() }
+    internal val surface = Surface(surfaceTexture)
+
+    /**
+     * Bridges "the hosted view drew something" to the render gate. Delivered on the main thread
+     * (see the [Handler] below) because the gate it marks is the render loop's own state.
+     */
+    private val frameSignal = SurfaceFrameSignal(::requestRender)
 
     val stream: Stream = Stream.Builder()
         .stream(surfaceTexture)
@@ -167,6 +200,16 @@ class ViewNode(
             setMaterialInstanceAt(0, value)
             materialLoader.destroyMaterialInstance(old)
         }
+
+    init {
+        // Every buffer the hosted view hierarchy queues — a ripple, a spinner tick, a blinking
+        // cursor, a recomposition, the very first layout pass — wakes the render loop. Dispatched
+        // on the main looper so `requestRender()` reaches the gate from the thread that owns it.
+        surfaceTexture.setOnFrameAvailableListener(
+            { frameSignal.onFrameAvailable() },
+            Handler(Looper.getMainLooper())
+        )
+    }
 
     constructor(
         engine: Engine,
@@ -321,19 +364,33 @@ class ViewNode(
     override fun onCapturedTouchEvent(e: MotionEvent): Boolean = touchForwarder.onExit(e)
 
     override fun destroy() {
+        surfaceTexture.setOnFrameAvailableListener(null)
         windowManager.removeView(layout)
         // Capture MI before super.destroy() removes the renderable component (after which
-        // getMaterialInstanceAt would fail). Order: renderable (via super) → MI → texture → stream.
-        // The texture/stream destroys are frame-deferred via EngineDestroyQueue so Filament has
-        // reclaimed the MaterialInstance before the external Texture it was bound to is freed —
-        // destroying it eagerly can race that reclamation, mirroring the ImageNode crash that
-        // sceneview/sceneview#874 fixes. The queue keeps the FIFO texture-before-stream order.
+        // getMaterialInstanceAt would fail). Order: renderable (via super) → MI → texture → stream
+        // → surface/surfaceTexture. The texture/stream destroys are frame-deferred via
+        // EngineDestroyQueue so Filament has reclaimed the MaterialInstance before the external
+        // Texture it was bound to is freed — destroying it eagerly can race that reclamation,
+        // mirroring the ImageNode crash that sceneview/sceneview#874 fixes. The queue keeps the
+        // FIFO texture-before-stream order.
+        //
+        // The Surface/SurfaceTexture backing the Stream must outlive it for the same reason: the
+        // Stream's native `stream()` binding reads from the SurfaceTexture, and Filament's stream
+        // teardown (itself deferred to the same grace-period frame as the Texture) is not
+        // guaranteed to have run yet on the frame destroy() is called. Releasing them eagerly here
+        // could free the SurfaceTexture out from under a still-live Stream (sceneview/sceneview#3734).
+        // Enqueuing the release on the same queue, after enqueueStream, guarantees it always runs
+        // strictly after the Stream has actually been destroyed.
         val mi = materialInstance
         super.destroy()
         materialLoader.destroyMaterialInstance(mi)
         EngineDestroyQueue.of(engine).apply {
             enqueueTexture(texture)
             enqueueStream(stream)
+            enqueueAction {
+                surface.release()
+                surfaceTexture.release()
+            }
         }
     }
 
@@ -345,13 +402,19 @@ class ViewNode(
      * attached to a window and drawn to a real DisplayListCanvas, which is a hidden class.
      * To achieve this, the following is done:
      *
-     *  - Attach [Layout] to the [WindowManager].
-     *  - Override dispatchDraw.
-     *  - Call super.dispatchDraw with the real DisplayListCanvas
-     *  - Draw the clear color the DisplayListCanvas so that it isn't visible on screen.
-     *  - Draw the view to the SurfaceTexture every frame. This must be done every frame, because
-     *  the view will not be marked as dirty when child views are animating when hardware
-     *  accelerated.
+     *  - Attach [Layout] to the [WindowManager], so the hierarchy is really attached, measured and
+     *  drawn.
+     *  - Override [Layout.dispatchDraw] and run the hosted hierarchy's draw into a canvas locked on
+     *  the node's `Surface`, clearing it first so nothing of the previous copy shows through.
+     *  - Copy the hierarchy to that `Surface` **on every change of the hosted views** rather than on
+     *  every rendered frame: a hardware-accelerated child that invalidates only re-records its own
+     *  display list and never re-runs this layout's `dispatchDraw`, so the copy is driven by
+     *  [Layout.onDescendantInvalidated] (API 26+) / [Layout.invalidateChildInParent] (24–25), which
+     *  mark this layout dirty for the next traversal (#3718).
+     *
+     * Redrawing on change, not per frame, is what lets the scene park under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand] while still showing a current picture of the
+     * hosted view.
      */
     inner class Layout @JvmOverloads constructor(
         context: Context,
@@ -372,6 +435,43 @@ class ViewNode(
             super.onSizeChanged(width, height, oldWidth, oldHeight)
 
             viewSize = Size(width.toFloat(), height.toFloat())
+        }
+
+        /**
+         * A descendant asked to be redrawn — mark **this** layout dirty too (#3718).
+         *
+         * [dispatchDraw] is the only place the hosted hierarchy is copied into the node's
+         * `Surface`, and a hardware-accelerated child that invalidates only re-records its own
+         * display list: the parent's `dispatchDraw` is never re-run, so the copy never happens
+         * again and the quad keeps the pixels of the very first draw. Measured on a hosted card
+         * whose label toggles on tap: the content recomposed on both taps (16.834 `Pause`, 23.307
+         * `Resume`) for exactly **one** `dispatchDraw` and **one** queued buffer over the whole
+         * scenario, both at 16.861 — the label on the quad never changed.
+         *
+         * This is the event-driven copy the class KDoc above describes: once per real change to the
+         * hosted view instead of once per rendered frame, which is what lets the scene park under
+         * [io.github.sceneview.FrameRatePolicy.OnDemand] while still showing a current picture.
+         */
+        @RequiresApi(Build.VERSION_CODES.O)
+        override fun onDescendantInvalidated(child: View, target: View) {
+            super.onDescendantInvalidated(child, target)
+            invalidate()
+        }
+
+        /**
+         * The pre-API-26 half of [onDescendantInvalidated] — same reason, older walk (#3718).
+         *
+         * `super` runs FIRST: the framework's implementation reads `location` and `dirty` (which
+         * the caller passes as the shared `mTmpInvalRect` scratch) and rewrites them in place for
+         * the next parent up the chain. Invalidating this view before that read would re-enter
+         * `ViewGroup`'s invalidation on the same scratch rectangle and hand `super` a dirty region
+         * that is no longer the child's.
+         */
+        @Suppress("DEPRECATION")
+        override fun invalidateChildInParent(location: IntArray?, dirty: Rect?): ViewParent? {
+            val parent = super.invalidateChildInParent(location, dirty)
+            invalidate()
+            return parent
         }
 
         override fun dispatchDraw(canvas: Canvas) {

@@ -250,6 +250,39 @@ class FramingGate {
         private set
 
     /**
+     * Whether the pass still owes work that only a *presented* frame can advance — the single
+     * question [io.github.sceneview.SceneView]'s render loop asks it.
+     *
+     * Three states, and the middle one is the whole point:
+     *
+     * - the pass **ran and did not latch** — it needs another frame to confirm the union diagonal
+     *   is stable, so `true`;
+     * - the pass **could not run**: no content, empty bounds, a degenerate extent, a camera that
+     *   refused the framing. Waiting for content is not a reason to render. Content arriving is
+     *   itself a *push* invalidation (`SceneView`'s DSL node sync calls `requestRender()` and
+     *   [reset]), which wakes the loop and re-arms this flag — so `false`;
+     * - the pass **latched** — nothing left to do, `false`.
+     *
+     * Before the first pass runs it is `true`, which costs the one frame the pass needs to start.
+     *
+     * Without the middle state a default `SceneView` (`autoCenterContent = true`) showing an empty
+     * scene, a scene whose nodes are all `isVisible = false`, or a single point light held the
+     * render loop at full cadence forever: the pass never latched, so "framing pending" never
+     * cleared, so the loop could never settle — on exactly the idle scene render-on-demand exists
+     * for.
+     */
+    var isPending: Boolean = true
+        private set
+
+    /**
+     * Records that the pass had nothing it could frame this tick. See [isPending]: this is a wait
+     * for a push source, not a reason to keep drawing.
+     */
+    fun recordNoContent() {
+        isPending = false
+    }
+
+    /**
      * Union diagonal of the content the pass last framed, or `< 0` when no frame has run yet.
      * Compared against the current diagonal to decide whether a streamed model just landed.
      */
@@ -303,6 +336,7 @@ class FramingGate {
         lastFramedDiagonal = diagonal
         framingPasses++
         if (stable || framingPasses >= MAX_FRAMING_PASSES) latched = true
+        isPending = !latched
     }
 
     /**
@@ -318,6 +352,7 @@ class FramingGate {
         latched = false
         lastFramedDiagonal = -1f
         framingPasses = 0
+        isPending = true
     }
 }
 
@@ -336,6 +371,14 @@ class SceneAutoCenterState {
     val didCenter: Boolean get() = gate.latched
 
     /**
+     * `true` while the pass still needs presented frames to converge — see [FramingGate.isPending].
+     * `SceneView` reads this, **not** `!`[didCenter], as its "framing pending" render source: a
+     * pass that cannot run because the scene holds no measurable content must not keep the loop at
+     * full cadence, since the content's arrival wakes it anyway.
+     */
+    val isFramingPending: Boolean get() = gate.isPending
+
+    /**
      * Runs the centring pass against [contentRoot]. No-op once the gate has latched on a settled
      * union, or while the content bounds are still empty / degenerate (async loads not finished).
      * On a frame where the union diagonal materially changed, the content root is translated so
@@ -351,9 +394,18 @@ class SceneAutoCenterState {
         // Bounds in content-root-local space so they are invariant of any rotation / scale the
         // camera manipulator applies to the scene each frame.
         val bounds = computeContentBounds(contentRoot, relativeTo = contentRoot)
-        if (bounds.isEmpty) return false
+        // Nothing measurable to centre: an empty scene, a subtree whose nodes are all
+        // `isVisible = false` (`computeContentBounds` skips those), a lone light, a point-sized
+        // node. The pass is *waiting for content*, which is a push source — not a reason to draw.
+        if (bounds.isEmpty) {
+            gate.recordNoContent()
+            return false
+        }
         val maxExtent = maxOf(bounds.extents.x, bounds.extents.y, bounds.extents.z)
-        if (!maxExtent.isFinite() || maxExtent <= AUTO_CENTER_MIN_VISUAL_EXTENT) return false
+        if (!maxExtent.isFinite() || maxExtent <= AUTO_CENTER_MIN_VISUAL_EXTENT) {
+            gate.recordNoContent()
+            return false
+        }
         val diagonal = bounds.diagonal
         val framed = gate.shouldFrame(diagonal)
         if (framed) contentRoot.position = -bounds.center

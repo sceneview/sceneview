@@ -14,9 +14,9 @@ object ArPoseFragment : DemoFragment {
         id = "ar-pose",
         titleRes = R.string.demo_ar_pose_title,
         subtitleRes = R.string.demo_ar_pose_subtitle,
-        category = DemoCategory.AR_PLACEMENT,
+        category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.MyLocation,
-        order = 19,
+        order = 21,
         tags = setOf("ar", "pose", "transform", "gesture", "anchor"),
     )
 

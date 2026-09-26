@@ -216,7 +216,7 @@ struct ExploreTab: View {
     @State private var recentSearches = RecentSearches()
 
     // Multi-source resilience (#2645 / #2700): the tab browses whichever catalog
-    // the user picks (Sketchfab | Icosa Gallery | Poly Haven), remembering the
+    // the user picks (Sketchfab | Poly Haven on iOS, #3789), remembering the
     // last choice. A single degraded source never blanks the tab — the picker +
     // the samples row + the other sources stay usable.
     @State private var sources = GallerySourcesRegistry()
@@ -230,24 +230,26 @@ struct ExploreTab: View {
     /// on source switch. A missing key simply drops Sketchfab from the picker
     /// (no banner), matching the Android behaviour (#2095 / #2645).
     @State private var keyRejected = false
+    /// `true` when every feed of the selected source failed to load — timed out,
+    /// offline, 5xx. Distinct from "loaded and empty": the browse area then says
+    /// so in one card with a Retry, above the bundled carousel, instead of the
+    /// heading spinner spinning until the process dies (#3766 P2 §2).
+    @State private var feedsUnreachable = false
+    /// The feeds whose last load failed (timed out, offline, 5xx, key refused).
+    /// Each one keeps its heading and says so, instead of vanishing (#3789).
+    @State private var failedFeeds: Set<FeedKind> = []
     @State private var showSketchfabDisabledInfo = false
     /// When `true`, the Sketchfab feeds filter to `animated=true` (skeletal rigs).
     /// Ignored by the CC sources, which don't expose the flag.
     @State private var animatedOnly = false
 
-    // Search execution state (#1239 parity). `activeSearchQuery` (set on submit
-    // or on a recent-search tap) drives the search `.task`. `searchResults`:
-    //   - `nil`      → query is loading
-    //   - `.isEmpty` → query ran and returned 0 hits
-    //   - non-empty  → render the results carousel, hide the feeds
-    @State private var activeSearchQuery = ""
-    @State private var searchResults: [GalleryModel]?
-
-    /// Non-nil when the last search failed to reach the catalog. Kept separate
-    /// from `searchResults == []` so "the catalog answered, with nothing" and
-    /// "we never reached the catalog" stop rendering as the same sentence —
-    /// only the second one is worth a Retry button (#3586).
-    @State private var searchFailure: String?
+    // Search query + state machine (#3586). The four states the results area can
+    // be in — browse feeds, loading, no results, unreachable catalog — live in
+    // `ExploreSearchModel` so they are one enum instead of a combination of
+    // `@State` flags, and so they are unit-testable without a view or a network
+    // (`SceneViewDemoTests/ExploreSearchModelTests.swift`). `searchText` stays
+    // here: it is the field's binding and nothing else.
+    @State private var search = ExploreSearchModel()
 
     /// Focus for the inline field used in `embedded` mode (see `inlineSearchField`).
     @FocusState private var inlineSearchFocused: Bool
@@ -257,9 +259,9 @@ struct ExploreTab: View {
     @Namespace private var heroNamespace
     private let favoritesManager = FavoritesManager.shared
 
-    /// The currently selected source (Sketchfab | Icosa | Poly Haven).
+    /// The currently selected source (Sketchfab | Poly Haven).
     private var selectedSource: any ModelSource { sources.selected }
-    private var isSearching: Bool { !activeSearchQuery.isEmpty }
+    private var isSearching: Bool { search.isSearching }
     private var allFeedsEmpty: Bool {
         selectedSource.feedKinds.allSatisfy { (feedsByKind[$0] ?? []).isEmpty }
     }
@@ -330,11 +332,24 @@ struct ExploreTab: View {
                         searchResultsSection
                     } else {
                         // One carousel per feed the selected source advertises.
-                        // Each empty section self-hides; if every feed is empty and
-                        // we're not still loading, fall back to the bundled curated
-                        // carousel so the tab is never blank (#2645 / #2700).
+                        // A feed that failed or came back empty says so under its
+                        // heading (#3789); if every feed is empty and we're not
+                        // still loading, the bundled curated carousel follows so
+                        // the tab is never blank (#2645 / #2700).
                         ForEach(selectedSource.feedKinds, id: \.self) { kind in
                             galleryFeedSection(kind: kind, models: feedsByKind[kind] ?? [])
+                        }
+                        if feedsUnreachable && !isLoadingFeeds {
+                            let failure = ExploreSearchFailure.unreachable(selectedSource.id.displayName)
+                            searchStateCard(
+                                icon: failure.icon,
+                                title: failure.title,
+                                message: failure.message,
+                                action: "Try again"
+                            ) {
+                                Task { await loadFeeds(force: true) }
+                            }
+                            .accessibilityIdentifier("explore-feeds-error")
                         }
                         if allFeedsEmpty && !isLoadingFeeds {
                             bundledFeaturedSection
@@ -346,9 +361,9 @@ struct ExploreTab: View {
                         recentSearchesSection
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                .padding(.horizontal, SceneViewTokens.Home.contentPadding)
+                .padding(.top, SceneViewTokens.Home.heroTopGap)
+                .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
             }
             // Explore never set a page ground, so dark mode fell back to the
             // system black (#000) while every other screen sits on the DESIGN.md
@@ -358,32 +373,41 @@ struct ExploreTab: View {
             .background(SceneViewTokens.HomeColor.surface)
             .navigationTitle("Explore")
             // Placeholder names the catalog being searched so the field reflects
-            // the picked source (Sketchfab / Icosa Gallery / Poly Haven), #2645.
+            // the picked source (Sketchfab / Poly Haven), #2645.
             // The selected source is always usable (Sketchfab is dropped from the
             // picker when it has no key), so the field is always live.
-            .searchable(
+            // Standalone only: pushed from Showcase the page already carries
+            // `inlineSearchField`, and the bar the push brings back revealed a
+            // second, native field on the first pull-down.
+            .modifier(NativeSearchField(
+                enabled: !embedded,
                 text: $searchText,
                 prompt: "Search 3D models on \(selectedSource.id.displayName)"
-            )
+            ))
             .onSubmit(of: .search) { submitSearch() }
-            .onChange(of: searchText) { _, newValue in
-                // Clearing the field cancels the active search and restores the
-                // default carousels (#1239 parity).
-                if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    activeSearchQuery = ""
-                    searchResults = nil
-                    searchFailure = nil
-                }
-            }
+            // Clearing the field cancels the active search at once and restores
+            // the default carousels — it must not wait out the debounce below.
+            .onChange(of: searchText) { _, newValue in search.fieldChanged(newValue) }
+            // Debounced live search (#2228 parity): each keystroke re-keys this
+            // task, which cancels the previous one mid-sleep, so the query only
+            // fires 350 ms after the user stops typing. Below two characters
+            // nothing fires at all.
+            .task(id: searchText) { await search.debouncedActivate(text: searchText) }
             // Reload the selected source's feeds on first appearance, source
             // switch, or Animated toggle. `.task(id:)` cancels the previous run
             // when the key changes — the single cancel-then-restart pipeline that
             // mirrors the Android LaunchedEffect.
             .task(id: feedsTaskKey) { await loadFeeds() }
-            // Execute the search when the active query (or source) changes.
-            .task(id: searchTaskKey) { await runSearch() }
+            // Execute the search when the active query, the source, or the retry
+            // token changes.
+            .task(id: searchTaskKey) {
+                await search.run(source: selectedSource)
+                // A 401/403 met during search latches the same banner the feeds
+                // use, so one rejected key is explained once, in one place.
+                if search.keyRejected { keyRejected = true }
+            }
             // Pull-to-refresh — every available source has live feeds to refresh
-            // (Icosa / Poly Haven need no key), so it's always wired.
+            // (Poly Haven needs no key), so it's always wired.
             .refreshable { await loadFeeds(force: true) }
             .navigationDestination(item: $selectedModel) { model in
                 ModelViewerScreen(model: model)
@@ -406,7 +430,7 @@ struct ExploreTab: View {
                 CategorySheet(category: category) { query in
                     searchText = query
                     recentSearches.push(query)
-                    activeSearchQuery = query
+                    search.submit(text: query)
                 }
                 .presentationDetents([.medium, .large])
                 #if os(iOS)
@@ -422,7 +446,7 @@ struct ExploreTab: View {
             ) {
                 Button("Got it", role: .cancel) { showSketchfabDisabledInfo = false }
             } message: {
-                Text("The Sketchfab API key was rejected (revoked, wrong scope, or a rate-limit burst), so its Trending, Staff Picks and Recently Added carousels are unavailable right now.\n\nSwitch to Icosa Gallery or Poly Haven from the source picker — those Creative-Commons catalogs are always available and need no key.")
+                Text("The Sketchfab API key was rejected (revoked, wrong scope, or a rate-limit burst), so its Trending, Staff Picks and Recently Added carousels are unavailable right now.\n\nSwitch to Poly Haven from the source picker — its CC0 catalog is always available and needs no key.")
             }
     }
 
@@ -430,8 +454,13 @@ struct ExploreTab: View {
 
     /// Re-keys the feeds `.task` on source switch or Animated toggle.
     private var feedsTaskKey: String { "\(selectedSource.id.slug)|\(animatedOnly)" }
-    /// Re-keys the search `.task` on query change or source switch.
-    private var searchTaskKey: String { "\(activeSearchQuery)|\(selectedSource.id.slug)" }
+    /// Re-keys the search `.task` on query change, source switch, or Retry.
+    /// The retry token is part of the key because re-assigning the *same* query
+    /// inside one run loop does not change the key — so the old "clear it and
+    /// set it back" retry never restarted anything (#3586).
+    private var searchTaskKey: String {
+        "\(search.activeQuery)|\(selectedSource.id.slug)|\(search.retryToken)"
+    }
 
     /// Resolve the concrete source that produced `model` (robust against a source
     /// switch while the viewer is on screen).
@@ -442,7 +471,7 @@ struct ExploreTab: View {
     // MARK: - Source picker
 
     /// Source-picker chip row (#2645 / #2700): one chip per available `ModelSource`
-    /// (Sketchfab | Icosa Gallery | Poly Haven), the selected one highlighted.
+    /// (Sketchfab | Poly Haven), the selected one highlighted.
     private var sourcePickerRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -467,9 +496,9 @@ struct ExploreTab: View {
     private func selectSource(_ source: any ModelSource) {
         guard source.id != selectedSource.id else { return }
         searchText = ""
-        activeSearchQuery = ""
-        searchResults = nil
+        search.reset()
         feedsByKind = [:]
+        failedFeeds = []
         keyRejected = false
         sources.select(source)
         #if os(iOS)
@@ -492,7 +521,7 @@ struct ExploreTab: View {
                     Text("Sketchfab unavailable")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                    Text("The API key was rejected — try Icosa Gallery or Poly Haven.")
+                    Text("The API key was rejected — try Poly Haven.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -503,7 +532,7 @@ struct ExploreTab: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.secondary.opacity(0.08))
+                    .fill(SceneViewTokens.HomeColor.chipBackground)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -530,26 +559,33 @@ struct ExploreTab: View {
         if !force && !feedsByKind.isEmpty { return }
         isLoadingFeeds = true
         keyRejected = false
+        feedsUnreachable = false
         defer { isLoadingFeeds = false }
 
         let animated = animatedOnly && source.supportsAnimatedFilter
         let results = await withTaskGroup(
-            of: (FeedKind, [GalleryModel], Bool).self
-        ) { group -> [(FeedKind, [GalleryModel], Bool)] in
+            of: (FeedKind, [GalleryModel], Bool, Bool).self
+        ) { group -> [(FeedKind, [GalleryModel], Bool, Bool)] in
             for kind in source.feedKinds {
                 group.addTask {
                     do {
-                        let models = try await source.feed(kind: kind, animatedOnly: animated, limit: 10)
-                        return (kind, models, false)
+                        // A source that never answers (simulator with no route,
+                        // captive portal, stalled TLS) used to keep the heading
+                        // spinner alive forever — `URLSession.shared` only
+                        // gives up after 60 s of *silence*, not of waiting.
+                        let models = try await ExploreFeedLoad.withTimeout(Self.feedTimeout) {
+                            try await source.feed(kind: kind, animatedOnly: animated, limit: 10)
+                        }
+                        return (kind, models, false, false)
                     } catch let SketchfabError.requestFailed(statusCode)
                         where statusCode == 401 || statusCode == 403 {
-                        return (kind, [], true)
+                        return (kind, [], true, false)
                     } catch {
-                        return (kind, [], false)
+                        return (kind, [], false, true)
                     }
                 }
             }
-            var collected: [(FeedKind, [GalleryModel], Bool)] = []
+            var collected: [(FeedKind, [GalleryModel], Bool, Bool)] = []
             for await item in group { collected.append(item) }
             return collected
         }
@@ -558,43 +594,23 @@ struct ExploreTab: View {
         guard source.id == selectedSource.id else { return }
         var byKind: [FeedKind: [GalleryModel]] = [:]
         var rejected = false
-        for (kind, models, wasRejected) in results {
+        var failures = 0
+        var failedKinds: Set<FeedKind> = []
+        for (kind, models, wasRejected, failed) in results {
             byKind[kind] = models
             rejected = rejected || wasRejected
+            if failed { failures += 1 }
+            if failed || wasRejected { failedKinds.insert(kind) }
         }
         feedsByKind = byKind
+        failedFeeds = failedKinds
         keyRejected = rejected
+        feedsUnreachable = ExploreFeedLoad.isUnreachable(
+            feedCount: source.feedKinds.count, failures: failures, rejected: rejected)
     }
 
-    /// Execute the active search against the selected source. `nil` results means
-    /// "in flight"; an empty list means "0 hits"; non-empty renders the carousel.
-    /// Source search does not accept an `animated` filter (Sketchfab only exposes
-    /// it on the feed endpoints; the CC sources have no such concept), #2645.
-    private func runSearch() async {
-        let source = selectedSource
-        let query = activeSearchQuery
-        guard !query.isEmpty else { return }
-        searchResults = nil
-        searchFailure = nil
-        do {
-            let results = try await source.search(query: query, limit: 24)
-            guard source.id == selectedSource.id && query == activeSearchQuery else { return }
-            searchResults = results
-        } catch is CancellationError {
-            // Superseded by a newer query — leave the spinner to the new run.
-            return
-        } catch let SketchfabError.requestFailed(statusCode)
-            where statusCode == 401 || statusCode == 403 {
-            keyRejected = true
-            searchResults = []
-            searchFailure = "\(selectedSource.id.displayName) rejected the app's API key, so search is unavailable. Switch catalog from the picker above."
-        } catch {
-            // A transient blip surfaces the error state and clears on the next
-            // query — no permanent latch (matches the Android WAF handling).
-            searchResults = []
-            searchFailure = "Couldn't reach \(selectedSource.id.displayName). Check your connection and try again."
-        }
-    }
+    /// How long one feed may take before the tab stops waiting for it.
+    private static let feedTimeout: Duration = .seconds(15)
 
     /// Always-visible search field for `embedded` mode. Styled after the
     /// Showcase header's own field so the two searches in the app look alike.
@@ -602,7 +618,9 @@ struct ExploreTab: View {
         HStack(spacing: SceneViewTokens.Space.sm) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-            TextField("Search 3D models on \(selectedSource.id.displayName)", text: $searchText)
+            TextField("Search", text: $searchText,
+                      prompt: Text("Search 3D models on \(selectedSource.id.displayName)")
+                          .foregroundStyle(SceneViewTokens.HomeColor.placeholder))
                 .font(SceneViewTokens.TypeScale.body)
                 .focused($inlineSearchFocused)
                 .submitLabel(.search)
@@ -618,9 +636,7 @@ struct ExploreTab: View {
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
-                    activeSearchQuery = ""
-                    searchResults = nil
-                    searchFailure = nil
+                    search.cancel()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
@@ -637,18 +653,20 @@ struct ExploreTab: View {
         // `outline`, not `outline-subtle`: at rest the fill is one step off the
         // ground and, with no shadow to lean on in dark, the contour is the only
         // thing that says "input" rather than "smudge". Focus goes to `primary`.
+        // `controlOutline` is that token at its DESIGN.md value (1.47:1 → 6:1
+        // on the dark page).
         .overlay(Capsule().strokeBorder(
             inlineSearchFocused ? SceneViewTokens.HomeColor.primary
-                                : SceneViewTokens.HomeColor.outline,
+                                : SceneViewTokens.HomeColor.controlOutline,
             lineWidth: SceneViewTokens.Home.cardOutlineWidth))
     }
 
-    /// Explicit Enter press: record the query and fire the search.
+    /// Explicit Enter press: record the query and fire the search now, without
+    /// the debounce. Only this path writes to the recent-search history — live
+    /// keystroke fragments would fill it with "m", "ma", "mar", …
     private func submitSearch() {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
+        guard let query = search.submit(text: searchText) else { return }
         recentSearches.push(query)
-        activeSearchQuery = query
         #if os(iOS)
         SceneViewHaptic.shared.light()
         #endif
@@ -719,18 +737,57 @@ struct ExploreTab: View {
         }
     }
 
-    /// One horizontal carousel of source-agnostic `GalleryModel`s. Self-hides when
-    /// the feed is empty and we're not still loading — better than telling users
-    /// "Nothing here yet" when a source is unreachable (a degraded source never
-    /// blanks the tab, #2645 / #2700).
+    /// One horizontal carousel of source-agnostic `GalleryModel`s. A feed that
+    /// failed or came back empty keeps its heading and says which, with Retry
+    /// when a retry can help (#3789) — it used to vanish, so a failed Trending
+    /// looked like no Trending at all. It hides only when a message elsewhere
+    /// already covers it (`ExploreFeedLoad.sectionState`).
     @ViewBuilder
     private func galleryFeedSection(kind: FeedKind, models: [GalleryModel]) -> some View {
-        if !models.isEmpty || isLoadingFeeds {
+        let state = ExploreFeedLoad.sectionState(
+            hasModels: !models.isEmpty,
+            isLoading: isLoadingFeeds,
+            failed: failedFeeds.contains(kind),
+            unreachable: feedsUnreachable,
+            keyRejected: keyRejected
+        )
+        switch state {
+        case .hidden:
+            EmptyView()
+        case .failed:
+            VStack(alignment: .leading, spacing: 12) {
+                Text(feedTitle(kind))
+                    .font(.title2.weight(.bold))
+                searchStateCard(
+                    icon: "wifi.exclamationmark",
+                    title: "Couldn't load \(feedTitle(kind))",
+                    message: "\(selectedSource.id.displayName) didn't answer. Check your connection, then try again.",
+                    action: "Try again"
+                ) {
+                    Task { await loadFeeds(force: true) }
+                }
+            }
+            .accessibilityIdentifier("explore-feed-failed-\(kind)")
+        case .empty:
+            VStack(alignment: .leading, spacing: 12) {
+                Text(feedTitle(kind))
+                    .font(.title2.weight(.bold))
+                searchStateCard(
+                    icon: "tray",
+                    title: "Nothing in \(feedTitle(kind)) right now",
+                    message: animatedOnly && selectedSource.supportsAnimatedFilter
+                        ? "No animated models in this feed. Turn off Animated to see them all."
+                        : "\(selectedSource.id.displayName) sent back an empty list. Pull down to refresh.",
+                    action: nil
+                )
+            }
+            .accessibilityIdentifier("explore-feed-empty-\(kind)")
+        case .models, .loading:
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text(feedTitle(kind))
                         .font(.title2.weight(.bold))
-                    if isLoadingFeeds && models.isEmpty {
+                    if state == .loading {
                         Spacer()
                         ProgressView().controlSize(.small)
                     }
@@ -753,62 +810,123 @@ struct ExploreTab: View {
         }
     }
 
-    /// Search-results carousel (#1239 parity). `searchResults == nil` ⇒ loading;
-    /// empty ⇒ 0 hits; non-empty ⇒ render the carousel.
+    /// The results area, one branch per `ExploreSearchState` (#3586). The browse
+    /// feeds are the fourth state and are rendered by `content` instead — this
+    /// section only exists while a query is active.
     @ViewBuilder
     private var searchResultsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Search results")
                     .font(.title2.weight(.bold))
-                if searchResults == nil {
+                if search.state == .loading {
                     Spacer()
                     ProgressView().controlSize(.small)
                 }
             }
-            if let searchResults {
-                if let searchFailure {
-                    // Error state — we never got an answer. Offer the retry.
-                    VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
-                        Label(searchFailure, systemImage: "wifi.exclamationmark")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Try again") {
-                            let query = activeSearchQuery
-                            activeSearchQuery = ""
-                            activeSearchQuery = query
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(SceneViewTheme.primary)
-                    }
-                } else if searchResults.isEmpty {
-                    // Empty state — the catalog answered, it just has nothing.
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("No results for \u{201C}\(activeSearchQuery)\u{201D}")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("Try a shorter or more general word, or pick a category below.")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 14) {
-                            ForEach(searchResults, id: \.cardKey) { model in
-                                FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
-                                    viewingModel = model
-                                    #if os(iOS)
-                                    SceneViewHaptic.shared.light()
-                                    #endif
-                                }
+            switch search.state {
+            case .idle:
+                EmptyView()
+            case .loading:
+                // Say what is happening rather than spin in silence — the
+                // heading's spinner alone reads as "stuck" on a slow network.
+                Text("Searching \(selectedSource.id.displayName) for \u{201C}\(search.activeQuery)\u{201D}…")
+                    .font(SceneViewTokens.TypeScale.body)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                    .accessibilityIdentifier("explore-search-loading")
+            case .noResults(let query):
+                // The catalog answered, it just has nothing for this word.
+                searchStateCard(
+                    icon: "magnifyingglass",
+                    title: "No results for \u{201C}\(query)\u{201D}",
+                    message: "\(selectedSource.id.displayName) has nothing under that word. Try a shorter or more general one, or pick a category below.",
+                    action: nil
+                )
+                .accessibilityIdentifier("explore-search-no-results")
+            case .failed(let failure):
+                // We never got an answer. Say which, and offer the way out.
+                searchStateCard(
+                    icon: failure.icon,
+                    title: failure.title,
+                    message: failure.message,
+                    action: failure.canRetry ? "Try again" : nil
+                ) {
+                    search.retry()
+                }
+                .accessibilityIdentifier("explore-search-error")
+            case .results(let models):
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(models, id: \.cardKey) { model in
+                            FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                                viewingModel = model
+                                #if os(iOS)
+                                SceneViewHaptic.shared.light()
+                                #endif
                             }
                         }
-                        .padding(.bottom, 4)
                     }
-                    .scrollClipDisabled()
+                    .padding(.bottom, 4)
                 }
+                .scrollClipDisabled()
             }
         }
+    }
+
+    /// One card for a search state that has no models to show — "no results" and
+    /// every flavour of failure. The two need the same shape, because the user's
+    /// question is the same ("why is the screen empty?"); only the sentence and
+    /// the presence of an action differ.
+    ///
+    /// DESIGN.md: `surface-container` ground one step off the page, `outline`
+    /// hairline, `radius-md`, `space-md` padding, `type-card` title over
+    /// `type-body` guidance — the same slab the rest of the demo chrome uses, so
+    /// it reads as part of the app in both themes.
+    @ViewBuilder
+    private func searchStateCard(
+        icon: String,
+        title: String,
+        message: String,
+        action: String?,
+        onAction: @escaping () -> Void = {}
+    ) -> some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            Label {
+                Text(title)
+                    .font(SceneViewTokens.TypeScale.card)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+            } icon: {
+                Image(systemName: icon)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+            }
+            Text(message)
+                .font(SceneViewTokens.TypeScale.body)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+            if let action {
+                Button(action: onAction) {
+                    Text(action)
+                        .font(SceneViewTokens.TypeScale.bodySemibold)
+                        .padding(.horizontal, SceneViewTokens.Space.md)
+                        .frame(height: 36)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SceneViewTokens.HomeColor.primary)
+                .clipShape(Capsule())
+                .accessibilityIdentifier("explore-search-retry")
+            }
+        }
+        .padding(SceneViewTokens.Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                .fill(SceneViewTokens.HomeColor.surfaceContainer)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                .strokeBorder(SceneViewTokens.HomeColor.outline,
+                              lineWidth: SceneViewTokens.Home.cardOutlineWidth)
+        )
     }
 
     /// Fallback single-row carousel of bundled local models, shown only when every
@@ -847,9 +965,10 @@ struct ExploreTab: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Categories")
                 .font(.title2.weight(.bold))
-            // FlowLayout-style category chips. Uses LazyVGrid for portable wrapping.
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)],
-                      alignment: .leading, spacing: 8) {
+            // Chips sized to their label and wrapped by `ChipFlow`. The grid this
+            // replaces gave every chip a third of the width, narrower than one
+            // word, so labels broke mid-word — "Architec-ture", "Electron-ics".
+            ChipFlow(spacing: 8) {
                 ForEach(SketchfabCategory.allCases) { category in
                     CategoryChip(category: category) {
                         selectedCategory = category
@@ -882,7 +1001,7 @@ struct ExploreTab: View {
                         // Tapping a recent search re-runs it against the current
                         // source (#1239 parity).
                         searchText = query
-                        activeSearchQuery = query
+                        search.submit(text: query)
                     } onRemove: {
                         recentSearches.remove(query)
                     }
@@ -988,7 +1107,7 @@ private struct FeaturedGalleryCard: View {
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(.thinMaterial, in: Capsule())
+                            .glassBackground(in: Capsule())
                             .padding(8)
                     }
                 }
@@ -1139,14 +1258,78 @@ private struct SourceChip: View {
                 .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                // The home filter chips' tokens (`chip-*`). The selected chip
+                // was white on the accent tint, which in dark is #A4C1FF —
+                // 1.8:1 (#3790). `chip-selected-text` on `chip-selected-bg`
+                // is 17.1:1 light / 10.5:1 dark.
                 .background(
-                    isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.tint.opacity(0.12)),
+                    isOn ? SceneViewTokens.HomeColor.chipSelectedBackground
+                        : SceneViewTokens.HomeColor.chipBackground,
                     in: Capsule()
                 )
-                .foregroundStyle(isOn ? AnyShapeStyle(.white) : AnyShapeStyle(.tint))
+                .foregroundStyle(
+                    isOn ? SceneViewTokens.HomeColor.chipSelectedText
+                        : SceneViewTokens.HomeColor.chipText
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title) source, \(isOn ? "selected" : "not selected")")
+    }
+}
+
+// MARK: - Native search field (standalone only)
+
+private struct NativeSearchField: ViewModifier {
+    let enabled: Bool
+    @Binding var text: String
+    let prompt: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $text, prompt: prompt)
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - Chip flow
+
+/// Lays chips out left to right at their own width and wraps to a new row when
+/// the next one no longer fits.
+private struct ChipFlow: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, in: proposal.width ?? .infinity)
+        return CGSize(width: proposal.width ?? rows.width, height: rows.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = arrange(subviews, in: bounds.width)
+        for (subview, origin) in zip(subviews, rows.origins) {
+            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                          proposal: .unspecified)
+        }
+    }
+
+    private func arrange(_ subviews: Subviews, in width: CGFloat)
+        -> (origins: [CGPoint], width: CGFloat, height: CGFloat) {
+        var origins: [CGPoint] = []
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            origins.append(CGPoint(x: x, y: y))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return (origins, widest, y + rowHeight)
     }
 }
 
@@ -1164,10 +1347,14 @@ private struct CategoryChip: View {
                 Text(category.displayName)
                     .font(.subheadline.weight(.medium))
             }
+            .lineLimit(1)
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
+            // 12 + a 20 pt line + 12 = the 44 pt touch target (was 38).
+            .padding(.vertical, 12)
             .background(.tint.opacity(0.12), in: Capsule())
+            // The 12 % fill alone measured 1.25:1 on the dark ground — the
+            // contour is what keeps the capsule readable there.
+            .overlay(Capsule().strokeBorder(.tint.opacity(0.3), lineWidth: 1))
             .foregroundStyle(.tint)
         }
         .buttonStyle(.plain)
@@ -1206,7 +1393,7 @@ private struct RecentSearchRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -1296,7 +1483,7 @@ private struct ModelCard: View {
                             .font(.body)
                             .foregroundStyle(isFavorite ? .red : .secondary)
                             .padding(8)
-                            .background(.ultraThinMaterial, in: Circle())
+                            .glassBackground(in: Circle())
                     }
                     .padding(6)
                 }
@@ -1383,7 +1570,7 @@ struct ModelViewerScreen: View {
                         .padding(.horizontal)
                 }
                 .padding()
-                .background(.ultraThinMaterial)
+                .glassBackground()
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding()
             }
@@ -1497,46 +1684,24 @@ struct ModelViewerScreen: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(.tint, in: Capsule())
-                        .foregroundStyle(.white)
+                        .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                        .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("View this model in AR")
             }
             #endif
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(SceneEnvironment.allPresets, id: \.name) { env in
-                        Button {
-                            selectedEnvironment = env
-                            #if os(iOS)
-                            SceneViewHaptic.shared.light()
-                            #endif
-                        } label: {
-                            Text(env.name)
-                                .font(.caption2)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    selectedEnvironment.name == env.name
-                                        ? AnyShapeStyle(.blue)
-                                        : AnyShapeStyle(.white.opacity(0.15))
-                                )
-                                .clipShape(Capsule())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-            }
+            EnvironmentChipRow(selection: $selectedEnvironment)
 
             Text("Pinch to zoom \u{00B7} Drag to orbit")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .viewerChrome()
         .padding()
     }
 
@@ -1569,23 +1734,20 @@ struct ModelViewerScreen: View {
     #endif
 }
 
-// MARK: - Gallery model viewer (source-agnostic — renders USDZ sources in SceneView)
+// MARK: - Gallery model viewer (source-agnostic — renders USD sources in SceneView)
 
-/// Full-screen viewer for a source-agnostic `GalleryModel` (Sketchfab | Icosa |
-/// Poly Haven). iOS port of Android's `GalleryModelViewerScreen.kt` (renamed from
+/// Full-screen viewer for a source-agnostic `GalleryModel` (Sketchfab | Poly
+/// Haven). iOS port of Android's `GalleryModelViewerScreen.kt` (renamed from
 /// `SketchfabModelViewerScreen.kt` in #2645 / #2685). See #2700.
 ///
-/// **Render path (Sketchfab):** downloads the USDZ through the source's
-/// `download(model:progress:)`, caches it, then loads it into `SceneView` via
-/// `ModelNode.load(contentsOf:)`. Every model the user renders flows through
+/// **Render path:** downloads the model through the source's
+/// `download(model:progress:)` — a USDZ from Sketchfab, a `.usdc` and its
+/// textures from Poly Haven (#3789) — caches it, then loads it into `SceneView`
+/// via `ModelNode.load(contentsOf:)`. Every model the user renders flows through
 /// SceneView's renderer (RealityKit on iOS) — never a web iframe viewer.
 ///
-/// **Honest degradation (Icosa / Poly Haven):** these Creative-Commons catalogs
-/// are glTF-native, and RealityKit loads only USDZ, so their in-app 3D render is
-/// honestly deferred: the viewer shows the preview (thumbnail + attribution +
-/// tags) with a clearly-labelled "3D preview coming soon" state instead of a
-/// fake or a crash. Browse + credit are fully available. The Android demo renders
-/// these via Filament; keep the two in sync when Apple-side glTF support lands.
+/// A source whose models cannot render on iOS (Icosa, glTF-only) is hidden
+/// from the picker rather than listed here with a disabled button (#3789).
 ///
 /// Wow-factor polish (carried from the Sketchfab viewer):
 /// - Premium studio HDR environment by default (PBR-flattering reflections).
@@ -1613,9 +1775,9 @@ struct GalleryModelViewerScreen: View {
     @State private var hasUserOpened = false
     @Environment(\.dismiss) private var dismiss
 
-    /// `true` when a model from this source can be rendered in-app through
-    /// SceneView (RealityKit). Sketchfab serves USDZ → renders; the glTF-native
-    /// CC sources are browse + search only (honest "coming soon"). See #2700.
+    /// `true` when this model can be rendered in-app through SceneView
+    /// (RealityKit). Every listed source renders; a Sketchfab model the free
+    /// tier does not let us download is the one exception. See #2700 / #3789.
     private var canRenderInApp: Bool { source.rendersInApp && model.downloadable }
 
     /// Largest source thumbnail (for the during-download Ken-Burns hero).
@@ -1624,9 +1786,7 @@ struct GalleryModelViewerScreen: View {
     }
 
     private var ctaTitle: String {
-        if canRenderInApp { return "Open in SceneView" }
-        if !source.rendersInApp { return "3D preview coming soon" }
-        return "Not downloadable"
+        canRenderInApp ? "Open in SceneView" : "Not downloadable"
     }
 
     var body: some View {
@@ -1668,17 +1828,18 @@ struct GalleryModelViewerScreen: View {
                     VStack(spacing: 14) {
                         ProgressView(value: max(0.05, downloadProgress))
                             .progressViewStyle(.linear)
-                            .tint(.white)
+                            .tint(SceneViewTokens.Glass.onGlass)
                             .frame(width: 220)
                         Text("Loading \(model.name)\u{2026}")
                             .font(.subheadline)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(SceneViewTokens.Glass.onGlass)
                         Text("Streaming from \(model.sourceId.displayName) \u{00B7} rendering in SceneView")
                             .font(.caption)
-                            .foregroundStyle(.white.opacity(0.6))
+                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
                     }
                     .padding(20)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .glassBackground(in: RoundedRectangle(cornerRadius: 16))
+                    .viewerChrome()
                 }
 
                 if let errorMessage {
@@ -1814,13 +1975,11 @@ struct GalleryModelViewerScreen: View {
         }
     }
 
-    /// Honest explanation for the non-render state — the iOS subset boundary.
+    /// Honest explanation for the non-render state.
     private var notRenderableExplanation: String {
         if !source.rendersInApp {
-            return "3D preview is coming soon on iOS for \(model.sourceId.displayName). "
-                + "This Creative-Commons model is glTF-only, and SceneView on Apple "
-                + "platforms (RealityKit) renders USDZ. You can browse and credit it "
-                + "now — Sketchfab models render live in SceneView."
+            // Not reachable from the picker, which hides such a source (#3789).
+            return "\(model.sourceId.displayName) models can't open in 3D on iOS."
         }
         return "This model is not downloadable on the Sketchfab free tier and can't "
             + "be rendered in SceneView yet."
@@ -1850,7 +2009,7 @@ struct GalleryModelViewerScreen: View {
             .padding(.top, 4)
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding()
     }
@@ -1928,30 +2087,7 @@ struct GalleryModelViewerScreen: View {
 
     private var controlsOverlay: some View {
         VStack(spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(SceneEnvironment.allPresets, id: \.name) { env in
-                        Button {
-                            selectedEnvironment = env
-                            #if os(iOS)
-                            SceneViewHaptic.shared.light()
-                            #endif
-                        } label: {
-                            Text(env.name)
-                                .font(.caption2)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    selectedEnvironment.name == env.name
-                                        ? AnyShapeStyle(.blue)
-                                        : AnyShapeStyle(.white.opacity(0.15))
-                                )
-                                .clipShape(Capsule())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-            }
+            EnvironmentChipRow(selection: $selectedEnvironment)
 
             HStack(spacing: 10) {
                 if model.faceCount > 0 {
@@ -1962,11 +2098,62 @@ struct GalleryModelViewerScreen: View {
                 }
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(.white.opacity(0.7))
+            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .viewerChrome()
         .padding()
+    }
+}
+
+// MARK: - Viewer chrome (shared by both viewers above)
+
+/// The environment picker of the two Explore viewers: one chip per
+/// `SceneEnvironment` preset, on the viewer's glass panel.
+///
+/// Labels are `on-glass`; the selected chip is `primary` under `on-primary`,
+/// the one pairing `DESIGN.md` documents for text on the brand fill. Both only
+/// hold on dark glass, so the panel around the row takes ``viewerChrome()``.
+private struct EnvironmentChipRow: View {
+    @Binding var selection: SceneEnvironment
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(SceneEnvironment.allPresets, id: \.name) { env in
+                    let selected = selection.name == env.name
+                    Button {
+                        selection = env
+                        #if os(iOS)
+                        SceneViewHaptic.shared.light()
+                        #endif
+                    } label: {
+                        Text(env.name)
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .foregroundStyle(selected ? SceneViewTokens.HomeColor.onPrimary
+                                                      : SceneViewTokens.Glass.onGlass)
+                            .background(selected ? SceneViewTokens.HomeColor.primary
+                                                 : SceneViewTokens.Glass.surface,
+                                        in: Capsule())
+                    }
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+        }
+    }
+}
+
+private extension View {
+    /// Chrome over a viewer's stage is media, not a themed surface: it stays
+    /// dark in both schemes (`DESIGN.md`, Demo Scaffold), as `DemoScaffold`
+    /// pins its own. Without the pin the iOS 26 glass follows a light system
+    /// theme and turns near-white under the white `on-glass` labels (#3882);
+    /// the pre-26 material stack gets its dark-scheme ceiling back too.
+    func viewerChrome() -> some View {
+        environment(\.colorScheme, .dark)
     }
 }

@@ -23,7 +23,6 @@ struct DebugOverlayDemo: View {
     @State private var targetCount = 1
     @State private var currentCount = 0
     @State private var isStressRunning = false
-    @State private var stressAborted = false
     @StateObject private var fps = FPSCounter()
 
     // Fixed grid layout dimensions — positions are stable regardless of
@@ -37,28 +36,40 @@ struct DebugOverlayDemo: View {
 
     // MARK: — Body
 
-    var body: some View {
-        ZStack {
-            sphereScene
-                .ignoresSafeArea()
+    private static let presets = [1, 10, 100, 500, 1_000]
 
-            VStack(alignment: .leading) {
-                statsOverlay
-                    .padding([.top, .horizontal])
-                Spacer()
-                controlsOverlay
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .padding()
-            }
-        }
-        .navigationTitle("Debug Overlay")
-        #if os(iOS)
-        .navigationBarTitleInline()
-        #endif
-        .onAppear  { fps.start() }
-        .onDisappear { fps.stop() }
-        .task(id: targetCount)     { await spawnProgressively() }
-        .task(id: isStressRunning) { await runStressRamp() }
+    private var busy: Bool { currentCount < targetCount || isStressRunning }
+
+    var body: some View {
+        sphereScene
+            // The stats HUD and the node-count strip ride the scaffold's
+            // accessory cluster; the stress ramp is a dock item and Reset is
+            // the sheet's. The old `.regularMaterial` card was near-white in
+            // dark mode and the screen had no back button (#3766 P2 §3, §6).
+            .demoChrome(
+                dock: [
+                    DockItem(icon: isStressRunning ? "stop.fill" : "gauge.with.needle",
+                             label: isStressRunning ? "Stop" : "Stress test",
+                             caption: isStressRunning ? nil : "1 → 1 000",
+                             selected: isStressRunning) {
+                        isStressRunning.toggle()
+                        if isStressRunning { targetCount = 1 }
+                    }
+                ],
+                onReset: { isStressRunning = false; targetCount = 1 },
+                accessory: {
+                    VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
+                        statsOverlay
+                        DemoOptionStrip(Self.presets, selection: $targetCount) { "\($0)" }
+                            .disabled(busy)
+                            .opacity(busy ? 0.6 : 1)
+                    }
+                }
+            )
+            .onAppear  { fps.start() }
+            .onDisappear { fps.stop() }
+            .task(id: targetCount)     { await spawnProgressively() }
+            .task(id: isStressRunning) { await runStressRamp() }
     }
 
     // MARK: — 3D scene
@@ -100,19 +111,24 @@ struct DebugOverlayDemo: View {
     private var statsOverlay: some View {
         VStack(alignment: .leading, spacing: 2) {
             let fpsValue = fps.currentFPS
-            let fpsColor: Color = fpsValue >= 55 ? .green : fpsValue >= 30 ? .yellow : .red
+            let fpsColor: Color = fpsValue >= 55 ? SceneViewTokens.ARChrome.success
+                : fpsValue >= 30 ? SceneViewTokens.ARChrome.warning
+                : SceneViewTokens.ARChrome.danger
             Text(String(format: "FPS: %.1f", fpsValue)).foregroundStyle(fpsColor)
             Text(String(format: "Frame: %.1f ms", fps.frameTimeMs))
-            Text("Nodes: \(currentCount)")
+            Text("Nodes: \(currentCount) / \(targetCount)")
             Text("Tris: ≈\(formatThousands(Int64(currentCount) * 768))")
             sparklineView
                 .frame(height: 28)
         }
         .font(.system(.caption, design: .monospaced))
-        .foregroundStyle(.white)
-        .padding(8)
-        .background(.black.opacity(0.65))
+        .foregroundStyle(SceneViewTokens.Glass.onGlass)
+        .padding(.horizontal, SceneViewTokens.Glass.pillPaddingHorizontal)
+        .padding(.vertical, SceneViewTokens.Space.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg,
+                                              style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -128,7 +144,7 @@ struct DebugOverlayDemo: View {
                     p.move(to: CGPoint(x: 0, y: refY))
                     p.addLine(to: CGPoint(x: size.width, y: refY))
                 },
-                with: .color(.white.opacity(0.3)),
+                with: .color(SceneViewTokens.Glass.onGlassDisabled),
                 lineWidth: 1
             )
             // FPS sparkline
@@ -139,63 +155,7 @@ struct DebugOverlayDemo: View {
                 if i == 0 { linePath.move(to: CGPoint(x: x, y: y)) }
                 else { linePath.addLine(to: CGPoint(x: x, y: y)) }
             }
-            context.stroke(linePath, with: .color(.green), lineWidth: 2)
-        }
-    }
-
-    // MARK: — Controls overlay
-
-    @ViewBuilder
-    private var controlsOverlay: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Nodes: \(currentCount) / \(targetCount)")
-                .font(.caption.bold())
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-
-            if currentCount < targetCount {
-                ProgressView(value: Float(currentCount), total: Float(max(targetCount, 1)))
-                    .padding(.horizontal, 16)
-                Text("Spawning \(currentCount) / \(targetCount)…")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 16)
-            }
-            if stressAborted {
-                Text("Stress test aborted (device limit).")
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 16)
-            }
-
-            let busy = currentCount < targetCount || isStressRunning
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach([1, 10, 100, 500, 1_000], id: \.self) { preset in
-                        Button(action: { stressAborted = false; targetCount = preset }) {
-                            Text("\(preset)").font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(busy)
-                    }
-                    Button("Reset") { stressAborted = false; targetCount = 1 }
-                        .buttonStyle(.bordered)
-                        .disabled(busy)
-                }
-                .padding(.horizontal, 16)
-            }
-
-            Button {
-                stressAborted = false
-                isStressRunning.toggle()
-                if isStressRunning { targetCount = 1 }
-            } label: {
-                Text(isStressRunning ? "Stop stress test" : "Stress test (1 → 1 000)")
-                    .font(.caption)
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+            context.stroke(linePath, with: .color(SceneViewTokens.ARChrome.success), lineWidth: 2)
         }
     }
 

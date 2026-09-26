@@ -90,9 +90,9 @@ class DemoRegistryIntegrityTest {
         }
         // The fallback path is still exercised for a genuinely unknown key.
         assertEquals(
-            "Unknown category must fall back to the Viewer label",
+            "Unknown category must fall back to the View in 3D label",
             categoryDisplayNameRes("nope"),
-            categoryDisplayNameRes(DemoCategory.VIEWER),
+            categoryDisplayNameRes(DemoCategory.VIEW_3D),
         )
     }
 

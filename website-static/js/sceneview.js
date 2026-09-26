@@ -109,7 +109,7 @@
       else parent.appendChild(el);
     }
     // Align the overlay to the canvas box (handles parents with sibling content,
-    // e.g. claude-3d's label/badge, without covering them).
+    // e.g. ai-3d's label/badge, without covering them).
     el.style.left = canvas.offsetLeft + 'px';
     el.style.top = canvas.offsetTop + 'px';
     el.style.width = (canvas.offsetWidth || canvas.clientWidth) + 'px';
@@ -666,9 +666,24 @@
         var maxDim = Math.max(sx, sy, sz);
         if (maxDim > 0) {
           this._orbitTarget = [cx, cy, cz];
-          // Tighter framing than before (1.8x instead of 2.5x)
-          this._orbitRadius = maxDim * 1.8;
+          // Tighter framing than before (1.8x instead of 2.5x). The FOV is vertical,
+          // so a portrait canvas (phones) backs off to keep the width in frame too.
+          var frameCanvas = this._canvas;
+          var aspect = frameCanvas && frameCanvas.clientHeight > 0
+            ? frameCanvas.clientWidth / frameCanvas.clientHeight : 1;
+          this._orbitRadius = maxDim * 1.8 / Math.max(0.5, Math.min(1, aspect));
           this._orbitHeight = cy;
+          // Scale the near plane and zoom limits with the model, so a 5 cm part is
+          // not clipped by a 10 cm near plane and a 100 m scene can still zoom out.
+          this._nearPlane = Math.min(0.1, this._orbitRadius / 100);
+          this._minRadius = Math.min(0.5, this._orbitRadius * 0.25);
+          this._maxRadius = Math.max(50, this._orbitRadius * 5);
+          if (frameCanvas && frameCanvas.height > 0) {
+            this._camera.setProjectionFov(
+              this._fov || 45, frameCanvas.width / frameCanvas.height, this._nearPlane, 1000,
+              Filament.Camera$Fov.VERTICAL
+            );
+          }
         }
       } catch (e) { /* use defaults */ }
     }
@@ -1657,7 +1672,7 @@
       this._addListener(canvas, 'wheel', function(e) {
         e.preventDefault();
         self._orbitRadius *= (1 + e.deltaY * 0.001);
-        self._orbitRadius = Math.max(0.5, Math.min(50, self._orbitRadius));
+        self._orbitRadius = Math.max(self._minRadius || 0.5, Math.min(self._maxRadius || 50, self._orbitRadius));
       }, { passive: false });
 
       this._addListener(canvas, 'touchstart', function(e) {
@@ -1742,7 +1757,7 @@
         canvas.height = canvas.clientHeight * dpr;
         self._view.setViewport([0, 0, canvas.width, canvas.height]);
         self._camera.setProjectionFov(
-          self._fov || 45, canvas.width / canvas.height, 0.1, 1000,
+          self._fov || 45, canvas.width / canvas.height, self._nearPlane || 0.1, 1000,
           Filament.Camera$Fov.VERTICAL
         );
       });

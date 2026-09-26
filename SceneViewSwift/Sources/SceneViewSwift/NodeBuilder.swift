@@ -118,6 +118,7 @@ extension DynamicSkyNode: EntityProvider {
     public var sceneEntity: Entity { entity }
 }
 
+@available(*, deprecated, message: "FogNode is deprecated — see FogNode's documentation.")
 extension FogNode: EntityProvider {
     public var sceneEntity: Entity { entity }
 }

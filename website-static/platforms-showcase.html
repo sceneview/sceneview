@@ -43,7 +43,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="styles.css">
     <script src="js/filament/filament.js"></script>
-    <script src="js/sceneview.js?v=4.36.0"></script>
+    <script src="js/sceneview.js?v=4.40.0"></script>
     <style>
         /* ===== PAGE LAYOUT ===== */
         .platforms-page {
@@ -967,11 +967,11 @@
           </div>
           <div class="platform-card__info">
             <div class="platform-card__name">Desktop</div>
-            <div class="platform-card__renderer">Compose Desktop (wireframe)</div>
+            <div class="platform-card__renderer">Compose Desktop (Filament)</div>
           </div>
-          <span class="platform-card__badge platform-card__badge--planned">Planned</span>
+          <span class="platform-card__badge platform-card__badge--alpha">Alpha</span>
         </div>
-        <p class="platform-card__description">Wireframe placeholder using Compose Canvas. Filament JNI not yet available on desktop. Full support planned.</p>
+        <p class="platform-card__description">The <code>SceneViewer</code> composable from <code>sceneview-compose</code>, rendered by Filament through filament-kmp (JDK 22+). Viewer subset only: model, orbit camera, light, environment, tap hit-testing. No AR.</p>
       </div>
 
       <!-- Flutter -->
@@ -1163,10 +1163,10 @@
                 Desktop
               </div>
             </td>
-            <td>Canvas</td>
+            <td>Filament</td>
+            <td><span class="comparison-table__check material-symbols-outlined">check_circle</span></td>
             <td><span class="comparison-table__dash material-symbols-outlined">remove</span></td>
-            <td><span class="comparison-table__dash material-symbols-outlined">remove</span></td>
-            <td><span class="platform-card__badge platform-card__badge--planned">Planned</span></td>
+            <td><span class="platform-card__badge platform-card__badge--alpha">Alpha</span></td>
             <td>Compose Desktop</td>
           </tr>
           <tr>
@@ -1247,6 +1247,7 @@
           <ul class="footer__col-list">
             <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
             <li><a href="/showcase.html">Showcase</a></li>
+            <li><a href="/view.html">3D Viewer</a></li>
           </ul>
         </div>
         <div class="footer__col">
@@ -1262,6 +1263,7 @@
             <li><a href="/privacy.html">Privacy</a></li>
             <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
             <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/assets/CREDITS.md" target="_blank" rel="noopener">3D asset credits</a></li>
           </ul>
         </div>
       </div>

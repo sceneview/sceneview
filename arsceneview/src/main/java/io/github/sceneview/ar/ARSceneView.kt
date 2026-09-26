@@ -65,7 +65,10 @@ import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.exceptions.PlaybackFailedException
+import io.github.sceneview.FrameRateGate
+import io.github.sceneview.RenderInvalidator
 import io.github.sceneview.SceneNodeManager
+import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.SceneRenderer
 import io.github.sceneview.utils.SurfaceMirrorer
 import io.github.sceneview.RenderQuality
@@ -115,6 +118,8 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.util.EnumSet
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -513,9 +518,11 @@ fun ARSceneView(
     semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
     /**
      * ARCore [Config.UpdateMode] — controls whether [Session.update] blocks until a new camera
-     * frame is available (`LATEST_CAMERA_IMAGE`) or returns immediately (`BLOCKING`). Defaults
-     * to [Config.UpdateMode.LATEST_CAMERA_IMAGE], the value SceneView's render loop is built
-     * for. Applied BEFORE [sessionConfiguration] (#1766).
+     * frame is available (`BLOCKING`) or returns immediately with the latest one it already has
+     * (`LATEST_CAMERA_IMAGE`). Defaults to [Config.UpdateMode.LATEST_CAMERA_IMAGE], the value
+     * SceneView's render loop is built for: the loop is driven by the display's vsync, so
+     * `update` must hand back whatever frame is current rather than park the render thread
+     * waiting for the next one. Applied BEFORE [sessionConfiguration] (#1766).
      */
     updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
     /**
@@ -1477,6 +1484,46 @@ fun ARSceneView(
         SceneRenderer(engine, view, renderer)
     }
 
+    // AR's clock is the camera, not the scene, so it does not use the dirty-flag gate that
+    // [io.github.sceneview.SceneView] runs on — an AR view is never idle in the sense that one is,
+    // and its loop must never park: `session.update()` is what drives tracking, anchor resolution
+    // and plane detection, and skipping it would stall the session rather than save power. What it
+    // *can* skip is drawing the same picture twice.
+    //
+    // `Config.UpdateMode.LATEST_CAMERA_IMAGE` (the default here) makes `session.update()` return
+    // immediately with whatever frame it holds, so a 60 Hz display in front of a 30 fps camera
+    // gets the *same* frame back on every other vsync: same camera image, same pose, same light
+    // estimate. Re-rendering it costs a full GPU frame to produce an identical picture. ARCore
+    // performs no reprojection between camera images, so an unchanged `Frame.timestamp` is an
+    // exact duplicate test rather than a heuristic — the pose really has not moved.
+    val lastArFrameTimestamp = remember { AtomicLong(0L) }
+    // Frames owed to a surface that holds no pixels yet — first attach, app foregrounded, fold,
+    // split-screen resize. Separate from the timestamp test, because a brand-new swap chain needs
+    // a frame even on a vsync where ARCore returns a duplicate.
+    val arFramesOwed = remember { AtomicInteger(1) }
+
+    // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
+    // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
+    // it `shouldPresent` was the ARCore timestamp alone, so a node animation, a material swap or a
+    // `requestRender()` that landed between two images was simply not drawn, and the virtual
+    // content ran at the *sensor's* rate. Invisible in `LATEST_CAMERA_IMAGE` on a bright scene,
+    // where a new timestamp arrives nearly every vsync — and plainly visible the moment the sensor
+    // drops to 30 fps in low light on a 90 or 120 Hz panel. The `||` can only ever add a presented
+    // frame, never remove one.
+    val frameRateGate = remember { FrameRateGate() }
+    val sceneInvalidator = remember { RenderInvalidator() }
+    DisposableEffect(frameRateGate, sceneInvalidator) {
+        sceneInvalidator.attach(frameRateGate)
+        onDispose { sceneInvalidator.detach(frameRateGate) }
+    }
+    DisposableEffect(scene, sceneInvalidator) {
+        // The one link every managed node has back to its view: `Node.requestRender()` resolves
+        // through `attachedScene`, so registering here is what makes every push source in
+        // `sceneview` — transforms, geometry, materials, visibility — reach the AR loop too.
+        SceneRenderInvalidators.register(scene, sceneInvalidator)
+        onDispose { SceneRenderInvalidators.unregister(scene) }
+    }
+
     // Wire resize and surface callbacks — AR needs additional display geometry + plane renderer.
     SideEffect {
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
@@ -1484,6 +1531,9 @@ fun ARSceneView(
             cameraNode.updateProjection()
             arCore.session?.setDisplayGeometry(display.rotation, width, height)
             arPlaneRenderer.viewSize = Size(width, height)
+            // New swap chain, no pixels in it — owe it a frame even if ARCore has nothing new to
+            // say (see `arFramesOwed` below).
+            arFramesOwed.set(1)
         }
         sceneRenderer.onSurfaceReady = { viewHeight ->
             if (cameraGestureDetectorRef.get() == null) {
@@ -1513,7 +1563,17 @@ fun ARSceneView(
                 continue
             }
             withFrameNanos { frameTimeNanos ->
-                sceneRenderer.renderFrame(frameTimeNanos) {
+                var hasNewArFrame = false
+                var sceneChanged = false
+                val presented = sceneRenderer.renderFrame(
+                    frameTimeNanos,
+                    // Evaluated after the update block below, so `hasNewArFrame` and
+                    // `sceneChanged` reflect the `session.update()` and the node ticks that
+                    // just ran. Gates the GPU submit only — the loop itself never parks.
+                    shouldPresent = {
+                        hasNewArFrame || sceneChanged || arFramesOwed.get() > 0
+                    }
+                ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
 
                     val childNodes = childNodesRef.get()
@@ -1522,6 +1582,8 @@ fun ARSceneView(
                     arCore.session?.let { session ->
                         try {
                             session.updateOrNull()?.let { frame ->
+                                hasNewArFrame =
+                                    lastArFrameTimestamp.getAndSet(frame.timestamp) != frame.timestamp
                                 onARFrame(
                                     engine = engine,
                                     scene = scene,
@@ -1554,6 +1616,27 @@ fun ARSceneView(
 
                     modelLoader.updateLoad()
                     childNodes.forEach { it.onFrame(frameTimeNanos) }
+
+                    // Last, so the node ticks above are already accounted for: a glTF animation
+                    // advanced this tick reports `isFrameActive` and keeps the budget topped up.
+                    sceneChanged = frameRateGate.shouldRender(
+                        frameTimeNanos = frameTimeNanos,
+                        active = childNodes.any { it.isFrameActive } ||
+                                // Not `progress < 1f`: a loader that was never asked for an async
+                                // load reports 0, which reads as "loading" forever — see
+                                // [io.github.sceneview.loaders.ModelLoader.isLoading].
+                                modelLoader.isLoading
+                    )
+                }
+
+                // Pay the surface's debt down only on a frame that really reached it —
+                // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
+                // would leave a new swap chain blank.
+                if (presented) {
+                    frameRateGate.didRender(frameTimeNanos)
+                    if (arFramesOwed.get() > 0) {
+                        arFramesOwed.decrementAndGet()
+                    }
                 }
             }
         }

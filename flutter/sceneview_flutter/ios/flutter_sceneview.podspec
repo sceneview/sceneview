@@ -1,13 +1,13 @@
 Pod::Spec.new do |s|
   s.name             = 'flutter_sceneview'
-  s.version          = '4.36.0'
+  s.version          = '4.40.0'
   s.summary          = 'Flutter plugin for SceneView 3D and AR.'
   s.description      = <<-DESC
   Flutter plugin bridging to SceneViewSwift (RealityKit) for 3D and AR scenes on iOS.
                        DESC
   s.homepage         = 'https://github.com/sceneview/sceneview'
   s.license          = { :type => 'Apache-2.0' }
-  s.author           = { 'SceneView' => 'contact@sceneview.github.io' }
+  s.author           = 'SceneView contributors'
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
@@ -37,7 +37,7 @@ Pod::Spec.new do |s|
   # only `s.version` above was registered. A stale floor is not inert: it lets an
   # older SceneViewSwift satisfy the dependency, so the bridge can link against a
   # runtime that predates the APIs it calls.
-  s.dependency 'SceneViewSwift', '~> 4.36'
+  s.dependency 'SceneViewSwift', '~> 4.40'
   # Must match SceneViewSwift/Package.swift's `.iOS("18.0")`. This said 17.0
   # while the package it bridges to required 18.0 — a host app that believed
   # the podspec and targeted 17.0 got availability errors from RealityKit's

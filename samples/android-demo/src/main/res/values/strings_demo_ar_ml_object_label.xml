@@ -9,7 +9,7 @@
     <string name="demo_ar_ml_subtitle">Recognize objects and label them in space</string>
     <string name="demo_ar_ml_explainer">ML Kit\'s bundled model classifies 5 broad categories (Home good, Fashion good, Food, Place, Plant) — indoors, most objects land on \"Home good\". That\'s expected, not a bug.</string>
     <string name="demo_ar_ml_status_warming">Warming up — waiting for camera image…</string>
-    <string name="demo_ar_ml_status_aim">Aim at a recognisable object</string>
+    <string name="demo_ar_ml_status_aim">Aim at a recognizable object</string>
     <plurals name="demo_ar_ml_status_detected">
         <item quantity="one">%d object detected</item>
         <item quantity="other">%d objects detected</item>

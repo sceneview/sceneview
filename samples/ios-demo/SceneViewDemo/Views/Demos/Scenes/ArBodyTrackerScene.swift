@@ -1,12 +1,12 @@
 // @sceneId     ar-body-tracker
-// @title       Body Tracker
-// @subtitle    Real-time 91-joint skeleton tracking
+// @title       Body anchor tracking
+// @subtitle    Follow a detected body anchor in real time
 // @category    ar
 // @available   true
 // @icon        figure.walk.motion
 // @iosOnly     true
 // @order       38
-// @tags        ar,body,pose,mediapipe,skeleton,ml
+// @tags        ar,body,pose,anchor,skeleton
 import SwiftUI
 
 enum ArBodyTrackerScene: DemoScene {

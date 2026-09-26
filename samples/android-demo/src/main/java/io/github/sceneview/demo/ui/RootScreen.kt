@@ -70,6 +70,15 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
@@ -77,6 +86,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 import io.github.sceneview.demo.ui.home.HomeScreen
 import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
@@ -150,6 +160,36 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
         )
     }
 
+    // Only while the gallery is actually on screen. `galleryOpen` is rememberSaveable and
+    // survives a tab switch, so an unconditional handler let Back close the *hidden* gallery
+    // from AR View or About — the visible screen's own back behaviour never ran.
+    BackHandler(enabled = selectedTab == RootTab.Showcase && galleryOpen) { galleryOpen = false }
+
+    // Fade-through specs, hoisted: `transitionSpec` is not a composable scope, so it
+    // cannot ask `LocalMotionEnabled` itself.
+    val motionEnabled = LocalMotionEnabled.current
+    val tabExitSpec = remember(motionEnabled) {
+        if (motionEnabled) {
+            tween<Float>(
+                durationMillis = TAB_FADE_OUT_MILLIS,
+                easing = SceneViewTokens.Ease.expressive,
+            )
+        } else {
+            snap()
+        }
+    }
+    val tabEnterSpec = remember(motionEnabled) {
+        if (motionEnabled) {
+            tween<Float>(
+                durationMillis = SceneViewTokens.Duration.mediumMillis - TAB_FADE_OUT_MILLIS,
+                delayMillis = TAB_FADE_OUT_MILLIS,
+                easing = SceneViewTokens.Ease.expressive,
+            )
+        } else {
+            snap()
+        }
+    }
+
     Scaffold(
         bottomBar = {
             // Conditional rendering rather than just `visible = !arSessionActive`
@@ -186,9 +226,27 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when (selectedTab) {
-                RootTab.Showcase -> if (galleryOpen) {
-                    BackHandler { galleryOpen = false }
+            AnimatedContent(
+                targetState = selectedTab to galleryOpen,
+                transitionSpec = {
+                    // Material fade-through: the outgoing surface leaves before the
+                    // incoming one arrives, both shrinking a touch towards the page.
+                    // Not a shared axis — these are peers, and a sideways slide would
+                    // claim a direction the bottom bar does not have. Nothing overlaps
+                    // at full opacity, so the AR tab is never seen through the
+                    // catalogue on its way in.
+                    (
+                        fadeIn(tabEnterSpec) +
+                            scaleIn(tabEnterSpec, initialScale = TAB_FADE_THROUGH_SCALE)
+                        ) togetherWith (
+                        fadeOut(tabExitSpec) +
+                            scaleOut(tabExitSpec, targetScale = TAB_FADE_THROUGH_SCALE)
+                        ) using SizeTransform(clip = false)
+                },
+                label = "root-tab",
+            ) { (tab, gallery) ->
+            when (tab) {
+                RootTab.Showcase -> if (gallery) {
                     ExploreTabScreen(
                         onBack = { galleryOpen = false },
                         curatedSamples = curatedSamplesForExplore(),
@@ -213,6 +271,7 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                 )
                 RootTab.About -> AboutTabContent()
             }
+            }
         }
     }
 }
@@ -224,6 +283,15 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
  *   the reporter's device locale, so a localized label would land untranslated
  *   in the tracker.
  */
+/**
+ * How much of the fade-through the outgoing tab owns. Material's split: the old
+ * surface is gone before the new one starts, so no frame shows two tabs at once.
+ */
+private const val TAB_FADE_OUT_MILLIS = 90
+
+/** Scale a fading tab starts from / ends at — a hint of depth, never a zoom. */
+private const val TAB_FADE_THROUGH_SCALE = 0.96f
+
 enum class RootTab(
     @StringRes val labelRes: Int,
     val icon: ImageVector,

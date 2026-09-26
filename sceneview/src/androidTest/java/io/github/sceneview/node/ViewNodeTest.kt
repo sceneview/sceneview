@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.filament.Filament
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.Utils
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.collision.Box
 import io.github.sceneview.collision.Vector3
 import io.github.sceneview.createEglContext
@@ -15,6 +16,7 @@ import io.github.sceneview.math.Size
 import io.github.sceneview.safeDestroy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -253,6 +255,44 @@ class ViewNodeTest {
             val node = makeViewNode()
             node.pxPerUnits = 100.0f
             node.destroy() // must not SIGABRT
+        }
+    }
+
+    /**
+     * Regression for #3734: `destroy()` must not release the `Surface`/`SurfaceTexture` until
+     * the Filament `Stream` reading from them has actually been destroyed. Both are frame-deferred
+     * through the same [EngineDestroyQueue] as the `Texture` (#874), so the `Surface` must stay
+     * valid immediately after `destroy()` and only become invalid once the queue's grace period —
+     * shared with the `Stream`'s own deferred destroy — has fully elapsed.
+     */
+    @Test
+    fun viewNode_destroy_releasesSurfaceOnlyAfterStreamsDeferredDestroy() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val node = makeViewNode()
+            val surface = node.surface
+
+            node.destroy()
+
+            assertTrue(
+                "Surface must not be released before its Stream's deferred destroy runs (#3734)",
+                surface.isValid
+            )
+
+            val queue = EngineDestroyQueue.of(engine)
+            // One drain short of the grace period: still not released.
+            repeat(EngineDestroyQueue.GRACE_FRAMES - 1) { queue.drain() }
+            assertTrue(
+                "Surface must still be valid before the grace period fully elapses (#3734)",
+                surface.isValid
+            )
+
+            // Grace period fully elapsed: the Stream has been destroyed, so the Surface/
+            // SurfaceTexture may now be released too.
+            queue.drain()
+            assertFalse(
+                "Surface must be released once the Stream's deferred destroy has run (#3734)",
+                surface.isValid
+            )
         }
     }
 

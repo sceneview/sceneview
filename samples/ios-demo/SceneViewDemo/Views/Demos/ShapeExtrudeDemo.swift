@@ -41,17 +41,12 @@ struct ShapeExtrudeDemo: View {
             // `RealityView` — never re-key the view with `.id(_:)`, which
             // intermittently leaves the scene black on iOS 26 Simulator (#3008).
             .contentID(sceneKey)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                Text("ShapeNode — 2D polygon extruded into 3D mesh")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.bottom, 12)
-            }
         }
-        .demoChrome {
+        .demoChrome(accessory: {
+            // The shape's name lives here, in the pill, not as 3D text under the
+            // shape: that label sat below the frame on a phone (#3788).
+            DemoHint("\(selectedPreset.displayName) — a flat outline extruded into a solid")
+        }) {
             settingsContent
         }
         .onChange(of: selectedPreset) { _, _ in sceneKey = UUID() }
@@ -91,16 +86,6 @@ struct ShapeExtrudeDemo: View {
         }
 
         root.addChild(shape.entity)
-
-        // Label
-        let label = TextNode(
-            text: preset.displayName,
-            fontSize: 0.055,
-            color: .white,
-            depth: 0.005
-        ).centered()
-        label.entity.position = .init(x: 0, y: -0.85, z: -2)
-        root.addChild(label.entity)
     }
 
     // MARK: - Settings

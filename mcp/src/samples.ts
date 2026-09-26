@@ -2196,7 +2196,7 @@ fun ARSurfaceCursorScreen() {
     description:
       "Browser-based 3D model viewer using Filament.js (WebGL2/WASM) — same engine as SceneView Android",
     tags: ["3d", "model", "web", "filament-js"],
-    dependency: "@sceneview/sceneview-web",
+    dependency: "sceneview-web",
     language: "kotlin-js",
     prompt:
       "Create a browser-based 3D model viewer using SceneView Web (Kotlin/JS + Filament.js). Load a GLB model with camera and lighting.",
@@ -2242,7 +2242,7 @@ fun main() {
     title: "Web Environment Lighting",
     description: "Browser 3D scene with IBL environment lighting and skybox from KTX files",
     tags: ["3d", "environment", "web", "filament-js", "lighting"],
-    dependency: "@sceneview/sceneview-web",
+    dependency: "sceneview-web",
     language: "kotlin-js",
     prompt:
       "Create a browser 3D viewer with HDR environment lighting (IBL + skybox) using SceneView Web and Filament.js.",

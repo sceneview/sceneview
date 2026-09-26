@@ -65,7 +65,9 @@ struct MovableLightDemo: View {
 
     var body: some View {
         sceneContent
-            .demoChrome {
+            .demoChrome(accessory: {
+                DemoHint("Drag anywhere to move the light")
+            }) {
                 controlsSheet
             }
     }
@@ -174,23 +176,6 @@ struct MovableLightDemo: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
-            // Top hint — sits above the SceneView but must NOT eat drag events.
-            VStack {
-                HStack {
-                    Image(systemName: "hand.draw.fill")
-                    Text("Drag anywhere to move the light")
-                        .font(.caption)
-                }
-                .foregroundStyle(.white.opacity(0.8))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .padding(.top, 12)
-                .allowsHitTesting(false)
-
-                Spacer()
-            }
         }
         .background(Color.black)
         .task {

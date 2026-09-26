@@ -1,8 +1,11 @@
 # interior-design-3d-mcp
 
+> **Archived.** `interior-design-3d-mcp` is deprecated on npm and no longer maintained. For SceneView
+> code generation, use [`sceneview-mcp`](../../README.md) instead.
+
 **Interior Design 3D MCP — give any AI assistant everything it needs to build room planners, AR furniture placement, material switchers, lighting designers, and virtual room tours with [SceneView](https://sceneview.github.io) on Android.**
 
-Every tool returns complete, compilable Kotlin code using current SceneView 4.0.0 APIs (Jetpack Compose, `rememberModelInstance`, `ModelNode`, `ARSceneView`, `LightNode` with the named `apply` parameter) — ready to drop into an Android project.
+Every tool returns Kotlin code written against the SceneView 4.0.0 APIs (Jetpack Compose, `rememberModelInstance`, `ModelNode`, `ARSceneView`, `LightNode` with the named `apply` parameter) — ready to drop into an Android project.
 
 ## Installation
 
@@ -56,7 +59,7 @@ claude mcp add interior-design-3d -- npx interior-design-3d-mcp
 
 ## Built on SceneView
 
-[SceneView](https://sceneview.github.io) is the #1 open-source 3D & AR SDK for Android (Jetpack Compose + Filament) and iOS (SwiftUI + RealityKit).
+[SceneView](https://sceneview.github.io) is an open-source 3D & AR SDK for Android (Jetpack Compose + Filament) and iOS (SwiftUI + RealityKit).
 
 ## Links
 

@@ -21,6 +21,11 @@ import SceneViewSwift
 /// chrome of their own; `.demoChrome` hides that navigation bar and draws its
 /// own back button under the same identifier.
 struct ShowcaseTab: View {
+    /// Whether this tab is the one on screen, with nothing presented over it.
+    /// Gates the hero's live 3D stage: a RealityKit view still rendering behind
+    /// a demo would be a second scene competing with the one the user opened.
+    var isActive: Bool = true
+
     @State private var scenes: [DemoItem] = []
     @State private var selectedCategory: DemoCategory?
     @State private var query = ""
@@ -35,9 +40,28 @@ struct ShowcaseTab: View {
     /// sliding up over it with no visual link to what was tapped (#3599).
     @Namespace private var cardNamespace
 
+    /// Drives the entrance cascade (``StaggeredReveal``): flipped once, one
+    /// frame after the catalogue appears, and never back. It lives here, on the
+    /// screen, rather than in each item: a card in a `LazyVGrid` is rebuilt
+    /// whenever the grid is — constantly, while the hero's 3D stage renders —
+    /// and per-item state would replay the fade forever. Read from the parent,
+    /// a rebuilt card is simply already revealed.
+    @State private var catalogueRevealed = false
+
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     private var expanded: Bool { sizeClass == .regular }
+
+    /// The hero's 3D stage runs only here: visible tab, foreground app, nothing
+    /// presented on top. Everything else tears it down — see ``HomeHero``.
+    private var heroLive: Bool {
+        isActive
+            && scenePhase == .active
+            && fullScreenScene == nil
+            && comingSoonScene == nil
+            && !showExplore
+    }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private var visible: [DemoItem] {
@@ -64,31 +88,54 @@ struct ShowcaseTab: View {
                     // sit right under the header (Android parity).
                     if !searching {
                         HomeHero(height: expanded ? SceneViewTokens.Home.heroHeightExpanded
-                                                  : SceneViewTokens.Home.heroHeight) {
+                                                  : SceneViewTokens.Home.heroHeight,
+                                 live: heroLive) {
                             open(sceneId: Self.heroDemoId)
                         }
                         #if os(iOS)
                         .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
                         #endif
+                        .staggeredReveal(position: 0, revealed: catalogueRevealed)
                     }
 
                     CategoryChipRow(selected: $selectedCategory)
                         .padding(.top, searching ? 0 : SceneViewTokens.Home.chipRowTopGap)
-                        .padding(.bottom, SceneViewTokens.Home.gridTopGap)
+                        .padding(.bottom, searching ? SceneViewTokens.Space.sm : SceneViewTokens.Home.gridTopGap)
+                        .staggeredReveal(position: 1, revealed: catalogueRevealed)
+
+                    // While a query is live the count is the only feedback that
+                    // the list under it is the answer to what was typed. It
+                    // counts up and down in place (`contentTransition`) instead
+                    // of swapping strings, so the eye follows the number rather
+                    // than re-reading the sentence.
+                    if searching && !visible.isEmpty {
+                        Text(visible.count == 1 ? "1 demo" : "\(visible.count) demos")
+                            .font(SceneViewTokens.TypeScale.captionRegular)
+                            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                            .contentTransition(.numericText(value: Double(visible.count)))
+                            .animation(SceneViewTokens.Motion.expressive(SceneViewTokens.Motion.short),
+                                       value: visible.count)
+                            .padding(.bottom, SceneViewTokens.Home.gridTopGap)
+                            .accessibilityIdentifier("home-result-count")
+                    }
 
                     if visible.isEmpty && searching {
                         EmptySearchState(query: query) { query = "" }
                     }
 
                     LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                        ForEach(visible) { demo in
+                        ForEach(Array(visible.enumerated()), id: \.element.sceneId) { index, demo in
                             DemoMediaCard(demo: demo) { open(demo) }
                                 #if os(iOS)
                                 .matchedTransitionSource(id: demo.sceneId, in: cardNamespace)
                                 #endif
+                                // Hero and chip row take the first two slots of
+                                // the cascade; the grid follows in reading order.
+                                .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
                         }
                         if !searching {
                             BrowseOnlineModelsCard { showExplore = true }
+                                .staggeredReveal(position: visible.count + 2, revealed: catalogueRevealed)
                         }
                     }
                     .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
@@ -114,6 +161,14 @@ struct ShowcaseTab: View {
             .onAppear {
                 if scenes.isEmpty { scenes = GeneratedScenes.all() }
             }
+            .task {
+                // One frame late, so the first layout paints the pre-reveal
+                // state and the cascade has something to animate from.
+                guard !catalogueRevealed else { return }
+                try? await Task.sleep(for: .milliseconds(16))
+                guard !Task.isCancelled else { return }
+                catalogueRevealed = true
+            }
             .sheet(item: $comingSoonScene) { scene in
                 ComingSoonScreen(
                     title: scene.title,
@@ -123,7 +178,7 @@ struct ShowcaseTab: View {
                 )
                 #if os(iOS)
                 .presentationDetents([.medium, .large])
-                .presentationBackground(.regularMaterial)
+                .partialSheetBackground(.regularMaterial)
                 .presentationCornerRadius(SceneViewTokens.Radius.xl)
                 .presentationDragIndicator(.visible)
                 #endif
@@ -171,14 +226,38 @@ struct ShowcaseTab: View {
 /// Full-screen host of one demo. A `.fullScreenCover` has no drag-to-dismiss
 /// handle, so it needs an explicit Close affordance (#1580); `.demoChrome`
 /// hides this bar and draws its own glass back button instead.
+///
+/// **One host, whatever opened the demo.** The catalogue builds it from a
+/// `DemoItem`; a deep link (`sceneview://demo/<id>`) builds it from the id's
+/// resolved destination through `DemoDeepLinkRegistry.cover(for:onClose:)`.
+/// Before that, a deep link presented the destination bare, so a demo with no
+/// chrome of its own — every hand-rolled AR screen — opened with no way out
+/// but force-quitting the app.
+///
+/// The leading-edge swipe is this host's own: `.fullScreenCover` has no
+/// interactive dismissal on either path, and an AR demo fills the screen with
+/// a camera feed that a user will try to swipe away. It is confined to a
+/// narrow strip at the leading edge so it cannot compete with the orbit / pan
+/// gestures the stage itself installs.
 struct DemoCover: View {
-    let scene: DemoItem
+    let title: String
+    let destination: AnyView
     let onClose: () -> Void
+
+    init(scene: DemoItem, onClose: @escaping () -> Void) {
+        self.init(title: scene.title, destination: scene.destination, onClose: onClose)
+    }
+
+    init(title: String, destination: AnyView, onClose: @escaping () -> Void) {
+        self.title = title
+        self.destination = destination
+        self.onClose = onClose
+    }
 
     var body: some View {
         NavigationStack {
-            scene.destination
-                .navigationTitle(scene.title)
+            destination
+                .navigationTitle(title)
                 .navigationBarTitleInline()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -195,8 +274,33 @@ struct DemoCover: View {
                     }
                 }
         }
-        .environment(\.demoTitle, scene.title)
+        .environment(\.demoTitle, title)
+        #if os(iOS)
+        .overlay(alignment: .leading) { edgeDismissStrip }
+        #endif
     }
+
+    #if os(iOS)
+    private var edgeDismissStrip: some View {
+        Color.clear
+            .frame(width: SceneViewTokens.Layout.edgeSwipeWidth)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: SceneViewTokens.Layout.edgeSwipeWidth)
+                    .onEnded { value in
+                        // A deliberate rightward drag, not an incidental one:
+                        // past the threshold and more horizontal than vertical.
+                        guard value.translation.width >= SceneViewTokens.Layout.edgeSwipeDismiss,
+                              abs(value.translation.height) < value.translation.width else { return }
+                        SceneViewHaptic.shared.light()
+                        onClose()
+                    }
+            )
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
+    }
+    #endif
 }
 
 // MARK: - Header
@@ -282,7 +386,9 @@ private struct SearchRow: View {
                 // Tertiary glyph only; the actual focus indication uses primary below.
                 .foregroundStyle(colorScheme == .dark ? SceneViewTokens.HomeColor.onSurfaceFaint
                                                      : SceneViewTokens.HomeColor.onSurfaceDim)
-            TextField("Search demos", text: $query)
+            TextField("Search demos", text: $query,
+                      prompt: Text("Search demos")
+                          .foregroundStyle(SceneViewTokens.HomeColor.placeholder))
                 .font(SceneViewTokens.TypeScale.body)
                 .focused($focused)
                 .submitLabel(.search)
@@ -306,7 +412,7 @@ private struct SearchRow: View {
         .background(colorScheme == .dark ? SceneViewTokens.HomeColor.floatingSurface
                                         : SceneViewTokens.HomeColor.surface, in: Capsule())
         .overlay(Capsule().strokeBorder(colorScheme == .dark
-                                       ? (focused ? SceneViewTokens.HomeColor.primary : SceneViewTokens.HomeColor.outline)
+                                       ? (focused ? SceneViewTokens.HomeColor.primary : SceneViewTokens.HomeColor.controlOutline)
                                        : (focused ? SceneViewTokens.HomeColor.onSurfaceDim : SceneViewTokens.HomeColor.outlineSubtle),
                                         lineWidth: SceneViewTokens.Home.cardOutlineWidth))
         .padding(.horizontal, SceneViewTokens.Home.contentPadding)

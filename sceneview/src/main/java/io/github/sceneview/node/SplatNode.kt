@@ -279,6 +279,13 @@ open class SplatNode(
             .build(engine, entity)
     }
 
+    /**
+     * A splat re-sort running in the background finishes by swapping the draw order, which is a
+     * change no transform setter reports. Stay active until it lands.
+     */
+    override val isFrameActive: Boolean
+        get() = sortJob?.isActive == true || super.isFrameActive
+
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
         maybeResort()

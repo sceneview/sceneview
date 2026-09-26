@@ -6,23 +6,26 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_measure_title">Measure</string>
-    <string name="demo_ar_measure_subtitle">Tap two points, read the distance</string>
+    <string name="demo_ar_measure_subtitle">Add two points, read the distance</string>
 
-    <string name="demo_ar_measure_hint_first">Tap a surface to drop the first point</string>
-    <string name="demo_ar_measure_hint_second">Tap again to measure the distance</string>
+    <string name="demo_ar_measure_hint_first">Aim at a surface, then Add point</string>
+    <string name="demo_ar_measure_hint_second">Aim at the next point, then Add point</string>
     <string name="demo_ar_measure_total">Chain: %1$s</string>
     <string name="demo_ar_measure_perimeter">Perimeter: %1$s</string>
     <string name="demo_ar_measure_last_segment">Last segment: %1$s</string>
     <string name="demo_ar_measure_bounding_box">Bounding box  W %1$s · H %2$s · D %3$s</string>
 
+    <string name="demo_ar_measure_action_add">Add point</string>
+    <string name="demo_ar_measure_target_ready">Measurement target ready</string>
+    <string name="demo_ar_measure_target_searching">Aim at a measurable surface</string>
     <string name="demo_ar_measure_action_undo">Undo</string>
     <string name="demo_ar_measure_action_close">Close loop</string>
     <string name="demo_ar_measure_action_open">Open loop</string>
     <string name="demo_ar_measure_action_clear">Clear</string>
 
-    <string name="demo_ar_measure_description">Survey a real space — a workshop, a room, a piece of furniture — to size something you are about to build or 3D-print for it. Each tap anchors a point on a detected plane or on the depth map; consecutive points are joined by a labelled segment. Keep tapping for a chain, close the loop for a perimeter.</string>
+    <string name="demo_ar_measure_description">Survey a real space — a workshop, a room, a piece of furniture — to size something you are about to build or 3D-print for it. Add point anchors the center target on a detected plane or on the depth map; consecutive points are joined by a labeled segment. Keep adding points for a chain, close the loop for a perimeter.</string>
     <string name="demo_ar_measure_depth_toggle">Depth-map fallback</string>
     <string name="demo_ar_measure_depth_supported">Lets you measure clutter, slopes and edges that never grow a plane.</string>
-    <string name="demo_ar_measure_depth_unsupported">Not supported on this device — plane hits only.</string>
-    <string name="demo_ar_measure_accuracy_notice">Accuracy: several centimetres on a phone without a ToF sensor, approaching one centimetre with ToF/LiDAR. Good enough to lay out a space (will it fit, how far apart, what is the clear height). Not a caliper — never use it for a fitting dimension on a printed part. See AR_MEASURE.md.</string>
+    <string name="demo_ar_measure_depth_unsupported">Not supported on this device — planes and feature points only.</string>
+    <string name="demo_ar_measure_accuracy_notice">Accuracy: several centimeters on a phone without a ToF sensor, approaching one centimeter with ToF/LiDAR. Good enough to lay out a space (will it fit, how far apart, what is the clear height). Not a caliper — never use it for a fitting dimension on a printed part. See AR_MEASURE.md.</string>
 </resources>

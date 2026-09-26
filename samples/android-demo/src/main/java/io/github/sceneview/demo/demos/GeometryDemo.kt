@@ -144,7 +144,7 @@ fun GeometryDemo(onBack: () -> Unit) {
         }
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
 
     DemoScaffold(
@@ -203,7 +203,14 @@ fun GeometryDemo(onBack: () -> Unit) {
                 orbitHomePosition = GeometryLayout.orbitHomeOffset(
                     DemoSettings.cameraDistance ?: GeometryLayout.CAMERA_DISTANCE
                 ),
-                targetPosition = Position(0f, 0f, GeometryLayout.TARGET_Z),
+                // The cluster is authored at z = GeometryLayout.TARGET_Z, but
+                // autoCenterContent (default true) re-centres it onto the world origin —
+                // targetPosition must track where the content actually ends up, not where
+                // it was authored, or the orbit pivot sits GeometryLayout.TARGET_Z metres
+                // behind the subject. A drag then swings the cluster across the frame
+                // instead of orbiting it in place, and the resting view reads off-centre
+                // (#3798). See GeometryLayout's orbit-distance note and #2930.
+                targetPosition = Position(0f, 0f, 0f),
             ),
         ) {
             // Accent fill — a warm low-intensity rim that complements the v4.1.0

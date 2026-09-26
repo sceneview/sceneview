@@ -7,7 +7,7 @@
       "size": "2K",
       "outputs": [
         {
-          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/feature-graphic.png",
+          "dest": "samples/android-demo/distribution/play-store/en-US/graphics/feature-graphic.png",
           "size": [
             1024,
             500
@@ -22,7 +22,7 @@
       "size": "2K",
       "outputs": [
         {
-          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-1.png",
+          "dest": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-1.png",
           "size": [
             1080,
             2304
@@ -44,14 +44,14 @@
       "size": "2K",
       "outputs": [
         {
-          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet7-screenshot-1.png",
+          "dest": "samples/android-demo/distribution/play-store/en-US/graphics/tablet7-screenshot-1.png",
           "size": [
             1200,
             1872
           ]
         },
         {
-          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet10-screenshot-1.png",
+          "dest": "samples/android-demo/distribution/play-store/en-US/graphics/tablet10-screenshot-1.png",
           "size": [
             1600,
             2512

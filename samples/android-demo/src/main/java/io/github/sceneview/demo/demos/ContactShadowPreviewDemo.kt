@@ -45,6 +45,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.orbitLabelFadeAlpha
+import io.github.sceneview.demo.orbitYawDeviationDegrees
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.rememberHDREnvironment
@@ -231,7 +233,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     val fallbackEnvironment = remember(fallbackSkybox) { Environment(skybox = fallbackSkybox) }
     val environment = litEnvironment ?: fallbackEnvironment
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     val resetAll = {
         shadowsEnabled = true
@@ -289,8 +291,13 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
                 // pair in the lower half and the wall TV in the upper half. Seen high and far
                 // (the v1 framing), a floor pool degenerates into a sliver and can never read.
-                orbitHomePosition = Position(x = 0.0f, y = 1.35f, z = 3.3f),
-                targetPosition = Position(x = 0.0f, y = 0.75f, z = -0.5f),
+                //
+                // Orbit is completely free — no yaw clamp (#3802 reworked: an earlier revision
+                // bounded the reachable yaw, which read as a bug, a camera that "bumps" into an
+                // invisible wall). The "Shadow" / "No shadow" labels fade out instead — see the
+                // `TextNode.isVisible` assignment below.
+                orbitHomePosition = CAMERA_EYE,
+                targetPosition = CAMERA_TARGET,
             ),
         ) {
             // Read the hop clock HERE, inside the content lambda, not in the demo body: this
@@ -391,6 +398,36 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                     heightMeters = 0.16f,
                     position = position,
                     cameraPositionProvider = { labelCamera.worldPosition },
+                    // #3802: the room is built and lit for a roughly head-on view, so orbiting
+                    // toward broadside collapses these two billboards' screen-space projections
+                    // until "Shadow" / "No shadow" merge into one illegible blob. Orbit stays
+                    // completely free — a yaw clamp read as a bug and was removed — so instead
+                    // each label hides itself once the camera has turned far enough from
+                    // front-on to start overlapping its neighbour, and reappears the moment the
+                    // camera comes back. `TextNode` shares its material — `image_texture.filamat`
+                    // — with every `ImageNode`/`BillboardNode` in the SDK, and that material
+                    // exposes only a `texture` sampler, no alpha uniform (see the .mat source),
+                    // so a continuous per-instance fade is not available without widening a
+                    // material used far outside this demo; `isVisible` is the documented,
+                    // node-scoped fallback.
+                    //
+                    // `Node.onFrame` (node-scoped, not `SceneView(onFrame = …)`) because the
+                    // value must track the live camera position on every rendered frame,
+                    // including mid-drag frames Compose recomposition never sees (dragging moves
+                    // the manipulator's native transform directly, the same reason
+                    // `cameraPositionProvider` above is a lambda and not a one-shot value). It's
+                    // a handful of float ops on the main thread — no per-frame allocation.
+                    apply = {
+                        onFrame = {
+                            isVisible = orbitLabelFadeAlpha(
+                                orbitYawDeviationDegrees(
+                                    eye = labelCamera.worldPosition,
+                                    target = CAMERA_TARGET,
+                                    referenceYawDegrees = 0f,
+                                ),
+                            ) > 0f
+                        }
+                    },
                 )
             }
 
@@ -604,3 +641,14 @@ private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
  * grounded box has a quad; the comparison depends on the twin's floor staying bare.
  */
 private const val SHADOW_QUAD_METERS = 0.8f
+
+/** Camera eye — see the comment at its `rememberCameraManipulator` call site. */
+private val CAMERA_EYE = Position(x = 0.0f, y = 1.35f, z = 3.3f)
+
+/**
+ * Camera orbit target — see the comment at its `rememberCameraManipulator` call site. Also the
+ * front-on reference the "Shadow" / "No shadow" labels fade around (#3802): [CAMERA_EYE] sits at
+ * `0°` yaw in [CAMERA_EYE]/[CAMERA_TARGET]'s convention, which is why the `TextNode` fade below
+ * passes `referenceYawDegrees = 0f`.
+ */
+private val CAMERA_TARGET = Position(x = 0.0f, y = 0.75f, z = -0.5f)

@@ -7,7 +7,7 @@
     <!-- Split from a single "Shadow intensity: %d%%" string when the demos moved to the shared
          LabeledSlider, which renders the name and the value on opposite edges of one line.
          The value half is gone again with #3372: the readout is now a bare multiplier ("1.00×")
-         formatted in Locale.US by formatShadowIntensityFactor, with nothing left to localise. -->
+         formatted in Locale.US by formatShadowIntensityFactor, with nothing left to localize. -->
     <string name="contact_shadow_intensity_label">Shadow intensity</string>
     <string name="contact_shadow_wall_verdict_wall">A soft shadow behind the TV shows where it meets the wall.</string>
     <string name="contact_shadow_wall_verdict_floor">A broader, darker shadow suited to objects on the floor.</string>

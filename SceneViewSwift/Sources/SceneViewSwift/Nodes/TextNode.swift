@@ -120,15 +120,36 @@ public struct TextNode: Sendable {
         return self
     }
 
-    /// Centers the text at its current position.
+    /// Centers the text on the node's position.
     ///
-    /// By default, RealityKit text is left-aligned at its origin.
-    /// This shifts the entity so the text bounding box center is at the position.
+    /// RealityKit lays text out rightwards and upwards from the mesh origin, so
+    /// an uncentred label hangs off its position by half its width. This moves
+    /// the **mesh** — not the entity — so its bounding-box centre sits on the
+    /// entity's origin. `position(_:)` and `centered()` are therefore
+    /// independent: either order works, and calling it twice changes nothing.
+    ///
+    /// ```swift
+    /// TextNode(text: "Hello").centered().position([0, 1, -2])
+    /// ```
     @discardableResult
     public func centered() -> TextNode {
-        let bounds = entity.visualBounds(relativeTo: nil)
-        let center = bounds.center
-        entity.position -= center
+        guard let mesh = entity.model?.mesh else { return self }
+        let offset = Transform(translation: -mesh.bounds.center).matrix
+        var contents = mesh.contents
+        // A generated mesh carries one instance per model; an instance-less
+        // one is drawn once at identity, so give it the instance to move.
+        let instances = contents.instances.isEmpty
+            ? contents.models.map { MeshResource.Instance(id: $0.id, model: $0.id) }
+            : Array(contents.instances)
+        contents.instances = MeshInstanceCollection(instances.map { instance in
+            var instance = instance
+            instance.transform = offset * instance.transform
+            return instance
+        })
+        guard let centred = try? MeshResource.generate(from: contents) else { return self }
+        entity.model?.mesh = centred
+        // The shapes generated in `init` still sit on the uncentred mesh.
+        entity.generateCollisionShapes(recursive: false)
         return self
     }
 

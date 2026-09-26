@@ -109,6 +109,10 @@ actor SketchfabAssetResolver {
     ///   `SampleAssets`; `Error.fallbackUnavailable` if the network path
     ///   fails AND the bundled fallback cannot be staged.
     func resolve(_ slug: SketchfabSlug) async throws -> URL {
+        // A cancelled request has no caller left to show anything: arming a
+        // fallback for it would make a model appear after the user changed
+        // their mind. Cancellation is rethrown, never absorbed.
+        try Task.checkCancellation()
         guard SampleAssets.byUID[slug.uid] != nil else {
             throw Error.unknown(uid: slug.uid)
         }
@@ -129,7 +133,7 @@ actor SketchfabAssetResolver {
                 return downloaded
             } catch SketchfabError.requestFailed(let code) where isRetryable(code) {
                 let backoff = Self.initialRetryDelaySeconds * pow(2.0, Double(attempt))
-                try? await Task.sleep(nanoseconds: UInt64(min(backoff, 4.0) * 1_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64(min(backoff, 4.0) * 1_000_000_000))
                 continue
             } catch SketchfabError.requestFailed {
                 // Non-retryable 4xx — fall back immediately.
@@ -140,11 +144,13 @@ actor SketchfabAssetResolver {
                 return try fallbackBundle(for: slug)
             } catch SketchfabError.downloadFailed {
                 let backoff = Self.initialRetryDelaySeconds * pow(2.0, Double(attempt))
-                try? await Task.sleep(nanoseconds: UInt64(min(backoff, 4.0) * 1_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64(min(backoff, 4.0) * 1_000_000_000))
                 continue
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
-                // Unknown error class (cancellation, etc.) — fall back rather
-                // than surface a cryptic error to the demo UI.
+                // Unknown error class — fall back rather than surface a
+                // cryptic error to the demo UI.
                 return try fallbackBundle(for: slug)
             }
         }

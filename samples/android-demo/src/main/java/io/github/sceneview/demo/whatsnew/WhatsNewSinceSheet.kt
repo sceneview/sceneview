@@ -17,7 +17,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,7 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 
 /**
@@ -83,7 +86,7 @@ fun WhatsNewSinceSheet(
     val entryCount = remember(sections) { sections.sumOf { it.entries.size } }
     val demoTitles = rememberDemoTitles()
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    DemoModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
@@ -111,11 +114,14 @@ fun WhatsNewSinceSheet(
                 )
             }
 
+            // #3716: the sheet container now reaches the true bottom edge, so the list's
+            // own bottom inset must fold in the navigation bar rather than a fixed 16.dp.
+            val navigationBars = WindowInsets.navigationBars.asPaddingValues()
             LazyColumn(
                 // `fill = false` so a one-entry list keeps the sheet short
                 // instead of stretching it to full height.
                 modifier = Modifier.weight(1f, fill = false),
-                contentPadding = PaddingValues(bottom = 16.dp),
+                contentPadding = PaddingValues(bottom = navigationBars.calculateBottomPadding() + 16.dp),
             ) {
                 sections.forEach { section ->
                     stickyHeader(key = "header-${section.version ?: "unreleased"}") {

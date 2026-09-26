@@ -64,7 +64,7 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.36.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.40.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -111,6 +111,14 @@ android {
         buildConfig = true
     }
     androidResources {
+        // The demo apps ship in en-US only: source strings live in `values/`
+        // and there are no translated `values-<locale>/` folders. This filter
+        // also drops the translations AndroidX / Material ship inside their
+        // own AARs, which would otherwise render system-provided strings
+        // ("Cancel", "Show more") in the device language on a non-English
+        // phone while every demo string stayed English.
+        localeFilters += ['en-rUS']
+
         // `.filamat` and `.ktx` are already compressed payloads — re-zipping
         // them in the APK only wastes CPU. `.glb` and `.hdr` stay compressible:
         // the demo GLBs are Draco + WebP packed and the HDRs are RGBE, both of

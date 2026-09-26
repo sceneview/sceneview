@@ -30,20 +30,20 @@ metadata:
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.36.0` and
-  `io.github.sceneview:arsceneview:4.36.0`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.40.0` and
+  `io.github.sceneview:arsceneview:4.40.0`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.36.0`). RealityKit renderer.
+  via Swift Package Manager (tag `4.40.0`). RealityKit renderer.
 - **Compose Multiplatform** — `SceneViewer(…)`, one composable from `commonMain`
   (`io.github.sceneview:sceneview-compose`, **unreleased**). *Viewer subset only* — model,
   orbit camera, key light, environment, tap. **No AR, no custom materials, no
   post-processing.** Android delegates to the Filament `SceneView { }` below; iOS needs a
   one-time renderer registration; Desktop draws a placeholder. Reach for it only when the
   ask is genuinely shared-source; for anything platform-specific, use the native API.
-- **Web** — `sceneview-web@4.36.0` on npm (Filament.js + WebXR).
+- **Web** — `sceneview-web@4` on npm (Filament.js + WebXR).
 - **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
-- **React Native** — `@sceneview-sdk/react-native@4.36.0` (Fabric bridge).
+- **React Native** — `@sceneview-sdk/react-native@4` (Fabric bridge).
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's
@@ -257,6 +257,16 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
    the screen-level composable, NOT inside scroll lists or item composables.
 
 ## Performance / hot paths
+
+**A `SceneView` renders on demand by default (4.38.0+).** `isRendering` is gone;
+`frameRatePolicy = FrameRatePolicy.OnDemand()` is the default, `Continuous()` is the
+old every-vsync behaviour, and `maxFps` caps either mode. The library tracks what
+changes the picture, so never generate a hand-rolled dirty flag — but a write made
+straight into Filament (a `MaterialInstance` parameter, a light through `LightManager`,
+a `Skybox` / `IndirectLight`, bone or morph writes) is invisible to it and needs
+`node.requestRender()` or `rememberRenderInvalidator()` after it. A recomposition is
+not a change, and `ARSceneView` takes no policy. Details:
+[`references/migration.md` § Rendering cadence](references/migration.md).
 
 **Never call a decomposing or allocating getter inside `onFrame` (or any 30–60 Hz
 loop).** Set the whole `node.transform = …` once instead of writing `position` /

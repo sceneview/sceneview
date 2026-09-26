@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.36.0)
+  Source of truth: /llms.txt  (SceneView 4.40.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,47 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.36.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.40.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+
+## Docs
+
+- [Quickstart (Android)](https://sceneview.github.io/docs/quickstart/): add the dependency and render a first model with Jetpack Compose
+- [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): the same path in SwiftUI, with RealityKit and ARKit
+- [Quickstart (Web)](https://sceneview.github.io/docs/quickstart-web/): Kotlin/JS and Filament.js — Alpha
+- [Nodes reference](https://sceneview.github.io/docs/nodes/): every node composable, its signature, and the mistakes it invites
+- [API cheatsheet](https://sceneview.github.io/docs/cheatsheet/): the declarative API on one page
+- [Model formats](https://sceneview.github.io/docs/formats/): glTF, GLB, USDZ, and what converts into what
+- [Platforms](https://sceneview.github.io/docs/platforms/): what each target supports and how mature it is
+- [Recipes](https://sceneview.github.io/docs/recipes/): task-shaped answers to "I want to…"
+- [Migration from Sceneform](https://sceneview.github.io/docs/migration/): the mapping, class by class
+- [Troubleshooting](https://sceneview.github.io/docs/troubleshooting/): symptom, cause, fix
+- [FAQ](https://sceneview.github.io/docs/faq/): the questions that come back
+
+## Reference
+
+- [Full API reference](https://sceneview.github.io/llms.txt): this file — setup, composables, every node type, threading rules, recipes
+- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~12 kB, when the full file will not fit
+- [Generated API docs — 3D](https://sceneview.github.io/api/sceneview/latest/sceneview/): Dokka output for `sceneview`
+- [Generated API docs — AR](https://sceneview.github.io/api/sceneview/latest/arsceneview/): Dokka output for `arsceneview`
+
+## Working with an AI assistant
+
+- [Use SceneView with AI assistants](https://sceneview.github.io/docs/ai-context/): how to hand this file to any assistant, and how to install the MCP server
+- [AI-assisted development](https://sceneview.github.io/docs/ai-development/): the prompts and workflows that produce code which compiles
+- [Open a 3D model by link](https://sceneview.github.io/view): to show a user a model without writing code, link to `https://sceneview.github.io/view?url=<URL-encoded https link to a .glb, .gltf or .3mf>`, optionally `&usdz=<URL-encoded .usdz>` for AR on iPhone; the file loads straight from its host, which must send CORS headers (GitHub raw links do)
+
+## Optional
+
+- [Architecture](https://sceneview.github.io/docs/architecture/): how the renderer, the node graph and Compose fit together
+- [Performance](https://sceneview.github.io/docs/performance/): frame budget, quality levels, what costs what
+- [Testing](https://sceneview.github.io/docs/testing/): testing a scene without a device
+- [Integrations](https://sceneview.github.io/docs/integrations/): Sketchfab, Rerun.io and other outside pieces
+- [Comparison with alternatives](https://sceneview.github.io/docs/comparison/): Sceneform, Unity, Filament, model-viewer
+- [Samples](https://sceneview.github.io/docs/samples/): the demo apps and what each one shows
+- [Community](https://sceneview.github.io/docs/community/): where to ask
+- [Changelog](https://sceneview.github.io/docs/changelog/): what changed, release by release
+
+---
 
 ## Core Composables
 
@@ -27,7 +67,8 @@ fun SceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
-    isRendering: Boolean = true,   // false parks the frame loop on an idle scene — see note below
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(), // render-on-demand by default — see note below
+    renderInvalidator: RenderInvalidator? = null,   // escape hatch for changes made below the library (direct Filament edits)
     renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
@@ -53,32 +94,54 @@ fun SceneView(
 
 **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
-**`isRendering` (default `true`, v4.29.0+ / #3108):** pass `false` when the scene is completely idle — nothing animating, no gesture in flight, no node / camera / material change pending — to park the frame loop. The loop suspends rather than spins, so a paused scene costs neither GPU frames nor a periodic CPU wake-up, and it resumes immediately on the next composition that passes `true` (the loop is not restarted). This is the fix for an idle 3D screen draining battery and thermally throttling on devices whose Choreographer does not idle on a static UI.
+**`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
-**Nothing is presented while `isRendering = false`** — a node added or moved, a camera or manipulator change and a material edit all leave the last drawn frame on screen until rendering resumes; `onFrame` does not fire either. Two exceptions matter:
+Three policies:
 
-- A **new or resized surface** (first attach, app foregrounded, foldable folded/unfolded, split-screen resize) holds no pixels, so the library always presents one frame into it even while paused and then parks again. Do not flip the flag on a configuration change.
-- An **async model load does not finalise** while paused: Filament finishes texture uploads from inside the frame loop, so a model that finishes loading during a pause renders *untextured* until rendering resumes. Hold `true` until `modelLoader.progress == 1f`, not until the load call returns.
+- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a visibility, geometry or material change, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
+- **`FrameRatePolicy.Continuous()`** — the pre-v4.38.0 behaviour verbatim: a frame every vsync, display-max vote held the whole time. Use it when the scene is driven by something the library cannot see and you do not want to invalidate by hand (an external simulation writing into Filament each frame, a custom `Renderer` hook, a texture updated off-thread).
+- **`maxFps`** — an optional ceiling on **either** mode (`OnDemand(maxFps = 30)`, `Continuous(maxFps = 30)`), never a mode of its own: the type asks two independent questions, *when* may a frame be drawn and *how fast at most*. A capped scene never presents faster than `maxFps` and votes for `maxFps` rather than the display maximum (never above what the panel can do) — for a deliberate cadence, e.g. a 30 fps product turntable on a 120 Hz panel. A cap can only be met on a whole number of vsyncs, so the requested period is rounded **up** to whole vsyncs of the real display: `maxFps = 90` on a 120 Hz panel therefore runs at 60, because 90 is not reachable there and 120 would break the promise. `maxFps` is `null` (the display's cadence, the default) or strictly positive (`require` at construction).
 
-So drive it from an "is anything dirty" signal that stays `true` for at least one frame **after** the last mutation, never from "is an animation running" — the latter is already `false` at the instant a one-shot scene change is published, which strands that change undrawn. The dirty window must be Compose state **in both directions**: a deadline compared against a clock flips to `true` on the mutation that recomposes and then never flips back, because time passing a threshold invalidates no composition — the scene renders forever and the parameter silently does nothing.
+**Read this before generating any code that changes a scene at runtime — it is the one way `OnDemand` goes wrong, and it fails silently.** Nothing crashes, logs or throws: the screen keeps showing the previous frame, and the user reads it as a dead control.
+
+- **Every public mutator of a SceneView type asks for its own frame.** `lightNode.intensity`, `.color`, `.lightDirection`, `.falloff`, `.isShadowCaster`, `setIntensityCandela`, `setSpotLightCone`; `cameraNode.setExposure(…)`, `setProjection`, `setLensProjection`, `focusDistance`, `lookAt`, `projectionTransform`; a node's `transform` / `position` / `quaternion` / `scale`, `isVisible`, `materialInstance`, `setMaterialInstanceAt`, `setGeometry`, `setPriority`, `setCulling`, `setLayerMask`, `setMorphWeights`, `setBonesAsMatrices`, `axisAlignedBoundingBox`, shadow and blend-order flags. Do **not** generate a `requestRender()` after these, and do not reach for `Continuous()` to make them show — they invalidate on their own (`Component.onComponentChanged()`).
+- **Nothing written on a raw Filament object does.** The library hands the object out and never sees it again, so no bookkeeping is left to observe the write. Exhaustively: a `MaterialInstance` parameter written with `setParameter`; a light property written through `LightManager`; a `Skybox` or `IndirectLight` assigned or mutated (`intensity`, `setRotation`) straight on the Filament `Scene`; morph-target weights and bone transforms written through `RenderableManager`; an external `Stream` (camera, video) pushing content; runtime `View` options (bloom, AO, dynamic resolution, blend mode) on a `View` you own. **If the type you are writing to is in `com.google.android.filament`, emit a `requestRender()`.**
+
+Both escape hatches are main-thread and fire-and-forget, so before a `PixelCopy` or screenshot you request the frame and then wait for your next `onFrame`:
 
 ```kotlin
-// WRONG — a one-shot change (new position, highlight, finished load) is never drawn.
-SceneView(isRendering = isAnimating) { /* … */ }
+// From a node you hold:
+node.requestRender()
 
-// ALSO WRONG — `System.nanoTime()` is not snapshot state. Nothing recomposes when the window
-// elapses, so `isRendering` stays `true` from the first mutation onward and never pauses again.
-SceneView(isRendering = isAnimating || System.nanoTime() < dirtyUntilNanos) { /* … */ }
-
-// RIGHT — the dirty window is state, and the effect writes it back to false.
-var isDirty by remember { mutableStateOf(true) }
-LaunchedEffect(dirtyToken) {          // dirtyToken is bumped by every scene mutation
-    isDirty = true
-    delay(200)
-    isDirty = false
-}
-SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
+// From anywhere else — a material or IBL edit, or right before a PixelCopy / screenshot:
+val invalidator = rememberRenderInvalidator()
+SceneView(renderInvalidator = invalidator) { /* … */ }
+// later
+indirectLight.intensity = 30_000f
+invalidator.requestRender()
 ```
+
+Measured on a parked demo screen (#3718): dragging an *Environment rotation* slider 302° → 100° and an *Exposure* slider 1.00 → 2.72 produced **0** frames and left the viewport lit the old way. Both writes went into an `IndirectLight`. This is the single most likely defect in generated `OnDemand` code.
+
+**`ARSceneView` has no `frameRatePolicy` parameter and never parks** — do not generate one. A live camera feed is never idle. Its loop skips only the GPU submit, on a vsync where ARCore returns a duplicate `Frame.timestamp` and nothing in the virtual scene changed; `session.update()` runs every vsync, so tracking, anchors and plane detection are unaffected.
+
+**A `ViewNode` and a `VideoNode` are driven from outside the library** — an Android `View` hierarchy redrawing on its own schedule, a `MediaPlayer` decoding — so neither can be tracked through the scene graph. Both report themselves active from the one observable fact, every buffer their `SurfaceTexture` receives: an animating view or a playing video holds the full cadence, a finished view or a paused video parks with the rest of the scene (a paused player's **seek** or frame-step is one such buffer, and it is drawn). Neither is "permanently active" — do not generate a warning saying a `ViewNode` costs a screen its idle saving.
+
+**`onFrame` fires only for a *presented* frame, right after it reached the surface — so it can never be what keeps the loop awake.** Do not generate a screen whose animation clock, physics step or turntable is advanced from `onFrame` and relies on nothing but its own next call: under `OnDemand` the scene settles, parks, the callback stops and the motion freezes on open. A screen that drives motion states it — `frameRatePolicy = FrameRatePolicy.Continuous()` while it plays, `OnDemand()` when it pauses — and takes a rising edge (`LaunchedEffect(isPlaying) { if (isPlaying) invalidator.requestRender() }`) because flipping the flag on a parked loop otherwise changes a value nobody reads. A change the *user* just made (a scrub, a chip) is applied **outside** `onFrame`, then `requestRender()`: `onFrame` runs after presentation, so a pose written inside it lands one frame late, and under `OnDemand` that frame never comes.
+
+**`SceneView(onFrame = …)` and `node.onFrame = { … }` are opposites, despite the name.** `SceneView`'s runs *after* its frame was presented and holds the loop open for nothing — it is an observer. `Node.onFrame` runs *before* the frame is drawn and **pins the loop**: `Node.isFrameActive` reads a non-null slot as a standing request for a frame every tick, because it is a driver (`PhysicsNode` steps its simulation there) and a driver that only runs when a frame happens could never produce the first one. So `node.onFrame = null` is how a node stops asking, and a transform written in it is on screen in the same frame, not one late. Do not generate a `node.onFrame` that merely observes — hold the value in Compose state instead, or the scene never parks. The library's own per-frame work does not use that slot and pins nothing: `BillboardNode` and `TextNode` re-orient only when the camera actually moved, a settled `PhysicsNode` reports itself idle, `rememberModelAnimationState` observes for free.
+
+A **new or resized surface** (first attach, app foregrounded, foldable folded/unfolded, split-screen resize) holds no pixels of its own, so the library always presents into it before parking again — you never have to handle a configuration change yourself. An **async model load** finalises correctly too: `ModelLoader.isLoading` is one of the tracked sources, because Filament finishes texture uploads from inside the frame loop. Do not generate `modelLoader.progress < 1f` for this: `progress` reports Filament's progress over the last async resource load and is **0**, not 1, for a loader that was never asked for one — a procedural scene would read as "still loading" forever and never park.
+
+Migration from `isRendering`:
+
+```kotlin notest before/after comparison table — the left column is the removed API and does not compile by design
+// Before                                    // After
+SceneView(isRendering = true)  { }           SceneView(frameRatePolicy = FrameRatePolicy.Continuous()) { }
+SceneView(isRendering = isDirty) { }         SceneView { }   // OnDemand is the default — delete the dirty-tracking
+```
+
+The whole `isDirty` / `dirtyToken` / `LaunchedEffect(delay(200))` pattern the old parameter required is now the library's job: **delete it**, do not translate it.
 
 **`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|orbitHomePosition\|` (see \"Camera\"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
 
@@ -215,7 +278,7 @@ fun MyARScreen() {
 
 ### Tracking-failure messages (user-facing strings)
 
-`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, localised, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
+`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, backed by string resources, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
 
 ```kotlin
 var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
@@ -286,6 +349,9 @@ Box {
         isTracking = isTracking,
         anyPlaneTracked = anyPlaneTracked,
         trackingFailureReason = failure,
+        // Default 16 dp — a gutter sized for a screen whose bottom is empty. If your own
+        // chrome occupies the bottom, name the band it must clear (#3735).
+        bottomClearance = 96.dp + 8.dp,
     )
 }
 ```
@@ -296,6 +362,9 @@ STATE's durations, not a fresh copy, or the visual fade desynchronizes from the 
 
 Platform matrix: **iOS** — use `ARSceneView(showCoachingOverlay: true)` (Apple's first-party
 `ARCoachingOverlayView` IS the onboarding; no port needed). **Web** — coming soon.
+
+With `AutoPlacementScene`, don't add `PlaneDiscoveryGuide`: its built-in `ARCoachingOverlay`
+(`coaching = true`, the default) is the animated onboarding — see "Automatic placement".
 
 ### Scene Understanding — grouped AR rendering flags
 
@@ -832,7 +901,7 @@ SceneView(...) {
 ```
 
 ### ViewNode — Compose UI in 3D
-**Requires `viewNodeWindowManager` on the parent `Scene`.**
+**Requires `viewNodeWindowManager` on the parent `SceneView`.**
 ```kotlin
 @Composable fun ViewNode(
     windowManager: ViewNode.WindowManager,
@@ -1034,13 +1103,38 @@ Renders a triangulated 2D polygon in 3D space. Supports holes, Delaunay refineme
     linearVelocity: Position = Position(0f, 0f, 0f),
     floorY: Float = 0f,
     radius: Float = 0f,
-    floorProvider: FloorProvider? = null   // dynamic floor source — e.g. rememberDepthCollider() (AR)
+    floorProvider: FloorProvider? = null,  // dynamic floor source — e.g. rememberDepthCollider() (AR)
+    gravity: Position = Position(0f, PhysicsBody.GRAVITY, 0f)  // acceleration vector, m/s²
 )
 ```
 Attaches gravity + floor bounce to an existing node. Does NOT add the node to the scene — the node
 must already exist. Uses Euler integration at 9.8 m/s² with configurable restitution and floor.
 Note: a `mass` overload exists but is `@Deprecated` — gravity is mass-independent, so `mass` is
 a no-op until a force/impulse API lands.
+
+`gravity` is a full vector in the node's parent frame, live across recompositions (`PhysicsBody.gravity`
+is also settable directly). Tilt it to make bodies roll down a slope: rotate the tray's pivot node for
+the visuals and give the bodies that same gravity rotated by the pivot's **inverse** rotation — the
+floor stays a flat plane in the simulation, which is what this engine models. A body never falls asleep
+while its gravity has a horizontal component. The pure-Kotlin core mirrors this as
+`PhysicsState(gravity = ...)` in `io.github.sceneview.physics`.
+
+```kotlin
+import dev.romainguy.kotlin.math.transpose
+import dev.romainguy.kotlin.math.rotation as rotationMatrix
+
+// A tray tipped 20° towards the viewer. The pivot node rotates the visuals; gravity is rotated by
+// the pivot's INVERSE (a rotation matrix is orthonormal, so transpose == inverse), which is what
+// makes the ball roll downhill while the simulation still sees a flat floor plane.
+SceneView {
+    val tilt = Rotation(x = 20f, y = 0f, z = 0f)
+    val g = transpose(rotationMatrix(tilt.toQuaternion())) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
+    val ball = remember(engine) { SphereNode(engine, radius = 0.08f) }
+    Node(rotation = tilt) {
+        PhysicsNode(node = ball, radius = 0.08f, floorY = -0.5f, gravity = Position(g.x, g.y, g.z))
+    }
+}
+```
 
 ```kotlin
 SceneView {
@@ -1097,9 +1191,135 @@ SceneView {
 
 `ARSceneScope` extends `SceneScope` with AR-specific composables. All `SceneScope` nodes (ModelNode, CubeNode, etc.) are also available.
 
-### PlacementScene — one-line tap-to-place (v4.10.0+, #1765)
+### Automatic placement (recommended)
 
-**Start here for AR placement.** `PlacementScene` is the high-level composable that bundles the
+`AutoPlacementScene` is additive: one usable detected plane consumes one placement
+request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
+or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
+centers, and a 0.25–3 m interaction range. It renders no plane grid or reticle.
+
+```kotlin
+import io.github.sceneview.ar.*
+
+val engine = rememberEngine()
+val modelLoader = rememberModelLoader(engine)
+val model = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+val placement = rememberAutoPlacementState()
+AutoPlacementScene(
+    assetReady = model != null,
+    state = placement,
+    engine = engine,
+    modelLoader = modelLoader,
+    surface = PlacementSurface.SURFACE, // WALL accepts vertical planes directly
+    onPlaced = { result -> /* result.anchor, result.plane, result.pose */ },
+) { result ->
+    model?.let { AutoPlacementModel(result, placement, it, scaleToUnits = 0.3f) }
+}
+// Explicit reset retains the asset and the camera session:
+// placement.resetPlacement(android.os.SystemClock.uptimeMillis())
+```
+
+**Coaching overlay (on by default).** `AutoPlacementScene(coaching = true)` draws
+`ARCoachingOverlay` centred over the camera — the Android twin of Apple's
+`ARCoachingOverlayView`: a phone sweeping over a floor diamond (or a wall for
+`PlacementSurface.WALL`) while scanning, a short "surface found" beat (a cube lands on the
+filled target) when the object is placed, a pause glyph when tracking is limited, a "look
+back" arrow while a placed anchor relocalizes. It is silent when a card is due
+(`NO_SURFACE`, `RECOVERY_FAILED`, `CAMERA_ERROR`). Hide your own status pills while it
+shows:
+
+```kotlin
+val placement = rememberAutoPlacementState()
+val guidance = rememberArGuidanceState(placement, PlacementSurface.SURFACE)
+Box(Modifier.fillMaxSize()) {
+    AutoPlacementScene(assetReady = model != null, state = placement /* coaching = true */) { … }
+    if (!guidance.isCoaching) MyStatusPill(placement.phase)   // one voice at a time
+}
+```
+
+`guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
+`SCAN`, `SURFACE_FOUND` (600 ms after a new placement), `TRACKING_LIMITED`,
+`RELOCALIZING`. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
+render `ARCoachingOverlay(guidance)` yourself in any `Box`. The placed model grows in from
+55 % over 260 ms and shrinks away on tracking loss (opaque glTF materials cannot fade).
+`placement.hasCameraFrame` is true from the first camera frame, tracked or not — key a
+"starting camera" cover on it, not on `INITIALIZING`.
+
+`AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
+while rotating/scaling, and constrains dragging to supported plane geometry. Its
+0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
+trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base.
+
+For asynchronous selection, call `placement.selectModel()` before loading and attach
+only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model
+until its replacement succeeds. Observe `placement.phase`; use `requestPlacement()`,
+`resetPlacement(nowMillis)` and `keepScanning(nowMillis)` for explicit actions. Reset
+removes the wrapper-owned anchor without restarting the camera. Interruption freezes
+manipulation and recovers the existing placement; it does not arm a new request.
+`onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
+capability, tracking, and camera failures. Copy, permissions and asset selection belong
+to the app. Semantic AR haptics ship in the SDK and are **opt-in**: add
+`ARHapticFeedback(placement)` next to the scene (Swift: `.arHapticFeedback(controller)`)
+— see *Haptic Feedback › Semantic AR events*. A pinch snaps to exactly 100 % within
+±4 %, with a short elastic rebound, on both platforms.
+
+States match Swift's `ARPlacementPhase`: `INITIALIZING`, `SCANNING`, `NO_SURFACE`,
+`PLACED`, `ADJUSTING`, `TRACKING_LOST`, `RECOVERING`, `RECOVERY_FAILED`, `CAMERA_ERROR`.
+The no-surface and recovery deadlines are both ten seconds. A controller manages one
+object; repeated requests while placed are ignored. Multi-object hosts explicitly own
+separate requests/controllers; tapping empty space never places.
+
+**Manual-placement compatibility:** `PlacementScene`, `WallPlacementScene`
+(`WallPlacement`), `onTapOnPlane`, `ReticleNode` and the placement-reticle options remain
+manual-placement APIs. Their published defaults and tap behavior are unchanged. Use
+them for deliberate manual interactions or diagnostics; new placement flows should
+use `AutoPlacementScene`.
+
+### Direct wall placement
+
+Use `surface = PlacementSurface.WALL`: detection is vertical-only, with no floor,
+seam alignment or placement tap. The first usable wall creates one real plane anchor.
+New plane detections never move a standing object; drag to a valid alternative wall or
+reset explicitly. Tracking loss retains that placement and enters recovery.
+
+Author wall models with **+Y up and +Z front** (or supply `assetRotation`).
+`AutoPlacementModel` puts the bounding box's back and bottom at the contact pivot and
+faces its front toward the camera side of the wall, even if the detected normal points
+away. Drag projects the grab offset into the destination wall and validates its polygon;
+twist rotates in the wall plane; pinch preserves contact at 25–400% of the base size.
+The anchor frame retains the Android surface convention: +Y is the wall normal and
+−Z points up. `directWallPose(point, normal, towardViewer)` is an additive pure helper
+returning the authored +Y-up/+Z-front frame at the exact wall point; it requires a finite
+normal with a nonzero horizontal component. Legacy `wallAnchorPose`, `wallFacingRotation`,
+`floorWallSeam` and `WallPlacementPhase` keep their floor/seam semantics unchanged.
+
+For procedural geometry, `AutoPlacementNode(result, placement) { opacity -> … }` uses
+that same gesture hierarchy. Supply content already sized (demo: 0.3 m longest dimension),
+with bottom at y=0 and back at z=0. Mark selectable children editable, but disable their
+individual position/rotation/scale editing so gestures reach the contact pivot. Apply
+`opacity` to transparent materials for the 300 ms placement/tracking fade.
+
+Selected-object accessibility alternatives share the gesture constraints:
+`placement.moveBy(x, y)` moves in metres right/up on a wall, `rotateBy(degrees)` twists
+around its normal, and `scaleTo(factor)` changes its base-size multiplier.
+`scaleFactor` is observable. Keep these controls in a sheet, with **Reset placement**.
+`playbackDataset` is forwarded by the Android wall demo; a floor-only replay does not
+validate wall placement.
+
+| Wall-demo rendering | Android | iOS |
+|---|---|---|
+| TV geometry and size | Two boxes, 0.3 m preview | Same dimensions and material parameters |
+| Contact | Back/bottom pivot on the real wall | Same |
+| Wall contact shading | Disabled in the demo; no procedural shadow blob | No wall shadow; RealityKit grounding shadows project downward |
+| Reveal / tracking loss | 300 ms opacity fade | 300 ms opacity fade |
+
+Native renderer lighting can differ. The demo does not claim physically identical
+wall shadows, and never substitutes a synthetic pool for renderer shading.
+
+### PlacementScene — manual tap-to-place (v4.10.0+, #1765)
+
+**Legacy manual placement.** For automatic placement start with `AutoPlacementScene` above.
+`PlacementScene` is the manual composable that bundles the
 whole tap-to-place pipeline — Sceneform `ArFragment` parity in one call. It wires an `ARSceneView`
 with plane rendering, a built-in centre-screen **ring reticle** that brightens when a surface is
 ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
@@ -1149,8 +1369,8 @@ Signature:
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
     instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
     showReticle: Boolean = true,             // built-in centre-screen placement reticle
+    reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity + centre dot vary searching/hit/locked
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
-    reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity varies searching↔ready
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
     groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
@@ -1158,6 +1378,9 @@ Signature:
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
+    coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching pill — raise it by the
+                                             // height of your own bottom bar so the pill is not
+                                             // hidden behind it (#3735)
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 )
@@ -1175,15 +1398,24 @@ placement fires a `LongPress` haptic, so a tap that lands feels different from a
 For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
 manual control drop down to `ARSceneView` + `HitResultNode`.
 
+**If your screen has a bottom bar, tell the coaching guide about it (#3735).** With
+`coaching = true` the onboarding pill sits above the bottom edge with a 16 dp gutter — a gap sized
+for a screen whose bottom is empty. Host it under a dock, a nav bar or a product sheet and the pill
+lands *behind* that chrome, half-legible, exactly when the user most needs it. `PlacementScene` has
+no way to see a bar drawn by its caller, so pass the height yourself:
+`coachingBottomClearance = barHeight + 8.dp` (a spacing token, not a magic number). The parameter is
+purely additive — leave it out and nothing moves.
+
 The built-in reticle is composed only while the camera is `TRACKING`, so it can never render at
 the identity pose before the first hit (#3569). Its default look is deliberately achromatic — a
 white hairline ring over a faint dark contact halo, with a small `#a4c1ff` centre dot appearing
 only in the *ready* phase (#3570). Reticle colour is a design decision: if you re-tint it, tint
 the dot, not the ring.
 
-### WallPlacementScene — place on a wall, aligned to the floor↔wall edge (#2740)
+### WallPlacementScene — manual wall placement, aligned to the floor↔wall edge (#2740)
 
-**Use this instead of `PlacementScene` for vertical-surface products** — a TV, framed art, a mirror,
+**Legacy manual wall placement.** New automatic wall flows use
+`AutoPlacementScene(surface = PlacementSurface.WALL)`. The manual API remains for vertical-surface products — a TV, framed art, a mirror,
 a shelf. Placing on a wall is harder than dropping a model on the floor: ARCore converges vertical
 planes slowly and noisily, so anchoring at the raw hit pose leaves the object tilted and floating.
 `WallPlacementScene` decouples the two axes the way Amazon "AR View" / IKEA Place do it — orientation
@@ -1364,7 +1596,7 @@ It stays a writable `var` afterwards and the composables re-apply it on recompos
 re-creating the node, so it is safe to drive from state (e.g. 10 Hz on low battery, every
 frame while the user is actively aiming).
 
-### ReticleNode — placement reticle with auto-hide
+### ReticleNode — manual-placement reticle with auto-hide
 
 `ReticleNode` is a **thin wrapper** over `HitResultNode` for "tap to place" UX. It is a
 `HitResultNode` subclass — it delegates the screen-coordinate hit test (including the
@@ -2935,7 +3167,7 @@ Once the three modes are on **and** the Earth state has reached `TrackingState.T
 Requirements:
 - ARCore Cloud API key + `ACCESS_FINE_LOCATION` permission (same as the rest of the Geospatial API — see the API key warning above).
 - Device with a back-facing camera config that supports `DepthMode` (most ARCore-supported devices since 2020).
-- A VPS-covered location (city centres of supported regions: https://developers.google.com/ar/coverage).
+- A VPS-covered location (city centres of supported regions: https://developers.google.com/ar/develop/geospatial).
 
 See #1731.
 
@@ -3279,7 +3511,7 @@ fun PrintViewer(uri: Uri) {
 }
 ```
 
-Works identically in AR — `ARScene { … }`, `PlacementScene`, an anchored `ModelNode` — because by
+Works identically in AR — `ARSceneView { … }`, `PlacementScene`, an anchored `ModelNode` — because by
 the time a node sees it, a 3MF *is* a glTF model.
 
 **What conversion does, and why each part matters:**
@@ -3424,7 +3656,7 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 All `remember*` helpers create and memoize Filament objects, destroying them on disposal.
 Most are default parameter values in `SceneView`/`ARSceneView` — call them explicitly only when sharing resources or customizing.
 
-**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done.
+**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done. `destroyModel` is safe at any point of a load, including while the textures are still decoding: it cancels that model's pending texture load first, so no app-side `resourceLoader.asyncCancelLoad()` is needed.
 
 | Helper | Returns | Purpose |
 |--------|---------|---------|
@@ -3508,12 +3740,20 @@ SceneView(
 
 One finger orbits, two fingers pan, a pinch dollies — and since 4.36.0 a **double-tap zooms in**
 and a **two-finger tap zooms out**, animated over 300 ms, the same convention as Google Maps and
-Photos (#3608). Both taps are on by default in `Scene` / `SceneView` / `ARScene`, are clamped by
+Photos (#3608). Both taps are on by default in `SceneView` / `ARSceneView` (and their deprecated `Scene` / `ARScene` aliases), are clamped by
 the same min/max distance factors as the pinch, and leave `onSingleTapConfirmed`, node picking and
 a consumer's own `onDoubleTap` untouched — the camera and the listener both see the event.
 
 Repeated double-taps do not dead-end: once the camera sits on the closest allowed distance, the
 next double-tap cycles back to the framing the scene was homed at.
+
+A tap is not an orbit (#3641): one finger only starts orbiting once it has travelled
+`CameraGestureDetector.orbitTouchSlop` pixels — the platform touch slop, which `SceneView` sets
+from `ViewConfiguration.scaledTouchSlop`. A fingertip reports a few sub-pixel moves during any
+tap; without the slop each of them called `grabBegin`, which cancelled the double-tap zoom it had
+just started and handed any idle camera animation over to the user on a mere touch. A custom
+manipulator can therefore treat `grabBegin` as "the user is really dragging". Set the property
+to `0f` on a hand-built detector to get the old third-move behaviour back.
 
 ```kotlin
 // Opt out, or re-tune the step, on the default manipulator:
@@ -4230,7 +4470,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.36.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.40.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4242,7 +4482,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.36.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -4462,14 +4702,14 @@ controller.distance         // distance from target
 controller.minDistance      // default 0.5
 controller.maxDistance      // default 50.0
 controller.autoRotate       // Boolean
-controller.autoRotateSpeed  // radians/frame (default 30°/s at 60fps)
+controller.autoRotateSpeed  // radians per SECOND (default 30°/s) — frame-rate independent
 controller.enableDamping    // inertia (default true)
 controller.dampingFactor    // default 0.95
 controller.rotateSensitivity // default 0.005
 controller.zoomSensitivity   // default 0.1
 controller.panSensitivity    // default 0.003
 controller.target(x, y, z) // set look-at point
-controller.update(): Boolean // call each frame (automatic inside SceneView render loop); returns true if the camera moved this frame — the on-demand render gate repaints only when update() reports moved (#2332)
+controller.update(deltaSeconds): Boolean // call each frame with the seconds since the previous one (automatic inside SceneView render loop); returns true if the camera moved this frame — the on-demand render gate repaints only when update() reports moved (#2332)
 controller.dispose()
 ```
 
@@ -4513,7 +4753,7 @@ sv.setEnvironmentWithSkybox(iblUrl, skyboxUrl)
 sv.setCameraOrbit(theta, phi, distance)  // radians
 sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)   // Boolean
-sv.setAutoRotateSpeed(radiansPerFrame)
+sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s
 sv.setZoomLimits(min, max)
 sv.setBackgroundColor(r, g, b, a)  // 0-1 range
 sv.setAutoCenterContent(enabled)   // Boolean — center loaded content (default true)
@@ -4846,7 +5086,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.36.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.40.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -5113,6 +5353,7 @@ SceneView { root in
         root.addChild(model.entity)
     }
 }
+.contentID(model != nil)   // re-run the closure once the async load lands
 .environment(.outdoor)
 .cameraControls(.orbit)
 .onEntityTapped { entity in print("Tapped: \(entity)") }
@@ -5144,7 +5385,11 @@ public struct ARSceneView: UIViewRepresentable {
 View modifiers (chainable):
 ```swift
 .onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process
+.onSessionError(_ handler: @escaping (Error, ARView) -> Void) -> ARSceneView  // v4.39.0+ — ARKit session failures (camera permission denied…) and unsupported configurations. Without it the SDK only prints
+.onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
+.onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
+.onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
@@ -5156,6 +5401,21 @@ View modifiers (chainable):
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
 - Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
+
+`onSessionError` notes (v4.39.0+):
+- Called on `session(_:didFailWithError:)` — camera permission denial included — and when the requested configuration cannot run on this device.
+- `faceTracking: true` on a device with no TrueDepth camera reports `ARSceneViewError.faceTrackingUnsupported` and starts NO session; it no longer falls back to the rear world-tracking camera. Render your own unsupported-device state from the handler.
+- Face sessions get no coaching overlay (its goals are all plane goals).
+- `showPlaneOverlay` / `showCoachingOverlay` / `showPlacementReticle` are reactive — toggle the value, never `.id()` the view (a re-key restarts the AR session).
+
+Session lifecycle notes (v4.39.0+):
+- `ARSessionConfiguration` is the whole ask, as one `Equatable` value. The view re-runs ARKit only when that value changes between renders (a `mode` change resets tracking; anything else keeps it) and re-applies the retained configuration after an interruption. Settings or theme changes never restart the camera.
+- `sceneReconstruction` defaults to `.none`: the LiDAR mesh is no longer switched on implicitly on every LiDAR device. Ask for `.mesh` / `.meshWithClassification`; on a device without LiDAR that reports `ARSceneViewError.unsupported(.lidar)` and runs no session.
+- `unmetRequirement()` answers before the view is mounted — render the unsupported state yourself; the SDK never falls back to a lesser session.
+- `.firstFrame` (state `.running`) is the camera on screen, independent of any model load. Report "Loading model…" from your own load, never from the session.
+- The delegate is installed before `session.run`, so `.started` and the first tracking state are never missed.
+- `cameraExposure` installs its post-process once per value and only removes what it installed; with `nil` it never touches `renderCallbacks.postProcess`, so a host-owned post-process survives. It remains rendered-frame brightness, not capture exposure.
 
 `mainLight` / `fillLight` notes (v4.3.0+, `#1138` — iOS half of `#1063`):
 - Mirrors Android's `ARSceneView(mainLightNode = …, fillLightNode = …)` parameters.

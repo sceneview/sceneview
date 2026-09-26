@@ -6,9 +6,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +38,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cancel
@@ -52,6 +55,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -91,9 +95,14 @@ import io.github.sceneview.demo.freshDemos
 import io.github.sceneview.demo.freshness
 import io.github.sceneview.demo.freshnessHeadlineVersion
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.LocalMotionEnabled
+import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
 import io.github.sceneview.demo.whatsnew.loadWhatsNew
+import io.github.sceneview.demo.ui.cascadeIn
+import io.github.sceneview.demo.ui.pressScale
+import io.github.sceneview.demo.ui.rememberCascade
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -144,6 +153,22 @@ fun HomeScreen(
      */
     hasUnseenWhatsNew: Boolean = false,
     onWhatsNewSinceClick: () -> Unit = {},
+    /**
+     * The version the freshness markers are measured against — `VERSION_NAME`
+     * in the app, a pinned value in the snapshot tests.
+     *
+     * Read as a parameter rather than straight off `BuildConfig` because that
+     * read is what coupled the home goldens to `gradle.properties` (#3666).
+     * Freshness is a *relative* verdict: a demo declaring `updatedIn = "4.35.0"`
+     * is inside the window at build 4.36 and outside it at 4.37, so the release
+     * commit's own version bump silently repaints the grid. The goldens then
+     * failed on the release PR — the one PR where a red check is most expensive
+     * and least informative — and were re-recorded under time pressure at 4.35.0
+     * and again at 4.37.0, which is not review, it is ratification. Hoisting the
+     * version makes the badge set a function of what the demos declare, and of
+     * nothing else.
+     */
+    buildVersion: String = BuildConfig.VERSION_NAME,
 ) {
     val home = SceneViewTokens.Home
     val gridState = rememberLazyGridState()
@@ -175,9 +200,10 @@ fun HomeScreen(
 
     // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
     // featured page they feed (#3566). Derived from the demo's own declared
-    // `sinceVersion` / `updatedIn` against the running build, so it expires on
+    // `sinceVersion` / `updatedIn` against `buildVersion`, so it expires on
     // its own and nothing here is hand-maintained. See `DemoFreshness.kt`.
-    val buildVersion = BuildConfig.VERSION_NAME
+    // `buildVersion` is a parameter, defaulting to `BuildConfig.VERSION_NAME`:
+    // see its KDoc for why the snapshot tests must be able to pin it (#3666).
     val freshnessById = remember(demos, buildVersion) {
         demos.associate { it.id to it.freshness(buildVersion) }
     }
@@ -237,6 +263,35 @@ fun HomeScreen(
         derivedStateOf { gridState.firstVisibleItemIndex > 0 }
     }
 
+    // How far the featured band has travelled out of the viewport, 0 → 1. Read at
+    // *draw* time by the live hero's `graphicsLayer` (hence a lambda, not a `Float`):
+    // the band collapses without a single extra recomposition per scrolled frame, and
+    // without the grid's own scroll maths ever depending on a height the collapse chose.
+    val heroCollapse: () -> Float = remember(gridState) {
+        {
+            val item = gridState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.key == HERO_ITEM_KEY }
+            when {
+                item == null -> 1f
+                item.size.height == 0 -> 0f
+                else -> ((-item.offset.y).toFloat() / item.size.height).coerceIn(0f, 1f)
+            }
+        }
+    }
+    // Frames are for a band that is on screen and holding still. A drag is the one
+    // moment the scroll needs every millisecond of the frame budget, and a hero that
+    // has scrolled past its own height has nothing left to show.
+    val heroOnScreen by remember(gridState) {
+        derivedStateOf {
+            gridState.layoutInfo.visibleItemsInfo.any { it.key == HERO_ITEM_KEY }
+        }
+    }
+    val heroRendering = heroOnScreen && !gridState.isScrollInProgress && !searching
+
+    // The catalogue's one-shot entrance, played on arrival and never again under a thumb.
+    val cascade = rememberCascade()
+    var cascadeIndex = 0
+
     Box(modifier = modifier.fillMaxSize()) {
         LazyVerticalGrid(
             state = gridState,
@@ -259,12 +314,14 @@ fun HomeScreen(
             }
             // While a query is typed the featured pager gives way so the results
             // start under the header and stay visible above the keyboard (#3308).
-            if (!searching) item(key = "hero", span = { GridItemSpan(maxLineSpan) }) {
+            if (!searching) item(key = HERO_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
                 HomeFeaturedPager(
                     pages = featuredPages,
                     height = if (expanded) home.heroHeightExpanded else home.heroHeight,
                     onDemoClick = onDemoClick,
                     onWhatsNewClick = { showWhatsNew = true },
+                    collapseFraction = heroCollapse,
+                    heroRendering = heroRendering,
                     modifier = Modifier.testTag(HomeTestTags.HERO),
                 )
             }
@@ -272,7 +329,9 @@ fun HomeScreen(
                 item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
                     BrowseOnlineModelsCard(
                         onClick = onBrowseOnlineClick,
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeIn(cascade.delayFor(cascadeIndex++)),
                     )
                 }
             }
@@ -305,23 +364,28 @@ fun HomeScreen(
                     ) {
                         SectionHeader(
                             category = demo.category,
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeIn(cascade.delayFor(cascadeIndex++)),
                         )
                     }
                 }
                 previousCategory = demo.category
+                val cardDelay = cascade.delayFor(cascadeIndex++)
                 item(key = "demo-${demo.id}") {
                     DemoMediaCard(
                         demo = demo,
                         onClick = { onDemoClick(demo.id) },
                         freshness = freshnessById[demo.id] ?: DemoFreshness.None,
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
-                            placementSpec = spring(
-                                dampingRatio = SceneViewTokens.Spring.dampingRatio,
-                                stiffness = SceneViewTokens.Spring.stiffness,
-                            ),
-                        ),
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
+                                placementSpec = spring(
+                                    dampingRatio = SceneViewTokens.Spring.dampingRatio,
+                                    stiffness = SceneViewTokens.Spring.stiffness,
+                                ),
+                            )
+                            .cascadeIn(cardDelay),
                     )
                 }
             }
@@ -376,6 +440,13 @@ private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
     )
 }
 
+/**
+ * Grid key of the featured band. Named because three things now agree on it: the
+ * item itself, the collapse fraction that measures its travel, and the render gate
+ * that parks Filament once it has left.
+ */
+private const val HERO_ITEM_KEY = "hero"
+
 /** The demo the first featured page opens. */
 const val HERO_DEMO_ID = "model-viewer"
 
@@ -401,6 +472,10 @@ private fun HomeHeader(
 ) {
     val home = SceneViewTokens.Home
     var searchOpen by rememberSaveable { mutableStateOf(query.isNotEmpty()) }
+    val motionEnabled = LocalMotionEnabled.current
+    val headerSwapSpec = remember(motionEnabled) {
+        if (motionEnabled) tween<Float>(SceneViewTokens.Duration.shortMillis) else snap()
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val overlay by animateColorAsState(
         targetValue = if (scrolled) {
@@ -411,12 +486,19 @@ private fun HomeHeader(
         animationSpec = tween(SceneViewTokens.Duration.shortMillis),
         label = "headerOverlay",
     )
-    Column(modifier = modifier.fillMaxWidth().background(overlay)) {
+    // The wordmark row and the search row are not the same height, so the swap used to
+    // step the grid underneath it. `animateContentSize` makes the header carry that
+    // difference itself, on the same `motion-fade` the content crossfade uses.
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(overlay)
+            .animateContentSize(animationSpec = motionFade()),
+    ) {
         AnimatedContent(
             targetState = searchOpen,
             transitionSpec = {
-                fadeIn(tween(SceneViewTokens.Duration.shortMillis)) togetherWith
-                    fadeOut(tween(SceneViewTokens.Duration.shortMillis))
+                fadeIn(headerSwapSpec) togetherWith fadeOut(headerSwapSpec)
             },
             label = "headerContent",
         ) { open ->
@@ -576,15 +658,11 @@ private fun SearchRow(
  */
 private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
     null to R.string.category_short_all,
-    DemoCategory.VIEWER to R.string.category_short_viewer,
-    DemoCategory.GEOMETRY_MATERIALS to R.string.category_short_geometry_materials,
-    DemoCategory.RENDERING to R.string.category_short_rendering,
-    DemoCategory.INTERACTION to R.string.category_short_interaction,
-    DemoCategory.AR_PLACEMENT to R.string.category_short_ar_placement,
-    DemoCategory.AR_TRACKING to R.string.category_short_ar_tracking,
-    DemoCategory.AR_UNDERSTANDING to R.string.category_short_ar_understanding,
-    DemoCategory.AR_ANCHORS to R.string.category_short_ar_anchors,
-    DemoCategory.PLATFORM to R.string.category_short_platform,
+    DemoCategory.VIEW_3D to R.string.category_short_view_3d,
+    DemoCategory.CREATE to R.string.category_short_create,
+    DemoCategory.PLACE_AR to R.string.category_short_place_ar,
+    DemoCategory.UNDERSTAND to R.string.category_short_understand,
+    DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
 )
 
 /** The categories [CHIP_CATEGORIES] offers, minus the leading "All". */
@@ -628,6 +706,7 @@ private fun Modifier.bleedHorizontal(inset: Dp): Modifier = layout { measurable,
 
 @Composable
 private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
     val dark = isSystemInDarkTheme()
     val colors = SceneViewTokens.HomeColor
     val home = SceneViewTokens.Home
@@ -646,7 +725,13 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     Surface(
         modifier = Modifier
             .height(home.chipRowHeight)
-            .clickable(role = Role.Tab, onClick = onClick),
+            .pressScale(interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                role = Role.Tab,
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
         color = background,
         contentColor = content,

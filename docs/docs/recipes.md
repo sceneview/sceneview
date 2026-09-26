@@ -6,7 +6,7 @@ description: "Copy-paste code patterns for SceneView: model loading, animations,
 # Recipes / Cookbook
 
 Copy-paste patterns for the most common SceneView tasks.
-Every snippet targets **SceneView 4.0.0** and uses Jetpack Compose.
+Every snippet targets **SceneView 4.39.0** and uses Jetpack Compose.
 
 ---
 

@@ -17,7 +17,12 @@ Step-by-step guide to publish the SceneView app on Google Play.
 2. Click **"Create app"**
 3. Fill in:
    - **App name:** `SceneView`
-   - **Default language:** English (United States)
+   - **Default language:** English (United States) — `en-US`, the one locale
+     this repo maintains and the only one the listing-sync job targets
+     (`distribution/play-store/en-US/`). The listing was consolidated to a
+     single source-of-truth directory in #1710 and moved from `en-GB` to
+     `en-US` in #3658, which also added the opt-in flags that set the store's
+     default language and prune every other locale.
    - **App or game:** App
    - **Free or paid:** Free
 4. Accept declarations and click **Create app**
@@ -32,7 +37,7 @@ single source of truth consumed by the `play-store.yml` listing-sync job
 
 ```
 distribution/play-store/
-└── en-GB/
+└── en-US/
     ├── title.txt
     ├── short_description.txt
     ├── full_description.txt
@@ -61,7 +66,7 @@ empty, which the capture script's centre-patch variance guard reads as blank;
 `double-pendulum` renders as a tiny linkage in a mostly-black frame. The
 canonical list — and the reason behind each id — lives next to `DEMOS_DEFAULT`
 in `.claude/scripts/capture-play-store-screenshots.sh` and is mirrored in
-[`distribution/play-store/en-GB/graphics/README.md`](distribution/play-store/en-GB/graphics/README.md).
+[`distribution/play-store/en-US/graphics/README.md`](distribution/play-store/en-US/graphics/README.md).
 
 The tablet sets mirror phone again as of #3106: `multi-model` had been dropped from
 tablet runs because at a tablet's wider aspect (0.625 w/h on both QA AVDs,
@@ -92,7 +97,7 @@ streamed `park` scene — a different picture that every automated guard in the
 capture path accepts. The script warns; it cannot detect the swap in the frame.
 That demo also frames itself from the live viewport aspect, so it needs no
 per-class `camera_distance` value (#2913). See the
-[graphics README](distribution/play-store/en-GB/graphics/README.md) for both.
+[graphics README](distribution/play-store/en-US/graphics/README.md) for both.
 
 Optional extras still not in the repo:
 - **Promo video:** YouTube link — set manually in the Play Console.

@@ -1351,18 +1351,24 @@ public final class io/github/sceneview/physics/PhysicsSimulationKt {
 
 public final class io/github/sceneview/physics/PhysicsState {
 	public fun <init> ()V
-	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZ)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZ)V
 	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZLdev/romainguy/kotlin/math/Float3;)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZLdev/romainguy/kotlin/math/Float3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun component2 ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun component3 ()F
 	public final fun component4 ()F
 	public final fun component5 ()F
 	public final fun component6 ()Z
-	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZ)Lio/github/sceneview/physics/PhysicsState;
+	public final fun component7 ()Ldev/romainguy/kotlin/math/Float3;
+	public final synthetic fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZ)Lio/github/sceneview/physics/PhysicsState;
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZLdev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/physics/PhysicsState;
 	public static synthetic fun copy$default (Lio/github/sceneview/physics/PhysicsState;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZILjava/lang/Object;)Lio/github/sceneview/physics/PhysicsState;
+	public static synthetic fun copy$default (Lio/github/sceneview/physics/PhysicsState;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZLdev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/physics/PhysicsState;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getFloorY ()F
+	public final fun getGravity ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getRadius ()F
 	public final fun getRestitution ()F

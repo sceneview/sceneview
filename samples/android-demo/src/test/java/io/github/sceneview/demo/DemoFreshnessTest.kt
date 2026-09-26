@@ -24,7 +24,7 @@ class DemoFreshnessTest {
         id = id,
         titleRes = 1,
         subtitleRes = 2,
-        category = DemoCategory.GEOMETRY_MATERIALS,
+        category = DemoCategory.CREATE,
         icon = Icons.Filled.Palette,
         order = 1,
         tags = setOf("tag"),

@@ -1,4 +1,8 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@file:OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterial3ExpressiveApi::class,
+    ExperimentalSharedTransitionApi::class,
+)
 
 package io.github.sceneview.demo.ui.explore
 
@@ -34,9 +38,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -157,6 +163,9 @@ fun GalleryModelViewerScreen(
         ),
     ) {
         BackHandler(onBack = onDismiss)
+        // Registered after the plain BackHandler so it wins while the live scene is up:
+        // the back gesture then shrinks the hero toward its thumbnail under the finger.
+        val heroBack = rememberHeroPredictiveBack(enabled = stage is Stage.Rendering, onBack = onDismiss)
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
@@ -211,7 +220,7 @@ fun GalleryModelViewerScreen(
                         heroModifier = heroModifier,
                     )
                     is Stage.Rendering -> if (engine == null) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { ContainedLoadingIndicator() }
                     } else RenderContent(
                         file = s.file,
                         model = model,
@@ -220,7 +229,8 @@ fun GalleryModelViewerScreen(
                         engine = engine!!,
                         modelLoader = modelLoader!!,
                         environmentLoader = environmentLoader!!,
-                        heroModifier = heroModifier,
+                        heroModifier = heroModifier.heroBackLayer(heroBack, SceneViewTokens.Radius.lg),
+                        heroBack = heroBack,
                     )
                     is Stage.Error -> ErrorContent(
                         message = s.message,
@@ -268,8 +278,8 @@ private sealed interface Stage {
  * takes over — the 440 dp hero Box keeps its shared bounds across the swap.
  *
  * When the server sends a `Content-Length` header the card switches from an
- * indeterminate [CircularProgressIndicator] to a determinate
- * [LinearProgressIndicator] + `X.X / Y.Y MB` counter so the user knows how
+ * indeterminate M3 Expressive [LoadingIndicator] to a determinate
+ * [LinearWavyProgressIndicator] + `X.X / Y.Y MB` counter so the user knows how
  * long they are waiting (#2232).
  */
 @Composable
@@ -359,12 +369,14 @@ private fun DownloadingContent(
                         if (total > 0L) read.toFloat() / total else null
                     }
                     if (fraction != null) {
-                        LinearProgressIndicator(
+                        // A real byte count exists: the wavy determinate bar, whose
+                        // amplitude flattens out as it approaches 100 %.
+                        LinearWavyProgressIndicator(
                             progress = { fraction },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                     }
                     Spacer(Modifier.height(SceneViewTokens.Space.sm))
                     Text(
@@ -439,6 +451,7 @@ private fun RenderContent(
     modelLoader: ModelLoader,
     environmentLoader: EnvironmentLoader,
     heroModifier: Modifier = Modifier,
+    heroBack: HeroPredictiveBack? = null,
 ) {
     // Engine + loaders are now hoisted to the sheet root and pre-warmed on
     // Preview → Downloading transition (see KDoc on `engineNeeded` in
@@ -528,6 +541,9 @@ private fun RenderContent(
         // centre of the surface. Measured on Scifi Girl + Porsche.
         target = Position(0f, framing?.lookAtY ?: 0f, 0f),
         durationMillis = 20_000,
+        // The measured fit arrives with the model, in front of an empty stage: taken at once.
+        // A rotation re-fits with the model in frame: that one is a camera move.
+        contentShown = instance != null,
     )
 
     Column(
@@ -698,8 +714,15 @@ private fun RenderContent(
                         .background(MaterialTheme.colorScheme.surface),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    ContainedLoadingIndicator()
                 }
+            }
+            heroBack?.let {
+                HeroBackThumbnail(
+                    back = it,
+                    url = model.preferredThumbnailUrl(minWidth = 640, maxWidth = 1280),
+                    contentDescription = model.name,
+                )
             }
         }
         Spacer(Modifier.height(SceneViewTokens.Space.sm))

@@ -51,12 +51,10 @@ import SceneViewSwift
 ///     ball are parented under the SAME shared ``simRoot`` anchor — RealityKit gives each
 ///     `AnchorEntity` hierarchy its own physics simulation, so entities under two
 ///     different anchors can never collide no matter how their world positions overlap.
-///   - **Simulator**: a different situation IN KIND, not degree — `ARWorldTrackingConfiguration`
-///     cannot run at all (no camera), so there is no AR session to fall back within. Per
-///     the issue's correction, the fix is still "show a bounce, not nothing":
-///     ``simulatorFallbackScene`` renders the same static-floor idea using
-///     SceneViewSwift's plain (non-AR) `SceneView` — the same renderer `PhysicsDemo`
-///     already uses for its own bundled-cubes mode.
+///   - **Simulator**: `ARWorldTrackingConfiguration` cannot run at all (no camera), so
+///     the screen is the shared ``ARUnavailableStage`` — the same answer every other AR
+///     demo gives. A static floor inside the studio skybox used to stand in here; it
+///     read as a room photo pretending to be AR, which this app never does.
 ///
 /// ### Honest-subset notes vs Android
 ///
@@ -127,32 +125,35 @@ struct ARDepthColliderDemo: View {
     @State private var ballEntities: [Entity] = []
     #endif
 
-    #if targetEnvironment(simulator)
-    /// Bumping this forces `simulatorFallbackScene` to tear down and rebuild its whole
-    /// `Entity` graph — the same "Drop re-drops everything" semantics `PhysicsDemo` already
-    /// uses for its own Drop/Reset buttons.
-    @State private var simSceneKey = UUID()
-    #endif
-
     var body: some View {
-        ZStack {
-            #if !targetEnvironment(simulator)
-            arSceneView
-                .ignoresSafeArea()
-            #else
-            simulatorFallbackScene
-                .ignoresSafeArea()
-            #endif
-
-            VStack {
-                statusPill
-                    .padding(.top, 8)
-                Spacer()
-                controlsPanel
-                    .padding(.bottom, 28)
+        #if !targetEnvironment(simulator)
+        arSceneView
+            .demoChrome(
+                dock: [
+                    DockItem(icon: "circle.fill", label: "Drop") { dropBalls(1) },
+                    DockItem(icon: "circle.grid.3x3.fill", label: "Drop 5") { dropBalls(5) },
+                    DockItem(icon: "arrow.counterclockwise", label: "Reset",
+                             enabled: droppedCount > 0) { resetBalls() },
+                ],
+                onReset: resetBalls,
+                chromeMode: .ar,
+                accessory: { DemoHint(statusText) }
+            ) {
+                if isLiDARSupported {
+                    depthMeshToggleRow
+                }
             }
-        }
-        .background(Color.black)
+        #else
+        // No camera, no depth, no AR session: the demo is a device demo. The
+        // previous simulator branch drew a grey floor and balls inside the
+        // studio skybox with a "fallback" pill — a room photo standing in for
+        // AR, which is the one thing this app never does (#3766 P2 §8).
+        ARUnavailableStage(
+            icon: "circle.grid.cross.fill",
+            message: "Run on iPhone or iPad to drop balls that bounce off the real floor — LiDAR depth when the device has it, a virtual floor otherwise."
+        )
+        .demoChrome(chromeMode: .ar)
+        #endif
     }
 
     // MARK: - AR view (physical device)
@@ -269,145 +270,30 @@ struct ARDepthColliderDemo: View {
     }
     #endif
 
-    // MARK: - Simulator fallback (no camera at all — plain non-AR SceneView)
-
-    #if targetEnvironment(simulator)
-    /// The Simulator can't run `ARWorldTrackingConfiguration` at all (no camera) — a
-    /// different situation IN KIND from "LiDAR missing on a real device" (handled by
-    /// `addFallbackFloor` in the device branch above, which still has a live AR session).
-    /// Per #2838's correction, the fix is still "show a bounce, not nothing": this renders
-    /// the same static-floor-fallback idea through SceneViewSwift's plain (non-AR)
-    /// `SceneView` — the same renderer `PhysicsDemo` uses for its own bundled-cubes mode.
-    private var simulatorFallbackScene: some View {
-        SceneView { root in
-            let floor = GeometryNode.plane(width: 4, depth: 4, color: .darkGray)
-            floor.entity.position = .init(x: 0, y: Self.fallbackFloorY, z: -1.2)
-            root.addChild(floor.entity)
-            PhysicsNode.static(floor.entity, restitution: Self.restitution)
-
-            for i in 0..<droppedCount {
-                let ball = GeometryNode.sphere(
-                    radius: Self.ballRadius,
-                    material: .pbr(color: Self.ballColor, metallic: 0.3, roughness: 0.35)
-                )
-                let x = Float(i % 5 - 2) * 0.12
-                let y: Float = 0.4 + Float(i / 5) * 0.15
-                let z = -1.2 + Float((i / 5) % 3 - 1) * 0.12
-                ball.entity.position = .init(x: x, y: y, z: z)
-                root.addChild(ball.entity)
-                PhysicsNode.dynamic(ball.entity, restitution: Self.restitution)
-            }
-        }
-        .cameraControls(.orbit)
-        .environment(.studio) // parity with android-demo IBL fix (#2114), mirrors PhysicsDemo
-        // Drop / Reset rebuild the balls under the same `RealityView` instead
-        // of re-keying the view with `.id(_:)` (#3008, mirrors PhysicsDemo).
-        .contentID(simSceneKey)
-        .background(Color.black)
-    }
-
-    private func dropBalls(_ count: Int) {
-        droppedCount += count
-        simSceneKey = UUID()
-    }
-
-    private func resetBalls() {
-        droppedCount = 0
-        simSceneKey = UUID()
-    }
-    #endif
-
-    // MARK: - Status pill
-
-    private var statusPill: some View {
-        Text(statusText)
-            .font(.system(.caption, design: .monospaced, weight: .semibold))
-            .foregroundColor(.white)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(.black.opacity(0.65))
-            .clipShape(Capsule())
-    }
+    #if !targetEnvironment(simulator)
+    // MARK: - Status line
 
     private var statusText: String {
-        #if targetEnvironment(simulator)
-        return droppedCount == 0
-            ? "Simulator fallback — static floor, no camera feed"
-            : "\(droppedCount) ball\(droppedCount == 1 ? "" : "s") · static floor (Simulator)"
-        #else
         let surface = isDepthPhysicsActive ? "real depth (LiDAR)" : "a virtual floor (no LiDAR on this device)"
         return droppedCount == 0
             ? "Aim at the floor or a table, then Drop — bounces off \(surface)"
             : "\(droppedCount) ball\(droppedCount == 1 ? "" : "s") · bounces off \(surface)"
-        #endif
-    }
-
-    // MARK: - Controls
-
-    private var controlsPanel: some View {
-        VStack(spacing: 10) {
-            #if !targetEnvironment(simulator)
-            if isLiDARSupported {
-                depthMeshToggleRow
-            }
-            #endif
-
-            HStack(spacing: 10) {
-                actionButton("Drop", tint: .blue) { dropBalls(1) }
-                actionButton("Drop 5", tint: .purple) { dropBalls(5) }
-                actionButton("Reset", tint: .gray, disabled: droppedCount == 0) { resetBalls() }
-            }
-        }
-        .padding(.horizontal, 20)
-    }
-
-    #if !targetEnvironment(simulator)
-    private var depthMeshToggleRow: some View {
-        HStack {
-            Image(systemName: showDepthMesh ? "grid" : "square.3.layers.3d")
-                .foregroundStyle(.white)
-            Toggle("Show depth mesh (dev)", isOn: $showDepthMesh)
-                .labelsHidden()
-                .onChange(of: showDepthMesh) { _, enabled in
-                    guard let arView = capturedARView else { return }
-                    if enabled {
-                        arView.debugOptions.insert(.showSceneUnderstanding)
-                    } else {
-                        arView.debugOptions.remove(.showSceneUnderstanding)
-                    }
-                }
-            Text("Show depth mesh (dev)")
-                .font(.caption)
-                .foregroundStyle(.white)
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     #endif
 
-    private func actionButton(
-        _ title: String,
-        tint: Color,
-        disabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            action()
-            SceneViewHaptic.shared.medium()
-        } label: {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(disabled ? AnyShapeStyle(.gray.opacity(0.3)) : AnyShapeStyle(tint)))
-                .foregroundStyle(.white)
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
+    #if !targetEnvironment(simulator)
+    private var depthMeshToggleRow: some View {
+        Toggle("Show depth mesh (dev)", isOn: $showDepthMesh)
+            .font(.subheadline)
+            .onChange(of: showDepthMesh) { _, enabled in
+                guard let arView = capturedARView else { return }
+                if enabled {
+                    arView.debugOptions.insert(.showSceneUnderstanding)
+                } else {
+                    arView.debugOptions.remove(.showSceneUnderstanding)
+                }
+            }
     }
+    #endif
 }
 #endif // os(iOS)

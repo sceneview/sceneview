@@ -18,7 +18,7 @@ Font: Inter (Material Design 3 Expressive)
 
 ## Google Play Store
 
-Assets live in `samples/android-demo/distribution/play-store/en-GB/graphics/` and are synced by `play-store.yml` on every release.
+Assets live in `samples/android-demo/distribution/play-store/en-US/graphics/` and are synced by `play-store.yml` on every release.
 
 | Asset | Size | Status | Notes |
 |---|---|---|---|
@@ -30,7 +30,7 @@ Assets live in `samples/android-demo/distribution/play-store/en-GB/graphics/` an
 | TV banner | 1280x720 PNG | NEEDED | For Android TV demo app |
 | TV screenshots | 1920x1080 PNG | NEEDED | At least 3. D-pad navigation, model showcase, rotation |
 | Short description | max 80 chars | **DONE** | "3D & AR for Jetpack Compose — load models, place objects in AR" |
-| Full description | max 4000 chars | **DONE** | Synced via `play-store.yml` from `distribution/play-store/en-GB/` |
+| Full description | max 4000 chars | **DONE** | Synced via `play-store.yml` from `distribution/play-store/en-US/` |
 
 ### Screenshot content suggestions
 

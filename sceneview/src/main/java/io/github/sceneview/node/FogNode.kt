@@ -2,8 +2,11 @@ package io.github.sceneview.node
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import com.google.android.filament.View
+import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.SceneScope
 import io.github.sceneview.rememberView
 
@@ -51,7 +54,16 @@ fun SceneScope.FogNode(
     color: Color = Color(0xFFCCDDFF),
     enabled: Boolean = true
 ) {
+    val prevFog = remember { mutableStateOf<List<Any?>?>(null) }
     SideEffect {
+        // Only on a real change, and never on the mere recomposition: `View.fogOptions` is a
+        // Filament write that reports nothing, so a parked scene keeps the old fog, while asking
+        // for a frame every recomposition would be the blanket invalidation this release removed.
+        val current = listOf<Any?>(enabled, density, height, color)
+        if (current != prevFog.value) {
+            prevFog.value = current
+            view.scene?.let { SceneRenderInvalidators.of(it) }?.requestRender()
+        }
         view.fogOptions = view.fogOptions.also { opts ->
             opts.enabled = enabled
             opts.density = density.coerceIn(0f, 1f)

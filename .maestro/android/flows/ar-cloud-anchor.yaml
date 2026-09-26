@@ -28,7 +28,7 @@ appId: io.github.sceneview.demo
 # The dock is the step selector: two captioned items, always both present.
 - assertVisible: "Host"
 - assertVisible: "Resolve"
-- assertVisible: "Tap a surface to place the anchor."
+- assertVisible: "Move slowly to find a surface."
 - takeScreenshot: "cloud-anchor-placing"
 
 # ── The room-mapping meter, and Host withheld until it fills ───────────────
@@ -116,7 +116,7 @@ appId: io.github.sceneview.demo
 # The card is the only voice: no coaching pill repeating it, and no action bar of
 # buttons that could not work. (The dock's own Host / Resolve captions stay on
 # screen — disabled — because the dock is chrome, not this demo's controls.)
-- assertNotVisible: "Tap a surface to place the anchor."
+- assertNotVisible: "Move slowly to find a surface."
 - assertNotVisible: "Restart"
 - takeScreenshot: "cloud-anchor-api-key-missing"
 

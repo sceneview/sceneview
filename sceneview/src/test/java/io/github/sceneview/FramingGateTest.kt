@@ -316,4 +316,141 @@ class FramingGateTest {
             union.diagonal > firstModel.diagonal && union.diagonal > secondModel.diagonal
         )
     }
+
+    // ── isPending: the flag the render loop reads, and the three states it must tell apart ─────
+    //
+    // #3108 blockers 2 & 3. `!latched` was used as "this pass still needs frames", and a pass that
+    // can never run never latches — so the guard stayed true for the life of the view, re-arming
+    // the settle budget every tick. Full cadence and a display-max vote, on an idle scene, with
+    // nothing visibly wrong. These pin the closing condition instead.
+
+    @Test
+    fun aFreshGateIsPendingSoTheFirstPassGetsItsFrame() {
+        assertTrue("nothing has run yet — the pass is owed its first frame", FramingGate().isPending)
+    }
+
+    @Test
+    fun aGateThatFramedButHasNotLatchedIsStillPending() {
+        val gate = FramingGate()
+        gate.recordFraming(10f)
+        assertFalse("one framing pass cannot prove the union is stable", gate.latched)
+        assertTrue("it needs another presented frame to compare against", gate.isPending)
+    }
+
+    @Test
+    fun aLatchedGateIsNotPending() {
+        val gate = FramingGate()
+        gate.recordFraming(10f)
+        gate.recordFraming(10f)
+        assertTrue("a stable diagonal across two passes latches", gate.latched)
+        assertFalse("a latched pass owes nothing", gate.isPending)
+    }
+
+    @Test
+    fun aGateWithNothingToFrameIsNotPending() {
+        // The blocker-3 case: empty bounds, all-invisible nodes, a lone light, a degenerate extent.
+        // The pass bails out before `recordFraming`, so it never latches — but waiting for content
+        // is not a reason to render: content arriving is a push invalidation that resets the gate.
+        val gate = FramingGate()
+        gate.recordNoContent()
+        assertFalse("the pass never ran, so it never latched", gate.latched)
+        assertFalse("but an empty scene must let the loop settle", gate.isPending)
+    }
+
+    @Test
+    fun contentArrivingAfterAnEmptySceneReArmsThePass() {
+        val gate = FramingGate()
+        gate.recordNoContent()
+        assertFalse(gate.isPending)
+        // `SceneView`'s DSL node sync calls `reset()` (and `requestRender()`) when content changes.
+        gate.reset()
+        assertTrue("the pass must get its frames back once there is something to frame", gate.isPending)
+    }
+
+    @Test
+    fun aJitteringSceneStopsBeingPendingAtTheHardCeiling() {
+        // MAX_FRAMING_PASSES is the other closing condition: a diagonal that never stabilises
+        // (skeletal animation, physics) latches unconditionally rather than framing forever.
+        val gate = FramingGate()
+        repeat(FramingGate.MAX_FRAMING_PASSES) { pass -> gate.recordFraming(1f + pass * 10f) }
+        assertTrue("the hard ceiling latches", gate.latched)
+        assertFalse("and a latched gate stops asking for frames", gate.isPending)
+    }
+
+    // ── isFramingPending(): the fold SceneView's loop actually evaluates ───────────────────────
+
+    @Test
+    fun autoFitWithACameraManipulatorIsNeverPending() {
+        // Blocker 2. `SceneView` runs the auto-fit pass only when `cameraManipulator == null`, and
+        // `rememberCameraManipulator()` is the default — so with the old guard every scene that
+        // set `autoFitContent = true` waited forever on a pass that could not run.
+        assertFalse(
+            "auto-fit does not run with a manipulator, so it cannot be pending",
+            isFramingPending(
+                autoCenterContent = false,
+                autoCenterPending = false,
+                autoFitContent = true,
+                hasCameraManipulator = true,
+                autoFitPending = true
+            )
+        )
+    }
+
+    @Test
+    fun autoFitWithoutACameraManipulatorIsPendingUntilItLatches() {
+        assertTrue(
+            "with no manipulator the pass does run, and owes frames until it latches",
+            isFramingPending(
+                autoCenterContent = false,
+                autoCenterPending = false,
+                autoFitContent = true,
+                hasCameraManipulator = false,
+                autoFitPending = true
+            )
+        )
+    }
+
+    @Test
+    fun autoCenterOnAnEmptySceneIsNotPending() {
+        // Blocker 3, at the fold: `autoCenterContent` is ON BY DEFAULT, so this is the default
+        // scene with nothing in it — the exact scene render-on-demand exists for.
+        assertFalse(
+            "an auto-centre pass with nothing to centre must let the scene park",
+            isFramingPending(
+                autoCenterContent = true,
+                autoCenterPending = false,
+                autoFitContent = false,
+                hasCameraManipulator = true,
+                autoFitPending = true
+            )
+        )
+    }
+
+    @Test
+    fun autoCenterStillPendingKeepsTheLoopAwake() {
+        assertTrue(
+            "a centring pass mid-convergence must keep getting frames",
+            isFramingPending(
+                autoCenterContent = true,
+                autoCenterPending = true,
+                autoFitContent = false,
+                hasCameraManipulator = true,
+                autoFitPending = false
+            )
+        )
+    }
+
+    @Test
+    fun framingDisabledEntirelyIsNeverPending() {
+        assertFalse(
+            "neither pass is wired, so neither can be pending whatever its state says",
+            isFramingPending(
+                autoCenterContent = false,
+                autoCenterPending = true,
+                autoFitContent = false,
+                hasCameraManipulator = false,
+                autoFitPending = true
+            )
+        )
+    }
 }

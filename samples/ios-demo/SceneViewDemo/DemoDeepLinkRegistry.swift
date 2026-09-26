@@ -121,12 +121,25 @@ enum DemoDeepLinkRegistry {
     /// the unregistered-id path in `destination(for:)`. Kept as an empty
     /// `Set` (not deleted) — it is still the documented landing spot for an
     /// id that must be *accepted* without having a screen, and
-    /// `check-demo-id-parity.sh` (#2801) is specifically tested against this
-    /// `[]` case.
+    /// `DemoRegistryGuardTests` asserts the `[]` case directly (no residual id
+    /// may shadow a live generated scene id). The `check-demo-id-parity.sh`
+    /// script (#2801) that also covered this was deleted by #3244.
     ///
     /// Internal (not `private`) for the same reason as `legacyAliases` above —
     /// `DemoRegistryGuardTests` (#2801) asserts this list never collides with a
     /// live generated scene id (a stale entry that should have been deleted).
+    /// Demos removed from the catalogue on **every** platform, mapped to the
+    /// title they used to carry. A QR code or a bookmark printed while the demo
+    /// existed still resolves, and the user is told the truth: it is gone, not
+    /// pending, and not hiding on Android.
+    ///
+    /// - `fog`: RealityKit exposes no depth-based fog, so the iOS screen was a
+    ///   translucent volume standing in for it. Removed rather than simulated.
+    ///   Android keeps its Filament fog demo; the removal is iOS-only.
+    static let removedIds: [String: String] = [
+        "fog": "Fog",
+    ]
+
     static let residualIds: Set<String> = []
 
     /// Full set of accepted deep-link ids: the generated scene ids
@@ -153,50 +166,86 @@ enum DemoDeepLinkRegistry {
     /// `.fullScreenCover` / `.sheet`) already runs on the main actor.
     @MainActor
     static func destination(for id: String) -> AnyView {
-        if let view = GeneratedScenes.destination(for: id) {
-            return view
+        // A deep link skips the Showcase grid, which is what normally tells the
+        // demo chrome its title — so a linked demo opened with no identity pill.
+        let canonical = GeneratedScenes.allowedIds.contains(id) ? id : legacyAliases[id]
+        if let canonical, let view = GeneratedScenes.destination(for: canonical) {
+            let title = GeneratedScenes.all().first { $0.sceneId == canonical }?.title
+            return AnyView(view.environment(\.demoTitle, title))
         }
-        if let canonical = legacyAliases[id],
-           let view = GeneratedScenes.destination(for: canonical) {
-            return view
+        if let title = removedIds[id] {
+            return AnyView(DeepLinkPlaceholder(
+                headline: "This demo isn\u{2019}t in the iOS app.",
+                detail: "\(title) needs depth-based fog, which RealityKit does not offer, so the iOS screen was removed. The Android app still has it."
+            ))
         }
         return AnyView(DeepLinkPlaceholder(
-            id: id,
-            reason: "This demo isn't available in the iOS app yet — open it on Android, or browse the Samples tab for the full iOS catalog."
+            headline: "This demo isn't in the iOS app.",
+            detail: "The link points at \u{201C}\(id)\u{201D}, which has no screen here. Browse the Showcase grid for the full iOS catalogue."
         ))
+    }
+
+    /// The demo's human title for the host's navigation bar.
+    ///
+    /// A removed id keeps the title it shipped under; an id that never existed
+    /// here gets a neutral one. Never the raw id: `sceneview://demo/fog` used to
+    /// title the screen \u{201C}fog\u{201D}, lower-case, which reads as a bug.
+    @MainActor
+    static func title(for id: String) -> String {
+        let canonical = GeneratedScenes.allowedIds.contains(id) ? id : legacyAliases[id]
+        guard let canonical,
+              let title = GeneratedScenes.all().first(where: { $0.sceneId == canonical })?.title
+        else { return removedIds[id] ?? "Demo not found" }
+        return title
+    }
+
+    /// A deep-linked demo inside the SAME host the catalogue uses
+    /// (``DemoCover``): a Close control in every case, and the host's
+    /// leading-edge swipe dismissal.
+    ///
+    /// The bare `destination(for:)` is still the resolver; it is not a screen.
+    /// Presenting it directly is what left a hand-rolled AR demo — which draws
+    /// no chrome of its own — with no dismissal affordance at all when it was
+    /// reached from a QR code instead of the catalogue.
+    @MainActor
+    static func cover(for id: String, onClose: @escaping () -> Void) -> DemoCover {
+        DemoCover(title: title(for: id), destination: destination(for: id), onClose: onClose)
     }
 }
 
-/// Tiny placeholder shown when a deep-link id resolves to no live iOS
-/// destination — a coming-soon scene, a not-yet-ported AR id, or an id that
-/// isn't registered at all. Communicates the gap clearly and offers a way out
-/// (close + browse the Samples tab).
+/// Shown when a deep-link id resolves to no live iOS destination — a demo that
+/// was removed, or an id this app never carried.
+///
+/// Says what happened in one sentence and offers the one way forward: close the
+/// link and browse the catalogue. No QR glyph (the link may not have come from a
+/// code), no pointer to a tab that does not exist, and never "yet" — a removed
+/// demo is not a pending one.
 private struct DeepLinkPlaceholder: View {
-    let id: String
-    let reason: String
+    let headline: String
+    let detail: String
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: SceneViewTokens.Space.md) {
             Spacer()
-            Image(systemName: "qrcode.viewfinder")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("Demo: \(id)")
+            Text(headline)
                 .font(.headline)
-            Text(reason)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            Text(detail)
+                .font(.subheadline)
+                // `.secondary` renders as a light grey here — the design
+                // system's own dim role is the one with a measured ratio.
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, SceneViewTokens.Space.xl)
             Spacer()
-            Button("Close") { dismiss() }
-                .buttonStyle(.bordered)
-                .padding(.bottom, 24)
+            Button("Browse demos") { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("deeplink-browse-demos")
+                .padding(.bottom, SceneViewTokens.Space.lg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #if os(iOS)
-        .background(Color(UIColor.systemBackground))
-        #endif
+        .background(SceneViewTokens.HomeColor.surface)
     }
 }

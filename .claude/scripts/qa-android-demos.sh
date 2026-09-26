@@ -57,6 +57,23 @@ source "$SCRIPT_DIR/lib/emulator-select.sh"
 # shellcheck source=lib/qa-keys.sh
 source "$SCRIPT_DIR/lib/qa-keys.sh"
 
+# ── Resolve adb from the Android SDK, not PATH ─────────────────────────────
+# A bare `adb` only works when it happens to be on PATH; without this, a host
+# where it isn't fails rc=127 partway through the run instead of up front.
+# Same SDK_ROOT resolution as setup-ar-emulator.sh.
+SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+ADB="$SDK_ROOT/platform-tools/adb"
+if [[ ! -x "$ADB" ]]; then
+  echo "[qa] CANNOT RUN: adb not found at $ADB." >&2
+  echo "[qa] Set ANDROID_HOME or ANDROID_SDK_ROOT to a valid Android SDK." >&2
+  exit 2
+fi
+# Every downstream `adb` call — ours below, and the ones hardcoded inside the
+# sourced lib/android-cli.sh helpers (android_cli_install_and_launch,
+# android_cli_screenrecord_*, which take no adb-binary parameter) — resolves
+# through this shell function instead of PATH.
+adb() { "$ADB" "$@"; }
+
 PACKAGE="io.github.sceneview.demo"
 ACTIVITY=".MainActivity"
 APK="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"

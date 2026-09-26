@@ -12,13 +12,13 @@ import org.junit.Test
 class HomeFilterTest {
 
     private val viewer = entry("model-viewer", "Model Viewer", "Any glTF, HDR lighting, one tap to AR",
-        DemoCategory.VIEWER, "Viewer", setOf("gltf", "hdr", "ar"), order = 1)
+        DemoCategory.VIEW_3D, "View in 3D", setOf("gltf", "hdr", "ar"), order = 1)
     private val lighting = entry("lighting", "Lighting", "Light types with a movable orbiting light",
-        DemoCategory.RENDERING, "Rendering", setOf("light", "shadow"), order = 2)
+        DemoCategory.CREATE, "Create & record", setOf("light", "shadow"), order = 2)
     private val placement = entry("ar-placement", "AR Placement", "Tap a plane to place and move a model",
-        DemoCategory.AR_PLACEMENT, "AR Placement", setOf("ar", "plane", "anchor"), order = 6)
+        DemoCategory.PLACE_AR, "Place in AR", setOf("ar", "plane", "anchor"), order = 6)
     private val fog = entry("fog", "Fog", "Linear, exponential and height fog",
-        DemoCategory.RENDERING, "Rendering", setOf("fog", "atmosphere"), order = 13)
+        DemoCategory.CREATE, "Create & record", setOf("fog", "atmosphere"), order = 13)
 
     // Deliberately out of editorial order: the filter must restore it.
     private val all = listOf(fog, placement, viewer, lighting)
@@ -31,9 +31,9 @@ class HomeFilterTest {
 
     @Test
     fun `category narrows to that category only`() {
-        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, DemoCategory.RENDERING, "")))
-        assertEquals(listOf("ar-placement"), ids(filterDemos(all, DemoCategory.AR_PLACEMENT, "")))
-        assertTrue(filterDemos(all, DemoCategory.PLATFORM, "").isEmpty())
+        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, DemoCategory.CREATE, "")))
+        assertEquals(listOf("ar-placement"), ids(filterDemos(all, DemoCategory.PLACE_AR, "")))
+        assertTrue(filterDemos(all, DemoCategory.DEV_TOOLS, "").isEmpty())
     }
 
     @Test
@@ -59,9 +59,9 @@ class HomeFilterTest {
 
     @Test
     fun `query matches category label`() {
-        // Neither demo carries "rendering" in its title, subtitle or tags — the only
+        // Neither demo carries "record" in its title, subtitle or tags — the only
         // thing that can match it is the category label, which is the point.
-        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, null, "rendering")))
+        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, null, "record")))
     }
 
     @Test
@@ -72,8 +72,8 @@ class HomeFilterTest {
 
     @Test
     fun `category and query combine`() {
-        assertEquals(listOf("fog"), ids(filterDemos(all, DemoCategory.RENDERING, "height")))
-        assertTrue(filterDemos(all, DemoCategory.AR_PLACEMENT, "height").isEmpty())
+        assertEquals(listOf("fog"), ids(filterDemos(all, DemoCategory.CREATE, "height")))
+        assertTrue(filterDemos(all, DemoCategory.PLACE_AR, "height").isEmpty())
     }
 
     @Test

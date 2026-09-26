@@ -9,14 +9,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * A slider with its name and current value on one line above the track.
@@ -91,9 +98,24 @@ fun LabeledSlider(
                 ),
             )
         }
+        // Semantic haptics (M3 Expressive): one SegmentTick per stop crossed on a stepped
+        // track, and one when a continuous track hits either end — never a buzz per pixel.
+        val haptics = LocalHapticFeedback.current
+        var lastStop by remember(steps, valueRange) {
+            mutableIntStateOf(sliderHapticStop(value, valueRange, steps))
+        }
         Slider(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { new ->
+                val stop = sliderHapticStop(new, valueRange, steps)
+                if (stop != lastStop) {
+                    if (steps > 0 || stop != 0) {
+                        haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                    }
+                    lastStop = stop
+                }
+                onValueChange(new)
+            },
             valueRange = valueRange,
             enabled = enabled,
             steps = steps,
@@ -103,6 +125,31 @@ fun LabeledSlider(
 }
 
 private const val DISABLED_ALPHA = 0.38f
+
+/**
+ * The haptic "detent" [value] sits in. On a stepped track ([steps] > 0) it is the index of the
+ * nearest stop, so every stop crossed is a change. On a continuous track it is `-1` at the start
+ * of [valueRange], `1` at its end and `0` anywhere between, so only reaching an end is a change
+ * worth a tick.
+ */
+internal fun sliderHapticStop(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+): Int {
+    val span = valueRange.endInclusive - valueRange.start
+    if (span <= 0f) return 0
+    val fraction = ((value - valueRange.start) / span).coerceIn(0f, 1f)
+    return if (steps > 0) {
+        (fraction * (steps + 1)).roundToInt()
+    } else {
+        when {
+            fraction <= 0f -> -1
+            fraction >= 1f -> 1
+            else -> 0
+        }
+    }
+}
 
 /** Thin space: keeps `12.5 m` from breaking across the value/unit boundary. */
 private const val THIN_SPACE = '\u2009'

@@ -1017,8 +1017,8 @@
       "name": "Damaged Helmet",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
-      "author": "KhronosGroup (theblueturtle_)",
-      "license": "CC-BY-4.0",
+      "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)",
+      "license": "CC-BY-NC-4.0",
       "formats": {
         "glb": {
           "file": "models/glb/khronos_damaged_helmet.glb",
@@ -1945,7 +1945,7 @@
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern",
       "author": "Microsoft",
-      "license": "CC-BY-4.0",
+      "license": "CC0-1.0",
       "formats": {
         "glb": {
           "file": "models/glb/khronos_lantern.glb",

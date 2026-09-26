@@ -200,7 +200,7 @@ describe("getPlatformSetup", () => {
   it("returns React Native setup with npm install", () => {
     const result = getPlatformSetup("react-native", "3d");
     expect(result).toContain("npm install");
-    expect(result).toContain("@sceneview/react-native");
+    expect(result).toContain("@sceneview-sdk/react-native");
   });
 
   it("returns Desktop setup with Compose Desktop", () => {

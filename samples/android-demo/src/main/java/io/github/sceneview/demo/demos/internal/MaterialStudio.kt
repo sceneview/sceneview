@@ -177,7 +177,7 @@ internal object MaterialStudio {
             nameRes = R.string.demo_materials_preset_gold,
             explainerRes = R.string.demo_materials_explainer_gold,
             label = "Polished Gold",
-            note = "Metals have no diffuse colour: this tint is gold's own reflectance.",
+            note = "Metals have no diffuse color: this tint is gold's own reflectance.",
             color = Gold,
             metallic = 1f,
             roughness = 0.14f,
@@ -196,7 +196,7 @@ internal object MaterialStudio {
             id = "aluminium",
             nameRes = R.string.demo_materials_preset_aluminium,
             explainerRes = R.string.demo_materials_explainer_aluminium,
-            label = "Brushed Aluminium",
+            label = "Brushed Aluminum",
             note = "Roughness 0.55: the environment is still reflected, just scattered.",
             color = Aluminium,
             metallic = 1f,
@@ -207,7 +207,7 @@ internal object MaterialStudio {
             nameRes = R.string.demo_materials_preset_ceramic,
             explainerRes = R.string.demo_materials_explainer_ceramic,
             label = "Glazed Ceramic",
-            note = "A dielectric keeps its own colour and adds a small, sharp highlight.",
+            note = "A dielectric keeps its own color and adds a small, sharp highlight.",
             color = Porcelain,
             metallic = 0f,
             roughness = 0.06f,
@@ -383,6 +383,105 @@ internal object MaterialStudio {
      * "a useful phase" are two different requirements and only the first is obvious.
      */
     const val STATIC_SWEEP_PHASE: Float = 0.375f
+
+    /**
+     * The phase nearest to [phase] that frames the wall exactly as [STATIC_SWEEP_PHASE] does.
+     *
+     * [sweepYaw] is even around the half cycle, so every cycle holds two such phases — and the
+     * nearer one can sit in the previous or the next cycle, hence a result outside `[0, 1)`.
+     */
+    fun nearestStaticSweepPhase(phase: Float): Float {
+        val cycle = kotlin.math.floor(phase)
+        return listOf(
+            cycle - STATIC_SWEEP_PHASE,
+            cycle + STATIC_SWEEP_PHASE,
+            cycle + 1f - STATIC_SWEEP_PHASE,
+            cycle + 1f + STATIC_SWEEP_PHASE,
+        ).minBy { kotlin.math.abs(it - phase) }
+    }
+
+    /**
+     * The gallery sweep as a body that has a **speed**, so that neither stilling it nor setting
+     * it going again is a cut.
+     *
+     * It used to be a bare phase: *Pause the camera* wrote [STATIC_SWEEP_PHASE] into it, which
+     * is a one-frame jump of the whole wall (10.8° measured), and un-pausing went from rest to
+     * full speed between two pictures. Here [cruise] eases the speed up from wherever it is, and
+     * [settle] is a critically damped glide — it starts at the speed the sweep had, cannot
+     * overshoot into a swing, and is paced so a long way home is not a fast one.
+     *
+     * Time is the drawn frame's, capped at [MAX_FRAME_SECONDS]: a dropped frame shortens the
+     * motion's step, it does not teleport the camera.
+     */
+    class SweepMotion(phase: Float = STATIC_SWEEP_PHASE) {
+        /** Sweep phase, cycles. Leaves `[0, 1)` during a [settle]; [sweepYaw] is periodic. */
+        var phase: Float = phase
+            private set
+
+        /** Cycles per second. */
+        var rate: Float = 0f
+            private set
+
+        private var target: Float? = null
+
+        /** One frame of the running sweep: the speed eases towards the cruise, never steps. */
+        fun cruise(deltaSeconds: Float) {
+            val dt = deltaSeconds.coerceIn(0f, MAX_FRAME_SECONDS)
+            target = null
+            rate += (CRUISE_RATE - rate) * (1f - kotlin.math.exp(-dt / RATE_EASE_SECONDS))
+            phase = wrap(phase + rate * dt)
+        }
+
+        /**
+         * One frame of the glide to the canonical framing. Returns `true` once it is there, and
+         * from then on the phase is exactly a static one.
+         */
+        fun settle(deltaSeconds: Float): Boolean {
+            val dt = deltaSeconds.coerceIn(0f, MAX_FRAME_SECONDS)
+            val goal = target ?: nearestStaticSweepPhase(phase).also { target = it }
+            val distance = phase - goal
+            // Paced: the peak of a critically damped glide is `distance · ω / e`, so the stiffness
+            // is what the longest way home may turn at, not a constant.
+            val omega = (PACE / kotlin.math.abs(distance).coerceAtLeast(1e-3f))
+                .coerceIn(MIN_STIFFNESS, MAX_STIFFNESS)
+            // Closed form of the critically damped step — exact for any frame length.
+            val decay = kotlin.math.exp(-omega * dt)
+            val drive = rate + omega * distance
+            val nextDistance = (distance + drive * dt) * decay
+            rate = (rate - omega * drive * dt) * decay
+            phase = goal + nextDistance
+            if (kotlin.math.abs(nextDistance) < AT_REST && kotlin.math.abs(rate) < AT_REST) {
+                pin(wrap(goal))
+                return true
+            }
+            return false
+        }
+
+        /** Stops where it is — a focus flight owns the camera from here. */
+        fun hold() {
+            rate = 0f
+            target = null
+        }
+
+        /** The canonical framing, now. For a wall nobody is looking at, and for QA. */
+        fun pin(phase: Float = STATIC_SWEEP_PHASE) {
+            this.phase = phase
+            rate = 0f
+            target = null
+        }
+
+        private fun wrap(value: Float): Float = ((value % 1f) + 1f) % 1f
+
+        companion object {
+            const val MAX_FRAME_SECONDS: Float = 0.05f
+            const val CRUISE_RATE: Float = 1_000f / SWEEP_PERIOD_MILLIS
+            private const val RATE_EASE_SECONDS = 0.6f
+            private const val PACE = 0.6f
+            private const val MIN_STIFFNESS = 1.8f
+            private const val MAX_STIFFNESS = 4f
+            private const val AT_REST = 5e-4f
+        }
+    }
 
     /** Deterministic orbit yaw in QA mode, degrees. */
     const val STATIC_ORBIT_YAW: Float = 35f

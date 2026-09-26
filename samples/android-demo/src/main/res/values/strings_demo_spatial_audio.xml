@@ -11,7 +11,7 @@
     <!-- Legend rows floating over the scene: what each thing on screen is (#3332). -->
     <string name="demo_spatial_audio_legend_source">Sound source — the bell is attached to this sphere</string>
     <string name="demo_spatial_audio_legend_listener">Listener — the camera, i.e. you</string>
-    <!-- %1$s = distance in metres, already formatted; %2$d = volume percent. -->
+    <!-- %1$s = distance in meters, already formatted; %2$d = volume percent. -->
     <string name="demo_spatial_audio_readout">%1$s m away · %2$d%% volume</string>
     <string name="demo_spatial_audio_falloff_label">Distance falloff</string>
     <string name="demo_spatial_audio_inverse">Inverse</string>

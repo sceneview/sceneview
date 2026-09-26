@@ -14,9 +14,9 @@ object ArOrbitalFragment : DemoFragment {
         id = "ar-orbital",
         titleRes = R.string.demo_ar_orbital_title,
         subtitleRes = R.string.demo_ar_orbital_subtitle,
-        category = DemoCategory.AR_PLACEMENT,
+        category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Public,
-        order = 21,
+        order = 23,
         tags = setOf("ar", "orbit", "animation", "model", "anchor"),
     )
 

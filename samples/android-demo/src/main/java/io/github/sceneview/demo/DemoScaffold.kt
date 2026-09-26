@@ -6,11 +6,13 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.accessibility.AccessibilityManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -27,11 +29,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -44,10 +46,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,19 +62,19 @@ import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.rememberBottomSheetScaffoldState
+import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -83,6 +88,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -107,9 +113,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
 import kotlinx.coroutines.flow.filter
@@ -200,15 +209,20 @@ data class DockItem(
  * with a Retry action ([onReset]) instead of a blank viewport. AR demos pass
  * `null` on purpose: their viewport is the live camera feed (#1361).
  *
- * **Settings sheet** (the single settings surface, #3328): a [ModalBottomSheet]
- * on the theme's `surfaceContainer` with a 28 dp top radius, opened from the
+ * **Settings sheet** (the single settings surface, #3328): a non-modal glass sheet
+ * (#3827) — `surfaceContainer` at the `glass-sheet` opacity, 28 dp top radius, no
+ * scrim — resting at a third of the window so the scene stays visible and live,
+ * dragged up for the rest. Opened from the
  * dock's Controls item at the detent this demo was last left at (#2084,
  * persisted per demo via [DemoSheetDetentStore]). It stacks the demo's own
  * [controls], then — behind a divider — Reset ([onReset]), Send feedback and
  * the QA-mode toggle. [onResetSettings] adds a "Reset" text button pinned in
  * the sheet header. [peekHeader] — a short live status such as "3 anchors placed"
  * — is rendered as a glass status pill at the top of the bottom band; the old
- * peek chip it used to label is gone.
+ * peek chip it used to label is gone. While the sheet is open the dock fades out:
+ * through a glass sheet it read as a ghost row of buttons that were not there, and
+ * the sheet carries its own close button. A demo that opens a sheet of its own (the
+ * Model Viewer's Lighting sheet) passes [dockHidden] for the same reason.
  *
  * **Overlays**: [topOverlay] and [bottomOverlay] are scaffold-owned,
  * collision-free slots (#2779, #3237). The top slot starts below the identity
@@ -222,10 +236,38 @@ data class DockItem(
 /**
  * Height of the glass identity row (back button + title pill) plus its gutter,
  * provided to the `scene` slot so demos that draw their own top-centre status
- * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome. Zero
- * outside a [DemoScaffold] — `ArViewTab` draws the same pill in a plain tab.
+ * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome.
+ *
+ * Zero outside a [DemoScaffold] — which today means previews only. This line used
+ * to read "`ArViewTab` draws the same pill in a plain tab"; that stopped being true
+ * when the tab and the `ar-placement` demo were unified onto one scaffold, and the
+ * KDoc was never corrected.
  */
 val LocalDemoChromeTopInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/**
+ * The bottom mirror of [LocalDemoChromeTopInset]: how much room the dock band takes,
+ * **excluding** the system bars, provided to the `scene` slot so a demo that anchors
+ * something at the bottom of the camera — a coaching line, the SDK's plane-discovery
+ * pill — lands above the dock instead of behind it.
+ *
+ * The value is measured, not a token: the dock's height is `Layout.dockHeight` today,
+ * but a chip that wraps at 200 % text makes the band taller, and a constant would not
+ * know. A demo adds its own gutter (`Space.md`) on top of it.
+ *
+ * This is the dock **band** — the toolbar and its gutter, what you can see — and not the
+ * scaffold's own `dockClearance` reserve, which floors at 104 dp against an 80 dp dock so
+ * the scene viewport and the bottom-overlay stack keep extra room. A demo that published
+ * the reserve here would put its coaching line 40 dp above the dock while believing it
+ * had asked for 16.
+ *
+ * Zero outside a [DemoScaffold], which is the honest default rather than a real case:
+ * both AR hosts in this app — `ArViewTab` and `ARPlacementDemo` — go through the
+ * scaffold and both declare a dock, so in the app the value is always the measured
+ * one. The zero is for previews, and for a host that one day draws no chrome: it
+ * degrades to "one gutter off the safe area", which is the right answer there.
+ */
+val LocalDemoChromeBottomInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 @Composable
 fun DemoScaffold(
@@ -246,6 +288,7 @@ fun DemoScaffold(
     dockAccent: DockItem? = null,
     loadingLabel: String? = null,
     chromeToggleOnTap: Boolean = false,
+    dockHidden: Boolean = false,
     scene: @Composable BoxScope.() -> Unit
 ) {
     val haptic = rememberHapticFeedback()
@@ -300,17 +343,138 @@ fun DemoScaffold(
         }
     }
 
-    Scaffold(
+    // The settings sheet is a standard (non-modal) sheet, not a modal one (#3827). A
+    // `ModalBottomSheet` cannot rest lower than half the screen — its partial detent is
+    // hard-wired to 50 % — and it dims everything around it with a scrim that also eats
+    // every touch on the scene. Together they hid exactly what the sheet is for: you
+    // dragged "Roll" or tapped "Release" and the result happened behind the sheet. As a
+    // `BottomSheetScaffold` sheet it rests at `sheet-peek` (about a third of the window),
+    // there is no scrim, the scene above it stays live and touchable, and dragging up
+    // reveals the rest. Same model as iOS `presentationDetents` with background
+    // interaction enabled.
+    val settingsSheetState = rememberStandardBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        skipHiddenState = false,
+    )
+    val settingsScaffoldState = rememberBottomSheetScaffoldState(
+        bottomSheetState = settingsSheetState,
+    )
+    // The controls are composed only while the sheet is open or animating, exactly as
+    // they were under the modal sheet — a demo's controls may run effects of their own.
+    val settingsSheetComposed = settingsExpanded ||
+        settingsSheetState.currentValue != SheetValue.Hidden ||
+        settingsSheetState.targetValue != SheetValue.Hidden
+    var settingsContentPx by remember { mutableIntStateOf(0) }
+    var rootHeightPx by remember { mutableIntStateOf(0) }
+    val rootDensity = LocalDensity.current
+    // Peek = a third of the window, or the whole sheet when its controls are shorter
+    // than that — a detent taller than the sheet would leave an empty glass band.
+    val settingsPeekPx = if (settingsContentPx == 0 || rootHeightPx == 0) {
+        0f
+    } else {
+        minOf(rootHeightPx * SceneViewTokens.Glass.sheetPeekFraction, settingsContentPx.toFloat())
+    }
+    val settingsPeek = with(rootDensity) { settingsPeekPx.toDp() }
+    // Fully dragged up, the sheet stops `Space.x2l` under the status bar: the identity
+    // row's back button stays reachable and the sheet never reads as a new screen.
+    val settingsMaxHeight = if (rootHeightPx == 0) {
+        Dp.Infinity
+    } else {
+        with(rootDensity) {
+            (rootHeightPx - WindowInsets.safeDrawing.getTop(rootDensity)).toDp()
+        } - SceneViewTokens.Space.x2l
+    }
+
+    // `settingsExpanded` is the one driver: the dock and a restored instance state set
+    // it, the close button, Back and a drag to the bottom clear it.
+    LaunchedEffect(settingsExpanded) {
+        if (settingsExpanded) {
+            // Let the controls compose and measure first, so the peek detent exists.
+            snapshotFlow { settingsContentPx }.filter { it > 0 }.first()
+            withFrameNanos { }
+            // #2084: reopen at the detent this demo was last left at.
+            val restored = DemoSheetDetentStore.lastDetent(context, title)
+            // Read the state, not the composition-time `settingsPeekPx`: this coroutine
+            // outlives the composition that launched it.
+            val hasExpandedDetent =
+                settingsContentPx > rootHeightPx * SceneViewTokens.Glass.sheetPeekFraction
+            if (restored == SheetValue.Expanded && hasExpandedDetent) {
+                settingsSheetState.expand()
+            } else {
+                settingsSheetState.partialExpand()
+            }
+        } else if (settingsSheetState.currentValue != SheetValue.Hidden ||
+            settingsSheetState.targetValue != SheetValue.Hidden
+        ) {
+            settingsSheetState.hide()
+        }
+    }
+    // The state starts `Hidden`, so this fires once before the sheet has ever shown —
+    // only a `Hidden` reached after a shown detent is a dismissal (#1420).
+    var settingsHasShown by remember { mutableStateOf(false) }
+    LaunchedEffect(settingsSheetState.currentValue) {
+        when (val value = settingsSheetState.currentValue) {
+            SheetValue.Expanded,
+            SheetValue.PartiallyExpanded -> {
+                settingsHasShown = true
+                haptic.selection()
+                // #2084: persist the detent the user just settled on.
+                DemoSheetDetentStore.setLastDetent(context, title, value)
+            }
+            SheetValue.Hidden -> {
+                if (settingsHasShown) {
+                    settingsHasShown = false
+                    if (settingsExpanded) {
+                        // Dragged down to dismiss (#1154 Stage 3).
+                        haptic.selection()
+                        settingsExpanded = false
+                    }
+                }
+            }
+        }
+    }
+    BackHandler(enabled = settingsExpanded) { settingsExpanded = false }
+
+    BottomSheetScaffold(
+        sheetContent = {
+            if (settingsSheetComposed) {
+                DemoSettingsSheet(
+                    controlsContent = controls,
+                    haptic = haptic,
+                    onReset = onResetConfirmed,
+                    onResetSettings = onResetSettings,
+                    onClose = {
+                        haptic.selection()
+                        settingsExpanded = false
+                    },
+                    modifier = Modifier
+                        .heightIn(max = settingsMaxHeight)
+                        .onSizeChanged { settingsContentPx = it.height },
+                )
+            }
+        },
+        scaffoldState = settingsScaffoldState,
+        sheetPeekHeight = settingsPeek,
+        sheetShape = RoundedCornerShape(
+            topStart = SceneViewTokens.Radius.xl,
+            topEnd = SceneViewTokens.Radius.xl,
+        ),
+        sheetContainerColor = DemoSheetDefaults.glassContainerColor(),
+        sheetContentColor = MaterialTheme.colorScheme.onSurface,
+        // Tonal elevation would tint the glass towards primary and a shadow would draw a
+        // dark band over the scene along the sheet's edge; the glass carries the edge.
+        sheetTonalElevation = 0.dp,
+        sheetShadowElevation = 0.dp,
+        // The handle is drawn inside the measured content, so the peek clamp above
+        // accounts for it.
+        sheetDragHandle = null,
         // Edge-to-edge: the scene owns every pixel; the chrome applies the insets.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        // No `snackbarHost` slot here on purpose (#3325): Scaffold only clears its
-        // own `bottomBar`/`floatingActionButton` slots automatically, and the dock
-        // is a plain overlay inside `content`, invisible to that layout pass. Left
-        // wired up, the snackbar rendered flush with the window edge — behind the
-        // dock in reading order but on top in z-order, so it visually covered the
-        // dock's buttons instead of floating clear above them. It is placed by
-        // hand below, sharing the same measured dock clearance as `bottomOverlay`.
-    ) { padding ->
+        containerColor = Color.Transparent,
+        // No `snackbarHost` slot here on purpose (#3325): the scaffold would place it
+        // flush with the window edge, where it covered the dock's buttons instead of
+        // floating clear above them. It is placed by hand below, sharing the same
+        // measured dock clearance as `bottomOverlay`.
+    ) { _ ->
         // Height of the `bottomOverlay` band, measured (never assumed) so
         // `bottomOverlayReservesScene` can inset the viewport by exactly the room the
         // overlay takes — including the dock band it stacks on, the system-bar inset,
@@ -331,9 +495,16 @@ fun DemoScaffold(
         val dockBand = with(LocalDensity.current) { dockBandPx.toDp() }
 
         // Height of the identity row (glass buttons + gutter, excluding the status-bar
-        // inset) — the top band's mirror of the dock band.
+        // inset) — the top band's mirror of the dock band. Floored at the token row for
+        // the same reason `dockBandClearance` is: the measurement only lands after the
+        // layout pass that produced it, one frame late. A demo whose main thread then
+        // blocks on a model load keeps that first frame on screen for seconds, and with
+        // a zero reserve its top overlay sat under the back button (#3801).
         var identityRowPx by remember { mutableIntStateOf(0) }
-        val identityRow = with(LocalDensity.current) { identityRowPx.toDp() }
+        val identityRow = maxOf(
+            IDENTITY_ROW_MIN_HEIGHT,
+            with(LocalDensity.current) { identityRowPx.toDp() },
+        )
 
         // Room the dock band takes at the bottom — the same floor-or-measured
         // value `bottomOverlay` clears, shared with the snackbar below so both
@@ -341,16 +512,32 @@ fun DemoScaffold(
         // always exists now (#3328): it carries the Controls item that opens the
         // one settings surface, even on a demo with no controls of its own, so
         // the clearance is unconditional.
+        // Two different jobs, two values — conflating them is what put every bottom
+        // overlay 40 dp above a dock it was supposed to clear by 16 dp.
+        //
+        // `dockClearance` is a RESERVE: room the scene viewport and the bottom-overlay
+        // stack keep free. Its 104 dp floor is deliberately more than the dock is tall
+        // (`SETTINGS_FAB_RESERVED_SPACE` budgets 64 + 16 + 24 dp of breathing room), so
+        // an overlay reads as stacked above the dock rather than resting on it.
+        //
+        // `dockBandClearance` is the BAND you can see: the toolbar plus its gutter, and
+        // nothing else. Anything that positions itself a gutter above the dock has to
+        // measure from this one, or it inherits the reserve's 24 dp on top of its own
+        // gutter and lands 40 dp up. Floored at the token band rather than 104 dp so the
+        // first frame, before `onDockBandHeight` reports, is already the right height.
         val dockClearance = maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand)
+        val dockBandClearance = maxOf(
+            SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md,
+            dockBand,
+        )
 
-        // `consumeWindowInsets(padding)` gives this Box's whole subtree ONE inset
-        // reference frame (#3237). With `contentWindowInsets = 0` the padding is
-        // empty, so every child that applies `safeDrawing` gets the real bars once.
+        // The sheet scaffold consumes no insets and its content padding (the peek
+        // height) is ignored on purpose: the scene stays full-bleed under the sheet, and
+        // every child that applies `safeDrawing` gets the real bars once (#3237).
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding),
+                .onSizeChanged { rootHeightPx = it.height },
         ) {
             // The viewport names its own state (#3444): "Scene loading" while the cover
             // is up, "Scene ready" once a frame has actually reached the surface.
@@ -389,6 +576,7 @@ fun DemoScaffold(
                 content = {
                     androidx.compose.runtime.CompositionLocalProvider(
                         LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
+                        LocalDemoChromeBottomInset provides dockBandClearance,
                     ) {
                         if (arSessionFailed) {
                             Box(
@@ -469,8 +657,8 @@ fun DemoScaffold(
                             Brush.verticalGradient(
                                 0f to Color.Transparent,
                                 1f - SceneViewTokens.Glass.scrimPlateau to
-                                    SceneViewTokens.Glass.scrim,
-                                1f to SceneViewTokens.Glass.scrim,
+                                    SceneViewTokens.Glass.scrimDock,
+                                1f to SceneViewTokens.Glass.scrimDock,
                             )
                         ),
                 )
@@ -499,6 +687,7 @@ fun DemoScaffold(
 
             DemoChrome(
                 visible = chromeVisible,
+                dockVisible = !settingsExpanded && !dockHidden,
                 title = title,
                 assetSource = assetSource,
                 onBack = onBack,
@@ -521,17 +710,6 @@ fun DemoScaffold(
                 onDockBandHeight = { dockBandPx = maxOf(dockBandPx, it) },
             )
 
-            if (settingsExpanded) {
-                DemoSettingsSheet(
-                    demoTitle = title,
-                    controlsContent = controls,
-                    haptic = haptic,
-                    onReset = onResetConfirmed,
-                    onResetSettings = onResetSettings,
-                    onDismissed = { settingsExpanded = false },
-                )
-            }
-
             // Placed and drawn last so it always wins the z-order, padded clear
             // of the dock band (`dockClearance`) and the system bars — never the
             // window edge Scaffold's own `snackbarHost` slot would have used
@@ -547,7 +725,21 @@ fun DemoScaffold(
                         )
                     )
                     .padding(horizontal = SceneViewTokens.Space.md)
-                    .padding(bottom = dockClearance + SceneViewTokens.Space.sm),
+                    // `Space.md` above the measured dock BAND — not `dockClearance`, and
+                    // not the `Space.sm` that used to be here. The old 8 dp only ever
+                    // cleared the dock because the reserve's 104 dp floor stood against
+                    // an 80 dp dock, so the visible gap was 32 dp by accident; adding
+                    // `Space.md` to that same reserve would have made it 40 dp, also by
+                    // accident. Measured from the band it is 16 dp on purpose, and it
+                    // matches the gap the scene's own bottom stack uses.
+                    //
+                    // What this still does NOT clear is a demo's `bottomOverlay` stack,
+                    // which reserves `dockClearance + bottomOverlayBand` above the same
+                    // dock: a snackbar raised during a pinch read-out overlaps it and
+                    // wins on z-order. That was true before this change too — the
+                    // snackbar has never read `bottomOverlayBand` — so it is left alone
+                    // here rather than fixed silently on the way past.
+                    .padding(bottom = dockBandClearance + SceneViewTokens.Space.md),
             )
         }
     }
@@ -588,6 +780,7 @@ private fun Modifier.sceneTapToggle(enabled: Boolean, onTap: () -> Unit): Modifi
 @Composable
 private fun BoxScope.DemoChrome(
     visible: Boolean,
+    dockVisible: Boolean,
     title: String,
     assetSource: AssetSourceState?,
     onBack: () -> Unit,
@@ -614,12 +807,23 @@ private fun BoxScope.DemoChrome(
             )
             val items = dock.take(DOCK_MAX_ITEMS) + listOfNotNull(controlsItem)
             if (items.isNotEmpty() || dockAccent != null) {
-                DemoDock(
-                    items = items,
-                    accent = dockAccent,
-                    controlsItem = controlsItem,
-                    onHeightChanged = onDockBandHeight,
-                )
+                // Faded out under an open sheet (#3827): a glass sheet shows what is
+                // behind it, and a dock seen through it reads as live buttons.
+                AnimatedVisibility(
+                    visible = dockVisible,
+                    enter = fadeIn(SceneViewTokens.Motion.fade()),
+                    exit = fadeOut(SceneViewTokens.Motion.fade()),
+                    modifier = Modifier.matchParentSize(),
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        DemoDock(
+                            items = items,
+                            accent = dockAccent,
+                            controlsItem = controlsItem,
+                            onHeightChanged = onDockBandHeight,
+                        )
+                    }
+                }
             }
         }
     }
@@ -750,16 +954,22 @@ private fun BoxScope.DemoDock(
             .onSizeChanged { onHeightChanged(it.height) }
             .padding(bottom = SceneViewTokens.Space.md),
     ) {
+        // The dock had no edge at all: a 14 % white fill straight onto the camera frame,
+        // which is 1.47:1 over a dark scene and vanishes entirely over a bright one. It is
+        // the app's most-used control surface, so it gets the same `over-media-edge` as
+        // every other floating element (WCAG 1.4.11, 3:1).
+        val dockShape = RoundedCornerShape(SceneViewTokens.Radius.full)
         HorizontalFloatingToolbar(
             expanded = true,
             modifier = Modifier
+                .overMediaEdge(dockShape)
                 .height(SceneViewTokens.Layout.dockHeight)
                 .testTag(DemoScaffoldTestTags.DOCK),
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
                 toolbarContainerColor = SceneViewTokens.Glass.surface,
                 toolbarContentColor = SceneViewTokens.Glass.onGlass,
             ),
-            shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+            shape = dockShape,
             // The accent stays icon-only: it is a 48 dp filled button, and a caption under
             // it needs 66 dp in a 64 dp toolbar — it was silently clipped. Its filled,
             // primary-tinted treatment is what distinguishes it from the labelled items,
@@ -767,11 +977,19 @@ private fun BoxScope.DemoDock(
             // ("View in AR") carries the wording.
             trailingContent = if (accent != null) {
                 {
+                    // A 40 dp disc in a 48 dp touch target (#3835). The toolbar's own 8 dp
+                    // content padding is right for the labelled items, whose glyphs sit
+                    // 4 dp inside their 48 dp column — but a 48 dp *filled* disc has no
+                    // inset, so it ended 8 dp from the rounded end and read as touching
+                    // it, while the leading item had 12 dp of air. At `dockAccentSize`
+                    // the disc is 12 dp from the dock edge on every side, concentric
+                    // with the end cap, and both ends of the dock match.
                     FilledIconButton(
                         onClick = accent.onClick,
                         enabled = accent.enabled,
                         modifier = Modifier
-                            .size(SceneViewTokens.Layout.touchTarget)
+                            .minimumInteractiveComponentSize()
+                            .size(SceneViewTokens.Layout.dockAccentSize)
                             .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -944,13 +1162,12 @@ private fun BoxScope.FirstFrameCover(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
             ) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(SceneViewTokens.Space.xl + SceneViewTokens.Space.sm),
+                // M3 Expressive morphing-shape indicator at its spec size (48 dp).
+                androidx.compose.material3.LoadingIndicator(
                     color = MaterialTheme.colorScheme.primary,
-                    strokeWidth = SceneViewTokens.Space.xs,
                 )
                 if (loadingLabel != null) {
-                    Text(
+                    io.github.sceneview.demo.ui.NarrationText(
                         text = loadingLabel,
                         style = MaterialTheme.typography.labelLarge,
                         // The cover is the stage colour in both themes, so its text is
@@ -1011,6 +1228,8 @@ object DemoScaffoldTestTags {
     const val SETTINGS_FAB = "demo-settings-fab"
     const val SETTINGS_SHEET = "demo-settings-sheet"
     const val SETTINGS_RESET = "demo-settings-reset"
+    /** The sheet's own close button — it has no scrim to tap (#3827). */
+    const val SETTINGS_CLOSE = "demo-settings-close"
     /** Rows in the settings sheet's actions section — the overflow menu's heirs (#3328). */
     const val RESET_ACTION = "demo-reset-action"
     const val FEEDBACK_ACTION = "demo-feedback-action"
@@ -1043,6 +1262,19 @@ object DemoScaffoldTestTags {
  * already stacks above the band.
  */
 val SETTINGS_FAB_RESERVED_SPACE = 104.dp
+
+/**
+ * Height of the identity row at the top of a demo, excluding the status-bar inset:
+ * the 48 dp back button plus its `Space.md` gutter above and below — 80 dp.
+ *
+ * The top band's mirror of [SETTINGS_FAB_RESERVED_SPACE], and a floor for the same
+ * reason (#3801): [DemoScaffold] measures the real row and reserves
+ * `maxOf(this, measured)`, but the first frame is drawn before any measurement has
+ * landed. At the default font scale this is exactly the measured row, so the top
+ * overlay never moves when the measurement arrives.
+ */
+private val IDENTITY_ROW_MIN_HEIGHT =
+    SceneViewTokens.Layout.touchTarget + SceneViewTokens.Space.md * 2
 
 /**
  * Receiver of the [DemoScaffold] `bottomOverlay` slot.
@@ -1185,59 +1417,40 @@ private fun BoxScope.DemoTopOverlay(
  * behind a divider. That is why [controlsContent] is nullable: a demo with no
  * controls of its own still needs the sheet for the app-level actions.
  *
- * Follows the app theme (`surfaceContainer`, 28 dp top radius) — it is a
- * themed surface, unlike the glass chrome over the media.
- *
- * [demoTitle] keys the per-demo last-detent memory (#2084): the sheet opens at
- * the detent the user last settled it at for *this* demo, persisted in
- * [DemoSheetDetentStore] so it survives navigation and process death — a demo
- * never seen before defaults to the partial detent.
+ * `glass-sheet` (#3827): the theme's `surfaceContainer` at 88 % (light) / 90 %
+ * (dark), 28 dp top radius, no scrim — the scene reads through it and stays live
+ * above it. It is hosted by [DemoScaffold]'s `BottomSheetScaffold`, which owns the
+ * detents (peek ≈ a third of the window, then the full content height) and the
+ * per-demo last-detent memory (#2084, [DemoSheetDetentStore]). This composable is
+ * only the sheet's content; its height is capped by [modifier], and the controls
+ * scroll inside that cap while the header stays pinned.
  */
 @Composable
 private fun DemoSettingsSheet(
-    demoTitle: String,
     controlsContent: (@Composable ColumnScope.() -> Unit)?,
     haptic: SceneViewHaptic,
     onReset: (() -> Unit)?,
     onResetSettings: (() -> Unit)?,
-    onDismissed: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val restoredDetent: SheetValue = remember(demoTitle) {
-        DemoSheetDetentStore.lastDetent(context, demoTitle)
-    }
-    val sheetState: SheetState = rememberModalBottomSheetState(
-        // partially expanded is the default open state — keeps ~45 % of viewport
-        // visible so the showcase stays alive while you tweak settings.
-        skipPartiallyExpanded = false,
-    )
-    val scope = rememberCoroutineScope()
-
-    ModalBottomSheet(
-        onDismissRequest = {
-            scope.launch {
-                sheetState.hide()
-                onDismissed()
-            }
-        },
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(
-            topStart = SceneViewTokens.Radius.xl,
-            topEnd = SceneViewTokens.Radius.xl,
-        ),
-        modifier = Modifier.testTag(DemoScaffoldTestTags.SETTINGS_SHEET),
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(DemoScaffoldTestTags.SETTINGS_SHEET),
     ) {
+        BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
         // Header row pinned above the scrolling controls — carries the sheet
-        // title and, when the demo opts in, a "Reset" text button (#1154 Stage 3).
+        // title, when the demo opts in a "Reset" text button (#1154 Stage 3), and a
+        // close button: without a scrim there is nothing to tap outside (#3827).
         // It sits OUTSIDE the verticalScroll so a long controls list never
-        // scrolls the Reset affordance offscreen.
+        // scrolls these affordances offscreen.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
                     start = SceneViewTokens.Space.md,
-                    end = SceneViewTokens.Space.sm,
+                    end = SceneViewTokens.Space.xs,
                     bottom = SceneViewTokens.Space.xs,
                 ),
             verticalAlignment = Alignment.CenterVertically,
@@ -1262,17 +1475,39 @@ private fun DemoSettingsSheet(
                     Text(stringResource(R.string.demo_settings_reset))
                 }
             }
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.testTag(DemoScaffoldTestTags.SETTINGS_CLOSE),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.demo_settings_close_cd),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // Takes what is left under the height cap, and no more: a short sheet
+                // hugs its controls, a long one scrolls under a pinned header.
+                .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState())
+                // The sheet reaches the true bottom edge — pad the *content* by the
+                // navigation-bar inset, so the last row (the QA-mode switch) never
+                // sits under the system bar, in 3-button nav and in gestures alike.
+                .navigationBarsPadding()
                 .padding(bottom = SceneViewTokens.Space.lg),
         ) {
             if (controlsContent != null) {
+                // A demo's controls grow and shrink on their own — a section expands,
+                // a slider appears only once its toggle is on. Without this the sheet
+                // snaps to the new height and everything below jumps under the thumb
+                // that caused it; `motion-fade` makes the panel carry the change.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .animateContentSize(animationSpec = motionFade())
                         .padding(horizontal = SceneViewTokens.Space.md),
                     content = controlsContent,
                 )
@@ -1325,45 +1560,6 @@ private fun DemoSettingsSheet(
                     )
                 },
             )
-        }
-    }
-
-    // The `SheetState` starts at `Hidden` and animates open, so this effect fires
-    // once with `Hidden` *before* the sheet has shown. Treating that as a dismiss
-    // would kill the sheet on every demo (#1420): only honour `Hidden` after the
-    // sheet has settled in a shown detent at least once.
-    var hasShown by remember { mutableStateOf(false) }
-
-    // #2084: restore this demo's last-used detent. The sheet always animates
-    // open to `PartiallyExpanded`; when the persisted detent is `Expanded`, expand
-    // the rest of the way as a one-shot once it first settles.
-    LaunchedEffect(Unit) {
-        if (restoredDetent == SheetValue.Expanded) {
-            snapshotFlow { sheetState.currentValue }
-                .filter { it != SheetValue.Hidden }
-                .first()
-            if (sheetState.currentValue != SheetValue.Expanded) {
-                sheetState.expand()
-            }
-        }
-    }
-
-    LaunchedEffect(sheetState.currentValue) {
-        when (sheetState.currentValue) {
-            SheetValue.Expanded,
-            SheetValue.PartiallyExpanded -> {
-                hasShown = true
-                haptic.selection()
-                // #2084: persist the detent the user just settled on.
-                DemoSheetDetentStore.setLastDetent(context, demoTitle, sheetState.currentValue)
-            }
-            SheetValue.Hidden -> {
-                if (hasShown) {
-                    // Subtle tick on drag-down-to-dismiss (#1154 Stage 3).
-                    haptic.selection()
-                    onDismissed()
-                }
-            }
         }
     }
 }

@@ -5,17 +5,21 @@ import io.github.sceneview.node.FloorProvider
 import kotlin.math.sqrt
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.theme.SceneViewTokens
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,18 +46,25 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.LightManager
+import com.google.android.filament.Skybox
 import io.github.sceneview.ExperimentalSceneViewApi
+import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -61,7 +72,9 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.initialDemoMode
+import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -69,18 +82,25 @@ import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.ModelLoader
+import dev.romainguy.kotlin.math.Float4
+import dev.romainguy.kotlin.math.transpose
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
+import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.math.Transform
+import dev.romainguy.kotlin.math.rotation as rotationMatrix
 import io.github.sceneview.model.Model
+import io.github.sceneview.model.model
+import io.github.sceneview.toAabb
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 import io.github.sceneview.node.SphereNode as SphereNodeImpl
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.LifecyclePausingLaunchedEffect
@@ -89,9 +109,28 @@ import io.github.sceneview.sample.ui.LabeledSlider
 import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.ScreenRotationAlt
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.runtime.mutableStateListOf
+import io.github.sceneview.demo.ui.GlassActionPill
+import io.github.sceneview.demo.ui.overMediaEdge
 
 /**
  * Unified "Animation & Physics" demo — consolidates the retired `animation` and
@@ -212,10 +251,11 @@ private data class AnimationModel(
 }
 
 /**
- * Carousel of 5 animated models for [AnimationSection].
+ * Carousel of 6 animated models for [AnimationSection].
  *
- * Slot 0 is the historical `threejs_soldier.glb` (bundled, 4 animations:
- * 0=Idle, 1=Run, 2=TPose, 3=Walk). The next 4 slots stream the 4 entries from
+ * Slot 0 is the bundled Khronos Fox (Survey, Walk, Run); slot 1 the historical
+ * `threejs_soldier.glb` (bundled, 4 animations: 0=Idle, 1=Run, 2=TPose, 3=Walk).
+ * The next 4 slots stream the 4 entries from
  * the `animation` category of [SampleAssets] — each carries at least one
  * baked animation so the play/pause/speed/loop controls have something to
  * drive.
@@ -231,6 +271,16 @@ private val ANIMATION_MODELS: List<AnimationModel> = run {
     val idleCat = SampleAssets.byUid["7190ff66cb3d4e729a2ab95aeb9e797f"]
     val sleepingFox = SampleAssets.byUid["cc4ab41731cc4c94a6adf2983821d1a8"]
     listOf(
+        // The landing subject (#3820). The Khronos Fox is the reference skinned-animation asset:
+        // three named clips (Survey, Walk, Run) on one rig, bundled, so it plays offline and on a
+        // cold cache. Survey is an idle look-around — alive from the first frame without walking
+        // in place, which is what made the old soldier read as odd on a turntable.
+        AnimationModel(
+            nameRes = R.string.demo_animation_physics_subject_fox_bundled,
+            bundledAssetPath = "models/khronos_fox.glb",
+            scaleToUnits = 1.0f,
+            defaultAnimationIndex = 0,
+        ),
         AnimationModel(
             nameRes = R.string.demo_animation_physics_subject_soldier,
             bundledAssetPath = "models/threejs_soldier.glb",
@@ -281,12 +331,13 @@ private fun AnimationSection(
     var selectedAnim by remember { mutableIntStateOf(ANIMATION_MODELS[0].defaultAnimationIndex.coerceAtLeast(0)) }
     // Default cinematic shot is REVEAL — close-up to wide pull-back is the most
     // dramatic intro and pairs naturally with a walking subject.
+    // Default shot is the slow turntable (#3820): one steady turn, no holds or speed changes, so
+    // the eye stays on the animation instead of on the camera.
     var cameraMode by remember { mutableStateOf(CameraMode.HERO) }
     // IBL intensity — exposed as a slider so users can dial atmospheric vs neutral.
-    // Default 10_000 lux matches SceneView's balanced IBL default (#1075). The
-    // rooftop_night skybox renders at full HDR luminance, so a lower IBL left the
-    // model reading as a black silhouette against the bright sky (#1468). Range
-    // 0–10_000 still lets users dial down to a darker, atmospheric look.
+    // Default 10_000 lux matches SceneView's balanced IBL default (#1075); a lower
+    // default left the model reading as a black silhouette (#1468). Range 0–10_000
+    // still lets users dial down to a darker, atmospheric look.
     var iblIntensity by remember { mutableFloatStateOf(10_000f) }
 
     val engine = rememberEngine()
@@ -328,43 +379,53 @@ private fun AnimationSection(
         rememberModelInstance(modelLoader, fileLocation = activeFileLocation)
     } else null
 
-    // Re-pin the animation track to the new model's default whenever the
-    // carousel switches. We can't always know the streamed model's animation
-    // count up-front, so we fall back to 0 and let the play/pause LaunchedEffect
-    // below clamp out-of-range indices.
-    LaunchedEffect(selectedModelIndex) {
-        selectedAnim = activeModel.defaultAnimationIndex.coerceAtLeast(0)
-    }
-
-    // HDR environment matching the sci-fi tactical Vanguard soldier — urban rooftop at
-    // dusk gives a dramatic atmospheric backdrop. Skybox enabled so the sky and city
-    // silhouette are visible behind the soldier (cinematic), not just a black void.
+    // Studio stage (#3820), the Sketchfab default: studio HDR light, a neutral grey backdrop.
+    // A photographed place put the subject floating over whatever ground the panorama had (the
+    // garden's pond, the rooftop's car park before it); a plain backdrop has no ground to miss.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
-        "environments/rooftop_night_2k.hdr",
-        createSkybox = true,
+        "environments/studio_2k.hdr",
+        createSkybox = false,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    val lightEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val activeEnvironment = remember(lightEnvironment, stageSkybox) {
+        lightEnvironment.copy(skybox = stageSkybox)
+    }
 
-    // Pin the IBL intensity to the slider value. The rooftop_night skybox renders at
-    // full HDR luminance, so the IBL must stay near SceneView's balanced 10k default
-    // to keep the soldier lit in step with the bright sky behind it (#1468) — a lower
-    // value left the model looking like an unlit black silhouette. Re-runs whenever the
-    // active environment OR the slider value change, so dragging it updates in real time.
+    // Pin the IBL intensity to the slider value — near SceneView's balanced 10k default a
+    // subject is lit, far below it reads as an unlit black silhouette (#1468). Re-runs whenever
+    // the active environment OR the slider value change, so dragging it updates in real time.
+    val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(activeEnvironment, iblIntensity) {
         activeEnvironment.indirectLight?.intensity = iblIntensity
+        // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it
+        // again — so dimming it reaches the engine and nothing else. Under `OnDemand` the new
+        // ambient would sit there with no frame coming to show it (#3718).
+        renderInvalidator.requestRender()
     }
 
     // Captured ref to the ModelNode once it's created — used by the LaunchedEffect
     // below to drive play/pause/speed/loop imperatively.
     val modelNodeRef = remember { androidx.compose.runtime.mutableStateOf<ModelNodeImpl?>(null) }
 
-    val node = modelNodeRef.value
-    val animationNames = remember(node) {
+    // Only the node built from the instance we hold right now. On a subject switch
+    // `rememberModelInstance` destroys the previous model as soon as its key changes, but the
+    // ref is only cleared once the scene's own composition drops the old node — later, often not
+    // until the new subject has loaded. Reading `animationCount` or posing that stale node in
+    // between is a native use-after-free (#3801).
+    val node = modelNodeRef.value?.takeIf { it.modelInstance === modelInstance }
+    // `LocalResources`, not `LocalContext.current.getString(…)`: a `Context` read is not
+    // invalidated by a configuration change, so the "Clip N" fallbacks would keep the
+    // previous locale's wording after an in-place locale switch
+    // (`LocalContextGetResourceValueCall`, #3660). Keying the `remember` on `resources`
+    // is what actually re-derives the list when that happens.
+    val resources = LocalResources.current
+    val animationNames = remember(node, resources) {
         if (node == null) emptyList() else (0 until node.animationCount).map { index ->
             node.animator.getAnimationName(index).orEmpty().ifBlank {
-                context.getString(R.string.demo_animation_physics_clip_fallback, index + 1)
+                resources.getString(R.string.demo_animation_physics_clip_fallback, index + 1)
             }
         }
     }
@@ -379,37 +440,58 @@ private fun AnimationSection(
     }
     var blendWeight by remember(node, selectedAnim) { mutableFloatStateOf(0f) }
     val previousFrame = remember(node, selectedAnim, isPlaying, DemoSettings.qaMode) { longArrayOf(0L) }
+    // Re-pin the animation track to the subject's default once its node lands. Not on the switch
+    // itself: until the new subject has loaded, `node` is still the previous one, and the clamp
+    // below would fold the new default back to 0 against the old subject's clip count — the
+    // soldier opened on Idle instead of Walk. We can't always know a streamed model's clip count
+    // up-front, so out-of-range defaults are clamped below.
+    LaunchedEffect(node) {
+        node ?: return@LaunchedEffect
+        selectedAnim = activeModel.defaultAnimationIndex.coerceAtLeast(0)
+    }
     LaunchedEffect(node, selectedAnim, DemoSettings.qaMode) {
         node ?: return@LaunchedEffect
         for (index in 0 until node.animationCount) node.stopAnimation(index)
         if (node.animationCount > 0 && selectedAnim !in animationNames.indices) selectedAnim = 0
     }
+    // No node yet means the subject is still loading, which is not the same thing as a subject
+    // that has no clip: the card used to read "No animation clip available" for the whole load
+    // (#3801). Until the node lands, the card names the slot and says it is loading.
+    val clipsLoading = node == null
     val clipName = animationNames.getOrNull(selectedAnim)
-        ?: stringResource(R.string.demo_animation_physics_no_clip)
+        ?: stringResource(
+            if (clipsLoading) R.string.demo_animation_physics_clip else R.string.demo_animation_physics_no_clip,
+        )
 
-    // Cinematic camera framing — a Pixel 7a portrait viewport (~1080x1500 after the
-    // controls panel) needs the soldier framed head-to-toe with margins. The model is
-    // 1 m tall (scaleToUnits=1.0) centered at origin, so y goes from -0.5 to +0.5.
-    //
-    // baseRadius = 3.5 m   → soldier height ≈ 50% of viewport at default 28 mm focal
-    //                        length (≈45° vertical FOV) — comfortable margins both sides
-    // baseYHeight = 0.0    → camera at the soldier's vertical center for symmetric
-    //                        framing (head and feet equidistant from frame edges)
-    // target = (0, 0.0, 0) → look-at point at the soldier's center of mass
-    // baseRadius / baseYHeight / defaultFovDegrees are sourced from DemoMath so the
-    // pure-JVM cinematic-camera tests (AnimationDemoStateMachineTest, issue #880)
-    // assert against the same constants the demo actually renders with.
+    // Framing (#3820) — measured from the subject, never assumed. The node is grounded
+    // (`centerOrigin = (0, -1, 0)`: feet on y = 0, centred on the vertical axis) and scaled so its
+    // largest side is `scaleToUnits`, so its world size is the glTF box scaled by that same factor.
+    // Every shot below is expressed in multiples of the fit radius and the subject's height, so a
+    // 0.5 m fox and a 1.45 m knight both land centred at the same screen size.
+    val subjectSize = remember(modelInstance, activeModel) {
+        val units = activeModel.scaleToUnits
+        val fallback = Position(units * 0.6f, units, units * 0.6f)
+        val extents = modelInstance?.let { instance ->
+            runCatching { instance.model.boundingBox.toAabb() }.getOrNull()
+                ?.takeUnless { it.isEmpty }?.extents
+        } ?: return@remember fallback
+        val largest = maxOf(extents.x, extents.y, extents.z)
+        if (!(largest > 0f)) fallback
+        else Position(extents.x * units / largest, extents.y * units / largest, extents.z * units / largest)
+    }
     val baseRadius = io.github.sceneview.demo.rememberFitOrbitRadius(
-        activeModel.scaleToUnits * 0.7f,
-        activeModel.scaleToUnits * 1.2f,
-        activeModel.scaleToUnits * 0.7f,
-        fill = 0.75f,
+        subjectSize.x,
+        subjectSize.y,
+        subjectSize.z,
+        elevationDegrees = ANIMATION_ORBIT_ELEVATION_DEGREES,
+        fill = ANIMATION_FILL,
     )
-    val baseYHeight = DemoMath.BASE_Y_HEIGHT
-    // The soldier is lifted so feet rest on y=0; its bbox center (chest) is at y=0.5 in
-    // world space. Camera target lives at chest height so all modes frame the upper body
-    // naturally and the rooftop ground line aligns visually with the soldier's feet.
-    val target = remember(activeModel) { Position(0f, activeModel.scaleToUnits * 0.5f, 0f) }
+    // Eye height above the target for the orbit: a slight look down on the subject.
+    val elevationRadians = Math.toRadians(ANIMATION_ORBIT_ELEVATION_DEGREES.toDouble())
+    val baseYHeight = baseRadius * kotlin.math.tan(elevationRadians).toFloat()
+    val subjectHeight = subjectSize.y
+    // Aim at the middle of the grounded subject: head and feet equidistant from the frame edges.
+    val target = remember(subjectHeight) { Position(0f, subjectHeight * 0.5f, 0f) }
 
     // Default lens FOV (vertical, degrees). Filament's default focal length of 28 mm
     // works out to ~46° vertical FOV on a phone aspect — we drive this directly so the
@@ -427,10 +509,18 @@ private fun AnimationSection(
     // it instead of (yaw,radius,yHeight). null means scripted spherical mode is active.
     val trackingEye = remember { androidx.compose.runtime.mutableStateOf<Position?>(null) }
 
+    // The one camera writer of the screen. Every shot below opens with a `snapTo` of its
+    // start pose, the scripted and the
+    // free manipulator are different instances and a new subject rebuilds both — each of those
+    // drew the new pose on the very next frame, a cut of up to half a turn. `SceneView` is handed
+    // this manipulator instead, for good, and it eases from the pose on screen into whatever the
+    // current source shows.
+    val continuity = rememberContinuousCameraManipulator(pivot = target)
+    val subjectShown = rememberUpdatedState(modelInstance != null)
+
     // Cinematic easings — FastOutSlowInEasing is Material's standard, EaseInOutCubic
     // is a slightly more dramatic S-curve we use for the hero pause-and-resume.
     val easeInOutCubic: Easing = remember { CubicBezierEasing(0.65f, 0.0f, 0.35f, 1.0f) }
-    val easeOutQuart: Easing = remember { CubicBezierEasing(0.25f, 1.0f, 0.5f, 1.0f) }
 
     // ---------------------------------------------------------------------------
     // Mode driver: each case below is a self-contained cinematic loop. We
@@ -452,10 +542,10 @@ private fun AnimationSection(
     // loop parks on a clean boundary — stopping the per-frame Compose snapshot
     // writes that were the residual background drain (~5-10 mW, #936).
     // ---------------------------------------------------------------------------
-    LifecyclePausingLaunchedEffect(cameraMode, DemoSettings.qaMode, activeModel) { gate ->
+    LifecyclePausingLaunchedEffect(cameraMode, DemoSettings.qaMode, activeModel, baseRadius, subjectHeight) { gate ->
         // QA freeze — match the hero-orbit helper so screenshot tests stay stable.
         if (DemoSettings.qaMode) {
-            yawAnim.snapTo(45f)
+            yawAnim.snapTo(ANIMATION_START_YAW_DEGREES)
             radiusAnim.snapTo(baseRadius)
             yHeightAnim.snapTo(baseYHeight)
             fovAnim.snapTo(defaultFovDegrees)
@@ -463,69 +553,72 @@ private fun AnimationSection(
             return@LifecyclePausingLaunchedEffect
         }
 
-        // Reset overrides on every mode switch so previous mode state doesn't bleed in.
+        // A shot's clock starts when its subject is on screen and frames are being drawn again. It
+        // used to run on under the loading scrim and through the freeze of the model's first
+        // frame, so the reveal showed the camera wherever the script had got to — a quarter of a
+        // turn from the frame the scrim had been dimming.
+        var staged = false
+        suspend fun awaitStage() {
+            gate.awaitResumed()
+            if (staged) return
+            snapshotFlow { subjectShown.value }.first { it }
+            io.github.sceneview.demo.awaitSteadyFrames()
+            staged = true
+        }
+
+        // Reset overrides on every mode switch so previous mode state doesn't bleed in — as a
+        // camera move: the pose eases in from the one on screen, and the lens with it.
+        continuity.easeNextCut()
         trackingEye.value = null
-        fovAnim.snapTo(defaultFovDegrees)
+        if (cameraMode != CameraMode.VERTIGO) {
+            launch { fovAnim.animateTo(defaultFovDegrees, tween(CUT_EASE_MILLIS, easing = FastOutSlowInEasing)) }
+        }
 
         when (cameraMode) {
             CameraMode.HERO -> {
-                // Heroic eyes-level orbit. Previously sat at yHeight 0.15 m which gave a
-                // monument low-angle shot — visually striking but cropped the soldier's
-                // head on portrait phones because we were looking sharply UP. Bumped to
-                // 0.55 m so the camera sits ~10 cm above the soldier's chest target
-                // (target.y=0.5), placing the lens roughly at his eyes — natural framing
-                // that keeps head-and-feet in frame across all viewport aspect ratios.
-                // We rotate slowly (25 s nominal) but break the loop into 4 segments
-                // with a 2 s hold at the front-3/4 angle (≈45°) for a cinematic beat.
-                radiusAnim.snapTo(baseRadius + 0.2f)
-                yHeightAnim.snapTo(0.55f)
+                // Turntable (#3820): the fit radius at a slight look-down, one full turn every
+                // ANIMATION_TURN_MILLIS at constant speed. The old shot broke the turn into four
+                // legs with holds and changes of pace; on screen that read as the camera lurching,
+                // not as the subject moving. Linear from 30° to 390° and a snap back to 30° is the
+                // same pose, so the loop has no seam.
+                radiusAnim.snapTo(baseRadius)
+                yHeightAnim.snapTo(baseYHeight)
+                yawAnim.snapTo(ANIMATION_START_YAW_DEGREES)
                 while (true) {
-                    yawAnim.snapTo(0f)
-                    // Quarter 1: 0° → 45° (front-3/4) over 5 s, ease-in-out.
-                    // gate.awaitResumed() parks on a clean boundary while the
-                    // app is backgrounded — yaw is preserved, no teleport.
-                    gate.awaitResumed()
-                    yawAnim.animateTo(45f, tween(5_000, easing = easeInOutCubic))
-                    // Hold the front-3/4 angle for 2 s (the cinematic beat).
-                    // animateTo to the same value returns immediately, so use delay.
-                    kotlinx.coroutines.delay(2_000)
-                    // Quarter 2: 45° → 180° over 8 s, ease-out
-                    gate.awaitResumed()
-                    yawAnim.animateTo(180f, tween(8_000, easing = easeOutQuart))
-                    // Half: 180° → 360° over 10 s, ease-in-out
-                    gate.awaitResumed()
-                    yawAnim.animateTo(360f, tween(10_000, easing = easeInOutCubic))
+                    awaitStage()
+                    yawAnim.animateTo(
+                        ANIMATION_START_YAW_DEGREES + 360f,
+                        tween(ANIMATION_TURN_MILLIS, easing = androidx.compose.animation.core.LinearEasing),
+                    )
+                    yawAnim.snapTo(ANIMATION_START_YAW_DEGREES)
                 }
             }
 
             CameraMode.REVEAL -> {
-                // Close-up at the chest, then pull back smoothly to a wide high-angle.
-                // No yaw motion — the dolly-out IS the shot. We hold yaw at a slight
-                // off-axis angle (15°) so we never look at the model dead-on.
-                //
-                // Camera Y is `target.y + yHeight` = 0.5 + yHeight. Soldier head is at
-                // y≈1.0, feet at y=0. To keep him visually grounded with the rooftop
-                // floor visible underneath, camera must sit above his head (yHeight ≥
-                // 0.6 → camY ≥ 1.1) for the whole shot. Previous values 0.5 → 0.8 put
-                // the camera at chest-to-shoulder height, which made the soldier look
-                // like he was floating because his feet drifted out of frame on the
-                // close-up. Bumped to 0.9 → 1.2 (camY 1.4 → 1.7) so we look slightly
-                // DOWN at the soldier and the rooftop ground line is always visible.
+                // Close-up that pulls back to a wide, slightly high angle, then pushes back in.
+                // Distances are multiples of the fit radius and the look-down is a fixed ratio of
+                // the distance, so the whole subject and its ground line stay in frame whatever
+                // its size. No yaw motion — the dolly IS the shot; 15° keeps it off-axis.
+                val close = baseRadius * 0.6f
+                val wide = baseRadius * 1.35f
                 yawAnim.snapTo(15f)
+                radiusAnim.snapTo(close)
+                yHeightAnim.snapTo(close * REVEAL_LIFT_RATIO)
                 while (true) {
-                    // Snap to the close-up start
-                    radiusAnim.snapTo(1.5f)
-                    yHeightAnim.snapTo(0.9f)
-                    // Park on the close-up boundary while backgrounded.
-                    gate.awaitResumed()
-                    // 6 s pull-back to wide, ease-in-out — matches a real dolly-out
+                    awaitStage()
                     val pullBack = tween<Float>(6_000, easing = FastOutSlowInEasing)
-                    val sync = launch { radiusAnim.animateTo(5.0f, pullBack) }
-                    yHeightAnim.animateTo(1.2f, pullBack)
+                    val sync = launch { radiusAnim.animateTo(wide, pullBack) }
+                    yHeightAnim.animateTo(wide * REVEAL_LIFT_RATIO, pullBack)
                     sync.join()
                     // 2 s hold on the wide shot before looping (delay, not animateTo
                     // — the latter returns immediately when target == current).
                     kotlinx.coroutines.delay(2_000)
+                    // Back to the close-up as a shot of its own: a 3 s push-in, not a cut.
+                    awaitStage()
+                    val pushIn = tween<Float>(REVEAL_PUSH_IN_MILLIS, easing = easeInOutCubic)
+                    val syncIn = launch { radiusAnim.animateTo(close, pushIn) }
+                    yHeightAnim.animateTo(close * REVEAL_LIFT_RATIO, pushIn)
+                    syncIn.join()
                 }
             }
 
@@ -533,26 +626,34 @@ private fun AnimationSection(
                 // Hitchcock dolly-zoom: camera moves AWAY (radius increases) while
                 // FOV NARROWS — keeping the subject the same on-screen size while
                 // the background appears to compress. Then reverse for the vertigo-out.
+                // Radii are fit-radius multiples chosen so r·tan(fov/2) — the subject's screen
+                // size — is the same at both ends: 0.7·tan 30° ≈ 1.75·tan 12.5°.
+                val near = baseRadius * 0.7f
+                val far = baseRadius * 1.75f
                 yawAnim.snapTo(20f)
-                yHeightAnim.snapTo(baseYHeight)
+                yHeightAnim.snapTo(0f)
+                radiusAnim.snapTo(near)
+                // The lens opens to the shot's 60° while the camera eases onto its mark. Every
+                // later pass of the loop ends where it starts, so the snaps below are no-ops.
+                fovAnim.animateTo(60f, tween(CUT_EASE_MILLIS, easing = FastOutSlowInEasing))
                 while (true) {
-                    radiusAnim.snapTo(2.0f)
+                    radiusAnim.snapTo(near)
                     fovAnim.snapTo(60f)
                     // Park on the vertigo-start boundary while backgrounded.
-                    gate.awaitResumed()
+                    awaitStage()
                     // Vertigo IN: 10 s. Radius grows 2 → 5, FOV shrinks 60 → 25.
                     // The subject stays roughly the same screen size; the background
                     // appears to crush in. Easing: gentle ease-in-out for the build.
                     val vIn = tween<Float>(10_000, easing = easeInOutCubic)
-                    val syncR = launch { radiusAnim.animateTo(5.0f, vIn) }
+                    val syncR = launch { radiusAnim.animateTo(far, vIn) }
                     fovAnim.animateTo(25f, vIn)
                     syncR.join()
                     // Hold at the extreme for 1 s — lets the eye register the warp.
                     kotlinx.coroutines.delay(1_000)
                     // Vertigo OUT: 8 s. Reverse — radius 5 → 2, FOV 25 → 60.
-                    gate.awaitResumed()
+                    awaitStage()
                     val vOut = tween<Float>(8_000, easing = easeInOutCubic)
-                    val syncR2 = launch { radiusAnim.animateTo(2.0f, vOut) }
+                    val syncR2 = launch { radiusAnim.animateTo(near, vOut) }
                     fovAnim.animateTo(60f, vOut)
                     syncR2.join()
                     // Hold close-up for 1 s before looping.
@@ -572,10 +673,12 @@ private fun AnimationSection(
                 // the floor cropped — soldier appeared to float. Bumped to 1.4 (above
                 // his head) so the shot looks slightly DOWN, keeping the rooftop ground
                 // line visible underneath the walking soldier.
-                val zStandoff = 2.5f
-                val yLevel = 1.4f
-                val startX = -4.0f
-                val endX = 4.0f
+                // Standoff, track length and height scale with the subject (#3820): the old
+                // metres were tuned for a 1 m soldier and left a small subject a speck.
+                val zStandoff = baseRadius * 0.9f
+                val yLevel = subjectHeight + baseRadius * 0.15f
+                val startX = -baseRadius * 1.3f
+                val endX = baseRadius * 1.3f
                 // Reuse a single Animatable across loop iterations — animateTo will
                 // mutate `value` continuously and we publish each step into trackingEye
                 // via a child coroutine that observes via snapshotFlow.
@@ -586,18 +689,25 @@ private fun AnimationSection(
                     }
                 }
                 try {
+                    // Onto the start of the track: swung round the subject, slowly enough to
+                    // read, rather than teleported across it.
+                    continuity.easeNextCut(TRACK_ENTRY_MILLIS)
+                    xAnim.snapTo(startX)
+                    var towards = endX
                     while (true) {
-                        xAnim.snapTo(startX)
-                        // Park on the sweep-start boundary while backgrounded.
-                        gate.awaitResumed()
+                        // Park on the end of the track while backgrounded.
+                        awaitStage()
                         // 8 s lateral sweep, ease-in-out so the pass accelerates
                         // smoothly and decelerates at the end (real dolly track feel).
                         xAnim.animateTo(
-                            targetValue = endX,
+                            targetValue = towards,
                             animationSpec = tween(8_000, easing = easeInOutCubic),
                         )
-                        // 1 s pause off-frame before resetting (instant teleport back).
+                        // 1 s hold, then the dolly runs back the way it came. The loop used to
+                        // jump to the start of the track — a 116° cut — and swinging round the
+                        // subject in 1.2 s instead was still a whip pan.
                         kotlinx.coroutines.delay(1_000)
+                        towards = if (towards == endX) startX else endX
                     }
                 } finally {
                     publisher.cancel()
@@ -644,7 +754,7 @@ private fun AnimationSection(
     val pendingBegin = remember {
         androidx.compose.runtime.mutableStateOf<PendingGestureBegin?>(null)
     }
-    val scriptedManipulator = remember(activeModel) {
+    val scriptedManipulator = remember(activeModel, target) {
         ScriptedCameraManipulator(
             target = target,
             yawProvider = { yawAnim.value },
@@ -705,9 +815,56 @@ private fun AnimationSection(
             }
         } else null
     }
-    val activeManipulator = if (cameraMode == CameraMode.FREE) freeManipulator else scriptedManipulator
+    // The loading scrim is translucent — the rooftop shows through it — so a new subject's camera
+    // is eased in like any other change, and is in place by the time the scrim lifts. Hence the
+    // default `contentShown = true`, where Model Viewer and the Explore viewer pass
+    // `instance != null`: what this screen has to wait for is its script, and `awaitStage()`
+    // already parks that on the subject and on steady frames.
+    val activeManipulator = continuity.driving(
+        source = (if (cameraMode == CameraMode.FREE) freeManipulator else null) ?: scriptedManipulator,
+    )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
+
+    // ── Who keeps this screen awake (#3718) ──────────────────────────────────────────────
+    //
+    // This screen animates from its own clock, and `onFrame` fires *after* a frame reached
+    // the surface — so the callback that advances the clip cannot also be the thing that
+    // asks for the next frame. Under render-on-demand that closes on itself: the scene
+    // settles, parks, `onFrame` stops, the clip stops, and the soldier stands still from the
+    // moment the screen opens. Nothing in the SDK can see it either — `applyAnimation` /
+    // `updateBoneMatrices` write bone matrices straight into Filament, and the
+    // `onWorldTransformChanged()` below only invalidates the node's world-space cache;
+    // `onTransformChanged()` is the one that pushes an invalidation, and an animator
+    // write-back never goes through it.
+    //
+    // Two different answers, because these are two different questions:
+    //
+    //  * **while it plays** the screen genuinely wants every vsync — that is what
+    //    [FrameRatePolicy.Continuous] is for, and it also lets the cadence vote tell the
+    //    panel. Pausing hands the screen back to on-demand.
+    //  * **while it is paused** a scrub, a clip chip or the blend slider moves the pose with
+    //    no clock running. The pose is applied *here*, outside the loop, and
+    //    [renderInvalidator] asks for the one frame that shows it. Applying it from
+    //    `onFrame` instead would draw the previous pose and park — one frame behind, for good.
+    val playing = isPlaying && !DemoSettings.qaMode
+    val applyPose: (ModelNodeImpl) -> Unit = { animatedNode ->
+        val animator = animatedNode.animator
+        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
+            val blendDuration = animator.getAnimationDuration(blendIndex)
+            animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
+            animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
+        } else animator.applyAnimation(selectedAnim, clipTime)
+        animator.updateBoneMatrices()
+        animatedNode.onWorldTransformChanged()
+    }
+    LaunchedEffect(playing, clipTime, selectedAnim, blendIndex, blendWeight, node) {
+        if (playing) return@LaunchedEffect
+        val animatedNode = node ?: return@LaunchedEffect
+        if (selectedAnim !in animationNames.indices || duration <= 0f) return@LaunchedEffect
+        applyPose(animatedNode)
+        renderInvalidator.requestRender()
+    }
 
     DemoScaffold(
         bottomOverlayReservesScene = true,
@@ -727,22 +884,30 @@ private fun AnimationSection(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    stringResource(R.string.demo_animation_physics_clip_status,
-                        stringResource(
-                            if (isPlaying && !DemoSettings.qaMode) {
-                                R.string.demo_animation_physics_playing
-                            } else {
-                                R.string.demo_animation_physics_paused
-                            },
-                        ),
-                        clipTime, duration),
+                    if (clipsLoading) {
+                        stringResource(R.string.demo_animation_physics_clip_loading)
+                    } else {
+                        stringResource(R.string.demo_animation_physics_clip_status,
+                            stringResource(
+                                if (isPlaying && !DemoSettings.qaMode) {
+                                    R.string.demo_animation_physics_playing
+                                } else {
+                                    R.string.demo_animation_physics_paused
+                                },
+                            ),
+                            clipTime, duration)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                LinearProgressIndicator(
-                    progress = { if (duration > 0f) (clipTime / duration).coerceIn(0f, 1f) else 0f },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (clipsLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    LinearProgressIndicator(
+                        progress = { if (duration > 0f) (clipTime / duration).coerceIn(0f, 1f) else 0f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (animationNames.size > 1) Text(
                     stringResource(R.string.demo_animation_physics_blend_status, clipName,
                         animationNames[blendIndex], (blendWeight * 100).toInt()),
@@ -756,60 +921,90 @@ private fun AnimationSection(
             // Animation picker — one chip per animation defined in the GLB. Names come
             // from the Filament Animator (gltf animation names). Plays only the selected
             // one to avoid the "stacked animations" visual mess of playing all at once.
-            if (animationNames.isNotEmpty()) {
-                Text(stringResource(R.string.demo_animation_physics_clip), style = MaterialTheme.typography.labelLarge)
-                Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    animationNames.forEachIndexed { index, name ->
-                        FilterChip(
-                            selected = selectedAnim == index,
-                            onClick = { selectedAnim = index },
-                            label = { Text(name) }
-                        )
+            //
+            // `AnimatedVisibility(fadeIn/fadeOut)`, not a raw `if` (#3810): the whole
+            // `controls` column already sits under `DemoScaffold`'s own
+            // `animateContentSize()`, and `animationNames` flips from empty to populated
+            // in the same recomposition the model finishes loading in — often while the
+            // sheet's own open animation is still running. A raw `if` inserts this fully
+            // laid-out block in one frame, so `animateContentSize`'s lookahead pass (sized
+            // for the *old*, shorter column) and the actual pass (sized for the *new* one)
+            // disagree for a frame: a child measured against the stale width can paint at
+            // a position its own track hasn't caught up to yet — seen as a slider thumb
+            // floating with no track/label under it. `fadeIn`/`fadeOut` (no
+            // expand/shrink — that would just reintroduce the same size race a second
+            // way) hands the appear/disappear to `AnimatedVisibility`'s own crossfade
+            // instead, which composes the block at its final size from the first frame.
+            AnimatedVisibility(visible = animationNames.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
+                Column {
+                    Text(
+                        stringResource(R.string.demo_animation_physics_clip),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        animationNames.forEachIndexed { index, name ->
+                            FilterChip(
+                                selected = selectedAnim == index,
+                                onClick = { selectedAnim = index },
+                                label = { Text(name) }
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
                 }
-                Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             }
 
-            if (duration > 0f) {
+            // Same race, same fix as above: `duration` goes from `0f` to the clip's real
+            // length the instant the model node loads, which is exactly when this slider
+            // would otherwise snap into the column mid-resize.
+            AnimatedVisibility(visible = duration > 0f, enter = fadeIn(), exit = fadeOut()) {
                 LabeledSlider(
                     label = stringResource(R.string.demo_animation_physics_scrub),
                     value = clipTime.coerceIn(0f, duration),
                     onValueChange = { isPlaying = false; clipTime = it },
-                    valueRange = 0f..duration,
+                    valueRange = 0f..duration.coerceAtLeast(0.0001f),
                     valueText = stringResource(R.string.demo_animation_physics_time, clipTime, duration),
                 )
             }
-            if (animationNames.size > 1) {
-                Text(
-                    stringResource(R.string.demo_animation_physics_blend_to),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                ) {
-                    animationNames.forEachIndexed { index, name ->
-                        if (index != selectedAnim) FilterChip(
-                            selected = blendIndex == index,
-                            onClick = { blendIndex = index },
-                            label = { Text(name) },
-                        )
+            // Same race again: `animationNames.size > 1` flips from `false` to `true`
+            // alongside `animationNames.isNotEmpty()` above, the same instant the model
+            // loads.
+            AnimatedVisibility(visible = animationNames.size > 1, enter = fadeIn(), exit = fadeOut()) {
+                Column {
+                    Text(
+                        stringResource(R.string.demo_animation_physics_blend_to),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                    ) {
+                        animationNames.forEachIndexed { index, name ->
+                            if (index != selectedAnim) FilterChip(
+                                selected = blendIndex == index,
+                                onClick = { blendIndex = index },
+                                label = { Text(name) },
+                            )
+                        }
                     }
+                    LabeledSlider(
+                        label = stringResource(
+                            R.string.demo_animation_physics_blend,
+                            clipName, animationNames.getOrElse(blendIndex) { "" },
+                        ),
+                        value = blendWeight,
+                        onValueChange = { blendWeight = it },
+                        valueRange = 0f..1f,
+                        valueText = stringResource(R.string.demo_animation_physics_weight, (blendWeight * 100).toInt()),
+                    )
                 }
-                LabeledSlider(
-                    label = stringResource(R.string.demo_animation_physics_blend, clipName, animationNames[blendIndex]),
-                    value = blendWeight,
-                    onValueChange = { blendWeight = it },
-                    valueRange = 0f..1f,
-                    valueText = stringResource(R.string.demo_animation_physics_weight, (blendWeight * 100).toInt()),
-                )
             }
             Text(
                 stringResource(R.string.demo_animation_physics_animation_explainer),
@@ -925,7 +1120,7 @@ private fun AnimationSection(
             }
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
-            // IBL intensity — the rooftop_night HDR is over-bright from cmgen's defaults.
+            // IBL intensity of the studio HDR.
             // 0 lux gives a pitch-black scene (only the directional sun left), 5 000 lux
             // is the atmospheric default, 10 000 lux pushes into over-exposed neutral.
             LabeledSlider(
@@ -940,27 +1135,36 @@ private fun AnimationSection(
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
+                // The subject is placed and framed explicitly (grounded at the origin, camera on
+                // its mid-height). Auto-centring would move the content's centroid to the origin
+                // behind the camera's back — the soldier sat in the bottom third (#3820).
+                autoCenterContent = false,
                 onFrame = { nanos ->
                     firstFrame.onFrame(nanos)
-                    val animatedNode = modelNodeRef.value
+                    val animatedNode = node
                     if (animatedNode != null && selectedAnim in animationNames.indices && duration > 0f) {
                         val previous = previousFrame[0]
                         previousFrame[0] = nanos
-                        if (isPlaying && !DemoSettings.qaMode && previous != 0L) {
+                        // Advance the clip only while playing. The paused pose is applied by the
+                        // `LaunchedEffect` above, not here: `onFrame` runs after the frame it is
+                        // named for was already presented.
+                        if (playing && previous != 0L) {
                             val next = clipTime + ((nanos - previous) / 1_000_000_000f).coerceAtMost(0.1f) * speed
                             clipTime = if (loop) next % duration else next.coerceAtMost(duration)
                             if (!loop && clipTime >= duration) isPlaying = false
+                            applyPose(animatedNode)
                         }
-                        val animator = animatedNode.animator
-                        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
-                            val blendDuration = animator.getAnimationDuration(blendIndex)
-                            animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
-                            animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
-                        } else animator.applyAnimation(selectedAnim, clipTime)
-                        animator.updateBoneMatrices()
-                        animatedNode.onWorldTransformChanged()
                     }
                 },
+                // Continuous *only* while the clip is running — see the block above
+                // `DemoScaffold`. Pausing returns the screen to on-demand, and a paused scene
+                // here presents nothing at all.
+                frameRatePolicy = if (playing) {
+                    FrameRatePolicy.Continuous()
+                } else {
+                    FrameRatePolicy.OnDemand()
+                },
+                renderInvalidator = renderInvalidator,
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
@@ -972,24 +1176,25 @@ private fun AnimationSection(
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = activeModel.scaleToUnits,
-                        // Lift the model so its feet rest on y=0 (ground plane). These assets
-                        // are authored roughly bbox-centered on their pivot, so half the scaled
-                        // height (scaleToUnits / 2) puts the feet at y=0. A previous
-                        // `centerOrigin = Position(0, 0, 0)` here was a silent no-op (#2622 —
-                        // the old formula ignored the AABB center) and was removed to keep this
-                        // scene's framing byte-for-byte identical; adopting the now-working
-                        // `centerOrigin = Position(0, -1, 0)` (which grounds ANY asset exactly,
-                        // replacing this manual lift) is a separate, visually-QA'd enhancement.
-                        position = Position(0f, activeModel.scaleToUnits * 0.5f, 0f),
+                        // Grounded exactly (#3820): feet on y = 0, centred on the vertical axis
+                        // whatever the asset's authored pivot. The manual half-height lift this
+                        // replaces assumed a bbox-centred pivot, which only the soldier had.
+                        centerOrigin = Position(0f, -1f, 0f),
                         // autoAnimate = false so the ModelNode init doesn't fire-and-forget
                         // all animations — the scene frame callback applies exactly the
                         // selected clip time and optional blend on the main thread.
                         autoAnimate = false,
                         apply = { modelNodeRef.value = this },
                     )
-                    // Clean up the ref when the node leaves composition.
+                    // Clean up the ref when the node leaves composition — but only if it is still
+                    // this instance's node. On a subject switch the new node's `apply` runs during
+                    // composition, before the old instance's `onDispose`; clearing unconditionally
+                    // wiped the new node, which then never animated and left the card on its
+                    // no-node state for good (#3801).
                     DisposableEffect(instance) {
-                        onDispose { modelNodeRef.value = null }
+                        onDispose {
+                            if (modelNodeRef.value?.modelInstance === instance) modelNodeRef.value = null
+                        }
                     }
                 }
             }
@@ -1097,404 +1302,868 @@ private class ScriptedCameraManipulator(
 }
 
 // ─── Physics section ────────────────────────────────────────────────────────
-// PhysicsBody supplies gravity and floor bounce. The sample adds equal-mass sphere
-// contacts and fixed steps because PhysicsNode has no body-to-body collision API.
-// Streamed meshes ride the same spherical colliders; this is not mesh-shaped physics.
+// A tray of balls to drop, tip and knock over (#3820). PhysicsBody supplies gravity and the floor
+// bounce; this sample adds mass-weighted sphere contacts, per-material bounce and rolling friction,
+// and the tray's rails, because PhysicsNode has no body-to-body collision API. The bodies are
+// spheres and so are their colliders: what you see is exactly what collides.
+//
+// Three rules this screen holds to:
+//  - One SceneView for the life of the screen. Reset and every drop change the *bodies*, never the
+//    scene, so there is no teardown frame to show black and no camera jump.
+//  - What changes the scene lives on the scene. The material to drop, Drop, Tilt and Reset sit in
+//    the bottom band, where their effect is visible as it happens; the settings sheet — which
+//    covers the tray — keeps what is read or fine-tuned (counts, exact angles, Drop 10, Level).
+//  - The camera frames the tray and the drop column in the viewport it actually gets, and the
+//    orbit cannot go under the tray.
+
+/** What a ball is made of — three contrasting behaviours, told apart by colour and finish. */
+private enum class BallKind(
+    @StringRes val labelRes: Int,
+    val radius: Float,
+    /** Bounce kept on the floor and the rails; a contact takes the lower of the pair's two. */
+    val restitution: Float,
+    /** Rolling speed kept per 120 Hz step while touching the floor. */
+    val rollFriction: Float,
+    /** Relative mass for ball-to-ball impulses: steel scatters rubber, not the reverse. */
+    val mass: Float,
+    val color: Color,
+    val metallic: Float,
+    val roughness: Float,
+) {
+    Rubber(R.string.demo_physics_ball_rubber, 0.075f, 0.82f, 0.99f, 1f, SceneViewColors.Primary, 0f, 0.6f),
+    Steel(R.string.demo_physics_ball_steel, 0.06f, 0.35f, 0.997f, 4f, SceneViewColors.TintLight, 1f, 0.22f),
+    Foam(R.string.demo_physics_ball_foam, 0.085f, 0.2f, 0.96f, 0.3f, SceneViewColors.TintSoft, 0f, 0.95f),
+}
+
+/** One ball on the tray. [id] is unique for the screen's life, so a Compose key is never reused. */
+private data class TrayBall(
+    val id: Int,
+    val kind: BallKind,
+    val start: Position,
+    val velocity: Position = Position(0f),
+)
+
 @Composable
 private fun PhysicsSection(
     onBack: () -> Unit,
     mode: AnimationPhysicsMode,
     onModeChange: (AnimationPhysicsMode) -> Unit,
 ) {
-    var bodyCount by remember { mutableIntStateOf(PHYSICS_INITIAL_BODIES) }
-    var generation by remember { mutableIntStateOf(0) }
-    var replaying by remember { mutableStateOf(true) }
+    val simulation = remember { DemoCollisionReplay() }
+    val balls = remember { mutableStateListOf<TrayBall>().apply { addAll(openingBalls(firstId = 0)) } }
+    var nextId by remember { mutableIntStateOf(balls.size) }
+    var dropCount by remember { mutableIntStateOf(0) }
+    var selectedKind by remember { mutableStateOf(BallKind.Rubber) }
     var liveBodyCount by remember { mutableIntStateOf(0) }
     var collisions by remember { mutableIntStateOf(0) }
-    val simulation = remember(generation) { DemoCollisionReplay() }
 
-    // Streamed `physics` slugs from SampleAssets. selectedSlug == null means
-    // "Bundled spheres" — the v4.3.1 visual default. Selecting a slug arms
-    // it as the carousel of streamed crash-test bodies (chairs / vases /
-    // barrels / amphorae) cycling through each drop.
-    val physicsSlugs = remember { SampleAssets.byCategory["physics"].orEmpty() }
-    var selectedSlug by remember { mutableStateOf<SketchfabSlug?>(null) }
-
-    val context = LocalContext.current
-
-    // Warm the `physics` cache so the very first drop renders without a pop-in.
-    // The resolver dedupes concurrent calls, so the per-body resolve below picks
-    // up the cached file as soon as the prefetch lands.
-    LaunchedEffect(Unit) {
-        runCatching {
-            SketchfabAssetResolver.getInstance(context).prefetchAll("physics")
-        }
+    // Whether the simulation still has visible work, measured from the bodies (#3718). Every
+    // change of population or slope re-arms it, so the screen renders continuously exactly while
+    // something moves and parks on demand once the tray is still.
+    var simulationMoving by remember { mutableStateOf(true) }
+    val wake: () -> Unit = {
+        simulation.restartSettle()
+        simulationMoving = true
     }
 
-    // Resolve the currently-selected slug to a local file (null while
-    // downloading / staging the bundled fallback). When null, drops fall
-    // back to the original spheres-only mode so the user sees something
-    // moving while the streamed mesh lands.
-    val selectedFile: File? = selectedSlug?.let { slug ->
-        produceState<File?>(initialValue = null, key1 = slug.uid) {
-            value = runCatching {
-                SketchfabAssetResolver.getInstance(context).resolve(slug)
-            }.getOrNull()
-        }.value
+    // Reset: the opening shot again, with fresh ids so every body is rebuilt from its start pose.
+    // The scene itself is untouched — nothing is torn down, so nothing can show black.
+    val reset: () -> Unit = {
+        balls.clear()
+        simulation.resetCounters()
+        val opening = openingBalls(firstId = nextId)
+        nextId += opening.size
+        balls.addAll(opening)
+        dropCount = 0
+        wake()
+    }
+    // Drop: [count] balls of [kind] over the tray, on a golden-angle spiral so consecutive drops
+    // never stack on one another. Past the cap the oldest ball makes room.
+    val drop: (BallKind, Int) -> Unit = { kind, count ->
+        repeat(count) { k ->
+            if (balls.size >= PHYSICS_MAX_BODIES) balls.removeAt(0)
+            val spot = dropPosition(dropCount)
+            balls.add(TrayBall(nextId, kind, Position(spot.x, spot.y + (k / 5) * PHYSICS_DROP_LAYER, spot.z)))
+            nextId++
+            dropCount++
+        }
+        wake()
+    }
+
+    // ── Tray tilt (#3621) ────────────────────────────────────────────────────
+    // `tiltEnabled` swaps what a one-finger drag over the viewport does: OFF it orbits the camera,
+    // ON it tips the tray. The toggle raises a transparent pointer-input layer above the SceneView
+    // that consumes the drag, so the orbit is untouched when it is off. The angles survive the
+    // toggle — tilting, turning tilt off to re-frame, then back on is a normal thing to do.
+    var tiltEnabled by remember { mutableStateOf(false) }
+    val pitchAnim = remember { Animatable(0f) }
+    val rollAnim = remember { Animatable(0f) }
+    val tiltScope = rememberCoroutineScope()
+
+    // Gravity expressed in the *tray's* frame: the whole rig hangs off a pivot node rotated by
+    // (pitch, 0, roll), so the simulation keeps its flat floor and axis-aligned rails and the slope
+    // shows up purely as a horizontal component of gravity.
+    val trayGravity = remember(pitchAnim.value, rollAnim.value) {
+        trayLocalGravity(pitchAnim.value, rollAnim.value)
+    }
+    LaunchedEffect(simulation, trayGravity) {
+        simulation.gravity = trayGravity
+        wake()
+    }
+    val applyTilt: (Float, Float) -> Unit = { pitch, roll ->
+        tiltScope.launch {
+            pitchAnim.snapTo(pitch.coerceIn(-PHYSICS_MAX_TILT_DEGREES, PHYSICS_MAX_TILT_DEGREES))
+            rollAnim.snapTo(roll.coerceIn(-PHYSICS_MAX_TILT_DEGREES, PHYSICS_MAX_TILT_DEGREES))
+        }
+    }
+    val levelTray: () -> Unit = {
+        tiltScope.launch {
+            launch { pitchAnim.animateTo(0f, tween(400, easing = FastOutSlowInEasing)) }
+            rollAnim.animateTo(0f, tween(400, easing = FastOutSlowInEasing))
+        }
+    }
+    // Reset from the bottom bar is the whole opening shot: a level tray as well as the opening
+    // balls. Snapped, not eased, so the cue's first roll never runs downhill.
+    val resetAll: () -> Unit = {
+        tiltScope.launch {
+            pitchAnim.snapTo(0f)
+            rollAnim.snapTo(0f)
+        }
+        reset()
     }
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    // Camera above and back from the scene, angled down. The look-at target sits between
-    // the floor (y = -0.5) and the spheres' rest height (y ≈ -0.42) rather than the scene
-    // origin, so the 1.6 m ground plane is vertically centred in the viewport instead of
-    // being shoved into the bottom third with its near edge clipped (#1463). Pulled back to
-    // z = 4 so the full plane depth fits with headroom for the drop column above it.
-    val cameraNode = rememberCameraNode(engine) {
-        position = Position(0f, 2f, 4f)
-        lookAt(Position(0f, -0.35f, 0f))
+    // Studio stage (#3820): the studio HDR lights the tray, a neutral grey backdrop sits behind
+    // it (Reality Composer's look) — never a black void inside the reserved band, and no room
+    // photograph competing with the balls.
+    val studioLight = rememberHDREnvironment(
+        environmentLoader,
+        "environments/studio_2k.hdr",
+        createSkybox = false,
+    ) ?: rememberEnvironment(environmentLoader)
+    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    val physicsEnvironment = remember(studioLight, stageSkybox) {
+        studioLight.copy(skybox = stageSkybox)
     }
-
-    val firstFrame = rememberFirstFrameState()
+    val cameraNode = rememberCameraNode(engine)
+    val firstFrame = rememberFirstFrameState(engine)
+    val counts =stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions)
 
     DemoScaffold(
         title = stringResource(R.string.demo_animation_physics_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
-        peekHeader = stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions),
+        peekHeader = counts,
+        // The scene is framed inside the band between the title row and these controls, so the
+        // tray is never drawn under them.
+        bottomOverlayReservesScene = true,
         bottomOverlay = {
-            DemoStatusBanner(
-                text = stringResource(
-                    if (replaying) {
-                        R.string.demo_animation_physics_replaying
-                    } else {
-                        R.string.demo_animation_physics_reset_ready
-                    },
-                ),
-                tone = DemoStatusTone.Guidance,
-            )
+            if (tiltEnabled) {
+                DemoStatusBanner(
+                    text = stringResource(R.string.demo_animation_physics_tilt_hint),
+                    tone = DemoStatusTone.Guidance,
+                )
+            }
             Row(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
             ) {
-                Button(onClick = { generation++; replaying = true }) {
-                    Text(stringResource(R.string.demo_animation_physics_replay))
+                BallKind.entries.forEach { kind ->
+                    TrayGlassChip(
+                        label = stringResource(kind.labelRes),
+                        selected = kind == selectedKind,
+                        swatch = kind.color,
+                        toggle = false,
+                        onClick = {
+                            // Picking a material drops one straight away: the choice is seen,
+                            // not just recorded.
+                            selectedKind = kind
+                            drop(kind, 1)
+                        },
+                    )
                 }
-                Button(onClick = {
-                    bodyCount = PHYSICS_INITIAL_BODIES
-                    generation++
-                    replaying = false
-                }) { Text(stringResource(R.string.demo_animation_physics_reset)) }
+            }
+            Row(
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = { drop(selectedKind, 1) },
+                    modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget),
+                ) {
+                    Icon(
+                        Icons.Filled.ArrowDownward,
+                        contentDescription = null,
+                        modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    )
+                    Spacer(Modifier.width(SceneViewTokens.Space.xs))
+                    Text(stringResource(R.string.demo_animation_physics_drop))
+                }
+                TrayGlassChip(
+                    label = stringResource(R.string.demo_animation_physics_tilt_drag),
+                    selected = tiltEnabled,
+                    icon = Icons.Rounded.ScreenRotationAlt,
+                    toggle = true,
+                    onClick = { tiltEnabled = !tiltEnabled },
+                )
+                GlassActionPill(
+                    icon = Icons.Outlined.RestartAlt,
+                    label = stringResource(R.string.demo_animation_physics_reset),
+                    onClick = resetAll,
+                )
             }
         },
         controls = {
             ModeSelector(mode, onModeChange)
-            Text(
-                stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions),
-                style = MaterialTheme.typography.labelLarge,
-            )
+            Text(counts, style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
-                Button(onClick = { generation++; replaying = true }) {
-                    Text(stringResource(R.string.demo_animation_physics_replay))
+                OutlinedButton(onClick = { drop(selectedKind, 10) }) {
+                    Text(stringResource(R.string.demo_animation_physics_drop_ten))
                 }
-                Button(onClick = {
-                    bodyCount = PHYSICS_INITIAL_BODIES
-                    generation++
-                    replaying = false
-                }) { Text(stringResource(R.string.demo_animation_physics_reset)) }
-                Button(enabled = bodyCount < PHYSICS_MAX_BODIES, onClick = {
-                    bodyCount++
-                    generation++
-                    replaying = true
-                }) { Text(stringResource(R.string.demo_animation_physics_drop)) }
-                Button(enabled = bodyCount < PHYSICS_MAX_BODIES, onClick = {
-                    bodyCount = (bodyCount + 10).coerceAtMost(PHYSICS_MAX_BODIES)
-                    generation++
-                    replaying = true
-                }) { Text(stringResource(R.string.demo_animation_physics_drop_ten)) }
+                OutlinedButton(
+                    enabled = pitchAnim.value != 0f || rollAnim.value != 0f,
+                    onClick = levelTray,
+                ) { Text(stringResource(R.string.demo_animation_physics_tilt_level)) }
             }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Text(
                 stringResource(R.string.demo_animation_physics_physics_explainer),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             Text(
-                text = stringResource(R.string.demo_physics_picker_label),
+                text = stringResource(R.string.demo_animation_physics_tilt_label),
                 style = MaterialTheme.typography.labelLarge,
             )
-            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-            ) {
-                // "Bundled spheres" chip preserves the v4.3.1 visual default
-                // — useful for QA / offline / store-listing screenshots.
-                FilterChip(
-                    selected = selectedSlug == null,
-                    onClick = {
-                        selectedSlug = null
-                        // Reset so the chip swap is unambiguous — spheres
-                        // first, then more spheres on tap.
-                        bodyCount = PHYSICS_INITIAL_BODIES
-                        replaying = true
-                        generation++
-                    },
-                    label = {
-                        Text(stringResource(R.string.demo_physics_picker_spheres))
-                    },
-                )
-                physicsSlugs.forEach { slug ->
-                    FilterChip(
-                        selected = selectedSlug?.uid == slug.uid,
-                        onClick = {
-                            selectedSlug = slug
-                            bodyCount = PHYSICS_INITIAL_BODIES
-                            replaying = true
-                            generation++
-                        },
-                        label = { Text(slug.displayName) },
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+            // The sliders mirror the drag rather than replacing it: they are what a screen reader
+            // can operate, and they give the exact angle the drag can only approximate.
+            LabeledSlider(
+                label = stringResource(R.string.demo_animation_physics_tilt_pitch),
+                value = pitchAnim.value,
+                onValueChange = { applyTilt(it, rollAnim.value) },
+                valueRange = -PHYSICS_MAX_TILT_DEGREES..PHYSICS_MAX_TILT_DEGREES,
+                decimals = 0,
+                unit = "°",
+            )
+            LabeledSlider(
+                label = stringResource(R.string.demo_animation_physics_tilt_roll),
+                value = rollAnim.value,
+                onValueChange = { applyTilt(pitchAnim.value, it) },
+                valueRange = -PHYSICS_MAX_TILT_DEGREES..PHYSICS_MAX_TILT_DEGREES,
+                decimals = 0,
+                unit = "°",
+            )
             Text(
-                text = stringResource(R.string.demo_physics_picker_subtitle),
-                style = MaterialTheme.typography.labelSmall,
+                text = stringResource(R.string.demo_animation_physics_tilt_explainer),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     ) {
-        // key(generation) forces full recomposition on reset
-        key(generation) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            // Framed in the viewport this scene actually gets — the band between the title row
+            // and the controls — not the whole screen: the tray and the column the balls drop
+            // from fill it, seen from a fixed look-down.
+            val aspect = if (maxWidth.value > 0f && maxHeight.value > 0f) {
+                maxWidth.value / maxHeight.value
+            } else {
+                0.5f
+            }
+            val cameraManipulator = remember(aspect) { trayCameraManipulator(aspect) }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
+                environment = physicsEnvironment,
                 cameraNode = cameraNode,
+                // The rig is authored around the origin; re-centring it on its bounds would move
+                // the tray every time a ball flies up.
                 autoCenterContent = false,
                 onFrame = { nanos ->
                     firstFrame.onFrame(nanos)
-                    // Start only once all nodes are registered: composition timing cannot
-                    // change which body gets a head start on the deterministic replay.
-                    simulation.onFrame(nanos, replaying && simulation.bodies.size == bodyCount)
+                    // Step only once every ball on the list has registered its body, so a reset's
+                    // opening shot always starts from the same complete population.
+                    simulation.onFrame(nanos, playing = simulation.bodies.size == balls.size)
                     liveBodyCount = simulation.bodies.size
                     collisions = simulation.collisions
+                    simulationMoving = simulation.isMoving
                 },
-                cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = cameraNode.worldPosition
-                )
+                // The simulation is stepped from `onFrame`, which fires only *after* a frame
+                // reached the surface — so it cannot be what keeps the loop awake (#3718). While
+                // something moves the screen declares every vsync; a still tray hands it back to
+                // on-demand, where a tilt, a drop or an orbit still repaints.
+                frameRatePolicy = if (simulationMoving) {
+                    FrameRatePolicy.Continuous()
+                } else {
+                    FrameRatePolicy.OnDemand()
+                },
+                cameraManipulator = cameraManipulator,
             ) {
-                // Left-side counter-fill — same as v4.3.1, kept verbatim.
                 LightNode(
                     type = LightManager.Type.DIRECTIONAL,
                     direction = io.github.sceneview.math.Direction(-0.3f, -1f, -0.5f),
-                    apply = {
-                        intensity(5_000f)
+                    apply = { intensity(5_000f) },
+                )
+                val trayMaterial = rememberMaterialInstance(
+                    materialLoader, SceneViewColors.SurfaceLight, metallic = 0f, roughness = 0.8f,
+                )
+                val railMaterial = rememberMaterialInstance(
+                    materialLoader, SceneViewColors.AccentDeep, metallic = 0f, roughness = 0.5f,
+                )
+                val rubberMaterial = rememberMaterialInstance(
+                    materialLoader, BallKind.Rubber.color,
+                    metallic = BallKind.Rubber.metallic, roughness = BallKind.Rubber.roughness,
+                )
+                val steelMaterial = rememberMaterialInstance(
+                    materialLoader, BallKind.Steel.color,
+                    metallic = BallKind.Steel.metallic, roughness = BallKind.Steel.roughness,
+                )
+                val foamMaterial = rememberMaterialInstance(
+                    materialLoader, BallKind.Foam.color,
+                    metallic = BallKind.Foam.metallic, roughness = BallKind.Foam.roughness,
+                )
+
+                // Tilt pivot (#3621) — the floor, the rails and every ball hang off this node, so
+                // the tray rotates as one rigid rig while the simulation stays in its own flat
+                // frame. The light stays at the scene root: the room does not tip with the tray.
+                Node(rotation = Rotation(x = pitchAnim.value, z = rollAnim.value)) {
+                    // Ground plane — Size(x, y = 0, z) is a HORIZONTAL floor.
+                    PlaneNode(
+                        materialInstance = trayMaterial,
+                        size = Size(x = PHYSICS_TRAY_SIZE, y = 0f, z = PHYSICS_TRAY_SIZE),
+                        position = Position(y = PHYSICS_FLOOR),
+                    )
+                    // Visible rails mark the bounds the collision response uses.
+                    val half = PHYSICS_TRAY_SIZE / 2f
+                    for (side in listOf(-1f, 1f)) {
+                        CubeNode(
+                            size = Size(PHYSICS_RAIL_THICKNESS, PHYSICS_RAIL_HEIGHT, PHYSICS_TRAY_SIZE),
+                            position = Position(side * half, PHYSICS_FLOOR + PHYSICS_RAIL_HEIGHT / 2f, 0f),
+                            materialInstance = railMaterial,
+                        )
+                        CubeNode(
+                            size = Size(PHYSICS_TRAY_SIZE, PHYSICS_RAIL_HEIGHT, PHYSICS_RAIL_THICKNESS),
+                            position = Position(0f, PHYSICS_FLOOR + PHYSICS_RAIL_HEIGHT / 2f, side * half),
+                            materialInstance = railMaterial,
+                        )
                     }
-                )
-                val groundMaterial = rememberMaterialInstance(
-                    materialLoader, SceneViewColors.SurfaceDim
-                )
-                // Ramp4 is a fixed 4-colour list — call the helper once per slot so
-                // each MaterialInstance gets the same disposal hygiene as the rest.
-                val sphereMaterials = listOf(
-                    rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[0]),
-                    rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[1]),
-                    rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[2]),
-                    rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[3]),
-                )
 
-                // Ground plane — must use Size(x, y=0, z) for a HORIZONTAL floor
-                PlaneNode(
-                    materialInstance = groundMaterial,
-                    size = Size(x = 1.6f, y = 0f, z = 1.6f),
-                    position = Position(y = -0.5f),
-                )
-
-                // Visible rails mark the bounds used by the collision response.
-                for (side in listOf(-1f, 1f)) {
-                    CubeNode(
-                        size = Size(0.03f, 0.16f, 1.6f),
-                        position = Position(side * 0.8f, -0.42f, 0f),
-                        materialInstance = groundMaterial,
-                    )
-                    CubeNode(
-                        size = Size(1.6f, 0.16f, 0.03f),
-                        position = Position(0f, -0.42f, side * 0.8f),
-                        materialInstance = groundMaterial,
-                    )
-                }
-
-                // Streamed mesh path. The model file is `null` until the
-                // resolver returns (or the user picked "Bundled spheres").
-                // The GLB is parsed once into a single `Model` (geometry +
-                // materials live here, shared by every instance); each falling
-                // body then gets its OWN `ModelInstance` spawned from it below.
-                // A `ModelInstance` wraps exactly one Filament entity / one
-                // TransformManager slot, so it can only ride one body at a
-                // time — sharing it across bodies meant every ModelNode wrote
-                // the same entity transform (last-write-wins) and only one
-                // mesh was ever visible (#1706).
-                val streamedModel: Model? = selectedFile?.let { file ->
-                    rememberStreamedModel(modelLoader, file)
-                }
-
-                val collisionRadius = PHYSICS_RADIUS
-
-                for (i in 0 until bodyCount) {
-                    val startPosition = remember(i) { physicsStartPosition(i) }
-
-                    var nodeRef by remember(i) { mutableStateOf<SphereNodeImpl?>(null) }
-
-                    // The simulated SphereNode is rendered "invisibly" (it
-                    // carries the colour ramp material when the user is in
-                    // bundled-sphere mode; in streamed mode we ALSO render
-                    // it — same coloured silhouette — so the dropped streamed
-                    // mesh sits visually on top of a soft colour pad which
-                    // hides the bounding-sphere abstraction).
-                    SphereNode(
-                        radius = collisionRadius,
-                        materialInstance = sphereMaterials[i % 4],
-                        position = startPosition,
-                        apply = { nodeRef = this }
-                    ) {
-                        // Streamed mesh child — only rendered when a streamed
-                        // slug is selected AND its download has landed. The
-                        // child inherits the sphere's transform so it rides
-                        // the simulation. Each body spawns its OWN
-                        // `ModelInstance` from the shared `Model` so it has an
-                        // independent Filament entity — `createInstance` only
-                        // duplicates the lightweight entity tree, geometry and
-                        // materials stay shared (#1706). Keyed on `i` so the
-                        // instance is created once per body, on the main
-                        // composition thread (Filament JNI is @MainThread).
-                        val model = streamedModel
-                        val slug = selectedSlug
-                        if (model != null && slug != null) {
-                            val instance = remember(i, model) {
-                                modelLoader.createInstance(model)
+                    for (ball in balls) {
+                        key(ball.id) {
+                            var nodeRef by remember { mutableStateOf<SphereNodeImpl?>(null) }
+                            SphereNode(
+                                radius = ball.kind.radius,
+                                materialInstance = when (ball.kind) {
+                                    BallKind.Rubber -> rubberMaterial
+                                    BallKind.Steel -> steelMaterial
+                                    BallKind.Foam -> foamMaterial
+                                },
+                                position = ball.start,
+                                apply = { nodeRef = this },
+                            )
+                            nodeRef?.let { node ->
+                                DisposableEffect(node, simulation) {
+                                    simulation.add(
+                                        id = ball.id,
+                                        kind = ball.kind,
+                                        body = PhysicsBody(
+                                            node = node,
+                                            restitution = ball.kind.restitution,
+                                            floorY = PHYSICS_FLOOR,
+                                            radius = ball.kind.radius,
+                                            initialVelocity = ball.velocity,
+                                            // A floor provider keeps resting balls awake, so a
+                                            // later impact or a new slope still moves them.
+                                            floorProvider = FloorProvider { _, _, _, _ -> PHYSICS_FLOOR },
+                                            gravity = simulation.gravity,
+                                        ),
+                                    )
+                                    onDispose { simulation.remove(ball.id) }
+                                }
                             }
-                            if (instance != null) {
-                                ModelNode(
-                                    modelInstance = instance,
-                                    scaleToUnits = slug.scaleToUnits,
+                        }
+                    }
+                }
+            }
+
+            // Tilt drag layer — present only while Tilt is on, so with it off every pointer event
+            // reaches the SceneView and the camera orbits. Dragging DOWN tips the near edge down,
+            // so the balls roll towards the viewer; dragging RIGHT drops the right edge.
+            if (tiltEnabled) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                applyTilt(
+                                    pitchAnim.value + dragAmount.y * PHYSICS_TILT_DEGREES_PER_PIXEL,
+                                    rollAnim.value - dragAmount.x * PHYSICS_TILT_DEGREES_PER_PIXEL,
                                 )
                             }
                         }
-                    }
-
-                    nodeRef?.let { node ->
-                        DisposableEffect(node, simulation) {
-                            simulation.bodies[i] = PhysicsBody(
-                                node = node,
-                                restitution = PHYSICS_RESTITUTION,
-                                floorY = PHYSICS_FLOOR,
-                                radius = collisionRadius,
-                                initialVelocity = if (i == 0) Position(1.9f, 0.4f, 0f) else Position(0f),
-                                // Keep resting bodies responsive to later sphere impacts.
-                                floorProvider = FloorProvider { _, _, _, _ -> PHYSICS_FLOOR },
-                            )
-                            onDispose { simulation.bodies.remove(i) }
-                        }
-                    }
-                }
+                )
             }
         }
     }
 }
 
-private const val PHYSICS_INITIAL_BODIES = 7
+/**
+ * A selectable capsule over the scene: glass when off, solid white when on — the white-on-media
+ * language of the dock, readable on the dark stage in both themes. [swatch] shows the colour of
+ * the ball a material chip stands for; [icon] labels a toggle. [toggle] picks the semantics: a
+ * switch for Tilt, one radio button of a group for the materials.
+ */
+@Composable
+private fun TrayGlassChip(
+    label: String,
+    selected: Boolean,
+    toggle: Boolean,
+    onClick: () -> Unit,
+    swatch: Color? = null,
+    icon: ImageVector? = null,
+) {
+    val shape = RoundedCornerShape(SceneViewTokens.Radius.full)
+    val content = if (selected) SceneViewTokens.Stage.background else SceneViewTokens.Glass.onGlass
+    Row(
+        modifier = Modifier
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .overMediaEdge(shape)
+            .clip(shape)
+            .background(if (selected) SceneViewTokens.Glass.onGlass else SceneViewTokens.Glass.surface)
+            .then(
+                if (toggle) {
+                    Modifier.toggleable(value = selected, role = Role.Switch, onValueChange = { onClick() })
+                } else {
+                    Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+                },
+            )
+            .padding(horizontal = SceneViewTokens.Glass.pillPaddingHorizontal),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+    ) {
+        when {
+            selected && swatch != null -> Icon(
+                Icons.Filled.Check,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+            )
+            swatch != null -> Box(
+                Modifier
+                    .size(SceneViewTokens.Space.md)
+                    .clip(CircleShape)
+                    .background(swatch),
+            )
+            icon != null -> Icon(
+                icon,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+            )
+        }
+        Text(label, style = MaterialTheme.typography.labelLarge, color = content, maxLines = 1)
+    }
+}
+
+/**
+ * The tray's camera for a viewport of [aspect]: the tray and the drop column above it fitted at
+ * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down, with a stock orbit the user can drag.
+ */
+private fun trayCameraManipulator(aspect: Float): CameraGestureDetector.CameraManipulator {
+    val distance = io.github.sceneview.demo.fitOrbitRadius(
+        extentX = PHYSICS_FRAME_EXTENT.x,
+        extentY = PHYSICS_FRAME_EXTENT.y,
+        extentZ = PHYSICS_FRAME_EXTENT.z,
+        aspect = aspect,
+        elevationDegrees = PHYSICS_CAMERA_PITCH_DEGREES,
+        fill = PHYSICS_FRAME_FILL,
+        azimuthInvariant = false,
+    )
+    val pitch = Math.toRadians(PHYSICS_CAMERA_PITCH_DEGREES.toDouble())
+    return TrayCameraManipulator(
+        eye = Position(
+            PHYSICS_FRAME_TARGET.x,
+            PHYSICS_FRAME_TARGET.y + distance * sin(pitch).toFloat(),
+            PHYSICS_FRAME_TARGET.z + distance * cos(pitch).toFloat(),
+        ),
+        target = PHYSICS_FRAME_TARGET,
+    )
+}
+
+/**
+ * The stock orbit with the eye kept above the tray: its polar angle is clamped between
+ * [PHYSICS_MIN_POLAR_DEGREES] and [PHYSICS_MAX_POLAR_DEGREES] from straight up and re-aimed at
+ * the tray, so no drag can carry the camera under the floor and lose the balls from view.
+ */
+private class TrayCameraManipulator(
+    eye: Position,
+    private val target: Position,
+) : CameraGestureDetector.CameraManipulator {
+    private val orbit = CameraGestureDetector.DefaultCameraManipulator(
+        eyePosition = eye,
+        targetPosition = target,
+    )
+
+    override fun setViewport(width: Int, height: Int) = orbit.setViewport(width, height)
+
+    override fun getTransform(): Transform {
+        val transform = orbit.getTransform()
+        val eye = transform.position
+        val clamped = io.github.sceneview.demo.clampOrbitEyePitch(
+            eye, target, PHYSICS_MIN_POLAR_DEGREES, PHYSICS_MAX_POLAR_DEGREES,
+        )
+        if (clamped == eye) return transform
+        return Transform(
+            dev.romainguy.kotlin.math.lookAt(
+                eye = clamped,
+                target = target,
+                up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
+            )
+        )
+    }
+
+    override fun grabBegin(x: Int, y: Int, strafe: Boolean) = orbit.grabBegin(x, y, strafe)
+    override fun grabUpdate(x: Int, y: Int) = orbit.grabUpdate(x, y)
+    override fun grabEnd() = orbit.grabEnd()
+    override fun scrollBegin(x: Int, y: Int, separation: Float) = orbit.scrollBegin(x, y, separation)
+    override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) =
+        orbit.scrollUpdate(x, y, prevSeparation, currSeparation)
+    override fun scrollEnd() = orbit.scrollEnd()
+    override fun update(deltaTime: Float) = orbit.update(deltaTime)
+}
+
+/**
+ * Gravity expressed in the tilted tray's own frame.
+ *
+ * The tray pivot is rotated by `Rotation(pitch, 0, roll)`; a vector that is constant in world
+ * space is therefore the inverse of that rotation applied to it inside the tray. We build the
+ * rotation through the exact same `toQuaternion()` call [io.github.sceneview.node.Node.rotation]
+ * uses and invert it by transposing the matrix (a rotation matrix is orthonormal), so the result
+ * cannot drift from whatever Euler order the SDK settles on.
+ *
+ * At zero tilt this returns `(0, PhysicsBody.GRAVITY, 0)` exactly, which is what keeps the
+ * untouched demo bit-identical to its previous behaviour.
+ */
+internal fun trayLocalGravity(pitchDegrees: Float, rollDegrees: Float): Position {
+    if (pitchDegrees == 0f && rollDegrees == 0f) {
+        return Position(0f, PhysicsBody.GRAVITY, 0f)
+    }
+    val trayRotation = rotationMatrix(Rotation(pitchDegrees, 0f, rollDegrees).toQuaternion())
+    val local = transpose(trayRotation) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
+    return Position(local.x, local.y, local.z)
+}
+
+/** Look-down of the turntable shot: enough to show the ground under the subject. */
+private const val ANIMATION_ORBIT_ELEVATION_DEGREES = 14f
+
+/** Share of the frame the subject fills at the fit radius. */
+private const val ANIMATION_FILL = 0.82f
+
+/** Front three-quarter view the turntable starts from, and the QA freeze holds. */
+private const val ANIMATION_START_YAW_DEGREES = 60f
+
+/**
+ * Solid neutral backdrop for a studio stage. Filament skybox colours are linear: 0.4 reads as a
+ * mid grey (~#A8A8AA), light enough to separate from the stage clear colour, dark enough for a
+ * light floor to stand out. Freed with the engine (`rememberEngine` tears it down).
+ */
+internal fun neutralStageSkybox(engine: com.google.android.filament.Engine): Skybox =
+    Skybox.Builder().color(0.40f, 0.40f, 0.42f, 1.0f).build(engine)
+
+/** One full turntable revolution — slow enough that the animation, not the camera, leads. */
+private const val ANIMATION_TURN_MILLIS = 40_000
+
+/** Eye height over distance for the Reveal shot: a ~19° look-down at both ends of the dolly. */
+private const val REVEAL_LIFT_RATIO = 0.35f
+
+/** How long the lens takes to follow the camera into a new shot — the pose's own ease. */
+private const val CUT_EASE_MILLIS = 700
+
+/** The swing onto the start of the tracking shot's track: up to most of a half turn. */
+private const val TRACK_ENTRY_MILLIS = 1_200L
+
+/** The Reveal shot's way back from the wide frame to its close-up, before the next pull-back. */
+private const val REVEAL_PUSH_IN_MILLIS = 3_000
+
+/** Balls on the tray at once; past it a drop recycles the oldest, so Drop never goes dead. */
 private const val PHYSICS_MAX_BODIES = 30
-private const val PHYSICS_RADIUS = 0.08f
 private const val PHYSICS_FLOOR = -0.5f
-private const val PHYSICS_RESTITUTION = 0.8f
 private const val PHYSICS_STEP_NANOS = 8_333_333L
 
-private fun physicsStartPosition(index: Int): Position = when (index) {
-    0 -> Position(-0.65f, -0.32f, 0f)
-    in 1..3 -> Position(0.05f + (index - 1) * PHYSICS_RADIUS * 2f, PHYSICS_FLOOR + PHYSICS_RADIUS, 0f)
-    in 4..5 -> Position(0.13f + (index - 4) * PHYSICS_RADIUS * 2f,
-        PHYSICS_FLOOR + PHYSICS_RADIUS * (1f + sqrt(3f)), 0f)
-    6 -> Position(0.21f, PHYSICS_FLOOR + PHYSICS_RADIUS * (1f + 2f * sqrt(3f)), 0f)
-    else -> Position((index % 5 - 2) * 0.18f, 0.6f + (index / 5) * 0.18f, (index % 3 - 1) * 0.18f)
+/** Side of the square tray, rail to rail. */
+private const val PHYSICS_TRAY_SIZE = 1.6f
+private const val PHYSICS_RAIL_THICKNESS = 0.03f
+private const val PHYSICS_RAIL_HEIGHT = 0.16f
+
+/** Height a dropped ball starts from — inside the frame, so the fall itself is seen. */
+private const val PHYSICS_DROP_HEIGHT = 0.2f
+
+/** Extra height per five balls of one multi-ball drop, so a Drop 10 does not spawn overlapping. */
+private const val PHYSICS_DROP_LAYER = 0.2f
+
+/** What the camera frames: the tray plus the drop column above it. */
+private val PHYSICS_FRAME_EXTENT = Position(PHYSICS_TRAY_SIZE + 0.1f, 0.75f, PHYSICS_TRAY_SIZE + 0.1f)
+
+/** Centre of [PHYSICS_FRAME_EXTENT]: from the floor to just above the drop height. */
+private val PHYSICS_FRAME_TARGET = Position(0f, PHYSICS_FLOOR + 0.35f, 0f)
+
+/** Look-down of the opening frame: the whole tray floor reads, and so does a ball's bounce. */
+private const val PHYSICS_CAMERA_PITCH_DEGREES = 32f
+
+/** Share of the viewport the framed volume fills. */
+private const val PHYSICS_FRAME_FILL = 0.92f
+
+/** The orbit's polar range: never straight down, never level with or under the tray. */
+private const val PHYSICS_MIN_POLAR_DEGREES = 15f
+private const val PHYSICS_MAX_POLAR_DEGREES = 78f
+
+/**
+ * Minimum closing speed, in m/s, for a contact to be worth counting as an impact.
+ *
+ * A body pressed against a rail is re-accelerated into it every step, so without this floor a
+ * tilted tray counts one "impact" per body per step — 7 resting balls turned the counter into
+ * 75 000 in under a minute (#3621). It matches the threshold the floor bounce and the
+ * sphere-to-sphere response already use, so all three surfaces agree on what a hit is.
+ */
+private const val PHYSICS_IMPACT_SPEED = 0.2f
+
+/**
+ * How long every body has to stay put before the screen stops declaring continuous rendering.
+ * Matches the SDK's own settle window (`SETTLE_DURATION_NANOS`), and for the same reason: a ball at
+ * the apex of its bounce is motionless for one frame without being finished.
+ */
+private const val PHYSICS_SETTLE_NANOS = 500_000_000L
+
+/** Squared displacement below which a body counts as not having moved: 0.1 mm. */
+private const val MOTION_EPSILON_SQ = 1e-8f
+
+private fun distanceSquared(a: Position, b: Position): Float {
+    val dx = a.x - b.x
+    val dy = a.y - b.y
+    val dz = a.z - b.z
+    return dx * dx + dy * dy + dz * dz
+}
+
+/** Tilt is clamped well short of the angle at which the rails stop being able to hold a ball. */
+private const val PHYSICS_MAX_TILT_DEGREES = 20f
+
+/**
+ * Drag sensitivity. At ~2.6x density a comfortable half-screen swipe (≈500 px) sweeps the full
+ * ±20° range, so the extremes are reachable without the control feeling twitchy near flat.
+ */
+private const val PHYSICS_TILT_DEGREES_PER_PIXEL = 0.06f
+
+/**
+ * Turns "did anything actually move?" into the answer a [FrameRatePolicy.Continuous] declaration is
+ * allowed to rest on (#3718).
+ *
+ * The physics screen used to declare `Continuous()` from a `replaying` flag that started `true` and
+ * was cleared only by the Reset button. The stack of spheres therefore held 878 frames per 15 s on a
+ * picture identical to the byte — the same lie as a loading flag nobody lowers. A declaration of
+ * continuous rendering has to follow real motion, so this watches the thing that would be visible:
+ * the bodies' positions, with a settle window rather than a single still frame, because a ball at
+ * the top of its bounce is motionless for one frame and is not finished.
+ */
+internal class MotionSettleTracker(private val settleNanos: Long = PHYSICS_SETTLE_NANOS) {
+
+    private var lastMotionNanos: Long? = null
+
+    /** True while something moved within the last [settleNanos]. Starts `true`: nothing seen yet. */
+    var isMoving: Boolean = true
+        private set
+
+    fun update(frameTimeNanos: Long, moved: Boolean) {
+        val since = lastMotionNanos
+        if (moved || since == null) {
+            lastMotionNanos = frameTimeNanos
+            isMoving = true
+            return
+        }
+        isMoving = frameTimeNanos - since < settleNanos
+    }
+
+    /** Re-arms the window: a replay, a new body or a tilt is motion that has not happened yet. */
+    fun restart() {
+        lastMotionNanos = null
+        isMoving = true
+    }
+}
+
+/**
+ * The opening shot, and what Reset restores: a steel cue ball rolling into a pyramid of six rubber
+ * balls. Steel is four times the rubber's mass, so the pile scatters instead of stopping it dead.
+ */
+private fun openingBalls(firstId: Int): List<TrayBall> {
+    val r = BallKind.Rubber.radius
+    val rowHeight = r * sqrt(3f)
+    val baseX = 0.05f
+    val pyramid = listOf(
+        Position(baseX, PHYSICS_FLOOR + r, 0f),
+        Position(baseX + 2f * r, PHYSICS_FLOOR + r, 0f),
+        Position(baseX + 4f * r, PHYSICS_FLOOR + r, 0f),
+        Position(baseX + r, PHYSICS_FLOOR + r + rowHeight, 0f),
+        Position(baseX + 3f * r, PHYSICS_FLOOR + r + rowHeight, 0f),
+        Position(baseX + 2f * r, PHYSICS_FLOOR + r + 2f * rowHeight, 0f),
+    )
+    val cue = TrayBall(
+        id = firstId,
+        kind = BallKind.Steel,
+        start = Position(-0.65f, PHYSICS_FLOOR + 0.18f, 0f),
+        velocity = Position(1.9f, 0.4f, 0f),
+    )
+    return listOf(cue) + pyramid.mapIndexed { i, p -> TrayBall(firstId + 1 + i, BallKind.Rubber, p) }
+}
+
+/**
+ * Where the [n]th drop falls from: a golden-angle spiral over the tray, so consecutive drops land
+ * apart from each other and every one of them is seen hitting the floor.
+ */
+private fun dropPosition(n: Int): Position {
+    val angle = n * 2.3999632f
+    val spread = 0.1f + 0.4f * ((n * 0.618034f) % 1f)
+    return Position(spread * cos(angle), PHYSICS_DROP_HEIGHT, spread * sin(angle))
 }
 
 /** A deterministic sphere-contact demonstration, deliberately local to this sample. */
 private class DemoCollisionReplay {
     val bodies = sortedMapOf<Int, PhysicsBody>()
+    private val kinds = mutableMapOf<Int, BallKind>()
+
+    private val settle = MotionSettleTracker()
+    private val previousPositions = mutableMapOf<Int, Position>()
+
+    /**
+     * Whether the simulation still has visible work. Read by the composable to decide between
+     * [FrameRatePolicy.Continuous] and [FrameRatePolicy.OnDemand] — see [MotionSettleTracker].
+     */
+    val isMoving: Boolean get() = settle.isMoving
+
+    /** Called when the population or the slope changes: the settle window starts over. */
+    fun restartSettle() = settle.restart()
+
+    /**
+     * Gravity in the tray's frame, pushed onto every body at the top of each step. Held here
+     * rather than on the bodies so a ball dropped mid-tilt starts under the same slope as the
+     * ones already rolling.
+     */
+    var gravity: Position = Position(0f, PhysicsBody.GRAVITY, 0f)
     var collisions = 0
         private set
     private var previousFrame = 0L
     private var accumulatedNanos = 0L
 
+    fun add(id: Int, kind: BallKind, body: PhysicsBody) {
+        bodies[id] = body
+        kinds[id] = kind
+    }
+
+    fun remove(id: Int) {
+        bodies.remove(id)
+        kinds.remove(id)
+    }
+
+    /** Reset starts the impact count over along with the opening shot. */
+    fun resetCounters() {
+        collisions = 0
+        accumulatedNanos = 0L
+    }
+
     fun onFrame(nanos: Long, playing: Boolean) {
         val elapsed = if (previousFrame == 0L) 0L else (nanos - previousFrame).coerceIn(0L, 100_000_000L)
         previousFrame = nanos
-        if (!playing) return
+        if (!playing) {
+            settle.update(nanos, moved = false)
+            return
+        }
         accumulatedNanos += elapsed
         while (accumulatedNanos >= PHYSICS_STEP_NANOS) {
             step()
             accumulatedNanos -= PHYSICS_STEP_NANOS
         }
+        settle.update(nanos, moved = takeMotionSinceLastFrame())
     }
 
+    /**
+     * Whether any body ended this frame somewhere the eye could tell from where it started it.
+     * The threshold is a tenth of a millimetre — three orders of magnitude under a sphere radius,
+     * so it cannot hide motion, and above the float noise a resting contact keeps producing.
+     */
+    private fun takeMotionSinceLastFrame(): Boolean {
+        var moved = false
+        for ((index, body) in bodies) {
+            val position = body.node.position
+            val previous = previousPositions.put(index, position)
+            if (moved) continue
+            moved = previous == null || distanceSquared(previous, position) > MOTION_EPSILON_SQ
+        }
+        if (previousPositions.size != bodies.size) {
+            previousPositions.keys.retainAll(bodies.keys)
+            moved = true
+        }
+        return moved
+    }
+
+    private fun kindOf(id: Int): BallKind = kinds[id] ?: BallKind.Rubber
+
     private fun step() {
-        for (body in bodies.values) {
+        for ((id, body) in bodies) {
+            body.gravity = gravity
             val before = body.velocity
             body.step(PHYSICS_STEP_NANOS, 0L)
             val p = body.node.position
             val v = body.velocity
-            if (before.y < -0.2f && v.y > 0f) collisions++
-            // Same rails as the rendered tray. Only count approaching impacts,
-            // not persistent resting contacts or positional corrections.
-            val bound = 0.8f - 0.015f - body.radius
+            if (before.y < -PHYSICS_IMPACT_SPEED && v.y > 0f) collisions++
+            // The rails hold at any height: a ball that bounces over the rail height is kept on
+            // the tray instead of leaving the frame for good. Only approaching impacts count, not
+            // resting contacts or positional corrections.
+            val bound = PHYSICS_TRAY_SIZE / 2f - PHYSICS_RAIL_THICKNESS / 2f - body.radius
             var vx = v.x
             var vz = v.z
-            val belowRail = p.y - body.radius < PHYSICS_FLOOR + 0.16f
-            if (belowRail && kotlin.math.abs(p.x) > bound && p.x * vx > 0f) {
+            if (kotlin.math.abs(p.x) > bound && p.x * vx > 0f) {
+                if (kotlin.math.abs(vx) >= PHYSICS_IMPACT_SPEED) collisions++
                 vx = -vx * body.restitution
-                collisions++
             }
-            if (belowRail && kotlin.math.abs(p.z) > bound && p.z * vz > 0f) {
+            if (kotlin.math.abs(p.z) > bound && p.z * vz > 0f) {
+                if (kotlin.math.abs(vz) >= PHYSICS_IMPACT_SPEED) collisions++
                 vz = -vz * body.restitution
-                collisions++
             }
             if (p.y <= PHYSICS_FLOOR + body.radius && kotlin.math.abs(v.y) < 0.2f) {
-                vx *= 0.985f
-                vz *= 0.985f
+                val friction = kindOf(id).rollFriction
+                vx *= friction
+                vz *= friction
             }
-            if (belowRail) {
-                body.node.position =
-                    Position(p.x.coerceIn(-bound, bound), p.y, p.z.coerceIn(-bound, bound))
+            if (kotlin.math.abs(p.x) > bound || kotlin.math.abs(p.z) > bound) {
+                body.node.position = Position(p.x.coerceIn(-bound, bound), p.y, p.z.coerceIn(-bound, bound))
             }
             body.velocity = Position(vx, v.y, vz)
         }
-        // Stable index order, a fixed timestep and fixed initial velocities make
-        // the same initial population produce the same sequence of impacts.
-        for ((aIndex, a) in bodies) {
-            for ((bIndex, b) in bodies) {
-                if (bIndex > aIndex && resolvePair(a, b)) collisions++
+        // Stable id order, a fixed timestep and fixed initial velocities make the same opening
+        // population produce the same sequence of impacts on every reset.
+        for ((aId, a) in bodies) {
+            for ((bId, b) in bodies) {
+                if (bId > aId && resolvePair(a, kindOf(aId), b, kindOf(bId))) collisions++
             }
         }
     }
 
     /**
-     * Separates [a] and [b] if their spheres overlap and exchanges the impulse
-     * along the contact normal. Returns `true` when the pair met hard enough to
-     * count as an impact, so the caller owns the counter and this stays pure
-     * enough to read.
+     * Separates [a] and [b] if their spheres overlap and exchanges the mass-weighted impulse along
+     * the contact normal: the lighter ball gives way and takes the larger share of the velocity
+     * change. Returns `true` when the pair met hard enough to count as an impact.
      */
-    private fun resolvePair(a: PhysicsBody, b: PhysicsBody): Boolean {
+    private fun resolvePair(a: PhysicsBody, aKind: BallKind, b: PhysicsBody, bKind: BallKind): Boolean {
         val pa = a.node.position
         val pb = b.node.position
         val dx = pb.x - pa.x
@@ -1507,61 +2176,34 @@ private class DemoCollisionReplay {
         val nx = if (distance > 0.00001f) dx / distance else 1f
         val ny = if (distance > 0.00001f) dy / distance else 0f
         val nz = if (distance > 0.00001f) dz / distance else 0f
-        val correction = (diameter - distance) * 0.5f
+        val inverseA = 1f / aKind.mass
+        val inverseB = 1f / bKind.mass
+        val inverseSum = inverseA + inverseB
+        val overlap = diameter - distance
+        val shiftA = overlap * inverseA / inverseSum
+        val shiftB = overlap * inverseB / inverseSum
         a.node.position = Position(
-            pa.x - nx * correction,
-            (pa.y - ny * correction).coerceAtLeast(PHYSICS_FLOOR + a.radius),
-            pa.z - nz * correction,
+            pa.x - nx * shiftA,
+            (pa.y - ny * shiftA).coerceAtLeast(PHYSICS_FLOOR + a.radius),
+            pa.z - nz * shiftA,
         )
         b.node.position = Position(
-            pb.x + nx * correction,
-            (pb.y + ny * correction).coerceAtLeast(PHYSICS_FLOOR + b.radius),
-            pb.z + nz * correction,
+            pb.x + nx * shiftB,
+            (pb.y + ny * shiftB).coerceAtLeast(PHYSICS_FLOOR + b.radius),
+            pb.z + nz * shiftB,
         )
         val va = a.velocity
         val vb = b.velocity
         val approach = (vb.x - va.x) * nx + (vb.y - va.y) * ny + (vb.z - va.z) * nz
         if (approach >= 0f) return false
-        val impulse = -(1f + PHYSICS_RESTITUTION) * approach / 2f
-        a.velocity = Position(va.x - impulse * nx, va.y - impulse * ny, va.z - impulse * nz)
-        b.velocity = Position(vb.x + impulse * nx, vb.y + impulse * ny, vb.z + impulse * nz)
-        return approach < -0.2f
+        val restitution = minOf(aKind.restitution, bKind.restitution)
+        val impulse = -(1f + restitution) * approach / inverseSum
+        a.velocity = Position(
+            va.x - impulse * inverseA * nx, va.y - impulse * inverseA * ny, va.z - impulse * inverseA * nz,
+        )
+        b.velocity = Position(
+            vb.x + impulse * inverseB * nx, vb.y + impulse * inverseB * ny, vb.z + impulse * inverseB * nz,
+        )
+        return approach < -PHYSICS_IMPACT_SPEED
     }
 }
-
-/**
- * Parses the streamed GLB at [file] once into a single [Model] that every
- * dropped body then spawns its own [ModelInstance] from.
- *
- * `releaseSourceData = false` is mandatory here: [ModelLoader.createInstance]
- * cannot run after the source glTF data has been released, so we keep it
- * resident for as long as new bodies may still be dropped.
- *
- * Threading mirrors `rememberModelInstance`: the file bytes are read on
- * [Dispatchers.IO], then `createModel` (a `@MainThread` Filament JNI call)
- * runs back on the composition's main dispatcher inside [produceState].
- * Returns `null` while loading.
- */
-@Composable
-private fun rememberStreamedModel(
-    modelLoader: ModelLoader,
-    file: File,
-): Model? = produceState<Model?>(initialValue = null, key1 = modelLoader, key2 = file.absolutePath) {
-    // Read the GLB bytes (and any external glTF resources) off the main
-    // thread, then call `createModel` — a @MainThread Filament JNI call —
-    // back on the composition's main dispatcher (produceState's context).
-    val buffer = withContext(Dispatchers.IO) {
-        runCatching { java.nio.ByteBuffer.wrap(file.readBytes()) }.getOrNull()
-    } ?: return@produceState
-    value = runCatching {
-        modelLoader.createModel(
-            buffer = buffer,
-            releaseSourceData = false,
-            resourceResolver = { resourceFile ->
-                runCatching {
-                    java.nio.ByteBuffer.wrap(File(file.parent, resourceFile).readBytes())
-                }.getOrNull()
-            },
-        )
-    }.getOrNull()
-}.value

@@ -14,7 +14,7 @@ contents of `samples/android-demo/src/main/assets` by
 Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `repo-hygiene` fails if this file and the assets disagree.
 
-Assets bundled: **22**.
+Assets bundled: **25**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -33,11 +33,11 @@ Assets bundled: **22**.
 
 ## 3D models
 
-- `models/khronos_damaged_helmet.glb` — **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by KhronosGroup (theblueturtle_) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.5 MB)
+- `models/khronos_damaged_helmet.glb` — **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0) — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) (3.5 MB)
 - `models/khronos_fox.glb` — **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (96 KB)
 - `models/khronos_glam_velvet_sofa.glb` — **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.1 MB)
 - `models/khronos_iridescent_dish.glb` — **[Iridescent Dish with Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (5.7 MB)
-- `models/khronos_lantern.glb` — **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (9.0 MB)
+- `models/khronos_lantern.glb` — **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (9.0 MB)
 - `models/khronos_sheen_chair.glb` — **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (4.1 MB)
 - `models/khronos_toy_car.glb` — **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (2.2 MB)
 - `models/shiba.glb` — **[Shiba](https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c)** by zixisun51 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (669 KB)
@@ -56,8 +56,14 @@ Assets bundled: **22**.
   Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`
 - `augmented_images/qrcode.png` — **[qrcode.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (2 KB)  
   QR-like reference pattern drawn for `ARImageDemo`
+- `materials/studio_glass.filamat` — **[studio_glass.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (536 KB)  
+  Compiled from `samples/android-demo/src/main/materials/studio_glass.mat`
+- `materials/studio_pbr.filamat` — **[studio_pbr.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (676 KB)  
+  Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`
 - `mediapipe/pose_landmarker_lite.task` — **[MediaPipe Pose Landmarker (lite)](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)** by Google LLC — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (5.8 MB)  
   On-device pose model bundle used by `ARBodyTrackerDemo`
+- `splats/raccoon_family.spz` — **[Raccoon family (SPZ sample capture)](https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz)** by Niantic Labs — MIT (3.3 MB)  
+  Real phone capture shipped with the SPZ format; cropped to the subject (932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`
 - `textures/sceneview_logo.png` — **[sceneview_logo.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (45 KB)  
   SceneView brand mark, exported from `branding/exports/logo/logo-1024.png`
 - `videos/sample.mp4` — **[sample.mp4](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (529 KB)  

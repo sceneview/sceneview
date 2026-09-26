@@ -22,9 +22,9 @@ object CameraAndGesturesFragment : DemoFragment {
         id = "camera-gestures",
         titleRes = R.string.demo_camera_and_gestures_title,
         subtitleRes = R.string.demo_camera_and_gestures_subtitle,
-        category = DemoCategory.INTERACTION,
+        category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.PhotoCamera,
-        order = 13,
+        order = 3,
         tags = setOf("camera", "orbit", "gesture", "pan", "zoom", "manipulator", "edit"),
         // #3500 rebuilt the screen from scratch around one stage.
         updatedIn = "4.35.0",

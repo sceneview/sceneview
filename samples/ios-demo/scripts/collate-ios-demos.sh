@@ -327,7 +327,15 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            status: %s,\n' "$status_enum_val"
         printf '            order: %s,\n' "$order"
         printf '            tags: [%s]\n' "$swift_tags"
-        printf '        ) { %s.destination })\n' "$type_name"
+        if [ "$category" = "ar" ]; then
+            # Every AR scene enters through ARExperienceContainer — the one
+            # place that owns camera permission, device capability and the
+            # "Starting camera…" state (AR UX plan §2.2). Catalog and deep
+            # links get the same wrapper because both read this mapping.
+            printf '        ) { ARExperienceContainer(requirement: .forScene(id: "%s")) { %s.destination } })\n' "$scene_id" "$type_name"
+        else
+            printf '        ) { %s.destination })\n' "$type_name"
+        fi
     else
         printf '        items.append(DemoItem(\n'
         printf '            sceneId: "%s",\n' "$scene_id"
@@ -391,15 +399,21 @@ IDS_END
 # `nil` (→ placeholder) rather than a blank view.
 while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags type_name; do
     [ "$available" = "true" ] || continue
+    if [ "$category" = "ar" ]; then
+        # Same wrapper as the DemoItem above, so a deep link never bypasses it.
+        view_expr=$(printf 'AnyView(ARExperienceContainer(requirement: .forScene(id: "%s")) { %s.destination })' "$scene_id" "$type_name")
+    else
+        view_expr="$type_name.destination"
+    fi
     if [ "$ios_only" = "true" ]; then
         printf '        case "%s":\n' "$scene_id"
         printf '            #if os(iOS)\n'
-        printf '            return %s.destination\n' "$type_name"
+        printf '            return %s\n' "$view_expr"
         printf '            #else\n'
         printf '            return nil\n'
         printf '            #endif\n'
     else
-        printf '        case "%s": return %s.destination\n' "$scene_id" "$type_name"
+        printf '        case "%s": return %s\n' "$scene_id" "$view_expr"
     fi
 done < "$TMP_FULL"
 

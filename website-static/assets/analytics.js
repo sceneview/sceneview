@@ -62,6 +62,7 @@
     if (path.indexOf('/preview/') === 0 ||
         path.indexOf('/embed/') === 0 ||
         path.indexOf('/open/') === 0 ||
+        path === '/view' || path === '/view.html' ||
         path.indexOf('/rerun/') === 0) return 'viewer';
     return 'website';
   }
@@ -97,8 +98,8 @@
       });
     });
 
-    // Adoption CTAs: repo, Claude deep link, Discord, npm.
-    each('a[href*="github.com/sceneview"], a[href*="claude://"], a[href*="discord"], a[href*="npmjs"]',
+    // Adoption CTAs: repo, MCP install links, Discord, npm.
+    each('a[href*="github.com/sceneview"], a[href*="cursor://"], a[href*="vscode:mcp"], a[href*="discord"], a[href*="npmjs"]',
       function (link) {
         link.addEventListener('click', function () {
           gtag('event', 'cta_click', {
@@ -108,11 +109,14 @@
         });
       });
 
-    // Revenue funnel. `github.com/sponsors/sceneview` does NOT match the
-    // `github.com/sceneview` selector above, so the sponsor CTA — the only live
-    // revenue channel — was the one link on the site with zero attribution. These
-    // selectors are disjoint from the `cta_click` ones: no double counting.
-    each('a[href*="github.com/sponsors"], a[href*="polar.sh"]', function (link) {
+    // Donation funnel. `github.com/sponsors/sceneview` does NOT match the
+    // `github.com/sceneview` selector above, so the donation CTAs were the links
+    // on the site with zero attribution. Open Collective is listed first because
+    // it is where the site now sends people, GitHub Sponsors second, and there
+    // is no third destination — a `polar.sh` selector sat here for a platform
+    // no page has linked to for a long time. These selectors are disjoint from
+    // the `cta_click` ones: no double counting.
+    each('a[href*="opencollective.com"], a[href*="github.com/sponsors"]', function (link) {
       link.addEventListener('click', function () {
         gtag('event', 'outbound_click', {
           link_url: this.href,

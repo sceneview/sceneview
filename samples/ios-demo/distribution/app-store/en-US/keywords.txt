@@ -1,1 +1,1 @@
-3d viewer,stl,obj,3mf,ply,usdz,ar,3d printing,arkit,swiftui,open source
+3d model viewer,ar,augmented reality,usdz,stl,obj,ply,3mf,3d printing,arkit,open source

@@ -22,9 +22,9 @@ object ArGeospatialAnchorsFragment : DemoFragment {
         id = "ar-geospatial-anchors",
         titleRes = R.string.demo_ar_geospatial_anchors_title,
         subtitleRes = R.string.demo_ar_geospatial_anchors_subtitle,
-        category = DemoCategory.AR_ANCHORS,
+        category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Landscape,
-        order = 42,
+        order = 26,
         tags = setOf("ar", "geospatial", "terrain", "rooftop", "anchor", "vps", "earth"),
         status = DemoStatus.KnownIssue,
     )

@@ -14,10 +14,11 @@
 # Retired Android ids are DROPPED from this ledger rather than kept with a
 # marker: the left-hand column is "Android's canonical id set", and an id that
 # is no longer canonical has no row to be in. `ar-instant-placement` left this
-# way (#3405 — folded into `ar-placement`, where it is a placement *mode*; the
-# deep link still resolves through `DeepLinkRouter.DEMO_ID_ALIASES`). iOS still
-# ships its own `ar-instant-placement` screen; aligning it with the Android fold
-# is tracked separately.
+# way (#3405 — folded into `ar-placement`; the Android deep link still resolves
+# through `DeepLinkRouter.DEMO_ID_ALIASES`). Slice 5 also removes the redundant
+# iOS automatic-placement entries: `ar-placement` is its sole placement route.
+# `placement-scene` keeps its row — Android still registers that SDK-wrapper
+# demo — but its iOS status drops to `android-only` with the duplicate scene.
 #
 # `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
 #   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
@@ -47,27 +48,34 @@
 # assuming it is stale — read the issue it cites first. `androidStatus` mirrors
 # Android's own `DemoStatus`
 # (Working/KnownIssue/ComingSoon/InReview) for CONTEXT ONLY — it does not
-# constrain `iosStatus`, and nothing in the gate relates the two.
+# constrain `iosStatus`, and nothing relates the two.
 #
 # This paragraph used to assert that the #2798 audit had found a strict
 # correlation — every non-`Working` Android demo landing in iOS's
 # `stub`/`android-only` bucket, "with zero exceptions". That was a snapshot of
 # one afternoon, never an invariant, and it is now plainly false: a row earns
 # `iosStatus: working` the moment iOS resolves it to a real destination,
-# whatever Android's own status is. Three ids are live counter-examples
-# (`ar-cloud-anchor` and `ar-depth-collider`, both `KnownIssue`, and
-# `wall-placement`, `InReview`) — each genuinely ported, each carrying the
-# matching iOS `@status` badge, so calling any of them `stub` would be a lie.
+# whatever Android's own status is. The three ids that used to prove it
+# (`ar-cloud-anchor`, `ar-depth-collider`, `wall-placement`) have since all
+# gone `Working` or been retired on Android, so this file no longer carries a
+# standing counter-example — which is precisely why the rule is written down
+# rather than left to be re-derived from the rows.
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
+# Current slice-5 ledger (2026-09-22): 48 rows, 29 working / 0 stub / 19 android-only.
+# The duplicate iOS one-call placement row was removed by explicit product decision;
+# Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
+# Historical recounts below retain their measurement dates.
 # Every tally in this file lives HERE and in the per-section banners below.
 # Do NOT append a new "and now it is X/Y" paragraph when a port lands: that is
 # exactly how this header came to carry four mutually contradictory counts at
 # once (22/18/13, then 28/25, then 29/24, then 30/23) while the real numbers
-# were something else again. Update these two places in the same PR, and let
-# CI check you — `check-demo-id-parity.sh` now recounts the rows itself and
-# FAILS on any banner that disagrees, so a stale tally can no longer pass.
+# were something else again. Update these two places in the same PR — BY HAND.
+# CI recounts them since #3650 — but ADVISORY only: the `demo-parity` job
+# warns with the right number and stays green, so a stale tally still merges
+# if you ignore it. Recount before you touch a row; if you forget, read the
+# job's warning and fix the banner in a follow-up.
 #
 # Recount, never hand-edit:
 #   python3 -c "import yaml,collections; print(collections.Counter(
@@ -120,12 +128,41 @@
 #   - Of the 49 rows: 31 working, 0 stub, 18 android-only. The banners below
 #     said 32 / 0 / 20 before this pass and had said so since before #3405 —
 #     the two paragraphs above were both wrong, in different directions, which
-#     is what "recount, never inherit" is for. No script recounts them today:
-#     `check-demo-id-parity.sh`, named further down as the CI guard, does not
-#     exist in the repository.
+#     is what "recount, never inherit" is for. No script recounted them at the
+#     time: `check-demo-id-parity.sh` was absent from the repository then, and
+#     came back (advisory) only with #3650.
 #   - `ar-cloud-anchor`'s `androidStatus` was corrected here too (KnownIssue →
 #     InReview): #3451 rebuilt that screen and moved the fragment to InReview
 #     without touching this row.
+#
+# Re-measured 2026-09-16 (recount pass, no merge of its own). Counted from the
+# fragment files, the two collators' output and this file — the three
+# disagreed again, in three different ways:
+#   - Android: 48 fragments (49 `*Fragment.kt` files minus the `DemoFragment`
+#     base class) — 42 Working / 2 KnownIssue / 2 ComingSoon / 2 InReview.
+#     `collate-demos.sh` reports the same 48.
+#   - iOS: 48 `*Scene.swift` scenes, none `@available false`, plus 8 legacy /
+#     umbrella aliases and 0 residual ids = 56 accepted deep-link ids.
+#   - This ledger carried 49 rows; one of them, `wall-placement`, is no longer
+#     a canonical Android id — #3603 folded it into `ar-placement` and left an
+#     alias behind. Dropped here, per this file's own retired-id rule. The
+#     ledger now carries 48 of 48: 30 working, 0 stub, 18 android-only, and
+#     the banner below said 31 working.
+#   - Two `androidStatus` values were stale, both in the same direction (the
+#     fragment had been promoted without the row following): `ar-cloud-anchor`
+#     InReview → Working, `ar-depth-collider` KnownIssue → Working.
+#   - The structural gap this recount makes visible, and which no row can
+#     express: **22 of iOS's 48 Samples cards carry an id Android RETIRED** —
+#     the #1444 / #2239 / #3405 regroup keys (`animation`, `physics`, `text`,
+#     `image`, `video`, `billboard`, `custom-mesh`, `shape`, `collision`,
+#     `camera-controls`, `gesture-editing`, `dynamic-sky`, `environment`,
+#     `movable-light`, `reflection-probes`, `multi-model`, `scene-gallery`,
+#     `texture-streaming`, `occlusion-material`, `fog`, `ar-instant-placement`,
+#     `wall-placement`). Plus `placement-reticle-preview`, retired by #3275
+#     with no Android alias at all, so that deep link resolves on iOS and
+#     falls through on Android. This ledger's left-hand column is Android's
+#     canonical id set, so an iOS-only surplus card has nowhere to be recorded
+#     here; it is tracked in the backlog issues filed 2026-09-16 instead.
 #
 # How it got here — STRUCTURE, deliberately without counts (the banners below
 # are the live numbers). L0.6 (#2804, closes #2769) made every Android id
@@ -142,36 +179,90 @@
 #     stubs are gone, the ids are `android-only` again, and the deep links
 #     resolve exactly as they did — through `DeepLinkPlaceholder`.
 #   - Wave A (#2798) then genuinely ported six AR demos to iOS, promoting
-#     their rows from `stub` to `working`. Two of them (`ar-depth-collider`,
-#     `ar-cloud-anchor`) are `KnownIssue` on Android and a third
-#     (`wall-placement`) is `InReview` — which is what broke the "zero
-#     exceptions" correlation described above. Not special cases: any
-#     non-`Working` Android id lands in iOS's `working` bucket once its port
-#     is real, exactly like a `Working` one.
+#     their rows from `stub` to `working`. Three of them were non-`Working` on
+#     Android at the time (`ar-depth-collider`, `ar-cloud-anchor`,
+#     `wall-placement`) — which is what broke the "zero exceptions"
+#     correlation described above. Not special cases: any non-`Working`
+#     Android id lands in iOS's `working` bucket once its port is real,
+#     exactly like a `Working` one.
 #
-# Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
-# `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
-# registry entry nor a row here, if a row's `iosStatus` disagrees with the
-# live registry, or if a row here no longer corresponds to a live Android id.
-# It also recounts the section banners below — their tallies are comments,
-# which `yaml.safe_load` never sees, so before that check they drifted freely
-# behind a green CI (four contradictory counts in this very header, and four
-# rows flipped to `working` in place without leaving the `stub` section).
-# A banner whose count disagrees with its bucket, or a row filed under the
-# wrong section, now FAILS.
-# Update this file (status + reason) in the SAME PR that changes either
-# platform's registry — that's what keeps it honest.
+# WATCHED, NOT ENFORCED (#3650). `.claude/scripts/check-demo-id-parity.sh`
+# runs on every PR as the `demo-parity` job in `ci.yml`. It reads the live
+# Android fragments, the live iOS registry and this file, and it reports each
+# disagreement as a `::warning` annotation plus a job-summary table. It always
+# exits 0, and the job is `continue-on-error` — nothing here can turn a PR red.
+#
+# That is deliberate, and it is the second attempt. The first version of this
+# script WAS a blocking gate (named here, wrongly, as `ci.yml` -> `repo-hygiene`
+# — a job that never existed); it was deleted wholesale with the agent harness
+# by #3244 (commit 72e5709) and nothing replaced it for three months, during
+# which this header went on asserting a guard that was not there. A gate that
+# fails an honest Android-first PR gets deleted; a warning gets read. If you
+# find yourself wanting to make this blocking again, read #3650 first.
+#
+# So: a row's `iosStatus` disagreeing with the live iOS registry, a retired
+# Android id keeping its row, a banner tally drifting — all three had happened
+# by the 2026-09-16 recount below, all three now WARN on the PR that introduces
+# them, and all three still merge if nobody reads the warning. The manual pass
+# described at the bottom of this block is still the thing that keeps this file
+# honest; the job only makes forgetting it visible.
+#
+# What else verifies something, and is worth running/reading:
+#   - `samples/android-demo/scripts/collate-demos.sh --check` — Android's id
+#     set (`GeneratedDemos.all`) is the left-hand column of this ledger.
+#   - `samples/ios-demo/scripts/collate-ios-demos.sh --check` — iOS's scene id
+#     set (`GeneratedScenes.allowedIds`), the generated half of
+#     `DemoDeepLinkRegistry.allowedIds`.
+#   - `SceneViewDemoTests/DemoRegistryGuardTests` — the iOS-side invariants:
+#     no Samples card is a dead end, every legacy alias targets a live scene
+#     id, `residualIds` never collides with a live scene, and a pinned set of
+#     flagship + android-only ids resolves the way this ledger says.
+#     It checks iOS against itself; it does NOT read this file.
+# Reconciling the two id sets against these rows is a MANUAL pass. Do it, and
+# update this file (status + reason), in the SAME PR that changes either
+# platform's registry — that's the only thing keeping it honest.
+#
+# ─── iOS-ONLY IDS — the surplus the rows cannot hold (recorded 2026-09-22) ──
+# The left-hand column is Android's canonical set, so an iOS scene id with no
+# Android row has nowhere to live below. These seven resolve on iOS and fall
+# through on Android; each is either a real screen or a documented removal.
+# `check-demo-id-parity.sh` does not read this block — it is for the human
+# doing the manual pass above.
+#   ar-lighting                 working — compares the `.mainLight` /
+#                               `.fillLight` modifier presets, `@iosOnly true`.
+#   fog                         REMOVED on iOS — see the `ar-fog` row: RealityKit
+#                               has no depth fog and the translucent-volume
+#                               look-alike was deleted, not kept. The id stays
+#                               in `DemoDeepLinkRegistry.removedIds` so the
+#                               deep link lands on the removal notice.
+#   multi-model                 working — #2239 regroup key kept as its own
+#                               Samples card (streams several models at once).
+#   occlusion-material          working — #2239 regroup key kept as its own
+#                               card; the occluder cuts the sphere since #3766.
+#   placement-reticle-preview   working — non-AR developer preview of the
+#                               placement reticle; retired on Android by #3275.
+#   scene-gallery               working — #2239 regroup key kept as its own
+#                               card (streamed scene picker).
+#   texture-streaming           working — #2239 regroup key kept as its own
+#                               card; the screen is the "Material presets"
+#                               demo (nothing streams, the title says so).
 
 demos:
-  # ─── working (31) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS detects a body and follows the
+      body anchor's pose, but reads no per-joint data — ARKit's 91-joint
+      `ARSkeleton3D` is not surfaced through a SceneView node type. The
+      catalogue names it "Body anchor tracking" for that reason. Android
+      renders the skeleton.
   - id: ar-cloud-anchor
-    androidStatus: InReview
+    androidStatus: Working
     iosStatus: working
     reason: >-
       Capability caveat on a `working` row (#2864): iOS resolves this id to a
@@ -182,26 +273,54 @@ demos:
       (Android ships it; ARCORE_API_KEY is set). Vendoring arcore-ios-sdk is
       NOT planned — see #2864 for the reopen conditions.
   - id: ar-depth-collider
-    androidStatus: KnownIssue
+    androidStatus: Working
     iosStatus: working
   - id: ar-depth-occlusion
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Same bundled Damaged Helmet and 0.3 m preview on both platforms, placed
+      once by the shared controller. Toggles retain the session and transform.
+      Android uses ARCore Depth API pixels; iOS uses LiDAR reconstructed mesh
+      occlusion. The masks and edge quality are not identical. Unsupported
+      devices are blocked before comparison controls appear.
   - id: ar-face
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS tracks the face ANCHOR via
+      TrueDepth and pins accessories to its pose. RealityKit exposes no
+      morphable face mesh through its standard API, so there is no mesh
+      deformation as on Android's ARCore face-mesh shader — the catalogue names
+      it "Face anchor accessories" rather than "Augmented Faces".
   - id: ar-image
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS detects and tracks the bundled
+      reference image and follows its anchor. Runtime image-database editing
+      (adding a user-supplied image at runtime) is not wired up.
   - id: ar-orbital
     androidStatus: Working
     iosStatus: working
   - id: ar-people-occlusion
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Same automatically placed bundled helmet, with renderer-only toggles.
+      Android requires Scene Semantics plus Depth API and its person classifier
+      is outdoor-trained; iOS requires personSegmentationWithDepth. These are
+      different segmentation providers, not a claim of identical masks.
   - id: ar-placement
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      The single iOS placement entry, also used by the AR tab: the `Automatic
+      Placement` and `One-Call AR` duplicate iOS scenes were removed in slice 5.
+      Capability caveat on a `working` row: the subject is placed automatically
+      on the first usable surface, bottom-aligned with grounding shadows. The
+      raycast is fixed to `.estimatedPlane` — `ARSceneView` exposes no alignment
+      policy — so there is no "wait for a converged plane" mode as on Android.
   - id: ar-plane-node
     androidStatus: Working
     iosStatus: working
@@ -214,6 +333,12 @@ demos:
   - id: ar-record-playback
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS records the SCREEN via
+      ReplayKit, not the ARKit session, so there is no session playback as on
+      Android — and ReplayKit offers no cancellation, so a capture is stopped
+      explicitly rather than cancelled. Saving to Photos moves the file out of
+      the app's container.
   - id: ar-rerun
     androidStatus: Working
     iosStatus: working
@@ -260,17 +385,11 @@ demos:
   - id: picking-collision
     androidStatus: Working
     iosStatus: working
-  - id: placement-scene
-    androidStatus: Working
-    iosStatus: working
   - id: spatial-audio
     androidStatus: Working
     iosStatus: working
   - id: two-d-in-three-d
     androidStatus: Working
-    iosStatus: working
-  - id: wall-placement
-    androidStatus: InReview
     iosStatus: working
 
   # ─── stub (0) — an id in iOS's registry that falls to the placeholder ────
@@ -279,14 +398,23 @@ demos:
   # in a showcase app, and the most visible defect it can ship. #3231 deleted
   # all 21 of them; every id below moved to `android-only`, which is the
   # honest bucket for "iOS has no screen for this". The status stays a legal
-  # value (`check-demo-id-parity.sh` still enforces it) so a future id that
-  # must be *accepted* without having a screen has somewhere to go.
+  # value so a future id that
+  # must be *accepted* without having a screen has somewhere to go. (The
+  # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (18) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
   # these ids no longer get is a Samples card that leads nowhere.
+  - id: placement-scene
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android keeps its one-call `PlacementScene` SDK-wrapper demo. Its iOS
+      duplicate was removed in slice 5: it showed the same automatic placement
+      as `ar-placement`, so the catalogue carried two cards for one screen.
+      The deep link answers with the honest `DeepLinkPlaceholder` on iOS.
   - id: ar-collaborative
     androidStatus: Working
     iosStatus: android-only
@@ -310,9 +438,10 @@ demos:
     androidStatus: Working
     iosStatus: android-only
     reason: >-
-      No iOS screen — the AR-specific fog demo (#1717) is not ported; distinct
-      from the non-AR `fog` id, which IS working on iOS. Its coming-soon Scene
-      stub was deleted in #3231.
+      Removed on iOS: RealityKit has no depth-based fog. The AR fog demo
+      (#1717) is not ported, and the non-AR `fog` screen — which faked the
+      effect with a translucent volume — was removed rather than kept as a
+      look-alike. Its coming-soon Scene stub was deleted in #3231.
   - id: ar-geospatial-anchors
     androidStatus: KnownIssue
     iosStatus: android-only

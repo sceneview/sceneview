@@ -216,6 +216,44 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Generated with ffmpeg — 10 s / 1280×720 / H.264 brand animation for `TwoDInThreeDDemo`",
     },
+    # Compiled in-repo from `samples/android-demo/src/main/materials/*.mat` by matc (#3538).
+    "studio_glass.filamat": {
+        "name": "studio_glass.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/studio_glass.mat`",
+    },
+    "studio_pbr.filamat": {
+        "name": "studio_pbr.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`",
+    },
+    # Hand-authored 1 kB 3MF fixtures for the web /open page (#3512).
+    "printed-icosahedron.3mf": {
+        "name": "printed-icosahedron.3mf",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Authored in-repo as a 3MF sample for the web `/open` page",
+    },
+    "two-colour-cube.3mf": {
+        "name": "two-colour-cube.3mf",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Authored in-repo as a 3MF sample for the web `/open` page",
+    },
+    "raccoon_family.spz": {
+        "name": "Raccoon family (SPZ sample capture)",
+        "author": "Niantic Labs",
+        "license": "MIT",
+        "sourceUrl": "https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz",
+        "note": "Real phone capture shipped with the SPZ format; cropped to the subject "
+        "(932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`",
+    },
     "rainbow_sphere.ply": {
         "name": "rainbow_sphere.ply",
         "author": "SceneView project",

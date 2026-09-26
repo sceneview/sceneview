@@ -301,10 +301,11 @@ class DemoRenderingScreenshotTest {
      * bump that reships a mismatched blob turns the viewport blank, and a blank viewport is
      * exactly what `hasRenderedContent` refuses to capture.
      *
-     * The golden was recorded after #2646's framing fix (the shell used to overflow both edges
-     * in portrait), reviewed, and promoted with the slug in the same commit.
+     * The golden was re-recorded for #3620, which replaced the procedural rainbow shell with a
+     * real phone capture (three raccoons on a tree stump) and derives the home camera from the
+     * capture's own centre and radius instead of a hand-picked `z`.
      *
-     * 14 s settle, not 3: the demo reads a 448 KB `.ply` off the main thread, decodes 8 000
+     * 14 s settle, not 3: the demo reads a 3.3 MB `.spz` off the main thread, decodes 233 808
      * gaussians through `SplatParser`, then uploads two RGBA16F data textures before the first
      * instanced draw. The scene is static once loaded (the camera only moves on user drag, and
      * there is no spin loop), so the wait is for loading, not for motion to settle.
@@ -703,6 +704,8 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
+            // Re-baselined after the #3620 rebuild (a real phone capture of a tree stump,
+            // replacing the procedural rainbow shell the old golden pictured).
             "splatpreview_default",
             // Re-baselined after the #3424 rebuild (Compose `ViewNode` cards around an
             // annotated model).

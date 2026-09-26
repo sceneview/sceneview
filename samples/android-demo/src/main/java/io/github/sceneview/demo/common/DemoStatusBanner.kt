@@ -6,7 +6,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -42,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 
 /**
  * How loud a [DemoStatusBanner] should be.
@@ -181,11 +181,6 @@ fun DemoStatusCard(
     } else {
         SceneViewTokens.ArOverlay.scrimLight
     }
-    val borderColor = if (dark) {
-        SceneViewTokens.ArOverlay.borderDark
-    } else {
-        SceneViewTokens.ArOverlay.borderLight
-    }
     val accent: Color = when (lastTone) {
         DemoStatusTone.Progress -> SceneViewTokens.ArOverlay.accentProgress
         DemoStatusTone.Guidance -> SceneViewTokens.ArOverlay.accentGuidance
@@ -256,11 +251,11 @@ fun DemoStatusCard(
                     // shape rather than clipped inside it.
                     .shadow(elevation = PILL_ELEVATION, shape = shape, clip = false)
                     .background(color = scrim, shape = shape)
-                    .border(
-                        width = SceneViewTokens.ArOverlay.borderWidth,
-                        color = borderColor,
-                        shape = shape,
-                    )
+                    // `over-media-edge`, not a theme border: the ground is a camera frame,
+                    // so the edge has to hold against a white wall and a night scene alike
+                    // (WCAG 1.4.11, 3:1). The old 10 %/16 % white line was measured against
+                    // a 1.25:1 surface bar and drawn *inside* the pill's own scrim.
+                    .overMediaEdge(shape)
                     .padding(
                         horizontal = SceneViewTokens.Space.md,
                         vertical = PILL_VERTICAL_PADDING,
@@ -286,14 +281,26 @@ fun DemoStatusCard(
                         strokeWidth = 2.dp,
                     )
                 }
-                Text(
-                    text = lastText,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    color = SceneViewTokens.ArOverlay.onScrim,
-
-                )
+                // A Progress line with a spinner narrates a step in flight, so its
+                // trailing ellipsis breathes (#3825); every other tone is a settled
+                // sentence and is drawn as is.
+                if (leadingIcon == null) {
+                    io.github.sceneview.demo.ui.NarrationText(
+                        text = lastText,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        color = SceneViewTokens.ArOverlay.onScrim,
+                    )
+                } else {
+                    Text(
+                        text = lastText,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        color = SceneViewTokens.ArOverlay.onScrim,
+                    )
+                }
             }
         }
     }

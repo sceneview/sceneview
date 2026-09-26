@@ -56,8 +56,10 @@ interface RenderableComponent : Component {
      *
      * @see RenderableManager.setSkinningBuffer
      */
-    fun setSkinningBuffer(skinningBuffer: SkinningBuffer, count: Int, offset: Int) =
+    fun setSkinningBuffer(skinningBuffer: SkinningBuffer, count: Int, offset: Int) {
         renderableManager.setSkinningBuffer(renderableInstance, skinningBuffer, count, offset)
+        onComponentChanged()
+    }
 
     /**
      * Sets the transforms associated with each bone of a Renderable.
@@ -73,7 +75,10 @@ interface RenderableComponent : Component {
         matrices: Buffer,
         @IntRange(from = 0, to = 255) boneCount: Int,
         @IntRange(from = 0) offset: Int
-    ) = renderableManager.setBonesAsMatrices(renderableInstance, matrices, boneCount, offset)
+    ) {
+        renderableManager.setBonesAsMatrices(renderableInstance, matrices, boneCount, offset)
+        onComponentChanged()
+    }
 
     /**
      * Sets the transforms associated with each bone of a Renderable
@@ -91,7 +96,15 @@ interface RenderableComponent : Component {
         quaternions: Buffer,
         @IntRange(from = 0, to = 255) boneCount: Int,
         @IntRange(from = 0) offset: Int
-    ) = renderableManager.setBonesAsQuaternions(renderableInstance, quaternions, boneCount, offset)
+    ) {
+        renderableManager.setBonesAsQuaternions(
+            renderableInstance,
+            quaternions,
+            boneCount,
+            offset
+        )
+        onComponentChanged()
+    }
 
     /**
      * Updates the vertex morphing weights on a renderable, all zeroes by default.
@@ -101,8 +114,10 @@ interface RenderableComponent : Component {
      *
      * @see RenderableManager.setMorphWeights
      */
-    fun setMorphWeights(weights: FloatArray, @IntRange(from = 0) offset: Int = 0) =
+    fun setMorphWeights(weights: FloatArray, @IntRange(from = 0) offset: Int = 0) {
         renderableManager.setMorphWeights(renderableInstance, weights, offset)
+        onComponentChanged()
+    }
 
     /**
      * Gets the morph target count on a renderable.
@@ -121,7 +136,10 @@ interface RenderableComponent : Component {
         get() = Box().apply {
             renderableManager.getAxisAlignedBoundingBox(renderableInstance, this)
         }
-        set(value) = renderableManager.setAxisAlignedBoundingBox(renderableInstance, value)
+        set(value) {
+            renderableManager.setAxisAlignedBoundingBox(renderableInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Changes the visibility.
@@ -138,22 +156,30 @@ interface RenderableComponent : Component {
     fun setLayerMask(
         @IntRange(from = 0, to = 255) select: Int,
         @IntRange(from = 0, to = 255) value: Int
-    ) = renderableManager.setLayerMask(renderableInstance, select, value)
+    ) {
+        renderableManager.setLayerMask(renderableInstance, select, value)
+        onComponentChanged()
+    }
 
     /**
      * Changes the coarse-level draw ordering.
      *
      * @see RenderableManager.setPriority
      */
-    fun setPriority(@IntRange(from = 0, to = 7) priority: Int) =
+    fun setPriority(@IntRange(from = 0, to = 7) priority: Int) {
         renderableManager.setPriority(renderableInstance, priority)
+        onComponentChanged()
+    }
 
     /**
      * Changes whether or not frustum culling is on.
      *
      * @see RenderableManager.setCulling
      */
-    fun setCulling(enabled: Boolean) = renderableManager.setCulling(renderableInstance, enabled)
+    fun setCulling(enabled: Boolean) {
+        renderableManager.setCulling(renderableInstance, enabled)
+        onComponentChanged()
+    }
 
     /**
      * Returns whether a light channel is enabled on a specified renderable
@@ -176,8 +202,10 @@ interface RenderableComponent : Component {
      *
      * @see RenderableManager.setLightChannel
      */
-    fun setLightChannel(@IntRange(from = 0, to = 7) channel: Int, enable: Boolean) =
+    fun setLightChannel(@IntRange(from = 0, to = 7) channel: Int, enable: Boolean) {
         renderableManager.setLightChannel(renderableInstance, channel, enable)
+        onComponentChanged()
+    }
 
     /**
      * Changes whether or not the renderable casts shadows.
@@ -187,7 +215,10 @@ interface RenderableComponent : Component {
      */
     var isShadowCaster: Boolean
         get() = renderableManager.isShadowCaster(renderableInstance)
-        set(value) = renderableManager.setCastShadows(renderableInstance, value)
+        set(value) {
+            renderableManager.setCastShadows(renderableInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Changes whether or not the renderable can receive shadows.
@@ -197,15 +228,20 @@ interface RenderableComponent : Component {
      */
     var isShadowReceiver: Boolean
         get() = renderableManager.isShadowReceiver(renderableInstance)
-        set(value) = renderableManager.setReceiveShadows(renderableInstance, value)
+        set(value) {
+            renderableManager.setReceiveShadows(renderableInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Changes whether or not the renderable can use screen-space contact shadows.
      *
      * @see RenderableManager.setScreenSpaceContactShadows
      */
-    fun setScreenSpaceContactShadows(enabled: Boolean) =
+    fun setScreenSpaceContactShadows(enabled: Boolean) {
         renderableManager.setScreenSpaceContactShadows(renderableInstance, enabled)
+        onComponentChanged()
+    }
 
     /**
      * Gets the immutable number of primitives in the given renderable.
@@ -266,11 +302,14 @@ interface RenderableComponent : Component {
     fun setMaterialInstanceAt(
         @IntRange(from = 0) primitiveIndex: Int,
         materialInstance: MaterialInstance
-    ) = renderableManager.setMaterialInstanceAt(
-        renderableInstance,
-        primitiveIndex,
-        materialInstance
-    )
+    ) {
+        renderableManager.setMaterialInstanceAt(
+            renderableInstance,
+            primitiveIndex,
+            materialInstance
+        )
+        onComponentChanged()
+    }
 
     operator fun List<MaterialInstance>.set(
         @IntRange(from = 0) primitiveIndex: Int,
@@ -287,8 +326,10 @@ interface RenderableComponent : Component {
      * @see Cylinder
      * @see RenderableManager.setGeometry
      */
-    fun setGeometry(geometry: Geometry) =
+    fun setGeometry(geometry: Geometry) {
         renderableManager.setGeometry(renderableInstance, geometry)
+        onComponentChanged()
+    }
 
     /**
      * Changes the geometry for the given primitive.
@@ -302,15 +343,18 @@ interface RenderableComponent : Component {
         indices: IndexBuffer,
         @IntRange(from = 0) offset: Int = 0,
         @IntRange(from = 0) count: Int = indices.indexCount
-    ) = renderableManager.setGeometryAt(
-        renderableInstance,
-        primitiveIndex,
-        type,
-        vertices,
-        indices,
-        offset,
-        count
-    )
+    ) {
+        renderableManager.setGeometryAt(
+            renderableInstance,
+            primitiveIndex,
+            type,
+            vertices,
+            indices,
+            offset,
+            count
+        )
+        onComponentChanged()
+    }
 
     /**
      * Changes the drawing order for blended primitives.
@@ -342,7 +386,10 @@ interface RenderableComponent : Component {
     fun setBlendOrderAt(
         @IntRange(from = 0) primitiveIndex: Int,
         @IntRange(from = 0, to = 65535) blendOrder: Int
-    ) = renderableManager.setBlendOrderAt(renderableInstance, primitiveIndex, blendOrder)
+    ) {
+        renderableManager.setBlendOrderAt(renderableInstance, primitiveIndex, blendOrder)
+        onComponentChanged()
+    }
 
     /**
      * Changes whether the blend order is global or local to this Renderable (by default)
@@ -365,8 +412,10 @@ interface RenderableComponent : Component {
      *
      * @see RenderableManager.setGlobalBlendOrderEnabledAt
      */
-    fun setGlobalBlendOrderEnabledAt(@IntRange(from = 0) primitiveIndex: Int, enabled: Boolean) =
+    fun setGlobalBlendOrderEnabledAt(@IntRange(from = 0) primitiveIndex: Int, enabled: Boolean) {
         renderableManager.setGlobalBlendOrderEnabledAt(renderableInstance, primitiveIndex, enabled)
+        onComponentChanged()
+    }
 
     /**
      * Retrieves the set of enabled attribute slots in the given primitive's VertexBuffer.

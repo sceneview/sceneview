@@ -62,12 +62,12 @@
   <!-- Preconnect -->
   <!-- Preload -->
   <link rel="preload" href="js/filament/filament.js" as="script">
-  <link rel="preload" href="js/sceneview.js?v=4.36.0" as="script">
+  <link rel="preload" href="js/sceneview.js?v=4.40.0" as="script">
 
   <!-- Fonts -->
   <!-- SceneView engine -->
   <script src="js/filament/filament.js"></script>
-  <script src="js/sceneview.js?v=4.36.0"></script>
+  <script src="js/sceneview.js?v=4.40.0"></script>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -103,10 +103,10 @@
 
     [data-theme="dark"] {
       --pg-code-bg: #0d1117;
-      --pg-code-gutter: #161b22;
-      --pg-code-line: #3d4452;
-      --pg-canvas-bg: radial-gradient(ellipse at 50% 40%, #161b22 0%, #0d1117 100%);
-      --pg-sidebar-bg: #111518;
+      --pg-code-gutter: #242a33;
+      --pg-code-line: #8b949e; /* #3d4452 was 1.93:1 — line numbers were invisible */
+      --pg-canvas-bg: radial-gradient(ellipse at 50% 40%, #242a33 0%, #0d1117 100%);
+      --pg-sidebar-bg: #242a33;
       --pg-surface: #0d1117;
       --pg-shadow-ambient: 0 4px 20px rgba(0, 0, 0, 0.3);
       --pg-shadow-float: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -135,7 +135,7 @@
     }
 
     [data-theme="dark"] .pg__header {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__header-left {
@@ -212,6 +212,12 @@
       flex-shrink: 0;
     }
 
+    /* The 1px outline is what carries the boundary, on both themes: the fill
+       measures 1.17:1 against the header in light and 1.26:1 in dark, so
+       without it these buttons have no visible edge at all. Same treatment as
+       the AI panel's buttons below — one border token for the whole page.
+       The header is a fixed 52px flex row with align-items: center, so the 2px
+       the border adds to each button changes no layout. */
     .pg__action-btn {
       display: inline-flex;
       align-items: center;
@@ -220,7 +226,7 @@
       font-size: 0.75rem;
       font-weight: 600;
       border-radius: var(--pg-radius-sm);
-      border: none;
+      border: 1px solid var(--color-outline, #4c5f85);
       cursor: pointer;
       transition: all var(--pg-transition);
       font-family: var(--font-body, 'Inter', sans-serif);
@@ -236,23 +242,14 @@
     }
 
     [data-theme="dark"] .pg__action-btn {
-      background: #21262d;
+      background: #323a47;
       color: #c9d1d9;
+      border: 1px solid #8b949e;
     }
 
     [data-theme="dark"] .pg__action-btn:hover {
       background: #30363d;
       color: #f0f6fc;
-    }
-
-    .pg__action-btn--claude {
-      background: #d97757;
-      color: #fff;
-    }
-
-    .pg__action-btn--claude:hover {
-      background: #c4622e;
-      color: #fff;
     }
 
     .pg__action-btn--copied {
@@ -310,7 +307,7 @@
     }
 
     [data-theme="dark"] .pg__search-input {
-      background: #21262d;
+      background: #323a47;
       color: #f0f6fc;
     }
 
@@ -412,7 +409,7 @@
     }
 
     [data-theme="dark"] .pg__ai-textarea {
-      background: #21262d;
+      background: #323a47;
       color: #f0f6fc;
       border-color: #30363d;
     }
@@ -428,48 +425,54 @@
       background: linear-gradient(135deg, rgba(217, 119, 87, 0.15), rgba(0, 91, 193, 0.08));
     }
 
+    /* Four equal buttons in a 240px sidebar column, so two rows of two rather
+       than one row of four: on a single row each button gets 41.5px of content
+       and "ChatGPT" measures 52px, which spills past its own border. A 2x2 grid
+       gives every button the same 117px box with room to spare, and no button
+       is favoured by its position. */
     .pg__ai-actions {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 6px;
       margin-top: 8px;
     }
 
+    /* Icon above label rather than beside it: the widest item is then the word,
+       not icon + gap + word. Side by side on one line, "ChatGPT" alone is ~94px
+       of min-content and the row overflowed its panel (273px of content in
+       240px of room). All four keep exactly the same box — which is the point
+       of this panel. */
     .pg__ai-btn {
-      flex: 1;
+      min-width: 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      padding: 8px 10px;
+      text-align: center;
+      gap: 4px;
+      padding: 8px 6px;
       border: none;
       border-radius: var(--pg-radius-sm);
       font-size: 0.75rem;
       font-weight: 600;
+      line-height: 1.25;
       font-family: var(--font-body, 'Inter', sans-serif);
       cursor: pointer;
       text-decoration: none;
       transition: all var(--pg-transition);
     }
 
-    .pg__ai-btn--claude {
-      background: #d97757;
-      color: #fff;
-    }
-
-    .pg__ai-btn--claude:hover {
-      background: #c4622e;
-      color: #fff;
-    }
-
-    .pg__ai-btn--chatgpt {
-      background: #10a37f;
-      color: #fff;
-    }
-
-    .pg__ai-btn--chatgpt:hover {
-      background: #0d8a6b;
-      color: #fff;
-    }
+    /* No vendor colour on any of them. The rule for getting a button here is
+       "the assistant has a link that accepts a prefilled prompt", nothing
+       else — a protocol fact, not a recommendation, and it must not read as
+       one. Three qualify today: claude.ai/new?q=, chatgpt.com/?q= and Codex's
+       codex://new?prompt=. The Codex one is documented first-party
+       (learn.chatgpt.com/docs/reference/commands, which prescribes
+       encodeURIComponent); we found no first-party page for chatgpt.com/?q=,
+       so re-test these links when touching this panel.
+       Alphabetical order, no featured slot.
+       "Copy prompt" comes first because it is the path that works for every
+       assistant, including the ones with no link at all. */
 
     .pg__ai-btn svg {
       width: 14px;
@@ -477,11 +480,14 @@
       flex-shrink: 0;
     }
 
+    /* This line now carries the "works with any assistant" message, so it has to
+       be readable rather than decorative: --color-outline measured 3.84:1 on the
+       panel in light, below the 4.5:1 body-text floor. */
     .pg__ai-hint {
       margin-top: 6px;
-      font-size: 0.7rem;
-      color: var(--color-outline, #777b84);
-      line-height: 1.4;
+      font-size: 0.75rem;
+      color: var(--color-on-surface-variant, #5b5f68);
+      line-height: 1.45;
     }
 
     .pg__examples {
@@ -560,7 +566,7 @@
     }
 
     [data-theme="dark"] .pg__item:hover {
-      background: #21262d;
+      background: #323a47;
     }
 
     .pg__item--active {
@@ -659,7 +665,7 @@
     }
 
     [data-theme="dark"] .pg__code-tab {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__code-tab-left {
@@ -1005,7 +1011,7 @@
     }
 
     [data-theme="dark"] .pg__preview-tab {
-      background: #111518;
+      background: #242a33;
     }
 
     .pg__preview-tab-left {
@@ -1059,7 +1065,7 @@
     }
 
     [data-theme="dark"] .pg__model-select {
-      background-color: #21262d;
+      background-color: #323a47;
       color: #c9d1d9;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' stroke='%23c9d1d9' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M2 3.5l3 3 3-3'/%3E%3C/svg%3E");
     }
@@ -1118,7 +1124,7 @@
     }
 
     [data-theme="dark"] .pg__model-trigger {
-      background: #21262d;
+      background: #323a47;
       color: #c9d1d9;
     }
 
@@ -1127,7 +1133,7 @@
     }
 
     [data-theme="dark"] .pg__model-trigger-thumb {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__model-panel {
@@ -1384,7 +1390,7 @@
     }
 
     [data-theme="dark"] .pg__bottom {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__bottom-desc {
@@ -1392,7 +1398,18 @@
       min-width: 0;
     }
 
+    /* `display: block` is what makes the two lines under it do anything at all.
+       `#descText` is a `<span>`, and `overflow` and `text-overflow` do not apply
+       to an inline box: the nowrap sentence simply ran past its parent with no
+       ellipsis and no clipping. Measured on the fourteen descriptions, all
+       fourteen overflowed the 351px box at 375px wide — the default one by
+       68.7px (419.7px of text), 56.7px of that past the right edge of the
+       viewport, and the longest by 803.4px. At 1280px the box is 671.2px and
+       only the longest still overflows, by 483.2px. The element reported
+       `scrollWidth === clientWidth === 0`, which is why nothing caught it: an
+       inline box has no scroll box to compare. */
     .pg__bottom-text {
+      display: block;
       font-size: 0.8rem;
       color: var(--color-on-surface-variant, #5b5f68);
       white-space: nowrap;
@@ -1416,8 +1433,9 @@
     }
 
     [data-theme="dark"] .pg__tag {
-      background: #21262d;
-      color: #8b949e;
+      background: #323a47;
+      /* #8b949e was 3.73:1 on this chip. */
+      color: #b0b8c4;
     }
 
     .pg__bottom-link {
@@ -1471,7 +1489,7 @@
       }
 
       [data-theme="dark"] .pg__mobile-examples {
-        background: #21262d;
+        background: #323a47;
         color: #f0f6fc;
         border-color: #484f58;
       }
@@ -1509,8 +1527,26 @@
         padding: 6px 8px;
       }
 
+      /* Below this width one clipped line shows about half a sentence, so the
+         bar stops being a fixed 56px strip and grows to fit two wrapped lines.
+         `min-height` keeps the short descriptions on the same 56px as before;
+         the panes above it are `flex: 1; min-height: 0`, so the few extra
+         pixels come out of the preview, not out of the page. */
       .pg__bottom {
-        padding: 0 12px;
+        height: auto;
+        min-height: var(--pg-bottom-h);
+        padding: 8px 12px;
+      }
+
+      /* Overrides the single-line rule above: wraps, then clamps at two lines
+         with the ellipsis the clamp draws itself. */
+      .pg__bottom-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        white-space: normal;
+        line-height: 1.45;
       }
 
       .pg__bottom-tags {
@@ -1632,68 +1668,47 @@
       position: relative;
     }
 
-    .pg__ai-more-btn {
-      padding: 6px 6px;
-      border-radius: 0 var(--pg-radius-sm) var(--pg-radius-sm) 0;
-      margin-left: -1px;
-      background: #c4622e;
-      color: #fff;
+    .pg__ai-group > .pg__action-btn {
+      white-space: nowrap;
     }
 
-    .pg__ai-more-btn:hover {
-      background: #b55520;
-      color: #fff;
+    /* One treatment for all four, the same tokens as .pg__action-btn in the
+       header, so the panel and the header agree. Light is the base here, as
+       everywhere in this file; [data-theme="dark"] overrides. The 1px outline
+       is what carries the button boundary — a tinted fill alone does not reach
+       3:1 on either theme at this surface. */
+    .pg__ai-btn--copy,
+    .pg__ai-btn--chatgpt,
+    .pg__ai-btn--claude,
+    .pg__ai-btn--codex {
+      background: var(--color-surface-container, #ecedf6);
+      color: var(--color-on-surface-variant, #5b5f68);
+      border: 1px solid var(--color-outline, #4c5f85);
     }
 
-    .pg__action-btn--claude {
-      border-radius: var(--pg-radius-sm) 0 0 var(--pg-radius-sm);
-    }
-
-    .pg__ai-dropdown {
-      display: none;
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-radius: var(--pg-radius-md);
-      box-shadow: var(--pg-shadow-float);
-      overflow: hidden;
-      z-index: 30;
-      min-width: 200px;
-    }
-
-    [data-theme="dark"] .pg__ai-dropdown {
-      background: rgba(33, 38, 45, 0.95);
-    }
-
-    .pg__ai-group.pg__ai-dropdown--open .pg__ai-dropdown {
-      display: block;
-    }
-
-    .pg__ai-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: var(--color-on-surface, #2e333a);
-      text-decoration: none;
-      transition: background var(--pg-transition);
-    }
-
-    .pg__ai-option:hover {
+    .pg__ai-btn--copy:hover,
+    .pg__ai-btn--chatgpt:hover,
+    .pg__ai-btn--claude:hover,
+    .pg__ai-btn--codex:hover {
       background: var(--color-surface-container-high, #e5e8f1);
+      color: var(--color-on-surface, #2e333a);
     }
 
-    [data-theme="dark"] .pg__ai-option {
+    [data-theme="dark"] .pg__ai-btn--copy,
+    [data-theme="dark"] .pg__ai-btn--chatgpt,
+    [data-theme="dark"] .pg__ai-btn--claude,
+    [data-theme="dark"] .pg__ai-btn--codex {
+      background: #323a47;
       color: #c9d1d9;
+      border: 1px solid #8b949e;
     }
 
-    [data-theme="dark"] .pg__ai-option:hover {
-      background: rgba(121, 192, 255, 0.08);
+    [data-theme="dark"] .pg__ai-btn--copy:hover,
+    [data-theme="dark"] .pg__ai-btn--chatgpt:hover,
+    [data-theme="dark"] .pg__ai-btn--claude:hover,
+    [data-theme="dark"] .pg__ai-btn--codex:hover {
+      background: #30363d;
+      color: #f0f6fc;
     }
 
     /* ===== PLATFORM PILLS OVERFLOW ===== */
@@ -1779,7 +1794,7 @@
         <button class="pg__platform-pill" data-platform="flutter" aria-pressed="false">Flutter</button>
         <button class="pg__platform-pill" data-platform="reactnative" aria-pressed="false">React Native</button>
         <button class="pg__platform-pill" data-platform="desktop" aria-pressed="false">Desktop</button>
-        <button class="pg__platform-pill" data-platform="claude" aria-pressed="false">MCP / Claude</button>
+        <button class="pg__platform-pill" data-platform="mcp" aria-pressed="false">MCP</button>
       </div>
       <div class="pg__header-right">
         <button class="pg__action-btn" id="copyBtn" title="Copy code">
@@ -1791,27 +1806,22 @@
           <span id="shareLabel">Share</span>
         </button>
         <div class="pg__ai-group" id="aiGroup">
-          <a class="pg__action-btn pg__action-btn--claude" id="claudeLink" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open in Claude">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
-            <span>Open in Claude</span>
-          </a>
-          <button class="pg__action-btn pg__ai-more-btn" id="aiMoreBtn" title="More AI tools" aria-haspopup="true" aria-expanded="false">
-            <span class="material-symbols-outlined" style="font-size:14px">expand_more</span>
+          <button class="pg__action-btn" id="askAiBtn" title="Copy a ready-to-paste prompt with this example's code">
+            <span class="material-symbols-outlined">assistant</span>
+            <span id="askAiLabel">Copy prompt</span>
           </button>
-          <div class="pg__ai-dropdown" id="aiDropdown">
-            <a class="pg__ai-option" id="aiCursor" href="#" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="font-size:16px">terminal</span>
-              Open Cursor
-            </a>
-            <a class="pg__ai-option" id="aiWindsurf" href="#" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="font-size:16px">air</span>
-              Open Windsurf
-            </a>
-            <a class="pg__ai-option" id="aiCopilot" href="#" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="font-size:16px">smart_toy</span>
-              Open GitHub Copilot
-            </a>
-          </div>
+          <a class="pg__action-btn" id="chatgptLink" href="https://chatgpt.com/" target="_blank" rel="noopener" title="Open ChatGPT with this prompt">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22.28 9.37a5.9 5.9 0 00-.51-4.85 5.97 5.97 0 00-6.44-2.87A5.9 5.9 0 0010.88 0a5.97 5.97 0 00-5.7 4.15 5.9 5.9 0 00-3.95 2.86 5.97 5.97 0 00.74 7.01 5.9 5.9 0 00.51 4.85 5.97 5.97 0 006.44 2.87A5.9 5.9 0 0013.37 24a5.97 5.97 0 005.7-4.15 5.9 5.9 0 003.95-2.86 5.97 5.97 0 00-.74-7.01zM13.37 22.5a4.43 4.43 0 01-2.85-1.03l.14-.08 4.73-2.73a.77.77 0 00.39-.67v-6.67l2 1.15a.07.07 0 01.04.05v5.53a4.46 4.46 0 01-4.45 4.45zM3.63 18.37a4.43 4.43 0 01-.53-2.98l.14.08 4.73 2.73a.77.77 0 00.77 0l5.78-3.34v2.31a.07.07 0 01-.03.06l-4.79 2.76a4.46 4.46 0 01-6.07-1.62zM2.34 7.87a4.43 4.43 0 012.32-1.95V11.6a.77.77 0 00.39.67l5.78 3.34-2 1.15a.07.07 0 01-.07 0L4 14.01a4.46 4.46 0 01-1.66-6.14zm17.14 3.99l-5.78-3.34 2-1.15a.07.07 0 01.07 0l4.79 2.76a4.46 4.46 0 01-.69 8.05v-5.65a.77.77 0 00-.39-.67zM21.6 9.55l-.14-.08-4.73-2.73a.77.77 0 00-.77 0L10.18 10.08V7.77a.07.07 0 01.03-.06l4.79-2.76a4.46 4.46 0 016.6 4.6zM8.99 13.3l-2-1.15a.07.07 0 01-.04-.06V6.56A4.46 4.46 0 0114.28 3.2l-.14.08-4.73 2.73a.77.77 0 00-.39.67l-.03 6.62zm1.09-2.34L12 9.72l1.92 1.11v2.22L12 14.16l-1.92-1.11v-2.09z"/></svg>
+            <span>ChatGPT</span>
+          </a>
+          <a class="pg__action-btn" id="claudeLink" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open Claude with this prompt">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
+            <span>Claude</span>
+          </a>
+          <a class="pg__action-btn" id="codexLink" href="codex://new" rel="noopener" title="Open Codex with this prompt. Requires the Codex desktop app.">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
+            <span>Codex</span>
+          </a>
         </div>
       </div>
     </div>
@@ -1837,16 +1847,24 @@
           <div class="pg__ai-form">
             <textarea class="pg__ai-textarea" id="aiPromptInput" placeholder="e.g. An AR app that lets users place furniture in their room with tap-to-place and pinch-to-scale..." rows="3"></textarea>
             <div class="pg__ai-actions">
-              <a class="pg__ai-btn pg__ai-btn--claude" id="aiGenClaude" href="#" target="_blank" rel="noopener">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
-                Open in Claude
-              </a>
+              <button class="pg__ai-btn pg__ai-btn--copy" id="aiGenCopy" type="button">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg>
+                <span id="aiGenCopyLabel">Copy prompt</span>
+              </button>
               <a class="pg__ai-btn pg__ai-btn--chatgpt" id="aiGenChatGPT" href="#" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.28 9.37a5.9 5.9 0 00-.51-4.85 5.97 5.97 0 00-6.44-2.87A5.9 5.9 0 0010.88 0a5.97 5.97 0 00-5.7 4.15 5.9 5.9 0 00-3.95 2.86 5.97 5.97 0 00.74 7.01 5.9 5.9 0 00.51 4.85 5.97 5.97 0 006.44 2.87A5.9 5.9 0 0013.37 24a5.97 5.97 0 005.7-4.15 5.9 5.9 0 003.95-2.86 5.97 5.97 0 00-.74-7.01zM13.37 22.5a4.43 4.43 0 01-2.85-1.03l.14-.08 4.73-2.73a.77.77 0 00.39-.67v-6.67l2 1.15a.07.07 0 01.04.05v5.53a4.46 4.46 0 01-4.45 4.45zM3.63 18.37a4.43 4.43 0 01-.53-2.98l.14.08 4.73 2.73a.77.77 0 00.77 0l5.78-3.34v2.31a.07.07 0 01-.03.06l-4.79 2.76a4.46 4.46 0 01-6.07-1.62zM2.34 7.87a4.43 4.43 0 012.32-1.95V11.6a.77.77 0 00.39.67l5.78 3.34-2 1.15a.07.07 0 01-.07 0L4 14.01a4.46 4.46 0 01-1.66-6.14zm17.14 3.99l-5.78-3.34 2-1.15a.07.07 0 01.07 0l4.79 2.76a4.46 4.46 0 01-.69 8.05v-5.65a.77.77 0 00-.39-.67zM21.6 9.55l-.14-.08-4.73-2.73a.77.77 0 00-.77 0L10.18 10.08V7.77a.07.07 0 01.03-.06l4.79-2.76a4.46 4.46 0 016.6 4.6zM8.99 13.3l-2-1.15a.07.07 0 01-.04-.06V6.56A4.46 4.46 0 0114.28 3.2l-.14.08-4.73 2.73a.77.77 0 00-.39.67l-.03 6.62zm1.09-2.34L12 9.72l1.92 1.11v2.22L12 14.16l-1.92-1.11v-2.09z"/></svg>
-                Open in ChatGPT
+                ChatGPT
+              </a>
+              <a class="pg__ai-btn pg__ai-btn--claude" id="aiGenClaude" href="#" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
+                Claude
+              </a>
+              <a class="pg__ai-btn pg__ai-btn--codex" id="aiGenCodex" href="#" rel="noopener" title="Opens the Codex app with this prompt in the composer. Requires the Codex desktop app.">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
+                Codex
               </a>
             </div>
-            <div class="pg__ai-hint">AI will generate SceneView code for <strong id="aiPlatformLabel">Android</strong></div>
+            <div class="pg__ai-hint">Generates SceneView code for <strong id="aiPlatformLabel">Android</strong>. <em>Codex</em> opens the desktop app. <em>Copy prompt</em> works with any assistant &mdash; Cursor, Copilot, Cline, Gemini, JetBrains, whichever you use.</div>
           </div>
         </div>
 
@@ -2108,11 +2126,11 @@
         },
         desktop: {
           file: 'ModelViewerScreen.kt', lang: 'Kotlin',
-          code: '// Desktop support is a wireframe placeholder.\n// Filament JNI is not yet available for\n// Compose Desktop (JVM/AWT).\n//\n// The desktop sample uses Compose Canvas\n// for wireframe rendering only.\n//\n// For production desktop 3D, consider:\n// - SceneView Web in an embedded browser\n// - Native Filament C++ with JNI bindings\n// - Vulkan/OpenGL direct integration\n\n// Wireframe placeholder:\nimport androidx.compose.foundation.Canvas\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.geometry.Offset\nimport androidx.compose.ui.graphics.Color\n\n@Composable\nfun ModelViewerScreen() {\n    Canvas(modifier = Modifier.fillMaxSize()) {\n        // Wireframe cube placeholder\n        drawLine(Color.Blue, Offset(100f, 100f), Offset(300f, 100f))\n        drawLine(Color.Blue, Offset(300f, 100f), Offset(300f, 300f))\n        drawLine(Color.Blue, Offset(300f, 300f), Offset(100f, 300f))\n        drawLine(Color.Blue, Offset(100f, 300f), Offset(100f, 100f))\n    }\n}'
+          code: '// Compose Desktop: SceneViewer from sceneview-compose.\n// Filament renders through filament-kmp (JDK 22+).\n// Viewer subset only: model, orbit camera, light,\n// environment, tap hit-testing. No AR on desktop.\n//\n// build.gradle.kts:\n// implementation("io.github.sceneview:sceneview-compose:4.40.0")\n\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\n\n@Composable\nfun ModelViewerScreen() {\n    SceneViewer(\n        model = ModelSource.Asset("models/damaged_helmet.glb"),\n        modifier = Modifier.fillMaxSize(),\n    )\n}'
         },
-        claude: {
+        mcp: {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — Model Viewer\n\n## Prompt to Claude:\n\n> Build me a 3D model viewer Android app\n> using SceneView. Load a GLB model with\n> environment lighting and orbit camera.\n\n## Claude will generate:\n\n```kotlin\nSceneView(\n    modifier = Modifier.fillMaxSize(),\n    engine = engine,\n    environment = rememberEnvironment(\n        envLoader, \"envs/sky.hdr\"\n    ),\n    cameraManipulator = rememberCameraManipulator()\n) {\n    rememberModelInstance(\n        modelLoader, \"models/helmet.glb\"\n    )?.let { ModelNode(modelInstance = it) }\n}\n```\n\n## SceneView MCP Tools:\n- `create_scene` — scaffold a new 3D scene\n- `add_model` — add a GLB/USDZ model node\n- `configure_camera` — set orbit/freeflight\n- `set_environment` — load HDR lighting'
+          code: '# MCP — Model Viewer\n\n## Prompt to your assistant:\n\n> Build me a 3D model viewer Android app\n> using SceneView. Load a GLB model with\n> environment lighting and orbit camera.\n\n## What it generates:\n\n```kotlin\nSceneView(\n    modifier = Modifier.fillMaxSize(),\n    engine = engine,\n    environment = rememberEnvironment(\n        envLoader, \"envs/sky.hdr\"\n    ),\n    cameraManipulator = rememberCameraManipulator()\n) {\n    rememberModelInstance(\n        modelLoader, \"models/helmet.glb\"\n    )?.let { ModelNode(modelInstance = it) }\n}\n```\n\n## SceneView MCP Tools:\n- `create_scene` — scaffold a new 3D scene\n- `add_model` — add a GLB/USDZ model node\n- `configure_camera` — set orbit/freeflight\n- `set_environment` — load HDR lighting'
         }
       },
       'environment-setup': {
@@ -2280,11 +2298,11 @@
         },
         desktop: {
           file: 'rerun_desktop.md', lang: 'Markdown',
-          code: '# Rerun on desktop\n\nDesktop SceneView is a wireframe placeholder today —\nthere is no Filament renderer running, so there is no\nAR session to log.\n\nIf you want a desktop Rerun workflow for SceneView:\n\n- Use the standalone Python pipeline generated by the\n  `setup_rerun_project` tool of `rerun-3d-mcp`\n  (platform="python"). It gives you a Python sidecar\n  plus a requirements.txt for the Rerun SDK.\n- Drive it from your desktop tooling (post-processing,\n  CI screenshot diffing, dataset inspection).\n- Or use the Rerun Web Viewer embedded in an Electron /\n  Tauri shell if you need a packaged desktop viewer.'
+          code: '# Rerun on desktop\n\nDesktop SceneView is the SceneViewer viewer subset —\nFilament renders the model, but there is no AR session\non desktop, so there is nothing to log.\n\nIf you want a desktop Rerun workflow for SceneView:\n\n- Use the standalone Python pipeline generated by the\n  `setup_rerun_project` tool of `rerun-3d-mcp`\n  (platform="python"). It gives you a Python sidecar\n  plus a requirements.txt for the Rerun SDK.\n- Drive it from your desktop tooling (post-processing,\n  CI screenshot diffing, dataset inspection).\n- Or use the Rerun Web Viewer embedded in an Electron /\n  Tauri shell if you need a packaged desktop viewer.'
         },
-        claude: {
+        mcp: {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — AR Debug with Rerun\n\n## Prompt to Claude:\n\n> I want to debug an ARCore session in SceneView\n> by streaming camera pose, detected planes and\n> point cloud to the Rerun viewer. Generate a\n> Kotlin composable and a Python sidecar.\n\n## Claude will call rerun-3d-mcp:\n\n```\ngenerate_ar_logger({\n  language: "kotlin",\n  dataTypes: ["pose", "planes", "point_cloud"],\n  rateHz: 10\n})\n\ngenerate_python_sidecar({ port: 9876 })\n```\n\n## rerun-3d-mcp tools:\n- `setup_rerun_project` — scaffold Gradle / SPM / web / Python\n- `generate_ar_logger` — Kotlin or Swift AR streamer\n- `generate_python_sidecar` — TCP \u2192 rerun-sdk bridge\n- `embed_web_viewer` — HTML embed snippet\n- `explain_concept` — .rrd, timelines, entities, archetypes\n\nInstall:\n```\nnpx rerun-3d-mcp\n```'
+          code: '# MCP — AR Debug with Rerun\n\n## Prompt to your assistant:\n\n> I want to debug an ARCore session in SceneView\n> by streaming camera pose, detected planes and\n> point cloud to the Rerun viewer. Generate a\n> Kotlin composable and a Python sidecar.\n\n## What it calls in rerun-3d-mcp:\n\n```\ngenerate_ar_logger({\n  language: "kotlin",\n  dataTypes: ["pose", "planes", "point_cloud"],\n  rateHz: 10\n})\n\ngenerate_python_sidecar({ port: 9876 })\n```\n\n## rerun-3d-mcp tools:\n- `setup_rerun_project` — scaffold Gradle / SPM / web / Python\n- `generate_ar_logger` — Kotlin or Swift AR streamer\n- `generate_python_sidecar` — TCP \u2192 rerun-sdk bridge\n- `embed_web_viewer` — HTML embed snippet\n- `explain_concept` — .rrd, timelines, entities, archetypes\n\nInstall:\n```\nnpx rerun-3d-mcp\n```'
         }
       },
       'primitives': {
@@ -2470,6 +2488,8 @@
     var shareBtn = $('shareBtn');
     var shareLabel = $('shareLabel');
     var claudeLink = $('claudeLink');
+    var chatgptLink = $('chatgptLink');
+    var codexLink = $('codexLink');
     var modelSelect = $('modelSelect');
     var previewCanvas = $('previewCanvas');
     var orbitHint = $('orbitHint');
@@ -2673,25 +2693,25 @@
       if (platform === 'flutter') {
         return {
           file: title.replace(/\s+/g, '') + '.dart', lang: 'Dart',
-          code: '// Flutter — ' + title + '\n//\n// SceneView Flutter uses PlatformView to bridge\n// to native SceneView (Android) and\n// SceneViewSwift (iOS) renderers.\n//\nimport \'package:flutter/material.dart\';\nimport \'package:flutter_sceneview/flutter_sceneview.dart\';\n\nclass ' + title.replace(/\s+/g, '') + 'Page extends StatelessWidget {\n  const ' + title.replace(/\s+/g, '') + 'Page({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return const Scaffold(\n      body: SceneView(\n        // Configure scene properties here\n        model: \"models/helmet.glb\",\n        autoRotate: true,\n      ),\n    );\n  }\n}'
+          code: '// Flutter — ' + title + '\n//\n// flutter_sceneview bridges to native SceneView\n// (Filament on Android, RealityKit on iOS)\n// through a PlatformView.\n//\nimport \'package:flutter/material.dart\';\nimport \'package:flutter_sceneview/flutter_sceneview.dart\';\n\nclass ' + title.replace(/\s+/g, '') + 'Page extends StatefulWidget {\n  const ' + title.replace(/\s+/g, '') + 'Page({super.key});\n\n  @override\n  State<' + title.replace(/\s+/g, '') + 'Page> createState() => _' + title.replace(/\s+/g, '') + 'PageState();\n}\n\nclass _' + title.replace(/\s+/g, '') + 'PageState extends State<' + title.replace(/\s+/g, '') + 'Page> {\n  final controller = SceneViewController();\n\n  @override\n  Widget build(BuildContext context) {\n    return Scaffold(\n      body: SceneView(\n        controller: controller,\n        onViewCreated: () {\n          controller.setEnvironment(\'environments/studio_small.hdr\');\n          controller.loadModel(const ModelNode(modelPath: \'models/helmet.glb\'));\n        },\n      ),\n    );\n  }\n}'
         };
       }
       if (platform === 'reactnative') {
         return {
           file: title.replace(/\s+/g, '') + '.tsx', lang: 'TypeScript',
-          code: '// React Native — ' + title + '\n//\n// SceneView React Native uses Fabric components\n// bridging to native SceneView renderers.\n//\nimport React from \'react\';\nimport { SceneView } from \'react-native-sceneview\';\n\nexport function ' + title.replace(/\s+/g, '') + '() {\n  return (\n    <SceneView\n      model=\"models/helmet.glb\"\n      autoRotate\n      style={{ flex: 1 }}\n    />\n  );\n}'
+          code: '// React Native — ' + title + '\n//\n// @sceneview-sdk/react-native bridges to native\n// SceneView renderers through Fabric components.\n//\nimport React from \'react\';\nimport { SceneView } from \'@sceneview-sdk/react-native\';\n\nexport function ' + title.replace(/\s+/g, '') + '() {\n  return (\n    <SceneView\n      style={{ flex: 1 }}\n      environment=\"environments/studio_small.hdr\"\n      modelNodes={[{ src: \'models/helmet.glb\' }]}\n      cameraControlMode=\"orbit\"\n    />\n  );\n}'
         };
       }
       if (platform === 'desktop') {
         return {
           file: title.replace(/\s+/g, '') + '.kt', lang: 'Kotlin',
-          code: '// Desktop — ' + title + '\n//\n// Compose Desktop support is a wireframe\n// placeholder. Filament JNI is not yet\n// available for JVM/AWT targets.\n//\n// For production desktop 3D:\n// - Use SceneView Web in embedded browser\n// - Native Filament C++ with JNI bindings\n// - Vulkan/OpenGL direct integration\n//\n// The desktop sample app demonstrates\n// D-pad navigation and basic wireframe\n// rendering via Compose Canvas.'
+          code: '// Desktop — ' + title + '\n//\n// Compose Desktop renders through Filament\n// (filament-kmp bindings, JDK 22+). SceneViewer\n// covers the viewer subset: a model, an orbit\n// camera, a light, an environment. No AR.\n//\n// Gradle: io.github.sceneview:sceneview-compose\n// Model: a GLB on the classpath (src/main/resources).\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.window.Window\nimport androidx.compose.ui.window.application\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\nimport io.github.sceneview.compose.rememberCameraState\n\nfun main() = application {\n    Window(onCloseRequest = ::exitApplication, title = \"' + title + '\") {\n        SceneViewer(\n            model = ModelSource.Asset(\"models/helmet.glb\"),\n            modifier = Modifier.fillMaxSize(),\n            camera = rememberCameraState(),\n        )\n    }\n}'
         };
       }
-      if (platform === 'claude') {
+      if (platform === 'mcp') {
         return {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — ' + title + '\n\n## Prompt to Claude:\n\n> Help me implement \"' + title + '\" using SceneView.\n> Use the SceneView SDK for Android with\n> Jetpack Compose.\n\n## SceneView MCP Server:\n\nThe sceneview-mcp server provides 32 tools\nfor AI-assisted 3D/AR development:\n\n- `get_setup` — Gradle + manifest setup\n- `get_sample` — compilable code samples\n- `get_node_reference` — node type API reference\n- `validate_code` — check generated code\n- `get_ar_setup` — AR permissions and session\n\n## Install MCP:\n```bash\nnpx sceneview-mcp\n```\n\nOr add to claude_desktop_config.json:\n```json\n{\n  \"mcpServers\": {\n    \"sceneview\": {\n      \"command\": \"npx\",\n      \"args\": [\"sceneview-mcp\"]\n    }\n  }\n}\n```'
+          code: '# MCP — ' + title + '\n\n## Prompt to your assistant:\n\n> Help me implement \"' + title + '\" using SceneView.\n> Use the SceneView SDK for Android with\n> Jetpack Compose.\n\n## SceneView MCP Server:\n\nThe sceneview-mcp server provides 32 tools\nfor AI-assisted 3D/AR development:\n\n- `get_setup` — Gradle + manifest setup\n- `get_sample` — compilable code samples\n- `get_node_reference` — node type API reference\n- `validate_code` — check generated code\n- `get_ar_setup` — AR permissions and session\n\n## Install MCP:\n```bash\nnpx sceneview-mcp\n```\n\nOr add it to your client’s MCP config file:\n```json\n{\n  \"mcpServers\": {\n    \"sceneview\": {\n      \"command\": \"npx\",\n      \"args\": [\"sceneview-mcp\"]\n    }\n  }\n}\n```\n\nThe command and its arguments never change.\nOnly the wrapper differs: VS Code and Copilot\nuse `servers` with \"type\": \"stdio\", Codex uses\na [mcp_servers.*] TOML table. Per-client paths:\nhttps://sceneview.github.io/#ai-setup'
         };
       }
       return ex.android;
@@ -2726,11 +2746,14 @@
       });
       descTags.innerHTML = tagsHtml;
 
-      // Claude link
+      // Assistant links — every assistant with a prefilled-prompt link.
+      // Same URI-encoded prompt for all three; only the parameter name differs.
       var prompt = encodeURIComponent(
         'Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + code
       );
+      chatgptLink.href = 'https://chatgpt.com/?q=' + prompt;
       claudeLink.href = 'https://claude.ai/new?q=' + prompt;
+      codexLink.href = 'codex://new?prompt=' + prompt;
 
       // Update sidebar active state
       exampleList.querySelectorAll('.pg__item').forEach(function(el) {
@@ -3367,42 +3390,34 @@
     });
 
     // ====================================================================
-    //  AI TOOLS DROPDOWN
+    //  ASK YOUR ASSISTANT
     // ====================================================================
-    var aiMoreBtn = $('aiMoreBtn');
-    var aiGroup = $('aiGroup');
+    // Only Claude and ChatGPT document a ?q= prompt parameter, so only those
+    // two get a link. Every other assistant — Cursor, Copilot, Codex, Cline,
+    // Gemini, JetBrains, whatever you use — is served by "Copy prompt", which
+    // works everywhere and transmits nothing to a third party.
+    var askAiBtn = $('askAiBtn');
+    var askAiLabel = $('askAiLabel');
 
-    aiMoreBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      aiGroup.classList.toggle('pg__ai-dropdown--open');
-      aiMoreBtn.setAttribute('aria-expanded', aiGroup.classList.contains('pg__ai-dropdown--open'));
-    });
+    function currentPrompt() {
+      var ex = EXAMPLES[currentExample];
+      if (!ex) return '';
+      var platData = ex[currentPlatform] || generateFallback(currentPlatform, ex);
+      return 'Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + platData.code;
+    }
 
-    document.addEventListener('click', function() {
-      aiGroup.classList.remove('pg__ai-dropdown--open');
-      aiMoreBtn.setAttribute('aria-expanded', 'false');
+    askAiBtn.addEventListener('click', function() {
+      copyToClipboard(currentPrompt(), askAiBtn, askAiLabel, 'Copy prompt');
     });
 
     // Update AI links with code context
     function updateAILinks() {
       var ex = EXAMPLES[currentExample];
       if (!ex) return;
-      var platData = ex[currentPlatform] || generateFallback(currentPlatform, ex);
-      var code = platData.code;
-      var prompt = encodeURIComponent('Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + code);
-      // Cursor / Windsurf / Copilot have no prompt deep-link protocol — these
-      // links just open the product. Labels say "Open <tool>" (not "Open in")
-      // so the playground does not imply the prompt is transmitted. Only the
-      // Claude and ChatGPT links actually carry the prompt via a query param.
-      var cursorEl = $('aiCursor');
-      cursorEl.href = 'https://cursor.com';
-      cursorEl.title = 'Open Cursor (prompt not transmitted)';
-      var windsurfEl = $('aiWindsurf');
-      windsurfEl.href = 'https://windsurf.com';
-      windsurfEl.title = 'Open Windsurf (prompt not transmitted)';
-      var copilotEl = $('aiCopilot');
-      copilotEl.href = 'https://github.com/features/copilot';
-      copilotEl.title = 'Open GitHub Copilot (prompt not transmitted)';
+      var prompt = encodeURIComponent(currentPrompt());
+      $('chatgptLink').href = 'https://chatgpt.com/?q=' + prompt;
+      $('claudeLink').href = 'https://claude.ai/new?q=' + prompt;
+      $('codexLink').href = 'codex://new?prompt=' + prompt;
     }
 
     // ====================================================================
@@ -3473,6 +3488,7 @@
       var aiInput = $('aiPromptInput');
       var aiClaude = $('aiGenClaude');
       var aiChatGPT = $('aiGenChatGPT');
+      var aiCodex = $('aiGenCodex');
       var aiPlatLabel = $('aiPlatformLabel');
 
       aiToggle.addEventListener('click', function() {
@@ -3492,15 +3508,15 @@
           flutter: 'Flutter (Dart + PlatformView)',
           reactnative: 'React Native (TypeScript + Fabric)',
           desktop: 'Desktop (Kotlin + Compose Desktop)',
-          claude: 'any platform'
+          mcp: 'any platform'
         };
         var platLabel = platNames[plat] || plat;
 
         var prompt = 'Build me a SceneView ' + platLabel + ' app:\n\n' + userDesc + '\n\n';
         prompt += '--- SceneView Quick Reference ---\n';
-        prompt += 'SDK: io.github.sceneview:sceneview:4.36.0 (3D) / arsceneview:4.36.0 (AR)\n';
-        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.36.0")\n';
-        prompt += 'Web: npm install sceneview-web@4.36.0\n\n';
+        prompt += 'SDK: io.github.sceneview:sceneview:4.40.0 (3D) / arsceneview:4.40.0 (AR)\n';
+        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.40.0")\n';
+        prompt += 'Web: npm install sceneview-web@4\n\n';
 
         if (plat === 'android' || plat === 'flutter' || plat === 'reactnative' || plat === 'desktop') {
           prompt += 'Key composables: SceneView { }, ARSceneView { }\n';
@@ -3531,18 +3547,29 @@
           desc = 'a 3D model viewer with orbit controls and environment lighting';
         }
         var prompt = buildPrompt(desc);
-        aiClaude.href = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
         aiChatGPT.href = 'https://chatgpt.com/?q=' + encodeURIComponent(prompt);
+        aiClaude.href = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
+        aiCodex.href = 'codex://new?prompt=' + encodeURIComponent(prompt);
 
         var platNames = {
           android: 'Android', ios: 'iOS', web: 'Web',
           flutter: 'Flutter', reactnative: 'React Native',
-          desktop: 'Desktop', claude: 'any platform'
+          desktop: 'Desktop', mcp: 'any platform'
         };
         aiPlatLabel.textContent = platNames[currentPlatform] || currentPlatform;
       }
 
       aiInput.addEventListener('input', updateAIGenerateLinks);
+
+      var aiGenCopy = $('aiGenCopy');
+      var aiGenCopyLabel = $('aiGenCopyLabel');
+      aiGenCopy.addEventListener('click', function() {
+        var desc = aiInput.value.trim();
+        if (!desc) {
+          desc = 'a 3D model viewer with orbit controls and environment lighting';
+        }
+        copyToClipboard(buildPrompt(desc), aiGenCopy, aiGenCopyLabel, 'Copy prompt');
+      });
 
       // Update links when platform changes
       var origPlatformChange = null;
@@ -3564,7 +3591,10 @@
       var plat = params.get('platform');
       var model = params.get('model');
 
-      if (plat && ['android', 'ios', 'web', 'flutter', 'reactnative', 'desktop', 'claude'].indexOf(plat) !== -1) {
+      // `claude` was this tab's key until the AI block was made vendor-neutral.
+      // Links shared before that still carry ?platform=claude, so keep the alias.
+      if (plat === 'claude') plat = 'mcp';
+      if (plat && ['android', 'ios', 'web', 'flutter', 'reactnative', 'desktop', 'mcp'].indexOf(plat) !== -1) {
         currentPlatform = plat;
         document.querySelectorAll('.pg__platform-pill').forEach(function(p) {
           p.classList.toggle('pg__platform-pill--active', p.getAttribute('data-platform') === plat);

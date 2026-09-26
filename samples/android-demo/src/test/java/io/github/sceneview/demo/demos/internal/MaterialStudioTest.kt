@@ -181,6 +181,59 @@ class MaterialStudioTest {
         assertNotEquals(0f, MaterialStudio.STATIC_ORBIT_YAW)
     }
 
+    @Test
+    fun `pausing the sweep glides the wall home - from anywhere, without a cut`() {
+        val frame = 1f / 60f
+        for (start in 0..19) {
+            val motion = MaterialStudio.SweepMotion(phase = start / 20f)
+            repeat(180) { motion.cruise(frame) }
+            val cruiseStep = abs(
+                MaterialStudio.sweepYaw(motion.phase) -
+                    MaterialStudio.sweepYaw(motion.phase - motion.rate * frame),
+            )
+            var yaw = MaterialStudio.sweepYaw(motion.phase)
+            var first = true
+            var frames = 0
+            var settled = false
+            while (!settled && frames < 600) {
+                settled = motion.settle(frame)
+                val next = MaterialStudio.sweepYaw(motion.phase)
+                val step = abs(next - yaw)
+                // 40 deg/s is the paced ceiling; a cut was 10.8 degrees in this one frame.
+                assertTrue("phase $start/20 stepped $step deg in a frame", step < 45f * frame)
+                if (first) {
+                    // Same speed, give or take one frame of the glide's (finite) acceleration.
+                    assertEquals("The glide starts at the sweep's own speed", cruiseStep, step, 0.15f)
+                    first = false
+                }
+                yaw = next
+                frames++
+            }
+            assertTrue("phase $start/20 never came to rest", settled)
+            assertEquals(
+                MaterialStudio.sweepYaw(MaterialStudio.STATIC_SWEEP_PHASE),
+                MaterialStudio.sweepYaw(motion.phase),
+                1e-3f,
+            )
+            assertEquals(0f, motion.rate, 0f)
+        }
+    }
+
+    @Test
+    fun `the sweep sets off from rest, and a dropped frame does not teleport it`() {
+        val motion = MaterialStudio.SweepMotion()
+        motion.cruise(1f / 60f)
+        assertTrue("First frame at full speed is a kick", motion.rate < 0.1f * MaterialStudio.SweepMotion.CRUISE_RATE)
+        repeat(240) { motion.cruise(1f / 60f) }
+        assertEquals(MaterialStudio.SweepMotion.CRUISE_RATE, motion.rate, 1e-3f)
+
+        val before = motion.phase
+        motion.cruise(4f) // the frame after a four-second freeze
+        val advanced = ((motion.phase - before) % 1f + 1f) % 1f
+        val oneFrame = MaterialStudio.SweepMotion.CRUISE_RATE * MaterialStudio.SweepMotion.MAX_FRAME_SECONDS
+        assertTrue(advanced <= oneFrame + 1e-5f)
+    }
+
     // ── The environment ──────────────────────────────────────────────────────────────────
 
     @Test

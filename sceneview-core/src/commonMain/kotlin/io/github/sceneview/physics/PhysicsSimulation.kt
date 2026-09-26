@@ -17,6 +17,12 @@ import kotlin.math.abs
  * @param floorY World-space Y coordinate of the floor plane.
  * @param radius Collision radius in meters (bottom of sphere = position.y - radius).
  * @param isAsleep True once the body has come to rest.
+ * @param gravity Gravitational acceleration vector in m/s². Defaults to `(0, [GRAVITY], 0)` —
+ *                straight down. Tilt it to simulate a sloped surface without moving the floor
+ *                plane: express the slope's rotation in the floor's own frame and rotate this
+ *                vector by its inverse, and a resting body accelerates along the slope while the
+ *                `floorY` clamp keeps it on the plane (#3621). The magnitude is used as given, so
+ *                a zero vector means weightlessness.
  */
 data class PhysicsState(
     val position: Position = Position(),
@@ -24,14 +30,73 @@ data class PhysicsState(
     val restitution: Float = 0.6f,
     val floorY: Float = 0f,
     val radius: Float = 0f,
-    val isAsleep: Boolean = false
-)
+    val isAsleep: Boolean = false,
+    val gravity: Position = Position(0f, GRAVITY, 0f)
+) {
+    /**
+     * Binary-compatibility shim for the pre-`gravity` constructor descriptor
+     * `(Float3, Float3, F, F, F, Z)V` and its default-mask synthetic. Hidden from source
+     * resolution, so Kotlin callers always bind to the primary constructor; it exists only so
+     * code compiled against 4.36.0 and earlier keeps linking (CONTRIBUTING.md — a removed or
+     * retyped public symbol is a breaking change).
+     *
+     * `isAsleep` is deliberately the one parameter without a default: a fully defaulted
+     * secondary constructor would generate a second `<init>()V` and clash with the primary's.
+     */
+    @Deprecated(
+        "Binary-compatibility overload. Use the primary constructor, which takes `gravity`.",
+        level = DeprecationLevel.HIDDEN
+    )
+    constructor(
+        position: Position = Position(),
+        velocity: Position = Position(),
+        restitution: Float = 0.6f,
+        floorY: Float = 0f,
+        radius: Float = 0f,
+        isAsleep: Boolean
+    ) : this(position, velocity, restitution, floorY, radius, isAsleep, Position(0f, GRAVITY, 0f))
+
+    /**
+     * Binary-compatibility shim for the pre-`gravity` `copy` descriptor. Same rationale as the
+     * secondary constructor above; hidden from source so `copy(...)` always means the generated
+     * seven-parameter one. Carries [gravity] over, so an old-descriptor `copy` no longer silently
+     * resets a tilted gravity to straight down.
+     */
+    @Deprecated(
+        "Binary-compatibility overload. Use copy(), which also takes `gravity`.",
+        level = DeprecationLevel.HIDDEN
+    )
+    fun copy(
+        position: Position = this.position,
+        velocity: Position = this.velocity,
+        restitution: Float = this.restitution,
+        floorY: Float = this.floorY,
+        radius: Float = this.radius,
+        isAsleep: Boolean
+    ): PhysicsState = copy(
+        position = position,
+        velocity = velocity,
+        restitution = restitution,
+        floorY = floorY,
+        radius = radius,
+        isAsleep = isAsleep,
+        gravity = gravity
+    )
+}
 
 /** Gravitational acceleration in m/s² (downward along -Y). */
 const val GRAVITY = -9.8f
 
 /** Velocities below this threshold are zeroed to stop micro-bouncing. */
 const val SLEEP_THRESHOLD = 0.05f
+
+/**
+ * True when [PhysicsState.gravity] has no horizontal component, i.e. the body can legitimately
+ * come to rest on a horizontal floor. A tilted gravity keeps pushing a contacting body sideways,
+ * so sleep detection is suppressed in that case.
+ */
+internal val PhysicsState.isGravityVertical: Boolean
+    get() = gravity.x == 0f && gravity.z == 0f
 
 /**
  * Advance the physics simulation by [deltaSeconds].
@@ -47,11 +112,12 @@ fun simulateStep(state: PhysicsState, deltaSeconds: Float): PhysicsState {
 
     val dt = deltaSeconds.coerceIn(0f, 0.05f)
 
-    // Apply gravity to vertical velocity
+    // Apply the gravity vector. It is vertical by default, but a tilted vector is what makes a
+    // body slide along a sloped floor (#3621) — hence all three axes, not just Y.
     val newVelocity = Position(
-        x = state.velocity.x,
-        y = state.velocity.y + GRAVITY * dt,
-        z = state.velocity.z
+        x = state.velocity.x + state.gravity.x * dt,
+        y = state.velocity.y + state.gravity.y * dt,
+        z = state.velocity.z + state.gravity.z * dt
     )
 
     // Integrate position
@@ -67,8 +133,10 @@ fun simulateStep(state: PhysicsState, deltaSeconds: Float): PhysicsState {
         newPosition = Position(newPosition.x, contactY, newPosition.z)
         val reboundVy = -newVelocity.y * state.restitution
 
-        // Sleep when rebound speed is negligible
-        return if (abs(reboundVy) < SLEEP_THRESHOLD) {
+        // Sleep when rebound speed is negligible — but only under a vertical gravity. Under a
+        // tilted vector the body is still being accelerated along the plane, so falling asleep on
+        // first contact would freeze it halfway down the slope forever.
+        return if (state.isGravityVertical && abs(reboundVy) < SLEEP_THRESHOLD) {
             state.copy(
                 position = newPosition,
                 velocity = Position(newVelocity.x, 0f, newVelocity.z),
@@ -118,9 +186,9 @@ fun simulateStep(
     val dt = deltaSeconds.coerceIn(0f, 0.05f)
 
     val newVelocity = Position(
-        x = state.velocity.x,
-        y = state.velocity.y + GRAVITY * dt,
-        z = state.velocity.z
+        x = state.velocity.x + state.gravity.x * dt,
+        y = state.velocity.y + state.gravity.y * dt,
+        z = state.velocity.z + state.gravity.z * dt
     )
 
     var newPosition = Position(
@@ -140,7 +208,7 @@ fun simulateStep(
         // Disable sleep when we're resting on a depth-driven surface: a 5 Hz mesh refresh can
         // momentarily edge-cull the supporting triangles and an asleep body would freeze in
         // mid-air. Only let the body sleep on the static plane.
-        val canSleep = dynamicSurface == null
+        val canSleep = dynamicSurface == null && state.isGravityVertical
         return if (canSleep && abs(reboundVy) < SLEEP_THRESHOLD) {
             state.copy(
                 position = newPosition,

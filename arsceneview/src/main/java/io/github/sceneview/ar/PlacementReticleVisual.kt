@@ -11,7 +11,10 @@ import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 
 /**
- * The on-surface visual for a placement reticle, and its two observable states.
+ * Manual-placement API. Automatic placement uses [AutoPlacementScene] without a reticle.
+ * Existing behavior and defaults are preserved.
+ *
+ * The on-surface visual for a placement reticle, and its three observable states.
  *
  * Consumer AR apps — Google Scene Viewer, IKEA Place, Houzz, Pokémon GO — do not draw a solid
  * filled dot at the placement point. They draw a **thin ring** (often with a small centre dot)
@@ -20,15 +23,15 @@ import io.github.sceneview.math.Position
  * *ready* for a tap. This gives the user an unambiguous "you can place now" signal without any
  * text.
  *
- * [PlacementReticleStyle] selects the geometry; [ReticlePhase] is the searching-vs-ready state
- * the reticle currently reflects (driven by the centre-screen hit test in [PlacementScene]).
+ * [PlacementReticleStyle] selects the geometry; [ReticlePhase] is the searching / hit / locked
+ * state the reticle currently reflects (driven by the centre-screen hit test in [PlacementScene]).
  *
  * @see PlacementScene
  */
 enum class PlacementReticleStyle {
     /**
-     * A thin ring lying flush on the surface, with a small filled centre dot when [ReticlePhase]
-     * is [ReticlePhase.READY]. The modern consumer-AR default (Scene Viewer / IKEA / Houzz).
+     * A thin ring lying flush on the surface, with a small filled centre dot from
+     * [ReticlePhase.READY] on. The modern consumer-AR default (Scene Viewer / IKEA / Houzz).
      */
     RING,
 
@@ -40,15 +43,47 @@ enum class PlacementReticleStyle {
 }
 
 /**
- * Whether the reticle is still hunting for a surface or has locked onto one — the input the
- * [PlacementReticleStyle] visuals key their appearance off.
+ * Whether the reticle is still hunting for a surface, sitting on an estimated one, or locked on a
+ * tracked plane — the input the [PlacementReticleStyle] visuals key their appearance off.
+ *
+ * The three states escalate, and **only the last one is allowed a hue** (#3570): the cursor must
+ * never compete with the model about to be placed, so "searching" vs "aiming" is said with
+ * opacity and a dot, and colour is spent once, on the single state that means *this is a real
+ * surface, tap now*.
+ *
+ * | State | Ring | Centre dot | Reads as |
+ * |---|---|---|---|
+ * | [SEARCHING] | white, [RETICLE_SEARCHING_ALPHA] | none | "I have nothing yet" |
+ * | [READY] | white, [RETICLE_READY_ALPHA] | small, white | "something is there, it is a guess" |
+ * | [LOCKED] | white, [RETICLE_LOCKED_ALPHA] | larger, [RETICLE_READY_ACCENT] | "tap now" |
+ *
+ * The ring's silhouette — radius, tube thickness, contact halo — is identical in all three, so the
+ * cursor never jumps; only opacity and the centre dot change.
  */
 enum class ReticlePhase {
     /** The centre-screen ray currently hits no acceptable surface. The reticle dims / hollows. */
     SEARCHING,
 
-    /** A surface is acquired under the reticle; a tap will place there. The reticle brightens. */
+    /**
+     * A surface is acquired under the reticle and a tap will place there, but it is an
+     * **estimate** — an ARCore [com.google.ar.core.Point], a depth point or an instant-placement
+     * point rather than a tracked plane. Mid opacity, small achromatic centre dot, still no hue.
+     *
+     * With the plane-only hit test [PlacementScene] configures by default, the reticle steps
+     * straight from [SEARCHING] to [LOCKED]; this state is what a caller that opts into point /
+     * instant-placement hits gets — e.g. a
+     * [PlacementReticle][io.github.sceneview.ar.ARSceneScope.PlacementReticle] with
+     * `snapToPlane = false`, which accepts feature points — instead of promising a lock it does
+     * not have.
+     */
     READY,
+
+    /**
+     * The hit is on a **tracked plane** — the strongest placement signal ARCore gives. Brightest
+     * ring, and the one coloured mark on the whole cursor ([RETICLE_READY_ACCENT], DESIGN.md
+     * `primary` dark value).
+     */
+    LOCKED,
 }
 
 /**
@@ -72,13 +107,16 @@ enum class ReticlePhase {
 val RETICLE_TINT: Color = Color(0xFF_FF_FF_FF)
 
 /**
- * The centre dot's hue in [ReticlePhase.READY] — DESIGN.md `primary`, dark-scheme value
+ * The centre dot's hue in [ReticlePhase.LOCKED] — DESIGN.md `primary`, dark-scheme value
  * `#a4c1ff`. Accents over the camera feed are the dark-scheme values in **both** themes
  * (DESIGN.md, "AR Coaching Overlay"), because they are read on a camera frame, not on a
  * surface role.
  *
- * Colour is confined to this ~2 cm dot: enough to make "you can place now" unmistakable at a
- * glance, small enough that the cursor still reads as neutral.
+ * Colour is confined to this ~1.6 cm dot, and to the locked state only: enough to make "you can
+ * place now" unmistakable at a glance, small enough that the cursor still reads as neutral. The
+ * [ReticlePhase.READY] dot stays achromatic — an estimated surface has not earned the hue.
+ *
+ * (Name kept from the two-state era for source compatibility; it is the *locked* accent.)
  */
 val RETICLE_READY_ACCENT: Color = Color(0xFF_A4_C1_FF)
 
@@ -100,8 +138,18 @@ internal const val RING_MAJOR_RADIUS = 0.055f
  */
 internal const val RING_MINOR_RADIUS = 0.0035f
 
-/** Centre-dot radius shown only in the READY phase, metres. */
-internal const val RING_DOT_RADIUS = 0.010f
+/**
+ * Centre-dot radius in [ReticlePhase.LOCKED], metres — ~1.6 cm across, down from the pre-#3570
+ * 2 cm. It is the only coloured mark on screen; it has to be *spotted*, not *seen*.
+ */
+internal const val RING_DOT_RADIUS = 0.008f
+
+/**
+ * Centre-dot radius in [ReticlePhase.READY], metres — half the locked dot, and white. A guessed
+ * surface gets a smaller, achromatic mark so the escalation to a real plane lock is visible
+ * without any text.
+ */
+internal const val RING_HIT_DOT_RADIUS = 0.004f
 
 /**
  * Contact-halo tube thickness, metres — the halo is an **annulus** tracing the ring, not a filled
@@ -128,12 +176,24 @@ internal const val RING_MINOR_SEGMENTS = 12
  * Alpha applied to the ring while [ReticlePhase.SEARCHING] — visible but clearly "not yet".
  *
  * Public so a caller driving its own animated [PlacementReticleVisual] `alpha` can target the
- * same two values the built-in phase step uses (#3326).
+ * same values the built-in phase step uses (#3326) — or just call [reticleAlphaFor].
  */
 const val RETICLE_SEARCHING_ALPHA = 0.35f
 
-/** Alpha applied to the ring while [ReticlePhase.READY] — bright, tap-me. */
-const val RETICLE_READY_ALPHA = 0.95f
+/**
+ * Alpha applied to the ring while [ReticlePhase.READY] — a surface is under the cursor, but it is
+ * an estimate: between "searching" and "locked", so the escalation reads as a ramp.
+ */
+const val RETICLE_READY_ALPHA = 0.6f
+
+/**
+ * Alpha applied to the ring while [ReticlePhase.LOCKED] — the brightest the cursor ever gets.
+ *
+ * 90 %, not 100 %: a fully opaque white ring over a camera frame reads as a sticker pasted on the
+ * lens rather than a mark lying on the floor, and the last 10 % is what lets the contact halo
+ * show through as a shadow.
+ */
+const val RETICLE_LOCKED_ALPHA = 0.9f
 
 /**
  * How much of the ring's opacity the contact halo carries. Kept well under half: the halo is a
@@ -142,16 +202,49 @@ const val RETICLE_READY_ALPHA = 0.95f
 const val RETICLE_HALO_ALPHA_RATIO = 0.28f
 
 /**
- * Maps a centre-screen hit presence to the reticle phase: a non-null hit means a surface is
- * acquired ([ReticlePhase.READY]), a null hit means the ray finds nothing ([ReticlePhase.SEARCHING]).
- * Extracted so the mapping is unit-testable without Compose / ARCore.
+ * Maps a centre-screen hit to the reticle phase: no hit is [ReticlePhase.SEARCHING], a hit on a
+ * tracked plane is [ReticlePhase.LOCKED], any other hit (point, depth point, instant placement)
+ * is [ReticlePhase.READY].
+ *
+ * Takes booleans rather than an ARCore `HitResult` on purpose: the mapping is then unit-testable
+ * without Compose, ARCore or a device. Call sites pass
+ * `lockedOnPlane = hit?.trackable is Plane && trackable.trackingState == TRACKING`.
+ *
+ * @param hasHit       the centre-screen ray resolved to an acceptable hit this frame.
+ * @param lockedOnPlane that hit is on a tracked [com.google.ar.core.Plane]. Ignored when
+ *                      [hasHit] is `false`.
  */
-fun reticlePhaseFor(hasHit: Boolean): ReticlePhase =
-    if (hasHit) ReticlePhase.READY else ReticlePhase.SEARCHING
+@JvmOverloads
+fun reticlePhaseFor(hasHit: Boolean, lockedOnPlane: Boolean = false): ReticlePhase = when {
+    !hasHit -> ReticlePhase.SEARCHING
+    lockedOnPlane -> ReticlePhase.LOCKED
+    else -> ReticlePhase.READY
+}
 
-/** The ring/dot opacity for [phase] — bright when READY, dimmed while SEARCHING. */
-fun reticleAlphaFor(phase: ReticlePhase): Float =
-    if (phase == ReticlePhase.READY) RETICLE_READY_ALPHA else RETICLE_SEARCHING_ALPHA
+/** The ring/dot opacity for [phase] — a ramp from dim while searching to 90 % once locked. */
+fun reticleAlphaFor(phase: ReticlePhase): Float = when (phase) {
+    ReticlePhase.SEARCHING -> RETICLE_SEARCHING_ALPHA
+    ReticlePhase.READY -> RETICLE_READY_ALPHA
+    ReticlePhase.LOCKED -> RETICLE_LOCKED_ALPHA
+}
+
+/**
+ * The centre-dot radius for [phase] in metres — `0` while [ReticlePhase.SEARCHING] (no dot at
+ * all), a small achromatic dot on an estimated surface, a larger accented one once locked.
+ */
+fun reticleDotRadiusFor(phase: ReticlePhase): Float = when (phase) {
+    ReticlePhase.SEARCHING -> 0f
+    ReticlePhase.READY -> RING_HIT_DOT_RADIUS
+    ReticlePhase.LOCKED -> RING_DOT_RADIUS
+}
+
+/**
+ * The centre-dot colour for [phase]: [RETICLE_READY_ACCENT] in [ReticlePhase.LOCKED], the ring's
+ * own achromatic [tint] otherwise. The single place the "colour only when locked" rule of #3570
+ * is decided, so a test can pin it without a renderer.
+ */
+fun reticleDotColorFor(phase: ReticlePhase, tint: Color = RETICLE_TINT): Color =
+    if (phase == ReticlePhase.LOCKED) RETICLE_READY_ACCENT else tint
 
 /**
  * The contact halo's opacity for a given ring opacity — a fixed fraction
@@ -176,10 +269,12 @@ fun reticleHaloAlphaFor(ringAlpha: Float): Float =
  * whose pose orients +Y along the target surface normal.
  *
  * @param materialLoader loader that builds the unlit reticle materials.
- * @param phase          the current searching / ready state.
+ * @param phase          the current searching / hit / locked state — see [ReticlePhase] for
+ *                       what each one draws.
  * @param tint           reticle hue; its alpha is overridden per [phase].
  * @param style          ring or disc geometry.
- * @param alpha          reticle opacity. Defaults to the step value [phase] implies. Pass an
+ * @param alpha          reticle opacity. Defaults to the step value [phase] implies
+ *                       ([reticleAlphaFor]). Pass an
  *                       **animated** value (e.g. Compose `animateFloatAsState`) to cross-fade
  *                       the searching→ready transition instead of stepping it: a reticle that
  *                       snaps between two opacities at 60 Hz on a jittery hit test reads as
@@ -196,15 +291,17 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
     alpha: Float = reticleAlphaFor(phase),
 ) {
     val haloAlpha = reticleHaloAlphaFor(alpha)
+    val dotColor = reticleDotColorFor(phase, tint)
+    val dotRadius = reticleDotRadiusFor(phase)
 
     // One material for the ring/disc body — recoloured in place per phase (no re-alloc).
     val bodyMaterial: MaterialInstance = remember(materialLoader, tint) {
         materialLoader.createUnlitColorInstance(tint.copy(alpha = alpha))
     }
-    // The READY centre dot is the only coloured mark on the cursor (#3570), so it needs its own
-    // instance — the ring must stay achromatic.
+    // The LOCKED centre dot is the only coloured mark on the cursor (#3570), so the dot needs its
+    // own instance — the ring must stay achromatic whatever the phase does.
     val accentMaterial: MaterialInstance = remember(materialLoader) {
-        materialLoader.createUnlitColorInstance(RETICLE_READY_ACCENT.copy(alpha = alpha))
+        materialLoader.createUnlitColorInstance(dotColor.copy(alpha = alpha))
     }
     // Contact halo — gives the white ring a ground to sit on when the real surface is light.
     val haloMaterial: MaterialInstance = remember(materialLoader) {
@@ -220,7 +317,7 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
     // Mutate the live colours so the ring dims/brightens without churning the instances.
     SideEffect {
         bodyMaterial.setColor(tint.copy(alpha = alpha))
-        accentMaterial.setColor(RETICLE_READY_ACCENT.copy(alpha = alpha))
+        accentMaterial.setColor(dotColor.copy(alpha = alpha))
         haloMaterial.setColor(RETICLE_HALO.copy(alpha = haloAlpha))
     }
 
@@ -236,8 +333,8 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
 
         PlacementReticleStyle.RING -> {
             // Halo first, lowest — a soft dark ground so the white hairline survives on a light
-            // floor. Drawn for both phases so the cursor's silhouette never changes on the
-            // searching→ready step; only its opacity does.
+            // floor. Drawn in all three phases so the ring's silhouette never changes as the
+            // state escalates; only its opacity and its centre dot do.
             TorusNode(
                 majorRadius = RING_MAJOR_RADIUS,
                 minorRadius = RETICLE_HALO_MINOR_RADIUS,
@@ -254,11 +351,12 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
                 position = Position(y = RETICLE_LIFT),
                 materialInstance = bodyMaterial,
             )
-            // Centre dot only once a surface is acquired — the one coloured mark, and the
-            // unambiguous "tap now" signal.
-            if (phase == ReticlePhase.READY) {
+            // Centre dot only once a surface is acquired: small and white on an estimated hit,
+            // larger and accented once locked on a tracked plane — the unambiguous "tap now"
+            // signal, and the one coloured mark of the whole cursor (#3570).
+            if (dotRadius > 0f) {
                 CylinderNode(
-                    radius = RING_DOT_RADIUS,
+                    radius = dotRadius,
                     height = RETICLE_HEIGHT,
                     sideCount = RETICLE_SIDES,
                     position = Position(y = RETICLE_LIFT),

@@ -92,18 +92,10 @@ struct PlacementReticlePreviewDemo: View {
                 }
             }
 
-            VStack {
-                Spacer()
-                coachingPill
-                    // Cleared well above `.demoChrome`'s bottom-trailing
-                    // gear FAB + "Settings" peek chip (~16-70pt band) so the
-                    // longest coaching string ("Surface found — tap to
-                    // place") never runs under them — verified on-device,
-                    // see PR description.
-                    .padding(.bottom, 90)
-            }
         }
-        .demoChrome {
+        .demoChrome(accessory: {
+            DemoHint(coachingText)
+        }) {
             settingsContent
         }
         .onChange(of: placed) { _, _ in sceneKey = UUID() }
@@ -251,14 +243,6 @@ struct PlacementReticlePreviewDemo: View {
         } else {
             return "Move your phone to find a surface"
         }
-    }
-
-    private var coachingPill: some View {
-        Text(coachingText)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
     }
 
     // MARK: - Settings sheet

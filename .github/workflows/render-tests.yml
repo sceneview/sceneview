@@ -3,20 +3,22 @@ name: Render Tests
 on:
   # Two trigger tiers, split by what each one is allowed to cost (#3216):
   #
-  # `pull_request` — runs the `android-library-render` job (and `web-render` on web changes), only
-  # when the PR touches something `:sceneview:connectedDebugAndroidTest` can
-  # see (the `paths:` list below). That job is the one blocking leg of this
-  # workflow; before #3216 it had no pre-merge run at all, so a PR that added
-  # or broke an androidTest merged on a green that never executed it, and the
-  # red surfaced on `main` attributed to whichever push came next. The demo
-  # screenshot, iOS and web jobs stay off PRs: they are advisory by design
-  # (`|| true` / `continue-on-error`), spin up a second emulator, a macOS
-  # Simulator and Playwright, and their screenshots were rarely consulted by
-  # reviewers. Each of those jobs carries `if: github.event_name !=
-  # 'pull_request'`. Fork PRs get no secrets, which is fine — the one PR job
-  # needs none.
+  # `pull_request` — runs the `android-library-render` job when the PR
+  # touches something `:sceneview:connectedDebugAndroidTest` can see, and the
+  # `web-render` job when it touches a web path (the `paths:` list below,
+  # split per job by the `changes` job). The library job is the one blocking
+  # leg of this workflow; before #3216 it had no pre-merge run at all, so a
+  # PR that added or broke an androidTest merged on a green that never
+  # executed it, and the red surfaced on `main` attributed to whichever push
+  # came next. The demo screenshot and iOS jobs stay off PRs: they are
+  # advisory by design (`|| true` / `continue-on-error`), spin up a second
+  # emulator or a macOS Simulator, and their screenshots were rarely
+  # consulted by reviewers. Each of those jobs carries `if:
+  # github.event_name != 'pull_request'`. Fork PRs get no secrets, which is
+  # fine — neither PR job needs any.
   #
-  # `push` to main — the full five-job run, strictly path-gated (#1311,
+  # `push` to main — the five emulator/Simulator jobs (the web suite runs in
+  # device-qa.yml on push, see `web-render`), strictly path-gated (#1311,
   # #1321): runs only when render-affecting source actually changes. SKIPPED
   # on doc-only, CI-only (`.github/**`), and `mcp/`-only merges — none of
   # those can change a rendered frame. squash-merge means `main` HEAD differs
@@ -38,12 +40,13 @@ on:
       - 'settings.gradle*'
       - 'gradle.properties'
       # The web Playwright suite (`samples/web-demo`) is reachable from no
-      # other workflow, and `check-test-suites-reachable.sh` (#3201) reads a
-      # `pull_request` trigger whose `paths:` exclude the package as "runs
-      # its tests but never triggers on it". So web changes trigger this
-      # workflow too, and the `web-render` job runs on PRs (advisory, `||
-      # true`, ubuntu-only). Side effect accepted: a web-only PR also queues
-      # the `android-library-render` emulator job once.
+      # other PR-time workflow, and `check-test-suites-reachable.sh` (#3201)
+      # reads a `pull_request` trigger whose `paths:` exclude the package as
+      # "runs its tests but never triggers on it". So web changes trigger
+      # this workflow too, and the `web-render` job runs on PRs (advisory,
+      # `|| true`, ubuntu-only). The `changes` job below then runs each leg
+      # only for its own half of this list: a library PR no longer waits on
+      # the 24-min web suite, and a web-only PR no longer boots the emulator.
       - 'samples/web-demo/**'
       - 'sceneview-web/**'
   push:
@@ -89,9 +92,97 @@ permissions:
   contents: read
 
 jobs:
+  # ── Per-job path gate ─────────────────────────────────────────────────────
+  # The workflow-level `paths:` lists above are unions of unrelated suites,
+  # and without a per-job gate whichever half triggered the workflow dragged
+  # every other job along. Measured over 2026-09-18..25:
+  #   - pull_request: 67 of the 84 PR runs touched no web path, yet each one
+  #     ran the 24-min web job (798 runner-minutes) against the unchanged
+  #     committed `site/` bundle; that job was the last check to finish on 10
+  #     of the 17 library PR heads, setting their "all checks green" time to
+  #     ~25 min instead of ~7. 13 web-only PR runs booted the emulator for
+  #     nothing (29 runner-minutes).
+  #   - push: 29 of the 52 main runs touched no iOS path, yet each ran the
+  #     macOS `ios-render` job (277 macOS runner-minutes); 23 touched no
+  #     Android path, yet each booted four emulators (489 runner-minutes).
+  #
+  # Not evaluated on workflow_dispatch nor on the nightly `workflow_call`:
+  # there `changes` is skipped and every job runs, so the nightly still
+  # re-validates anything a filter below might have missed within 24 h.
+  # Fail-open: if this job does not conclude `success`, every job runs, so a
+  # broken filter can cost minutes but never skip a suite silently.
+  changes:
+    name: Detect changed paths
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      ios: ${{ steps.filter.outputs.ios }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      # Same pattern as ci.yml's `changes` job: a PR reads its file list from
+      # the API (no checkout); a push diffs `before..sha`, which needs the
+      # history, but only trees — `blob:none` plus a sparse `.github`.
+      - uses: actions/checkout@v7
+        if: github.event_name != 'pull_request'
+        with:
+          filter: blob:none
+          sparse-checkout: .github
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          base: ${{ github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before || 'main' }}
+          filters: |
+            shared: &shared
+              - '.github/workflows/render-tests.yml'
+            android:
+              - *shared
+              - 'sceneview/**'
+              - 'sceneview-core/**'
+              - 'arsceneview/**'
+              - 'samples/android-demo/**'
+              - 'samples/common/**'
+              - '.github/actions/setup-gradle/**'
+              - 'gradle/**'
+              - '**/build.gradle*'
+              - 'settings.gradle*'
+              - '**/gradle.properties'
+            ios:
+              - *shared
+              - 'SceneViewSwift/**'
+              - 'samples/ios-demo/**'
+            web:
+              - *shared
+              - 'samples/web-demo/**'
+              - 'sceneview-web/**'
+      - name: Assert every path filter produced a real verdict
+        env:
+          VERDICTS: |
+            android=${{ steps.filter.outputs.android }}
+            ios=${{ steps.filter.outputs.ios }}
+            web=${{ steps.filter.outputs.web }}
+        run: |
+          set -euo pipefail
+          bad=0
+          while IFS='=' read -r name value; do
+            [ -z "$name" ] && continue
+            case "$value" in
+              true|false) echo "  $name = $value" ;;
+              *) echo "::error::Path filter '$name' produced '$value' instead of true/false."; bad=1 ;;
+            esac
+          done <<< "$VERDICTS"
+          [ "$bad" -eq 0 ]
+
   # ── Android library render tests ──────────────────────────────────────────
   android-library-render:
     name: Android library render tests (emulator)
+    needs: changes
+    # Only when an Android-side path changed (see `changes`); always on
+    # dispatch and on the nightly, where `changes` is skipped.
+    if: >-
+      ${{ !cancelled() && (needs.changes.result != 'success'
+      || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Non-blocking on push/nightly: SwiftShader emulator render tests are
@@ -170,7 +261,10 @@ jobs:
   android-demo-screenshots:
     name: Android demo app screenshots (emulator)
     # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    if: github.event_name != 'pull_request'
+    needs: changes
+    if: >-
+      ${{ github.event_name != 'pull_request' && !cancelled()
+      && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -312,7 +406,10 @@ jobs:
   demo-render-goldens:
     name: Unified-demo render goldens (emulator)
     # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    if: github.event_name != 'pull_request'
+    needs: changes
+    if: >-
+      ${{ github.event_name != 'pull_request' && !cancelled()
+      && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     continue-on-error: true
@@ -464,7 +561,10 @@ jobs:
   ar-demo-playback-screenshots:
     name: AR demo playback screenshots (emulator)
     # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    if: github.event_name != 'pull_request'
+    needs: changes
+    if: >-
+      ${{ github.event_name != 'pull_request' && !cancelled()
+      && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # AR emulator playback is inherently flaky (ARCore service init races,
@@ -550,7 +650,10 @@ jobs:
   ios-render:
     name: iOS screenshot tests (Simulator)
     # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    if: github.event_name != 'pull_request'
+    needs: changes
+    if: >-
+      ${{ github.event_name != 'pull_request' && !cancelled()
+      && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 40
 
@@ -656,8 +759,24 @@ jobs:
   # ── Web render tests ──────────────────────────────────────────────────────
   web-render:
     name: Web Playwright screenshot tests
-    # Advisory leg (`|| true`). Runs on PRs as well so the suite stays
-    # reachable from a PR-time workflow (see the `pull_request.paths` note).
+    # Advisory leg (`|| true`). Runs on PRs that touch a web path, so the
+    # suite stays reachable from a PR-time workflow (see the
+    # `pull_request.paths` note), and on a manual dispatch.
+    #
+    # NOT on push to main nor on the nightly `workflow_call`: there it was an
+    # exact duplicate. `device-qa.yml`'s web leg runs the same
+    # `samples/web-demo` suite (same `playwright.config.ts`, full spec set,
+    # lockfile-pinned) on every push that touches `samples/web-demo/**` and
+    # every night, and it is BLOCKING, whereas this job can never go red. Any
+    # other push only re-tested the unchanged committed `site/` bundle.
+    # Measured 2026-09-18..25: 52 push + 8 nightly runs of this job, ~24 min
+    # each (~1,430 runner-minutes), none of which could report a failure.
+    needs: changes
+    if: >-
+      ${{ !cancelled() && (github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'pull_request'
+          && (needs.changes.result != 'success'
+              || needs.changes.outputs.web == 'true'))) }}
     runs-on: ubuntu-latest
     # 30 min: the suite (53 tests, 1 worker) measures 13–17 min green on push
     # runs — 20 min left no headroom and the slower nightly runners timed the
@@ -675,9 +794,11 @@ jobs:
 
       - name: Install Playwright
         working-directory: samples/web-demo
+        # Same pinned install as device-qa.sh's web leg (#3773): `npm ci` from
+        # the committed lockfile, so this PR-time leg runs the Playwright /
+        # Chromium pair the release gate runs, not `@playwright/test@latest`.
         run: |
-          npm init -y 2>/dev/null || true
-          npm install --save-dev @playwright/test
+          npm ci --no-audit --no-fund
           npx playwright install chromium --with-deps
 
       - name: Run Playwright tests

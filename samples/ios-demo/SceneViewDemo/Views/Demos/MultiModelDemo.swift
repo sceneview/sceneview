@@ -133,13 +133,14 @@ struct MultiModelDemo: View {
 
     var body: some View {
         sceneContent
-            .assetSourcePill(
-                assetSource,
-                // Three of the four park stand-ins are not trees (#2960); the
-                // whole-scene verdict says so.
-                placeholder: Self.slots.compactMap(\.slug).contains { $0.fallbackRole == .placeholder }
-            )
-            .demoChrome { controlsSheet }
+            .demoChrome(status: {
+                AssetSourceStatus(
+                    state: assetSource,
+                    // Three of the four park stand-ins are not trees (#2960);
+                    // the whole-scene verdict says so.
+                    isPlaceholder: Self.slots.compactMap(\.slug).contains { $0.fallbackRole == .placeholder }
+                )
+            }) { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "park")
             }

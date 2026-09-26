@@ -150,4 +150,70 @@ class GeometryUtilsTest {
         val totalCount = offsets.sumOf { it.count() }
         assertEquals(indices.sumOf { it.size }, totalCount)
     }
+
+    // ── mergedForPrimitiveCount (#3855) ───────────────────────────────────────────
+    //
+    // GeometryNode.setGeometry uses this to decide what offsets to push to Filament on a
+    // resize. A node built via a shape's `materialInstance: MaterialInstance?` constructor
+    // merges every raw primitive into a single Filament primitive slot (one MaterialInstance
+    // covers the whole shape); every other node keeps a natural 1-to-1 mapping.
+
+    @Test
+    fun `mergedForPrimitiveCount leaves natural offsets alone when built 1-to-1 with the geometry`() {
+        // A 24-sided cylinder built with 24 Filament primitives (one MaterialInstance per
+        // primitive) — no merging in play, so a resize must keep tracking the geometry as-is.
+        val naturalOffsets = (0 until 24).map { it * 12 until (it + 1) * 12 }
+
+        val result = naturalOffsets.mergedForPrimitiveCount(builtPrimitiveCount = naturalOffsets.size)
+
+        assertEquals(naturalOffsets, result)
+    }
+
+    @Test
+    fun `mergedForPrimitiveCount leaves a geometry with a single natural primitive alone`() {
+        val naturalOffsets = listOf(0 until 6)
+
+        val result = naturalOffsets.mergedForPrimitiveCount(builtPrimitiveCount = 1)
+
+        assertEquals(naturalOffsets, result)
+    }
+
+    @Test
+    fun `mergedForPrimitiveCount collapses every raw primitive into the single built primitive`() {
+        // A 24-sided cylinder: 24 raw primitives of 12 indices each (2 side tris + 2 cap tris),
+        // but the node was built with a single Filament primitive — the
+        // `CylinderNode(materialInstance = …)` convenience constructor's merged layout.
+        val naturalOffsets = (0 until 24).map { it * 12 until (it + 1) * 12 }
+
+        val result = naturalOffsets.mergedForPrimitiveCount(builtPrimitiveCount = 1)
+
+        assertEquals(
+            "a renderable built with 1 Filament primitive must get exactly 1 offset back",
+            1, result.size
+        )
+        assertEquals(0 until 24 * 12, result.single())
+    }
+
+    @Test
+    fun `every built primitive maps to a source range after a resize`() {
+        // Reproduces #3855 at the offset-computation level: RenderableNode's constructor only
+        // ever binds as many materials as there are Filament primitive slots
+        // (`materialInstances.forEachIndexed { index, materialInstance -> material(index, …) }`),
+        // so `offsetsToApply.size` must equal the number of primitives the renderable was
+        // actually built with, however many raw primitives the *new* geometry has. Before the
+        // fix, a resize always used the new geometry's raw offset count directly and a
+        // single-primitive node silently dropped every primitive past the first.
+        val builtPrimitiveCount = 1
+        val naturalOffsetsAfterResize = (0 until 16).map { it * 12 until (it + 1) * 12 } // sideCount changed 24 -> 16
+
+        val offsetsToApply = naturalOffsetsAfterResize.mergedForPrimitiveCount(builtPrimitiveCount)
+
+        assertEquals(
+            "every Filament primitive that setGeometryAt is called for must have a bound " +
+                "material, or it draws nothing — this must match the primitive count the " +
+                "renderable was built with, not the new geometry's raw primitive count",
+            builtPrimitiveCount, offsetsToApply.size
+        )
+        assertEquals(0 until 16 * 12, offsetsToApply.single())
+    }
 }

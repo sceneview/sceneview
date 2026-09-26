@@ -76,12 +76,20 @@ reticle that brightens once a surface is ready, tap-to-place, the instant-placem
 plane grid fading after first placement, and a per-model contact shadow — all opt-in via flags:
 
 ```kotlin
+// Whatever your own bottom chrome measures — a WindowInsets read, a spacing token, a
+// Modifier.onSizeChanged. PlacementScene cannot see a bar its caller draws over it.
+val bottomBarHeight = 96.dp
+
 PlacementScene(
     coaching = true,        // animated onboarding guide while searching for a surface
+    // The coaching pill sits 16 dp above the bottom edge by default — a gutter sized for a
+    // screen whose bottom is empty. Under a dock, a nav bar or a product sheet it lands
+    // behind that chrome; name the band it must clear instead (#3735). Omit on a bare screen.
+    coachingBottomClearance = bottomBarHeight + 8.dp,
     groundShadows = true,   // contact shadow under each placed model
     // reticleStyle = PlacementReticleStyle.RING is the default; DISC for the legacy flat puck
     // reticleColor defaults to RETICLE_TINT — an achromatic white ring over a faint dark
-    // contact halo, with an #a4c1ff centre dot only in the ready phase (#3570). Re-tint the
+    // contact halo, with an #a4c1ff centre dot only in the locked phase (#3570). Re-tint the
     // dot, not the ring: a saturated reticle competes with the model it is placing.
     onPlaced = { anchor ->
         AnchorNode(anchor = anchor) {

@@ -4,15 +4,15 @@
 
 [![npm version](https://img.shields.io/npm/v/sceneview-mcp?color=6c35aa)](https://www.npmjs.com/package/sceneview-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/sceneview-mcp?color=blue)](https://www.npmjs.com/package/sceneview-mcp)
-[![Tests](https://img.shields.io/badge/tests-2001%20passing-brightgreen)](#quality)
-[![MCP](https://img.shields.io/badge/MCP-v1.12-blue)](https://modelcontextprotocol.io/)
+[![Tests](https://img.shields.io/badge/tests-2015%20passing-brightgreen)](#quality)
+[![MCP SDK](https://img.shields.io/badge/MCP%20SDK-v1.29-blue)](https://modelcontextprotocol.io/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-listed-blueviolet)](https://registry.modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-brightgreen)](https://nodejs.org/)
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) server for **[SceneView](https://sceneview.github.io)** — the cross-platform 3D & AR SDK for Android (Jetpack Compose + Filament), iOS / macOS / visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR).
 
-Connect it to Claude, Cursor, Windsurf, or any MCP client — locally over stdio, remotely over Streamable HTTP at **`https://mcp.sceneview.dev/mcp`** (see [Use as a Claude connector](#use-as-a-claude-connector)), or self-hosted for ChatGPT, Codex and the OpenAI API (see [Remote server](#remote-server-streamable-http--chatgpt-codex-openai-api)). Your AI assistant gets specialized tools, compilable code samples, the full API reference, a code validator, and an inline 3D viewer widget — so it writes correct, working 3D/AR code on the first try.
+Connect it to Claude Code, Cline, Codex, Cursor, GitHub Copilot, JetBrains AI Assistant — or any other MCP client — locally over stdio, or remotely over Streamable HTTP at **`https://mcp.sceneview.dev/mcp`** (see [Remote server](#remote-server-streamable-http)). Your AI assistant gets specialized tools, compilable code samples, the full API reference, a code validator, and an inline 3D viewer widget — so it writes correct, working 3D/AR code on the first try.
 
 > **Disclaimer:** Generated code is provided "as is" without warranty. Always review before production use. See [TERMS.md](./TERMS.md) and [PRIVACY.md](./PRIVACY.md).
 
@@ -26,9 +26,11 @@ Connect it to Claude, Cursor, Windsurf, or any MCP client — locally over stdio
 npx sceneview-mcp
 ```
 
-### Claude Desktop
+Every client below runs that same server. Three config shapes exist across the ecosystem —
+`mcpServers` (most clients), `servers` (VS Code) and `[mcp_servers.*]` (Codex TOML) — but the
+command and arguments are identical in all three.
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+### Any MCP client
 
 ```json
 {
@@ -41,37 +43,160 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-Restart Claude Desktop after saving.
-
 ### Claude Code
 
-Two options.
+```bash
+claude mcp add sceneview -- npx -y sceneview-mcp
+```
 
-**Recommended — install the [SceneView Claude Code plugin](https://github.com/sceneview/claude-marketplace)** to get this MCP server **plus** 11 namespaced contributor commands and cross-platform reminder hooks in one shot:
+Or commit `.mcp.json` at the repository root so the whole team gets it:
+
+```json
+{ "mcpServers": { "sceneview": { "type": "stdio", "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+```
+
+Optionally, the [SceneView Claude Code plugin](https://github.com/sceneview/claude-marketplace)
+bundles this server with 11 namespaced contributor commands and cross-platform reminder hooks:
 
 ```bash
 /plugin marketplace add sceneview/claude-marketplace
 /plugin install sceneview@sceneview
 ```
 
-**Or — just the MCP server** (lighter, no commands or hooks):
+### Claude Desktop
 
-```bash
-claude mcp add sceneview -- npx -y sceneview-mcp
+Settings → Developer → Edit Config, then add the standard `mcpServers` block above to
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
+`%APPDATA%\Claude\claude_desktop_config.json` (Windows). Restart after saving.
+
+### Cline
+
+MCP Servers icon → Configure → Configure MCP Servers, or `~/.cline/mcp.json`:
+
+```json
+{ "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"], "disabled": false, "autoApprove": [] } } }
 ```
 
-### Use as a Claude connector
+### Codex
 
-No install, nothing to run: SceneView is hosted as a remote MCP server and can be added to
-[claude.ai](https://claude.ai) — web, desktop and mobile — as a **custom connector**.
+```bash
+codex mcp add sceneview -- npx -y sceneview-mcp
+```
+
+Or `~/.codex/config.toml` — TOML, and the table is `mcp_servers`, not `mcpServers`:
+
+```toml
+[mcp_servers.sceneview]
+command = "npx"
+args = ["-y", "sceneview-mcp"]
+```
+
+The same config serves the Codex CLI, the IDE extension and the app.
+
+### Cursor
+
+Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global) — the standard
+`mcpServers` block above. Cursor also accepts an install link:
+
+```
+cursor://anysphere.cursor-deeplink/mcp/install?name=sceneview&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNjZW5ldmlldy1tY3AiXX0=
+```
+
+### Gemini CLI
+
+The repository root carries a [`gemini-extension.json`](../gemini-extension.json), so the CLI
+installs the server straight from GitHub — no JSON to paste:
+
+```bash
+gemini extensions install https://github.com/sceneview/sceneview
+```
+
+**This clones the whole monorepo** — over 2 GB of history — because the CLI installs an
+extension by cloning the repository that declares it, and SceneView's manifest sits in a
+repository that also carries the Android, Apple, Web, Flutter and React Native sources. If you
+want the server and not the clone, paste the standard `mcpServers` block into
+`~/.gemini/settings.json` instead; it is the same command, `npx -y sceneview-mcp`, and it costs
+a download of the npm package.
+
+Either way, `npx` resolves `sceneview-mcp` to the **latest version published on npm**, which is
+not necessarily the version this manifest declares — the manifest's `version` describes the
+extension, and the server it launches updates on npm's cadence.
+
+The extension declares nothing but the server: `npx -y sceneview-mcp` over stdio, no context
+file and no tool exclusions, so it adds the SceneView tools to a session and changes nothing
+else about it.
+
+### Gemini in Android Studio
+
+Android Studio's MCP integration **does not support stdio** — it connects over HTTP only, so
+point it at the hosted endpoint. Settings → Tools → AI → MCP Servers:
+
+```json
+{ "mcpServers": { "sceneview": { "httpUrl": "https://mcp.sceneview.dev/mcp", "enabled": true } } }
+```
+
+### GitHub Copilot
+
+In VS Code, `.vscode/mcp.json` — note the `servers` key, not `mcpServers`:
+
+```json
+{ "servers": { "sceneview": { "type": "stdio", "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+```
+
+VS Code also accepts an install link:
+
+```
+vscode:mcp/install?%7B%22name%22%3A%22sceneview%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sceneview-mcp%22%5D%7D
+```
+
+In Copilot CLI:
+
+```bash
+copilot mcp add sceneview -- npx -y sceneview-mcp
+```
+
+### JetBrains AI Assistant / Junie
+
+Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add, then paste the standard
+`mcpServers` block above.
+
+### MCP Bundle (`.mcpb`)
+
+[`mcp/manifest.json`](manifest.json) describes this server in the [MCP Bundle
+format](https://github.com/modelcontextprotocol/mcpb) (spec 0.3), for desktop apps that install
+a local server from a bundle rather than a command line. It runs the built `dist/index.js` with
+the host's Node — the host provides the runtime and **nothing else**, so the bundle has to carry
+its own `node_modules`. Zipping this directory after `npm run build` alone produces a bundle
+that fails at launch with `Cannot find package '@modelcontextprotocol/sdk'`:
+
+```bash
+npm ci                                # dev dependencies — the build needs them
+npm run build                         # writes dist/
+npm ci --omit=dev --ignore-scripts    # drop the dev tree, keep dist/
+zip -r sceneview-mcp.mcpb manifest.json package.json dist node_modules
+```
+
+`--ignore-scripts` is not optional: this package's `prepare` script ends in `tsc`, and the same
+command that omits the dev dependencies omits TypeScript, so without it npm runs `prepare`,
+fails to find `tsc` and exits 127. Reinstall with a plain `npm ci` afterwards to get the dev
+tree back.
+
+The manifest is not published as a `.mcpb` artefact by CI: it is the descriptor, and packing it
+stays a manual step for whoever needs a bundle. `mcp/src/packaging.test.ts` keeps its name,
+version, licence, entry point and Node range equal to `package.json`'s — and does the same for
+[`server.json`](server.json) and the root `gemini-extension.json` — because nothing else would
+notice them drifting.
+
+### Use as a remote connector
+
+No install, nothing to run: SceneView is hosted as a remote MCP server at
 
 ```
 https://mcp.sceneview.dev/mcp
 ```
 
-In claude.ai, open **Settings → Connectors → Add custom connector**, paste that URL, name it
-`SceneView`, and click **Add**. The tools appear in the next conversation; the inline 3D viewer
-renders models straight in the chat.
+Any client that accepts a Streamable HTTP MCP URL can use it. In claude.ai, that is
+**Settings → Connectors → Add custom connector**.
 
 **Authless and read-only.** There is no sign-in, no API key and no account: every tool is a pure
 function of the SDK's own documentation, samples and API surface, so there is nothing to
@@ -79,37 +204,18 @@ authenticate and nothing of yours stored. All tools are annotated `readOnlyHint`
 `generate_3d_model`, which calls an external generation service and is therefore marked
 open-world rather than read-only.
 
-**Prefer it local?** `npx sceneview-mcp` runs the exact same server over stdio (see
-[Claude Desktop](#claude-desktop) and [Claude Code](#claude-code) above). The local route is the
-one that reads your project from disk (`analyze_project`) and the one that accepts your own
-`SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the hosted connector, being shared and anonymous, cannot.
+**Prefer it local?** `npx -y sceneview-mcp` runs the exact same server over stdio. The local
+route is the one that reads your project from disk (`analyze_project`) and the one that accepts
+your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the hosted connector, being shared and anonymous,
+cannot.
 
-### Cursor
+### Remote server (Streamable HTTP)
 
-Open **Settings > MCP**, add a new server named `sceneview` with command `npx -y sceneview-mcp`. Or add to `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "sceneview": {
-      "command": "npx",
-      "args": ["-y", "sceneview-mcp"]
-    }
-  }
-}
-```
-
-### Windsurf / Other MCP clients
-
-Same JSON config as above. The server communicates via **stdio** using the standard MCP protocol.
-
-### Remote server (Streamable HTTP) — ChatGPT, Codex, OpenAI API
-
-The ChatGPT / Codex Plugins Directory and the OpenAI API `mcp` tool cannot spawn a local process: they need MCP's **Streamable HTTP** transport at a public URL. The same package serves it:
+Some hosts cannot spawn a local process: they need MCP's **Streamable HTTP** transport at a public URL. The same package serves it:
 
 ```bash
 npx sceneview-mcp --http
-# [sceneview-mcp] v4.x — HTTP (free tools only)
+# [sceneview-mcp] v4.x — HTTP (remote tool surface)
 # [sceneview-mcp] MCP endpoint: http://127.0.0.1:3333/mcp
 ```
 
@@ -141,16 +247,30 @@ Point the ChatGPT connector / OpenAI `mcp` tool at `https://<your-host>/mcp`.
 
 **Already hosted.** You do not have to run it yourself to get a public URL: the same code is
 deployed at `https://mcp.sceneview.dev/mcp` (`GET /health` answers `{"status":"ok"}`), which is
-what the [Claude connector](#use-as-a-claude-connector) above points at. Self-host when you want
+what the [remote connector](#use-as-a-remote-connector) above points at. Self-host when you want
 your own keys, your own rate limits, or `analyze_project` against a local checkout.
 
 ---
 
 ## What you get
 
-Every developer tool is **free**: setup guides for every platform, code samples, the API reference, the migration tooling, the validator, model search, and the project analyzer.
+Every tool is free and there is no API key. The three generation tools that talk to a
+third-party service use *your* credentials; everything else works the moment the server starts.
 
-### Free tools
+### Start here
+
+Six tools carry most of what assistants actually do with SceneView. If you read nothing else:
+
+| Tool | What it does | Ask your assistant |
+|---|---|---|
+| `validate_code` | Compile-checks generated Kotlin or Swift against the real public API — symbol existence, 30+ rules, did-you-mean suggestions — before it reaches you | *"Check that this SceneView code actually compiles"* |
+| `get_node_reference` | The exact signature, defaults and example for any of 48+ node types, instead of an invented one | *"What are the parameters of ModelNode?"* |
+| `list_samples` | Browse 38 scenarios by tag (`ar`, `3d`, `ios`, `animation`, `geometry`, …) | *"What SceneView samples involve AR planes?"* |
+| `get_sample` | Returns one of them complete and compilable, in Kotlin or Swift | *"Give me the AR plane-placement sample in Kotlin"* |
+| `get_setup` | Gradle and manifest setup for Android 3D or AR | *"Set up SceneView in my Android app"* |
+| `get_ar_setup` | Permissions, session options, plane detection, image tracking | *"Add ARCore plane detection to this screen"* |
+
+### Full tool reference
 
 #### Setup & integration
 
@@ -166,7 +286,7 @@ Every developer tool is **free**: setup guides for every platform, code samples,
 
 | Tool | What it does |
 |---|---|
-| `get_sample` | Returns a complete, compilable code sample for any of 33 scenarios (Kotlin or Swift) |
+| `get_sample` | Returns a complete, compilable code sample for any of 38 scenarios (Kotlin or Swift) |
 | `list_samples` | Browse all samples, filter by tag (`ar`, `3d`, `ios`, `animation`, `geometry`, ...) |
 | `validate_code` | Checks generated code against 30+ rules — including symbol existence against the real public API, with did-you-mean suggestions — before presenting it to the user |
 | `migrate_code` | Automatically migrates SceneView 2.x / 3.x code with detailed changelog |
@@ -312,32 +432,32 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 - Have no knowledge of SceneView's iOS/Swift API at all
 
 **With** this MCP server, AI assistants:
-- Always use the current SceneView 4.0.x API surface
+- Always use the current SceneView 4.x API surface
 - Generate correct **Compose-native** 3D/AR code for Android
 - Generate correct **SwiftUI-native** code for iOS/macOS/visionOS
 - Know about all 48+ node types and their exact parameters
 - Validate code against 30+ rules before presenting it
-- Provide working, tested sample code for 33 scenarios
+- Provide working, tested sample code for 38 scenarios
 
 ---
 
 ## Quality
 
-The MCP server is tested with **2,001 unit tests** across 86 test suites covering:
+The MCP server is tested with **2,015 unit tests** across 91 test files covering:
 
 - Every tool response (correct output, error handling, edge cases)
-- All 33 code samples (compilable structure, correct imports, no deprecated APIs)
+- All 38 code samples (compilable structure, correct imports, no deprecated APIs)
 - Code validator rules (true positives and false-positive resistance)
 - Node reference parsing (all node types extracted correctly from `llms.txt`)
 - Resource responses (API reference, GitHub issues integration, the 3D viewer widget)
 - The Streamable HTTP surface end to end (initialize, free-only tools/list, widget resource, health, OpenAI challenge)
 
 ```
- Test Files  86 passed (86)
-      Tests  2001 passed (2001)
+ Test Files  91 passed (91)
+      Tests  2015 passed (2015)
 ```
 
-All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK).
+All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK). Anonymous telemetry also makes a network call unless `SCENEVIEW_TELEMETRY=0` (see [below](#anonymous-telemetry)).
 
 ---
 
@@ -361,7 +481,7 @@ Install Node.js from [nodejs.org](https://nodejs.org/) (LTS recommended). npm an
 
 ### Firewall or proxy issues
 
-The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), and Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called). Everything else works offline.
+The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called), and the anonymous telemetry endpoint (off with `SCENEVIEW_TELEMETRY=0`). Everything else works offline.
 
 ```json
 {
@@ -381,7 +501,7 @@ The only network calls are to the GitHub API (for known issues), Sketchfab (when
 
 ## Sponsor
 
-If sceneview-mcp saves you time, consider [sponsoring on GitHub Sponsors](https://github.com/sponsors/sceneview). Building this is a one-dev labor of love and donations keep the free tier covered.
+If sceneview-mcp saves you time, consider [donating on Open Collective](https://opencollective.com/sceneview), or [GitHub Sponsors](https://github.com/sponsors/sceneview) if you prefer. Building this is a one-dev labor of love; every tool is free with or without a donation.
 
 ---
 
@@ -397,7 +517,7 @@ Enabled by default (MCP client name/version and tool names — no personal data,
 cd mcp
 npm install
 npm run prepare  # Copy llms.txt + build TypeScript
-npm test         # 2007 tests
+npm test         # vitest suite
 npm run lint     # Biome (repo-root biome.json) — lint + format + import assists
 npm run lint:fix # same, applying the safe fixes
 npm run dev      # Start with tsx (hot reload)
@@ -433,7 +553,7 @@ mcp/
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new tools or rules
-4. Run `npm test` — all 2001+ tests must pass
+4. Run `npm test` — all tests must pass
 5. Submit a pull request
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full guide.

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.sceneview.demo.ui.explore
 
@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,10 +37,12 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +63,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +82,8 @@ import io.github.sceneview.demo.sources.rememberModelSources
 import io.github.sceneview.demo.ui.explore.components.FeaturedModelCard
 import io.github.sceneview.demo.ui.explore.components.SpatialHero
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
+import io.github.sceneview.demo.ui.demoToggleButtonColors
 import io.github.sceneview.sample.ui.demoCategoryAccent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -415,10 +423,10 @@ private fun ExploreBody(
                             .fillMaxWidth()
                             .height(SceneViewTokens.Layout.heroStageHeight)
                             .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
-                            .background(MaterialTheme.colorScheme.surfaceDim),
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (loadingFeeds) CircularProgressIndicator()
+                        if (loadingFeeds) ContainedLoadingIndicator()
                     }
                 }
 
@@ -550,7 +558,7 @@ private fun FloatingSearchPill(sourceName: String, onClick: () -> Unit, modifier
     Surface(
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
-        color = MaterialTheme.colorScheme.surfaceDim,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(
             colors.glassBorderWidth,
             if (dark) colors.glassBorderDark else colors.glassBorderLight,
@@ -580,7 +588,7 @@ private fun TrendingRail(
     if (models.isEmpty() && !loading) return
     CarouselSection(title = stringResource(R.string.explore_trending_in_3d)) {
         if (models.isEmpty()) {
-            CircularProgressIndicator(modifier = Modifier.size(SceneViewTokens.Space.lg))
+            LoadingIndicator(modifier = Modifier.size(SceneViewTokens.Space.lg))
         } else {
             val state = rememberLazyListState()
             LazyRow(
@@ -615,39 +623,64 @@ private fun CompactBrowseRail(
     animatedOnly: Boolean,
     onToggleAnimated: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
-        Text(
-            text = stringResource(R.string.explore_browse_by_source),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
+        // The header row is as tall as the Animated toggle whether or not the selected
+        // source offers it, so switching source never shifts the picker underneath.
         Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = ButtonDefaults.MinHeight),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            sources.forEach { source ->
-                FilterChip(
-                    selected = source.id == selectedSource.id,
-                    onClick = { onSelectSource(source) },
-                    label = { Text(source.id.displayName) },
-                )
-            }
+            Text(
+                text = stringResource(R.string.explore_browse_by_source),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
             if (showAnimated) {
-                FilterChip(
-                    selected = animatedOnly,
-                    onClick = onToggleAnimated,
-                    label = { Text(stringResource(R.string.explore_filter_animated)) },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Filled.AutoAwesome,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                ToggleButton(
+                    checked = animatedOnly,
+                    onCheckedChange = { checked ->
+                        haptics.performHapticFeedback(
+                            if (checked) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
                         )
+                        onToggleAnimated()
                     },
-                )
+                    modifier = Modifier.testTag(ExploreTestTags.ANIMATED_FILTER),
+                    colors = demoToggleButtonColors(),
+                ) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(ButtonDefaults.IconSize),
+                    )
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(stringResource(R.string.explore_filter_animated))
+                }
             }
         }
+        // One connected button group instead of a scrolling chip row: the three sources
+        // are mutually exclusive, and the group says so where a chip row does not.
+        // Keyed by id, as the chips were: the selected source need not be the same
+        // instance as its entry in [sources].
+        ConnectedChoiceRow(
+            options = sources.map { it.id },
+            selected = selectedSource.id,
+            onSelect = { id -> sources.firstOrNull { it.id == id }?.let(onSelectSource) },
+            label = { it.displayName },
+            optionTestTag = { ExploreTestTags.sourceOption(it) },
+        )
     }
+}
+
+/** UI-test tags for the Explore tab's browse rail. */
+internal object ExploreTestTags {
+    const val ANIMATED_FILTER = "explore_filter_animated"
+
+    /** Tag of the source picker button for [id]. */
+    fun sourceOption(id: ModelSourceId): String = "explore_source_${id.slug}"
 }
 
 /**
@@ -821,10 +854,7 @@ private fun FeedSection(
                 modifier = Modifier.weight(1f),
             )
             if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(SceneViewTokens.Space.lg),
-                    strokeWidth = SceneViewTokens.Space.xs,
-                )
+                LoadingIndicator(modifier = Modifier.size(SceneViewTokens.Space.lg))
             }
         }
         val state = rememberLazyListState()
@@ -863,7 +893,7 @@ private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
                 brush = androidx.compose.ui.graphics.Brush.linearGradient(
                     colors = listOf(
                         accent.copy(alpha = SceneViewTokens.SpatialGalleryColor.glassSurfaceLight.alpha),
-                        MaterialTheme.colorScheme.surfaceDim,
+                        MaterialTheme.colorScheme.surfaceContainerHigh,
                     ),
                 ),
             )

@@ -1,34 +1,52 @@
 name: iOS CI
 
 on:
-  # `sceneview-core/**` is shared KMP logic consumed by the Apple
-  # (RealityKit) renderer, so an iOS-affecting core change must re-run
-  # iOS CI — it also triggers Android CI in ci.yml's path filter. See #1295.
+  # No `sceneview-core/**` (dropped 2026-09; #1295 had added it): nothing built
+  # here consumes the KMP core — SceneViewSwift/Package.swift has no dependency
+  # on it and there is no XCFramework; the Swift sources only name it in
+  # comments about hand-ported math. A core-only change therefore cannot alter
+  # this workflow's result, yet it cost a ~15-min macOS run on every core PR.
+  # The core's own iOS (Kotlin/Native) compile stays covered by ci.yml's
+  # `compile-kmp` job. Re-add the path the day Swift links the core.
   push:
     branches: [main]
     paths:
       - 'SceneViewSwift/**'
       - 'samples/ios-demo/**'
-      - 'sceneview-core/**'
       - '.github/workflows/ios.yml'
   pull_request:
     branches: [main]
     paths:
       - 'SceneViewSwift/**'
       - 'samples/ios-demo/**'
-      - 'sceneview-core/**'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 
-# Cancel in-progress runs for the same branch/PR
+# Cancel only a genuinely superseded PR run, never a push to `main` — same
+# rule ci.yml adopted (#3873). The old `group: ios-ci-${{ github.ref }}` with
+# `cancel-in-progress: true` keyed pushes to `main` on the branch ref, so two
+# merges landing close together cancelled each other's run outright (11
+# cancelled main runs found by audit). PRs are keyed on their NUMBER so a new
+# commit still cancels the stale run; pushes to `main` keep their immutable
+# commit sha and never cancel in progress. `workflow_dispatch` falls back to
+# `github.ref`.
 concurrency:
-  group: ios-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ios-ci-${{ github.event_name == 'push' && github.sha || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
 
 jobs:
+  # Two jobs, run in parallel: the SceneViewSwift package (iOS build,
+  # visionOS build, unit tests) and the iOS sample demo (simulator test,
+  # device-path compile). They share nothing at build time — the demo builds
+  # its own copy of the local package in its own DerivedData — and until this
+  # split they ran back to back in one job. Measured 2026-09-18..25 (78 runs):
+  # that job took 14.9 min median, 21.3 min p90, made of ~8.5 min of package
+  # steps and ~10.1 min of demo steps. In parallel the wall clock is the demo
+  # half plus runner setup, ~12 min, and a red half (a live-network test such
+  # as #3811) re-runs alone instead of re-running the whole job.
   build:
     name: Build & Test (iOS)
     runs-on: macos-15
@@ -139,19 +157,126 @@ jobs:
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
+  # Xcode 27 canary: the same package steps as `build`, on GitHub's
+  # `xcode-27` preview image (actions/runner-images#14404 — macOS 27 base,
+  # Xcode 27.0 default at /Applications/Xcode_27.app). Non-blocking by design:
+  # it exists to surface Xcode 27 / iOS 27 SDK breakage (Swift 6 diagnostics,
+  # SwiftUI macro changes, new simulator set) before the stable image lands
+  # and before any App Store build has to move. `app-store.yml` and the
+  # self-hosted Xcode lists stay on 26.x until this job is green.
+  build-xcode27:
+    name: Build & Test (iOS, Xcode 27 preview)
+    runs-on: xcode-27
+    continue-on-error: true
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          # DEVELOPER_DIR, not `sudo xcode-select -s`: exported for every later
+          # step, and it fails loudly if the preview image moves the path.
+          for cand in /Applications/Xcode_27.app /Applications/Xcode_27.0.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode 27 installation found in /Applications/"
+          ls -d /Applications/Xcode*.app || true
+          exit 1
+
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          # Assignment form on purpose — see the same step in `build`.
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
+
+      # Separate cache key: `runner.os` is `macOS` on both images, and a
+      # `.build` produced by Xcode 27's toolchain must never be restored into
+      # the Xcode 26 `build` job (or the reverse).
+      - name: Cache Swift Package dependencies
+        uses: actions/cache@v6
+        with:
+          path: SceneViewSwift/.build
+          key: spm-xcode27-${{ runner.os }}-${{ hashFiles('SceneViewSwift/Package.resolved') }}
+          restore-keys: |
+            spm-xcode27-${{ runner.os }}-
+
+      - name: Build Swift Package (iOS)
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme SceneViewSwift \
+            -destination "$IOS_DEST" \
+            -skipMacroValidation \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+      - name: Build Swift Package (visionOS)
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          XROS_SDK="$(xcrun --sdk xros --show-sdk-path)"
+          echo "visionOS SDK: $XROS_SDK"
+          swift build \
+            --sdk "$XROS_SDK" \
+            -Xswiftc -target -Xswiftc arm64-apple-xros2.0
+
+      - name: Run tests
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -scheme SceneViewSwift \
+            -destination "$IOS_DEST" \
+            -skipMacroValidation \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+  demo:
+    name: Build & Test (iOS sample demo)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same Xcode preference list and simulator resolver as the `build` job
+      # above — see the comments there (#3174) before changing either.
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "Using Xcode: $(xcode-select -p)"
+          xcodebuild -version
+
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          # Assignment form on purpose — see the `build` job (fail-closed).
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
+
       # Build the iOS sample demo so a missing pbxproj registration on a new
       # demo file fails the PR instead of slipping into main. Caught by
       # Thomas's "tester visuellement impérativement" rule on PR #1042 (file
       # added but not in pbxproj → main broken until 74dccb56). Closes #1044.
       #
-      # `if: always()` on all three steps so the demo build runs even when
-      # the SwiftPM tests above flake — pbxproj regressions are orthogonal
-      # to test correctness, and flaky simulator tests should not hide
-      # demo build failures. The overall job status still goes red if any
-      # step fails (no `continue-on-error: true`), so a real test failure
-      # still blocks merge — this just ensures both signals are surfaced.
+      # This job used to share a job with the SwiftPM tests and carried
+      # `if: always()` so a flaky package test could not hide a demo build
+      # failure. As its own job it reports its own verdict; only the device
+      # compile below keeps `if: always()`, so a red simulator test still
+      # leaves the AR code path compiled and reported.
       - name: Cache iOS demo Swift Package dependencies
-        if: always()
         uses: actions/cache@v6
         with:
           path: samples/ios-demo/SourcePackages
@@ -168,7 +293,6 @@ jobs:
             spm-${{ runner.os }}-demo-
 
       - name: Resolve iOS demo dependencies
-        if: always()
         working-directory: samples/ios-demo
         run: |
           xcodebuild -resolvePackageDependencies \
@@ -177,7 +301,6 @@ jobs:
             -clonedSourcePackagesDirPath SourcePackages
 
       - name: Build & test iOS sample demo (catches missing pbxproj entries)
-        if: always()
         # `xcodebuild test` builds the demo AND runs the `SceneViewDemoTests`
         # unit-test target (wired in #1227) — so a missing pbxproj registration
         # on a new demo file still fails the PR, and the AppStoreUpdater tests
@@ -240,3 +363,116 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+  # Xcode 27 canary for the iOS sample demo: the same steps as `demo`, on the
+  # `xcode-27` preview image. This is the job that sees the SwiftUI app — the
+  # package canary (`build-xcode27`) never compiles `@State`/view code — so it
+  # is where iOS 27 SDK SwiftUI and Swift 6 diagnostics surface. Non-blocking,
+  # like `build-xcode27`; see that job for the Xcode path and why the cache
+  # key is separate.
+  build-demo-xcode27:
+    name: Build & Test (iOS sample demo, Xcode 27 preview)
+    runs-on: xcode-27
+    continue-on-error: true
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          for cand in /Applications/Xcode_27.app /Applications/Xcode_27.0.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode 27 installation found in /Applications/"
+          ls -d /Applications/Xcode*.app || true
+          exit 1
+
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          # Assignment form on purpose — see the `build` job (fail-closed).
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
+
+      - name: Cache iOS demo Swift Package dependencies
+        uses: actions/cache@v6
+        with:
+          path: samples/ios-demo/SourcePackages
+          key: spm-xcode27-${{ runner.os }}-demo-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+          restore-keys: |
+            spm-xcode27-${{ runner.os }}-demo-
+
+      - name: Resolve iOS demo dependencies
+        working-directory: samples/ios-demo
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -scheme SceneViewDemo \
+            -project SceneViewDemo.xcodeproj \
+            -clonedSourcePackagesDirPath SourcePackages
+
+      # The raw xcodebuild output is teed to $RUNNER_TEMP: xcpretty drops the
+      # Xcode 27 diagnostics it cannot parse, and surfacing them is the point
+      # of this job. The last step lists every unique warning and error.
+      - name: Build & test iOS sample demo
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        working-directory: samples/ios-demo
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project SceneViewDemo.xcodeproj \
+            -scheme SceneViewDemo \
+            -destination "$IOS_DEST" \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
+            2>&1 | tee "$RUNNER_TEMP/xcode27-demo-test.log" \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+      # See `demo` (#2852): the Simulator build strips every
+      # `#if !targetEnvironment(simulator)` AR branch; this compiles it.
+      - name: "Compile the device code path (no signing) — #2852"
+        if: always()
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        working-directory: samples/ios-demo
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project SceneViewDemo.xcodeproj \
+            -scheme SceneViewDemo \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
+            2>&1 | tee "$RUNNER_TEMP/xcode27-demo-device.log" \
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+
+      - name: List Xcode 27 diagnostics
+        if: always()
+        run: |
+          shopt -s nullglob
+          logs=("$RUNNER_TEMP"/xcode27-demo-*.log)
+          [ ${#logs[@]} -gt 0 ] || { echo "No raw xcodebuild log captured."; exit 0; }
+          diags="$(grep -h -E '^[^ ]+:[0-9]+:[0-9]+: (warning|error): ' "${logs[@]}" \
+            | sed "s#^$GITHUB_WORKSPACE/##" | sort -u || true)"
+          count="$(printf '%s' "$diags" | grep -c . || true)"
+          echo "Unique Xcode 27 diagnostics: $count"
+          printf '%s\n' "$diags"
+          {
+            echo "### Xcode 27 demo diagnostics ($count unique)"
+            echo '```'
+            printf '%s\n' "$diags"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

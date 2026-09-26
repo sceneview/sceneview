@@ -16,7 +16,7 @@ Kotlin/JS source or `llms.txt` — do not improvise.
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.36.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
 ```
 
 filament.js MUST load first. npm: `npm install sceneview-web filament`.
@@ -42,11 +42,12 @@ sv.setEnvironmentWithSkybox(iblUrl, skyboxUrl)
 sv.setCameraOrbit(theta, phi, distance) // radians
 sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)
-sv.setAutoRotateSpeed(radiansPerFrame)
+sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s
 sv.setZoomLimits(min, max)
-sv.setBackgroundColor(r, g, b, a)       // 0-1 range
+sv.setBackgroundColor(r, g, b, a)       // 0-1 range, exact on screen; a < 1 = page shows through
 sv.fitToModels()                        // frame every loaded model
 sv.fitToModels(margin)                  // multiplier on the fit distance: 1 = default, <1 tighter, >1 more air (0.2…10)
+                                        // centred, kept through auto-centring; clip planes follow the model size
 sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)

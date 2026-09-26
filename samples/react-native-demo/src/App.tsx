@@ -59,7 +59,7 @@ interface PlaygroundShape {
 // Constants
 // ---------------------------------------------------------------------------
 
-const VERSION = '4.36.0';
+const VERSION = '4.40.0';
 
 const ENVIRONMENT = 'environments/studio_small.hdr';
 
@@ -835,7 +835,7 @@ function MaterialsTab() {
           <Text style={styles.arInfoTitle}>Material Modes</Text>
           <Text style={styles.arInfoBody}>
             {'•'} Lit PBR — reacts to lights, IBL and shadows{'\n'}
-            {'•'} Unlit — flat colour, ignores all lighting{'\n'}
+            {'•'} Unlit — flat color, ignores all lighting{'\n'}
             {'\n'}Toggle the switch and watch the same shapes go from shaded to
             flat. Unlit is ideal for HUD overlays, gizmos and AR face meshes.
           </Text>
