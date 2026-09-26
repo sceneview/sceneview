@@ -6,7 +6,7 @@
 
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.40.0")
+    implementation("io.github.sceneview:sceneview:4.41.0")
 }
 ```
 

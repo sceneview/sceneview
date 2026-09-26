@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.40.0)
+  Source of truth: /llms.txt  (SceneView 4.41.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.40.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.41.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -3455,6 +3455,8 @@ Returns `null` while loading, recomposes when ready. **Always handle the null ca
 
 **Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
 
+**While a location switch loads:** the returned value is `null` only for the *first* load of a given key. When `assetFileLocation`/`fileLocation` changes, `produceState` retains the last value, so the previous `ModelInstance` is returned until the new one is ready — a caller that shows a loading state on `null` sees no loading gap during a switch. To observe `null` during the switch, wrap the call in `key(location) { rememberModelInstance(...) }` (the Animation & Physics sample does this) ([#3900](https://github.com/sceneview/sceneview/issues/3900)).
+
 The `fileLocation` overload auto-detects URLs (http/https) and routes through Fuel HTTP client for download. Use it for remote model loading:
 ```kotlin
 val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
@@ -4470,7 +4472,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.40.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.41.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4755,10 +4757,11 @@ sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)   // Boolean
 sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s
 sv.setZoomLimits(min, max)
-sv.setBackgroundColor(r, g, b, a)  // 0-1 range
+sv.setBackgroundColor(r, g, b, a)  // 0-1 range, exact on screen (not tone-mapped); a optional (1), a < 1 = page shows through
 sv.setAutoCenterContent(enabled)   // Boolean — center loaded content (default true)
 sv.fitToModels()                   // frame every loaded model
 sv.fitToModels(0.9)                // optional margin — multiplier on the fit distance (1 = default, <1 tighter, >1 more air; clamped 0.2…10)
+                                   // centred, margin kept through auto-centring, any size from 2 cm to a building (#3880)
 sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)
@@ -4774,6 +4777,13 @@ sv.addLightNode(type)              // type: "directional" | "point" | "spot" →
 sv.removeNode(handle)              // detach + free the node's entity
 sv.hitTest(x, y)                   // → NodeHandle[] nearest-first (#2024 P5c)
 ```
+
+Background (`sv.setBackgroundColor`, #3879): the color is painted after tone mapping, so it
+lands on screen exactly as given — divide each hex byte by 255 to match a page color:
+`sv.setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)` renders `#EEF0F3`. Alpha is
+optional (default `1`); `a < 1` makes the canvas see-through so the page behind it shows
+(`sv.setBackgroundColor(0, 0, 0, 0)` = transparent canvas). Default `#333443`. A skybox
+covers the background.
 
 Screen-point picking (`sv.hitTest(x, y)`, #2024 P5c): coordinates are canvas
 pixels ((0,0) = top-left). The point is unprojected through the live camera
@@ -5086,7 +5096,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.40.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.41.0")
 ```
 
 Import: `import SceneViewSwift`
