@@ -4,18 +4,24 @@ import android.os.SystemClock
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import com.google.android.filament.Engine
 import com.google.ar.core.TrackingFailureReason
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.ar.*
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
+import io.github.sceneview.demo.DEFAULT_ORBIT_ELEVATION_DEGREES
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.fitOrbitRadius
 import io.github.sceneview.demo.common.DemoModalBottomSheet
+import io.github.sceneview.demo.common.MODEL_DEMO_HDR
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.placement.PlacementActionCard
@@ -23,12 +29,17 @@ import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.ar.ARHapticFeedback
+import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.material.setColor
 import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
+import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.delay
@@ -171,8 +182,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             // navigation bar explicitly, or "Close preview" lands under it.
             Column(Modifier.navigationBarsPadding()) {
                 Text(stringResource(R.string.wall_preview_size), modifier = Modifier.padding(SceneViewTokens.Space.md))
-                SceneView(modifier = Modifier.fillMaxWidth().aspectRatio(1f), engine = engine,
-                    modelLoader = modelLoader, materialLoader = materialLoader) { WallTV() }
+                WallTvPreview(engine, modelLoader, materialLoader, Modifier.fillMaxWidth().aspectRatio(1f))
                 TextButton(onClick = { show3D = false }) { Text(stringResource(R.string.wall_close_preview)) }
             }
         }
@@ -189,6 +199,72 @@ private fun WallAdjustment(decreaseLabel: Int, increaseLabel: Int, enabled: Bool
     }
 }
 
+/** The TV as authored, in metres, before [WALL_TV_SCALE]: same geometry as iOS `makeWallTV`. */
+private val TV_BODY = Size(1.26f, 0.74f, 0.04f)
+private val TV_SCREEN = Size(1.20f, 0.68f, 0.01f)
+
+/** The screen's centre, proud of the body's front face (z = 0.04) by half its own depth. */
+private const val TV_SCREEN_CENTER_Z = 0.045f
+
+/** Brings the authored 1.26 m TV to the demo's 0.3 m preview size, not a 55-inch claim. */
+private const val WALL_TV_SCALE = 0.3f / 1.26f
+
+/** The TV as drawn: width, height and depth in metres, screen included. */
+internal val wallTvExtent: Size = Size(
+    TV_BODY.x * WALL_TV_SCALE,
+    TV_BODY.y * WALL_TV_SCALE,
+    (TV_SCREEN_CENTER_Z + TV_SCREEN.z / 2f) * WALL_TV_SCALE,
+)
+
+/** The room "View in 3D" shows the TV in: a bright, mostly white living room. */
+internal const val WALL_TV_PREVIEW_HDR: String = MODEL_DEMO_HDR
+
+/** Camera distance that frames the TV in the square "View in 3D" preview (#3864). */
+internal fun wallTvPreviewOrbitRadius(): Float = fitOrbitRadius(
+    wallTvExtent.x, wallTvExtent.y, wallTvExtent.z,
+    aspect = 1f,
+    elevationDegrees = DEFAULT_ORBIT_ELEVATION_DEGREES,
+)
+
+/**
+ * "View in 3D": the TV in a bright room that also lights it, framed to fill the square (#3864).
+ *
+ * The TV is near-black on purpose, like a real one and like iOS. On SceneView's defaults (black
+ * skybox, neutral light, camera 2.78 m out) it covered a tenth of the square, black on black,
+ * which read as a black screen. The room is the backdrop the TV reads against, and its
+ * reflection is what makes the glossy screen look like a screen. It is media, not a themed
+ * surface, so it looks the same in light and dark themes.
+ */
+@OptIn(ExperimentalSceneViewApi::class)
+@Composable
+private fun WallTvPreview(
+    engine: Engine,
+    modelLoader: ModelLoader,
+    materialLoader: MaterialLoader,
+    modifier: Modifier = Modifier,
+) {
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val room = rememberHDREnvironment(environmentLoader, WALL_TV_PREVIEW_HDR, createSkybox = true)
+    val orbitRadius = remember { wallTvPreviewOrbitRadius() }
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (room == null) {
+            // The room decodes in a moment. Until then SceneView would draw its default
+            // black stage, which is the very screen this preview replaces.
+            CircularProgressIndicator()
+        } else {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                environmentLoader = environmentLoader,
+                environment = room,
+                cameraManipulator = rememberCameraManipulator(orbitRadius = orbitRadius),
+            ) { WallTV() }
+        }
+    }
+}
+
 /** Same authored geometry/materials as iOS; the base size is a 0.3 m preview, not a 55-inch claim. */
 @Composable
 private fun SceneScope.WallTV(opacity: Float = 1f) {
@@ -202,7 +278,7 @@ private fun SceneScope.WallTV(opacity: Float = 1f) {
         body.setColor(Color(0xFF20242A).copy(alpha = opacity))
         screen.setColor(Color(0xFF06080C).copy(alpha = opacity))
     }
-    Node(scale = Scale(0.3f / 1.26f)) {
+    Node(scale = Scale(WALL_TV_SCALE)) {
         // The whole TV moves and scales as one: only the parent node takes gestures.
         val fixedChild: CubeNodeImpl.() -> Unit = {
             isEditable = true
@@ -211,14 +287,14 @@ private fun SceneScope.WallTV(opacity: Float = 1f) {
             isScaleEditable = false
         }
         CubeNode(
-            size = Size(1.26f, 0.74f, 0.04f),
-            position = Position(0f, 0.37f, 0.02f),
+            size = TV_BODY,
+            position = Position(0f, TV_BODY.y / 2f, TV_BODY.z / 2f),
             materialInstance = body,
             apply = fixedChild,
         )
         CubeNode(
-            size = Size(1.20f, 0.68f, 0.01f),
-            position = Position(0f, 0.37f, 0.045f),
+            size = TV_SCREEN,
+            position = Position(0f, TV_BODY.y / 2f, TV_SCREEN_CENTER_Z),
             materialInstance = screen,
             apply = fixedChild,
         )

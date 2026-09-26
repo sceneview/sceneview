@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Wall placement demo: "View in 3D" shows the TV instead of a black square ([#3864](https://github.com/sceneview/sceneview/issues/3864)).** The near-black TV sat 2.8 m away on SceneView's default black backdrop, lit only by the neutral light, so it read as a tiny black rectangle on black. The preview now places the TV in a bright studio room that also lights it, and frames it to fill the preview. A spinner shows while the room loads.
