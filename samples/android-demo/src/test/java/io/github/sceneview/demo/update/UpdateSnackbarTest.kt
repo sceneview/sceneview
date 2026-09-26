@@ -61,7 +61,8 @@ class UpdateSnackbarTest {
         fake = FakeAppUpdateManager(activity)
         manager = InAppUpdateManager(activity, fake)
         manager.registerForResult(activity)
-        controller.start().resume()
+        // visible() attaches the window, which is where the compose rule finds the content.
+        controller.start().resume().visible()
     }
 
     @After
