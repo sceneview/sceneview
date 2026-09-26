@@ -722,6 +722,39 @@ must read as one language: same `ar-scrim` ground, same `ar-scrim-border` hairli
   the shutter disc use `danger` (#ea4335) — the camera-app convention — so a red dot over
   the camera always means "this is being recorded", never an error (#3831).
 
+### AR Debug View (Android demo)
+
+The Rerun demo's in-app 3D view (#3950): what ARCore understood of the room, drawn by a
+second `SceneView` from a free third-person camera. The layout borrows from three
+references: **Polycam** (live camera with a small 3D preview, one tap to the full 3D
+inspection), the **Rerun viewer** (a dark spatial view with entity toggles over a
+timeline), and **Reality Composer** (planes and anchors drawn over the camera itself —
+the camera mode keeps `ARSceneView`'s own plane renderer).
+
+- **Two modes, one dock toggle.** *Camera*: the AR camera, with a portrait 3:4 picture-in-
+  picture of the 3D view under the status card (`radius-lg`, the glass edge of every
+  over-media element); tapping it opens *3D view*. *3D view*: the debug view full screen,
+  entity toggles on top, the timeline card at the bottom. Recenter is the dock's third item.
+- **Ground is `Stage.background`, in both themes** — a debug view is read against its own
+  dark stage, never against `surface`. The chrome over it is the AR overlay chrome.
+- **Colour carries meaning, and only existing palette values carry it**
+  (`SceneViewTokens.DebugView`). The trail runs the brand ramp from `accent-deep` (oldest)
+  to `tint-light` (now); the live frustum is `tint-light`; what the camera sees *this
+  second* is `warning`; everything seen so far is dim white; anchors are `success`; planes
+  are a translucent fill with a solid outline, blue on floors and tables, lilac on walls; the
+  origin gizmo follows X red / Y green / Z blue.
+- **Only the present glows.** The trail head, the live frustum, the live points and the
+  anchors are pushed past 1.0 in linear light so bloom lifts them; history stays flat. The
+  eye lands on "now" without a legend.
+- **Screen-constant sizes.** Point, line and tube widths are specified in pixels and turned
+  into metres from the orbit distance (quantised, so a pinch does not rebuild every frame):
+  a room seen from 8 m and a table seen from 50 cm both read.
+- **The camera frames itself until touched.** It eases to a three-quarter view of the
+  trail and planes as they grow; the first drag hands it to the user (drag orbits, two
+  fingers pan, pinch zooms); double-tap or Recenter hands it back.
+- **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
+  `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
+
 ### Tabs
 - Padding: 10px 20px
 - Background: `surface-dim`

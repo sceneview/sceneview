@@ -22,6 +22,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -36,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -57,8 +62,10 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rerun.RerunBridge
 import io.github.sceneview.ar.rerun.rememberRerunBridge
+import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -72,11 +79,17 @@ import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.ArDebugLogPlayer
+import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
+import io.github.sceneview.demo.demos.internal.ArDebugSession
+import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.RERUN_INTRO
 import io.github.sceneview.demo.demos.internal.RERUN_SETUP_STEPS
 import io.github.sceneview.demo.demos.internal.RERUN_SETUP_TITLE
 import io.github.sceneview.demo.demos.internal.RerunSetupStep
 import io.github.sceneview.demo.demos.internal.RerunStatusUx
+import io.github.sceneview.demo.demos.internal.of
+import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.demo.demos.internal.rerunSaveActionUx
 import io.github.sceneview.demo.demos.internal.rerunSaveFailureMessage
 import io.github.sceneview.demo.demos.internal.rerunShowsSaveAction
@@ -125,6 +138,40 @@ fun ARRerunDemo(onBack: () -> Unit) {
     // dialog, on the emulator, which can reach neither ARCore nor a computer (#2754).
     val qaState = remember { DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() } }
     val qaConnected = qaState == QA_STATE_CONNECTED
+    // QA only (`--es qa_state pip|pip-stream|3d|3d-scrub|3d-stream`, #3950): feed the in-app 3D
+    // view from a recorded session, since the emulator cannot track. Never shown to a user.
+    val qaDebug = remember { ArDebugQaState.of(qaState) }
+
+    // The in-app 3D debug view (#3950): what ARCore understood of the room, drawn by a second
+    // SceneView from a free camera. The picture-in-picture over the camera opens it full-screen.
+    val debugSession = remember { ArDebugSession() }
+    val debugRecorder = remember { ArDebugRecorder() }
+    val debugOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
+    val pipOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
+    var debugFullScreen by remember { mutableStateOf(qaDebug?.fullScreen == true) }
+
+    LaunchedEffect(qaDebug) {
+        val fixture = qaDebug ?: return@LaunchedEffect
+        val events = withContext(Dispatchers.IO) {
+            context.assets.open(AR_DEBUG_FIXTURE).bufferedReader().useLines { parseArDebugLog(it) }
+        }
+        if (fixture.streams) {
+            // The trail grows as the recorded walk plays, the way a live session fills in.
+            val player = ArDebugLogPlayer(events)
+            debugSession.trace = player.trace
+            var last = 0L
+            while (true) {
+                withFrameNanos { now ->
+                    val dt = if (last == 0L) 0f else (now - last) / 1e9f
+                    last = now
+                    if (player.advance(dt)) debugSession.trace = player.trace
+                }
+            }
+        } else {
+            debugSession.trace = ArDebugTrace.of(events)
+            if (fixture.scrubbed) debugSession.scrubTo(debugSession.trace.duration * QA_SCRUB_FRACTION)
+        }
+    }
 
     var isTracking by remember { mutableStateOf(false) }
     var cameraReady by remember { mutableStateOf(false) }
@@ -206,55 +253,64 @@ fun ARRerunDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
-        topOverlay = { RerunStatusCard(status) },
+        topOverlay = {
+            if (debugFullScreen) {
+                ArDebugLegend(debugSession)
+            } else {
+                RerunStatusCard(status)
+                ArDebugPip(
+                    session = debugSession,
+                    orbit = pipOrbit,
+                    engine = engine,
+                    modelLoader = modelLoader,
+                    materialLoader = materialLoader,
+                    onExpand = { debugFullScreen = true },
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(end = Space.md),
+                )
+            }
+        },
         // Status banner + primary action are both bottom-anchored, so both live in the
         // scaffold slot: a bottom-aligned Column that stacks them instead of letting
         // them share the band with each other and with the Settings FAB (#2779).
         bottomOverlay = {
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                // #3341: on a device ARCore has ruled out, the flag this banner waits on
-                // never flips, so the banner would promise a scan under the SDK's "AR
-                // unavailable" card. Drop it and let the card carry reason and retry.
-                visible = (!isTracking && arCoreAvailability == null) ||
-                    ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                val trackingHint = trackingFailureMessage(effectiveReason)
-                DemoStatusBanner(
-                    text = trackingHint ?: stringResource(R.string.ar_status_scanning),
-                    // Tone comes from the same reason that picks the sentence: a bad
-                    // session state or a camera taken by another app needs the user to
-                    // act outside this demo, the light / motion / texture reasons ask
-                    // for a physical move, and no reason at all is plain scanning.
-                    tone = when {
-                        trackingHint == null -> DemoStatusTone.Progress
-                        effectiveReason == TrackingFailureReason.BAD_STATE ||
-                            effectiveReason == TrackingFailureReason.CAMERA_UNAVAILABLE ->
-                            DemoStatusTone.Blocked
-                        else -> DemoStatusTone.Guidance
-                    },
-                )
-            }
-
-            // Primary action on-screen (#1964), offered only when it can work (#2658,
-            // #3831): with no computer attached a save can only fail, and the status card
-            // already says so without an error-toned banner.
-            if (rerunShowsSaveAction(isConnected = isConnected, sharing = sharing)) {
-                val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
-                SceneActionBar(
-                    SceneAction(
-                        label = saveUx.label,
-                        onClick = onSaveAndShare,
-                        enabled = saveUx.enabled,
-                    ),
+            if (debugFullScreen) {
+                ArDebugTimelineCard(debugSession)
+            } else {
+                RerunCameraBottomOverlay(
+                    visible = (!isTracking && arCoreAvailability == null && qaDebug == null) ||
+                        ForcedTrackingFailure.override != null,
+                    trackingFailureReason = trackingFailureReason,
+                    isConnected = isConnected,
+                    sharing = sharing,
+                    onSaveAndShare = onSaveAndShare,
                 )
             }
         },
+        dock = listOf(
+            DockItem(
+                icon = Icons.Rounded.Videocam,
+                label = "Camera view",
+                caption = "Camera",
+                onClick = { debugFullScreen = false },
+                selected = !debugFullScreen,
+            ),
+            DockItem(
+                icon = Icons.Rounded.ViewInAr,
+                label = "3D debug view",
+                caption = "3D view",
+                onClick = { debugFullScreen = true },
+                selected = debugFullScreen,
+            ),
+            DockItem(
+                icon = Icons.Outlined.RestartAlt,
+                label = "Recenter the 3D view",
+                caption = "Recenter",
+                onClick = { debugOrbit.recenter() },
+                enabled = debugFullScreen,
+            ),
+        ),
     ) {
         val cameraStream = rememberARCameraStream(materialLoader)
         // QA camera backdrop (#3308): the emulator delivers no camera frame.
@@ -282,6 +338,8 @@ fun ARRerunDemo(onBack: () -> Unit) {
                     // Bridge gates on its own enabled + connection state, so this
                     // is safe whether or not the recorder is reachable.
                     bridge.logFrame(session, frame)
+                    // A QA fixture owns the 3D view; otherwise it mirrors this session.
+                    if (qaDebug == null) debugRecorder.record(debugSession.trace, session, frame, anchors)
                 },
                 // A forced QA state hides the SDK's "Couldn't start AR" card so the screen
                 // can be captured on the emulator, which never starts AR (#2754).
@@ -322,6 +380,18 @@ fun ARRerunDemo(onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+
+            // Full-screen 3D view over the camera, which keeps tracking (and recording) under it.
+            if (debugFullScreen) {
+                ArDebugSceneView(
+                    session = debugSession,
+                    orbit = debugOrbit,
+                    engine = engine,
+                    modelLoader = modelLoader,
+                    materialLoader = materialLoader,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
 
             // Share result dialog
@@ -374,6 +444,62 @@ private fun RerunStatusCard(status: RerunStatusUx) {
             Text(text = status.title, style = OnScrimTitle)
         }
         Text(text = status.detail, style = OnScrimBody)
+    }
+}
+
+/**
+ * The camera view's bottom stack: the tracking banner, then Save & Share once it can work.
+ * [visible] gates the banner only.
+ */
+@Composable
+private fun DemoBottomOverlayScope.RerunCameraBottomOverlay(
+    visible: Boolean,
+    trackingFailureReason: TrackingFailureReason?,
+    isConnected: Boolean,
+    sharing: Boolean,
+    onSaveAndShare: () -> Unit,
+) {
+    // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+    // when a developer has picked one in the debug menu (#1881). Read it here
+    // so flipping the override re-renders the overlay immediately.
+    val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+    AnimatedVisibility(
+        // #3341: on a device ARCore has ruled out, the flag this banner waits on never
+        // flips, so the banner would promise a scan under the SDK's "AR unavailable" card.
+        // The caller drops it then, and lets the card carry reason and retry.
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
+        val trackingHint = trackingFailureMessage(effectiveReason)
+        DemoStatusBanner(
+            text = trackingHint ?: stringResource(R.string.ar_status_scanning),
+            // Tone comes from the same reason that picks the sentence: a bad
+            // session state or a camera taken by another app needs the user to
+            // act outside this demo, the light / motion / texture reasons ask
+            // for a physical move, and no reason at all is plain scanning.
+            tone = when {
+                trackingHint == null -> DemoStatusTone.Progress
+                effectiveReason == TrackingFailureReason.BAD_STATE ||
+                    effectiveReason == TrackingFailureReason.CAMERA_UNAVAILABLE ->
+                    DemoStatusTone.Blocked
+                else -> DemoStatusTone.Guidance
+            },
+        )
+    }
+
+    // Primary action on-screen (#1964), offered only when it can work (#2658,
+    // #3831): with no computer attached a save can only fail, and the status card
+    // already says so without an error-toned banner.
+    if (rerunShowsSaveAction(isConnected = isConnected, sharing = sharing)) {
+        val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
+        SceneActionBar(
+            SceneAction(
+                label = saveUx.label,
+                onClick = onSaveAndShare,
+                enabled = saveUx.enabled,
+            ),
+        )
     }
 }
 
@@ -520,6 +646,23 @@ private const val MAX_PLACEMENT_DISTANCE_METERS = 5f
 private const val QA_SEED = "ar-rerun"
 private const val QA_STATE_CONNECTED = "connected"
 private const val QA_STATE_SAVED = "saved"
+private const val QA_SCRUB_FRACTION = 0.45f
+private const val AR_DEBUG_FIXTURE = "rerun/sample-session.jsonl"
+
+/** The QA states that feed the 3D view from [AR_DEBUG_FIXTURE] (#3950). */
+private enum class ArDebugQaState(val key: String, val fullScreen: Boolean, val streams: Boolean, val scrubbed: Boolean = false) {
+    Pip("pip", fullScreen = false, streams = false),
+    PipStream("pip-stream", fullScreen = false, streams = true),
+    Full("3d", fullScreen = true, streams = false),
+    Scrub("3d-scrub", fullScreen = true, streams = false, scrubbed = true),
+    FullStream("3d-stream", fullScreen = true, streams = true),
+    ;
+
+    companion object {
+        fun of(state: String?): ArDebugQaState? = entries.firstOrNull { it.key == state }
+    }
+}
+
 private const val QA_EVENTS_SENT = 1_204L
 private const val QA_EVENTS_PER_SECOND = 10f
 private val QA_SHARE_RESULT = RerunBridge.ShareResult(

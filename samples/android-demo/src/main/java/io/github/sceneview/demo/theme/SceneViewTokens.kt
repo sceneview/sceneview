@@ -437,6 +437,62 @@ object SceneViewTokens {
         val maxWidth = 480.dp
     }
 
+    /**
+     * `DESIGN.md` — AR Debug View: the in-app 3D view of the Rerun demo (#3950).
+     *
+     * Drawn on [Stage.background], so like the stage it is identical in light and dark: a debug
+     * view is read against its own dark ground, never against `surface`. Every colour is an
+     * existing palette value — the brand ramp for the trail, `warning` for what the camera sees
+     * right now, `success` for anchors, the axis convention X red / Y green / Z blue. The `glow`
+     * factors multiply a colour past 1.0 in linear light so bloom picks it up: only the few
+     * "live" elements glow, so the eye lands on the present.
+     */
+    object DebugView {
+        /** Trail, oldest → newest: `accent-deep` → `tint-soft` → `tint-light`. */
+        val trailOld = Color(0xFF5A32A3)
+        val trailMid = Color(0xFFD2A8FF)
+        val trailNew = Color(0xFFA4C1FF)
+        const val trailHeadGlow = 2.6f
+
+        /** The live camera frustum, and the fainter history frusta left every 60 cm. */
+        val frustum = Color(0xFFA4C1FF)
+        const val frustumGlow = 1.8f
+        val frustumFace = Color(0x33A4C1FF)
+        val keyframe = Color(0x59A4C1FF)
+
+        /** Map points: everything seen so far, dim white — the room emerges as a cloud. */
+        val mapPoint = Color(0x8CFFFFFF)
+
+        /** Live points: what the camera sees this second — `warning`, glowing. */
+        val livePoint = Color(0xFFF59E0B)
+        const val livePointGlow = 2.0f
+
+        /** Planes: translucent fill + solid outline, by orientation. */
+        val floorFill = Color(0x29A4C1FF)
+        val floorOutline = Color(0xD9A4C1FF)
+        val wallFill = Color(0x24D2A8FF)
+        val wallOutline = Color(0xCCD2A8FF)
+        val otherFill = Color(0x1FFFFFFF)
+        val otherOutline = Color(0xB3FFFFFF)
+
+        /** Anchors — `success`: something the user placed and that holds. */
+        val anchor = Color(0xFF16A34A)
+        const val anchorGlow = 1.6f
+
+        /** Floor grid: 0.5 m minor, 1 m major, white at 7 % / 14 %. */
+        val gridMinor = Color(0x12FFFFFF)
+        val gridMajor = Color(0x24FFFFFF)
+
+        /** Origin gizmo: X `danger`, Y `success`, Z `primary` (dark value). */
+        val axisX = Color(0xFFEA4335)
+        val axisY = Color(0xFF16A34A)
+        val axisZ = Color(0xFFA4C1FF)
+
+        /** Picture-in-picture over the camera: portrait 3:4, like the phone it shows. */
+        val pipWidth = 128.dp
+        val pipHeight = 170.dp
+    }
+
     /** `DESIGN.md` — Spacing scale (`space-*`). */
     object Space {
         val xs = 4.dp
