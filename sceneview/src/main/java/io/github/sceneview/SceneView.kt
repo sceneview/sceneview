@@ -1610,7 +1610,10 @@ fun rememberEnvironmentLoader(
 ) = remember(engine, context, creator).also { environmentLoader ->
     DisposableEffect(environmentLoader) {
         onDispose {
-            environmentLoader.destroy()
+            // Not `destroy()` inline: the IBL prefilter's context destroys its own Renderer, whose
+            // teardown waits for every queued backend command — an ANR when the scene is left
+            // right after it appeared (#3885). The engine outlives the deferred release.
+            environmentLoader.destroyWhenBackendIdle()
         }
     }
 }
