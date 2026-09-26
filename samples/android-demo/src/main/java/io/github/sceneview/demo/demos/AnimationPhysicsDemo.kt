@@ -379,14 +379,6 @@ private fun AnimationSection(
         rememberModelInstance(modelLoader, fileLocation = activeFileLocation)
     } else null
 
-    // Re-pin the animation track to the new model's default whenever the
-    // carousel switches. We can't always know the streamed model's animation
-    // count up-front, so we fall back to 0 and let the play/pause LaunchedEffect
-    // below clamp out-of-range indices.
-    LaunchedEffect(selectedModelIndex) {
-        selectedAnim = activeModel.defaultAnimationIndex.coerceAtLeast(0)
-    }
-
     // Studio stage (#3820), the Sketchfab default: studio HDR light, a neutral grey backdrop.
     // A photographed place put the subject floating over whatever ground the panorama had (the
     // garden's pond, the rooftop's car park before it); a plain backdrop has no ground to miss.
@@ -418,7 +410,12 @@ private fun AnimationSection(
     // below to drive play/pause/speed/loop imperatively.
     val modelNodeRef = remember { androidx.compose.runtime.mutableStateOf<ModelNodeImpl?>(null) }
 
-    val node = modelNodeRef.value
+    // Only the node built from the instance we hold right now. On a subject switch
+    // `rememberModelInstance` destroys the previous model as soon as its key changes, but the
+    // ref is only cleared once the scene's own composition drops the old node — later, often not
+    // until the new subject has loaded. Reading `animationCount` or posing that stale node in
+    // between is a native use-after-free (#3801).
+    val node = modelNodeRef.value?.takeIf { it.modelInstance === modelInstance }
     // `LocalResources`, not `LocalContext.current.getString(…)`: a `Context` read is not
     // invalidated by a configuration change, so the "Clip N" fallbacks would keep the
     // previous locale's wording after an in-place locale switch
@@ -443,6 +440,15 @@ private fun AnimationSection(
     }
     var blendWeight by remember(node, selectedAnim) { mutableFloatStateOf(0f) }
     val previousFrame = remember(node, selectedAnim, isPlaying, DemoSettings.qaMode) { longArrayOf(0L) }
+    // Re-pin the animation track to the subject's default once its node lands. Not on the switch
+    // itself: until the new subject has loaded, `node` is still the previous one, and the clamp
+    // below would fold the new default back to 0 against the old subject's clip count — the
+    // soldier opened on Idle instead of Walk. We can't always know a streamed model's clip count
+    // up-front, so out-of-range defaults are clamped below.
+    LaunchedEffect(node) {
+        node ?: return@LaunchedEffect
+        selectedAnim = activeModel.defaultAnimationIndex.coerceAtLeast(0)
+    }
     LaunchedEffect(node, selectedAnim, DemoSettings.qaMode) {
         node ?: return@LaunchedEffect
         for (index in 0 until node.animationCount) node.stopAnimation(index)
@@ -852,9 +858,9 @@ private fun AnimationSection(
         animator.updateBoneMatrices()
         animatedNode.onWorldTransformChanged()
     }
-    LaunchedEffect(playing, clipTime, selectedAnim, blendIndex, blendWeight, modelNodeRef.value) {
+    LaunchedEffect(playing, clipTime, selectedAnim, blendIndex, blendWeight, node) {
         if (playing) return@LaunchedEffect
-        val animatedNode = modelNodeRef.value ?: return@LaunchedEffect
+        val animatedNode = node ?: return@LaunchedEffect
         if (selectedAnim !in animationNames.indices || duration <= 0f) return@LaunchedEffect
         applyPose(animatedNode)
         renderInvalidator.requestRender()
@@ -1135,7 +1141,7 @@ private fun AnimationSection(
                 autoCenterContent = false,
                 onFrame = { nanos ->
                     firstFrame.onFrame(nanos)
-                    val animatedNode = modelNodeRef.value
+                    val animatedNode = node
                     if (animatedNode != null && selectedAnim in animationNames.indices && duration > 0f) {
                         val previous = previousFrame[0]
                         previousFrame[0] = nanos
@@ -1180,9 +1186,15 @@ private fun AnimationSection(
                         autoAnimate = false,
                         apply = { modelNodeRef.value = this },
                     )
-                    // Clean up the ref when the node leaves composition.
+                    // Clean up the ref when the node leaves composition — but only if it is still
+                    // this instance's node. On a subject switch the new node's `apply` runs during
+                    // composition, before the old instance's `onDispose`; clearing unconditionally
+                    // wiped the new node, which then never animated and left the card on its
+                    // no-node state for good (#3801).
                     DisposableEffect(instance) {
-                        onDispose { modelNodeRef.value = null }
+                        onDispose {
+                            if (modelNodeRef.value?.modelInstance === instance) modelNodeRef.value = null
+                        }
                     }
                 }
             }
