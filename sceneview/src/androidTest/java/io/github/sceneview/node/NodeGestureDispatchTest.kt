@@ -101,33 +101,50 @@ class NodeGestureDispatchTest {
             node.isEditable = true
             val detector = ScaleGestureDetector(context, node)
 
-            // A real 2-finger pinch: the pointers start close together then spread apart, so the
-            // framework's android.view.ScaleGestureDetector recognizes the gesture and computes a
-            // scaleFactor > 1.
-            var t = 0L
-            val down = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, 300f, 500f, 0)
+            // A real 2-finger pinch: the pointers start close together then spread apart well
+            // past ScaleGestureDetector's internal span-slop, so the framework recognizes the
+            // gesture and computes a scaleFactor > 1. downTime is kept constant across the whole
+            // stream, as a real touch stream would.
+            val downTime = 0L
+            val down = twoPointerEvent(
+                downTime,
+                MotionEvent.ACTION_DOWN,
+                downTime,
+                1,
+                x1 = 300f, y1 = 500f,
+                x2 = 300f, y2 = 500f
+            )
             detector.onTouchEvent(down)
             down.recycle()
 
-            t = 10L
             val pointerDown = twoPointerEvent(
-                t,
+                downTime,
                 MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                10L,
+                2,
                 x1 = 300f, y1 = 500f,
                 x2 = 310f, y2 = 500f
             )
             detector.onTouchEvent(pointerDown)
             pointerDown.recycle()
 
-            t = 20L
-            val move = twoPointerEvent(
-                t,
-                MotionEvent.ACTION_MOVE,
-                x1 = 200f, y1 = 500f,
-                x2 = 420f, y2 = 500f
-            )
-            detector.onTouchEvent(move)
-            move.recycle()
+            // Several incremental moves, spreading the pointers well past any plausible
+            // spanSlop, so the gesture is recognized regardless of screen density.
+            var eventTime = 10L
+            for (step in 1..5) {
+                eventTime += 16L
+                val dx = step * 80f
+                val move = twoPointerEvent(
+                    downTime,
+                    MotionEvent.ACTION_MOVE,
+                    eventTime,
+                    2,
+                    x1 = 300f - dx, y1 = 500f,
+                    x2 = 310f + dx, y2 = 500f
+                )
+                detector.onTouchEvent(move)
+                move.recycle()
+            }
 
             assertNotNull(
                 "Node.onScale(detector, e, scaleFactor) must be invoked during a live pinch " +
@@ -143,21 +160,39 @@ class NodeGestureDispatchTest {
         }
     }
 
+    /**
+     * Builds a 1- or 2-pointer [MotionEvent] with an explicit finger [android.view.MotionEvent.PointerProperties.toolType]
+     * and [android.view.InputDevice.SOURCE_TOUCHSCREEN] source, matching what a real touch stream
+     * reports (as opposed to the ambiguous defaults synthetic events get otherwise).
+     */
     private fun twoPointerEvent(
-        time: Long,
+        downTime: Long,
         action: Int,
+        eventTime: Long,
+        pointerCount: Int,
         x1: Float, y1: Float,
         x2: Float, y2: Float
     ): MotionEvent {
-        val props = arrayOf(
-            MotionEvent.PointerProperties().apply { id = 0 },
-            MotionEvent.PointerProperties().apply { id = 1 }
+        val allProps = listOf(
+            MotionEvent.PointerProperties().apply {
+                id = 0
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            },
+            MotionEvent.PointerProperties().apply {
+                id = 1
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
         )
-        val coords = arrayOf(
+        val allCoords = listOf(
             MotionEvent.PointerCoords().apply { x = x1; y = y1; pressure = 1f; size = 1f },
             MotionEvent.PointerCoords().apply { x = x2; y = y2; pressure = 1f; size = 1f }
         )
-        return MotionEvent.obtain(time, time, action, 2, props, coords, 0, 0, 1f, 1f, 0, 0, 0, 0)
+        val props = allProps.take(pointerCount).toTypedArray()
+        val coords = allCoords.take(pointerCount).toTypedArray()
+        return MotionEvent.obtain(
+            downTime, eventTime, action, pointerCount, props, coords,
+            0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0
+        )
     }
 
     // ── onMove ───────────────────────────────────────────────────────────────
