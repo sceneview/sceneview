@@ -1,0 +1,44 @@
+// hero_terrain.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The home hero's procedural landscape and its sun (#3948). A lit,
+//             vertex-coloured surface: the terrain carries its dawn palette per vertex
+//             (valley, rock, snow), so one material instance draws the whole mesh in one
+//             draw call and the sun disc is the same material with `emissive` turned up so
+//             bloom and the lens flare have something to bleed from.
+// Used by:    samples/android-demo HomeHeroScene — nothing in the SDK.
+// Parameters:
+//   color     — float4, multiplied into the vertex colour (1,1,1,1 = the palette as authored).
+//   roughness — float [0,1]; the terrain is matte rock, the sun does not care.
+//   emissive  — float3, emitted radiance. (0,0,0) for the ground, high for the sun.
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the
+//               AAR, so it does not need the desktop backends the SDK materials keep.
+//
+// Why not `createColorInstance`: the SDK's colour materials take one colour per instance,
+// and a landscape that reads as a landscape needs its colour to change with altitude —
+// three instances for three altitude bands would triple the draw calls and put a hard seam
+// through every slope. Why not the gltfio ubershader: it requires the full glTF vertex
+// layout (`uv0`, `uv1`, tangents, colour) and this mesh has no UVs (see studio_pbr.mat).
+material {
+    "name" : "Hero Terrain",
+    "parameters" : [
+        { "type" : "float4", "name" : "color" },
+        { "type" : "float",  "name" : "roughness" },
+        { "type" : "float3", "name" : "emissive" }
+    ],
+    "requires" : [ "position", "color" ],
+    "shadingModel" : "lit",
+    "blending" : "opaque",
+    "doubleSided" : false
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = getColor() * materialParams.color;
+        material.metallic = 0.0;
+        material.roughness = materialParams.roughness;
+        material.reflectance = 0.3;
+        // Alpha 0: absolute radiance, not scaled by the camera exposure, so the sun reads
+        // the same under every tier's exposure (same convention as studio_pbr.mat).
+        material.emissive = vec4(materialParams.emissive, 0.0);
+    }
+}

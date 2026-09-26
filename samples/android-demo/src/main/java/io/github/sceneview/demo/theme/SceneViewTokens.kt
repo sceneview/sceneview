@@ -269,6 +269,18 @@ object SceneViewTokens {
          */
         val heroFieldEmbeddedDark = Color(0xFF232A39)
 
+        /**
+         * `hero-sky-*` — the dusk Compose paints behind the transparent home stage
+         * (#3948), top to bottom. The 3D flight is rendered over this gradient with no
+         * skybox of its own, so the sky is one gradient in both themes: [heroSkyTop] is
+         * the `stage-background` value, [heroSkyHorizon] is also the scene's fog colour,
+         * which is what lets the far ridges dissolve into it.
+         */
+        val heroSkyTop = Color(0xFF0B0F16)
+        val heroSkyDusk = Color(0xFF3B1D46)
+        val heroSkyHorizon = Color(0xFFE2734F)
+        val heroSkyGround = Color(0xFF2A1220)
+
         val chipBackgroundLight = Color(0xFFF1F3F5)
         /**
          * Tracks `surfaceContainerHigh`: a chip is a container and has to read as one.
@@ -351,6 +363,15 @@ object SceneViewTokens {
         /** Width from which the hero grows and the grid uses [gridMinCellExpanded]. */
         const val expandedWidthDp = 600
         const val heroScrimStart = 0.5f
+
+        /**
+         * How far the home stage runs past the bottom of the featured band before it
+         * fades into `surface` (#3948) — the sky ends on a gradient, not on a card edge.
+         */
+        val heroStageBleed = 48.dp
+
+        /** Where [HomeColor.heroSkyHorizon] sits in the stage, as a fraction of its height. */
+        const val heroSkyHorizon = 0.44f
     }
 
     /**
