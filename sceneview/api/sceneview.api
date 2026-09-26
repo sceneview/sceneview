@@ -1850,6 +1850,7 @@ public final class io/github/sceneview/gesture/NodeEditingListenerKt {
 
 public final class io/github/sceneview/gesture/NodeEditingOverlayColors {
 	public static final field $stable I
+	public fun <init> ()V
 	public synthetic fun <init> (JJJJJJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun <init> (JJJJJJJLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-0d7_KjU ()J

@@ -1,7 +1,7 @@
 [versions]
 # Build tools
 agp = "9.4.1"
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 composeMultiplatform = "1.12.0"
 
 # AndroidX Core
