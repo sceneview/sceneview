@@ -36,8 +36,8 @@ data class RerunSaveActionUx(
  *  - otherwise the sidecar is live ⇒ enabled, normal label.
  */
 fun rerunSaveActionUx(sharing: Boolean, isConnected: Boolean): RerunSaveActionUx = when {
-    sharing -> RerunSaveActionUx(label = "Saving on dev machine…", enabled = false)
-    !isConnected -> RerunSaveActionUx(label = "Connect recording service", enabled = false)
+    sharing -> RerunSaveActionUx(label = "Saving on your computer…", enabled = false)
+    !isConnected -> RerunSaveActionUx(label = "Connect a computer to save", enabled = false)
     else -> RerunSaveActionUx(label = "Save & Share recording", enabled = true)
 }
 
@@ -61,15 +61,14 @@ fun rerunSaveFailureMessage(reason: String?): String {
         // so it can't flush a .rrd. This branch is the only reachable failure once
         // the CTA is gated on connection state.
         r.contains("live mode", ignoreCase = true) || r.contains("--save", ignoreCase = true) ->
-            "The Rerun sidecar is running in live mode, so it can't write a recording. " +
-                "Restart it with --save, then try again."
+            "The recorder on your computer was started without --save, so it can't write " +
+                "a file. Restart rerun-bridge.py with --save, then try again."
 
         // Everything else — not connected, socket write failed, unknown — collapses to
         // the setup explanation. Never surfaces the bridge's internal reason string.
         else ->
-            "Saving needs the desktop Rerun sidecar reachable over " +
-                "adb reverse tcp:9876 tcp:9876. Wireless debugging can't reach " +
-                "127.0.0.1:9876 — connect the device over USB with the sidecar running " +
-                "(or bind the sidecar to your LAN IP), then try again."
+            "The phone lost its connection to the recorder on your computer. Plug it in " +
+                "over USB, run adb reverse tcp:9876 tcp:9876 and start rerun-bridge.py " +
+                "--save, then try again. Wireless debugging can't reach it."
     }
 }

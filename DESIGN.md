@@ -718,6 +718,9 @@ must read as one language: same `ar-scrim` ground, same `ar-scrim-border` hairli
   nothing is worse than a plain explanation (`ARCoreAvailabilityOverlay`, #3374).
 - **One card at a time, and never doubled with a pill saying the same thing.** When a card
   explains the state, the coaching overlay stays silent.
+- **Recording is `danger` red, and only recording.** The live dot of a capture card and
+  the shutter disc use `danger` (#ea4335) — the camera-app convention — so a red dot over
+  the camera always means "this is being recorded", never an error (#3831).
 
 ### Tabs
 - Padding: 10px 20px

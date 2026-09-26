@@ -17,12 +17,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -30,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,54 +38,74 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import java.util.Locale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
-import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rerun.RerunBridge
 import io.github.sceneview.ar.rerun.rememberRerunBridge
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.qaStateOverridesAllowed
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.RERUN_INTRO
+import io.github.sceneview.demo.demos.internal.RERUN_SETUP_STEPS
+import io.github.sceneview.demo.demos.internal.RERUN_SETUP_TITLE
+import io.github.sceneview.demo.demos.internal.RerunSetupStep
+import io.github.sceneview.demo.demos.internal.RerunStatusUx
 import io.github.sceneview.demo.demos.internal.rerunSaveActionUx
 import io.github.sceneview.demo.demos.internal.rerunSaveFailureMessage
+import io.github.sceneview.demo.demos.internal.rerunShowsSaveAction
+import io.github.sceneview.demo.demos.internal.rerunStatusUx
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
+import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * AR debug recording to Rerun.io demo.
  *
- * The bridge auto-connects to the Python sidecar at `127.0.0.1:9876` on
- * entry — for USB pair with `adb reverse tcp:9876 tcp:9876`, for Wi-Fi
- * change the sidecar's bind address. Tap "Save & Share recording" to flush
- * the captured events to a `.rrd` file you can drop onto
+ * The bridge auto-connects to the Python recorder at `127.0.0.1:9876` on entry — for USB
+ * pair with `adb reverse tcp:9876 tcp:9876`. Once connected, "Save & Share recording"
+ * flushes the captured events to a `.rrd` file you can drop onto
  * https://sceneview.github.io/rerun/.
+ *
+ * #3831: the screen used to open on a banner about a "recording service" and "Settings" for
+ * every Play Store user without a computer attached. It now says what the demo does, in one
+ * sentence, in a status card that turns green once events reach the computer; the
+ * connection steps live in the settings sheet only.
  */
 @Composable
 fun ARRerunDemo(onBack: () -> Unit) {
@@ -99,44 +120,54 @@ fun ARRerunDemo(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // QA only (`--es qa_state connected|saved`): draw the connected status, or the saved
+    // dialog, on the emulator, which can reach neither ARCore nor a computer (#2754).
+    val qaState = remember { DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() } }
+    val qaConnected = qaState == QA_STATE_CONNECTED
+
     var isTracking by remember { mutableStateOf(false) }
+    var cameraReady by remember { mutableStateOf(false) }
 
     // #3341: non-null once ARCore has ruled this device out. The flag the scanning
     // banner waits on never flips then, so that banner has to read the verdict or
     // it promises a scan under the SDK's "AR unavailable" card, forever.
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
-    var frameCount by remember { mutableStateOf(0L) }
     var eventsPerSec by remember { mutableStateOf(0f) }
-    var lastCameraPose by remember { mutableStateOf<Pose?>(null) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     val anchors = remember { mutableStateListOf<Anchor>() }
 
     var sharing by remember { mutableStateOf(false) }
-    var shareResult by remember { mutableStateOf<RerunBridge.ShareResult?>(null) }
-
-    val modelInstance = rememberModelInstance(modelLoader, "models/shiba.glb")
+    var shareResult by remember {
+        mutableStateOf(if (qaState == QA_STATE_SAVED) QA_SHARE_RESULT else null)
+    }
 
     // Bridge auto-connects on first composition, auto-disconnects on
     // dispose — no Connect/Disconnect UI to confuse first-time users who
     // came in from the QR code on /rerun/.
     val bridge = rememberRerunBridge(rateHz = 10, enabled = true)
     // Read the bridge's actually-shipped count, not a local frame counter — a
-    // local counter ticks even when the sidecar is unreachable, which would
+    // local counter ticks even when the recorder is unreachable, which would
     // mislead the user into thinking events are being sent.
-    val eventCount = bridge.eventsSent
-    val isConnected = bridge.isConnected
+    val isConnected = bridge.isConnected || qaConnected
+    val eventCount = if (qaConnected) QA_EVENTS_SENT else bridge.eventsSent
 
-    // Sample events/sec once per second.
-    LaunchedEffect(Unit) {
-        var lastSampleCount = eventCount
+    // Sample events/sec once per second. Reads the bridge inside the loop: the previous
+    // version read a value captured at first composition, so the rate never left zero.
+    LaunchedEffect(bridge) {
+        var lastSampleCount = bridge.eventsSent
         while (true) {
             delay(1000)
-            val current = eventCount
+            val current = bridge.eventsSent
             eventsPerSec = (current - lastSampleCount).toFloat()
             lastSampleCount = current
         }
     }
+    val status = rerunStatusUx(
+        isConnected = isConnected,
+        eventsSent = eventCount,
+        eventsPerSecond = if (qaConnected) QA_EVENTS_PER_SECOND else eventsPerSec,
+    )
 
     // Save & Share is the demo's primary action. Hoisted so the on-screen
     // SceneActionBar can invoke it — primary actions belong on-screen, not in
@@ -158,36 +189,15 @@ fun ARRerunDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
-        // "Save & Share recording" is the demo's primary action and lives
-        // on-screen via SceneActionBar (#1964). The sheet keeps only the
-        // stream-stats readout — purely informational.
+        // The sheet holds what the screen must not: the connection steps a developer types
+        // once. The screen itself only says what the demo does and whether it is live.
         controls = {
             Text(
-                text = "Captures camera pose, planes and point cloud as a .rrd file " +
-                    "you can drop onto sceneview.github.io/rerun/ to scrub frame-by-frame. " +
-                    "Tap \"Save & Share recording\" on-screen when you're done.",
-                style = MaterialTheme.typography.bodySmall,
+                text = RERUN_INTRO,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = "On your computer, start the recording service from this repository with " +
-                    "python3 samples/android-demo/tools/rerun-bridge.py --save recording.rrd. " +
-                    "Connect the phone by USB and run adb reverse tcp:9876 tcp:9876. " +
-                    "Save becomes available when the connection is established.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
-            // ── Stream Stats ────────────────────────────────────────────────
-            StreamStatsCard(
-                eventCount = eventCount,
-                eventsPerSec = eventsPerSec,
-                frameCount = frameCount,
-                lastPose = lastCameraPose,
-                isConnected = isConnected
-            )
+            RerunSetupSection()
 
             // Developer-only debug toggle — visible when QA mode is on. Lets QA
             // force-emit each TrackingFailureReason so the actionable-message
@@ -195,6 +205,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
+        topOverlay = { RerunStatusCard(status) },
         // Status banner + primary action are both bottom-anchored, so both live in the
         // scaffold slot: a bottom-aligned Column that stacks them instead of letting
         // them share the band with each other and with the Settings FAB (#2779).
@@ -229,36 +240,34 @@ fun ARRerunDemo(onBack: () -> Unit) {
                 )
             }
 
-            // Primary action on-screen (#1964) — "Save & Share recording" is
-            // the demo's core action, so it lives bottom-start instead of in
-            // the Settings sheet. The button is gated on the bridge's actual
-            // connection state (#2658): with no reachable sidecar a save can
-            // only fail, so the CTA is disabled and its label states why inline
-            // instead of leading straight to a failure dialog. Label also
-            // reflects the in-flight save state.
-            if (!isConnected) {
-                DemoStatusBanner(
-                    text = "Saving needs the Rerun recording service on a connected " +
-                        "computer. Open Settings for connection details.",
-                    tone = DemoStatusTone.Guidance,
+            // Primary action on-screen (#1964), offered only when it can work (#2658,
+            // #3831): with no computer attached a save can only fail, and the status card
+            // already says so without an error-toned banner.
+            if (rerunShowsSaveAction(isConnected = isConnected, sharing = sharing)) {
+                val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
+                SceneActionBar(
+                    SceneAction(
+                        label = saveUx.label,
+                        onClick = onSaveAndShare,
+                        enabled = saveUx.enabled,
+                    ),
                 )
             }
-            val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
-            if (isConnected || sharing) SceneActionBar(
-                SceneAction(
-                    label = saveUx.label,
-                    onClick = onSaveAndShare,
-                    enabled = saveUx.enabled,
-                ),
-            )
         },
     ) {
+        val cameraStream = rememberARCameraStream(materialLoader)
+        // QA camera backdrop (#3308): the emulator delivers no camera frame.
+        val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
         Box(modifier = Modifier.fillMaxSize()) {
+            if (qaBackdrop) QaCameraBackdrop(seed = QA_SEED)
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                isOpaque = !qaCameraBackdropEnabled(),
+                surfaceType = qaCameraBackdropSurfaceType(),
+                cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
                 sessionConfiguration = { _: Session, config: Config ->
@@ -266,15 +275,12 @@ fun ARRerunDemo(onBack: () -> Unit) {
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
                 onSessionUpdated = { session: Session, frame: Frame ->
+                    if (frame.timestamp > 0L) cameraReady = true
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     // Bridge gates on its own enabled + connection state, so this
-                    // is safe whether or not the sidecar is reachable.
+                    // is safe whether or not the recorder is reachable.
                     bridge.logFrame(session, frame)
-                    frameCount++
-                    if (frame.camera.trackingState == TrackingState.TRACKING) {
-                        lastCameraPose = frame.camera.pose
-                    }
                 },
                 onARCoreAvailability = { arCoreAvailability = it },
                 onTrackingFailureChanged = { reason ->
@@ -290,7 +296,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
                             val trackable = result.trackable
                             trackable is Plane &&
                                 trackable.isPoseInPolygon(result.hitPose) &&
-                                result.distance <= 5.0f
+                                result.distance <= MAX_PLACEMENT_DISTANCE_METERS
                         }
                         if (hit != null) {
                             anchors.add(hit.createAnchor())
@@ -299,12 +305,12 @@ fun ARRerunDemo(onBack: () -> Unit) {
                 )
             ) {
                 anchors.forEach { anchor ->
-                    AnchorNode(anchor = anchor) {
-                        modelInstance?.let { instance ->
-                            ModelNode(
-                                modelInstance = instance,
-                                scaleToUnits = 0.3f,
-                            )
+                    // One model instance per placement: a Filament instance can only hang
+                    // off one node, so a shared one showed a single dog however many taps.
+                    key(anchor) {
+                        val dog = rememberModelInstance(modelLoader, "models/shiba.glb")
+                        AnchorNode(anchor = anchor) {
+                            dog?.let { ModelNode(modelInstance = it, scaleToUnits = 0.3f) }
                         }
                     }
                 }
@@ -340,104 +346,73 @@ fun ARRerunDemo(onBack: () -> Unit) {
     }
 }
 
+/**
+ * The status over the camera: a dot that turns green while events reach the computer, a
+ * title, and one quieter line — what the demo does, or how much has been sent.
+ */
 @Composable
-private fun StreamStatsCard(
-    eventCount: Long,
-    eventsPerSec: Float,
-    frameCount: Long,
-    lastPose: Pose?,
-    isConnected: Boolean
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Recording",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                // Connection pill — surfaces the failure mode for users without
-                // a Python sidecar running. Without this, "Events captured: 0"
-                // looks like a bug; with it, the cause is unambiguous.
-                val (label, color) = if (isConnected)
-                    "Live" to MaterialTheme.colorScheme.primary
-                else
-                    "Sidecar offline" to MaterialTheme.colorScheme.error
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = color,
-                    modifier = Modifier
-                        .background(
-                            color = color.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            StatRow(label = "Events sent", value = eventCount.toString())
-            StatRow(
-                label = "Rate",
-                value = if (eventsPerSec > 0f) "%.0f events/s".format(Locale.US, eventsPerSec) else "—"
-            )
-            StatRow(label = "AR frames", value = frameCount.toString())
-
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Last camera pose",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-            if (lastPose != null) {
-                Text(
-                    text = "pos  x=%+.2f  y=%+.2f  z=%+.2f".format(Locale.US,
-                        lastPose.tx(), lastPose.ty(), lastPose.tz()
+private fun RerunStatusCard(status: RerunStatusUx) {
+    OverlayCard(testTag = RERUN_STATUS_CARD_TAG) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(StatusDotSize)
+                    .background(
+                        color = if (status.live) ArOverlay.accentSuccess else ArOverlay.onScrimMuted,
+                        shape = CircleShape,
                     ),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "quat x=%+.2f y=%+.2f z=%+.2f w=%+.2f".format(Locale.US,
-                        lastPose.qx(), lastPose.qy(), lastPose.qz(), lastPose.qw()
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
-                )
-            } else {
-                Text(
-                    text = "(waiting for tracking…)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            )
+            Spacer(Modifier.width(Space.sm))
+            Text(text = status.title, style = OnScrimTitle)
         }
+        Text(text = status.detail, style = OnScrimBody)
+    }
+}
+
+/** "Connect your computer", numbered, commands in mono blocks. Theme colours: it is the sheet. */
+@Composable
+private fun RerunSetupSection() {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        Text(
+            text = RERUN_SETUP_TITLE,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.semantics { heading() },
+        )
+        RERUN_SETUP_STEPS.forEachIndexed { index, step -> RerunSetupStepRow(index + 1, step) }
     }
 }
 
 @Composable
-private fun StatRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+private fun RerunSetupStepRow(number: Int, step: RerunSetupStep) {
+    Row(verticalAlignment = Alignment.Top) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
+            text = "$number.",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.width(Space.md + Space.xs),
         )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Medium
-        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(Space.xs),
+        ) {
+            Text(text = step.text, style = MaterialTheme.typography.bodyMedium)
+            step.command?.let { command ->
+                Text(
+                    text = command,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(SceneViewTokens.Radius.xs),
+                        )
+                        .padding(horizontal = Space.sm, vertical = Space.xs + Space.xs / 2),
+                )
+            }
+        }
     }
 }
 
@@ -486,15 +461,13 @@ private fun ShareResultBody(
     onCopyPath: (String) -> Unit,
     onCopyUrl: (String) -> Unit,
 ) {
-    androidx.compose.foundation.layout.Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
         Text(
             "${result.events} events recorded.",
             style = MaterialTheme.typography.bodyMedium,
         )
         result.path?.let { path ->
-            Text("Saved on the dev machine:", style = MaterialTheme.typography.labelMedium)
+            Text("Saved on your computer:", style = MaterialTheme.typography.labelMedium)
             Text(
                 path,
                 style = MaterialTheme.typography.bodySmall,
@@ -507,10 +480,8 @@ private fun ShareResultBody(
         }
         result.viewerUrl?.let { url ->
             Text(
-                "Drag-and-drop the .rrd file onto " +
-                    "https://sceneview.github.io/rerun/ — the AR Session Viewer renders " +
-                    "it in-place. Or re-host on a public URL (R2, GitHub release, gist) " +
-                    "and open this link:",
+                "Drop the file onto sceneview.github.io/rerun to scrub through it. To share " +
+                    "it, upload the file somewhere public and send this link:",
                 style = MaterialTheme.typography.labelSmall,
             )
             Text(
@@ -530,3 +501,21 @@ private fun copyToClipboard(context: Context, label: String, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     cm.setPrimaryClip(ClipData.newPlainText(label, text))
 }
+
+private val StatusDotSize = Space.sm + Space.xs / 2 // 10 dp, same as the record dot
+
+private const val MAX_PLACEMENT_DISTANCE_METERS = 5f
+private const val QA_SEED = "ar-rerun"
+private const val QA_STATE_CONNECTED = "connected"
+private const val QA_STATE_SAVED = "saved"
+private const val QA_EVENTS_SENT = 1_204L
+private const val QA_EVENTS_PER_SECOND = 10f
+private val QA_SHARE_RESULT = RerunBridge.ShareResult(
+    success = true,
+    path = "~/sceneview/recording.rrd",
+    viewerUrl = "https://sceneview.github.io/rerun/?url=https://example.com/recording.rrd",
+    events = 1_204,
+    reason = null,
+)
+
+internal const val RERUN_STATUS_CARD_TAG = "ar_rerun_status_card"
