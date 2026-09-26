@@ -69,6 +69,10 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
 
     @State private var controlsPresented = false
     @State private var entered = false
+    @State private var accentTaps = 0
+    /// Shapes of the bottom cluster (accessory + dock) morph within this
+    /// namespace on iOS 26+ instead of cross-fading.
+    @Namespace private var glassSpace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.demoTitle) private var presenterTitle
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -175,12 +179,16 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
 
             Spacer(minLength: 0)
 
+            // One glass group: the accessory and the dock sample the same
+            // backdrop and morph into each other when the accessory changes.
             VStack(spacing: Metrics.clusterGap) {
                 accessory
                     .padding(.horizontal, Metrics.margin)
                 dockView
                     .padding(.horizontal, Metrics.margin)
             }
+            .glassEffectGroup()
+            .environment(\.chromeGlassNamespace, glassSpace)
             .offset(y: travels ? Metrics.enterBottom : 0)
             .accessibilitySortPriority(1)
         }
@@ -207,9 +215,6 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     private var identityRow: some View {
         HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
             GlassIconButton(icon: "chevron.left", label: "Close demo") {
-                #if os(iOS)
-                SceneViewHaptic.shared.light()
-                #endif
                 dismiss()
             }
             .accessibilityIdentifier("demo-close")
@@ -255,7 +260,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             dockRow(items, captions: false)
         }
         .frame(minHeight: SceneViewTokens.Layout.dockHeight)
-        .glassBackground(in: Capsule())
+        .glassBackground(in: Capsule(), interactive: true, id: "dock")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("demo-dock")
     }
@@ -270,9 +275,6 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             DockButton(
                 item: DockItem(icon: "slider.horizontal.3", label: "Demo settings", caption: "Settings",
                                selected: controlsPresented) {
-                    #if os(iOS)
-                    SceneViewHaptic.shared.selection()
-                    #endif
                     controlsPresented = true
                 },
                 showsCaption: captions
@@ -280,17 +282,12 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             .accessibilityIdentifier("demo-settings-fab")
 
             if let accent {
-                Button(action: accent.action) {
-                    Image(systemName: accent.icon)
-                        .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .medium))
-                        .foregroundStyle(SceneViewTokens.Stage.background)
-                        .frame(width: SceneViewTokens.Layout.touchTarget,
-                               height: SceneViewTokens.Layout.touchTarget)
-                        .background(SceneViewTokens.HomeColor.primary.opacity(accent.enabled ? 1 : 0.38),
-                                    in: Circle())
+                AccentButton(item: accent) {
+                    accentTaps += 1
+                    accent.action()
                 }
-                .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
-                .disabled(!accent.enabled)
+                // The dock's one primary action: a firmer tap than a selection.
+                .sensoryFeedback(.impact(weight: .medium), trigger: accentTaps)
                 .accessibilityLabel(accent.label)
                 .accessibilityIdentifier("demo-dock-accent")
             }
@@ -326,12 +323,64 @@ public struct DockItem: Identifiable {
     }
 }
 
+/// The dock's primary action — `dock-accent`, a primary-tinted disc.
+///
+/// iOS 26+: the system's prominent glass (`.glassProminent`) tinted from the
+/// `primary` token, so it reads as the same material as the dock it sits in.
+/// Below 26, and when disabled on any version: the filled disc it has always
+/// been — a disabled `.glassProminent` drops its tint and turned into a dark
+/// grey disc under a dark icon that the dock swallowed.
+private struct AccentButton: View {
+    let item: DockItem
+    let action: () -> Void
+
+    var body: some View {
+        if #available(iOS 26, macOS 26, visionOS 26, *), item.enabled {
+            Button(action: action) {
+                // The style pads its label on every side; this label size
+                // lands the disc on the same 48 pt as the fallback below.
+                icon
+                    .frame(width: Self.glassLabelSize, height: Self.glassLabelSize)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(SceneViewTokens.HomeColor.primary)
+            .disabled(!item.enabled)
+            .frame(width: SceneViewTokens.Layout.touchTarget,
+                   height: SceneViewTokens.Layout.touchTarget)
+        } else {
+            Button(action: action) {
+                icon
+                    .frame(width: SceneViewTokens.Layout.touchTarget,
+                           height: SceneViewTokens.Layout.touchTarget)
+                    .background(SceneViewTokens.HomeColor.primary.opacity(item.enabled ? 1 : 0.38),
+                                in: Circle())
+            }
+            .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+            .disabled(!item.enabled)
+        }
+    }
+
+    private static let glassLabelSize: CGFloat = 32
+
+    private var icon: some View {
+        Image(systemName: item.icon)
+            .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .medium))
+            .foregroundStyle(SceneViewTokens.Stage.background)
+    }
+}
+
 private struct DockButton: View {
     let item: DockItem
     let showsCaption: Bool
 
+    @State private var taps = 0
+
     var body: some View {
-        Button(action: item.action) {
+        Button {
+            taps += 1
+            item.action()
+        } label: {
             VStack(spacing: 2) {
                 Image(systemName: item.icon)
                     .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .medium))
@@ -355,6 +404,9 @@ private struct DockButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+        // Every dock item — a toggle (Animate, Lighting) or a destination
+        // (Models, Settings) — is picking one thing among the dock's few.
+        .sensoryFeedback(.selection, trigger: taps)
         .disabled(!item.enabled)
         .accessibilityLabel(item.label)
         .accessibilityAddTraits(item.selected ? .isSelected : [])
@@ -388,8 +440,9 @@ public struct DemoOptionStrip<Option: Hashable>: View {
             row
             ScrollView(.horizontal, showsIndicators: false) { row }
         }
-        .glassBackground(in: Capsule())
+        .glassBackground(in: Capsule(), interactive: true, id: "options")
         .clipShape(Capsule())
+        .sensoryFeedback(.selection, trigger: selection)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("demo-options")
     }
@@ -399,9 +452,6 @@ public struct DemoOptionStrip<Option: Hashable>: View {
             ForEach(options, id: \.self) { option in
                 let selected = option == selection
                 Button {
-                    #if os(iOS)
-                    SceneViewHaptic.shared.selection()
-                    #endif
                     withAnimation(reduceMotion ? nil : SceneViewTokens.Spring.animation) {
                         selection = option
                     }
@@ -447,7 +497,8 @@ public struct DemoHint: View {
             .padding(.vertical, SceneViewTokens.Space.sm)
             .frame(minHeight: SceneViewTokens.Glass.pillHeight)
             .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Glass.pillHeight / 2,
-                                                  style: .continuous))
+                                                  style: .continuous),
+                             id: "hint")
     }
 }
 
@@ -456,9 +507,12 @@ public struct DemoHint: View {
 /// The one settings surface: the demo's own controls, then — behind a hairline
 /// — Reset, Send feedback and QA mode (`DESIGN.md`: there is no overflow menu).
 ///
-/// Themed, not glass: a sheet is a surface, so it takes `surface-container`
-/// and the app's light/dark colours rather than a bare material, which over
-/// the dark stage resolved to nearly the black behind it.
+/// Below iOS 26 it is themed, not glass: a sheet is a surface, so it takes
+/// `surface-container` and the app's light/dark colours rather than a bare
+/// material, which over the dark stage resolved to nearly the black behind it.
+/// On iOS 26+ the partial detents are the system's Liquid Glass sheet — a real
+/// glass, not that bare material — so the scene stays visible under the
+/// controls (`partialSheetBackground`).
 struct DemoControlsSheet<Controls: View>: View {
     let title: String?
     let hasControls: Bool
@@ -476,6 +530,7 @@ struct DemoControlsSheet<Controls: View>: View {
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
     @State private var peek: CGFloat = 0
     @State private var detent: PresentationDetent = Self.fallback
+    @State private var resets = 0
 
     private typealias Palette = SceneViewTokens.HomeColor
     private static var fallback: PresentationDetent { .fraction(0.25) }
@@ -517,7 +572,7 @@ struct DemoControlsSheet<Controls: View>: View {
         #if os(iOS)
         .presentationBackgroundInteraction(.enabled)
         .presentationContentInteraction(.scrolls)
-        .presentationBackground(Palette.surfaceContainer)
+        .partialSheetBackground(Palette.surfaceContainer)
         .presentationCornerRadius(SceneViewTokens.Radius.xl)
         #endif
     }
@@ -533,8 +588,13 @@ struct DemoControlsSheet<Controls: View>: View {
     private var sharedRows: some View {
         VStack(spacing: 0) {
             if let onReset {
-                row(icon: "arrow.counterclockwise", title: "Reset", action: onReset)
-                    .accessibilityIdentifier("demo-reset")
+                row(icon: "arrow.counterclockwise", title: "Reset") {
+                    resets += 1
+                    onReset()
+                }
+                // A confirmation, not a selection: the scene is back to where it started.
+                .sensoryFeedback(.success, trigger: resets)
+                .accessibilityIdentifier("demo-reset")
             }
             row(icon: "exclamationmark.bubble", title: "Send feedback") {
                 if let url = URL(string: "https://github.com/SceneView/sceneview/issues/new/choose") {

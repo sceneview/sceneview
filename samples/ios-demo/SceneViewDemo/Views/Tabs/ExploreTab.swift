@@ -1346,7 +1346,7 @@ private struct RecentSearchRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

@@ -178,7 +178,7 @@ struct ShowcaseTab: View {
                 )
                 #if os(iOS)
                 .presentationDetents([.medium, .large])
-                .presentationBackground(.regularMaterial)
+                .partialSheetBackground(.regularMaterial)
                 .presentationCornerRadius(SceneViewTokens.Radius.xl)
                 .presentationDragIndicator(.visible)
                 #endif

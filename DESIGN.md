@@ -552,6 +552,14 @@ indicator; every value follows the safe area, none is a constant offset from the
 | Settings sheet, last control → sheet edge | 24pt + the bottom safe area (68pt visual on iPhone 17) |
 | Shared rows (Reset · Send feedback · QA mode) | below the fold, `safe-area + 8pt` past the resting edge; scroll or expand to reach them |
 
+- **iOS 26+: native `glassEffect`; below: the material stack.** On iOS 26 and later every
+  chrome surface over the stage (back button, identity pill, dock, option strip, hint) is
+  the system's Liquid Glass — `.regular`, `.interactive()` on controls — and the dock
+  cluster is one `GlassEffectContainer`, so the accessory and the dock morph into each
+  other. The dock accent is `.glassProminent` tinted `primary`. Below 26 the floor /
+  material / ceiling / border stack below still applies. Content cards inside a page
+  (About, Credits) keep the stack on every version, and AR chrome keeps its `ar-scrim`
+  ground. Android keeps its own glass fill — an accepted divergence.
 - **A material is not a colour — it needs a floor and a ceiling.** `.ultraThinMaterial`
   is a blur of what is behind it. Over dark media it resolves to nearly black (hence
   the 8 % floor); over a bright studio backdrop the dark-scheme material resolves to
@@ -559,11 +567,15 @@ indicator; every value follows the safe area, none is a constant offset from the
   dark-scheme counterpart of the floor, and with the 24 % border the better of
   fill-vs-ground and border-vs-ground never drops under **1.43:1** on dark, mid and
   bright grounds (border 3.12:1 on the dark stage).
-- **The sheet is a themed surface, not glass.** `surface-container`, the app's
-  light/dark colours, `outline-subtle` hairline. (Android's settings sheet is
+- **The sheet follows the theme — iOS 26+: native glass on the partial detents; below:
+  a themed surface.** On iOS 26 and later the sheet takes no background of its own, so
+  the resting detent is the system's glass sheet and the scene stays visible behind the
+  controls; the system turns it opaque at `.large`. Below 26 it is `surface-container`,
+  the app's light/dark colours, `outline-subtle` hairline. (Android's settings sheet is
   `glass-sheet` since #3827 — the translucency iOS gets from its sheet material,
-  Android has to get from opacity; see the Android scaffold section.) The stage and its chrome are media and
-  stay dark in both schemes; the sheet is the only part of a demo that follows the theme.
+  Android has to get from opacity; see the Android scaffold section.) The stage and its
+  chrome are media and stay dark in both schemes; the sheet is the only part of a demo
+  that follows the theme.
 - **Motion.** Stage fades in (`motion-fade`, 300 ms); chrome rises 12pt (top) / 24pt
   (bottom) on `motion-spring` — measured 333 ms; an option change moves the selection
   capsule on the same spring. Under Reduce Motion the travel is dropped and the opacity
