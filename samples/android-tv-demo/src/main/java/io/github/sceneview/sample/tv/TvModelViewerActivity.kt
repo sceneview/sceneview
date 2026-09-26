@@ -122,7 +122,8 @@ internal val models = listOf(
     ModelEntry("Fox", "models/khronos_fox.glb", "PixelMannen, tomkranis · CC BY 4.0", R.drawable.model_thumb_khronos_fox),
     ModelEntry("Shiba", "models/shiba.glb", "zixisun51 · CC BY 4.0", R.drawable.model_thumb_shiba),
     ModelEntry("Soldier", "models/threejs_soldier.glb", "Tomás Laulhé · CC0", R.drawable.model_thumb_threejs_soldier),
-    ModelEntry("Air Jordan", "models/nike_air_jordan.glb", "Ar41k · CC BY 4.0", R.drawable.model_thumb_nike_air_jordan),
+    // No rendered thumbnail yet for this TV-only model: the SceneView cube stands in.
+    ModelEntry("Air Jordan", "models/nike_air_jordan.glb", "Ar41k · CC BY 4.0", R.drawable.ic_launcher_foreground),
 )
 
 /**
