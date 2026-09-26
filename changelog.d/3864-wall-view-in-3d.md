@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Android demo app: "View in 3D" in the wall placement demo no longer opens a black square. The near-black TV used to sit 2.8 m away on SceneView's default black backdrop with only the neutral light, so it read as a tiny black rectangle on black. The preview now puts the TV in a bright studio room that also lights it, and frames it to fill the preview. A spinner shows while the room loads.
