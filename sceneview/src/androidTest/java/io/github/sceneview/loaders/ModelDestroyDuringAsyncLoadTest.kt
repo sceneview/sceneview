@@ -101,9 +101,9 @@ class ModelDestroyDuringAsyncLoadTest {
 
     /**
      * A model loaded after the cancelled ones finalises all its textures and `isLoading` drops.
-     * An interrupted cancel leaves gltfio's progress counters skewed for good, so without the
-     * loader swap `ModelLoader` does after an interrupted cancel this would stay `true` and keep an on-demand scene
-     * rendering forever.
+     * An interrupted cancel leaves gltfio's progress counters skewed for good: without the fresh
+     * `ResourceLoader` that `ModelLoader` swaps in afterwards, `isLoading` would stay `true` and
+     * keep an on-demand scene rendering forever.
      */
     private fun assertTheNextLoadCompletes(modelLoader: ModelLoader) {
         harness.runOnMain { modelLoader.createModel(buffer()) }
