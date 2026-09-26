@@ -292,8 +292,8 @@ after an ARCore SDK bump:
 3. Replace the fixture MP4s.
 4. Update this doc with the ARCore version that re-baseline'd the suite.
 
-Last full re-baseline: ARCore 1.54.0 (matches the `ARCORE_VERSION` pinned in the
-emulator-sideload section below).
+Last full re-baseline: ARCore 1.54.0. The `ARCORE_VERSION` pinned in the
+emulator-sideload section below has since moved to 1.56.0 without a re-baseline.
 
 ---
 
@@ -306,7 +306,7 @@ GitHub releases:
 
 ```bash
 # Pick the latest release: https://github.com/google-ar/arcore-android-sdk/releases
-ARCORE_VERSION=1.54.0
+ARCORE_VERSION=1.56.0
 curl -L -o /tmp/arcore.apk \
   "https://github.com/google-ar/arcore-android-sdk/releases/download/${ARCORE_VERSION}/Google_Play_Services_for_AR_${ARCORE_VERSION}.apk"
 adb install -r /tmp/arcore.apk
