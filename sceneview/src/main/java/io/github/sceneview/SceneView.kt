@@ -1080,8 +1080,10 @@ fun SceneView(
                         // when a deferred async model grows the union (#1596).
                         // Not while a re-centre glide is moving the content: the fit gate latches
                         // on a stable diagonal within two frames and would frame a mid-glide pose.
+                        val centreGliding =
+                            currentAutoCenterContent.value && autoCenterState.isGliding
                         if (currentAutoFitContent.value && currentCameraManipulator.value == null &&
-                            !(currentAutoCenterContent.value && autoCenterState.isGliding)
+                            !centreGliding
                         ) {
                             if (currentAutoCenterContent.value) {
                                 autoFitState.maybeFit(
