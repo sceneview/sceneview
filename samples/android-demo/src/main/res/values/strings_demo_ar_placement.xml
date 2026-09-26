@@ -45,6 +45,8 @@
     <!-- Pinch read-out: "Actual size" only when the asset's size was measured (§2.3). -->
     <string name="ar_scale_preview_size">Preview size · %1$d%%</string>
     <string name="ar_scale_actual_size_percent">Actual size · %1$d%%</string>
+    <!-- Accessibility action offered on the read-out while the model is not at 100% (#3830). -->
+    <string name="ar_scale_reset_action">Reset to real-world size</string>
     <string name="ar_place_loading_model">Loading model…</string>
     <string name="ar_place_model_failed">Model couldn’t load.</string>
     <string name="ar_place_preview_size">Preview size</string>

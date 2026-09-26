@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -289,10 +290,10 @@ fun TapToPlaceArSession(
                 },
                 onScaleEnd = { _, _, _ ->
                     state.activeGesture = null
-                    // The percentage read-out belongs to the live gesture only — the
-                    // number is gone the instant the fingers lift (#3326).
-                    state.scalePercent = null
-                    state.isRealWorldSize = false
+                    // `scalePercent` / `isRealWorldSize` are left as the last live values
+                    // from `onScaleChanged` — `TapToPlaceStatusOverlays`' own timer decides
+                    // when the read-out actually goes away (#3830: a tap-to-reset window
+                    // when the model isn't at 100 %, needs *something* to show).
                 }
             )
         ) {
@@ -356,6 +357,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
     state: TapToPlaceState,
     onViewIn3D: (() -> Unit)? = null,
     onRestartSession: (() -> Unit)? = null,
+    onResetScale: () -> Unit = { state.controller.scaleTo(1f) },
 ) {
     // The one-shot "Drag to move. Pinch or twist to adjust." window opened by the
     // placement. Keyed on the placement timestamp, so a re-placement restarts it rather
@@ -369,6 +371,19 @@ fun BoxScope.TapToPlaceStatusOverlays(
         gestureHintVisible = true
         delay(PLACEMENT_GESTURE_HINT_MS)
         gestureHintVisible = false
+    }
+
+    // The resize read-out's own lifetime past the end of the live pinch (#3830): a window
+    // to tap it back to 100 % when the model isn't there, a brief confirmation blip when it
+    // already is. Restarts whenever `scalePercent` changes (a fresh pinch keeps nudging it,
+    // a reset tap re-fires it with `isRealWorldSize = true`) and never fires while a pinch
+    // is actually live, so it can never race the gesture that is still updating the number.
+    LaunchedEffect(state.scalePercent, state.activeGesture, state.isRealWorldSize) {
+        if (state.scalePercent == null || state.activeGesture == PlacementGesture.SCALING) {
+            return@LaunchedEffect
+        }
+        delay(if (state.isRealWorldSize) PLACEMENT_SCALE_CONFIRM_MS else PLACEMENT_SCALE_RESET_WINDOW_MS)
+        state.scalePercent = null
     }
 
     // Did AR simply never start? `ARCameraInitScrim` covers the wait, then dismisses
@@ -423,11 +438,13 @@ fun BoxScope.TapToPlaceStatusOverlays(
             .onSizeChanged { coachStackPx = it.height },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Live resize read-out — on screen only while two fingers are on the model.
+        // Live resize read-out — on screen while two fingers are on the model, and for a
+        // short window after (#3830) so there is something to tap back to 100 %.
         PlacementScaleReadout(
             percent = state.scalePercent,
             isRealWorldSize = state.isRealWorldSize,
             label = state.scaleLabel,
+            onReset = onResetScale,
         )
 
         // The decision cards (§2.2): no surface after 10 s, a placement that could not be
@@ -667,13 +684,17 @@ internal fun PlacementActionCard(
  * size — "Actual size" when that size was measured, "Preview size" when it is an estimate
  * (§2.3), so the number never claims more than the asset knows.
  *
- * Hidden whenever [percent] is `null`, which is every moment except a live pinch.
+ * Hidden whenever [percent] is `null` — a live pinch, or the short post-pinch window
+ * [TapToPlaceStatusOverlays] keeps it up for. Tappable to reset to 100 % ([onReset]) for as
+ * long as it is showing and not already there (#3830) — mirrors AR Quick Look's persistent
+ * "100 %" affordance rather than only ever reading the number back.
  */
 @Composable
 private fun PlacementScaleReadout(
     percent: Int?,
     isRealWorldSize: Boolean,
     label: ScaleLabelMode,
+    onReset: () -> Unit,
 ) {
     // Latch the last value for the length of the exit fade, or the pill blanks its own
     // content on the frame the fade starts (same reason DemoStatusBanner latches).
@@ -692,7 +713,19 @@ private fun PlacementScaleReadout(
         Surface(
             modifier = Modifier
                 .padding(top = SceneViewTokens.Space.sm)
-                .testTag(PlacementTestTags.SCALE_READOUT),
+                .testTag(PlacementTestTags.SCALE_READOUT)
+                // Already at real-world size ⇒ nothing left to reset ⇒ no tap target, so
+                // TalkBack never offers an action that would be a no-op.
+                .then(
+                    if (!lastWasRealWorldSize) {
+                        Modifier.clickable(
+                            onClickLabel = stringResource(R.string.ar_scale_reset_action),
+                            onClick = onReset,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
             color = SceneViewTokens.ArOverlay.scrimDark,
             contentColor = SceneViewTokens.ArOverlay.onScrim,
             shape = RoundedCornerShape(50),
