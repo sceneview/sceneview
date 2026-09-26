@@ -438,12 +438,18 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
         self.channel = channel
         // `weak`: the controller must not keep the channel (and through its
         // handler, this view) alive — same retain-cycle concern as #2069.
-        let placement = ARPlacementController(
-            planeTapEnabled: (args["planeTap"] as? NSNumber)?.boolValue ?? false,
-            onPlaneTap: { [weak channel] hit in
-                channel?.invokeMethod("onPlaneTap", arguments: hit)
-            }
-        )
+        // `assumeIsolated` for the same reason as `SceneViewerHostView` above:
+        // Flutter creates platform views on the main thread, and the
+        // controller is `@MainActor`.
+        let planeTap = (args["planeTap"] as? NSNumber)?.boolValue ?? false
+        let placement = MainActor.assumeIsolated {
+            ARPlacementController(
+                planeTapEnabled: planeTap,
+                onPlaneTap: { [weak channel] hit in
+                    channel?.invokeMethod("onPlaneTap", arguments: hit)
+                }
+            )
+        }
         self.placement = placement
         self.hostingController = UIHostingController(
             rootView: ARSceneViewSwiftUIWrapper(state: sceneState, placement: placement)
@@ -687,12 +693,12 @@ final class ARPlacementController: ObservableObject {
     }
     private var placed: [String: PlacedModel] = [:]
 
-    nonisolated init(
+    init(
         planeTapEnabled: Bool = false,
         onPlaneTap: @escaping ([String: Any]) -> Void = { _ in }
     ) {
-        _planeTapEnabled = Published(initialValue: planeTapEnabled)
         self.onPlaneTap = onPlaneTap
+        self.planeTapEnabled = planeTapEnabled
     }
 
     /// Captures the reusable content anchor once the AR session has started.
