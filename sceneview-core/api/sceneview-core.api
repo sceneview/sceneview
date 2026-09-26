@@ -1087,6 +1087,8 @@ public final class io/github/sceneview/geometries/TorusGeometryKt {
 public final class io/github/sceneview/gesture/GestureTransformsKt {
 	public static final fun applyRotationGesture (FFF)F
 	public static synthetic fun applyRotationGesture$default (FFFILjava/lang/Object;)F
+	public static final fun applyScaleGesture (Ldev/romainguy/kotlin/math/Float3;FFLkotlin/ranges/ClosedFloatingPointRange;)Ldev/romainguy/kotlin/math/Float3;
+	public static synthetic fun applyScaleGesture$default (Ldev/romainguy/kotlin/math/Float3;FFLkotlin/ranges/ClosedFloatingPointRange;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
 }
 
 public abstract interface class io/github/sceneview/gesture/OnGestureListener {
