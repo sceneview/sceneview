@@ -153,8 +153,11 @@ export interface SceneViewer {
   /** Resize the underlying canvas. */
   resize(width: number, height: number): void;
 
-  /** Clear-colour for the framebuffer. Components are `0..1`. */
-  setBackgroundColor(r: number, g: number, b: number, a: number): void;
+  /** Background colour, components `0..1` — the exact colour on screen, never
+   *  tone-mapped: `#EEF0F3` is `setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)`.
+   *  `a < 1` lets the page behind the canvas show through (`0`: transparent canvas);
+   *  omitted, it is `1`. A skybox, when set, covers it. Default `#333443`. */
+  setBackgroundColor(r: number, g: number, b: number, a?: number): void;
 
   /** Frame the camera so every loaded model is fully visible.
    *  `margin` multiplies the fit distance (iOS `framingMargin` convention):

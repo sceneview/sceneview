@@ -452,4 +452,86 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
     expect((result as any).sameInstance, 'hitTest must return the SAME handle instance addCubeNode returned').toBe(true);
     expect((result as any).missCount).toBe(0);
   });
+
+  /**
+   * #3879: the background colour is the colour on screen. The view used to clear inside
+   * the HDR pass, so ACES tone-mapped `#FFFFFF` to beige `(230, 225, 219)` and an embed
+   * could never match its page. The view is now TRANSLUCENT over a raw canvas clear.
+   *
+   * The page behind the canvas is magenta, so a canvas that painted nothing (or painted
+   * transparent) fails the opaque cases, and `a = 0` must show that magenta through.
+   * The corner block is empty (the helmet is framed at the centre); `±1` absorbs the
+   * post-process dithering.
+   */
+  test('setBackgroundColor lands on screen exactly, not tone-mapped (#3879)', async ({ page }) => {
+    await page.goto('/kotlin-bundle/index.html');
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.status), { timeout: 30_000 })
+      .toBe('resolved');
+    await page.evaluate(() => {
+      document.body.style.background = '#ff00ff';
+    });
+
+    const box = await page.locator('#scene-canvas').boundingBox();
+    expect(box, 'canvas has no layout box').not.toBeNull();
+    const clip = { x: box!.x + 4, y: box!.y + 4, width: 48, height: 48 };
+
+    // Largest per-channel distance between every pixel of the corner block and `want`.
+    const cornerError = async (want: number[]) => {
+      const png = await page.screenshot({ type: 'png', clip });
+      const uri = 'data:image/png;base64,' + png.toString('base64');
+      return page.evaluate(
+        async (args: { uri: string; want: number[] }) => {
+          const img = new Image();
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('decode failed'));
+            img.src = args.uri;
+          });
+          const c = document.createElement('canvas');
+          c.width = img.width;
+          c.height = img.height;
+          const ctx = c.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          const { data } = ctx.getImageData(0, 0, c.width, c.height);
+          let worst = 0;
+          let sample: number[] = [];
+          for (let i = 0; i < data.length; i += 4) {
+            const d = Math.max(
+              Math.abs(data[i] - args.want[0]),
+              Math.abs(data[i + 1] - args.want[1]),
+              Math.abs(data[i + 2] - args.want[2]),
+            );
+            if (d >= worst) {
+              worst = d;
+              sample = [data[i], data[i + 1], data[i + 2]];
+            }
+          }
+          return { worst, sample };
+        },
+        { uri, want },
+      );
+    };
+
+    // Default background, never set by the page: the historical dark slate #333443.
+    await page.waitForTimeout(500);
+    const byDefault = await cornerError([0x33, 0x34, 0x43]);
+    expect(byDefault.worst, `default background rendered ${byDefault.sample}`).toBeLessThanOrEqual(1);
+
+    const cases: { name: string; rgba: number[]; want: number[] }[] = [
+      { name: '#FFFFFF', rgba: [1, 1, 1, 1], want: [255, 255, 255] },
+      { name: '#EEF0F3', rgba: [0xee / 255, 0xf0 / 255, 0xf3 / 255, 1], want: [0xee, 0xf0, 0xf3] },
+      { name: '#0E1218', rgba: [0x0e / 255, 0x12 / 255, 0x18 / 255, 1], want: [0x0e, 0x12, 0x18] },
+      // Transparent canvas: the magenta page shows through.
+      { name: 'alpha 0', rgba: [1, 1, 1, 0], want: [255, 0, 255] },
+    ];
+    for (const c of cases) {
+      await page.evaluate((rgba: number[]) => {
+        (window as any).__sv.setBackgroundColor(rgba[0], rgba[1], rgba[2], rgba[3]);
+      }, c.rgba);
+      await page.waitForTimeout(500);
+      const got = await cornerError(c.want);
+      expect(got.worst, `${c.name} background rendered ${got.sample}, want ${c.want}`).toBeLessThanOrEqual(1);
+    }
+  });
 });
