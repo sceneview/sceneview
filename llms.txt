@@ -3500,6 +3500,8 @@ Returns `null` while loading, recomposes when ready. **Always handle the null ca
 
 **Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
 
+**While a location switch loads:** the returned value is `null` only for the *first* load of a given key. When `assetFileLocation`/`fileLocation` changes, `produceState` retains the last value, so the previous `ModelInstance` is returned until the new one is ready — a caller that shows a loading state on `null` sees no loading gap during a switch. To observe `null` during the switch, wrap the call in `key(location) { rememberModelInstance(...) }` (the Animation & Physics sample does this) ([#3900](https://github.com/sceneview/sceneview/issues/3900)).
+
 The `fileLocation` overload auto-detects URLs (http/https) and routes through Fuel HTTP client for download. Use it for remote model loading:
 ```kotlin
 val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
