@@ -151,7 +151,7 @@ class CloudAnchorFlowTest {
                 .status().text,
         )
         assertEquals(
-            "Hosting the anchor…",
+            "Uploading the room scan to Google Cloud…",
             CloudAnchorFlowState(trackingHint = hint, host = CloudAnchorTask.Running).status().text,
         )
     }
@@ -211,7 +211,7 @@ class CloudAnchorFlowTest {
             roomQuality = RoomQuality.Good,
             host = CloudAnchorTask.Running,
         )
-        assertEquals("Hosting the anchor…", hosting.status().text)
+        assertEquals("Uploading the room scan to Google Cloud…", hosting.status().text)
         assertEquals(DemoStatusTone.Progress, hosting.status().tone)
     }
 
@@ -356,7 +356,7 @@ class CloudAnchorFlowTest {
             codeInput = "ua-abcdef0123456789",
             resolve = CloudAnchorTask.Running,
         )
-        assertEquals("Resolving the code…", running.status().text)
+        assertEquals("Downloading the anchor and matching this room…", running.status().text)
         assertEquals(DemoStatusTone.Progress, running.status().tone)
         assertFalse(running.allows(CloudAnchorAction.Resolve))
         assertFalse(running.allows(CloudAnchorAction.PasteCode))
@@ -524,7 +524,7 @@ class CloudAnchorFlowTest {
         assertTrue(state.allows(CloudAnchorAction.Host))
 
         state = state.copy(host = CloudAnchorTask.Running)
-        assertEquals("Hosting the anchor…", state.status().text)
+        assertEquals("Uploading the room scan to Google Cloud…", state.status().text)
 
         state = state.copy(host = CloudAnchorTask.Succeeded("ua-abc123def456"))
         assertEquals("Hosted. Share the code to open it elsewhere.", state.status().text)
@@ -541,7 +541,7 @@ class CloudAnchorFlowTest {
         assertTrue(state.allows(CloudAnchorAction.Resolve))
 
         state = state.copy(resolve = CloudAnchorTask.Running)
-        assertEquals("Resolving the code…", state.status().text)
+        assertEquals("Downloading the anchor and matching this room…", state.status().text)
 
         state = state.copy(resolve = CloudAnchorTask.Succeeded("ua-abc123def456"))
         assertEquals("Resolved. Look around to find the anchor.", state.status().text)

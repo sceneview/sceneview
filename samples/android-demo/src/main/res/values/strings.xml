@@ -189,16 +189,13 @@
     <string name="category_interactive">Interactive</string>
 
     <!-- Catalog section headers — one per DemoCategory key, drawn as a full-span
-         header on the home grid and as the long label in search results (#2239). -->
-    <string name="category_viewer">Viewer</string>
-    <string name="category_geometry_materials">Geometry &amp; Materials</string>
-    <string name="category_rendering">Rendering</string>
-    <string name="category_interaction">Interaction</string>
-    <string name="category_ar_placement">AR Placement</string>
-    <string name="category_ar_tracking">AR Tracking</string>
-    <string name="category_ar_understanding">AR Understanding</string>
-    <string name="category_ar_anchors">AR Anchors</string>
-    <string name="category_platform">Platform</string>
+         header on the home grid and as the long label in search results (#2239,
+         regrouped from nine sections to five in #3836). -->
+    <string name="category_view_3d">View in 3D</string>
+    <string name="category_create">Create &amp; record</string>
+    <string name="category_place_ar">Place in AR</string>
+    <string name="category_understand">Understand the world</string>
+    <string name="category_dev_tools">Developer tools</string>
 
     <!-- Sample demo titles (legacy keys preserved for backwards compatibility) -->
     <string name="demo_animations">Animations</string>
@@ -303,6 +300,11 @@
     <string name="demo_loading_stalled_title">Still loading…</string>
     <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
     <string name="demo_loading_retry">Retry</string>
+    <!-- Loading narration (#3825): each line names the step the code is in at that moment,
+         and a trailing ellipsis is animated by NarrationText. Never add a line for a step
+         the code does not actually run. -->
+    <string name="demo_loading_generic">Loading…</string>
+    <string name="ar_tracking_starting">Starting motion tracking — move your phone slowly…</string>
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_open">Open demo settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>

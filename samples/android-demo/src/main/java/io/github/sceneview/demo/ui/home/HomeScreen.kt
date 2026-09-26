@@ -658,15 +658,11 @@ private fun SearchRow(
  */
 private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
     null to R.string.category_short_all,
-    DemoCategory.VIEWER to R.string.category_short_viewer,
-    DemoCategory.GEOMETRY_MATERIALS to R.string.category_short_geometry_materials,
-    DemoCategory.RENDERING to R.string.category_short_rendering,
-    DemoCategory.INTERACTION to R.string.category_short_interaction,
-    DemoCategory.AR_PLACEMENT to R.string.category_short_ar_placement,
-    DemoCategory.AR_TRACKING to R.string.category_short_ar_tracking,
-    DemoCategory.AR_UNDERSTANDING to R.string.category_short_ar_understanding,
-    DemoCategory.AR_ANCHORS to R.string.category_short_ar_anchors,
-    DemoCategory.PLATFORM to R.string.category_short_platform,
+    DemoCategory.VIEW_3D to R.string.category_short_view_3d,
+    DemoCategory.CREATE to R.string.category_short_create,
+    DemoCategory.PLACE_AR to R.string.category_short_place_ar,
+    DemoCategory.UNDERSTAND to R.string.category_short_understand,
+    DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
 )
 
 /** The categories [CHIP_CATEGORIES] offers, minus the leading "All". */

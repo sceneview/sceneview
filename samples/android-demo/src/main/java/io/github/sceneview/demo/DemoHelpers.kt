@@ -49,7 +49,10 @@ import kotlin.math.sqrt
  * SceneView — the scrim is semi-transparent so the first rendered frame shows through.
  */
 @Composable
-fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
+fun LoadingScrim(
+    loading: Boolean,
+    label: String = stringResource(R.string.demo_loading_generic),
+) {
     if (!loading) return
     Box(
         modifier = Modifier
@@ -68,7 +71,7 @@ fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
             // M3 Expressive morphing-shape indicator: it reads as "a scene is coming",
             // where a bare ring reads as "the network is slow".
             LoadingIndicator(color = MaterialTheme.colorScheme.primary)
-            Text(
+            io.github.sceneview.demo.ui.NarrationText(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -189,6 +192,10 @@ fun ErrorScrim(
  * painted a parasitic band across the fallback screen. See [arCameraInitScrimVisibility].
  * The happy path (first frame in ~1–3 s) flips [initializing] false long before the
  * timeout, so this only ever fires on a genuinely stuck start.
+ *
+ * [onNarratingChange] reports whether the spinner card is on screen. A demo with its own
+ * status pill uses it to keep one loader per screen (#3825): silent while this card
+ * narrates the camera start, and taking over once the card has stepped aside.
  */
 @Composable
 fun ARCameraInitScrim(
@@ -196,6 +203,7 @@ fun ARCameraInitScrim(
     arCoreAvailability: ARCoreAvailability?,
     label: String = stringResource(R.string.ar_starting_camera),
     timeoutMillis: Long = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS,
+    onNarratingChange: ((Boolean) -> Unit)? = null,
 ) {
     // Defensive fallback: force-dismiss even if the first camera frame never reports.
     var timedOut by androidx.compose.runtime.remember(initializing) {
@@ -220,6 +228,12 @@ fun ARCameraInitScrim(
         qaBackdropEnabled = io.github.sceneview.demo.common.qaCameraBackdropEnabled(),
         arCoreUnavailable = arCoreAvailability != null,
     )
+    // Tells a demo whether this scrim's card is the one narrating the camera start, so its own
+    // status pill can stay silent instead of saying the same thing underneath (#3825).
+    if (onNarratingChange != null) {
+        val narrating = visibility == ArCameraInitScrimVisibility.BackdropAndSpinner
+        androidx.compose.runtime.LaunchedEffect(narrating) { onNarratingChange(narrating) }
+    }
     if (visibility == ArCameraInitScrimVisibility.Hidden) return
     Box(
         modifier = Modifier
@@ -237,7 +251,7 @@ fun ARCameraInitScrim(
                 .padding(horizontal = 28.dp, vertical = 22.dp),
         ) {
             LoadingIndicator(color = MaterialTheme.colorScheme.primary)
-            Text(
+            io.github.sceneview.demo.ui.NarrationText(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,

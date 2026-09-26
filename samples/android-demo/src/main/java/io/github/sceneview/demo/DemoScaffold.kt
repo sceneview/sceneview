@@ -495,9 +495,16 @@ fun DemoScaffold(
         val dockBand = with(LocalDensity.current) { dockBandPx.toDp() }
 
         // Height of the identity row (glass buttons + gutter, excluding the status-bar
-        // inset) — the top band's mirror of the dock band.
+        // inset) — the top band's mirror of the dock band. Floored at the token row for
+        // the same reason `dockBandClearance` is: the measurement only lands after the
+        // layout pass that produced it, one frame late. A demo whose main thread then
+        // blocks on a model load keeps that first frame on screen for seconds, and with
+        // a zero reserve its top overlay sat under the back button (#3801).
         var identityRowPx by remember { mutableIntStateOf(0) }
-        val identityRow = with(LocalDensity.current) { identityRowPx.toDp() }
+        val identityRow = maxOf(
+            IDENTITY_ROW_MIN_HEIGHT,
+            with(LocalDensity.current) { identityRowPx.toDp() },
+        )
 
         // Room the dock band takes at the bottom — the same floor-or-measured
         // value `bottomOverlay` clears, shared with the snackbar below so both
@@ -1160,7 +1167,7 @@ private fun BoxScope.FirstFrameCover(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 if (loadingLabel != null) {
-                    Text(
+                    io.github.sceneview.demo.ui.NarrationText(
                         text = loadingLabel,
                         style = MaterialTheme.typography.labelLarge,
                         // The cover is the stage colour in both themes, so its text is
@@ -1255,6 +1262,19 @@ object DemoScaffoldTestTags {
  * already stacks above the band.
  */
 val SETTINGS_FAB_RESERVED_SPACE = 104.dp
+
+/**
+ * Height of the identity row at the top of a demo, excluding the status-bar inset:
+ * the 48 dp back button plus its `Space.md` gutter above and below — 80 dp.
+ *
+ * The top band's mirror of [SETTINGS_FAB_RESERVED_SPACE], and a floor for the same
+ * reason (#3801): [DemoScaffold] measures the real row and reserves
+ * `maxOf(this, measured)`, but the first frame is drawn before any measurement has
+ * landed. At the default font scale this is exactly the measured row, so the top
+ * overlay never moves when the measurement arrives.
+ */
+private val IDENTITY_ROW_MIN_HEIGHT =
+    SceneViewTokens.Layout.touchTarget + SceneViewTokens.Space.md * 2
 
 /**
  * Receiver of the [DemoScaffold] `bottomOverlay` slot.

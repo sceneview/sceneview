@@ -337,10 +337,12 @@ private fun SingleModelSection(
     var loadedUnit by remember { mutableStateOf(ThreeMfUnit.Default) }
     var unitSheetOpen by remember { mutableStateOf(false) }
     var unitAnswered by remember { mutableStateOf(openedModel == null) }
-    // Last-tapped state — when it's `true` the FAB shows a spinner. The
-    // surprise-coroutine flips it back to `false` regardless of success so
-    // the button doesn't get stuck in the loading state.
-    var surpriseInFlight by remember { mutableStateOf(false) }
+    // The step a "Surprise me" roll is in, or `null` when none is running (#3825). The pill
+    // and the sheet narrate it — search, download, decode, textures — instead of a static
+    // "Finding…". Every exit path (success, empty search, failed download, failed decode)
+    // lands back on `null`, so the button can never stick in its loading state.
+    var surpriseStage by remember { mutableStateOf<SurpriseStage?>(null) }
+    val surpriseInFlight = surpriseStage != null
 
     // `DemoSettings.cameraDistance` is process-global — Geometry, Camera & Gestures and the Park
     // section all read it. Until #3426 only the slider could write it, which is a deliberate act;
@@ -365,7 +367,6 @@ private fun SingleModelSection(
     }
     val scope = rememberCoroutineScope()
     val service = remember(context) { SketchfabService.getInstance(context) }
-    val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
     val hasSketchfabKey = remember { SketchfabConfig.apiKey != null }
 
     // The streamed model is loaded via the URL overload. This MUST be called
@@ -457,8 +458,7 @@ private fun SingleModelSection(
     // NOT an [AssetSourceProbe] site, deliberately — do not "finish" #2989 by routing
     // this one through it too. "Surprise me" is true random content with no registry
     // entry, so `pickRandomDownloadableModel` bypasses the resolver and calls
-    // `SketchfabService.downloadModel` directly (it takes a `SketchfabAssetResolver`
-    // only to satisfy its signature — the parameter is `@Suppress("UNUSED_PARAMETER")`).
+    // `SketchfabService.downloadModel` directly.
     // With no registry entry there is no bundled fallback to stage: a failure yields
     // `null`, `streamedFileUrl` stays null, the chip hides and the bundled hero simply
     // stays on screen. So this chip can never render a stand-in under a "Streamed"
@@ -603,14 +603,41 @@ private fun SingleModelSection(
     // no-op for the pill, which is only reachable while the sheet is closed.
     val rollSurprise: () -> Unit = {
         if (!surpriseInFlight) {
-            surpriseInFlight = true
+            surpriseStage = SurpriseStage.Searching
             scope.launch {
-                streamedFileUrl = runCatching { pickRandomDownloadableModel(service, resolver) }.getOrNull()
-                surpriseInFlight = false
+                val url = runCatching {
+                    pickRandomDownloadableModel(service) { surpriseStage = it }
+                }.getOrNull()
                 modelSheetOpen = false
+                // The same file twice (a cached pick) keeps the instance already on screen:
+                // there is nothing left to decode, so the roll is over.
+                surpriseStage = if (url == null || url == streamedFileUrl) null else SurpriseStage.Decoding
+                if (url != null) streamedFileUrl = url
             }
         }
         Unit
+    }
+    // The two steps after the download happen in the loader, not in the roll coroutine: the
+    // GLB is parsed into a `ModelInstance` (`rememberModelInstance`), then gltfio decodes and
+    // uploads its textures (`ModelLoader.isLoading`). The narration follows those signals.
+    LaunchedEffect(streamedModelInstance, surpriseStage) {
+        when (surpriseStage) {
+            SurpriseStage.Decoding -> if (streamedModelInstance != null) {
+                surpriseStage = SurpriseStage.Textures
+            } else {
+                // A file gltfio cannot parse yields `null` forever — stop narrating a decode
+                // that has already failed and leave the previous model on screen.
+                delay(SURPRISE_STEP_TIMEOUT_MS)
+                surpriseStage = null
+            }
+            SurpriseStage.Textures -> {
+                kotlinx.coroutines.withTimeoutOrNull(SURPRISE_STEP_TIMEOUT_MS) {
+                    while (modelLoader.isLoading) delay(SURPRISE_POLL_MS)
+                }
+                surpriseStage = null
+            }
+            else -> Unit
+        }
     }
 
     DemoScaffold(
@@ -704,12 +731,11 @@ private fun SingleModelSection(
             if (hasSketchfabKey) {
                 GlassActionPill(
                     icon = Icons.Filled.Shuffle,
-                    label = stringResource(
-                        if (surpriseInFlight) R.string.demo_model_viewer_surprise_loading
-                        else R.string.demo_model_viewer_surprise
-                    ),
+                    label = surpriseStage?.let { surpriseStageText(it) }
+                        ?: stringResource(R.string.demo_model_viewer_surprise),
                     onClick = rollSurprise,
                     loading = surpriseInFlight,
+                    progress = (surpriseStage as? SurpriseStage.Fetching)?.fraction,
                     contentDescription = stringResource(R.string.demo_model_viewer_surprise_hint),
                 )
             }
@@ -878,6 +904,8 @@ private fun SingleModelSection(
     }
     if (modelSheetOpen) ModelPickerSheet(
         bundledModels, selectedModel.assetPath, hasSketchfabKey, surpriseInFlight,
+        surpriseStatus = surpriseStage?.let { surpriseStageText(it) },
+        surpriseProgress = (surpriseStage as? SurpriseStage.Fetching)?.fraction,
         onSelect = { selectedModel = it; streamedFileUrl = null; modelSheetOpen = false },
         onPark = { modelSheetOpen = false; onModeChange(ModelViewerMode.Multi) },
         onSurprise = rollSurprise,
@@ -957,21 +985,97 @@ private fun rememberStreamedModelInstance(
 }
 
 /**
+ * The step a "Surprise me" roll is in (#3825). Each value is a stage the code is really
+ * in — a network call, a byte stream, a parse, a texture upload — never a timed script.
+ */
+private sealed interface SurpriseStage {
+    /** `SketchfabService.search` is in flight. */
+    data object Searching : SurpriseStage
+
+    /**
+     * `SketchfabService.downloadModel` is in flight for [name]: a download, or a cache read
+     * when [cached]. [totalBytes] is `-1` until the CDN reports a `Content-Length`.
+     */
+    data class Fetching(
+        val name: String,
+        val cached: Boolean,
+        val bytesRead: Long = 0L,
+        val totalBytes: Long = -1L,
+    ) : SurpriseStage {
+        /** Download progress in `0..1`, or `null` while the size is unknown. */
+        val fraction: Float? get() = if (!cached && totalBytes > 0L) bytesRead.toFloat() / totalBytes else null
+    }
+
+    /** The GLB is on disk and being parsed into a `ModelInstance`. */
+    data object Decoding : SurpriseStage
+
+    /** The instance exists; gltfio is still decoding and uploading its textures. */
+    data object Textures : SurpriseStage
+}
+
+/** The narration line for [stage]. */
+@Composable
+private fun surpriseStageText(stage: SurpriseStage): String = when (stage) {
+    SurpriseStage.Searching -> stringResource(R.string.demo_model_viewer_surprise_searching)
+    is SurpriseStage.Fetching -> {
+        val name = stage.name.shortModelName()
+        when {
+            stage.cached -> stringResource(R.string.demo_model_viewer_surprise_cached, name)
+            stage.totalBytes > 0L -> stringResource(
+                R.string.demo_model_viewer_surprise_downloading_sized,
+                name,
+                android.text.format.Formatter.formatShortFileSize(LocalContext.current, stage.totalBytes),
+            )
+            else -> stringResource(R.string.demo_model_viewer_surprise_downloading, name)
+        }
+    }
+    SurpriseStage.Decoding -> stringResource(R.string.demo_model_viewer_surprise_decoding)
+    SurpriseStage.Textures -> stringResource(R.string.demo_model_viewer_surprise_textures)
+}
+
+/**
+ * A Sketchfab title short enough to leave room for the rest of the sentence on one line.
+ *
+ * Cut at a word boundary and before an unclosed parenthesis, with no ellipsis of its own:
+ * the narration line already ends in one, and "Winter Girl (free dow…" followed by the
+ * animated dots read as a double ellipsis on the emulator.
+ */
+private fun String.shortModelName(): String {
+    val name = trim()
+    if (name.length <= SURPRISE_NAME_MAX_CHARS) return name
+    val cut = name.take(SURPRISE_NAME_MAX_CHARS).let { it.substringBeforeLast(' ', it) }
+    val openParen = cut.lastIndexOf('(')
+    val balanced = if (openParen > 0 && cut.indexOf(')', openParen) < 0) cut.take(openParen) else cut
+    return balanced.trimEnd().ifEmpty { name.take(SURPRISE_NAME_MAX_CHARS) }
+}
+
+private const val SURPRISE_NAME_MAX_CHARS = 22
+
+/** How long a post-download step may run before the roll gives up narrating it. */
+private const val SURPRISE_STEP_TIMEOUT_MS = 30_000L
+
+private const val SURPRISE_POLL_MS = 100L
+
+/**
  * Surprise-me coroutine. Hits the Sketchfab search API for downloadable PBR
  * content, picks a random hit, streams it through [SketchfabService.downloadModel]
  * → on-disk cache → `file://` URL. Failure modes (no results / rate limit /
  * non-PBR download) all return `null` and the FAB caller leaves the helmet on
  * screen, so the demo never sits on a black viewport.
+ *
+ * [onStage] is told each step as it starts, and the download's byte count as it
+ * streams (from `Dispatchers.IO` — snapshot state is safe to write from there).
  */
 private suspend fun pickRandomDownloadableModel(
     service: SketchfabService,
-    @Suppress("UNUSED_PARAMETER") resolver: SketchfabAssetResolver,
+    onStage: (SurpriseStage) -> Unit,
 ): String? {
     // Search a broad PBR-friendly query so the picks read well under the demo
     // lighting. Falls back to "modern" if "pbr" returns 0 hits for some reason.
     val candidates = listOf("pbr", "modern", "scan")
     @Suppress("LoopWithTooManyJumpStatements") // continue-guards replace nested ifs for readability
     for (query in candidates) {
+        onStage(SurpriseStage.Searching)
         val results = runCatching {
             service.search(query = query, downloadable = true, limit = 24)
         }.getOrNull() ?: continue
@@ -981,8 +1085,13 @@ private suspend fun pickRandomDownloadableModel(
         val viable = results.filter { it.downloadable && it.faceCount in 1..200_000 }
         if (viable.isEmpty()) continue
         val pick = viable.random()
-        val cached = runCatching { service.downloadModel(pick.uid) }.getOrNull()
-            ?: continue
+        val fromCache = service.isCached(pick.uid)
+        onStage(SurpriseStage.Fetching(pick.name, cached = fromCache))
+        val cached = runCatching {
+            service.downloadModel(pick.uid) { read, total ->
+                onStage(SurpriseStage.Fetching(pick.name, cached = false, bytesRead = read, totalBytes = total))
+            }
+        }.getOrNull() ?: continue
         return cached.toURI().toString()
     }
     return null
@@ -1318,7 +1427,19 @@ private fun MultiModelSection(
                     }
                 }
             }
-            LoadingScrim(loading = !allLoaded, label = "Loading ${PARK_SLOTS.size} models…")
+            // Narrates the two real phases (#3825): the resolver fetching each slot's file
+            // (network, cache or bundled stand-in), then gltfio parsing it. The counts are
+            // read off the same lists the scene renders from.
+            val filesReady = files.count { it != null }
+            val modelsReady = instances.count { it != null }
+            LoadingScrim(
+                loading = !allLoaded,
+                label = if (filesReady < PARK_SLOTS.size) {
+                    stringResource(R.string.demo_multi_model_loading_fetching, filesReady, PARK_SLOTS.size)
+                } else {
+                    stringResource(R.string.demo_multi_model_loading_decoding, modelsReady, PARK_SLOTS.size)
+                },
+            )
         }
     }
     if (modelSheetOpen) ModelPickerSheet(
@@ -1590,9 +1711,16 @@ private fun GallerySection(
                     retryLabel = stringResource(R.string.demo_scene_gallery_retry),
                 )
             } else {
+                // Names the model and the step (#3825): the resolver fetching the file, then
+                // gltfio parsing it — the two states this section can actually tell apart.
+                val name = selectedSlug?.displayName.orEmpty()
                 LoadingScrim(
                     loading = modelInstance == null,
-                    label = stringResource(R.string.demo_scene_gallery_loading),
+                    label = when {
+                        name.isEmpty() -> stringResource(R.string.demo_scene_gallery_loading)
+                        resolvedFile == null -> stringResource(R.string.demo_scene_gallery_loading_fetching, name)
+                        else -> stringResource(R.string.demo_scene_gallery_loading_decoding, name)
+                    },
                 )
             }
         }

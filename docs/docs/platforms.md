@@ -28,9 +28,10 @@ SceneView uses **native renderers per platform** for the best performance and to
     `sceneview-compose` gives you one `SceneViewer` composable from `commonMain` and
     delegates to the renderers above. It covers the **viewer subset** only — a model, an
     orbit camera, a light, an environment, tap hit-testing. **No AR**, no custom
-    materials, no post-processing: those stay platform-native by design. Today Android
-    renders; the iOS and Desktop actuals draw a visible "not available yet" notice.
-    See [Compose Multiplatform](compose-multiplatform.md).
+    materials, no post-processing: those stay platform-native by design. Android and
+    Desktop render through Filament; iOS renders through RealityKit once the app
+    registers the one-time host factory, and draws a visible "not available yet" notice
+    until it does. See [Compose Multiplatform](compose-multiplatform.md).
 
 ---
 
@@ -73,20 +74,21 @@ SceneView Web uses **Filament.js** -- the same Filament rendering engine as Andr
 
 ---
 
-## Desktop (Placeholder)
+## Desktop (Compose Desktop)
 
-> **Not SceneView.** The desktop demo is a Compose Canvas wireframe renderer -- it does
-> not use SceneView or Filament. It exists as a UI placeholder for a future Filament JNI
-> desktop integration.
+The desktop actual of `sceneview-compose` renders with **Filament**, through the
+community [filament-kmp](https://github.com/Erkko68/filament-kmp) FFM bindings: an
+offscreen render, pipelined `readPixels`, then a Skia image in the Compose tree.
 
-- **Renderer**: Software wireframe (Compose Canvas 2D drawing, not GPU-accelerated)
+- **3D**: `SceneViewer(…)` — the same viewer subset as the other Compose Multiplatform
+  targets (glTF model, orbit camera, light, environment, tap hit-testing). **No AR.**
 - **Framework**: Compose Desktop
-- **Sample**: `samples/desktop-demo/`
-- **Missing**: GPU acceleration, PBR materials, glTF loading, shadows, scene graph
+- **Requirements**: JDK 22+ (FFM), launched with `--enable-native-access=ALL-UNNAMED`
+- **Install**: `implementation("io.github.sceneview:sceneview-compose:4.39.0")`
+- **Sample**: `samples/desktop-demo/` — run it with `./gradlew :samples:desktop-demo:run`
 
-A future version would use Filament JNI for full PBR rendering. This requires building
-Filament from source with JNI enabled (estimated 18-29 days). See
-[Filament Desktop Research](desktop-filament.md) for details.
+[:octicons-arrow-right-24: Compose Multiplatform](compose-multiplatform.md) ·
+[Desktop Filament decision record](desktop-filament.md)
 
 ---
 

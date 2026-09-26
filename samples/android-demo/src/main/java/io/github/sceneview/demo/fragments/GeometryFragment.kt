@@ -14,9 +14,9 @@ object GeometryFragment : DemoFragment {
         id = "geometry",
         titleRes = R.string.demo_geometry_title,
         subtitleRes = R.string.demo_geometry_subtitle,
-        category = DemoCategory.GEOMETRY_MATERIALS,
+        category = DemoCategory.CREATE,
         icon = Icons.Filled.Category,
-        order = 5,
+        order = 7,
         tags = setOf("geometry", "cube", "sphere", "cylinder", "plane", "primitive"),
     )
 

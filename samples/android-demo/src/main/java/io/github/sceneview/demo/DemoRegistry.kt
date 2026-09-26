@@ -105,80 +105,64 @@ data class DemoEntry(
  * shown to the user. Use [categoryDisplayNameRes] to obtain the display
  * header label.
  *
- * Since #2239 a category is also a **section** on the home grid: the grid draws
- * one header per category in [DEMO_CATEGORIES] order, so a category boundary is
- * something the user sees rather than only a filter chip. Two rules follow, and
+ * A category is also a **section** on the home grid: the grid draws one header
+ * per category in [DEMO_CATEGORIES] order, so a category boundary is something
+ * the user sees rather than only a filter chip. Two rules follow, and
  * [io.github.sceneview.demo.DemoRegistryIntegrityTest] enforces them: every
  * category holds at least one demo (a header with nothing under it is a lie),
  * and [DemoEntry.order] keeps a category's demos contiguous (a section that
  * restarts further down the grid is not a section).
  *
- * The nine keys replace the six that shipped until #2239. The old set put 33 of
- * 53 cards behind a single "Augmented Reality" chip, which is what made the
- * catalogue unnavigable: AR is not one subject, it is placement, tracking,
- * scene understanding and anchors — four different ARCore API families.
+ * Five sections, each named for what the reader wants to *do* (#3836). #2239
+ * split the catalogue into nine sections named after SDK subsystems — Viewer,
+ * Geometry & Materials, Rendering, Interaction and four AR families — which
+ * fixed the single 33-card "Augmented Reality" bucket but left a long scroll of
+ * small sections, two of them two cards deep, whose names only mean something
+ * to a reader who already knows the SDK. Sketchfab's category rows and Apple's
+ * sample galleries run a handful of groups; these five are ones a newcomer can
+ * choose between without reading the cards first.
  */
 object DemoCategory {
-    /** Load something and watch it — the first thing a newcomer opens. */
-    const val VIEWER = "Viewer"
+    /** Load a model and look at it — view, orbit, pick, animate. The first thing a newcomer opens. */
+    const val VIEW_3D = "View 3D"
 
-    /** Author the geometry and shade it. */
-    const val GEOMETRY_MATERIALS = "Geometry & Materials"
+    /** Build a scene — geometry, materials, light, 2D panels, sound — and record it. */
+    const val CREATE = "Create & Record"
 
-    /** Light the scene and post-process the frame. */
-    const val RENDERING = "Rendering"
+    /** Put virtual content in the real room and keep it there — planes, poses, anchors. */
+    const val PLACE_AR = "Place in AR"
 
-    /** Touch the scene — camera manipulators, picking, node gestures. */
-    const val INTERACTION = "Interaction"
+    /** Read the room and the people in it — tracking, depth, point clouds, meshes, semantics. */
+    const val UNDERSTAND = "Understand the World"
 
-    /** Put virtual content in the real room. */
-    const val AR_PLACEMENT = "AR Placement"
-
-    /** Track a subject — faces, images, bodies, hands. */
-    const val AR_TRACKING = "AR Tracking"
-
-    /** Read the room — depth, point clouds, meshes, semantics. */
-    const val AR_UNDERSTANDING = "AR Understanding"
-
-    /** Anchors that outlive the frame — cloud, geospatial, collaborative. */
-    const val AR_ANCHORS = "AR Anchors"
-
-    /** The plumbing around the renderer — audio, capture, recording, debug. */
-    const val PLATFORM = "Platform"
+    /** The plumbing around the renderer — debug overlay, extra cameras, session record and replay. */
+    const val DEV_TOOLS = "Developer Tools"
 }
 
-/** Ordered list of category keys — controls the home filter-chip order. */
+/** Ordered list of category keys — controls the home filter-chip and section order. */
 val DEMO_CATEGORIES = listOf(
-    DemoCategory.VIEWER,
-    DemoCategory.GEOMETRY_MATERIALS,
-    DemoCategory.RENDERING,
-    DemoCategory.INTERACTION,
-    DemoCategory.AR_PLACEMENT,
-    DemoCategory.AR_TRACKING,
-    DemoCategory.AR_UNDERSTANDING,
-    DemoCategory.AR_ANCHORS,
-    DemoCategory.PLATFORM,
+    DemoCategory.VIEW_3D,
+    DemoCategory.CREATE,
+    DemoCategory.PLACE_AR,
+    DemoCategory.UNDERSTAND,
+    DemoCategory.DEV_TOOLS,
 )
 
 /**
  * The sections whose demos are AR demos.
  *
- * Before #2239 this was a single equality test against one `AUGMENTED_REALITY`
- * category. The regroup split AR across four sections, so every "is this an AR
- * demo?" question now goes through [isArDemo] rather than re-listing the four
- * keys at each call site.
+ * Every "is this an AR demo?" question goes through [isArDemo] rather than
+ * re-listing these keys at each call site.
  */
 val AR_CATEGORIES: Set<String> = setOf(
-    DemoCategory.AR_PLACEMENT,
-    DemoCategory.AR_TRACKING,
-    DemoCategory.AR_UNDERSTANDING,
-    DemoCategory.AR_ANCHORS,
+    DemoCategory.PLACE_AR,
+    DemoCategory.UNDERSTAND,
 )
 
 /**
  * AR demos that are deliberately filed outside [AR_CATEGORIES].
  *
- * `ar-record-playback` and `ar-rerun` sit under [DemoCategory.PLATFORM] because
+ * `ar-record-playback` and `ar-rerun` sit under [DemoCategory.DEV_TOOLS] because
  * their subject is capture and replay tooling — the plumbing around the session,
  * not what the session sees. They still open an ARCore session, so anything that
  * enumerates AR demos (the AR View tab's list, the replay harness) has to include
@@ -199,21 +183,17 @@ val DemoEntry.isArDemo: Boolean
 
 /**
  * Maps a stable category key to its display-name resource ID.
- * Unknown keys fall back to [R.string.category_viewer] (safe default — never
- * surfaces a raw key like "AR Understanding" to the user).
+ * Unknown keys fall back to [R.string.category_view_3d] (safe default — never
+ * surfaces a raw key like "Understand the World" to the user).
  */
 @StringRes
 fun categoryDisplayNameRes(category: String): Int = when (category) {
-    DemoCategory.VIEWER -> R.string.category_viewer
-    DemoCategory.GEOMETRY_MATERIALS -> R.string.category_geometry_materials
-    DemoCategory.RENDERING -> R.string.category_rendering
-    DemoCategory.INTERACTION -> R.string.category_interaction
-    DemoCategory.AR_PLACEMENT -> R.string.category_ar_placement
-    DemoCategory.AR_TRACKING -> R.string.category_ar_tracking
-    DemoCategory.AR_UNDERSTANDING -> R.string.category_ar_understanding
-    DemoCategory.AR_ANCHORS -> R.string.category_ar_anchors
-    DemoCategory.PLATFORM -> R.string.category_platform
-    else -> R.string.category_viewer
+    DemoCategory.VIEW_3D -> R.string.category_view_3d
+    DemoCategory.CREATE -> R.string.category_create
+    DemoCategory.PLACE_AR -> R.string.category_place_ar
+    DemoCategory.UNDERSTAND -> R.string.category_understand
+    DemoCategory.DEV_TOOLS -> R.string.category_dev_tools
+    else -> R.string.category_view_3d
 }
 
 /**

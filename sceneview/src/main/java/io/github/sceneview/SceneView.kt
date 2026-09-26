@@ -1209,6 +1209,8 @@ fun SceneView(
  * `SubcomposeLayout` slot such as Material3's `Scaffold`, the common case) may detach *after* the
  * `Model` is destroyed. Either order is safe — `Node.destroy()` only touches entity ids and
  * `destroyModel` tolerates already-freed assets — so the renderables are never left dangling.
+ * A key change right after the load returns, while the textures are still decoding, is safe too:
+ * `destroyModel` cancels that model's pending texture load before freeing it.
  * Only a model that finished loading is disposed here: a load cancelled by a key change after
  * `ModelLoader` registered the `Model` but before it was produced stays resident until the
  * loader is cleared. The [ModelLoader]

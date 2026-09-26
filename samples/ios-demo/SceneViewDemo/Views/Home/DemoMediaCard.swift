@@ -48,7 +48,7 @@ struct BrowseOnlineModelsCard: View {
     var body: some View {
         MediaCard(
             title: "Browse online models",
-            subtitle: "Sketchfab, Icosa, Poly Haven",
+            subtitle: GallerySourcesRegistry.availableSourceNames,
             previewName: "preview_hero_model_viewer",
             icon: "globe",
             accent: SceneViewTheme.primary,

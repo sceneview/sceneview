@@ -84,7 +84,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: rn-ts-check-${{ github.event.pull_request.head.sha || github.ref }}
+  group: rn-ts-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:

@@ -22,9 +22,9 @@ object LightingLabFragment : DemoFragment {
         id = "lighting-lab",
         titleRes = R.string.demo_lighting_lab_title,
         subtitleRes = R.string.demo_lighting_lab_subtitle,
-        category = DemoCategory.RENDERING,
+        category = DemoCategory.CREATE,
         icon = Icons.Filled.WbSunny,
-        order = 11,
+        order = 12,
         tags = setOf(
             "light", "hdr", "ibl", "skybox", "environment",
             "reflection", "exposure", "ssao", "fog", "post-fx",

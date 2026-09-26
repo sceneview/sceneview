@@ -17,6 +17,7 @@
     <string name="demo_animation_physics_loading">Loading %1$s…</string>
     <string name="demo_animation_physics_clip_fallback">Clip %1$d</string>
     <string name="demo_animation_physics_no_clip">No animation clip available</string>
+    <string name="demo_animation_physics_clip_loading">Loading…</string>
     <string name="demo_animation_physics_scrub">Scrub pose · pauses playback</string>
     <string name="demo_animation_physics_time">%1$.1f / %2$.1f s</string>
     <string name="demo_animation_physics_blend_to">Blend with a second clip</string>

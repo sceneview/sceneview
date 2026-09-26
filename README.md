@@ -198,6 +198,22 @@ The demo apps are built from [`samples/`](samples/). Any demo opens straight fro
 
 ---
 
+## Runs on
+
+Each row is a published package plus an app or page you can open today, backed by a real
+capture of it.
+
+| Platform | Status | Install | Open it | Capture |
+|---|---|---|---|---|
+| **Android** | Shipped · Stable | [Maven Central](https://central.sonatype.com/artifact/io.github.sceneview/sceneview) | [Google Play](https://play.google.com/store/apps/details?id=io.github.sceneview.demo) | <img src="website-static/assets/demos/runs-on-android.jpg" alt="SceneView Android demo: Model Viewer rendering a helmet with Filament" height="160"> |
+| **iOS** | Shipped · Alpha | [Swift Package](SceneViewSwift/) | [App Store](https://apps.apple.com/us/app/sceneview/id6761329763) | <img src="website-static/assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" height="160"> |
+| **Web** | Shipped · Alpha | [npm `sceneview-web`](https://www.npmjs.com/package/sceneview-web) | [Live web demo](https://sceneview.github.io/web-demo/) | <img src="website-static/assets/demos/runs-on-web.jpg" alt="SceneView web demo: Damaged Helmet rendered by Filament.js in a browser" height="100"> |
+
+*Shipped* means released and publicly reachable; the second word is the API maturity.
+The other platforms in the table below join this section once a capture backs them.
+
+---
+
 ## Platforms
 
 | Platform | Renderer | Framework | Status |
@@ -223,8 +239,8 @@ The demo apps are built from [`samples/`](samples/). Any demo opens straight fro
 | Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.39.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
-| Flutter | `flutter_sceneview` on pub.dev |
-| React Native | `@sceneview-sdk/react-native` on npm |
+| Flutter | [`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev |
+| React Native | [`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm |
 | AI assistants | `npx -y sceneview-mcp` — see [Use with AI](#use-with-ai) |
 
 ---

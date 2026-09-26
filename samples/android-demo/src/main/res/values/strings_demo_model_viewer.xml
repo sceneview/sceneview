@@ -16,17 +16,31 @@
     <string name="demo_model_viewer_desc">Load and render glTF/GLB 3D models with orbit camera</string>
     <string name="demo_model_viewer_loading">Loading model…</string>
     <string name="demo_model_viewer_surprise">Surprise me</string>
-    <string name="demo_model_viewer_surprise_loading">Finding…</string>
+    <string name="demo_model_viewer_surprise_subtitle">A random CC-BY model from Sketchfab</string>
+    <!-- Surprise me narration (#3825): one line per real step of the roll, in order. -->
+    <string name="demo_model_viewer_surprise_searching">Searching Sketchfab…</string>
+    <string name="demo_model_viewer_surprise_downloading">Downloading %1$s…</string>
+    <!-- %1$s model name, %2$s total download size, e.g. "3.2 MB". -->
+    <string name="demo_model_viewer_surprise_downloading_sized">Downloading %1$s (%2$s)…</string>
+    <string name="demo_model_viewer_surprise_cached">Opening %1$s from the cache…</string>
+    <string name="demo_model_viewer_surprise_decoding">Decoding the model…</string>
+    <string name="demo_model_viewer_surprise_textures">Loading textures…</string>
     <!-- Accessible name of the floating Surprise me pill: the visible label is short, the spoken one says what it does. -->
     <string name="demo_model_viewer_surprise_hint">Surprise me: load another random model</string>
 
     <!-- Multi-Model section — formerly the `multi-model` demo. -->
     <string name="demo_multi_model_title">Multi-Model Scene</string>
+    <!-- %1$d models ready so far, %2$d models in the scene. -->
+    <string name="demo_multi_model_loading_fetching">Fetching the models (%1$d of %2$d)…</string>
+    <string name="demo_multi_model_loading_decoding">Decoding the models (%1$d of %2$d)…</string>
 
     <!-- Gallery section — formerly the `scene-gallery` demo. -->
     <string name="demo_scene_gallery_title">Scene Gallery</string>
     <string name="demo_scene_gallery_credit">by %1$s · CC-BY 4.0</string>
-    <string name="demo_scene_gallery_loading">Streaming model…</string>
+    <string name="demo_scene_gallery_loading">Loading the model…</string>
+    <!-- %1$s is the model's catalogue name. -->
+    <string name="demo_scene_gallery_loading_fetching">Fetching %1$s…</string>
+    <string name="demo_scene_gallery_loading_decoding">Decoding %1$s…</string>
     <string name="demo_scene_gallery_error">Couldn\'t load this model</string>
     <string name="demo_scene_gallery_retry">Retry</string>
 </resources>

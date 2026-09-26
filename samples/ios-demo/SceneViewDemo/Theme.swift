@@ -381,6 +381,15 @@ enum SceneViewTokens {
         static let heroScrimStart: CGFloat = 0.5
     }
 
+    /// `DESIGN.md` — Demo App About (`about-*`), the iOS twin of Android's
+    /// `SceneViewTokens.About`.
+    enum About {
+        /// `about-mark` — the launcher icon at identity size, clipped to
+        /// `radius-xl`. The same picture in light and dark: it is the
+        /// product's identity, not a themed surface.
+        static let markSize: CGFloat = 80
+    }
+
     /// `DESIGN.md` — Motion: the `ease-expressive` curve, the three durations,
     /// and the two patterns the catalogue uses (scroll reveal, staggered entry).
     ///

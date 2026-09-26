@@ -17,7 +17,7 @@ object SplatPreviewFragment : DemoFragment {
         id = "splat-preview",
         titleRes = R.string.demo_splat_preview_title,
         subtitleRes = R.string.demo_splat_preview_subtitle,
-        category = DemoCategory.VIEWER,
+        category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.Landscape,
         order = 2,
         tags = setOf("splat", "gaussian", "radiance-field", "point-cloud", "scan", "spz", "ply"),

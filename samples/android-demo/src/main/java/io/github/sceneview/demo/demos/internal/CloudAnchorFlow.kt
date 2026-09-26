@@ -406,7 +406,7 @@ fun CloudAnchorBlocker.message(): String = when (this) {
  * The status sentence for [this], in strict priority order.
  *
  * A blocker outranks everything. Within a step, a live request outranks the coaching
- * that led to it — the fix for the invisible-progress bug: "Hosting the anchor…" is now
+ * that led to it — the fix for the invisible-progress bug: "Uploading the room scan to Google Cloud…" is now
  * derived from `host == Running`, not from a String nothing read.
  */
 fun CloudAnchorFlowState.status(): CloudAnchorStatus {
@@ -419,7 +419,7 @@ fun CloudAnchorFlowState.status(): CloudAnchorStatus {
 
 private fun CloudAnchorFlowState.hostStatus(): CloudAnchorStatus = when {
     host == CloudAnchorTask.Running ->
-        CloudAnchorStatus("Hosting the anchor…", DemoStatusTone.Progress)
+        CloudAnchorStatus("Uploading the room scan to Google Cloud…", DemoStatusTone.Progress)
     host is CloudAnchorTask.Failed ->
         CloudAnchorStatus(host.failure.message(), DemoStatusTone.Blocked)
     host is CloudAnchorTask.Succeeded -> CloudAnchorStatus(
@@ -440,7 +440,7 @@ private fun CloudAnchorFlowState.hostStatus(): CloudAnchorStatus = when {
 
 private fun CloudAnchorFlowState.resolveStatus(): CloudAnchorStatus = when {
     resolve == CloudAnchorTask.Running ->
-        CloudAnchorStatus("Resolving the code…", DemoStatusTone.Progress)
+        CloudAnchorStatus("Downloading the anchor and matching this room…", DemoStatusTone.Progress)
     resolve is CloudAnchorTask.Failed ->
         CloudAnchorStatus(resolve.failure.message(), DemoStatusTone.Blocked)
     resolve is CloudAnchorTask.Succeeded -> CloudAnchorStatus(
