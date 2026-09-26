@@ -8,6 +8,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -78,6 +79,48 @@ class PlatformViewOwnersTest {
         assertTrue("composition was not disposed", probe.disposed)
         assertEquals(Lifecycle.State.DESTROYED, owners.lifecycle.currentState)
         owners.destroy() // idempotent
+    }
+
+    /**
+     * `ARSceneView` pauses and resumes the ARCore session on ON_PAUSE / ON_RESUME of
+     * this lifecycle (#3934). API 28 exercises the application-wide callbacks, API 34
+     * the per-activity ones.
+     */
+    @Test
+    @Config(sdk = [28, 34])
+    fun `follows the host activity through pause, stop and resume`() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val activity = controller.get()
+        val view = probeView(activity, Probe())
+        val owners = PlatformViewOwners.installIfHostHasNone(view, activity)!!
+        attach(activity, view)
+        val events = mutableListOf<Lifecycle.Event>()
+        owners.lifecycle.addObserver(LifecycleEventObserver { _, event -> events += event })
+        events.clear() // drop the replay up to RESUMED
+
+        controller.pause()
+        assertEquals(Lifecycle.State.STARTED, owners.lifecycle.currentState)
+        controller.stop()
+        assertEquals(Lifecycle.State.CREATED, owners.lifecycle.currentState)
+        controller.restart().start().resume()
+        assertEquals(Lifecycle.State.RESUMED, owners.lifecycle.currentState)
+        assertEquals(
+            listOf(
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP,
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME,
+            ),
+            events,
+        )
+
+        // Another activity's pause is not ours.
+        Robolectric.buildActivity(Activity::class.java).setup().pause()
+        assertEquals(Lifecycle.State.RESUMED, owners.lifecycle.currentState)
+
+        // dispose() unregisters: later activity callbacks leave DESTROYED alone.
+        view.disposeComposition()
+        owners.destroy()
+        controller.pause().stop()
+        assertEquals(Lifecycle.State.DESTROYED, owners.lifecycle.currentState)
     }
 
     @Test

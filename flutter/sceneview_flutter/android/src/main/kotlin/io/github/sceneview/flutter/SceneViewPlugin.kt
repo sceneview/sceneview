@@ -200,8 +200,11 @@ internal fun tapNodeName(path: String, fallback: String): String =
 /**
  * The APK asset path of a Dart asset key: Flutter packs `environments/x.hdr` as
  * `flutter_assets/environments/x.hdr`, so opening the key as-is threw
- * `FileNotFoundException` and crashed the demo at launch (#3928). A path that is
- * not a Flutter asset (a native Android asset, a file, a URL) is returned unchanged.
+ * `FileNotFoundException` and crashed the demo at launch (#3928). For `loadModel`,
+ * the documented `models/x.glb` key failed the same way, but silently: the asset read
+ * is wrapped in `runCatching`, so no model appeared and nothing was logged. A path
+ * that is not a Flutter asset (a native Android asset, a file, a URL) is returned
+ * unchanged.
  */
 private fun FlutterPlugin.FlutterPluginBinding.assetPathOf(path: String): String {
     if (path.contains("://") || path.startsWith("/")) return path
@@ -405,7 +408,7 @@ class SceneViewPlatformView(
                 val rotationZ = call.argument<Double>("rotationZ")?.toFloat() ?: 0f
 
                 modelNodes.add(FlutterModelNode(
-                    path = modelPath,
+                    path = binding.assetPathOf(modelPath),
                     position = Position(x, y, z),
                     rotation = Rotation(rotationX, rotationY, rotationZ),
                     scale = scale,
@@ -652,7 +655,7 @@ class ARSceneViewPlatformView(
                 val rotationZ = call.argument<Double>("rotationZ")?.toFloat() ?: 0f
 
                 modelNodes.add(FlutterModelNode(
-                    path = modelPath,
+                    path = binding.assetPathOf(modelPath),
                     position = Position(x, y, z),
                     rotation = Rotation(rotationX, rotationY, rotationZ),
                     scale = scale,
