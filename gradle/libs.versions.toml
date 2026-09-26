@@ -6,6 +6,7 @@ composeMultiplatform = "1.12.0"
 
 # AndroidX Core
 coreKtx = "1.18.0"
+coreSplashscreen = "1.2.0"
 appcompat = "1.8.0"
 fragmentKtx = "1.9.0"
 
@@ -161,6 +162,7 @@ detekt = "2.0.0-alpha.6"
 [libraries]
 # AndroidX Core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
 

@@ -1,8 +1,10 @@
 package io.github.sceneview.demo
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -96,6 +98,22 @@ class MainActivity : ComponentActivity() {
     val pendingOpenedModelFlow: StateFlow<OpenedModel?> get() = pendingOpenedModel.asStateFlow()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before super.onCreate: swaps the launch theme (Theme.SceneViewDemo.Starting) for
+        // the app theme before the window is built (#3899).
+        val splashScreen = installSplashScreen()
+        // Take the splash away on the app's first frame instead of letting the system fade
+        // it out over the first frames. While the system's starting window is on screen,
+        // the status bar follows *its* appearance, so a demo opened from a link showed the
+        // light splash's dark icons over its dark stage — for seconds on a slow start —
+        // and nothing the app sets on its own window could shorten that.
+        //
+        // API 33+ only: on 31–32, core-splashscreen re-applies the theme's
+        // `windowLightStatusBar` after `remove()`, which would overwrite the light icons
+        // DemoScaffold has already set and leave them dark for the rest of the demo. Those
+        // releases keep the system fade.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            splashScreen.setOnExitAnimationListener { it.remove() }
+        }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // Clean up any feedback recording stranded in the cache by a prior run.
