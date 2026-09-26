@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import SwiftUI
 import RealityKit
+import ARKit
 import SceneViewSwift
 
 /// Flutter plugin entry point for SceneView on iOS.
@@ -414,6 +415,9 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
     private let hostingController: UIHostingController<ARSceneViewSwiftUIWrapper>
     private let channel: FlutterMethodChannel
     private let sceneState = SceneState()
+    /// Owns model loading, plane taps and placed models (#3780). Shared with
+    /// the SwiftUI wrapper so `placeModel` calls and the view act on one state.
+    private let placement: ARPlacementController
 
     /// ReplayKit-backed AR session recorder (v4.3.0, issue #1053).
     /// Lazily created on the main actor on first use.
@@ -427,16 +431,25 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
     }
 
     init(frame: CGRect, viewId: Int64, args: [String: Any], messenger: FlutterBinaryMessenger) {
-        self.hostingController = UIHostingController(
-            rootView: ARSceneViewSwiftUIWrapper(state: sceneState)
-        )
-        self.hostingController.view.frame = frame
-        self.hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-
-        self.channel = FlutterMethodChannel(
+        let channel = FlutterMethodChannel(
             name: "io.github.sceneview.flutter/scene_\(viewId)",
             binaryMessenger: messenger
         )
+        self.channel = channel
+        // `weak`: the controller must not keep the channel (and through its
+        // handler, this view) alive — same retain-cycle concern as #2069.
+        let placement = ARPlacementController(
+            planeTapEnabled: (args["planeTap"] as? NSNumber)?.boolValue ?? false,
+            onPlaneTap: { [weak channel] hit in
+                channel?.invokeMethod("onPlaneTap", arguments: hit)
+            }
+        )
+        self.placement = placement
+        self.hostingController = UIHostingController(
+            rootView: ARSceneViewSwiftUIWrapper(state: sceneState, placement: placement)
+        )
+        self.hostingController.view.frame = frame
+        self.hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         super.init()
 
         // Install the handler with a `[weak self]` capture so the channel does
@@ -483,8 +496,42 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
         case "clearScene":
             Task { @MainActor in
                 sceneState.models.removeAll()
+                placement.removeAllPlaced()
             }
             result(nil)
+
+        case "placeModel":
+            guard let request = FlutterPlaceRequest(arguments: call.arguments) else {
+                result(FlutterError(
+                    code: "INVALID_ARGS",
+                    message: "placeModel needs a hit and a model with a modelPath",
+                    details: nil
+                ))
+                return
+            }
+            Task { @MainActor in
+                do {
+                    result(try await placement.placeModel(request))
+                } catch let error as FlutterPlacementError {
+                    result(error.flutterError)
+                } catch {
+                    result(FlutterError(code: "LOAD_FAILED", message: error.localizedDescription, details: nil))
+                }
+            }
+
+        case "removePlacedModel":
+            let id = (call.arguments as? [String: Any])?["id"] as? String
+            Task { @MainActor in
+                if let id { placement.removePlacedModel(id: id) }
+                result(nil)
+            }
+
+        case "setPlaneTapEnabled":
+            let enabled = ((call.arguments as? [String: Any])?["enabled"] as? NSNumber)?.boolValue ?? false
+            Task { @MainActor in
+                placement.planeTapEnabled = enabled
+                result(nil)
+            }
 
         case "setEnvironment":
             // AR scenes use camera feed; environment HDR affects lighting only.
@@ -546,24 +593,33 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
 
 /// SwiftUI wrapper for `SceneViewSwift.ARSceneView`, driven by observable state.
 ///
-/// `ARSceneView` has no declarative content closure (issue #2065) — content is
-/// placed in the real world by anchoring entities. The bridge registers an
-/// `onTapOnPlane` handler so a tap on a detected plane drops the most recently
-/// requested model at that world position, mirroring the Android Flutter
-/// demo's tap-to-place AR behaviour.
+/// `ARSceneView` has no declarative content closure (issue #2065). Content is
+/// placed in the real world by anchoring entities.
+///
+/// A plane tap does one of two things:
+/// - When the Dart widget sets `onPlaneTap` or `placeOnTap` (#3780), the
+///   placement controller hit-tests the tap itself and sends the hit to Dart,
+///   which decides what to place.
+/// - Otherwise, the older behaviour runs: `onTapOnPlane` drops a copy of the
+///   most recently loaded model at the tapped position.
+///
+/// Exactly one of the two tap recognizers is installed at a time. Two plain
+/// tap recognizers on one view never both fire, so a second recognizer would
+/// swallow half the taps.
 struct ARSceneViewSwiftUIWrapper: View {
     @ObservedObject var state: SceneState
 
-    /// Drives async model loading and tap-to-place anchoring. `@StateObject`
-    /// so the loaded-model cache survives SwiftUI re-renders.
-    @StateObject private var placement = ARPlacementController()
+    /// Drives async model loading and anchoring. The platform view owns it,
+    /// so the Dart `placeModel` calls and this view share one instance.
+    @ObservedObject var placement: ARPlacementController
 
     var body: some View {
+        let legacyTap: ((SIMD3<Float>, ARView) -> Void)? = placement.planeTapEnabled
+            ? nil
+            : { position, _ in placement.placeModel(at: position) }
         ARSceneView(
             planeDetection: .horizontal,
-            onTapOnPlane: { position, _ in
-                placement.placeModel(at: position)
-            }
+            onTapOnPlane: legacyTap
         )
         // Capture the single reusable content anchor once the session starts,
         // so every tap-placed model and `clearScene` operate on the same
@@ -604,16 +660,232 @@ final class ARPlacementController: ObservableObject {
     /// the AR session starts; its children are torn down by `clearScene`.
     private var contentAnchor: AnchorNode?
 
+    /// Whether plane taps are hit-tested here and sent to Dart as
+    /// `onPlaneTap` (#3780), instead of placing the last loaded model.
+    /// Published so the wrapper swaps the SDK's own tap recognizer out.
+    @Published var planeTapEnabled: Bool {
+        didSet { syncPlaneTapRecognizer() }
+    }
+
+    /// Receives each plane hit, already encoded for the method channel.
+    private let onPlaneTap: ([String: Any]) -> Void
+
+    private weak var arView: ARView?
+    private var planeTapRecognizer: UITapGestureRecognizer?
+    /// Gesture recognizers hold their targets weakly; this keeps ours alive.
+    private lazy var planeTapTarget = FlutterPlaneTapTarget { [weak self] recognizer in
+        self?.handlePlaneTap(recognizer)
+    }
+    private var nextHitId = 0
+    private var nextPlacedId = 0
+
+    /// A model placed with `placeModel`, one ARKit anchor each.
+    private struct PlacedModel {
+        let anchorEntity: AnchorEntity
+        let arAnchor: ARAnchor
+        let recognizers: [UIGestureRecognizer]
+    }
+    private var placed: [String: PlacedModel] = [:]
+
+    nonisolated init(
+        planeTapEnabled: Bool = false,
+        onPlaneTap: @escaping ([String: Any]) -> Void = { _ in }
+    ) {
+        _planeTapEnabled = Published(initialValue: planeTapEnabled)
+        self.onPlaneTap = onPlaneTap
+    }
+
     /// Captures the reusable content anchor once the AR session has started.
     ///
     /// Adds one `AnchorNode` at the world origin to the scene — every placed
     /// model becomes its child, so the scene's anchor count stays at one
     /// regardless of how many models the user taps into the world.
     func attach(to arView: ARView) {
+        self.arView = arView
+        syncPlaneTapRecognizer()
         guard contentAnchor == nil else { return }
         let anchor = AnchorNode.world(position: .zero)
         arView.scene.addAnchor(anchor.entity)
         contentAnchor = anchor
+    }
+
+    // MARK: Tap-to-place (#3780)
+
+    /// Installs the plane-tap recognizer only while `planeTapEnabled` is true.
+    /// While it is off, the SDK's own `onTapOnPlane` recognizer handles taps.
+    private func syncPlaneTapRecognizer() {
+        if planeTapEnabled, planeTapRecognizer == nil, let arView {
+            let recognizer = UITapGestureRecognizer(
+                target: planeTapTarget,
+                action: #selector(FlutterPlaneTapTarget.handle(_:))
+            )
+            arView.addGestureRecognizer(recognizer)
+            planeTapRecognizer = recognizer
+        } else if !planeTapEnabled, let recognizer = planeTapRecognizer {
+            recognizer.view?.removeGestureRecognizer(recognizer)
+            planeTapRecognizer = nil
+        }
+    }
+
+    /// Hit-tests a tap against detected plane geometry and reports the hit.
+    ///
+    /// Only detected geometry counts, not an estimated plane. This matches
+    /// Android, which only reports taps inside a tracked plane's polygon.
+    private func handlePlaneTap(_ recognizer: UITapGestureRecognizer) {
+        guard planeTapEnabled, recognizer.state == .ended, let arView else { return }
+        let point = recognizer.location(in: arView)
+        // A tap on a placed model belongs to that model (it is where a drag,
+        // twist or pinch starts), not to the plane behind it.
+        if let entity = arView.entity(at: point), isPlaced(entity) { return }
+        guard let result = arView.raycast(
+            from: point,
+            allowing: .existingPlaneGeometry,
+            alignment: .any
+        ).first else { return }
+
+        let hit = result.worldTransform
+        let position = SIMD3<Float>(hit.columns.3.x, hit.columns.3.y, hit.columns.3.z)
+        let planeAnchor = result.anchor as? ARPlaneAnchor
+        let normalColumn = (planeAnchor?.transform ?? hit).columns.1
+        let camera = arView.cameraTransform.translation
+        let rotation = flutterPlaneHitRotation(
+            normal: SIMD3(normalColumn.x, normalColumn.y, normalColumn.z),
+            hitPosition: position,
+            cameraPosition: camera
+        )
+        let id = "hit-\(nextHitId)"
+        nextHitId += 1
+        onPlaneTap(flutterPlaneHitMap(
+            id: id,
+            position: position,
+            rotation: rotation,
+            planeType: flutterPlaneTypeName(planeAnchor),
+            distance: simd_distance(camera, position)
+        ))
+    }
+
+    private func isPlaced(_ entity: Entity) -> Bool {
+        var current: Entity? = entity
+        while let node = current {
+            if let anchor = node as? AnchorEntity,
+               placed.values.contains(where: { $0.anchorEntity === anchor }) {
+                return true
+            }
+            current = node.parent
+        }
+        return false
+    }
+
+    /// Loads `request.modelPath`, anchors it at the hit pose and installs the
+    /// requested gestures. Returns the placed model's id.
+    ///
+    /// The entity tree is anchor → pivot → model:
+    /// - the anchor is an `ARAnchor` at the hit pose, so ARKit keeps the model
+    ///   in place as tracking refines;
+    /// - the pivot sits on the contact point and carries the gestures and the
+    ///   only collision shape;
+    /// - the model is scaled to `size` metres and bottom-centred on the pivot.
+    ///
+    /// So twist and pinch act around the point where the model touches the
+    /// surface, as on Android.
+    func placeModel(_ request: FlutterPlaceRequest) async throws -> String {
+        if let reason = flutterUnsupportedModelReason(request.modelPath) {
+            throw FlutterPlacementError.unsupportedFormat(reason)
+        }
+        guard arView != nil else { throw FlutterPlacementError.notReady }
+
+        let node: ModelNode
+        do {
+            node = try await flutterLoadModel(path: request.modelPath)
+        } catch {
+            throw FlutterPlacementError.loadFailed(error.localizedDescription)
+        }
+        // The view can go away while the model downloads.
+        guard let arView else { throw FlutterPlacementError.notReady }
+
+        node.scaleToUnits(request.size)
+        node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
+        node.entity.name = sceneViewerModelFileName(request.modelPath)
+
+        let pivot = ModelEntity()
+        pivot.addChild(node.entity)
+        // One collision shape, on the pivot. RealityKit's entity gestures
+        // hit-test collision shapes, and a shape on a child would route the
+        // touch to the child instead of the entity the gestures are on.
+        Self.removeCollision(from: node.entity)
+        let bounds = pivot.visualBounds(relativeTo: pivot)
+        pivot.collision = CollisionComponent(shapes: [
+            ShapeResource
+                .generateBox(size: simd_max(bounds.extents, SIMD3<Float>(repeating: 0.01)))
+                .offsetBy(translation: bounds.center)
+        ])
+        Self.applyGroundingShadow(to: pivot)
+
+        let arAnchor = ARAnchor(
+            name: "flutter_sceneview.placed",
+            transform: flutterHitTransform(position: request.position, rotation: request.rotation)
+        )
+        arView.session.add(anchor: arAnchor)
+        let anchorEntity = AnchorEntity(anchor: arAnchor)
+        anchorEntity.addChild(pivot)
+        arView.scene.addAnchor(anchorEntity)
+
+        var gestures: ARView.EntityGestures = []
+        if request.canDrag { gestures.insert(.translation) }
+        if request.canRotate { gestures.insert(.rotation) }
+        if request.canScale { gestures.insert(.scale) }
+        let recognizers: [UIGestureRecognizer] = gestures.isEmpty
+            ? []
+            : arView.installGestures(gestures, for: pivot)
+        for case let scale as EntityScaleGestureRecognizer in recognizers {
+            // RealityKit's pinch has no limit; keep it within the same
+            // 0.25x...4x of the placed size as Android.
+            scale.addTarget(planeTapTarget, action: #selector(FlutterPlaneTapTarget.clampScale(_:)))
+        }
+
+        let id = "placed-\(nextPlacedId)"
+        nextPlacedId += 1
+        placed[id] = PlacedModel(anchorEntity: anchorEntity, arAnchor: arAnchor, recognizers: recognizers)
+        return id
+    }
+
+    /// Removes a placed model, its gestures and its ARKit anchor. No-op for
+    /// an unknown id.
+    func removePlacedModel(id: String) {
+        guard let model = placed.removeValue(forKey: id) else { return }
+        tearDown(model)
+    }
+
+    /// Removes every model placed with `placeModel` (the Dart `clearScene`).
+    func removeAllPlaced() {
+        let all = placed.values
+        placed.removeAll()
+        all.forEach(tearDown)
+    }
+
+    private func tearDown(_ model: PlacedModel) {
+        for recognizer in model.recognizers {
+            recognizer.view?.removeGestureRecognizer(recognizer)
+        }
+        model.anchorEntity.removeFromParent()
+        arView?.session.remove(anchor: model.arAnchor)
+    }
+
+    private static func removeCollision(from entity: Entity) {
+        entity.components.remove(CollisionComponent.self)
+        for child in entity.children {
+            removeCollision(from: child)
+        }
+    }
+
+    /// Same contact shadow the SDK gives models placed through `onTapOnPlane`.
+    private static func applyGroundingShadow(to entity: Entity) {
+        if entity.components.has(ModelComponent.self) {
+            entity.components.set(GroundingShadowComponent(castsShadow: true))
+        }
+        for child in entity.children {
+            applyGroundingShadow(to: child)
+        }
     }
 
     /// Reconciles the loaded templates with the requested model list.
@@ -667,4 +939,67 @@ final class ARPlacementController: ObservableObject {
         clone.position = position
         contentAnchor.add(clone)
     }
+}
+
+// MARK: - Tap-to-place support types (#3780)
+
+/// Objective-C target for the plane-tap and pinch-clamp recognizers.
+/// `UIGestureRecognizer` needs an `NSObject` target, which the
+/// `ObservableObject` controller is not.
+@MainActor
+final class FlutterPlaneTapTarget: NSObject {
+    private let onTap: (UITapGestureRecognizer) -> Void
+
+    init(onTap: @escaping (UITapGestureRecognizer) -> Void) {
+        self.onTap = onTap
+    }
+
+    @objc func handle(_ recognizer: UITapGestureRecognizer) {
+        onTap(recognizer)
+    }
+
+    /// Runs after RealityKit's own pinch handler and clamps the uniform
+    /// scale to `flutterPlacedScaleRange`. The pivot starts at scale 1, so
+    /// the range is relative to the placed size.
+    @objc func clampScale(_ recognizer: EntityScaleGestureRecognizer) {
+        guard let entity = recognizer.entity else { return }
+        let current = entity.scale.x
+        let clamped = flutterClampPlacedScale(current)
+        if clamped != current {
+            entity.scale = SIMD3<Float>(repeating: clamped)
+        }
+    }
+}
+
+/// Why `placeModel` failed, mapped to the codes the Dart doc lists.
+enum FlutterPlacementError: Error {
+    case unsupportedFormat(String)
+    case loadFailed(String)
+    case notReady
+
+    var flutterError: FlutterError {
+        switch self {
+        case .unsupportedFormat(let reason):
+            return FlutterError(code: "UNSUPPORTED_FORMAT", message: reason, details: nil)
+        case .loadFailed(let reason):
+            return FlutterError(code: "LOAD_FAILED", message: reason, details: nil)
+        case .notReady:
+            return FlutterError(
+                code: "NOT_READY",
+                message: "The AR session has not started yet. Place models from onPlaneTap.",
+                details: nil
+            )
+        }
+    }
+}
+
+/// Maps an ARKit plane anchor to the plane type name Dart receives. The names
+/// are the same as Android's `planeTypeName`.
+func flutterPlaneTypeName(_ anchor: ARPlaneAnchor?) -> String {
+    guard let anchor else { return "unknown" }
+    if anchor.alignment == .vertical { return "vertical" }
+    if ARPlaneAnchor.isClassificationSupported, anchor.classification == .ceiling {
+        return "horizontal_downward"
+    }
+    return anchor.alignment == .horizontal ? "horizontal_upward" : "unknown"
 }
