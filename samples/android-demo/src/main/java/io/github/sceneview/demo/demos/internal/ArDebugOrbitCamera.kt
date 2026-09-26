@@ -220,8 +220,12 @@ object ArDebugFraming {
     const val HOME_ELEVATION = 32f
     const val HOME_AZIMUTH = 35f
 
-    /** How far past the content's bounding sphere the camera stands, as a multiple of it. */
-    const val HOME_MARGIN = 1.15f
+    /**
+     * The fitting distance of the content's bounding sphere, as a multiple of it. Under 1: a room
+     * is a flat box, and the sphere around it is much rounder than what the lens actually sees —
+     * at 1.15 the room filled barely half of a phone's width.
+     */
+    const val HOME_MARGIN = 0.92f
 
     /** A room-sized framing for an empty session. */
     val DEFAULT_POSE = OrbitPose(

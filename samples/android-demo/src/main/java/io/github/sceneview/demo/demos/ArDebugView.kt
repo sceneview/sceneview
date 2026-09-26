@@ -2,9 +2,9 @@ package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -404,8 +404,16 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
     private val keys = HashMap<Part, Any?>()
     private val out: (DebugLayer) -> DebugMesh = { meshes.getValue(it) }
 
-    fun sync(frame: ArDebugFrame, style: ArDebugStyle, stageBounds: FloatArray, floorY: Float, visible: (DebugGroup) -> Boolean) {
+    fun sync(
+        frame: ArDebugFrame,
+        style: ArDebugStyle,
+        pointStyle: ArDebugStyle,
+        stageBounds: FloatArray,
+        floorY: Float,
+        visible: (DebugGroup) -> Boolean,
+    ) {
         for (part in Part.entries) {
+            val style = if (part == Part.Map || part == Part.Live) pointStyle else style
             val shown = visible(part.group)
             part.layers.forEach { nodes.getValue(it).isVisible = shown }
             if (!shown) {
@@ -503,75 +511,82 @@ internal fun ArDebugSceneView(
     var anchors by remember { mutableStateOf(emptyList<DebugAnchor>()) }
     val clock = remember { FrameClock() }
 
-    SceneView(
-        modifier = modifier,
-        // A TextureView composes with the chrome and the AR SurfaceView under it.
-        surfaceType = SurfaceType.TextureSurface,
-        engine = engine,
-        modelLoader = modelLoader,
-        materialLoader = materialLoader,
-        view = view,
-        renderer = renderer,
-        isOpaque = true,
-        frameRatePolicy = FrameRatePolicy.Continuous(maxFps = if (compact) PIP_FPS else null),
-        autoCenterContent = false,
-        environment = environment,
-        cameraManipulator = orbit,
-        onFrame = { frameTimeNanos ->
-            val dt = clock.tick(frameTimeNanos)
-            if (!clock.configured) {
-                clock.configured = true
-                view.configureForDebug(colorGrading)
-            }
-            session.tick(dt)
+    // The stage colour behind the view: a TextureView stays transparent until its first frame,
+    // which would show the AR camera through the "3D view" for as long as the engine takes.
+    Box(modifier.background(SceneViewTokens.Stage.background)) {
+        SceneView(
+            modifier = Modifier.matchParentSize(),
+            // A TextureView composes with the chrome and the AR SurfaceView under it.
+            surfaceType = SurfaceType.TextureSurface,
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            view = view,
+            renderer = renderer,
+            isOpaque = true,
+            frameRatePolicy = FrameRatePolicy.Continuous(maxFps = if (compact) PIP_FPS else null),
+            autoCenterContent = false,
+            environment = environment,
+            cameraManipulator = orbit,
+            onFrame = { frameTimeNanos ->
+                val dt = clock.tick(frameTimeNanos)
+                if (!clock.configured) {
+                    clock.configured = true
+                    view.configureForDebug(colorGrading)
+                }
+                session.tick(dt)
 
-            val trace = session.trace
-            if (trace !== clock.trace) {
-                clock.trace = trace
-                clock.frame = null
-                layers.invalidate()
-            }
-            val time = session.time
-            val frame = clock.frame?.takeIf {
-                trace.version == clock.version && time == it.time ||
-                    frameTimeNanos - clock.frameAtNanos < FRAME_INTERVAL_NS
-            } ?: trace.frameAt(time).also {
-                clock.frame = it
-                clock.version = trace.version
-                clock.frameAtNanos = frameTimeNanos
-            }
+                val trace = session.trace
+                if (trace !== clock.trace) {
+                    clock.trace = trace
+                    clock.frame = null
+                    layers.invalidate()
+                }
+                val time = session.time
+                val frame = clock.frame?.takeIf {
+                    trace.version == clock.version && time == it.time ||
+                        frameTimeNanos - clock.frameAtNanos < FRAME_INTERVAL_NS
+                } ?: trace.frameAt(time).also {
+                    clock.frame = it
+                    clock.version = trace.version
+                    clock.frameAtNanos = frameTimeNanos
+                }
 
-            val bounds = ArDebugGeometry.contentBounds(frame)
-            val home = ArDebugFraming.home(bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect)
-            if (orbit.following) orbit.home = home
-            if (!orbit.hasFramedContent && bounds != null) {
-                orbit.hasFramedContent = true
-                orbit.snapTo(home)
-            }
+                val bounds = ArDebugGeometry.contentBounds(frame)
+                val home = ArDebugFraming.home(bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect)
+                if (orbit.following) orbit.home = home
+                if (!orbit.hasFramedContent && bounds != null) {
+                    orbit.hasFramedContent = true
+                    orbit.snapTo(home)
+                }
 
-            val style = ArDebugStyle.forOrbit(orbit.pose.distance, orbit.verticalFovDegrees, orbit.viewportHeight)
-            val floorY = (ArDebugGeometry.floorHeight(frame) * 100f).roundToInt() / 100f
-            layers.sync(frame, style, stageBoundsOf(frame), floorY, session::isVisible)
+                val style = ArDebugStyle.forOrbit(orbit.pose.distance, orbit.verticalFovDegrees, orbit.viewportHeight)
+                val floorY = (ArDebugGeometry.floorHeight(frame) * 100f).roundToInt() / 100f
+                // The picture-in-picture packs the room into a few hundred pixels: full-size points
+                // would read as noise there, so they shrink while lines keep their weight.
+                val pointStyle = if (compact) ArDebugStyle(style.metresPerPixel * PIP_POINT_SCALE) else style
+                layers.sync(frame, style, pointStyle, stageBoundsOf(frame), floorY, session::isVisible)
 
-            if (frame.anchors != anchors) anchors = frame.anchors
-            if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
-                clock.statsAtNanos = frameTimeNanos
-                session.stats = ArDebugStats.of(frame, trace.duration)
-            }
-        },
-    ) {
-        // The layer nodes hang off one plain node, and are destroyed with it.
-        Node(apply = { layers.nodes.values.forEach { addChildNode(it) } })
-        if (session.isVisible(DebugGroup.Anchors)) {
-            anchors.forEach { anchor ->
-                // One instance per anchor: a Filament model instance can only hang off one node.
-                key(anchor.id) {
-                    val dog = rememberModelInstance(modelLoader, "models/shiba.glb")
-                    Node(
-                        position = Position(anchor.pose.x, anchor.pose.y, anchor.pose.z),
-                        apply = { quaternion = Quaternion(anchor.pose.qx, anchor.pose.qy, anchor.pose.qz, anchor.pose.qw) },
-                    ) {
-                        dog?.let { ModelNode(modelInstance = it, scaleToUnits = ANCHOR_MODEL_SIZE_M) }
+                if (frame.anchors != anchors) anchors = frame.anchors
+                if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
+                    clock.statsAtNanos = frameTimeNanos
+                    session.stats = ArDebugStats.of(frame, trace.duration)
+                }
+            },
+        ) {
+            // The layer nodes hang off one plain node, and are destroyed with it.
+            Node(apply = { layers.nodes.values.forEach { addChildNode(it) } })
+            if (session.isVisible(DebugGroup.Anchors)) {
+                anchors.forEach { anchor ->
+                    // One instance per anchor: a Filament model instance can only hang off one node.
+                    key(anchor.id) {
+                        val dog = rememberModelInstance(modelLoader, "models/shiba.glb")
+                        Node(
+                            position = Position(anchor.pose.x, anchor.pose.y, anchor.pose.z),
+                            apply = { quaternion = Quaternion(anchor.pose.qx, anchor.pose.qy, anchor.pose.qz, anchor.pose.qw) },
+                        ) {
+                            dog?.let { ModelNode(modelInstance = it, scaleToUnits = ANCHOR_MODEL_SIZE_M) }
+                        }
                     }
                 }
             }
@@ -619,6 +634,7 @@ private fun com.google.android.filament.View.configureForDebug(colorGrading: Col
 }
 
 private const val PIP_FPS = 30
+private const val PIP_POINT_SCALE = 0.55f
 private const val FRAME_INTERVAL_NS = 50_000_000L // rebuild the frame at most at 20 Hz
 private const val STATS_INTERVAL_NS = 250_000_000L
 private const val BLOOM_STRENGTH = 0.28f
@@ -686,33 +702,45 @@ internal fun ArDebugPip(
 }
 
 /**
- * The layer toggles of the full view — the Rerun viewer's entity list, as chips: a colour dot
- * (the layer's own colour), a name, and what it holds.
+ * The layer toggles of the full view — the Rerun viewer's entity list, as a 2×2 grid of equal
+ * pills: a colour dot (the layer's own colour), a name, and what it holds. A grid rather than a
+ * row: four labelled counts do not fit a phone's width, and a scrolling row hid the last one.
  */
 @Composable
 internal fun ArDebugLegend(session: ArDebugSession, modifier: Modifier = Modifier) {
     val stats = session.stats
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
             .padding(horizontal = Space.md)
+            .widthIn(max = ArOverlay.maxWidth)
             .testTag(AR_DEBUG_LEGEND_TAG),
-        horizontalArrangement = Arrangement.spacedBy(Space.sm),
+        verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
-        LegendChip("Path", ArDebugFormat.distance(stats.pathMetres), DebugView.trailNew, session, DebugGroup.Trail)
-        LegendChip("Points", ArDebugFormat.count(stats.mapPoints), DebugView.livePoint, session, DebugGroup.Points)
-        LegendChip("Planes", ArDebugFormat.count(stats.planes), DebugView.floorOutline, session, DebugGroup.Planes)
-        LegendChip("Anchors", ArDebugFormat.count(stats.anchors), DebugView.anchor, session, DebugGroup.Anchors)
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            LegendChip("Path", ArDebugFormat.distance(stats.pathMetres), DebugView.trailNew, session, DebugGroup.Trail, Modifier.weight(1f))
+            LegendChip("Points", ArDebugFormat.count(stats.mapPoints), DebugView.livePoint, session, DebugGroup.Points, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            LegendChip("Planes", ArDebugFormat.count(stats.planes), DebugView.floorOutline, session, DebugGroup.Planes, Modifier.weight(1f))
+            LegendChip("Anchors", ArDebugFormat.count(stats.anchors), DebugView.anchor, session, DebugGroup.Anchors, Modifier.weight(1f))
+        }
     }
 }
 
 @Composable
-private fun LegendChip(label: String, value: String, dot: Color, session: ArDebugSession, group: DebugGroup) {
+private fun LegendChip(
+    label: String,
+    value: String,
+    dot: Color,
+    session: ArDebugSession,
+    group: DebugGroup,
+    modifier: Modifier = Modifier,
+) {
     val on = session.isVisible(group)
     val shape = CircleShape
     Row(
-        modifier = Modifier
+        modifier = modifier
             .height(Glass.pillHeight)
             .clip(shape)
             .background(if (on) ArOverlay.scrimDark else Glass.surface, shape)
@@ -728,11 +756,19 @@ private fun LegendChip(label: String, value: String, dot: Color, session: ArDebu
                 .background(if (on) dot else ArOverlay.meterTrack, CircleShape),
         )
         Spacer(Modifier.width(Space.sm))
-        Text(label, style = SceneViewTokens.Type.caption.copy(color = if (on) ArOverlay.onScrim else ArOverlay.onScrimMuted))
+        Text(
+            label,
+            style = SceneViewTokens.Type.caption.copy(color = if (on) ArOverlay.onScrim else ArOverlay.onScrimMuted),
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
         Spacer(Modifier.width(Space.xs + Space.xs / 2))
         Text(
             value,
-            style = SceneViewTokens.Type.caption.copy(color = ArOverlay.onScrimMuted, fontFamily = FontFamily.Monospace),
+            style = SceneViewTokens.Type.caption.copy(
+                color = ArOverlay.onScrimMuted,
+                fontFeatureSettings = "tnum",
+            ),
             maxLines = 1,
         )
     }
