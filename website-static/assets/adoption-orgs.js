@@ -1,5 +1,5 @@
 /*
- * Teams named under "Found in public code and talks from teams at" on the home page and on
+ * Teams named under "Found in public code and posts from teams at" on the home page and on
  * /companies.html. This array is the only place to edit: every <ul data-adoption-orgs>
  * on a page is filled from it.
  *
@@ -25,8 +25,8 @@
     { name: 'Applied Recognition', what: 'Ver-ID Face Capture SDK', url: 'https://github.com/AppliedRecognition/Face-Capture-Android/blob/main/gradle/libs.versions.toml' },
     { name: 'Metabind', what: 'BindJS for Android', url: 'https://github.com/metabindai/bindjs-android/blob/main/gradle/libs.versions.toml' },
     { name: 'OpenOrigins', what: 'React Native camera SDK', url: 'https://github.com/OpenOrigins/react-native-source-camera/blob/main/android/build.gradle' },
-    { name: 'Bird', what: 'maintained SceneView fork', url: 'https://github.com/birdrides/sceneview-android/commits/main' },
-    { name: 'Squint', what: 'maintained Sceneform fork', url: 'https://github.com/SquintInc/sceneform-android/commits/main' },
+    { name: 'Bird', what: 'SceneView fork', url: 'https://github.com/birdrides/sceneview-android/commits/main' },
+    { name: 'Squint', what: 'maintained Sceneform fork', url: 'https://github.com/SquintInc/sceneform-android/commits/master' },
     { name: 'Grand Valley State University', what: 'Art at GVSU app', url: 'https://github.com/gvsucis/art-at-gvsu-android/blob/main/app/build.gradle.kts' }
   ];
 
