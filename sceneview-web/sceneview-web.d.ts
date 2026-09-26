@@ -153,14 +153,20 @@ export interface SceneViewer {
   /** Resize the underlying canvas. */
   resize(width: number, height: number): void;
 
-  /** Clear-colour for the framebuffer. Components are `0..1`. */
-  setBackgroundColor(r: number, g: number, b: number, a: number): void;
+  /** Background colour, components `0..1` — the exact colour on screen, never
+   *  tone-mapped: `#EEF0F3` is `setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)`.
+   *  `a < 1` lets the page behind the canvas show through (`0`: transparent canvas);
+   *  omitted, it is `1`. A skybox, when set, covers it. Default `#333443`. */
+  setBackgroundColor(r: number, g: number, b: number, a?: number): void;
 
   /** Frame the camera so every loaded model is fully visible.
    *  `margin` multiplies the fit distance (iOS `framingMargin` convention):
    *  `1.0` (default) keeps the historical fit, `< 1` frames tighter, `> 1`
    *  leaves more air. Clamped to `0.2…10`. Not Android's additive `padding`
-   *  fraction — `margin == 1 + padding`. */
+   *  fraction — `margin == 1 + padding`. The models end up centred, the margin
+   *  is kept by the automatic re-framing after a load (safe to call from the
+   *  `loadModel` promise), and the clip planes follow the model size, so a 2 cm
+   *  part renders whole. */
   fitToModels(margin?: number): void;
 
   /** Toggle library-level auto-centring of loaded content. When enabled

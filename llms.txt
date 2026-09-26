@@ -7293,10 +7293,11 @@ sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)   // Boolean
 sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s
 sv.setZoomLimits(min, max)
-sv.setBackgroundColor(r, g, b, a)  // 0-1 range
+sv.setBackgroundColor(r, g, b, a)  // 0-1 range, exact on screen (not tone-mapped); a optional (1), a < 1 = page shows through
 sv.setAutoCenterContent(enabled)   // Boolean — center loaded content (default true)
 sv.fitToModels()                   // frame every loaded model
 sv.fitToModels(0.9)                // optional margin — multiplier on the fit distance (1 = default, <1 tighter, >1 more air; clamped 0.2…10)
+                                   // centred, margin kept through auto-centring, any size from 2 cm to a building (#3880)
 sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)
@@ -7312,6 +7313,13 @@ sv.addLightNode(type)              // type: "directional" | "point" | "spot" →
 sv.removeNode(handle)              // detach + free the node's entity
 sv.hitTest(x, y)                   // → NodeHandle[] nearest-first (#2024 P5c)
 ```
+
+Background (`sv.setBackgroundColor`, #3879): the color is painted after tone mapping, so it
+lands on screen exactly as given — divide each hex byte by 255 to match a page color:
+`sv.setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)` renders `#EEF0F3`. Alpha is
+optional (default `1`); `a < 1` makes the canvas see-through so the page behind it shows
+(`sv.setBackgroundColor(0, 0, 0, 0)` = transparent canvas). Default `#333443`. A skybox
+covers the background.
 
 Screen-point picking (`sv.hitTest(x, y)`, #2024 P5c): coordinates are canvas
 pixels ((0,0) = top-left). The point is unprojected through the live camera

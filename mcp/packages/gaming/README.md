@@ -59,7 +59,7 @@ claude mcp add gaming-3d -- npx gaming-3d-mcp
 
 ## Built on SceneView
 
-[SceneView](https://sceneview.github.io) is the #1 open-source 3D & AR SDK for Android (Jetpack Compose + Filament) and iOS (SwiftUI + RealityKit).
+[SceneView](https://sceneview.github.io) is an open-source 3D & AR SDK for Android (Jetpack Compose + Filament) and iOS (SwiftUI + RealityKit).
 
 ## Links
 

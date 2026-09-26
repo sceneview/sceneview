@@ -5,6 +5,7 @@ import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.geometries.geometry
+import io.github.sceneview.geometries.mergedForPrimitiveCount
 import io.github.sceneview.managers.materials
 import io.github.sceneview.safeDestroyGeometry
 
@@ -59,6 +60,20 @@ open class GeometryNode(
         apply(builderApply)
     }) {
 
+    /**
+     * The number of Filament primitives this node was actually built with — [primitivesOffsets]
+     * is a constructor parameter, not a stored property, so this is the only trace left of it
+     * once the builder above has run. Used by [setGeometry] to keep a merged-primitive node
+     * (built via the `materialInstance: MaterialInstance?` constructor below) merged after a
+     * resize instead of falling back to the new geometry's raw, un-merged primitive count
+     * (#3855).
+     *
+     * Named distinctly from [io.github.sceneview.components.RenderableComponent.primitiveCount]
+     * (the *current*, live Filament primitive count) — this is the count captured at
+     * construction time, which never changes even though the live one theoretically could.
+     */
+    private val builtPrimitiveCount = primitivesOffsets.size
+
     constructor(
         engine: Engine,
         geometry: Geometry,
@@ -78,6 +93,26 @@ open class GeometryNode(
         vertices: List<Geometry.Vertex> = geometry.vertices,
         indices: List<List<Int>> = geometry.primitivesIndices
     ) = setGeometry(geometry.update(engine, vertices, indices))
+
+    /**
+     * Re-applies the merged-primitive mapping after a geometry change (#3855).
+     *
+     * The single-argument [RenderableNode.setGeometry] this would otherwise inherit always
+     * re-derives offsets from the *new* geometry's own [Geometry.primitivesOffsets] — its raw,
+     * un-merged per-primitive ranges. A node built via the merged-primitive constructor above has
+     * fewer Filament primitive slots than that (one, covering the whole shape for a single
+     * `MaterialInstance`), so that fallback walks past the slot Filament actually has: only the
+     * first — and usually smallest — raw primitive lands, which is what made a resized
+     * `CylinderNode(materialInstance = …)` draw as a single triangle instead of the whole
+     * cylinder. [mergedForPrimitiveCount] keeps the mapping consistent with
+     * [builtPrimitiveCount] instead.
+     */
+    override fun setGeometry(geometry: Geometry) {
+        setGeometry(
+            geometry,
+            geometry.primitivesOffsets.mergedForPrimitiveCount(builtPrimitiveCount)
+        )
+    }
 
     override fun destroy() {
         super.destroy()

@@ -17,5 +17,11 @@
             android:name=".ARCoachingPreviewActivity"
             android:exported="true"
             android:theme="@style/Theme.SceneViewDemo" />
+        <!-- Debug-only visual QA of the "View in 3D" preview sheets, no ARCore session needed.
+             See PlacementPreviewQaActivity.kt. -->
+        <activity
+            android:name=".PlacementPreviewQaActivity"
+            android:exported="true"
+            android:theme="@style/Theme.SceneViewDemo" />
     </application>
 </manifest>

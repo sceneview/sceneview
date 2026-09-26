@@ -59,7 +59,7 @@ claude mcp add interior-design-3d -- npx interior-design-3d-mcp
 
 ## Built on SceneView
 
-[SceneView](https://sceneview.github.io) is the #1 open-source 3D & AR SDK for Android (Jetpack Compose + Filament) and iOS (SwiftUI + RealityKit).
+[SceneView](https://sceneview.github.io) is an open-source 3D & AR SDK for Android (Jetpack Compose + Filament) and iOS (SwiftUI + RealityKit).
 
 ## Links
 

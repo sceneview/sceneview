@@ -8,13 +8,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import com.google.android.filament.Engine
 import com.google.ar.core.*
-import io.github.sceneview.SceneView
 import io.github.sceneview.ar.*
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.demo.*
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.DemoStatusCard
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -23,6 +22,8 @@ import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.ar.ARHapticFeedback
+import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
 import io.github.sceneview.rememberEngine
@@ -280,28 +281,37 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
         }
     }
     if (show3D) {
-        DemoModalBottomSheet(onDismissRequest = { show3D = false }) {
-            // #3716: the container now reaches the true bottom edge — clear the
-            // navigation bar explicitly instead of relying on the system inset.
-            Column(Modifier.navigationBarsPadding()) {
-                Text(stringResource(R.string.ar_place_preview_size), Modifier.padding(SceneViewTokens.Space.md))
-                // Separate instance: one Filament entity must never belong to two scenes.
-                val preview = rememberModelInstance(modelLoader, DemoMath.HELMET_ASSET)
-                SceneView(
-                    Modifier.fillMaxWidth().aspectRatio(1f),
-                    engine = engine,
-                    modelLoader = modelLoader,
-                    materialLoader = materialLoader,
-                ) {
-                    preview?.let {
-                        ModelNode(
-                            it,
-                            scaleToUnits = 0.3f,
-                            rotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
-                        )
-                    }
-                }
-            }
+        HelmetPreviewSheet(engine, modelLoader, materialLoader, onDismiss = { show3D = false })
+    }
+}
+
+/** Side of the cube the preview helmet is fitted into, in metres: the "Preview size" it states. */
+private const val HELMET_PREVIEW_SIZE_METRES = 0.3f
+
+/** "View in 3D" for the feature comparisons: the helmet in the shared studio preview (#3884). */
+@Composable
+internal fun HelmetPreviewSheet(
+    engine: Engine,
+    modelLoader: ModelLoader,
+    materialLoader: MaterialLoader,
+    onDismiss: () -> Unit,
+) {
+    // Separate instance: one Filament entity must never belong to two scenes.
+    val preview = rememberModelInstance(modelLoader, DemoMath.HELMET_ASSET)
+    PlacementPreviewSheet(
+        title = stringResource(R.string.ar_place_preview_size),
+        subjectExtent = remember(preview) { preview?.extentScaledTo(HELMET_PREVIEW_SIZE_METRES) },
+        engine = engine,
+        modelLoader = modelLoader,
+        materialLoader = materialLoader,
+        onDismiss = onDismiss,
+    ) {
+        preview?.let {
+            ModelNode(
+                it,
+                scaleToUnits = HELMET_PREVIEW_SIZE_METRES,
+                rotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
+            )
         }
     }
 }
