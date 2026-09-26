@@ -70,9 +70,14 @@ VERSION="$3"
 [ -n "$PACKAGE" ] || usage
 [ -n "$VERSION" ] || usage
 
-# Per-registry defaults. npm is near-immediate; Central and pub.dev are not.
+# Per-registry defaults. None of the three registries is immediate.
 case "$REGISTRY" in
-    npm)   DEF_ATTEMPTS=5;  DEF_DELAY=20 ;;
+    # 15 × 20s = 5 min. The old 100s budget assumed npm was near-immediate.
+    # It stopped being true with Trusted Publishing (OIDC + provenance). At
+    # v4.41.0, sceneview-mcp 4.1.0 and @sceneview-sdk/react-native 4.41.0
+    # both went red after 5/5 misses, yet the registry listed them seconds
+    # later: the MCP's npm publish time is 15:19:23Z, 13s after the last probe.
+    npm)   DEF_ATTEMPTS=15; DEF_DELAY=20 ;;
     # 20 × 30s = 10 min. NOT a guess: pub.dev's own upload response says so
     # verbatim — "it may take up-to 10 minutes before the new version is
     # available" — yet the previous budget here was 5 × 20s = 100s, ~6x short
