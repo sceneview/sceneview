@@ -1368,7 +1368,9 @@ fun rememberMediaPlayer(
  *
  * The engine is the root Filament object. It owns all other Filament resources and must outlive
  * them. Both the engine and its EGL context are destroyed automatically when the composition
- * leaves the tree.
+ * leaves the tree — right away when its backend is idle, otherwise as soon as the backend has
+ * drained the work already queued (a new scene's shader compiles, say), without blocking the main
+ * thread on that drain.
  *
  * Only one engine per process is typically needed. Pass it explicitly to all `remember*` helpers
  * if you want to share Filament resources across multiple `SceneView` composables.
@@ -1386,8 +1388,12 @@ fun rememberEngine(
     val engine = remember(eglContext) { engineCreator(eglContext) }
     DisposableEffect(eglContext, engine) {
         onDispose {
-            engine.safeDestroy()
-            eglContext.destroy()
+            // Not `safeDestroy()` inline: Engine.destroy() joins the backend thread after it has
+            // run every queued command, and a scene disposed right after it appeared still has
+            // its shader compiles queued — seconds on the main thread, an ANR (#3799). Destroy
+            // once the backend is idle instead, polled from the main looper; the usual idle case
+            // still destroys before onDispose returns.
+            engine.destroyWhenBackendIdle { eglContext.destroy() }
         }
     }
     return engine

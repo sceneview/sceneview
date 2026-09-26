@@ -409,12 +409,46 @@ class SceneRenderer(
             // window. (#2709)
             displayHelper?.detach()
             swapChainRef.getAndSet(null)?.let { engine.destroySwapChain(it) }
-            engine.flushAndWait()
+            // UiHelper's contract: do not return before the backend has run destroySwapChain,
+            // or Android releases the surface under it. But flushAndWait() cannot jump the
+            // queue — it waits for every command already submitted, including the lazy GL
+            // program compiles of a scene that has only just appeared. That is how #3799 went
+            // ANR: the main thread parked here while `FEngine::loop` was still linking programs.
+            // Bound the wait. If it expires, the swap chain is still destroyed, in order, once
+            // the backlog reaches it; frames queued before it meet an abandoned surface, which
+            // PlatformEGL tolerates (a failed eglMakeCurrent is logged, eglSwapBuffers' result
+            // is ignored) and which drops those frames — nothing is on screen any more anyway.
+            if (!engine.flushAndWait(SURFACE_DETACH_WAIT_NANOS)) {
+                android.util.Log.w(
+                    "SceneRenderer",
+                    "Surface detached, backend still busy after " +
+                        "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer (#3799)"
+                )
+            }
         }
 
         override fun onResized(width: Int, height: Int) {
             applyResize(width, height)
-            engine.drainFramePipeline()
+            // The drain only keeps an in-flight frame from landing at the old size — a one-frame
+            // cosmetic glitch at worst — so it gets a short bound, not WAIT_FOR_EVER (#3799).
+            if (!engine.drainFramePipeline(SURFACE_RESIZE_WAIT_NANOS)) {
+                android.util.Log.w(
+                    "SceneRenderer",
+                    "Surface resized, backend still busy after " +
+                        "${SURFACE_RESIZE_WAIT_NANOS / 1_000_000} ms; not waiting longer (#3799)"
+                )
+            }
         }
     }
 }
+
+/**
+ * Upper bound on the main-thread wait for the swap chain's destruction when the surface goes away.
+ * The backend normally gets there in a frame or two; the bound only matters when it is still
+ * compiling a new scene's shaders, and it keeps a detach — plus the resize and teardown that often
+ * share its main-thread message — far below Android's 5 s input-dispatch ANR threshold (#3799).
+ */
+internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
+
+/** Upper bound on the main-thread frame-pipeline drain after a surface resize (#3799). */
+internal const val SURFACE_RESIZE_WAIT_NANOS = 250_000_000L

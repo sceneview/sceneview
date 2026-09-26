@@ -1,6 +1,9 @@
 package io.github.sceneview
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
@@ -55,6 +58,104 @@ fun Engine.drainFramePipeline() {
     createFence().apply {
         wait(Fence.Mode.FLUSH, Fence.WAIT_FOR_EVER)
         destroyFence(this)
+    }
+}
+
+/**
+ * [drainFramePipeline] with an upper bound, for waits that sit on an Android input-dispatch path.
+ *
+ * A Filament fence is signalled by a command queued behind everything already submitted
+ * (`FFence`'s constructor queues it on the driver API), so the wait covers the whole backend
+ * backlog, not just the frames in flight. On the OpenGL backend that backlog includes the
+ * scene's shader programs, which are compiled and linked lazily on the `FEngine::loop` thread
+ * the first time a draw needs them. Right after a scene appears that is seconds of work on an
+ * emulator, and can be on a low-end device: an unbounded wait turns it into an ANR (#3799).
+ *
+ * @return `true` if the pipeline drained within [timeoutNanos], `false` if it did not — the
+ * pending commands keep running on the backend either way; nothing is cancelled.
+ */
+internal fun Engine.drainFramePipeline(timeoutNanos: Long): Boolean {
+    val fence = createFence()
+    val status = fence.wait(Fence.Mode.FLUSH, timeoutNanos)
+    destroyFence(fence)
+    return status == Fence.FenceStatus.CONDITION_SATISFIED
+}
+
+/** How often [destroyWhenBackendIdle] re-checks its fence: one frame at 60 Hz. */
+internal const val BACKEND_IDLE_POLL_MS = 16L
+
+/**
+ * Destroys this engine once its backend has executed everything already queued, **without
+ * blocking the calling thread on that drain**.
+ *
+ * [Engine.destroy] joins the driver thread after it has run every pending command
+ * (`FEngine::shutdown`: "wait for all pending commands to be executed and the thread to exit").
+ * When a scene is disposed right after it appeared, those pending commands include its lazy
+ * shader compilation, and the join blocks the main thread for as long as that takes — an ANR on
+ * an emulator (#3799). Instead, a fence is queued behind the backlog and polled with a zero
+ * timeout from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS]; the engine is
+ * destroyed, on that same thread (Filament requires it), once the fence has signalled. When the
+ * backend is already idle — the usual case — the destroy happens before this function returns,
+ * exactly as [safeDestroy] would.
+ *
+ * Falls back to an immediate [safeDestroy] when the calling thread has no [Looper] or the fence
+ * cannot be created.
+ *
+ * @param onDestroyed runs right after the engine is destroyed — release whatever must outlive
+ * it (its shared EGL context, say) here.
+ */
+internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
+    val looper = Looper.myLooper()
+    val fence = if (looper != null) runCatching { createFence() }.getOrNull() else null
+    if (looper == null || fence == null) {
+        safeDestroy()
+        onDestroyed()
+        return
+    }
+    val handler = Handler(looper)
+    val startedAt = SystemClock.uptimeMillis()
+    awaitBackendIdle(
+        isBackendBusy = {
+            runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }
+                .getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
+        },
+        schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
+        onIdle = { deferredPolls ->
+            runCatching { destroyFence(fence) }
+            safeDestroy()
+            if (deferredPolls > 0) {
+                Log.i(
+                    "Sceneview",
+                    "Engine destroyed after its backend drained " +
+                        "(${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
+                )
+            }
+            onDestroyed()
+        }
+    )
+}
+
+/**
+ * The non-blocking poll behind [destroyWhenBackendIdle], kept free of Android and Filament types
+ * so it can be tested on the JVM.
+ *
+ * Calls [onIdle] synchronously when [isBackendBusy] is already `false`; otherwise asks
+ * [schedule] to re-check after [intervalMs], and so on until the backend is idle. [onIdle]
+ * receives how many re-checks were scheduled (`0` = it ran synchronously). Never waits itself.
+ */
+internal fun awaitBackendIdle(
+    isBackendBusy: () -> Boolean,
+    schedule: (delayMs: Long, block: () -> Unit) -> Unit,
+    onIdle: (deferredPolls: Int) -> Unit,
+    intervalMs: Long = BACKEND_IDLE_POLL_MS,
+    deferredPolls: Int = 0,
+) {
+    if (!isBackendBusy()) {
+        onIdle(deferredPolls)
+        return
+    }
+    schedule(intervalMs) {
+        awaitBackendIdle(isBackendBusy, schedule, onIdle, intervalMs, deferredPolls + 1)
     }
 }
 
