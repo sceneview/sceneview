@@ -10,7 +10,7 @@ import AppKit
 #endif
 
 /// Checks the App Store for a newer version of the SceneView demo on every
-/// `ScenePhase.active` transition and surfaces a banner inviting the user to
+/// `ScenePhase.active` transition and surfaces a toast inviting the user to
 /// open the App Store update sheet.
 ///
 /// **Why this lives in the sample, not the SDK.** Apple does not expose a
@@ -28,7 +28,7 @@ import AppKit
 /// **Throttle.** Two `UserDefaults` keys keep the network footprint reasonable:
 /// - `sceneview.update.lastCheckAt` — skip lookup if <12h since the last one.
 /// - `sceneview.update.snoozedVersion` — if the user tapped "Later", the
-///   dismissed version string is stored here so the banner stays hidden for
+///   dismissed version string is stored here so the toast stays hidden for
 ///   *that* version only. A newer version on the App Store invalidates the
 ///   snooze automatically (version-keyed, matching Web/Flutter/RN).
 @MainActor
@@ -55,11 +55,12 @@ final class AppStoreUpdater: ObservableObject {
     private let defaults: UserDefaults
     private let now: () -> Date
     private let currentVersionProvider: @MainActor () -> String?
+    private let forcedVersion: String?
 
     private static let lastCheckKey = "sceneview.update.lastCheckAt"
     private static let snoozedVersionKey = "sceneview.update.snoozedVersion"
     /// Legacy time-based snooze key (≤4.3.5). Removed on read so a stale
-    /// 7-day TTL from an older build can't keep a banner hidden.
+    /// 7-day TTL from an older build can't keep a toast hidden.
     private static let legacySnoozedUntilKey = "sceneview.update.snoozedUntil"
     private static let throttle: TimeInterval = 12 * 60 * 60   // 12 hours
 
@@ -67,22 +68,52 @@ final class AppStoreUpdater: ObservableObject {
     ///   `CFBundleShortVersionString`. Defaults to `Bundle.main` — XCTest
     ///   should pass a stub closure since the test runner's `Bundle.main` is
     ///   the test harness bundle, not `SceneViewDemo`.
+    /// - Parameter forcedVersion: A version to report as available without
+    ///   asking the App Store — `nil` in production. Debug builds pass
+    ///   ``launchArgForcedVersion`` so the update toast can be driven on a
+    ///   simulator, whose build is never older than the App Store's.
     init(
         session: URLSession = .shared,
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = Date.init,
-        currentVersion: @MainActor @escaping () -> String? = AppStoreUpdater.bundleVersion
+        currentVersion: @MainActor @escaping () -> String? = AppStoreUpdater.bundleVersion,
+        forcedVersion: String? = nil
     ) {
         self.session = session
         self.defaults = defaults
         self.now = now
         self.currentVersionProvider = currentVersion
+        self.forcedVersion = forcedVersion
+    }
+
+    /// `-update_qa available` on a DEBUG build: the version the QA launch
+    /// pretends the App Store has. Always `nil` in a release build.
+    nonisolated static var launchArgForcedVersion: String? {
+        #if DEBUG
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "-update_qa"), index + 1 < args.count,
+              args[index + 1] == "available" else { return nil }
+        return "99.0.0"
+        #else
+        return nil
+        #endif
+    }
+
+    /// `true` while the update toast belongs on screen: a newer version is on
+    /// the App Store and the user has not dismissed that version.
+    var showsUpdatePrompt: Bool {
+        guard case .updateAvailable = state else { return false }
+        return !isSnoozed
     }
 
     /// Run a lookup against the App Store unless the throttle / snooze window
     /// says otherwise. Pass `force = true` to bypass both gates (e.g. a manual
     /// "Check now" button in About).
     func checkForUpdate(force: Bool = false) async {
+        if let forcedVersion {
+            state = .updateAvailable(version: forcedVersion, notes: nil)
+            return
+        }
         if !force, !shouldCheck() { return }
         state = .checking
         defaults.set(now().timeIntervalSince1970, forKey: Self.lastCheckKey)
@@ -99,7 +130,7 @@ final class AppStoreUpdater: ObservableObject {
                 state = .upToDate
             }
         } catch {
-            // Silent failure on network / decode errors — the banner just
+            // Silent failure on network / decode errors — the toast just
             // doesn't appear this resume. Don't escalate to the user.
             state = .idle
         }
@@ -118,9 +149,9 @@ final class AppStoreUpdater: ObservableObject {
         #endif
     }
 
-    /// Hide the banner for the version the user just dismissed. The next
+    /// Hide the toast for the version the user just dismissed. The next
     /// `checkForUpdate` will still hit the network if the throttle window has
-    /// elapsed; [`isSnoozed`] keeps the banner hidden only while the App Store's
+    /// elapsed; [`isSnoozed`] keeps the toast hidden only while the App Store's
     /// latest version still equals the dismissed one. A newer version
     /// invalidates the snooze automatically — matching the version-keyed
     /// semantics of the Web/Flutter/RN samples.
@@ -133,9 +164,9 @@ final class AppStoreUpdater: ObservableObject {
     }
 
     /// `true` when the version the App Store currently advertises is the same
-    /// one the user already dismissed. A new release surfaces the banner again.
+    /// one the user already dismissed. A new release surfaces the toast again.
     /// Views should branch on this *and* the published `state` to decide
-    /// whether to surface the banner.
+    /// whether to surface the toast.
     var isSnoozed: Bool {
         guard case let .updateAvailable(version, _) = state else { return false }
         return defaults.string(forKey: Self.snoozedVersionKey) == version
@@ -146,8 +177,8 @@ final class AppStoreUpdater: ObservableObject {
     private func shouldCheck() -> Bool {
         // Note: the snooze is intentionally NOT consulted here. A version-keyed
         // snooze must still let the lookup run so a *newer* App Store release
-        // can be detected and re-surface the banner. The 12h throttle below is
-        // the only network gate; [`isSnoozed`] only governs banner visibility.
+        // can be detected and re-surface the toast. The 12h throttle below is
+        // the only network gate; [`isSnoozed`] only governs toast visibility.
         let nowEpoch = now().timeIntervalSince1970
         // Clamp `last` against the current time: if the system clock rolled
         // backward (or `lastCheckAt` was somehow stamped in the future),
