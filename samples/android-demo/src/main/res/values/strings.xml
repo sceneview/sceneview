@@ -7,8 +7,9 @@
 <resources>
     <string name="app_name">SceneView Demo</string>
     <!-- Home-screen label. "SceneView Demo" is cut to "SceneView …" in the
-         Pixel launcher, which reads as the consumer app "SceneView". -->
-    <string name="launcher_label">SV Demo</string>
+         Pixel launcher, which reads as the consumer app "SceneView".
+         "SDK Demo" fits in full and names what the app is. -->
+    <string name="launcher_label">SDK Demo</string>
 
     <!-- Navigation -->
     <string name="tab_3d">3D</string>
