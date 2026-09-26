@@ -197,6 +197,19 @@ internal fun tapNodeName(path: String, fallback: String): String =
         .substringAfterLast('/').substringBeforeLast('.')
         .ifEmpty { fallback }
 
+/**
+ * The APK asset path of a Dart asset key: Flutter packs `environments/x.hdr` as
+ * `flutter_assets/environments/x.hdr`, so opening the key as-is threw
+ * `FileNotFoundException` and crashed the demo at launch (#3928). A path that is
+ * not a Flutter asset (a native Android asset, a file, a URL) is returned unchanged.
+ */
+private fun FlutterPlugin.FlutterPluginBinding.assetPathOf(path: String): String {
+    if (path.contains("://") || path.startsWith("/")) return path
+    val flutterPath = flutterAssets.getAssetFilePathByName(path)
+    val packed = runCatching { applicationContext.assets.open(flutterPath).close() }.isSuccess
+    return if (packed) flutterPath else path
+}
+
 // ---------------------------------------------------------------------------
 // 3D SceneView
 // ---------------------------------------------------------------------------
@@ -355,6 +368,9 @@ class SceneViewPlatformView(
         }
     }
 
+    // Lifecycle, saved-state and view-model owners when the host has none (#3928).
+    private val viewTreeOwners = PlatformViewOwners.installIfHostHasNone(composeView, context)
+
     init {
         channel.setMethodCallHandler(this)
     }
@@ -370,6 +386,7 @@ class SceneViewPlatformView(
         // so that Filament resources (engine, loaders) are released.
         composeView.disposeComposition()
         (composeView.parent as? android.view.ViewGroup)?.removeView(composeView)
+        viewTreeOwners?.destroy()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -414,7 +431,7 @@ class SceneViewPlatformView(
                 result.success(null)
             }
             "setEnvironment" -> {
-                environmentPath = call.argument<String>("hdrPath")
+                environmentPath = call.argument<String>("hdrPath")?.let(binding::assetPathOf)
                 result.success(null)
             }
             "setCameraControlMode" -> {
@@ -597,6 +614,9 @@ class ARSceneViewPlatformView(
         }
     }
 
+    // Lifecycle, saved-state and view-model owners when the host has none (#3928).
+    private val viewTreeOwners = PlatformViewOwners.installIfHostHasNone(composeView, context)
+
     init {
         channel.setMethodCallHandler(this)
     }
@@ -613,6 +633,7 @@ class ARSceneViewPlatformView(
         // so that Filament/ARCore resources are released.
         composeView.disposeComposition()
         (composeView.parent as? android.view.ViewGroup)?.removeView(composeView)
+        viewTreeOwners?.destroy()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {

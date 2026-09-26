@@ -58,6 +58,11 @@ android {
         main.java.srcDirs += 'src/main/kotlin'
         test.java.srcDirs += 'src/test/kotlin'
     }
+
+    // Robolectric needs the merged resources of the Compose/lifecycle AARs (#3928).
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -83,4 +88,7 @@ dependencies {
     // class a compiler cannot catch, and #3071 was one. These run on the JVM,
     // with no device and no emulator.
     testImplementation 'junit:junit:4.13.2'
+    // Robolectric (#3928): composes a ComposeView in a plain `Activity`, the way a
+    // plain `FlutterActivity` hosts the platform view, to pin the view-tree owners.
+    testImplementation 'org.robolectric:robolectric:4.16.1'
 }
