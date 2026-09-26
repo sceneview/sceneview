@@ -326,6 +326,115 @@ class LightNode {
 }
 
 // ---------------------------------------------------------------------------
+// AR tap-to-place (#3780)
+// ---------------------------------------------------------------------------
+
+/// A tap on a detected AR plane, delivered to [ARSceneView.onPlaneTap].
+///
+/// Pass it to [SceneViewController.placeModel] to anchor a model at that spot.
+///
+/// The pose uses the same convention on Android (ARCore) and iOS (ARKit): +Y
+/// is the plane normal, and +Z lies in the plane, pointing toward the camera.
+/// A model placed at this hit therefore stands on the surface and faces the
+/// user.
+@immutable
+class ARHitResult {
+  /// Opaque native handle for this hit. Android uses it to attach the anchor
+  /// to the tapped plane. Treat it as a token: its format is not part of the
+  /// API.
+  final String id;
+
+  /// World position of the hit, in metres.
+  final double x;
+  final double y;
+  final double z;
+
+  /// World orientation of the hit, as a unit quaternion (x, y, z, w).
+  final double qx;
+  final double qy;
+  final double qz;
+  final double qw;
+
+  /// Type of the plane that was hit: 'horizontal_upward',
+  /// 'horizontal_downward', 'vertical' or 'unknown'. These are the same
+  /// names that [ARSceneView.onPlaneDetected] uses.
+  final String planeType;
+
+  /// Distance from the camera to the hit, in metres.
+  final double distance;
+
+  const ARHitResult({
+    required this.id,
+    required this.x,
+    required this.y,
+    required this.z,
+    this.qx = 0.0,
+    this.qy = 0.0,
+    this.qz = 0.0,
+    this.qw = 1.0,
+    this.planeType = 'unknown',
+    this.distance = 0.0,
+  });
+
+  /// Decodes the map sent by the native side with the `onPlaneTap` event.
+  factory ARHitResult.fromMap(Map<dynamic, dynamic> map) {
+    double read(String key, double fallback) =>
+        (map[key] as num?)?.toDouble() ?? fallback;
+    return ARHitResult(
+      id: map['id'] as String? ?? '',
+      x: read('x', 0.0),
+      y: read('y', 0.0),
+      z: read('z', 0.0),
+      qx: read('qx', 0.0),
+      qy: read('qy', 0.0),
+      qz: read('qz', 0.0),
+      qw: read('qw', 1.0),
+      planeType: map['planeType'] as String? ?? 'unknown',
+      distance: read('distance', 0.0),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'x': x,
+        'y': y,
+        'z': z,
+        'qx': qx,
+        'qy': qy,
+        'qz': qz,
+        'qw': qw,
+        'planeType': planeType,
+        'distance': distance,
+      };
+
+  @override
+  String toString() =>
+      'ARHitResult($planeType at ${x.toStringAsFixed(3)}, '
+      '${y.toStringAsFixed(3)}, ${z.toStringAsFixed(3)})';
+}
+
+/// Handle to a model placed with [SceneViewController.placeModel].
+///
+/// Pass it to [SceneViewController.removePlacedModel] to take the model out
+/// of the world. [SceneViewController.clearScene] removes every placed model.
+@immutable
+class PlacedModel {
+  /// Native id of the placed model.
+  final String id;
+
+  const PlacedModel(this.id);
+
+  @override
+  bool operator ==(Object other) => other is PlacedModel && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => 'PlacedModel($id)';
+}
+
+// ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
 
@@ -375,6 +484,14 @@ class SceneViewController {
   /// there (tracked in #2051).
   void Function(String planeType)? onPlaneDetected;
 
+  /// Called when the user taps a detected AR plane.
+  ///
+  /// [ARSceneView] sets this field from its `onPlaneTap` and `placeOnTap`
+  /// parameters, and it overwrites any value you assign directly. Use those
+  /// widget parameters instead: they also tell the native view to hit-test
+  /// taps, which it does not do otherwise.
+  void Function(ARHitResult hit)? onPlaneTap;
+
   /// Whether this controller is attached to a platform view.
   bool get isAttached => _channel != null && !_disposed;
 
@@ -402,7 +519,89 @@ class SceneViewController {
         final planeType = call.arguments as String? ?? 'unknown';
         onPlaneDetected?.call(planeType);
         break;
+      case 'onPlaneTap':
+        final args = call.arguments;
+        if (args is Map) onPlaneTap?.call(ARHitResult.fromMap(args));
+        break;
     }
+  }
+
+  /// Places [model] at [hit], anchored to the real world. AR only.
+  ///
+  /// Where the model goes comes from [hit]. `model.x/y/z` and the
+  /// `model.rotation*` fields are ignored. The model stands on the plane,
+  /// bottom-centred on the hit point, and faces the camera.
+  ///
+  /// `model.scale` is the size of the model's largest dimension, in metres.
+  /// `scale: 0.3` makes a 30 cm object, whatever the units of the source file.
+  /// This matches Android's `ModelNode(scaleToUnits = …)`, and iOS uses the
+  /// same meaning.
+  ///
+  /// Gestures on the placed model:
+  /// - one-finger drag moves it across detected planes ([draggable]);
+  /// - two-finger twist turns it around the plane normal ([rotatable]);
+  /// - pinch resizes it between 0.25x and 4x of its placed size ([scalable]).
+  ///
+  /// `editable: false` turns all three gestures off.
+  ///
+  /// Model formats: Android loads glTF/GLB (asset path or `https://` URL).
+  /// iOS loads USDZ/Reality. A `.glb` on iOS throws a [PlatformException]
+  /// with code `UNSUPPORTED_FORMAT`.
+  ///
+  /// Returns a handle for [removePlacedModel]. Throws [StateError] if the
+  /// controller is not attached, and a [PlatformException] when no anchor
+  /// can be created (code `NOT_TRACKING`) or, on iOS, when the model fails to
+  /// load (code `LOAD_FAILED`).
+  ///
+  /// ```dart
+  /// ARSceneView(
+  ///   controller: controller,
+  ///   onPlaneTap: (hit) => controller.placeModel(
+  ///     hit,
+  ///     const ModelNode(modelPath: 'models/chair.glb', scale: 0.5),
+  ///   ),
+  /// )
+  /// ```
+  Future<PlacedModel> placeModel(
+    ARHitResult hit,
+    ModelNode model, {
+    bool editable = true,
+    bool draggable = true,
+    bool rotatable = true,
+    bool scalable = true,
+  }) async {
+    _ensureAttached();
+    final id = await _channel!.invokeMethod<String>('placeModel', {
+      'hit': hit.toMap(),
+      'model': model.toMap(),
+      'editable': editable,
+      'draggable': draggable,
+      'rotatable': rotatable,
+      'scalable': scalable,
+    });
+    if (id == null || id.isEmpty) {
+      throw PlatformException(
+        code: 'PLACE_FAILED',
+        message: 'The native view did not return an id for the placed model.',
+      );
+    }
+    return PlacedModel(id);
+  }
+
+  /// Removes a model placed with [placeModel] and releases its anchor.
+  ///
+  /// Does nothing if the model was already removed, for example by
+  /// [clearScene].
+  Future<void> removePlacedModel(PlacedModel model) async {
+    _ensureAttached();
+    await _channel!.invokeMethod('removePlacedModel', {'id': model.id});
+  }
+
+  /// Turns native plane-tap hit-testing on or off. [ARSceneView] calls this
+  /// when `onPlaneTap` / `placeOnTap` appear or disappear after creation.
+  Future<void> _setPlaneTapEnabled(bool enabled) async {
+    if (!isAttached) return;
+    await _channel!.invokeMethod('setPlaneTapEnabled', {'enabled': enabled});
   }
 
   /// Load a glTF/GLB model into the scene.
@@ -431,7 +630,8 @@ class SceneViewController {
     await _channel!.invokeMethod('addLight', node.toMap());
   }
 
-  /// Clear all nodes from the scene.
+  /// Clear all nodes from the scene, including every model placed with
+  /// [placeModel].
   Future<void> clearScene() async {
     _ensureAttached();
     await _channel!.invokeMethod('clearScene');
@@ -635,12 +835,28 @@ class _SceneViewState extends State<SceneView> {
 ///
 /// Requires camera permission on both Android and iOS.
 ///
+/// Tap-to-place in one line: a tap on a detected plane anchors the model
+/// there, and the user can drag, twist and pinch it.
+///
+/// ```dart
+/// ARSceneView(
+///   placeOnTap: const ModelNode(modelPath: 'models/chair.glb', scale: 0.5),
+/// )
+/// ```
+///
+/// For full control, handle [onPlaneTap] and call
+/// [SceneViewController.placeModel] yourself:
+///
 /// ```dart
 /// ARSceneView(
 ///   controller: controller,
-///   onViewCreated: () => controller.loadModel(
-///     ModelNode(modelPath: 'models/andy.glb'),
-///   ),
+///   onPlaneTap: (hit) async {
+///     final placed = await controller.placeModel(
+///       hit,
+///       const ModelNode(modelPath: 'models/chair.glb', scale: 0.5),
+///     );
+///     // Later: controller.removePlacedModel(placed);
+///   },
 /// )
 /// ```
 class ARSceneView extends StatefulWidget {
@@ -670,6 +886,24 @@ class ARSceneView extends StatefulWidget {
   /// there (tracked in #2051).
   final void Function(String planeType)? onPlaneDetected;
 
+  /// Called when the user taps a detected plane, with the hit pose.
+  ///
+  /// Pass the hit to [SceneViewController.placeModel] to anchor a model there.
+  /// A tap on a model you already placed does not fire this callback: it
+  /// selects that model for drag, twist and pinch.
+  ///
+  /// Works on Android and iOS. On iOS, setting this (or [placeOnTap]) turns
+  /// off the older behaviour where a plane tap placed a copy of the last
+  /// model loaded with [SceneViewController.loadModel].
+  final void Function(ARHitResult hit)? onPlaneTap;
+
+  /// The model to place on every plane tap. This is the one-line version of
+  /// [onPlaneTap] plus [SceneViewController.placeModel] with the default
+  /// gestures (drag, twist, pinch).
+  ///
+  /// When both are set, the model is placed and [onPlaneTap] still fires.
+  final ModelNode? placeOnTap;
+
   const ARSceneView({
     super.key,
     this.controller,
@@ -677,7 +911,12 @@ class ARSceneView extends StatefulWidget {
     this.planeDetection = true,
     this.onTap,
     this.onPlaneDetected,
+    this.onPlaneTap,
+    this.placeOnTap,
   });
+
+  /// Whether the native view must hit-test taps against planes.
+  bool get _wantsPlaneTap => onPlaneTap != null || placeOnTap != null;
 
   @override
   State<ARSceneView> createState() => _ARSceneViewState();
@@ -702,6 +941,7 @@ class _ARSceneViewState extends State<ARSceneView> {
     controller.attach(id);
     controller.onTap = widget.onTap;
     controller.onPlaneDetected = widget.onPlaneDetected;
+    controller.onPlaneTap = widget._wantsPlaneTap ? _handlePlaneTap : null;
     widget.onViewCreated?.call();
   }
 
@@ -712,6 +952,33 @@ class _ARSceneViewState extends State<ARSceneView> {
     if (controller != null && controller.isAttached) {
       controller.onTap = widget.onTap;
       controller.onPlaneDetected = widget.onPlaneDetected;
+      controller.onPlaneTap = widget._wantsPlaneTap ? _handlePlaneTap : null;
+      if (widget._wantsPlaneTap != oldWidget._wantsPlaneTap) {
+        // The creation param only covers the first frame; tell the native
+        // view when plane taps are switched on or off afterwards.
+        controller
+            ._setPlaneTapEnabled(widget._wantsPlaneTap)
+            .catchError((Object e) {
+          debugPrint('ARSceneView: setPlaneTapEnabled failed: $e');
+        });
+      }
+    }
+  }
+
+  void _handlePlaneTap(ARHitResult hit) {
+    final model = widget.placeOnTap;
+    if (model != null) _placeOnTap(hit, model);
+    widget.onPlaneTap?.call(hit);
+  }
+
+  Future<void> _placeOnTap(ARHitResult hit, ModelNode model) async {
+    try {
+      await _effectiveController.placeModel(hit, model);
+    } catch (e) {
+      // A failed placement (unsupported format, lost tracking) must not
+      // crash the app from a gesture; report it the way Flutter reports
+      // other non-fatal widget errors.
+      debugPrint('ARSceneView: placeOnTap failed: $e');
     }
   }
 
@@ -728,6 +995,7 @@ class _ARSceneViewState extends State<ARSceneView> {
   Widget build(BuildContext context) {
     final creationParams = <String, dynamic>{
       'planeDetection': widget.planeDetection,
+      'planeTap': widget._wantsPlaneTap,
     };
 
     switch (defaultTargetPlatform) {

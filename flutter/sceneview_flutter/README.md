@@ -14,6 +14,8 @@ Flutter plugin for [SceneView](https://sceneview.github.io) — 3D and AR scenes
 
 - Load and display 3D models (GLB/GLTF) using native renderers
 - AR scenes with plane detection on Android (ARCore) and iOS (ARKit)
+- AR tap-to-place: tap a surface to anchor a model, then drag, twist and pinch
+  it — Android and iOS
 - HDR environment lighting (Android; iOS support pending — #909)
 - Orbit camera controls (touch gestures)
 - `SceneViewController` for imperative commands
@@ -177,12 +179,64 @@ ARSceneView(
 )
 ```
 
+### AR tap-to-place
+
+One line: every tap on a detected surface anchors a copy of the model there.
+The user can then drag it with one finger, twist with two fingers to rotate it,
+and pinch to scale it.
+
+```dart
+ARSceneView(
+  placeOnTap: const ModelNode(modelPath: 'models/chair.glb', scale: 0.5),
+)
+```
+
+For control over each placement (which model, undo, gesture flags), take the
+hit yourself and keep the returned handle:
+
+```dart
+final controller = SceneViewController();
+final placed = <PlacedModel>[];
+
+ARSceneView(
+  controller: controller,
+  onPlaneTap: (ARHitResult hit) async {
+    placed.add(await controller.placeModel(
+      hit,
+      const ModelNode(modelPath: 'models/chair.glb', scale: 0.5),
+      rotatable: false, // editable / draggable / rotatable / scalable, all true by default
+    ));
+  },
+);
+
+// Later:
+await controller.removePlacedModel(placed.removeLast());
+```
+
+- `ModelNode.scale` is the size of the model's **largest dimension in metres**
+  once placed. `x` / `y` / `z` are ignored: the model sits bottom-centred on the
+  hit point, facing the camera.
+- Pinch scale is clamped to 0.25x–4x of the placed size. Dragging slides the
+  model along detected planes and re-anchors it where it is released.
+- Formats: glTF/GLB on Android (asset path or `https://` URL), USDZ/Reality on
+  iOS (bundle resource name).
+- `placeModel` throws a `PlatformException`: `NOT_TRACKING` (Android, camera not
+  tracking yet), `UNSUPPORTED_FORMAT` (iOS, not USDZ/Reality), `LOAD_FAILED`.
+- `ARHitResult` carries the world position (`x`, `y`, `z`), the rotation
+  quaternion (`qx`, `qy`, `qz`, `qw`, +Y along the plane normal), `planeType`
+  and `distance` from the camera.
+- On iOS, setting `onPlaneTap` or `placeOnTap` replaces the legacy behaviour
+  where a plane tap re-placed the last model loaded with `loadModel`.
+- `clearScene()` also removes placed models.
+
 ### Controller API
 
 | Method                                | Description                                              |
 |----------------------------------------|----------------------------------------------------------|
 | `loadModel(ModelNode)`                 | Load a glTF/GLB model into the scene                     |
-| `clearScene()`                         | Remove all models from the scene                         |
+| `clearScene()`                         | Remove all models from the scene, placed models included |
+| `placeModel(ARHitResult, ModelNode)`   | Anchor a model at an AR plane hit, with drag / rotate / scale gestures; returns a `PlacedModel` |
+| `removePlacedModel(PlacedModel)`       | Remove one model placed with `placeModel`                |
 | `setEnvironment(String path)`          | Set HDR environment for image-based lighting (Android; iOS accepts but does not apply it — #909) |
 | `addGeometry(GeometryNode)`            | Add a geometry node — rendered on **Android**; iOS port pending (#909) |
 | `addLight(LightNode)`                  | Add a light node — rendered on **Android**; iOS port pending (#909) |
@@ -268,7 +322,6 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
 ## Limitations
 
 - Geometry and light nodes are not yet rendered on iOS (API exists for forward compatibility; Android renders them)
-- AR tap-to-place is not yet implemented
 - `onTap` is delivered for `SceneView` (3D) on both Android and iOS (fixed in
   #3045 — see below). `ARSceneView` taps are Android-only
 - `onModelLoaded` is not bridged; a model that fails to load is logged natively

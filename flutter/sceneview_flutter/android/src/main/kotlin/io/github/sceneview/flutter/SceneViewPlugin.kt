@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -17,6 +18,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import com.google.android.filament.LightManager
+import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import com.google.ar.core.Pose
+import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -27,6 +34,7 @@ import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -39,6 +47,7 @@ import io.github.sceneview.collision.HitResult
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 
 /**
  * Flutter plugin entry point for SceneView on Android.
@@ -286,7 +295,7 @@ class SceneViewPlatformView(
                 environment = environment,
             ) {
                 modelNodes.forEachIndexed { index, model ->
-                    val instance = rememberModelInstance(modelLoader, model.path)
+                    val instance = rememberModelInstance(modelLoader, fileLocation = model.path)
                     instance?.let {
                         ModelNode(
                             modelInstance = it,
@@ -503,6 +512,26 @@ class ARSceneViewPlatformView(
     private val reportedPlanes: MutableSet<com.google.ar.core.Plane> =
         java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
 
+    // ── Tap-to-place (#3780) ──────────────────────────────────────────────
+    // Everything below is touched on the main thread only: ARCore frames,
+    // gestures and method calls all arrive there.
+
+    /** A model placed with `placeModel`, rendered under its own AnchorNode. */
+    private class PlacedModelState(
+        val id: String,
+        val anchor: Anchor,
+        val request: PlaceModelRequest,
+    )
+
+    private val placedModels = mutableStateListOf<PlacedModelState>()
+    private val recentHits = RecentHits<com.google.ar.core.HitResult>()
+    private var nextPlacedId = 0
+    private var session: Session? = null
+    private var latestFrame: Frame? = null
+
+    /** Whether plane taps are hit-tested and sent to Dart (`onPlaneTap`). */
+    private var planeTapEnabled = params["planeTap"] as? Boolean ?: false
+
     private val composeView = ComposeView(context).apply {
         setContent {
             val engine = rememberEngine()
@@ -516,25 +545,35 @@ class ARSceneViewPlatformView(
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 planeRenderer = true,
-                onSessionUpdated = { _, frame ->
+                onSessionCreated = { session = it },
+                onSessionUpdated = { updatedSession, frame ->
+                    session = updatedSession
+                    latestFrame = frame
                     val updatedPlanes = frame.getUpdatedPlanes()
                     for (plane in updatedPlanes) {
                         if (reportedPlanes.add(plane)) {
-                            val planeType = when (plane.type) {
-                                com.google.ar.core.Plane.Type.HORIZONTAL_UPWARD_FACING -> "horizontal_upward"
-                                com.google.ar.core.Plane.Type.HORIZONTAL_DOWNWARD_FACING -> "horizontal_downward"
-                                com.google.ar.core.Plane.Type.VERTICAL -> "vertical"
-                                else -> "unknown"
-                            }
+                            val planeType = planeTypeName(plane.type?.name)
                             Handler(Looper.getMainLooper()).post {
                                 channel.invokeMethod("onPlaneDetected", planeType)
                             }
                         }
                     }
                 },
+                onGestureListener = rememberOnGestureListener(
+                    // `node` is the node under the finger, if any. A tap on a
+                    // placed model is the start of an edit, not a plane tap.
+                    onSingleTapConfirmed = { e, node -> if (node == null) onPlaneTap(e) },
+                ),
             ) {
+                placedModels.forEach { placed ->
+                    key(placed.id) {
+                        PlacedModelContent(placed, modelLoader)
+                    }
+                }
+
+
                 modelNodes.forEachIndexed { index, model ->
-                    val instance = rememberModelInstance(modelLoader, model.path)
+                    val instance = rememberModelInstance(modelLoader, fileLocation = model.path)
                     instance?.let {
                         ModelNode(
                             modelInstance = it,
@@ -626,12 +665,141 @@ class ARSceneViewPlatformView(
 
     override fun getView(): View = composeView
 
+    /**
+     * Hit-tests a tap against detected planes and sends the hit to Dart as
+     * `onPlaneTap`. Runs on the main thread, from the scene's gesture
+     * listener.
+     */
+    private fun onPlaneTap(e: MotionEvent) {
+        if (!planeTapEnabled) return
+        val frame = latestFrame ?: return
+        if (frame.camera.trackingState != TrackingState.TRACKING) return
+        val hit = runCatching { frame.hitTest(e) }.getOrNull()
+            ?.firstOrNull { isPlaneHit(it) } ?: return
+        val plane = hit.trackable as Plane
+        val pose = hit.hitPose
+        channel.invokeMethod(
+            "onPlaneTap",
+            planeHitMap(
+                id = recentHits.put(hit),
+                translation = pose.translation,
+                rotation = pose.rotationQuaternion,
+                planeType = planeTypeName(plane.type?.name),
+                distance = hit.distance,
+            ),
+        )
+    }
+
+    /**
+     * A hit counts as a plane hit when it lands inside the polygon of a
+     * tracked plane that has not been merged into another one. Tap and drag
+     * both use this test, so a drag cannot pull a model off the surface.
+     */
+    private fun isPlaneHit(hit: com.google.ar.core.HitResult): Boolean {
+        val plane = hit.trackable as? Plane ?: return false
+        return plane.trackingState == TrackingState.TRACKING &&
+            plane.subsumedBy == null &&
+            plane.isPoseInPolygon(hit.hitPose)
+    }
+
+    /**
+     * Anchors a placement. It anchors to the tapped plane when the hit is
+     * still cached, which keeps the model on the surface as ARCore refines
+     * it. Otherwise it creates a free world anchor at the hit pose, which
+     * covers a hit built on the Dart side.
+     */
+    private fun createPlacementAnchor(request: PlaceModelRequest): Anchor? {
+        recentHits[request.hitId]?.let { hit ->
+            runCatching { hit.createAnchor() }.getOrNull()?.let { return it }
+        }
+        val pose = Pose(
+            floatArrayOf(request.tx, request.ty, request.tz),
+            floatArrayOf(request.qx, request.qy, request.qz, request.qw),
+        )
+        return runCatching { session?.createAnchor(pose) }.getOrNull()
+    }
+
+    /**
+     * Renders one placed model as three nested nodes:
+     * - an AnchorNode, which anchors the model in the world and handles drag;
+     * - a pivot Node, which handles twist and pinch around the contact point;
+     * - a ModelNode, bottom-centred on the pivot and scaled to `size` metres.
+     *
+     * The ModelNode is not editable, so every gesture that starts on it
+     * bubbles up. Twist and pinch stop at the pivot. Drag continues to the
+     * AnchorNode, which hit-tests planes under the finger and re-anchors
+     * where the drag ends.
+     */
+    @Composable
+    private fun ARSceneScope.PlacedModelContent(
+        placed: PlacedModelState,
+        modelLoader: io.github.sceneview.loaders.ModelLoader,
+    ) {
+        val request = placed.request
+        AnchorNode(
+            anchor = placed.anchor,
+            apply = {
+                isPositionEditable = request.canDrag
+                moveHitTest = { frame, e -> frame.hitTest(e).firstOrNull { isPlaneHit(it) } }
+                // Keep the heading while dragging. The raw hit pose faces the
+                // camera from each new spot, which would spin the model under
+                // the finger. Only the translation follows the drag.
+                onMove = { _, _, worldPosition ->
+                    pose = Pose(
+                        floatArrayOf(worldPosition.x, worldPosition.y, worldPosition.z),
+                        pose.rotationQuaternion,
+                    )
+                    false
+                }
+            },
+        ) {
+            Node(
+                isEditable = request.editable,
+                apply = {
+                    isPositionEditable = false
+                    isRotationEditable = request.rotatable
+                    isScaleEditable = request.scalable
+                    editableScaleRange = PLACED_SCALE_RANGE
+                },
+            ) {
+                // Named `fileLocation` selects the overload that also loads
+                // http(s) URLs. The two-argument positional call resolves to
+                // the asset-only overload.
+                val instance = rememberModelInstance(modelLoader, fileLocation = request.modelPath)
+                if (instance != null) {
+                    val offset = remember(instance) {
+                        val box = instance.asset.boundingBox
+                        bottomCenterOffset(box.center, box.halfExtent, request.size)
+                    }
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = request.size,
+                        position = Position(offset[0], offset[1], offset[2]),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun removePlacedModels(predicate: (PlacedModelState) -> Boolean) {
+        val removed = placedModels.filter(predicate)
+        // The AnchorNode detaches its current anchor when it is disposed.
+        // Detaching the original one here as well covers a model removed
+        // before its node was ever composed. Detach is idempotent.
+        removed.forEach { runCatching { it.anchor.detach() } }
+        placedModels.removeAll(removed)
+    }
+
     override fun dispose() {
         channel.setMethodCallHandler(null)
         modelNodes.clear()
         geometryNodes.clear()
         lightNodes.clear()
         reportedPlanes.clear()
+        placedModels.clear()
+        recentHits.clear()
+        latestFrame = null
+        session = null
         // Detach the ComposeView from any parent and dispose its composition
         // so that Filament/ARCore resources are released.
         composeView.disposeComposition()
@@ -679,6 +847,40 @@ class ARSceneViewPlatformView(
                 geometryNodes.clear()
                 lightNodes.clear()
                 reportedPlanes.clear()
+                removePlacedModels { true }
+                recentHits.clear()
+                result.success(null)
+            }
+            "placeModel" -> {
+                val parsed = parsePlaceModelRequest(call.arguments as? Map<*, *>) ?: run {
+                    result.error(
+                        "INVALID_ARGS",
+                        "placeModel needs a hit and a model with a modelPath",
+                        null,
+                    )
+                    return
+                }
+                // A Dart asset key lives under flutter_assets/ in the APK.
+                val request = parsed.copy(modelPath = binding.assetPathOf(parsed.modelPath))
+                val anchor = createPlacementAnchor(request) ?: run {
+                    result.error(
+                        "NOT_TRACKING",
+                        "Could not anchor the model: AR tracking is not available right now.",
+                        null,
+                    )
+                    return
+                }
+                val id = "placed-${nextPlacedId++}"
+                placedModels.add(PlacedModelState(id, anchor, request))
+                result.success(id)
+            }
+            "removePlacedModel" -> {
+                val id = call.argument<String>("id")
+                removePlacedModels { it.id == id }
+                result.success(null)
+            }
+            "setPlaneTapEnabled" -> {
+                planeTapEnabled = call.argument<Boolean>("enabled") ?: false
                 result.success(null)
             }
             "setEnvironment" -> {
