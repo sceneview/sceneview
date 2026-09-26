@@ -1221,7 +1221,14 @@ fun SceneView(
  *
  * @param modelLoader       The [ModelLoader] to use.
  * @param assetFileLocation Path to the GLB/glTF file relative to the `assets` folder.
- * @return                  `null` while loading; the loaded [ModelInstance] once ready.
+ * @return                  `null` while the first load is in progress; the loaded
+ *                         [ModelInstance] once ready. When [assetFileLocation] changes,
+ *                         the previous value is kept until the new one is ready —
+ *                         `produceState` retains its last value across key changes and
+ *                         only its producer coroutine is restarted — so callers that
+ *                         show a loading state on `null` must wrap the call in
+ *                         `key(location) { rememberModelInstance(...) }` to observe
+ *                         `null` during a switch (see #3900).
  */
 @Composable
 fun rememberModelInstance(
@@ -1276,7 +1283,13 @@ fun rememberModelInstance(
  *
  * @param modelLoader  The [ModelLoader] to use.
  * @param fileLocation Path, URI, or URL to the GLB/glTF file.
- * @return             `null` while loading; the loaded [ModelInstance] once ready.
+ * @return             `null` while the first load is in progress; the loaded
+ *                    [ModelInstance] once ready. When [fileLocation] changes, the previous
+ *                    value is kept until the new one is ready (see the asset-path overload:
+ *                    `produceState` retains its last value across key changes), so callers
+ *                    that show a loading state on `null` must wrap the call in
+ *                    `key(location) { rememberModelInstance(...) }` to observe `null`
+ *                    during a switch (see #3900).
  */
 @Composable
 fun rememberModelInstance(
