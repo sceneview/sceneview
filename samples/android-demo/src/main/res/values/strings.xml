@@ -303,6 +303,11 @@
     <string name="demo_loading_stalled_title">Still loading…</string>
     <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
     <string name="demo_loading_retry">Retry</string>
+    <!-- Loading narration (#3825): each line names the step the code is in at that moment,
+         and a trailing ellipsis is animated by NarrationText. Never add a line for a step
+         the code does not actually run. -->
+    <string name="demo_loading_generic">Loading…</string>
+    <string name="ar_tracking_starting">Starting motion tracking — move your phone slowly…</string>
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_open">Open demo settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>

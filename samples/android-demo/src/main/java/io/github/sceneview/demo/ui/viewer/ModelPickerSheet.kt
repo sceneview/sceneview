@@ -25,7 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
+import io.github.sceneview.demo.ui.NarrationProgressRing
+import io.github.sceneview.demo.ui.NarrationText
 import io.github.sceneview.demo.theme.SceneViewTokens
 
 data class BundledViewerModel(val assetPath: String, val displayName: String) {
@@ -36,6 +40,9 @@ data class BundledViewerModel(val assetPath: String, val displayName: String) {
 fun ModelPickerSheet(
     models: List<BundledViewerModel>, selectedPath: String,
     surpriseAvailable: Boolean, surpriseLoading: Boolean,
+    // What the roll is doing right now (#3825) — shown under the title while [surpriseLoading],
+    // with a determinate ring once [surpriseProgress] is known.
+    surpriseStatus: String? = null, surpriseProgress: Float? = null,
     onSelect: (BundledViewerModel) -> Unit, onPark: () -> Unit,
     onSurprise: () -> Unit, onBrowse: () -> Unit, onDismiss: () -> Unit,
 ) {
@@ -59,7 +66,9 @@ fun ModelPickerSheet(
         // A tinted outlined button is not a list item — `primary-light` fill plus a
         // `primary` hairline and glyph, the `DESIGN.md` pair for "subtle background"
         // + "accents", so it reads as an offer rather than another row to skim.
-        if (surpriseAvailable) SurpriseMeButton(loading = surpriseLoading, onClick = onSurprise)
+        if (surpriseAvailable) SurpriseMeButton(
+            loading = surpriseLoading, status = surpriseStatus, progress = surpriseProgress, onClick = onSurprise,
+        )
         Column(
             modifier = Modifier.fillMaxWidth().padding(SceneViewTokens.Space.md),
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
@@ -103,7 +112,7 @@ fun ModelPickerSheet(
  * While a pick is resolving the button is disabled but keeps its colours: the
  * spinner occupies the icon's slot, so nothing moves and nothing greys out.
  */
-@Composable private fun SurpriseMeButton(loading: Boolean, onClick: () -> Unit) {
+@Composable private fun SurpriseMeButton(loading: Boolean, status: String?, progress: Float?, onClick: () -> Unit) {
     val tint = MaterialTheme.colorScheme.primary.copy(
         alpha = if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.primaryLightAlphaDark
         else SceneViewTokens.HomeColor.primaryLightAlphaLight,
@@ -129,7 +138,14 @@ fun ModelPickerSheet(
             Modifier.size(SceneViewTokens.Layout.dockIconSize),
             contentAlignment = Alignment.Center,
         ) {
-            if (loading) {
+            if (loading && progress != null) {
+                // Determinate once the byte count is known (#3825).
+                NarrationProgressRing(
+                    progress = progress,
+                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else if (loading) {
                 LoadingIndicator(
                     Modifier.size(SceneViewTokens.Layout.dockIconSize),
                     color = MaterialTheme.colorScheme.primary,
@@ -145,10 +161,17 @@ fun ModelPickerSheet(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Text(
-                if (loading) "Finding…" else "A random CC-BY model from Sketchfab",
+            // The subtitle narrates the roll while it runs (#3825) — search, download, decode —
+            // instead of a static "Finding…" that said nothing about what was happening.
+            NarrationText(
+                text = if (loading && status != null) {
+                    status
+                } else {
+                    stringResource(R.string.demo_model_viewer_surprise_subtitle)
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
             )
         }
     }

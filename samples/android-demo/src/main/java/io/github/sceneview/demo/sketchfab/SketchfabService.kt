@@ -292,6 +292,13 @@ class SketchfabService @VisibleForTesting internal constructor(
         cacheFile
     }
 
+    /**
+     * Whether [downloadModel] would return [uid] from the on-disk cache without touching the
+     * network — so a caller narrating the load can say "from the cache" instead of claiming a
+     * download that is not happening (#3825).
+     */
+    fun isCached(uid: String): Boolean = cacheFileFor(uid).exists()
+
     // ── Internal helpers ──────────────────────────────────────────────────
 
     /**

@@ -344,10 +344,11 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 
 ### App Motion (Android demo)
 
-One spring and one fade for the chrome; one shared-axis spec for screen changes and
-one fly-in for a 3D subject's arrival. In AR, the coaching glyph and a placed object's
-entrance (the `motion-coach-*` and `motion-placement-*` tokens below — shipped by the SDK,
-so every AR app gets them). Nothing else animates.
+One spring and one fade for the chrome; one shared-axis spec for screen changes, one
+fly-in for a 3D subject's arrival, and one breathing ellipsis for a step in flight. In AR,
+the coaching glyph and a placed object's entrance (the `motion-coach-*` and
+`motion-placement-*` tokens below — shipped by the SDK, so every AR app gets them).
+Nothing else animates.
 
 | Token | Value | Usage |
 |---|---|---|
@@ -358,6 +359,7 @@ so every AR app gets them). Nothing else animates.
 | `motion-coach-sweep` | 1600ms per sweep, sine, ±18dp travel and ±10° roll | The phone of the AR coaching glyph sweeping over the surface it is looking for. Half speed while tracking is limited |
 | `motion-coach-resolve` | `tween(450ms, ease-expressive)` | The "surface found" beat — the target fills with `primary` and a cube lands on it, held 150ms, then the glyph leaves |
 | `motion-placement-entrance` | `tween(260ms)`, scale 0.55 → 1, cubic ease-out | A placed AR object growing into place about its contact point. Reversed over 300ms (`motion-fade`) when tracking is lost — opaque glTF materials cannot fade, so they shrink |
+| `motion-narration` | `1200ms` linear loop, opacity only (0.25 → 1) | The trailing ellipsis of a loading line (`NarrationText`): the light runs across the three dots. The line names the step the code is really in — "Searching Sketchfab…", "Downloading *name* (3.2 MB)…", "Decoding the model…" — never a timed script. One loader per screen — the M3 Expressive `LoadingIndicator`, or a `CircularWavyProgressIndicator` ring once the byte count is known. Static `…` under reduced motion |
 
 **Reduced motion.** When the system animator scale is 0 (Android) or Reduce Motion is on
 (iOS), the coaching glyph is drawn as its settled frame — no sweep, no spin — and only the

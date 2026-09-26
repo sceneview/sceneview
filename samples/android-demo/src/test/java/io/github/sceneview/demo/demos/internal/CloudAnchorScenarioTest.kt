@@ -67,7 +67,7 @@ class CloudAnchorScenarioTest {
         val state = CloudAnchorScenario.Hosting.state()
         assertEquals(CloudAnchorTask.Running, state.host)
         assertFalse(state.allows(CloudAnchorAction.Host))
-        assertEquals("Hosting the anchor…", state.status().text)
+        assertEquals("Uploading the room scan to Google Cloud…", state.status().text)
     }
 
     @Test
