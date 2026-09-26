@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Swapping away from a glTF model that contains cameras no longer crashes ([#3937](https://github.com/sceneview/sceneview/issues/3937)).** When `rememberModelInstance` destroyed the model before its `ModelNode`, the node's camera children threw `IllegalStateException: Entity … does not have a Camera component`. In the demo this happened on Model Viewer, Toy Car, then any other model. `CameraNode.destroy()` now releases the camera by entity and is a no-op when the component is already gone or the node is already destroyed.

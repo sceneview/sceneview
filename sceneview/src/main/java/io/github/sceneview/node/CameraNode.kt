@@ -17,7 +17,6 @@ import io.github.sceneview.collision.Ray
 import io.github.sceneview.collision.Vector3
 import io.github.sceneview.components.CameraComponent
 import io.github.sceneview.math.toMatrix
-import io.github.sceneview.safeDestroyCamera
 
 /**
  * Represents a virtual camera, which determines the perspective through which the scene is viewed.
@@ -353,7 +352,12 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
     }
 
     override fun destroy() {
-        engine.safeDestroyCamera(camera)
+        if (isDestroyed) return
+        // By entity, never through `camera`: that getter throws once the component is gone, and
+        // a glTF camera's component (ModelNode.cameraNodes) is torn down by
+        // `ModelLoader.destroyModel` — which `rememberModelInstance` may run before this node's
+        // own disposal, the two have no ordering (#3937). Filament makes it a no-op when absent.
+        runCatching { engine.destroyCameraComponent(entity) }
 
         super.destroy()
     }
