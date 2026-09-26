@@ -4,8 +4,8 @@ import SwiftUI
 /// twin of Android's `DemoMediaCard.kt`.
 ///
 /// Anatomy, top to bottom: a 5:4 media slot (`media-aspect`) showing the
-/// captured preview when the asset catalog has one (`preview_<sceneId>` with a
-/// dark appearance variant, copied from the Android `drawable-nodpi` set) and
+/// captured preview when the asset catalog has one (`preview_<sceneId>`, where
+/// each image comes from is recorded in `tools/demo-previews/README.md`) and
 /// the category-tinted SF Symbol tile otherwise; then title (`type-card`) and
 /// subtitle (`type-caption`, weight 400), both wrapping, never truncated. Light: `surface`
 /// and `outline-subtle`; dark: `surface-container` and `outline`.

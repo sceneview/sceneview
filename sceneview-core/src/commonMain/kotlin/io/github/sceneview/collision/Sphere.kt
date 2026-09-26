@@ -1,3 +1,4 @@
+// Derived from Google Sceneform (Apache-2.0), modified by the SceneView contributors.
 package io.github.sceneview.collision
 
 import io.github.sceneview.logging.logWarning

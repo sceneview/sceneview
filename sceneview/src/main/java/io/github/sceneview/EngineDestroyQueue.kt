@@ -82,6 +82,21 @@ class EngineDestroyQueue private constructor(
     }
 
     /**
+     * Enqueues an arbitrary non-Filament [action] to run [GRACE_FRAMES] rendered frames from now,
+     * sharing the same FIFO ordering as [enqueueTexture]/[enqueueStream].
+     *
+     * For resources that only need to outlive the same render-loop grace period as a Filament
+     * [Texture]/[Stream] — e.g. releasing a [android.view.Surface]/[android.graphics.SurfaceTexture]
+     * only after the [Stream] reading from it has actually been destroyed (sceneview/sceneview#3734)
+     * — without themselves being Filament-native resources.
+     *
+     * `internal`: this is a same-module wiring detail, not public API.
+     */
+    internal fun enqueueAction(action: () -> Unit) {
+        queue.enqueue(action)
+    }
+
+    /**
      * Advances the frame counter by one and destroys every resource whose grace period has
      * elapsed. Call exactly once per rendered frame, on the main thread.
      */
