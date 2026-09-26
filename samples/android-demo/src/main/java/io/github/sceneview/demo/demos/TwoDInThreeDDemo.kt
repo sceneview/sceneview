@@ -28,13 +28,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -168,7 +167,7 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
     val viewNodeManager = rememberViewNodeManager()
 
     val helmet = rememberModelInstance(modelLoader, HELMET_ASSET)
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // Turntable off the Choreographer. `spinning` is a key, so the loop simply stops when the
     // in-scene button is tapped rather than spinning a paused counter.
@@ -325,10 +324,6 @@ private fun SceneScope.AnnotationCard(
     billboard: Boolean,
     alwaysOnTop: Boolean,
 ) {
-    // Read through a State: `apply` runs once, at construction, so the lambda installed then has
-    // to reach today's value through something whose identity is stable.
-    val onTop = rememberUpdatedState(alwaysOnTop)
-
     val yaw = if (billboard) {
         CalloutLayout.billboardYawDegrees(callout, spread, turntableYaw, cameraPosition)
     } else {
@@ -351,7 +346,7 @@ private fun SceneScope.AnnotationCard(
         // still consumes the DOWN it is hit by — a Surface swallows touches whether or not
         // anything inside is clickable — and orbiting the scene would stall every time a drag
         // happened to start on a card.
-        apply = viewNodePolicy(alwaysOnTop = onTop, touchForwarding = false),
+        apply = rememberViewNodePolicy(alwaysOnTop = alwaysOnTop, touchForwarding = false),
         viewContent = { CalloutCard(callout) },
     )
 }
@@ -368,8 +363,6 @@ private fun SceneScope.ControlCard(
     spinning: Boolean,
     onToggleSpin: () -> Unit,
 ) {
-    val alwaysOnTop = remember { mutableStateOf(true) }
-
     ViewNode(
         windowManager = windowManager,
         // Lit, for the same bloom reason as the call-outs — see [AnnotationCard].
@@ -385,7 +378,7 @@ private fun SceneScope.ControlCard(
         // Touch forwarding stays on — this is the one card that must receive the stream — and the
         // depth policy is not a toggle here: a control the helmet could swallow is a control the
         // user cannot press.
-        apply = viewNodePolicy(alwaysOnTop = alwaysOnTop, touchForwarding = true),
+        apply = rememberViewNodePolicy(alwaysOnTop = true, touchForwarding = true),
         viewContent = { LiveComposeCard(spinning = spinning, onToggleSpin = onToggleSpin) },
     )
 }
@@ -403,24 +396,53 @@ private fun SceneScope.ControlCard(
  *   so the cards are submitted after the model. On its own it changes nothing: draw ordering does
  *   not defeat a depth test.
  *
- * Why a per-frame hook rather than a `SideEffect`: `SceneScope.ViewNode`'s `apply` lambda runs
- * once, at construction, and the composable never hands the node back — so a switch flipped later
- * has no other seam to reach the `MaterialInstance` through. Comparing against the last applied
- * value keeps this at two JNI calls per *change*, not two per frame.
+ * How a switch flipped later reaches the node: `SceneScope.ViewNode`'s `apply` lambda runs once, at
+ * construction, and the composable never hands the node back, so the lambda keeps the reference and
+ * an effect applies today's value through it.
+ *
+ * This used to be a per-frame `onFrame` hook that compared against the last applied value — two JNI
+ * calls per *change* rather than per frame, which sounded free. It was not: `Node.isFrameActive`
+ * reads a non-null `onFrame` as a standing request for frames, so both call-outs and the control
+ * card pinned the render loop for the lifetime of the screen. Measured on the emulator with the
+ * turntable paused: 854 Filament frames in 15 s, on a picture whose pixels differed by 0.008 %
+ * (temporal-AA jitter). The change detector was doing nothing 853 times out of 854 and the scene
+ * never parked (#3718).
  */
-private fun viewNodePolicy(
-    alwaysOnTop: State<Boolean>,
+@Composable
+private fun rememberViewNodePolicy(
+    alwaysOnTop: Boolean,
     touchForwarding: Boolean,
-): ViewNode.() -> Unit = {
-    isTouchForwardingEnabled = touchForwarding
-    var applied: Boolean? = null
-    onFrame = {
-        val wanted = alwaysOnTop.value
-        if (applied != wanted) {
-            applied = wanted
-            materialInstance.setDepthCulling(!wanted)
-            setPriority(if (wanted) PRIORITY_LAST else PRIORITY_DEFAULT)
+): ViewNode.() -> Unit {
+    val policy = remember { ViewNodeDepthPolicy(alwaysOnTop) }
+    policy.alwaysOnTop = alwaysOnTop
+    LaunchedEffect(policy, alwaysOnTop) { policy.apply() }
+    return remember(policy, touchForwarding) {
+        {
+            isTouchForwardingEnabled = touchForwarding
+            policy.node = this
+            // The node exists as of this line, so the initial state lands at construction and the
+            // effect above only ever has changes to carry.
+            policy.apply()
         }
+    }
+}
+
+/**
+ * Holds the [ViewNode] its owning composable is never given back, and writes the two Filament
+ * settings that make a card ignore the depth buffer. See [rememberViewNodePolicy].
+ */
+private class ViewNodeDepthPolicy(var alwaysOnTop: Boolean) {
+
+    var node: ViewNode? = null
+
+    fun apply() {
+        val node = node ?: return
+        node.materialInstance.setDepthCulling(!alwaysOnTop)
+        node.setPriority(if (alwaysOnTop) PRIORITY_LAST else PRIORITY_DEFAULT)
+        // Both of those are raw Filament state: nothing in the SDK observes a `MaterialInstance`
+        // parameter or a renderable's priority, so under `OnDemand` the change would sit in the
+        // engine with no frame coming to show it. Asking for one is the caller's job.
+        node.requestRender()
     }
 }
 

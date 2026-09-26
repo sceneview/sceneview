@@ -12,5 +12,6 @@
     <string name="demo_ar_cloud_anchor_about">A cloud anchor is a spot in a real room that
         Google\'s servers can recognize again, so two phones can put the same object in the
         same place. Host uploads the anchor and returns a code; Resolve looks a code up.
-        Codes expire after a day.</string>
+        Codes expire after a day. Shared codes locate the anchor; the other device starts
+        with the default lantern size and rotation. Moving the anchor clears its old code.</string>
 </resources>

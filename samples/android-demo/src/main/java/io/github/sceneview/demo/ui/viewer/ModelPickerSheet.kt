@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+)
 
 package io.github.sceneview.demo.ui.viewer
 
@@ -22,6 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
+import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
+import io.github.sceneview.demo.ui.NarrationProgressRing
+import io.github.sceneview.demo.ui.NarrationText
 import io.github.sceneview.demo.theme.SceneViewTokens
 
 data class BundledViewerModel(val assetPath: String, val displayName: String) {
@@ -32,6 +40,9 @@ data class BundledViewerModel(val assetPath: String, val displayName: String) {
 fun ModelPickerSheet(
     models: List<BundledViewerModel>, selectedPath: String,
     surpriseAvailable: Boolean, surpriseLoading: Boolean,
+    // What the roll is doing right now (#3825) — shown under the title while [surpriseLoading],
+    // with a determinate ring once [surpriseProgress] is known.
+    surpriseStatus: String? = null, surpriseProgress: Float? = null,
     onSelect: (BundledViewerModel) -> Unit, onPark: () -> Unit,
     onSurprise: () -> Unit, onBrowse: () -> Unit, onDismiss: () -> Unit,
 ) {
@@ -40,7 +51,7 @@ fun ModelPickerSheet(
     // and the `heightIn(max = …)` cap it had cut the second row's captions while the sheet
     // itself was already at full height (QA round 3). Six bundled models are three rows — the
     // whole sheet scrolls on short screens instead of the grid scrolling inside it.
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -55,7 +66,9 @@ fun ModelPickerSheet(
         // A tinted outlined button is not a list item — `primary-light` fill plus a
         // `primary` hairline and glyph, the `DESIGN.md` pair for "subtle background"
         // + "accents", so it reads as an offer rather than another row to skim.
-        if (surpriseAvailable) SurpriseMeButton(loading = surpriseLoading, onClick = onSurprise)
+        if (surpriseAvailable) SurpriseMeButton(
+            loading = surpriseLoading, status = surpriseStatus, progress = surpriseProgress, onClick = onSurprise,
+        )
         Column(
             modifier = Modifier.fillMaxWidth().padding(SceneViewTokens.Space.md),
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
@@ -69,7 +82,7 @@ fun ModelPickerSheet(
                                 .then(if (selected) Modifier.border(BorderStroke(SceneViewTokens.Layout.selectedOutlineWidth, MaterialTheme.colorScheme.primary), RoundedCornerShape(SceneViewTokens.Radius.md)) else Modifier)
                                 .clickable { onSelect(model) }.padding(SceneViewTokens.Space.sm)
                         ) {
-                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.sm)).background(MaterialTheme.colorScheme.surfaceDim), contentAlignment = Alignment.Center) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.sm)).background(MaterialTheme.colorScheme.surfaceContainerHigh).border(SceneViewTokens.Layout.hairlineWidth, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(SceneViewTokens.Radius.sm)), contentAlignment = Alignment.Center) {
                                 ModelThumbnails.resourceFor(model.assetName)?.let { Image(painterResource(it), null, Modifier.fillMaxSize()) }
                                     ?: Icon(Icons.Outlined.ViewInAr, null)
                             }
@@ -99,7 +112,7 @@ fun ModelPickerSheet(
  * While a pick is resolving the button is disabled but keeps its colours: the
  * spinner occupies the icon's slot, so nothing moves and nothing greys out.
  */
-@Composable private fun SurpriseMeButton(loading: Boolean, onClick: () -> Unit) {
+@Composable private fun SurpriseMeButton(loading: Boolean, status: String?, progress: Float?, onClick: () -> Unit) {
     val tint = MaterialTheme.colorScheme.primary.copy(
         alpha = if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.primaryLightAlphaDark
         else SceneViewTokens.HomeColor.primaryLightAlphaLight,
@@ -125,8 +138,15 @@ fun ModelPickerSheet(
             Modifier.size(SceneViewTokens.Layout.dockIconSize),
             contentAlignment = Alignment.Center,
         ) {
-            if (loading) {
-                CircularProgressIndicator(
+            if (loading && progress != null) {
+                // Determinate once the byte count is known (#3825).
+                NarrationProgressRing(
+                    progress = progress,
+                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else if (loading) {
+                LoadingIndicator(
                     Modifier.size(SceneViewTokens.Layout.dockIconSize),
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -141,10 +161,17 @@ fun ModelPickerSheet(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Text(
-                if (loading) "Finding…" else "A random CC-BY model from Sketchfab",
+            // The subtitle narrates the roll while it runs (#3825) — search, download, decode —
+            // instead of a static "Finding…" that said nothing about what was happening.
+            NarrationText(
+                text = if (loading && status != null) {
+                    status
+                } else {
+                    stringResource(R.string.demo_model_viewer_surprise_subtitle)
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
             )
         }
     }
@@ -167,6 +194,6 @@ fun ModelPickerSheet(
             Text(title, style = MaterialTheme.typography.bodyLarge)
             subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         }
-        if (loading) CircularProgressIndicator(Modifier.size(SceneViewTokens.Layout.dockIconSize))
+        if (loading) LoadingIndicator(Modifier.size(SceneViewTokens.Layout.dockIconSize))
     }
 }

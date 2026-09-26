@@ -2,6 +2,7 @@ package io.github.sceneview.node
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.google.android.filament.Engine
 import com.google.android.filament.LightManager
@@ -48,8 +49,16 @@ fun SceneScope.DynamicSkyNode(
         DynamicSkyNodeImpl(engine = engine)
     }
 
+    val prevSky = remember { mutableStateOf<List<Any?>?>(null) }
     SideEffect {
         node.update(timeOfDay = timeOfDay, turbidity = turbidity, sunIntensity = sunIntensity)
+        // The sun moved and the sky was rebuilt — in Filament, which reports nothing. Guarded on
+        // the values, so a recomposition that changes no sky parameter is not a reason to draw.
+        val current = listOf<Any?>(timeOfDay, turbidity, sunIntensity)
+        if (current != prevSky.value) {
+            prevSky.value = current
+            node.requestRender()
+        }
     }
 
     NodeLifecycle(node = node, content = null)

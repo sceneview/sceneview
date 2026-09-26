@@ -112,7 +112,7 @@ fun BrowseOnlineModelsCard(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-        color = MaterialTheme.colorScheme.surfaceDim,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
             Modifier.padding(SceneViewTokens.Space.md),
@@ -137,7 +137,7 @@ private fun BrowseOnlineCollage() {
         R.drawable.model_thumb_shiba,
         R.drawable.model_thumb_khronos_lantern,
     )
-    Box(modifier = Modifier.fillMaxSize().background(SceneViewTokens.HomeColor.heroField)) {
+    Box(modifier = Modifier.fillMaxSize().background(heroField())) {
         Column(modifier = Modifier.fillMaxSize()) {
             thumbs.chunked(2).forEach { row ->
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -220,7 +220,7 @@ private fun MediaCard(
                 onClick = onClick,
             ),
         shape = RoundedCornerShape(home.cardRadius),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(home.cardOutlineWidth, outlineSubtle()),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -329,7 +329,7 @@ private fun FreshnessChip(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f),
         border = BorderStroke(SceneViewTokens.Home.cardOutlineWidth, outlineSubtle()),
     ) {
         Row(
@@ -368,7 +368,7 @@ private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f),
         border = BorderStroke(SceneViewTokens.Home.cardOutlineWidth, outlineSubtle()),
     ) {
         Row(
@@ -400,8 +400,27 @@ internal fun outlineSubtle(): Color =
     if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.outlineSubtleDark
     else SceneViewTokens.HomeColor.outlineSubtleLight
 
-/** `surface-dim` as `DESIGN.md` defines it — chip + icon-tile fill. */
+/** `surface-container-high` as `DESIGN.md` defines it — chip + icon-tile fill. */
 @Composable
 internal fun chipBackground(): Color =
     if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.chipBackgroundDark
     else SceneViewTokens.HomeColor.chipBackgroundLight
+
+/**
+ * The stage field of a stage that is **embedded in a card** — the home hero, a card's
+ * preview art.
+ *
+ * `stage-background` (#0B0F16) is the viewer's clear colour, and a full-screen stage
+ * keeps it. Painted inside a card it is a different job: measured on iOS first, the home
+ * hero came out at **1.014:1** against the dark page, because the stage colour is drawn
+ * *over* the card fill and no surface token underneath can rescue it. The card is then
+ * the same colour as the page, whatever role it was given.
+ *
+ * So an embedded stage takes the elevated container tone in dark (1.32:1 against the
+ * page) and keeps #0B0F16 in light, where the near-black field against a white page was
+ * never the problem. Full-screen stages are untouched.
+ */
+@Composable
+internal fun heroField(): Color =
+    if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.heroFieldEmbeddedDark
+    else SceneViewTokens.HomeColor.heroField

@@ -2,6 +2,9 @@
 
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,11 +18,18 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.ar.collaborative.CollaborativeSession
 import io.github.sceneview.ar.collaborative.LoopbackCollaborativeTransport
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
+import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
+import kotlinx.coroutines.delay
+
+/** How long the "Synced with Bob" pulse stays visible after each state change. */
+private const val SYNC_PULSE_HOLD_MILLIS = 1_200L
 
 /** Two local peers render the state actually received through the collaboration transport. */
 @Composable
@@ -69,10 +79,25 @@ fun ARCollaborativeDemo(onBack: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = SceneViewTokens.Layout.touchTarget),
             ) { Text(if (placement == 0) "Place a cube" else "Change shared object") }
-            SessionPane("Alice", alice)
-            SessionPane("Bob", bob)
-            if (bob.placedNodes.isNotEmpty()) {
-                Text("Shared with Bob", style = SceneViewTokens.Type.body, color = MaterialTheme.colorScheme.primary)
+            SessionPane("Alice", alice, alternateViewpoint = false)
+            SessionPane("Bob", bob, alternateViewpoint = true)
+            // A brief pulse rather than a static line, so the sync is something that
+            // visibly *happens* each time Bob's state changes, not just a fact that is
+            // true (#3833 — the previous static text was easy to miss).
+            var syncPulseVisible by remember { mutableStateOf(false) }
+            LaunchedEffect(bob.placedNodes) {
+                if (bob.placedNodes.isNotEmpty()) {
+                    syncPulseVisible = true
+                    delay(SYNC_PULSE_HOLD_MILLIS)
+                    syncPulseVisible = false
+                }
+            }
+            AnimatedVisibility(
+                visible = syncPulseVisible,
+                enter = fadeIn(SceneViewTokens.Motion.fade()),
+                exit = fadeOut(SceneViewTokens.Motion.fade()),
+            ) {
+                Text("Synced with Bob", style = SceneViewTokens.Type.body, color = MaterialTheme.colorScheme.primary)
             }
             TextButton(onClick = { learnMore = !learnMore }) { Text(if (learnMore) "Hide details" else "Learn more") }
             if (learnMore) {
@@ -88,9 +113,28 @@ fun ARCollaborativeDemo(onBack: () -> Unit) {
 }
 
 @Composable
-private fun SessionPane(title: String, session: CollaborativeSession) {
+private fun SessionPane(title: String, session: CollaborativeSession, alternateViewpoint: Boolean) {
     val engine = rememberEngine()
     val materials = rememberMaterialLoader(engine)
+    // SceneView's *default* environment is the neutral_ibl.ktx paired with a solid black
+    // skybox — a metallic material has nothing to reflect and renders solid black (#2110,
+    // see rememberModelDemoEnvironment's kdoc). That is exactly what #3833 reported here:
+    // "two black viewports, nothing works" was this pane never having a lit environment,
+    // not a missing camera feed (this is a non-AR SceneView, by design — see the
+    // "No second phone needed" copy above).
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val environment = rememberModelDemoEnvironment(environmentLoader)
+    // Bob's pane renders from a different pose than Alice's, so the two panes visibly
+    // read as two independent viewers of the same shared object rather than two copies
+    // of the same screenshot.
+    val cameraNode = rememberCameraNode(engine) {
+        if (alternateViewpoint) {
+            position = Position(1.4f, 1.0f, 1.8f)
+        } else {
+            position = Position(0f, 0.4f, 2.2f)
+        }
+        lookAt(Position(0f, 0f, 0f))
+    }
     val accent = MaterialTheme.colorScheme.primary
     val material = remember(materials, accent) {
         materials.createColorInstance(accent, metallic = 0.25f, roughness = 0.3f)
@@ -103,6 +147,9 @@ private fun SessionPane(title: String, session: CollaborativeSession) {
                 surfaceType = io.github.sceneview.SurfaceType.TextureSurface,
                 engine = engine,
                 materialLoader = materials,
+                environmentLoader = environmentLoader,
+                environment = environment,
+                cameraNode = cameraNode,
             ) {
                 session.placedNodes.forEach { node ->
                     key(node.nodeKey, node.modelKey) {

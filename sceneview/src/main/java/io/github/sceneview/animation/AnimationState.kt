@@ -113,14 +113,21 @@ class ModelAnimationState internal constructor(
 fun rememberModelAnimationState(modelNode: ModelNode): ModelAnimationState {
     val state = remember(modelNode) { ModelAnimationState(modelNode) }
 
+    // `internalOnFrame`, not the public `onFrame`: this is an *observer*, and observing must not
+    // change what is observed. The public slot is read by `Node.isFrameActive` as a standing request
+    // for frames, so taking it here meant that merely displaying "Playing: idle" in the UI kept the
+    // whole scene at full cadence for as long as the composable was alive (#3718). It also stopped
+    // clobbering the caller's own `onFrame`, which the old save/restore dance only half-solved.
+    // `ModelNode.isFrameActive` already reports a glTF animation in flight, which is the real reason
+    // this state would need frames.
     DisposableEffect(modelNode) {
-        val previousOnFrame = modelNode.onFrame
-        modelNode.onFrame = { frameTimeNanos ->
+        val previousOnFrame = modelNode.internalOnFrame
+        modelNode.internalOnFrame = { frameTimeNanos ->
             previousOnFrame?.invoke(frameTimeNanos)
             state.update(frameTimeNanos)
         }
         onDispose {
-            modelNode.onFrame = previousOnFrame
+            modelNode.internalOnFrame = previousOnFrame
         }
     }
 

@@ -6,6 +6,8 @@ This directory contains sample apps demonstrating SceneView capabilities across 
 
 ## Quick reference — "I want to..."
 
+The sample names below (except `android-demo`) are `sceneview-mcp` sample IDs — fetch the full code with the MCP `get_sample` tool — not directories under `samples/`.
+
 | I want to... | Sample | Key code |
 |---|---|---|
 | Show a 3D model with orbit camera | `model-viewer` | `SceneView { ModelNode(modelInstance) }` |
@@ -19,7 +21,7 @@ This directory contains sample apps demonstrating SceneView capabilities across 
 | Local reflections / IBL zones | `reflection-probe` | `ReflectionProbeNode` |
 | Detect real-world images in AR | `ar-augmented-image` | `AugmentedImageNode(image)` |
 | Share AR anchors across devices | `ar-cloud-anchor` | `CloudAnchorNode(anchor)` |
-| Build a full demo app | `android-demo` | 4-tab Material 3 app (Explore, AR View, Samples, About) |
+| Build a full demo app | `android-demo` | 3-tab Material 3 app (Showcase, AR View, About) |
 
 ## Samples by category
 
@@ -48,7 +50,7 @@ This directory contains sample apps demonstrating SceneView capabilities across 
 
 | Sample | Description |
 |---|---|
-| `android-demo` | Play Store demo app — Explore, AR View, Samples, About tabs (49 demos in 9 catalogue sections: 18 non-AR + 31 AR, Material 3) |
+| `android-demo` | Play Store demo app — Showcase, AR View, About tabs (48 demos in 9 catalogue sections: 18 non-AR + 30 AR, Material 3) |
 
 ## Common recipes (copy-paste ready)
 
@@ -190,7 +192,7 @@ fun MultiModelScene() {
 |---|---|---|---|
 | `android-demo/` | Android (Jetpack Compose) | `./gradlew :samples:android-demo:bundleRelease` | ✓ |
 | `android-tv-demo/` | Android TV | `./gradlew :samples:android-tv-demo:assembleDebug` | ✓ |
-| `ios-demo/` | iOS (SwiftUI) | `open samples/ios-demo/SceneViewDemo/SceneViewDemo.xcodeproj` | ✓ |
+| `ios-demo/` | iOS (SwiftUI) | `open samples/ios-demo/SceneViewDemo.xcodeproj` | ✓ |
 | `web-demo/` | Web (Kotlin/JS + Filament.js) | `./gradlew :samples:web-demo:jsBrowserProductionWebpack` | ✓ |
 | `desktop-demo/` | Desktop (Compose) — `SceneViewer` via filament-kmp, JDK 22+ | `./gradlew :samples:desktop-demo:run` | |
 | `flutter-demo/` | Flutter | `cd samples/flutter-demo && flutter build apk --debug` | ✓ |
@@ -261,7 +263,7 @@ prefix. Sub-packages match the sample dimension:
 
 | Sample | Namespace |
 |---|---|
-| `android-demo/` | `io.github.sceneview.demo` + `.about`, `.ar`, `.explore`, `.samples`, `.theme`, `.update` |
+| `android-demo/` | `io.github.sceneview.demo` + `.ai`, `.common`, `.demos`, `.feedback`, `.fragments`, `.sketchfab`, `.sources`, `.theme`, `.ui`, `.update`, `.whatsnew` |
 | `react-native-demo/` (Android host) | `io.github.sceneview.demo.rn` |
 | New samples | `io.github.sceneview.demo.<short-name>` |
 

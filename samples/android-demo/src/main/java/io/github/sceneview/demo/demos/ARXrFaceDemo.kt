@@ -85,7 +85,7 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
         io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay.onScrim,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // Static reference face — the dense mesh plus the named-region anchor poses.
     val mesh = remember { referenceFaceMesh() }

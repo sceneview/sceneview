@@ -261,6 +261,11 @@ fun LightingLabDemo(onBack: () -> Unit) {
             shutterSpeed = LightingStage.CAMERA_SHUTTER_SPEED,
             sensitivity = LightingStage.sensitivityFor(exposure),
         )
+        // `IndirectLight` and the `View` options below are raw Filament objects: the SDK hands
+        // them out and never sees them again, so nothing here would ask for the frame that shows
+        // the change. `cameraNode.setExposure` invalidates on its own — it is an SDK mutator —
+        // and this covers the ones that cannot (#3718).
+        cameraNode.requestRender()
         // Filament's options getters currently hand back the same mutable struct, so writing
         // through them works; going via the setter keeps that an implementation detail rather
         // than a dependency, in case a future release starts returning a defensive copy.
@@ -278,7 +283,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
         BENCH_KEY_AZIMUTH,
         LightingStage.KEY_ELEVATION_DEGREES,
     )
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,
@@ -479,6 +484,8 @@ fun LightingLabDemo(onBack: () -> Unit) {
                     yHeight = LightingStage.orbitHeight(orbitRadius),
                     durationMillis = LightingStage.ORBIT_DURATION_MILLIS,
                     staticYaw = LightingStage.STATIC_YAW,
+                    // Keeps an upward drag from carrying the camera under the floor (#3794).
+                    maxPolarDegrees = LightingStage.maxOrbitPolarDegrees(orbitRadius),
                 ),
                 onFrame = { frameTimeNanos ->
                     firstFrame.onFrame(frameTimeNanos)

@@ -211,7 +211,7 @@ struct ModelViewerDemo: View {
     private var dock: [DockItem] {
         var items = [
             DockItem(icon: "scope", label: "Recenter") { recenterGeneration += 1 },
-            DockItem(icon: "sun.max", label: "Environment") { sheet = .environment },
+            DockItem(icon: "sun.max", label: "Environment", caption: "Lighting") { sheet = .environment },
             DockItem(icon: "cube.transparent", label: "Models") { sheet = .models },
         ]
         if !animationNames.isEmpty {
@@ -371,11 +371,13 @@ struct ModelViewerDemo: View {
         #if os(iOS)
         .fullScreenCover(isPresented: $showAR) {
             NavigationStack {
-                ARPlacementDemo(initialModel: selectedModel.assetName)
-                    .navigationTitle("Tap to Place")
+                ARExperienceContainer(onViewIn3D: { showAR = false }) {
+                    ARPlacementDemo(initialModel: selectedModel.assetName)
+                }
+                    .navigationTitle("AR Placement")
                     .navigationBarTitleInline()
             }
-            .environment(\.demoTitle, "Tap to Place")
+            .environment(\.demoTitle, "AR Placement")
         }
         #endif
         .task {
@@ -455,7 +457,7 @@ struct ModelViewerDemo: View {
             .multilineTextAlignment(.center)
             .padding(.horizontal, SceneViewTokens.Space.md)
             .padding(.vertical, SceneViewTokens.Space.sm)
-            .background(glassBackground(in: Capsule()))
+            .glassBackground(in: Capsule())
             .padding(.horizontal, SceneViewTokens.Space.lg)
     }
 

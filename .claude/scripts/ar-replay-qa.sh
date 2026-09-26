@@ -116,6 +116,19 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 2
 fi
 
+# ── Resolve adb from the Android SDK, not PATH ─────────────────────────────
+# When adb isn't on PATH, every bare `adb` call below fails rc=127 and this
+# script reports "harness died before writing any verdict" — a false
+# product-regression red (observed 2026-09-22). Fail fast, before any build.
+# Same SDK_ROOT resolution as setup-ar-emulator.sh.
+SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+ADB="$SDK_ROOT/platform-tools/adb"
+if [[ ! -x "$ADB" ]]; then
+  echo "[ar-replay-qa] CANNOT RUN: adb not found at $ADB." >&2
+  echo "[ar-replay-qa] Set ANDROID_HOME or ANDROID_SDK_ROOT to a valid Android SDK." >&2
+  exit 2
+fi
+
 # ── Device check ───────────────────────────────────────────────────────────
 # Remember whether a parent (device-qa.sh) handed us the serial: it already
 # owns the pool lease under its own pid, so we must NOT lease/release around it.
@@ -143,21 +156,21 @@ if [[ -z "$PARENT_PROVIDED_SERIAL" ]]; then
   # Adopt a token a `setup-ar-emulator.sh` run just published for this session,
   # so our OWN reservation is not mistaken for a peer's (no-op otherwise).
   [[ -n "${EMU_LEASE_SESSION:-}" ]] || emu_lease_session_inherit >/dev/null 2>&1 || true
-  if emu_serial_alive "$SERIAL" adb; then
+  if emu_serial_alive "$SERIAL" "$ADB"; then
     # It sits on a pool console port, so it is pool-managed: it must be
     # IDENTIFIABLE as the pool AVD and leasable, or we refuse outright. Falling
     # through to "drive it unleased" would be worst-case wrong — the console
     # goes mute mainly when the emulator is already busy, i.e. exactly when a
     # peer is driving it (lib/emulator-select.sh: leasing an unidentified
     # device is the failure the guard exists for).
-    if ! emu_serial_avd_matches "$SERIAL" adb; then
+    if ! emu_serial_avd_matches "$SERIAL" "$ADB"; then
       echo "[ar-replay-qa] $SERIAL is on a pool port but did not identify as" >&2
       echo "[ar-replay-qa] ${EMU_REQUIRE_AVD:-$EMU_POOL_AVD} (wrong AVD, or its console did not answer)." >&2
       echo "[ar-replay-qa] Refusing to drive an emulator this run cannot identify." >&2
       echo "[ar-replay-qa]   bash .claude/scripts/setup-ar-emulator.sh" >&2
       exit 2
     fi
-    if ! emu_lease_acquire "$SERIAL" adb; then
+    if ! emu_lease_acquire "$SERIAL" "$ADB"; then
       echo "[ar-replay-qa] $SERIAL is a pool emulator reserved by another session —" >&2
       echo "[ar-replay-qa] refusing to drive it. Provision your own, or inherit the" >&2
       echo "[ar-replay-qa] reservation with: export EMU_LEASE_SESSION=<its token>" >&2
@@ -171,7 +184,7 @@ if [[ -z "$PARENT_PROVIDED_SERIAL" ]]; then
     # peer would wait needlessly.) Superseded by ar_cleanup once logcat runs.
     trap 'emu_lease_release_all || true' EXIT
   fi
-elif emu_serial_alive "$SERIAL" adb; then
+elif emu_serial_alive "$SERIAL" "$ADB"; then
   # A pre-set ANDROID_SERIAL was trusted outright as "my parent holds the
   # lease". device-qa.sh does; a human following setup-ar-emulator.sh's own
   # printed `export ANDROID_SERIAL=…` does not necessarily — and that is the
@@ -180,7 +193,7 @@ elif emu_serial_alive "$SERIAL" adb; then
   # session token, so device-qa.sh's lease is left untouched under its own pid;
   # emu_lease_acquire here would instead rewrite the owner to ours and this
   # script's EXIT trap would release the parent's lease mid-run (measured).
-  if ! emu_lease_ensure "$SERIAL" adb; then
+  if ! emu_lease_ensure "$SERIAL" "$ADB"; then
     echo "[ar-replay-qa] $SERIAL is a pool emulator reserved by another session —" >&2
     echo "[ar-replay-qa] refusing to drive it. Inherit the reservation with:" >&2
     echo "[ar-replay-qa]   export EMU_LEASE_SESSION=<its token>" >&2
@@ -225,7 +238,7 @@ LOGCAT_FILE="$OUT_DIR/ar-logcat.txt"
 INSTR_FILE="$OUT_DIR/ar-instrumentation.txt"
 
 # ── Clean logcat so a crash this run is not masked by an older one ──────────
-adb -s "$SERIAL" logcat -c || true
+"$ADB" -s "$SERIAL" logcat -c || true
 
 # ── Stream logcat for the whole run ────────────────────────────────────────
 # The AR demos are deep-linked into MainActivity's process, which is ALSO the
@@ -245,7 +258,7 @@ stop_logcat() { [[ -n "$LOGCAT_PID" ]] && kill "$LOGCAT_PID" >/dev/null 2>&1 || 
 # sticky session reservation (it only drops the plain pid lease taken above).
 ar_cleanup() { stop_logcat; emu_lease_release_all || true; }
 trap ar_cleanup EXIT
-adb -s "$SERIAL" logcat -v threadtime > "$LOGCAT_FILE" 2>&1 &
+"$ADB" -s "$SERIAL" logcat -v threadtime > "$LOGCAT_FILE" 2>&1 &
 LOGCAT_PID=$!
 
 # ── Run the replay harness, sharded ────────────────────────────────────────
@@ -268,17 +281,17 @@ while [[ "$shard" -lt "$SHARD_COUNT" ]]; do
   echo "" | tee -a "$INSTR_FILE" >/dev/null
   echo "[ar-replay-qa] ── shard $shard of $SHARD_COUNT ──" | tee -a "$INSTR_FILE"
   # Fresh process for this shard — nothing lingers from the previous one.
-  adb -s "$SERIAL" shell am force-stop "$PKG" >/dev/null 2>&1 || true
+  "$ADB" -s "$SERIAL" shell am force-stop "$PKG" >/dev/null 2>&1 || true
   # Drop the previous shard's on-device summary so a failed pull cannot recover
   # a stale file and mis-attribute it to this shard.
-  adb -s "$SERIAL" shell rm -f "$DEVICE_SUMMARY" >/dev/null 2>&1 || true
+  "$ADB" -s "$SERIAL" shell rm -f "$DEVICE_SUMMARY" >/dev/null 2>&1 || true
 
   # `tee -a` the instrumentation stream into the artifact bundle. errexit is
   # toggled off around the pipe so PIPESTATUS[0] captures `am instrument`'s own
   # status (not tee's) — a severed/crashed host exits non-zero, a plain JUnit
   # assertion failure still exits 0 and writes its summary.
   set +e
-  adb -s "$SERIAL" shell am instrument -w \
+  "$ADB" -s "$SERIAL" shell am instrument -w \
     -e class io.github.sceneview.demo.ar.ARReplayHarnessTest \
     -e ar_shard_index "$shard" \
     -e ar_shard_count "$SHARD_COUNT" \
@@ -292,11 +305,11 @@ while [[ "$shard" -lt "$SHARD_COUNT" ]]; do
   # `am instrument` was severed the on-device test may still be running, so
   # force-stop it — that stops the Filament churn and makes `adb pull` reliable
   # (the mid-thrash pull is exactly why #2620's summary was never recovered).
-  adb -s "$SERIAL" shell am force-stop "$PKG" >/dev/null 2>&1 || true
+  "$ADB" -s "$SERIAL" shell am force-stop "$PKG" >/dev/null 2>&1 || true
 
   shard_json="$OUT_DIR/ar-shard-$shard.json"
   for attempt in 1 2 3; do
-    if adb -s "$SERIAL" pull "$DEVICE_SUMMARY" "$shard_json" >/dev/null 2>&1; then
+    if "$ADB" -s "$SERIAL" pull "$DEVICE_SUMMARY" "$shard_json" >/dev/null 2>&1; then
       SHARDS_PULLED=$((SHARDS_PULLED + 1))
       echo "[ar-replay-qa] shard $shard verdict pulled (am instrument rc=$shard_status)"
       break

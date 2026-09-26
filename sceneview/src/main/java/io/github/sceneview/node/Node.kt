@@ -17,6 +17,7 @@ import dev.romainguy.kotlin.math.lookTowards
 import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.FilamentEntity
+import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.animation.NodeAnimator
 import io.github.sceneview.collision.Collider
 import io.github.sceneview.collision.CollisionShape
@@ -244,12 +245,17 @@ open class Node protected constructor(
     // collision/query read — and each read otherwise paid a `TransformManager.getTransform()`
     // JNI round-trip (which itself allocates a `FloatArray(16)` + a `Mat4`).
     //
-    // The two — and ONLY two — writers of this node's local Filament matrix (the `transform`
-    // setter and `applyCachedTransform()`) POPULATE this cache with the exact matrix they push,
-    // so even mid-animation (write then read each frame) the read is served without JNI. Filament
-    // round-trips the matrix unchanged, so the cached value is byte-identical to a `getTransform()`
-    // read. A reparent does NOT change the local (parent-relative) matrix, so it deliberately
-    // leaves this cache valid; only a LOCAL transform write refreshes it.
+    // This node's own writers (the `transform` setter and `applyCachedTransform()`) POPULATE this
+    // cache with a copy of the exact matrix they push, so even mid-animation (write then read each
+    // frame) the read is served without JNI. Filament round-trips the matrix unchanged, so the
+    // cached value is byte-identical to a `getTransform()` read. A reparent does NOT change the
+    // local (parent-relative) matrix, so it deliberately leaves this cache valid; only a LOCAL
+    // transform write refreshes it.
+    //
+    // They are NOT the only writers of the entity's Filament matrix: glTF animation
+    // (`Animator.applyAnimation`), the camera helpers (`Camera.lookAt` / `Camera.setModelMatrix`)
+    // and any third-party `TransformManager.setTransform()` on [entity] move it behind this Node's
+    // back. Every such writer must call [invalidateTransformCache] — see it for why.
     private var _transform: Transform? = null
 
     // World-space TRS cache (#2264, completes the #2187 fix for world-space getters).
@@ -266,11 +272,38 @@ open class Node protected constructor(
     private var _worldScale: Scale = Scale(1.0f)
     private var _worldRotation: Rotation = Rotation()
 
+    /**
+     * Drops the cached mirror of this node's local Filament matrix.
+     *
+     * [transform] reads are served from that mirror (#2405) and redundant writes are skipped
+     * against it (#3718), both of which assume the mirror still describes what Filament holds for
+     * [entity]. Anything that writes the entity's transform **without going through this node**
+     * breaks that assumption:
+     *
+     * - glTF animation — `Animator.applyAnimation()` writes every animated sub-node of a
+     *   [ModelNode] straight into the `TransformManager`;
+     * - the camera helpers — `Camera.lookAt()` and `Camera.setModelMatrix()` write the camera
+     *   entity's transform ([CameraNode]);
+     * - any application code calling `TransformManager.setTransform()` on [entity] itself.
+     *
+     * Call this right after such a write. The next [transform] read then re-fetches from Filament,
+     * and the next write of the same value the node already believed it had pushed is no longer
+     * mistaken for a no-op. It costs one field assignment, is idempotent, and does **not** touch
+     * the world-space cache — [onWorldTransformChanged] does that, and an out-of-band writer that
+     * moves the node in world space needs both.
+     */
+    fun invalidateTransformCache() {
+        _transform = null
+    }
+
     private fun refreshWorldCache(): Transform {
         val world = transformManager.getWorldTransform(transformInstance)
         _worldTransform = world
         _worldPosition = world.position
-        _worldQuaternion = world.toQuaternion()
+        // `Mat4.quaternion` normalises the basis columns first. The kotlin-math `toQuaternion()`
+        // member runs the trace method on the raw basis, which folds any scale — uniform
+        // included — into the extracted rotation (#3738).
+        _worldQuaternion = world.quaternion
         _worldScale = world.scale
         // Extract Euler directly from the matrix (not via the quaternion) to stay
         // bit-equivalent to the pre-cache `worldTransform.rotation` behavior — the
@@ -294,6 +327,20 @@ open class Node protected constructor(
      */
     private fun applyCachedTransform() {
         val composed = Transform(_position, _quaternion, _scale)
+        // Only write what changed (#3718). A per-frame producer keeps writing once its motion has
+        // settled: a physics step re-pushes the resting position of every body, an animation
+        // sampler re-pushes the last keyframe. The matrix is then byte-identical to the one
+        // Filament already holds, so both the JNI write and the notification below are no-ops —
+        // except that the notification calls `requestRender()`, which alone held a settled scene
+        // at full cadence for as long as the stepper ran.
+        //
+        // `_transform` is the exact matrix this Node last pushed — which is Filament's own state
+        // ONLY as long as nothing writes the entity behind the Node's back. An out-of-band writer
+        // (glTF `Animator`, `Camera.lookAt`, a third-party `TransformManager.setTransform()`) makes
+        // the mirror stale, and skipping the write there would strand Filament on the out-of-band
+        // pose for good. Hence [invalidateTransformCache], which every such writer calls: a null
+        // cache means "unknown" and falls through to the write.
+        if (_transform == composed) return
         transformManager.setTransform(transformInstance, composed)
         // Populate the local-matrix cache with the exact matrix just pushed to Filament, so a
         // subsequent `transform` read is served without a `getTransform()` JNI round-trip (#2405).
@@ -381,6 +428,28 @@ open class Node protected constructor(
      * This is the composition of this component's local quaternion with its parent's world
      * quaternion.
      *
+     * The value is decomposed out of the Filament world matrix, so a scale anywhere up the
+     * hierarchy affects what can be recovered:
+     *
+     *  - **Uniform scale, or a non-uniform scale on this node itself** — exact. (Before #3738
+     *    it was not: the extraction folded the scale into the rotation, so a node under a
+     *    parent scaled 2 reported a 106° rotation where 90° was set.)
+     *  - **Non-uniform scale on an *ancestor*, with a rotation below it** — the world basis is
+     *    sheared: it is no longer a rotation times a per-axis scale, so normalising its columns
+     *    cannot give back the rotation you set. That normalisation rescales the basis without
+     *    re-orthogonalising it, so the value you read is *a* unit rotation, not the nearest one
+     *    to the pose, and it carries **no useful error bound** — 29.13° off under a parent
+     *    scaled `(3, 1, 1)`, up to ~180° in the worst pose under `(0.25, 2, 10)`.
+     *    Setter round trips are off by the same amount. An exact
+     *    answer does exist for this case and is tracked in #3744; until then, keep an ancestor's
+     *    scale uniform if you need an exact world orientation below it.
+     *  - **Negative scale (mirror)** — an *odd* number of negative axes leaves a left-handed
+     *    basis, which is not a rotation at all: the value is finite and unit but otherwise
+     *    meaningless. An *even* number is a real rotation and comes back exact. Nothing can tell
+     *    the two apart from [worldScale], which reports column lengths (`-2` reads back as `2`).
+     *  - **Zero scale on an axis** — the collapsed axis is rebuilt from the other two rather
+     *    than returning NaN; with two or more axes collapsed the identity is returned.
+     *
      * @see worldTransform
      */
     open var worldQuaternion: Quaternion
@@ -422,6 +491,11 @@ open class Node protected constructor(
      *
      * The world rotation of this component (i.e. relative to the scene root).
      * This is the composition of this component's local rotation with its parent's world rotation.
+     *
+     * The getter decomposes Euler angles straight from the world matrix, which normalises the
+     * basis itself and so never had the scale defect fixed in [worldQuaternion] (#3738). The
+     * setter goes through [worldQuaternion] and therefore inherits the shear, mirror and
+     * collapse caveats documented there.
      *
      * @see worldTransform
      */
@@ -480,9 +554,13 @@ open class Node protected constructor(
         set(value) {
             transformManager.setTransform(transformInstance, value)
             // Populate the local-matrix cache (#2405): Filament round-trips the matrix unchanged, so
-            // the cached `value` is byte-identical to a subsequent `getTransform()` read. This keeps
+            // the cached matrix is byte-identical to a subsequent `getTransform()` read. This keeps
             // the per-frame `node.transform` read free even while a smooth animation writes every tick.
-            _transform = value
+            // Cache a COPY: `Transform` is a `Mat4`, mutable in place, and a caller that reuses one
+            // scratch matrix per frame would otherwise keep mutating the cache after the write —
+            // serving reads that Filament never received and, worse, letting the redundant-write
+            // guard in `applyCachedTransform()` compare against a matrix that was never pushed.
+            _transform = Transform(value)
             // Synchronise the TRS caches from the new matrix so that any subsequent
             // getter for `position`, `quaternion`, or `scale` reads the pristine value
             // rather than re-decomposing the matrix (#2187).
@@ -780,9 +858,58 @@ open class Node protected constructor(
 
     // ---- Scene lifecycle callbacks ----
 
+    /**
+     * Called once per frame, **before** the frame is drawn, to drive this node.
+     *
+     * Setting it means "keep rendering": [isFrameActive] reads a non-null `onFrame` as a standing
+     * request for a frame every tick, so under [io.github.sceneview.FrameRatePolicy.OnDemand] the
+     * scene holding this node will not park while it is set. Clear it (`node.onFrame = null`) to
+     * stop asking. That is the right default for a driver — a callback that only runs when a frame
+     * happens cannot be what makes one happen, so it has to be able to say so up front.
+     *
+     * **This is the opposite of `SceneView(onFrame = …)`, which does not hold the loop open.** That
+     * one is an observer, handed each frame right *after* it was presented. The two share a name
+     * and nothing else; if you are reaching for one to animate something, it is this one.
+     *
+     * Runs inside `SceneView`'s update block, ahead of the GPU submit, so a transform written here
+     * is on screen in the same frame — no one-frame lag.
+     */
     var onFrame: ((frameTimeNanos: Long) -> Unit)? = null
     var onAddedToScene: ((scene: Scene) -> Unit)? = null
     var onRemovedFromScene: ((scene: Scene) -> Unit)? = null
+
+    /**
+     * The library's own per-frame hook, kept apart from the public [onFrame] for one reason: it
+     * does **not** mean "keep rendering".
+     *
+     * [onFrame] is a public single slot, and setting it says "I drive this node from the frame
+     * loop" — so [isFrameActive] treats it as a standing request for frames. That default is the
+     * right one for callers (a node wrongly reported idle freezes), but it is the wrong one for the
+     * library's own use, and the library used it in three places: [BillboardNode] re-orients in
+     * `init`, `SceneScope.PhysicsNode` steps a body, `rememberModelAnimationState` merely *reads*.
+     * Every one of them silently cost its whole scene the idle saving — a screen with two
+     * `TextNode`s held 842 frames per 15 s on a picture that changed 0.001 % (#3718).
+     *
+     * A component that installs this hook must answer for its own activity, either by overriding
+     * [isFrameActive] or by registering a [frameActivityProvider]. Taking the hook and saying
+     * nothing means "I never need a frame of my own".
+     */
+    internal var internalOnFrame: ((frameTimeNanos: Long) -> Unit)? = null
+
+    /**
+     * Extra activity terms OR-ed into [isFrameActive], for library components that attach to a node
+     * they do not own and therefore cannot override the property.
+     *
+     * `SceneScope.PhysicsNode` is the case: it drives an arbitrary caller-supplied node, needs
+     * frames while its body is in flight, and needs to stop asking once the body has settled.
+     */
+    private val frameActivityProviders = mutableListOf<() -> Boolean>()
+
+    /** Registers [provider] as an extra [isFrameActive] term. Returns a handle that removes it. */
+    internal fun addFrameActivityProvider(provider: () -> Boolean): () -> Unit {
+        frameActivityProviders += provider
+        return { frameActivityProviders -= provider }
+    }
 
     // ---- Derived transforms ----
 
@@ -867,14 +994,17 @@ open class Node protected constructor(
     /**
      * Converts a quaternion in the world-space to a local-space of this node.
      *
-     * When this node's world transform has **no scale**, the conversion is rotation-only:
-     * it uses this node's world quaternion directly and skips the Mat4 polar
-     * decomposition that `worldToLocal.toQuaternion()` paid on every call (#2267).
+     * The conversion is rotation-only: it uses this node's world quaternion directly and skips
+     * the Mat4 polar decomposition that `worldToLocal.toQuaternion()` paid on every call (#2267).
      *
-     * When this node IS scaled the fast path is NOT used: `inverse(M).toQuaternion()`
-     * (legacy) and `inverse(M.toQuaternion())` (fast) diverge once `M` carries scale
-     * (verified divergence even for uniform scale — #2294 review), so the scaled case
-     * falls back to the exact legacy matrix path to preserve behavior.
+     * Until #3738 a scaled node took a separate `inverse(M).toQuaternion()` branch, on the
+     * premise that it was the exact path the quaternion shortcut diverged from. It was the
+     * opposite: `toQuaternion()` mis-extracts any scaled basis, so that branch was the *wrong*
+     * one, and a `worldQuaternion` set/get round trip under a parent scaled 2 came back
+     * `|dot| = 0.98` instead of 1. With [worldQuaternion] itself now scale-correct the two
+     * branches agree exactly for a uniform scale, and the quaternion path is the more faithful
+     * one under a non-uniform scale (composition of rotations is what the setter means),
+     * so there is a single path again.
      *
      * This conversion is the parent-side of the world-space setters
      * ([worldQuaternion] / [worldRotation] on a child), so it MUST reflect this node's
@@ -892,12 +1022,11 @@ open class Node protected constructor(
      */
     fun getLocalQuaternion(worldQuaternion: Quaternion): Quaternion {
         // Re-read the live world transform so the conversion never trusts a stale cache (#2392).
-        val world = refreshWorldCache()
-        return if (world.scale.isApproximatelyUnitScale()) {
-            worldToLocalQuaternion(worldQuaternion = worldQuaternion, parentWorldQuaternion = _worldQuaternion)
-        } else {
-            inverse(world).toQuaternion() * worldQuaternion
-        }
+        refreshWorldCache()
+        return worldToLocalQuaternion(
+            worldQuaternion = worldQuaternion,
+            parentWorldQuaternion = _worldQuaternion
+        )
     }
 
     /**
@@ -937,17 +1066,6 @@ open class Node protected constructor(
      */
     fun getWorldRotation(rotation: Rotation) =
         getWorldQuaternion(Quaternion.fromEuler(rotation)).toEulerAngles()
-
-    /**
-     * True when each axis of this scale is within a small epsilon of 1.0 — i.e. the
-     * transform carries no meaningful scale and the rotation-only quaternion fast path in
-     * [getLocalQuaternion] is exactly equivalent to the legacy matrix path (#2294 review).
-     */
-    private fun Scale.isApproximatelyUnitScale(): Boolean {
-        val lo = 1f - 1e-4f
-        val hi = 1f + 1e-4f
-        return x in lo..hi && y in lo..hi && z in lo..hi
-    }
 
     fun getLocalScale(worldScale: Scale) = freshWorldToLocal * worldScale
     fun getWorldScale(scale: Scale) = refreshWorldCache() * scale
@@ -1181,6 +1299,50 @@ open class Node protected constructor(
         }
     }
 
+    // ---- Render-on-demand ----
+
+    /**
+     * Asks the [io.github.sceneview.SceneView] rendering this node to draw another frame.
+     *
+     * Only needed under [io.github.sceneview.FrameRatePolicy.OnDemand] — the default — and only for
+     * changes the library cannot observe: a Filament `MaterialInstance` parameter, a light property,
+     * a texture swapped underneath a node. Everything routed through this class (transforms,
+     * animations, attach / detach) already invalidates on its own.
+     *
+     * A no-op while the node is not attached to a scene, and safe to call from any of them.
+     */
+    fun requestRender() {
+        attachedScene?.let { SceneRenderInvalidators.of(it) }?.requestRender()
+    }
+
+    /**
+     * Whether this node (or any descendant) is still changing the picture on its own, and therefore
+     * needs a frame every tick without anyone asking for one.
+     *
+     * This is the *pull* half of render-on-demand: it is read once per frame and keeps the settle
+     * budget topped up for as long as it reads `true`. The base implementation covers a smooth
+     * transform still converging and a user [onFrame] callback. Subclasses that animate by other
+     * means override it.
+     *
+     * **`Node.onFrame` pins the loop; `SceneView(onFrame = …)` does not.** The asymmetry is
+     * deliberate and it is the one thing to remember about the two callbacks that share a name.
+     * `SceneView`'s is an observer, handed each frame *after* it was presented. This one is a
+     * **driver**: `PhysicsNode` steps its simulation here, and a driver that only runs when a frame
+     * happens cannot be what makes one happen. So setting it is read as a standing request for
+     * frames, and clearing it (`node.onFrame = null`) is how you stop asking.
+     *
+     * The library's own per-frame work does not go through it — see [internalOnFrame] — precisely
+     * because "some component is watching frames" must not mean "this scene can never park".
+     *
+     * Err on the side of `true`: a node wrongly reported idle freezes the scene, while one wrongly
+     * reported busy only costs frames.
+     */
+    open val isFrameActive: Boolean
+        get() = animationDelegate.smoothTransform != null ||
+                onFrame != null ||
+                frameActivityProviders.any { it() } ||
+                childNodes.any { it.isFrameActive }
+
     // ---- Per-frame lifecycle ----
 
     open fun onFrame(frameTimeNanos: Long) {
@@ -1189,6 +1351,10 @@ open class Node protected constructor(
 
         // Propagate to children
         childNodes.forEach { it.onFrame(frameTimeNanos) }
+
+        // Library hook first, so a user callback observing this node sees the library's write-back
+        // of the same frame rather than the previous one.
+        internalOnFrame?.invoke(frameTimeNanos)
 
         // User callback
         onFrame?.invoke(frameTimeNanos)
@@ -1203,6 +1369,13 @@ open class Node protected constructor(
      * for all of it's descendants.
      */
     open fun onTransformChanged() {
+        // Push source for render-on-demand: this is the funnel every transform setter goes through,
+        // so one hook here covers manipulator writes, physics steps, smooth transforms, glTF
+        // animation write-back and plain `node.position = …`. Only the node that actually moved
+        // requests a frame — `onWorldTransformChanged` below recurses into descendants to
+        // invalidate their caches, and asking again per descendant would cost a registry lookup per
+        // node of a moved subtree for no extra effect.
+        requestRender()
         onWorldTransformChanged()
     }
 
@@ -1327,6 +1500,16 @@ open class Node protected constructor(
      * @see RenderableNode.updateVisibility
      */
     protected open fun updateVisibility() {
+        // Push source for render-on-demand, and the second funnel after [onTransformChanged]:
+        // showing or hiding a node changes the picture without moving anything, so no transform
+        // notification fires and nothing else would report it. Placed here rather than in the
+        // `isVisible` setter because several subclasses override that property (`AnchorNode`,
+        // `PoseNode`, `TrackableNode`, the plane renderers) and all of them funnel here.
+        //
+        // The recursion below asks again per descendant, unlike [onTransformChanged] which asks
+        // once: a visibility toggle is a user action, not a per-frame event, so the extra registry
+        // lookups are paid once and buy correctness for overrides that re-enter the recursion.
+        requestRender()
         childNodes.forEach { childNode ->
             childNode.updateVisibility()
         }

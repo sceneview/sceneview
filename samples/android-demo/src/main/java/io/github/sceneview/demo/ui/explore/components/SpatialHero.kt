@@ -39,7 +39,7 @@ fun SpatialHero(model: GalleryModel, onViewIn3D: () -> Unit, modifier: Modifier 
             .fillMaxWidth()
             .height(SceneViewTokens.Layout.heroStageHeight)
             .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
-            .background(MaterialTheme.colorScheme.surfaceDim),
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         AsyncNetworkImage(
             url = model.preferredThumbnailUrl(),

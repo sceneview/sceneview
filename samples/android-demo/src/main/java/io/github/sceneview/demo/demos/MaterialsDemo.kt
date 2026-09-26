@@ -4,12 +4,12 @@ package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -41,9 +41,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.activity.compose.BackHandler
@@ -84,7 +81,12 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
+import io.github.sceneview.demo.HeroOrbitResume
+import io.github.sceneview.demo.OrbitSpin
+import io.github.sceneview.demo.orbitLabelFadeAlpha
+import io.github.sceneview.demo.orbitYawDeviationDegrees
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
@@ -102,6 +104,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
@@ -195,17 +198,12 @@ private fun ModeSelector(
     current: MaterialsMode,
     onModeChange: (MaterialsMode) -> Unit,
 ) {
-    val modes = MaterialsMode.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, m ->
-            SegmentedButton(
-                selected = m == current,
-                onClick = { onModeChange(m) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(stringResource(m.labelRes)) },
-            )
-        }
-    }
+    ConnectedChoiceRow(
+        options = MaterialsMode.entries,
+        selected = current,
+        onSelect = onModeChange,
+        label = { stringResource(it.labelRes) },
+    )
     Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 }
 
@@ -315,13 +313,22 @@ private fun StudioSection(
     // Push the live overrides onto the selected instance. Keyed on the values rather than on
     // `instances` — the map above produces a new List every recomposition, so keying on it
     // would restart the effect on every frame of a drag.
+    //
+    // Every write below goes straight into a Filament `MaterialInstance`, which the SDK cannot
+    // observe — the case [rememberRenderInvalidator] exists for, and the one this screen needs
+    // most: the sliders live in the sheet, so their touches never reach `SceneView`'s gesture
+    // detector and nothing else here would wake a parked scene. Without the push, moving
+    // roughness on a still wall repaints nothing.
+    val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(selectedIndex, metallic, roughness, traitAmount) {
         instances[selectedIndex].push(selected, metallic, roughness, traitAmount)
+        renderInvalidator.requestRender()
     }
     // Reset: re-push every material's declared values, not just the selected one.
     LaunchedEffect(resetTick) {
         if (resetTick > 0) {
             library.forEachIndexed { index, material -> instances[index].push(material) }
+            renderInvalidator.requestRender()
         }
     }
 
@@ -333,29 +340,45 @@ private fun StudioSection(
     // Gallery: a flat wall cannot be orbited — a quarter turn shows the spheres edge-on and a
     // half turn shows the back of the grid. The phase drives a bounded cosine sweep instead.
     val sweepPhase = remember { mutableFloatStateOf(MaterialStudio.STATIC_SWEEP_PHASE) }
-    // Two ways to stop the sweep, and they end differently. `sweepPinned` — the pause button
-    // or QA mode — also returns the phase to its canonical value, so the wall is framed the
-    // same way every time it is stilled. A focus flight (#3609) merely *suspends* it: a yaw
-    // still travelling under the dolly drags the picked sphere out of frame, and resetting
-    // the phase mid-flight would snap it there in one frame.
-    val sweepPinned = !animating || DemoSettings.qaMode
-    val sweepStopped = inspecting || sweepPinned || focusing
+    val sweepMotion = remember { MaterialStudio.SweepMotion() }
+    // Three ways to stop the sweep, and they end differently. The pause button **glides** the
+    // wall to its canonical framing, so it is framed the same way every time it is stilled —
+    // writing the phase there was a one-frame jump of the whole wall. QA mode, and a wall
+    // nobody is looking at (Inspect), take that framing at once. A focus flight (#3609) merely
+    // *suspends* the sweep: a yaw still travelling under the dolly drags the picked sphere out
+    // of frame, and moving the phase mid-flight would move the sphere with it.
     LifecycleAwareLaunchedEffect(animating, inspecting, focusing, DemoSettings.qaMode) {
-        if (sweepStopped) {
-            if (sweepPinned && !focusing) {
-                sweepPhase.floatValue = MaterialStudio.STATIC_SWEEP_PHASE
+        when {
+            focusing -> sweepMotion.hold()
+            DemoSettings.qaMode || (inspecting && !animating) -> {
+                sweepMotion.pin()
+                sweepPhase.floatValue = sweepMotion.phase
+                renderInvalidator.requestRender()
             }
-            return@LifecycleAwareLaunchedEffect
-        }
-        var lastNanos = 0L
-        while (true) {
-            withFrameNanos { nanos ->
-                if (lastNanos != 0L) {
-                    val advance =
-                        (nanos - lastNanos) / (MaterialStudio.SWEEP_PERIOD_MILLIS * 1_000_000.0)
-                    sweepPhase.floatValue = ((sweepPhase.floatValue + advance) % 1.0).toFloat()
+            inspecting -> sweepMotion.hold()
+            else -> {
+                var lastNanos = 0L
+                var settled = false
+                while (!settled) {
+                    withFrameNanos { nanos ->
+                        val delta = if (lastNanos == 0L) 0f else (nanos - lastNanos) / 1e9f
+                        lastNanos = nanos
+                        if (animating) sweepMotion.cruise(delta) else settled = sweepMotion.settle(delta)
+                        sweepPhase.floatValue = sweepMotion.phase
+                        // The phase is read by [galleryManipulator]'s `yawProvider`, i.e. from
+                        // inside the render loop — which under `FrameRatePolicy.OnDemand` is
+                        // parked while the wall is still. Writing it is therefore invisible to
+                        // the gate: "Animate the camera" flipped the label, this loop ran on the
+                        // *Compose* frame clock, and the picture did not move (measured: 0
+                        // presented frames in 20 s, pixel-identical captures, while a single drag
+                        // woke it and it then held 54 fps on its own). A manipulator advanced
+                        // from outside the render loop is exactly the case
+                        // `CameraGestureDetector.CameraManipulator.isFrameActive` says it cannot
+                        // express and hands to [RenderInvalidator]: sustaining works, the rising
+                        // edge needs a push.
+                        renderInvalidator.requestRender()
+                    }
                 }
-                lastNanos = nanos
             }
         }
     }
@@ -387,24 +410,25 @@ private fun StudioSection(
     )
     // Inspect's idle orbit. Built here rather than through
     // `rememberHeroOrbitCameraManipulator` for one reason: its yaw has to *start* at
-    // [handoverYaw] (#3624), and the factory's own animator owns the absolute yaw. The spin
-    // is therefore an offset from the hand-over, and it is re-zeroed on every entry into
-    // Inspect — including an entry with the orbit paused, where a stale offset would be a
-    // jump of whatever angle the last visit happened to stop at.
-    val heroSpin = remember { Animatable(0f) }
-    LaunchedEffect(inspecting, animating, DemoSettings.qaMode) {
-        heroSpin.snapTo(0f)
-        if (!inspecting || !animating || DemoSettings.qaMode) return@LaunchedEffect
-        while (true) {
-            heroSpin.snapTo(0f)
-            heroSpin.animateTo(
-                targetValue = 360f,
-                animationSpec = tween(
-                    durationMillis = MaterialStudio.ORBIT_PERIOD_MILLIS,
-                    easing = LinearEasing,
-                ),
-            )
-        }
+    // [handoverYaw] (#3624), and the factory's own turntable owns the absolute yaw. The spin
+    // is therefore an offset from the hand-over, re-zeroed on every crossing of the Inspect
+    // door — [changeMode] does it in the same breath as it writes [handoverYaw], so no frame
+    // ever draws the new hand-over with the old spin still on top of it.
+    //
+    // It is the shared [OrbitSpin], advanced by the manipulator on the render clock. The
+    // hand-rolled looping tween it replaces was re-zeroed whenever `animating` flipped: "Pause
+    // the camera" cut the view back to the hand-over yaw in one frame. Pausing now coasts to a
+    // stop where the orbit stands, and resuming eases off from there.
+    val heroSpin = remember { OrbitSpin() }
+    val heroSpinning = rememberUpdatedState(inspecting && animating)
+    // Same rising edge as the wall sweep, one level further out: the spin is advanced by the
+    // manipulator on the render clock, so while it runs it keeps itself alive — but the tap that
+    // *starts* it changes nothing the gate can see, and a parked Inspect orbit would never take
+    // off. One push per toggle; the motion sustains itself from there.
+    LaunchedEffect(inspecting && animating) { renderInvalidator.requestRender() }
+    LaunchedEffect(DemoSettings.qaMode) {
+        heroSpin.reset()
+        renderInvalidator.requestRender()
     }
     // Deep-link zoom override (#1571), as `rememberHeroOrbitCameraManipulator` applies it.
     val heroOrbitRadius = DemoSettings.cameraDistance ?: heroRadius
@@ -414,12 +438,24 @@ private fun StudioSection(
                 if (DemoSettings.qaMode) {
                     MaterialStudio.STATIC_ORBIT_YAW
                 } else {
-                    handoverYaw.floatValue + heroSpin.value
+                    handoverYaw.floatValue + heroSpin.yawDegrees
                 }
             },
             radius = heroOrbitRadius,
             yHeight = HERO_Y_HEIGHT,
             target = Position(0f, 0f, 0f),
+            spin = heroSpin,
+            spinDegreesPerSecond = {
+                if (heroSpinning.value && !DemoSettings.qaMode) {
+                    OrbitSpin.degreesPerSecond(MaterialStudio.ORBIT_PERIOD_MILLIS)
+                } else {
+                    0f
+                }
+            },
+            // Eases back rather than keeping the user's framing (#3642): the flight out of
+            // Inspect starts from `handoverYaw + heroSpin`, the AUTHORED yaw, so a camera left
+            // on the user's azimuth for good would cut to it on every exit.
+            resume = HeroOrbitResume.ReturnToAuthoredPath,
         )
     }
 
@@ -473,6 +509,10 @@ private fun StudioSection(
                 Position(anchor.x * t, anchor.y * t, anchor.z * t)
             },
             yHeightProvider = { focusZoom.value * focusYHeightState.value },
+            // The wall sweep is a choreography, not a turntable: carried on from wherever the
+            // user left it — behind the wall, say — it would show nothing. It eases back onto
+            // its path instead of cutting to it (#3642).
+            resume = HeroOrbitResume.ReturnToAuthoredPath,
         )
     }
 
@@ -484,13 +524,21 @@ private fun StudioSection(
      * must start. Without that the transition is continuous in one direction only.
      */
     fun changeMode(target: MaterialsMode) {
+        if (target == MaterialsMode.Inspect && !inspecting) {
+            // Inspect opens on the hand-over pose, whatever the last visit left behind: a drag
+            // from a few seconds ago would otherwise still hold this camera when it comes back
+            // on screen. Nobody is looking through it right now, so there is no cut to see.
+            heroManipulator.resumeAuto(blendMillis = 0L)
+        }
         if (!DemoSettings.qaMode) {
             if (target == MaterialsMode.Inspect && !inspecting) {
                 handoverYaw.floatValue = galleryYaw()
+                heroSpin.reset()
             } else if (inspecting && target != MaterialsMode.Inspect) {
                 // Compare draws from a fixed camera node, so nothing has moved since the
                 // hand-over; the hero orbit adds its own travel on top of it.
-                if (!compare) handoverYaw.floatValue += heroSpin.value
+                if (!compare) handoverYaw.floatValue += heroSpin.yawDegrees
+                heroSpin.reset()
             }
         }
         onModeChange(target)
@@ -530,8 +578,12 @@ private fun StudioSection(
         // because the flight has not started yet.
         if (!DemoSettings.qaMode) handoverYaw.floatValue = galleryYaw()
         // A drag earlier in the session leaves the manipulator in user control, where the two
-        // providers above are ignored — without this the dolly would simply not play.
-        galleryManipulator.resumeAuto()
+        // providers above are ignored — without this the dolly would simply not play. What the
+        // user changed is eased away across the flight itself (#3642), so the dolly leaves from
+        // the pose on screen and still lands on the authored one Inspect opens on.
+        galleryManipulator.resumeAuto(
+            blendMillis = if (DemoSettings.qaMode) 0L else FOCUS_FLIGHT_MILLIS.toLong(),
+        )
         flightJob?.cancel()
         flightJob = focusScope.launch {
             focusZoom.animateTo(
@@ -574,7 +626,7 @@ private fun StudioSection(
         comparisonCamera.position = Position(sin(yaw) * heroRadius, 0f, cos(yaw) * heroRadius)
         comparisonCamera.lookAt(Position(0f))
     }
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
     // `Node.name` carries the material id — the picker hands back the picked Node, not an
@@ -803,6 +855,7 @@ private fun StudioSection(
                     inspecting -> heroManipulator
                     else -> galleryManipulator
                 },
+                renderInvalidator = renderInvalidator,
                 onGestureListener = gestureListener,
                 // The wall's positions are the layout; letting the union bounding box
                 // re-centre the scene would move them, and the Compare pair's symmetry about
@@ -880,13 +933,39 @@ private fun StudioSection(
                     val focused = !inspecting && focusIndex == index
                     Text(
                         caption,
-                        modifier = Modifier.offset {
-                            @Suppress("UNUSED_EXPRESSION")
-                            labelFrame
-                            val point = view.worldToScreen(anchor)
-                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                        }.width(captionWidth)
+                        modifier = Modifier
+                            // #3802: the wall is flat and captioned for a roughly head-on
+                            // view; the orbit itself stays completely free (this demo exists
+                            // to turn a reflection around), so instead of bounding the drag,
+                            // neighbouring captions fade out as the camera turns away from
+                            // front-on — they would otherwise converge on screen under
+                            // perspective and overlap. Inspect mode has one subject (or a
+                            // fixed Compare pair) with no neighbour to collide with, so its
+                            // captions stay at full opacity.
+                            .graphicsLayer {
+                                @Suppress("UNUSED_EXPRESSION")
+                                labelFrame
+                                alpha = if (inspecting) {
+                                    1f
+                                } else {
+                                    orbitLabelFadeAlpha(
+                                        orbitYawDeviationDegrees(
+                                            eye = galleryManipulator.getTransform().position,
+                                            // Matches `galleryManipulator`'s own `target`
+                                            // below — the wall pivots around the origin.
+                                            target = Position(0f, 0f, 0f),
+                                            referenceYawDegrees = 0f,
+                                        ),
+                                    )
+                                }
+                            }
+                            .offset {
+                                @Suppress("UNUSED_EXPRESSION")
+                                labelFrame
+                                val point = view.worldToScreen(anchor)
+                                IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
+                                    ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
+                            }.width(captionWidth)
                             .padding(horizontal = SceneViewTokens.Space.xs)
                             .background(
                                 if (focused) {
@@ -1159,7 +1238,7 @@ private fun OcclusionSection(
     // invisible plane — and the ground truth is one tap away, not the other way round.
     var occluderVisible by remember { mutableStateOf(false) }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_materials_title),

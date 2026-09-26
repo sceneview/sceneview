@@ -43,7 +43,23 @@ on:
     # No paths-ignore on PRs: the jobs below are the required checks on `main`,
     # so the workflow must run (and report `skipped` legs) on every PR — the
     # `changes` job does the path triage in seconds.
+  # `force-all` is declared HERE as well as under `workflow_call` because
+  # release-fast.yml dispatches this workflow on the release branch to start the
+  # release PR's checks (#3664), and that run must produce ALL nine required
+  # contexts deterministically. Without the input, the release run would depend
+  # on the release commit happening to touch a path under the `shared` anchor —
+  # it does today (`gradle.properties`), but "the required checks appear because
+  # the version bump lives in a filtered path" is the kind of implicit coupling
+  # that produced #3664 in the first place. An input costs four lines and says
+  # it out loud.
   workflow_dispatch:
+    inputs:
+      force-all:
+        description: >-
+          Run every job regardless of the path filter (used by release-fast.yml
+          to start a release PR's required checks).
+        type: boolean
+        default: false
   # Allows nightly-ci.yml to invoke this workflow as a reusable workflow so
   # the scheduled full-validation run reuses these job definitions instead
   # of copy-pasting them. See #1324.
@@ -67,14 +83,21 @@ on:
 # cancelled check that left `CI Gate` red and blocked squash auto-merge
 # (bit #2062 and #1818).
 #
-# Keying PRs on their HEAD sha means a run is cancelled ONLY when a new commit
-# is genuinely pushed to that same PR — a base-ref recompute keeps the head sha
-# unchanged, so other PRs' runs are left alone. Pushes to `main` instead use
-# their immutable commit sha and never cancel in progress: every pushed commit
-# must finish path detection against its own parent, even when merges land in
-# quick succession. Other events fall back to `github.ref`.
+# The fix that followed (2026-05) keyed PRs on their HEAD sha — which also
+# meant a new commit on the same PR got a NEW group and never cancelled the
+# previous one: over 2026-09-12..26, 52 superseded PR runs (~790 runner-min,
+# ~19 % of CI's PR minutes) ran to the end for nothing, while the same window
+# shows zero same-sha re-fires. PRs are now keyed on their NUMBER: a new commit
+# cancels the stale run, and different PRs never share a group. Should a
+# same-sha re-fire ever come back, it only replaces an in-flight run with an
+# identical one — the `CI Gate` aggregate it used to turn red is gone (#1370),
+# and each required check reads its latest run. Pushes to `main` keep their
+# immutable commit sha and never cancel in progress: every pushed commit must
+# finish path detection against its own parent, even when merges land in quick
+# succession. Other events (workflow_dispatch from release-fast.yml,
+# workflow_call from nightly-ci.yml) fall back to `github.ref`.
 concurrency:
-  group: ci-${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha || github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
@@ -353,6 +376,48 @@ jobs:
       - name: Check changelog fragment format
         run: bash .claude/scripts/check-changelog-fragments.sh
 
+  # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
+  # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until
+  # this job existed, its header named a blocking check in `ci.yml` ->
+  # `repo-hygiene` — a job that never existed, pointing at a script that had
+  # been deleted with the agent harness (#3244). That is the failure mode
+  # #3650 is about: not an absent guard, a guard everyone believed was there.
+  # Four contradictory tallies accumulated in that header behind a green CI
+  # before anyone noticed.
+  #
+  # It is advisory by maintainer decision, and the reason is in the script's
+  # own header: the ledger records a JUDGEMENT ("genuinely Android-only" vs
+  # "not ported yet") that no script can make. A blocking check would force
+  # every PR adding a demo to also edit a cross-platform ledger, correctly, on
+  # the spot, or go red — buying ledger accuracy with friction on the work the
+  # ledger describes. So the drift is annotated on the PR and summarised in the
+  # run, and the job is green either way.
+  #
+  # NOT a required status check on `main`, and must not become one. Belt and
+  # braces: the script exits 0 by construction AND the job is
+  # `continue-on-error`, so even a bug in the script (a bad `sed`, a missing
+  # file) cannot turn this into a gate by accident.
+  #
+  # No path filter: it is a checkout plus a bash script over ~100 small source
+  # files, it needs no JDK / Xcode / Gradle, and it finishes in seconds. Gating
+  # it on a filter would mostly add a filter to maintain.
+  demo-parity:
+    name: Demo catalogue parity (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      # The script reads the ledger with PyYAML. It already degrades to a
+      # warning when the import fails, so this is about the report actually
+      # running, not about keeping the job green.
+      - name: Ensure PyYAML
+        run: python3 -c 'import yaml' 2>/dev/null || pip3 install --quiet pyyaml
+
+      - name: Compare both demo catalogues with parity-manifest.yml
+        run: bash .claude/scripts/check-demo-id-parity.sh
+
   # ── Android build / test / lint ──────────────────────────────────────────
   # Gap #6 (#1311): the former single "Build & lint" job ran assembleDebug +
   # 2 demo APKs + JaCoCo unit tests + lint sequentially (~8.5 min long pole).
@@ -418,8 +483,14 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
+      # `:samples:android-demo:lintDebug` is here because it was NOT, and that gap is
+      # the whole of #3660: three Compose lint errors sat on `main` behind a green
+      # "Lint" job, because this step only ever linted the two library modules while
+      # the Detekt step below already covered the demo. Local `lintDebug` was the only
+      # thing that saw them. The demo's release-secret guard (#1915) hangs off
+      # `assembleRelease` only, so the debug lint variant needs no secrets.
       - name: Lint
-        run: ./gradlew :sceneview:lintDebug :arsceneview:lintDebug --stacktrace
+        run: ./gradlew :sceneview:lintDebug :arsceneview:lintDebug :samples:android-demo:lintDebug --stacktrace
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml).
@@ -458,6 +529,7 @@ jobs:
           path: |
             sceneview/build/reports/lint-results-debug.html
             arsceneview/build/reports/lint-results-debug.html
+            samples/android-demo/build/reports/lint-results-debug.html
           if-no-files-found: ignore
 
   # ── PR-blocking unit-test gate ───────────────────────────────────────────

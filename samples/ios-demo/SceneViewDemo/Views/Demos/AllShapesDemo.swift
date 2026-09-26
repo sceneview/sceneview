@@ -2,69 +2,55 @@ import SwiftUI
 import RealityKit
 import SceneViewSwift
 
-/// Showcases all 5 geometry types: cube, sphere, cylinder, cone, plane.
+/// `GeometryNode` — the five built-in primitives, one call each.
 /// Named `GeometryDemo` to mirror the Android demo of the same name.
 struct GeometryDemo: View {
     var body: some View {
-        ZStack {
+        DemoScaffold("Geometry Primitives") {
             SceneView { root in
-                // Row of all geometry types
-                let shapes: [(GeometryNode, Float)] = [
-                    (GeometryNode.cube(
-                        size: 0.2,
-                        material: .pbr(color: .systemBlue, metallic: 0.6, roughness: 0.3),
-                        cornerRadius: 0.015
-                    ), -0.6),
-                    (GeometryNode.sphere(
-                        radius: 0.12,
-                        material: .pbr(color: .systemRed, metallic: 0.8, roughness: 0.15)
-                    ), -0.3),
-                    (GeometryNode.cylinder(radius: 0.1, height: 0.25, color: .systemGreen), 0.0),
-                    (GeometryNode.cone(height: 0.25, radius: 0.12, color: .systemOrange), 0.3),
-                    // `GeometryNode.plane` builds the mesh in the XZ plane (flat,
-                    // normal pointing +Y) to match the Android convention. From
-                    // this demo's downward-tilted orbit camera it renders
-                    // edge-on (invisible), so we stand it upright via a +90°
-                    // rotation around X — the plane now faces +Z toward the
-                    // camera. Library default stays XZ; call `.rotation(...)` to
-                    // re-orient a plane for a camera-facing layout (issue #1058).
-                    (GeometryNode.plane(width: 0.25, depth: 0.25, color: .systemPurple)
-                        .rotation(angle: .pi / 2, axis: [1, 0, 0]), 0.6),
+                let shapes: [(name: String, node: GeometryNode)] = [
+                    ("Cube",
+                     .cube(size: 0.2, material: .pbr(color: .systemBlue, metallic: 0.6, roughness: 0.3),
+                           cornerRadius: 0.015)),
+                    ("Sphere",
+                     .sphere(radius: 0.12, material: .pbr(color: .systemRed, metallic: 0.8, roughness: 0.15))),
+                    ("Cylinder", .cylinder(radius: 0.1, height: 0.25, color: .systemGreen)),
+                    ("Cone", .cone(height: 0.25, radius: 0.12, color: .systemOrange)),
+                    // A plane is built flat on XZ (normal +Y), as on Android: seen
+                    // from the front it is edge-on, so stand it up to face +Z (#1058).
+                    ("Plane",
+                     GeometryNode.plane(width: 0.25, depth: 0.25, color: .systemPurple)
+                        .rotation(angle: .pi / 2, axis: [1, 0, 0])),
                 ]
+                // Two rows (three over two) rather than one: in a portrait
+                // frame a single row of five left the names a few points tall
+                // (#3788). Each name sits under its shape in one light neutral,
+                // readable on the dark stage in both app themes.
+                let columns = 3
+                for (index, shape) in shapes.enumerated() {
+                    let row = index / columns
+                    let inRow = row == 0 ? columns : shapes.count - columns
+                    let x = (Float(index % columns) - Float(inRow - 1) / 2) * 0.46
+                    let y: Float = row == 0 ? 0.3 : -0.36
+                    shape.node.entity.position = [x, y, 0]
+                    root.addChild(shape.node.entity)
 
-                for (node, x) in shapes {
-                    node.entity.position = .init(x: x, y: 0, z: -2)
-                    root.addChild(node.entity)
-                }
-
-                // Labels beneath
-                let labels = ["Cube", "Sphere", "Cylinder", "Cone", "Plane"]
-                let xOffsets: [Float] = [-0.6, -0.3, 0.0, 0.3, 0.6]
-                let labelColors: [UIColor] = [.systemBlue, .systemRed, .systemGreen, .systemOrange, .systemPurple]
-                for i in 0..<labels.count {
-                    let label = TextNode(text: labels[i], fontSize: 0.04, color: labelColors[i], depth: 0.005)
+                    let label = TextNode(text: shape.name, fontSize: 0.075,
+                                         color: UIColor(SceneViewTokens.Glass.onGlass), depth: 0.005)
                         .centered()
-                        .position(.init(x: xOffsets[i], y: -0.25, z: -2))
+                        // 0.29 below the centre: the orbit camera looks down on the
+                        // lower row, so a cone's base projects past 0.24 onto its label.
+                        .position([x, y - 0.29, 0])
                     root.addChild(label.entity)
                 }
             }
             .cameraControls(.orbit)
-            // The cube and sphere use `.pbr(metallic:roughness:)` — this
-            // demo's own caption below claims "PBR materials," but with no
-            // IBL those metallic/rough surfaces have nothing to reflect and
-            // render flat, undercutting the claim. Same `.studio` preset as
-            // ModelViewerDemo (#2114).
-            .environment(.studio)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                Text("5 built-in geometry types with PBR materials")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.bottom, 12)
-            }
+            // The metallic cube and sphere need an IBL to have anything to reflect
+            // (#2114) — lit by the studio HDR, not drawn in front of it: coloured
+            // labels over a photo are unreadable.
+            .environment(.custom(name: "Studio", hdrFile: "studio.hdr", showSkybox: false))
+        } accessory: {
+            DemoHint("Five built-in shapes, each made with one call — drag to orbit")
         }
-        .background(Color.black)
     }
 }

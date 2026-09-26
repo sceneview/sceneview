@@ -1,0 +1,46 @@
+{
+  "manifest_version": "0.3",
+  "name": "sceneview-mcp",
+  "display_name": "SceneView",
+  "version": "4.1.0",
+  "description": "SceneView 3D & AR SDK reference — API docs, samples, code validation and generation.",
+  "long_description": "Serves the SceneView SDK's own reference to any MCP-compatible assistant: node signatures and defaults, platform setup for Android, Apple, Web, Flutter and React Native, complete compilable samples, migration guides, and a validator that checks generated Kotlin or Swift against the real public API before it reaches the reader.",
+  "author": {
+    "name": "SceneView",
+    "url": "https://github.com/sceneview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sceneview/sceneview.git"
+  },
+  "homepage": "https://sceneview.github.io/",
+  "documentation": "https://github.com/sceneview/sceneview/tree/main/mcp#readme",
+  "support": "https://github.com/sceneview/sceneview/issues",
+  "license": "MIT",
+  "keywords": [
+    "3d",
+    "ar",
+    "android",
+    "ios",
+    "web",
+    "gltf",
+    "filament",
+    "realitykit",
+    "jetpack-compose",
+    "swiftui"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"]
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18"
+    }
+  }
+}

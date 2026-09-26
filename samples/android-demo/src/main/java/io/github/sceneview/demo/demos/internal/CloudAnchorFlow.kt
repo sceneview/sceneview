@@ -71,6 +71,22 @@ enum class RoomQuality {
 }
 
 /**
+ * The better of [this] and [reading] — the mapping meter only ever moves forward while one
+ * anchor is being mapped ([#3834](https://github.com/sceneview/sceneview/issues/3834)).
+ *
+ * `Session.estimateFeatureMapQualityForHosting` is noisy frame to frame: Thomas's
+ * 2026-09-25 QA video caught it reporting "Good enough" then "Mapping" then "Good enough"
+ * again within a couple of frames, with nothing damping the raw value, so the meter read
+ * as if progress had been lost even though the room was, if anything, better mapped than
+ * before. The caller feeds every raw reading through this and keeps the result, so the
+ * displayed quality can only equal or beat the best the session has seen so far. It resets
+ * to [RoomQuality.Insufficient] itself whenever mapping restarts for a new anchor — this
+ * function has no memory of its own.
+ */
+fun RoomQuality.advancedBy(reading: RoomQuality): RoomQuality =
+    if (reading.ordinal > ordinal) reading else this
+
+/**
  * Why no Cloud Anchor call on this build can succeed, independent of what the user does
  * on screen.
  *
@@ -194,7 +210,7 @@ sealed interface CloudAnchorTask {
  * @property step which half of the flow is showing.
  * @property blocker why no Cloud call can succeed at all, or `null`.
  * @property tracking ARCore's camera is tracking.
- * @property anchorPlaced the user has tapped a plane in the Host step.
+ * @property anchorPlaced the controller has placed on a usable surface in the Host step.
  * @property roomQuality ARCore's feature-map estimate around the placed anchor.
  * @property host the host request's lifecycle.
  * @property resolve the resolve request's lifecycle.
@@ -234,7 +250,7 @@ private fun CloudAnchorFlowState.notTrackingStatus(): CloudAnchorStatus =
 
 /** Every action the screen can offer. [allows] decides which of them are live right now. */
 enum class CloudAnchorAction {
-    /** Tap a detected plane to drop the anchor to be hosted. */
+    /** Arm automatic placement on the first usable surface in the Host step. */
     PlaceAnchor,
 
     /** Upload the placed anchor and get a code back. */
@@ -293,6 +309,7 @@ fun CloudAnchorFlowState.allows(action: CloudAnchorAction): Boolean {
             cloudReachable &&
                 step == CloudAnchorStep.Host &&
                 anchorPlaced &&
+                tracking &&
                 roomQuality != RoomQuality.Insufficient &&
                 host !is CloudAnchorTask.Succeeded &&
                 host != CloudAnchorTask.Running
@@ -389,7 +406,7 @@ fun CloudAnchorBlocker.message(): String = when (this) {
  * The status sentence for [this], in strict priority order.
  *
  * A blocker outranks everything. Within a step, a live request outranks the coaching
- * that led to it — the fix for the invisible-progress bug: "Hosting the anchor…" is now
+ * that led to it — the fix for the invisible-progress bug: "Uploading the room scan to Google Cloud…" is now
  * derived from `host == Running`, not from a String nothing read.
  */
 fun CloudAnchorFlowState.status(): CloudAnchorStatus {
@@ -402,7 +419,7 @@ fun CloudAnchorFlowState.status(): CloudAnchorStatus {
 
 private fun CloudAnchorFlowState.hostStatus(): CloudAnchorStatus = when {
     host == CloudAnchorTask.Running ->
-        CloudAnchorStatus("Hosting the anchor…", DemoStatusTone.Progress)
+        CloudAnchorStatus("Uploading the room scan to Google Cloud…", DemoStatusTone.Progress)
     host is CloudAnchorTask.Failed ->
         CloudAnchorStatus(host.failure.message(), DemoStatusTone.Blocked)
     host is CloudAnchorTask.Succeeded -> CloudAnchorStatus(
@@ -412,7 +429,7 @@ private fun CloudAnchorFlowState.hostStatus(): CloudAnchorStatus = when {
     )
     !tracking -> notTrackingStatus()
     !anchorPlaced ->
-        CloudAnchorStatus("Tap a surface to place the anchor.", DemoStatusTone.Guidance)
+        CloudAnchorStatus("Move slowly to find a surface.", DemoStatusTone.Guidance)
     roomQuality == RoomQuality.Insufficient ->
         CloudAnchorStatus("Walk around the anchor to map the room.", DemoStatusTone.Guidance)
     roomQuality == RoomQuality.Sufficient ->
@@ -423,7 +440,7 @@ private fun CloudAnchorFlowState.hostStatus(): CloudAnchorStatus = when {
 
 private fun CloudAnchorFlowState.resolveStatus(): CloudAnchorStatus = when {
     resolve == CloudAnchorTask.Running ->
-        CloudAnchorStatus("Resolving the code…", DemoStatusTone.Progress)
+        CloudAnchorStatus("Downloading the anchor and matching this room…", DemoStatusTone.Progress)
     resolve is CloudAnchorTask.Failed ->
         CloudAnchorStatus(resolve.failure.message(), DemoStatusTone.Blocked)
     resolve is CloudAnchorTask.Succeeded -> CloudAnchorStatus(

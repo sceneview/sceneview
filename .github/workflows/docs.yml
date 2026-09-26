@@ -20,8 +20,15 @@ on:
   # website + docs (#1311, #1321). The repo runs a continuous
   # high-merge-rate cycle — a Pages rebuild only adds value when
   # documentation or website content actually changes.
-  #   - `**/*.md` covers CHANGELOG.md / MIGRATION.md / CONTRIBUTING.md
-  #     (synced into the MkDocs site) plus marketing/codelabs/*.md.
+  #   - The list is exactly what the build job below reads: the MkDocs tree,
+  #     the static landing page, the two root files synced into the docs
+  #     (CHANGELOG.md, CONTRIBUTING.md), llms.txt, the web-demo static site
+  #     copied to /web-demo/, and the pinned Python deps.
+  #   - It used to be `**/*.md`, which matched the `changelog.d/` fragment
+  #     every PR carries — so nearly every merge redeployed an unchanged site
+  #     (107 of 125 merges over 2026-09-12..26; 50 with this list).
+  #     `samples/web-demo/site/**` was never listed and only reached the live
+  #     /web-demo/ route through that accident; it is listed now.
   #   - the workflow file itself is listed so changes to the deploy
   #     logic re-run it.
   push:
@@ -30,7 +37,11 @@ on:
       - 'docs/**'
       - 'website-static/**'
       - 'llms.txt'
-      - '**/*.md'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
+      - 'marketing/codelabs/**'
+      - 'samples/web-demo/site/**'
+      - '.github/workflows/requirements/docs*.txt'
       - '.github/workflows/docs.yml'
   release:
     types: [published]
@@ -100,14 +111,20 @@ jobs:
           # from source; `/llms-full.txt` is now served from
           # `docs/docs/llms-full.txt` (the file `sync-versions.sh` keeps
           # current), so the published surface cannot drift by construction.
-          # `check-llms-drift.sh` fails if the committed copy ever returns.
+          # (An earlier version of this comment credited a
+          # `check-llms-drift.sh` guard; no such script exists in the repo.
+          # The `rm -f` below and this one are the whole mechanism.)
           rm -f site/llms-full.txt
 
           # `.well-known/` ships only the two verified deep-link manifests
           # (`assetlinks.json` + `apple-app-site-association`). The
-          # `README.md` and `llms.txt` that sit alongside them in source
-          # are repo-internal docs — drop them so they are not published
-          # under the live `/.well-known/` route (#1998).
+          # `README.md` that sits alongside them in source is a repo-internal
+          # doc — drop it so it is not published under the live
+          # `/.well-known/` route (#1998). The third file this line used to
+          # drop, `.well-known/llms.txt`, was a stale copy of the root
+          # `llms.txt` that nothing ever served; it has been deleted from
+          # source, and the `rm -f` still names it so a returning copy stays
+          # unpublished.
           rm -f site/.well-known/README.md site/.well-known/llms.txt
 
           # `.nojekyll` disables GitHub Pages' Jekyll build on the
@@ -136,7 +153,16 @@ jobs:
             cp marketing/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-3d-compose.md 2>/dev/null || true
             cp marketing/codelabs/codelab-ar-compose.md docs/docs/codelabs/codelab-ar-compose.md 2>/dev/null || true
           fi
-          cp MIGRATION.md docs/docs/migration.md 2>/dev/null || true
+          # NOT `cp MIGRATION.md docs/docs/migration.md`. That direction is
+          # backwards and it published an empty migration guide for as long as
+          # it was here: `docs/docs/migration.md` is the 29 kB source (tracked,
+          # NOT in .gitignore, updated by every release commit), while root
+          # `MIGRATION.md` is a 1.3 kB pointer *to* it. The copy overwrote the
+          # guide with the pointer on every docs build, so `/docs/migration/`
+          # served a stub that referred the reader to itself — and to
+          # `sceneview.github.io/migration/`, which is a 404. Compare
+          # `docs/docs/llms.txt`, a genuine generated mirror: it is
+          # `.gitignore`d (line 193), which is how a mirror is marked here.
           cp CHANGELOG.md docs/docs/changelog.md 2>/dev/null || true
           cp CONTRIBUTING.md docs/docs/contributing.md 2>/dev/null || true
 

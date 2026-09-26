@@ -3,7 +3,6 @@ package io.github.sceneview.haptic
 import android.os.Build
 import android.os.VibrationEffect
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -12,9 +11,10 @@ import org.junit.Test
  * delegates every platform call to an internal [HapticEngine], so a
  * recording fake captures the exact call each preset issues.
  *
- * If a future refactor wants to change a preset's mapping (e.g. swap
- * `medium` from `EFFECT_TICK` to `EFFECT_CLICK`), update this test in the
- * same PR with a CHANGELOG entry under "Changed" — the mapping is part of
+ * These tests cover the vibrator-only instance (no view, primitives
+ * unsupported); the full tier chain is pinned in [HapticRecipesTest]. If a
+ * future refactor changes a preset's mapping, update this test in the
+ * same PR with a CHANGELOG entry — the mapping is part of
  * the public contract because every demo + every consumer relies on the
  * "this preset feels like this" muscle memory.
  */
@@ -36,22 +36,24 @@ class SceneViewHapticTest {
     // ── Preset → platform mapping (API 29+ path) ──────────────────────────
 
     @Test
-    fun light_onModernApi_playsEffectClick() {
+    fun light_onModernApi_playsEffectTick() {
         val (haptic, engine) = newHaptic(sdkInt = Build.VERSION_CODES.TIRAMISU)
         haptic.light()
         assertEquals(
-            "Light → EFFECT_CLICK (API 29+)",
-            listOf<HapticCall>(HapticCall.Predefined(VibrationEffect.EFFECT_CLICK)),
+            "Light → EFFECT_TICK (API 29+): the lightest predefined effect",
+            listOf<HapticCall>(HapticCall.Predefined(VibrationEffect.EFFECT_TICK)),
             engine.calls,
         )
     }
 
     @Test
-    fun medium_onModernApi_playsEffectTick() {
+    fun medium_onModernApi_playsEffectClick_strongerThanLight() {
+        // Regression: medium used to be EFFECT_TICK and light EFFECT_CLICK — medium felt
+        // weaker than light. light < medium < heavy, as on iOS.
         val (haptic, engine) = newHaptic()
         haptic.medium()
         assertEquals(
-            listOf<HapticCall>(HapticCall.Predefined(VibrationEffect.EFFECT_TICK)),
+            listOf<HapticCall>(HapticCall.Predefined(VibrationEffect.EFFECT_CLICK)),
             engine.calls,
         )
     }
@@ -77,25 +79,55 @@ class SceneViewHapticTest {
     }
 
     @Test
-    fun warning_playsTripleTickWaveform() {
+    fun warning_onModernApi_isNeverARawWaveform() {
         val (haptic, engine) = newHaptic()
         haptic.warning()
-        assertEquals(1, engine.calls.size)
-        val call = engine.calls.single()
-        assertTrue("Warning is a waveform, was: $call", call is HapticCall.Waveform)
-        val timings = (call as HapticCall.Waveform).timings.toList()
-        assertEquals(listOf(0L, 30L, 30L, 30L), timings)
+        assertEquals(
+            listOf<HapticCall>(HapticCall.Predefined(VibrationEffect.EFFECT_DOUBLE_CLICK)),
+            engine.calls,
+        )
     }
 
     @Test
-    fun error_playsDescendingPulseWaveform() {
+    fun error_onModernApi_isNeverARawWaveform() {
         val (haptic, engine) = newHaptic()
         haptic.error()
-        assertEquals(1, engine.calls.size)
-        val call = engine.calls.single()
-        assertTrue("Error is a waveform, was: $call", call is HapticCall.Waveform)
-        val timings = (call as HapticCall.Waveform).timings.toList()
-        assertEquals(listOf(0L, 50L, 30L, 50L, 30L, 50L), timings)
+        assertEquals(
+            listOf<HapticCall>(HapticCall.Predefined(VibrationEffect.EFFECT_DOUBLE_CLICK)),
+            engine.calls,
+        )
+    }
+
+    @Test
+    fun warningAndError_onLegacyApi_keepTheirWaveforms() {
+        val (haptic, engine) = newHaptic(sdkInt = Build.VERSION_CODES.O)
+        haptic.warning()
+        haptic.error()
+        val timings = engine.calls.map { (it as HapticCall.Waveform).timings.toList() }
+        assertEquals(listOf(listOf(0L, 30L, 30L, 30L), listOf(0L, 50L, 30L, 50L, 30L, 50L)), timings)
+    }
+
+    @Test
+    fun presets_withSupportedPrimitives_playCompositions() {
+        val engine = RecordingHapticEngine(Build.VERSION_CODES.TIRAMISU, primitivesSupported = true)
+        val haptic = AndroidSceneViewHaptic(engine = engine, hasVibratePermission = true)
+        haptic.light()
+        haptic.medium()
+        haptic.heavy()
+        val scales = engine.calls.map { (it as HapticCall.Composed).primitives.single().scale }
+        assertEquals("light 0.7 TICK < medium 0.7 CLICK < heavy 1.0 CLICK", listOf(0.7f, 0.7f, 1.0f), scales)
+    }
+
+    @Test
+    fun touchFeedbackOff_nothingVibrates() {
+        val engine = RecordingHapticEngine(Build.VERSION_CODES.R, touchFeedbackEnabled = false)
+        val haptic = AndroidSceneViewHaptic(engine = engine, hasVibratePermission = true)
+        haptic.light()
+        haptic.warning()
+        haptic.play(ARHapticEvent.Placed)
+        haptic.continuous(0.5f, 100L)
+        haptic.pattern(listOf(HapticEvent(1f, 1f, 10)))
+        assertEquals(emptyList<HapticCall>(), engine.calls)
     }
 
     @Test

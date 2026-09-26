@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
@@ -96,41 +97,59 @@ fun PlaneDiscoveryHandHint(
 
         // Phone glyph, sweeping and tilting with the sine phase.
         val phoneWidth = size.width * 0.24f
-        val phoneHeight = phoneWidth * 1.9f
         val center = Offset(size.width * 0.5f, size.height * 0.42f)
         translate(left = sweep * size.width * 0.20f) {
             rotate(degrees = sweep * 12f, pivot = center) {
-                val phoneRect = Rect(
-                    offset = Offset(center.x - phoneWidth / 2f, center.y - phoneHeight / 2f),
-                    size = Size(phoneWidth, phoneHeight),
-                )
-                // Body.
-                drawRoundRect(
-                    color = color,
-                    topLeft = phoneRect.topLeft,
-                    size = phoneRect.size,
-                    cornerRadius = CornerRadius(5.dp.toPx()),
-                    style = Stroke(width = stroke),
-                )
-                // Screen inset.
-                val inset = 4.dp.toPx()
-                drawRoundRect(
-                    color = color.copy(alpha = 0.5f),
-                    topLeft = phoneRect.topLeft + Offset(inset, inset),
-                    size = Size(phoneRect.width - 2 * inset, phoneRect.height - 2 * inset),
-                    cornerRadius = CornerRadius(2.5.dp.toPx()),
-                    style = Stroke(width = stroke * 0.6f),
-                )
-                // Thumb resting on the lower edge — the "hand" suggestion.
-                drawOval(
-                    color = color,
-                    topLeft = Offset(
-                        center.x - phoneWidth * 0.18f,
-                        phoneRect.bottom - phoneWidth * 0.12f,
-                    ),
-                    size = Size(phoneWidth * 0.36f, phoneWidth * 0.5f),
-                )
+                drawCoachPhone(center = center, width = phoneWidth, color = color, stroke = stroke)
             }
         }
     }
+}
+
+/**
+ * The phone-with-thumb glyph shared by [PlaneDiscoveryHandHint] and [ARCoachingOverlay], so
+ * both onboarding surfaces draw the same device. Height is `1.9 × width`, centred on [center].
+ *
+ * @param fill optional body fill, drawn under the outline — lets the glyph occlude what it
+ *   passes in front of (the coaching overlay's wall).
+ */
+internal fun DrawScope.drawCoachPhone(
+    center: Offset,
+    width: Float,
+    color: Color,
+    stroke: Float,
+    fill: Color? = null,
+) {
+    val height = width * 1.9f
+    val phoneRect = Rect(
+        offset = Offset(center.x - width / 2f, center.y - height / 2f),
+        size = Size(width, height),
+    )
+    val corner = CornerRadius(width * 0.13f)
+    if (fill != null) {
+        drawRoundRect(color = fill, topLeft = phoneRect.topLeft, size = phoneRect.size, cornerRadius = corner)
+    }
+    // Body.
+    drawRoundRect(
+        color = color,
+        topLeft = phoneRect.topLeft,
+        size = phoneRect.size,
+        cornerRadius = corner,
+        style = Stroke(width = stroke),
+    )
+    // Screen inset.
+    val inset = width * 0.104f
+    drawRoundRect(
+        color = color.copy(alpha = color.alpha * 0.5f),
+        topLeft = phoneRect.topLeft + Offset(inset, inset),
+        size = Size(phoneRect.width - 2 * inset, phoneRect.height - 2 * inset),
+        cornerRadius = CornerRadius(width * 0.065f),
+        style = Stroke(width = stroke * 0.6f),
+    )
+    // Thumb resting on the lower edge — the "hand" suggestion.
+    drawOval(
+        color = color,
+        topLeft = Offset(center.x - width * 0.18f, phoneRect.bottom - width * 0.12f),
+        size = Size(width * 0.36f, width * 0.5f),
+    )
 }

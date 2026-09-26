@@ -11,31 +11,25 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -58,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.viewer.ModelThumbnails
 import kotlinx.coroutines.launch
@@ -67,28 +62,29 @@ import kotlinx.coroutines.launch
  * draws between two catalogue rows.
  *
  * It is surfaced (as a caption on the streamed cards only) because it is the one thing a
- * user cannot infer from a model's name and which changes what happens on a tap: a
- * streamed row may still be downloading, and until it lands the tap places that row's own
- * bundled stand-in rather than nothing at all.
+ * user cannot infer from a model's name and which changes what happens next: a streamed
+ * row may still be downloading, and until it lands nothing is placed — the session keeps
+ * scanning and places the real file when it arrives.
  */
 enum class PlacementModelSource { Bundled, Streamed }
 
 /**
- * One row of the canonical tap-to-place model picker.
+ * One row of the canonical placement model picker.
  *
  * Deliberately *flat* — a resolved [assetLocation] and a display name, never a slug plus
  * a resolver plus an index. Both hosts (the AR View tab and the `ar-placement` demo) build
- * the same list shape, so the picker, the status pill and the placement itself all read
- * the **same** row, which is what makes "what does the next tap place?" answerable with
- * one lookup ([#2476](https://github.com/sceneview/sceneview/issues/2476)).
+ * the same list shape, so the picker and the placement itself read the **same** row, which
+ * is what makes "what is being placed?" answerable with one lookup
+ * ([#2476](https://github.com/sceneview/sceneview/issues/2476)).
  *
  * @param id Stable identity used for selection. Survives a list rebuild — an index does
  *   not, and a streamed row landing mid-session must not shift what is armed.
  * @param assetLocation `assets/`-relative path for a bundled GLB, or a `file://…` URI for
  *   a staged streamed one. NEVER null: a streamed row whose download is still in flight
- *   carries its own bundled fallback here, so a tap is never silently swallowed.
+ *   carries its own bundled fallback here for the picker's thumbnail path.
  * @param pending `true` while a streamed row's download is in flight — drives the
- *   "Streaming …" wording on the bar and on the card. The row stays placeable.
+ *   "Streaming …" wording on the card. A pending row is **not** offered to the session:
+ *   the object appears when the real file has landed, never as a stand-in.
  */
 @Immutable
 data class PlacementModel(
@@ -108,6 +104,13 @@ data class PlacementModel(
      * authored in metres (the Khronos Fox is ~140 units long).
      */
     val realWorldSizeMeters: Float = DEFAULT_REAL_WORLD_SIZE_METERS,
+    /**
+     * Whether [realWorldSizeMeters] is the asset's **measured** size (its own bounding box,
+     * or the bounds of a file the user opened) rather than an estimate of what the real
+     * object would be. Decides the pinch read-out's label: "Actual size" vs "Preview size"
+     * (plan §2.3) — the number never claims more than the asset knows.
+     */
+    val sizeIsMeasured: Boolean = false,
     val source: PlacementModelSource = PlacementModelSource.Bundled,
     val pending: Boolean = false,
 ) {
@@ -122,7 +125,7 @@ data class PlacementModel(
 }
 
 /**
- * The one bundled catalogue both tap-to-place entry points offer.
+ * The one bundled catalogue both placement entry points offer.
  *
  * Before this list existed the AR View tab carried `AR_MODELS` (6 entries, helmet first)
  * and `ARPlacementDemo` carried `MODEL_CYCLE` (5 entries) — two hand-maintained lists for
@@ -150,45 +153,43 @@ data class PlacementModel(
  * loads the fox directly, so nothing is deleted, only re-curated.
  */
 val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
-    // Sizes are the real objects', in metres, on their longest axis — see
-    // PlacementModel.realWorldSizeMeters (#3326). The three Khronos furniture/tableware
-    // rows are authored IN METRES and sit on y = 0, so their number here is the asset's
-    // own measured bounding box rather than an estimate (checked against the GLB).
+    PlacementModel(
+        id = "toy-car",
+        displayName = "Toy Car",
+        assetLocation = "models/khronos_toy_car.glb",
+        realWorldSizeMeters = 0.3f, // documented showcase preview
+    ),
+    // Bundled showcases share a 0.3 m longest-axis preview on Android and iOS.
+    // An explicitly imported or measured viewer selection retains its selected size basis.
     PlacementModel(
         id = "soldier",
         displayName = "Soldier",
         assetLocation = "models/threejs_soldier.glb",
-        realWorldSizeMeters = 1.8f, // an adult, standing
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "velvet-sofa",
         displayName = "Velvet Sofa",
         assetLocation = "models/khronos_glam_velvet_sofa.glb",
-        realWorldSizeMeters = 2.19f, // measured: 2.188 m wide
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "sheen-chair",
         displayName = "Sheen Chair",
         assetLocation = "models/khronos_sheen_chair.glb",
-        realWorldSizeMeters = 0.83f, // measured: 0.827 m wide
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "lantern",
         displayName = "Lantern",
         assetLocation = "models/khronos_lantern.glb",
-        realWorldSizeMeters = 1.6f, // the Khronos asset is a street lantern post
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(
         id = "olive-dish",
         displayName = "Olive Dish",
         assetLocation = "models/khronos_iridescent_dish.glb",
-        realWorldSizeMeters = 0.53f, // measured: 0.532 m across
-    ),
-    PlacementModel(
-        id = "toy-car",
-        displayName = "Toy Car",
-        assetLocation = "models/khronos_toy_car.glb",
-        realWorldSizeMeters = 0.18f, // it is a toy — it should read as one
+        realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
 )
 
@@ -237,6 +238,7 @@ fun resolveRequestedExtraPlacementRow(
     if (matchesCatalogue) return null
     val isOpenedFile = location.startsWith("file://")
     val basename = location.substringAfterLast('/')
+    val measuredSize = openedSizeMeters?.takeIf { isOpenedFile && it.isFinite() && it > 0f }
     return PlacementModel(
         id = if (isOpenedFile) OPENED_FILE_PLACEMENT_ROW_ID else REQUESTED_MODEL_PLACEMENT_ROW_ID,
         displayName = (if (isOpenedFile) openedDisplayName else null)
@@ -244,9 +246,8 @@ fun resolveRequestedExtraPlacementRow(
             ?: (if (isOpenedFile) basename else basename.substringBeforeLast('.'))
                 .ifBlank { "Your file" },
         assetLocation = location,
-        realWorldSizeMeters = openedSizeMeters
-            ?.takeIf { isOpenedFile && it.isFinite() && it > 0f }
-            ?: PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS,
+        realWorldSizeMeters = measuredSize ?: PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS,
+        sizeIsMeasured = measuredSize != null,
     )
 }
 
@@ -314,78 +315,16 @@ fun List<PlacementModel>.armed(picker: PlacementPickerState): PlacementModel? =
     firstOrNull { it.id == picker.selectedId } ?: firstOrNull()
 
 /**
- * The canonical bottom action bar of the tap-to-place experience: an extended FAB naming
- * exactly what the next tap will place (tapping it opens the picker) plus an optional
- * Reset that wipes every placement.
+ * The name the picker and the status pill agree on — "Streaming X…" while X is downloading.
  *
- * Both hosts render *this* composable — the AR View tab floats it over the camera, the
- * `ar-placement` demo hands it to [io.github.sceneview.demo.DemoScaffold]'s `bottomOverlay`
- * slot so it stacks clear of the Settings FAB. The container differs because the two
- * screens *are* different containers; the control does not.
+ * It used to feed a `PlacementModelBar`, an extended FAB floated over the camera (AR View
+ * tab) or handed to the scaffold's bottom band (`ar-placement` demo). That bar is gone: it
+ * was a theme-coloured control over an untheme-able camera frame, it duplicated the dock's
+ * job, and no other demo in the app puts its two main actions anywhere but the dock. The
+ * label survives because the *sheet* and the coaching line still name the armed model.
  */
 @Composable
-fun PlacementModelBar(
-    model: PlacementModel?,
-    onPickModel: () -> Unit,
-    modifier: Modifier = Modifier,
-    onReset: (() -> Unit)? = null,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ExtendedFloatingActionButton(
-            onClick = onPickModel,
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = PLACEMENT_BAR_HEIGHT),
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            expanded = true,
-            icon = {
-                Icon(imageVector = Icons.Filled.ViewInAr, contentDescription = null)
-            },
-            text = {
-                Column {
-                    Text(
-                        text = stringResource(R.string.ar_picker_model_label),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                    )
-                    Text(
-                        text = model?.let { modelBarLabel(it) }
-                            ?: stringResource(R.string.ar_picker_no_model),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                    )
-                }
-            },
-        )
-
-        if (onReset != null) {
-            FilledIconButton(
-                onClick = onReset,
-                modifier = Modifier.size(PLACEMENT_BAR_HEIGHT),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = stringResource(R.string.ar_reset_scene),
-                )
-            }
-        }
-    }
-}
-
-/** The name the bar and the status pill agree on — "Streaming X…" while X is downloading. */
-@Composable
-private fun modelBarLabel(model: PlacementModel): String =
+fun placementModelLabel(model: PlacementModel): String =
     if (model.pending) {
         stringResource(R.string.ar_picker_streaming, model.displayName)
     } else {
@@ -410,15 +349,19 @@ fun PlacementModelPickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
 
-    ModalBottomSheet(
+    DemoModalBottomSheet(
         onDismissRequest = { picker.dismissSheet() },
         sheetState = sheetState,
     ) {
         Column(
-            modifier = Modifier.padding(
-                horizontal = SceneViewTokens.Space.md,
-                vertical = SceneViewTokens.Space.sm,
-            ),
+            modifier = Modifier
+                .padding(
+                    horizontal = SceneViewTokens.Space.md,
+                    vertical = SceneViewTokens.Space.sm,
+                )
+                // #3716: the container now reaches the true bottom edge — clear the
+                // navigation bar explicitly instead of relying on the system inset.
+                .navigationBarsPadding(),
         ) {
             Text(
                 text = stringResource(R.string.ar_pick_a_model),
@@ -453,6 +396,31 @@ fun PlacementModelPickerSheet(
         }
     }
 }
+
+/**
+ * The picker card's thumbnail resource for [model], or `null` for the generic AR glyph
+ * ([#3830](https://github.com/sceneview/sceneview/issues/3830)).
+ *
+ * Keyed off [PlacementModel.assetLocation] rather than [PlacementModel.source]: a bundled
+ * row's location is always an `assets/`-relative bundled path, and — per
+ * `ARPlacementDemo`'s model list — a **streamed** row's location is either that same shape
+ * (its own bundled fallback, carried there while the download is pending or unavailable) or
+ * a `file://` URI once the real file has landed. The bundled-path case resolves to a real
+ * generated thumbnail exactly like a bundled row's; the `file://` case has no generated
+ * thumbnail for the downloaded bytes and correctly falls through to the glyph.
+ *
+ * Showing the fallback's picture under a streamed row's name used to be avoided on the
+ * theory that it repeats the #2940 defect (a fallback mistaken for the real asset). That
+ * concern was about **several rows sharing one fallback** — not the case here: the
+ * `ar_placement` category's six fallbacks are pairwise distinct (#2355, #3324), pinned by
+ * `SampleAssetsTest`, and four of the six were deliberately chosen to *resemble* the
+ * streamed model they stand in for ("Coffee Mug" → the iridescent dish, "Wooden End Table"
+ * → the sheen chair, …). A cube glyph on every streamed card was strictly less honest than
+ * the picture of what will actually render if the row is tapped right now.
+ */
+internal fun placementThumbnailResFor(model: PlacementModel): Int? =
+    model.assetLocation.takeUnless { it.startsWith("file://") }
+        ?.let { ModelThumbnails.resourceFor(it.substringAfterLast('/').substringBeforeLast('.')) }
 
 @Composable
 internal fun PlacementModelCard(
@@ -493,24 +461,11 @@ internal fun PlacementModelCard(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                // The generated thumbnail of the row's own asset when there is one, the
-                // generic AR glyph otherwise. Before #3324 every card rendered the same
-                // glyph, so the grid was six identical tiles under six labels and the only
-                // way to know what a row looked like was to place it. Streamed rows keep
-                // the glyph: their bytes are not in the APK, so there is no thumbnail to
-                // show that would be honest about what lands.
-                //
-                // Guarded on `Bundled`, and that guard is load-bearing: a streamed row
-                // whose download is still in flight carries its FALLBACK's asset path in
-                // `assetLocation`, so an unguarded lookup finds the fallback's thumbnail
-                // and the card shows "Coffee Mug" over a picture of the olive dish. That
-                // is the #2940 defect drawn as a picture instead of rendered in a frame.
-                val thumbnail = model.source.takeIf { it == PlacementModelSource.Bundled }
-                    ?.let {
-                        ModelThumbnails.resourceFor(
-                            model.assetLocation.substringAfterLast('/').substringBeforeLast('.'),
-                        )
-                    }
+                // The generated thumbnail of what this card's `assetLocation` currently
+                // resolves to, the generic AR glyph otherwise. Before #3324 every card
+                // rendered the same glyph, so the grid was six identical tiles under six
+                // labels and the only way to know what a row looked like was to place it.
+                val thumbnail = placementThumbnailResFor(model)
                 if (thumbnail != null) {
                     Image(
                         painter = painterResource(thumbnail),
@@ -557,13 +512,6 @@ internal fun PlacementModelCard(
         }
     }
 }
-
-/**
- * Height of the bar's two controls — the M3 minimum touch target for a primary action,
- * and the diameter that makes the Reset button read as its equal rather than as an
- * afterthought beside it.
- */
-private val PLACEMENT_BAR_HEIGHT = 56.dp
 
 // Picker-card geometry. Not `DESIGN.md` tokens, because none of these is one: they are the
 // size of a model thumbnail and the height at which the grid stops growing and starts

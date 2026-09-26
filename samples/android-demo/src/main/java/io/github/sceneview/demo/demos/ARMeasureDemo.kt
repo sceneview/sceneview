@@ -1,9 +1,10 @@
 package io.github.sceneview.demo.demos
 
-import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,9 +26,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.DepthPoint
@@ -48,6 +52,8 @@ import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.demos.internal.MeasureCandidateControl
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -64,7 +70,6 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 
 /** Radius of the sphere dropped on each measured point, in metres (~2.4 cm across). */
@@ -96,13 +101,13 @@ private data class MeasurePoint(
 )
 
 /**
- * AR measurement demo — tap two or more points on the real world and read the distance
+ * AR measurement demo — add two or more points on the real world and read the distance
  * between them.
  *
  * ## What it does
- * Each tap raycasts the camera pixel into the scene and drops an ARCore [Anchor] on
+ * Each frame resolves the visible center target; Add point anchors that exact candidate on
  * whatever it lands on. Consecutive points are joined by a line carrying a world-anchored
- * 3D label with the distance in centimetres. Keep tapping to build a chain (a running
+ * 3D label with the distance in centimetres. Keep adding points to build a chain (a running
  * perimeter), close the loop to measure an outline, and read the bounding box of every
  * point placed so far — width, height and depth.
  *
@@ -113,7 +118,7 @@ private data class MeasurePoint(
  *
  * ## Hit-test strategy
  * Three sources, in descending order of trustworthiness:
- *  1. **A detected [Plane]**, when the tap lands inside its polygon. ARCore has fitted this
+ *  1. **A detected [Plane]**, when the center target lands inside its polygon. ARCore has fitted this
  *     surface over many frames, so it is the most stable target available.
  *  2. **A [DepthPoint]** from the same [Frame.hitTest] call, which resolves geometry ARCore
  *     has depth for but has not grown a plane over.
@@ -151,13 +156,15 @@ fun ARMeasureDemo(onBack: () -> Unit) {
     val points = remember { mutableStateListOf<MeasurePoint>() }
     // World positions of `points`, refreshed from the anchors only when they actually move
     // (see `measurePointsMoved`). Anchors drift as ARCore refines tracking, so this cannot
-    // be computed once at tap time — but neither can it be pushed into Compose state on
+    // be computed once when added — but neither can it be pushed into Compose state on
     // every frame without recomposing the scene subtree at 60 Hz for invisible jitter.
     var worldPoints by remember { mutableStateOf<List<Position>>(emptyList()) }
     var closedLoop by remember { mutableStateOf(false) }
 
     var session by remember { mutableStateOf<Session?>(null) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    val candidateControl = remember { MeasureCandidateControl<MeasureCandidate>() }
+    var candidateReady by remember { mutableStateOf(false) }
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
     var isTracking by remember { mutableStateOf(false) }
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera frame,
     // so the ~1-3 s warm-up on entry doesn't read as a frozen screen (#2484).
@@ -166,19 +173,20 @@ fun ARMeasureDemo(onBack: () -> Unit) {
     // then, so the init scrim below has to read the verdict or it covers the SDK's own
     // explanation card forever.
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
-    // QA camera backdrop (#3308) — see TapToPlaceArSession.
     val cameraStream = rememberARCameraStream(materialLoader)
+    // QA camera backdrop (#3308) — the emulator has no camera stream, so without this the
+    // measuring screen is an empty surface behind its error card, like its sibling demos.
     val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
     var depthSupported by remember { mutableStateOf(false) }
     var useDepthFallback by remember { mutableStateOf(true) }
-    // Why the last tap placed nothing, or where the last placed point came from. Both are
-    // shown to the user: a tap that silently does nothing is the single most confusing
+    // Why Add point placed nothing, or where the last placed point came from. Both are
+    // shown to the user: an action that silently does nothing is the single most confusing
     // thing a measuring tool can do.
-    var lastTapFeedback by remember { mutableStateOf<String?>(null) }
-    // Loudness of `lastTapFeedback`, set in the same branches that set the sentence: the
+    var pointFeedback by remember { mutableStateOf<String?>(null) }
+    // Loudness of `pointFeedback`, set in the same branches that set the sentence: the
     // two failure messages tell the user to move or re-aim the device (Guidance), the
     // success one just confirms a point landed (Progress).
-    var lastTapTone by remember { mutableStateOf(DemoStatusTone.Progress) }
+    var pointTone by remember { mutableStateOf(DemoStatusTone.Progress) }
 
     // Anchors are native ARCore handles: dropping the composable without detaching them
     // leaks them into the session for as long as it lives.
@@ -201,6 +209,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_measure_title),
+        chromeToggleOnTap = false,
         onBack = onBack,
         peekHeader = when {
             worldPoints.isEmpty() -> stringResource(R.string.demo_ar_measure_hint_first)
@@ -219,7 +228,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
             points.clear()
             worldPoints = emptyList()
             closedLoop = false
-            lastTapFeedback = null
+            pointFeedback = null
         },
         controls = {
             Text(
@@ -227,7 +236,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
             )
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = SceneViewTokens.Space.sm),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -247,16 +256,52 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 }
                 Switch(
                     checked = useDepthFallback && depthSupported,
-                    onCheckedChange = { useDepthFallback = it },
+                    onCheckedChange = {
+                        useDepthFallback = it
+                        candidateControl.update(null)
+                        candidateReady = false
+                    },
                     enabled = depthSupported,
                 )
             }
+            SceneActionBar(
+                SceneAction(
+                    label = stringResource(R.string.demo_ar_measure_action_undo),
+                    onClick = {
+                        points.removeLastOrNull()?.anchor?.detach()
+                        worldPoints = points.map { it.anchor.pose.toPosition() }
+                        if (points.size < 3) closedLoop = false
+                        pointFeedback = null
+                    },
+                    enabled = points.isNotEmpty(),
+                ),
+                SceneAction(
+                    label = if (closedLoop) {
+                        stringResource(R.string.demo_ar_measure_action_open)
+                    } else {
+                        stringResource(R.string.demo_ar_measure_action_close)
+                    },
+                    onClick = { closedLoop = !closedLoop },
+                    enabled = points.size > 2,
+                ),
+                SceneAction(
+                    label = stringResource(R.string.demo_ar_measure_action_clear),
+                    onClick = {
+                        points.forEach { it.anchor.detach() }
+                        points.clear()
+                        worldPoints = emptyList()
+                        closedLoop = false
+                        pointFeedback = null
+                    },
+                    enabled = points.isNotEmpty(),
+                ),
+            )
             // The accuracy caveat is not buried in the README only: a user reading a
             // centimetre figure on screen needs to know what it is worth, right there.
             Text(
                 text = stringResource(R.string.demo_ar_measure_accuracy_notice),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 12.dp),
+                modifier = Modifier.padding(top = SceneViewTokens.Space.sm),
             )
         },
         topOverlay = {
@@ -266,11 +311,16 @@ fun ARMeasureDemo(onBack: () -> Unit) {
             // you cannot read (#2727).
             if (worldPoints.size >= 2) {
                 Surface(
-                    color = Color(0xCC161B22),  // SceneView SurfaceDim
-                    contentColor = Color.White,
+                    color = SceneViewTokens.Glass.scrim,
+                    contentColor = SceneViewTokens.Glass.onGlass,
                     shape = MaterialTheme.shapes.large,
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = SceneViewTokens.Space.md,
+                            vertical = SceneViewTokens.Space.sm,
+                        ),
+                    ) {
                         lastSegmentMeters?.let {
                             Text(
                                 text = stringResource(
@@ -296,48 +346,36 @@ fun ARMeasureDemo(onBack: () -> Unit) {
             }
         },
         bottomOverlay = {
-            // Per-tap feedback, including the hit source that produced the point.
+            // Per-point feedback, including the hit source that produced the point.
             AnimatedVisibility(
-                visible = lastTapFeedback != null,
+                visible = pointFeedback != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
                 DemoStatusBanner(
-                    text = lastTapFeedback.orEmpty(),
-                    tone = lastTapTone,
+                    text = pointFeedback.orEmpty(),
+                    tone = pointTone,
                 )
             }
 
             SceneActionBar(
                 SceneAction(
-                    label = stringResource(R.string.demo_ar_measure_action_undo),
+                    label = stringResource(R.string.demo_ar_measure_action_add),
+                    enabled = candidateReady && isTracking,
                     onClick = {
-                        points.removeLastOrNull()?.anchor?.detach()
-                        worldPoints = points.map { it.anchor.pose.toPosition() }
-                        if (points.size < 3) closedLoop = false
-                        lastTapFeedback = null
+                        val placed = if (isTracking) candidateControl.consume { it.anchor() } else null
+                        candidateReady = candidateControl.current != null
+                        if (placed != null) {
+                            points.add(placed)
+                            closedLoop = false
+                            worldPoints = points.map { it.anchor.pose.toPosition() }
+                            pointFeedback = "Point ${points.size} on ${placed.source.label}"
+                            pointTone = DemoStatusTone.Progress
+                        } else {
+                            pointFeedback = "No surface at the target. Move slowly."
+                            pointTone = DemoStatusTone.Guidance
+                        }
                     },
-                    enabled = points.isNotEmpty(),
-                ),
-                SceneAction(
-                    label = if (closedLoop) {
-                        stringResource(R.string.demo_ar_measure_action_open)
-                    } else {
-                        stringResource(R.string.demo_ar_measure_action_close)
-                    },
-                    onClick = { closedLoop = !closedLoop },
-                    enabled = points.size > 2,
-                ),
-                SceneAction(
-                    label = stringResource(R.string.demo_ar_measure_action_clear),
-                    onClick = {
-                        points.forEach { it.anchor.detach() }
-                        points.clear()
-                        worldPoints = emptyList()
-                        closedLoop = false
-                        lastTapFeedback = null
-                    },
-                    enabled = points.isNotEmpty(),
                 ),
             )
         },
@@ -346,7 +384,11 @@ fun ARMeasureDemo(onBack: () -> Unit) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-measure")
             ARSceneView(
                 onSessionFailure = { arSessionFailed = true },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onSizeChanged {
+                    viewport = it
+                    candidateControl.update(null)
+                    candidateReady = false
+                },
                 engine = engine,
                 materialLoader = materialLoader,
                 isOpaque = !qaCameraBackdropEnabled(),
@@ -354,7 +396,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 cameraStream = if (qaBackdrop) null else cameraStream,
                 cameraNode = cameraNode,
                 playbackDataset = arPlaybackDataset,
-                planeRenderer = true,
+                planeRenderer = false,
                 sessionConfiguration = { configuredSession: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     // Depth widens what can be measured from "surfaces ARCore grew a plane
@@ -373,8 +415,12 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { _: Session, frame: Frame ->
                     cameraReady = true
-                    latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    candidateControl.update(if (isTracking && viewport.width > 0 && viewport.height > 0) {
+                        findMeasureCandidate(frame, viewport.width / 2f, viewport.height / 2f,
+                            useDepthFallback && depthSupported, session)
+                    } else null)
+                    candidateReady = candidateControl.current != null
 
                     // Re-read every anchor pose: ARCore corrects them as it refines its map,
                     // and a measurement that ignored those corrections would drift away from
@@ -386,40 +432,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                         }
                     }
                 },
-                onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { event: MotionEvent, _ ->
-                        val frame = latestFrame
-                        val currentSession = session
-                        when {
-                            frame == null || currentSession == null || !isTracking -> {
-                                lastTapFeedback = "Not tracking yet — move the device slowly"
-                                lastTapTone = DemoStatusTone.Guidance
-                            }
 
-                            else -> {
-                                val placed = placeMeasurePoint(
-                                    frame = frame,
-                                    session = currentSession,
-                                    event = event,
-                                    allowDepthFallback = useDepthFallback && depthSupported,
-                                )
-                                if (placed != null) {
-                                    points.add(placed)
-                                    // A new point re-opens the chain: the closing segment
-                                    // referred to the outline as it stood before this tap.
-                                    closedLoop = false
-                                    worldPoints = points.map { it.anchor.pose.toPosition() }
-                                    lastTapFeedback = "Point ${points.size} on ${placed.source.label}"
-                                    lastTapTone = DemoStatusTone.Progress
-                                } else {
-                                    lastTapFeedback =
-                                        "No surface there — aim at a detected plane or textured surface"
-                                    lastTapTone = DemoStatusTone.Guidance
-                                }
-                            }
-                        }
-                    },
-                ),
             ) {
                 // One AnchorNode per measured point. The library keeps each node glued to
                 // its anchor every frame without a recomposition, so the markers stay put
@@ -462,6 +475,23 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 }
             }
 
+            // This target and the ARCore center ray share the exact same viewport bounds.
+            // Only Add point consumes the candidate; camera taps have no placement handler.
+            if (cameraReady) {
+                val targetDescription = stringResource(if (candidateReady)
+                    R.string.demo_ar_measure_target_ready else R.string.demo_ar_measure_target_searching)
+                Canvas(Modifier.align(Alignment.Center).size(SceneViewTokens.Space.lg)
+                    .semantics { contentDescription = targetDescription }) {
+                    val radius = size.minDimension / 3f
+                    drawCircle(SceneViewTokens.Glass.edgeHalo, radius = radius,
+                        style = Stroke(SceneViewTokens.Glass.edgeWidth.toPx() * 3))
+                    drawCircle(SceneViewTokens.Glass.onGlass, radius = radius,
+                        style = Stroke(SceneViewTokens.Glass.edgeWidth.toPx()))
+                    if (candidateReady) drawCircle(SceneViewColors.TintLight,
+                        radius = SceneViewTokens.Glass.edgeWidth.toPx() * 3)
+                }
+            }
+
             // Cover the still-black AR viewport until the first camera frame (#2484).
             ARCameraInitScrim(
                 initializing = !cameraReady,
@@ -501,50 +531,50 @@ private fun io.github.sceneview.ar.ARSceneScope.MeasureSegment(
     )
 }
 
-/**
- * Resolves a tap into an anchored measurement point, or `null` when the tap hit nothing
- * measurable.
- *
- * Preference order is accuracy order, not convenience order — see [MeasureHitSource].
- * A plane hit is only accepted when the tap lands *inside* the plane's polygon: ARCore
- * happily reports a hit on the infinite extension of a plane, which would silently place a
- * point in mid-air past the edge of a table and produce a confidently wrong measurement.
- */
-private fun placeMeasurePoint(
+/** Immutable center-ray result. Anchoring never performs a second hit test. */
+private data class MeasureCandidate(val createAnchor: () -> Anchor?, val source: MeasureHitSource) {
+    fun anchor(): MeasurePoint? = runCatching { createAnchor() }.getOrNull()?.let {
+        MeasurePoint(it, source)
+    }
+}
+
+/** Accuracy-ordered candidates at the displayed center target, without creating anchors. */
+private fun findMeasureCandidate(
     frame: Frame,
-    session: Session,
-    event: MotionEvent,
+    x: Float,
+    y: Float,
     allowDepthFallback: Boolean,
-): MeasurePoint? {
-    val hits = runCatching { frame.hitTest(event) }.getOrNull().orEmpty()
-
+    session: Session?,
+): MeasureCandidate? {
+    val hits = runCatching { frame.hitTest(x, y) }.getOrNull().orEmpty()
+        .filter { it.trackable.trackingState == TrackingState.TRACKING }
     hits.firstOrNull { hit ->
-        val trackable = hit.trackable
-        trackable is Plane &&
-            trackable.trackingState == TrackingState.TRACKING &&
-            trackable.isPoseInPolygon(hit.hitPose)
-    }?.let { return MeasurePoint(it.createAnchor(), MeasureHitSource.Plane) }
-
-    hits.firstOrNull { it.trackable is DepthPoint }
-        ?.let { return MeasurePoint(it.createAnchor(), MeasureHitSource.Depth) }
-
-    // Nothing ARCore has modelled as a trackable. Sample the depth image directly — this is
-    // what makes a cluttered real space measurable rather than only its flat floor.
+        val plane = hit.trackable as? Plane
+        plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(hit.hitPose)
+    }?.let { hit ->
+        return MeasureCandidate({
+            hit.takeIf { it.trackable.trackingState == TrackingState.TRACKING }?.createAnchor()
+        }, MeasureHitSource.Plane)
+    }
     if (allowDepthFallback) {
-        frame.hitTestDepth(event.x, event.y)?.let { depthHit ->
+        hits.firstOrNull { it.trackable is DepthPoint }?.let { hit ->
+            return MeasureCandidate({
+                hit.takeIf { it.trackable.trackingState == TrackingState.TRACKING }?.createAnchor()
+            }, MeasureHitSource.Depth)
+        }
+        if (session != null) frame.hitTestDepth(x, y)?.let { depthHit ->
             val pose = Pose(
                 floatArrayOf(depthHit.position.x, depthHit.position.y, depthHit.position.z),
                 floatArrayOf(0f, 0f, 0f, 1f),
             )
-            return MeasurePoint(session.createAnchor(pose), MeasureHitSource.Depth)
+            return MeasureCandidate({ session.createAnchor(pose) }, MeasureHitSource.Depth)
         }
     }
-
-    // Last resort: a raw tracking feature point. Noisiest of the three, and labelled as
-    // such on screen so the user knows this particular reading deserves less trust.
-    hits.firstOrNull { it.trackable is com.google.ar.core.Point }
-        ?.let { return MeasurePoint(it.createAnchor(), MeasureHitSource.FeaturePoint) }
-
+    hits.firstOrNull { it.trackable is com.google.ar.core.Point }?.let { hit ->
+        return MeasureCandidate({
+            hit.takeIf { it.trackable.trackingState == TrackingState.TRACKING }?.createAnchor()
+        }, MeasureHitSource.FeaturePoint)
+    }
     return null
 }
 

@@ -119,7 +119,7 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
         durationMillis = 20_000,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_video_recording_title),

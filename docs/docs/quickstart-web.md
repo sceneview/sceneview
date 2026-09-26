@@ -5,7 +5,7 @@ SceneView Web uses **Filament.js** — the same Filament rendering engine as Sce
 ## Install
 
 ```bash
-npm install @sceneview/sceneview-web
+npm install sceneview-web
 ```
 
 Or use the Kotlin/JS module directly in your Gradle project:

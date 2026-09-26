@@ -23,9 +23,6 @@ import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +58,7 @@ import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
@@ -237,6 +235,14 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingRig.Studio -> STUDIO_IBL_INTENSITY
         LightingRig.Sun -> SUN_IBL_INTENSITY
     }
+    // Read in the composition, NOT inside the `SideEffect` lambda below (#3718). A state value a
+    // composable only reads inside a lambda it hands to someone else is not a composition read, so
+    // writing it invalidates nothing here and the effect never re-runs — and the *Exposure* slider
+    // lives in the `controls = { … }` lambda, a restart scope of its own, so its own recomposition
+    // does not bring this one with it. Measured: one drag wrote the state 20 times (1.00 → 2.70)
+    // for 0 runs of the effect and 0 calls to `setExposure`, while *Environment rotation* — whose
+    // value is read right here, as `effectiveRotation` — ran it 9 times on one drag.
+    val cameraSensitivity = LightingStage.sensitivityFor(exposure)
     SideEffect {
         loadedEnvironment?.indirectLight?.let { light ->
             light.setRotation(LightingStage.iblRotation(effectiveRotation))
@@ -245,8 +251,17 @@ fun LightingDemo(onBack: () -> Unit) {
         cameraNode.setExposure(
             aperture = LightingStage.CAMERA_APERTURE,
             shutterSpeed = LightingStage.CAMERA_SHUTTER_SPEED,
-            sensitivity = LightingStage.sensitivityFor(exposure),
+            sensitivity = cameraSensitivity,
         )
+        // `IndirectLight` is a *raw* Filament object: the SDK hands it out and never sees it
+        // again, so rotating or dimming it reaches the engine and nothing else. Under
+        // `OnDemand` — and this screen parks, by design, whenever `Animate` is off — the new
+        // lighting would sit in the engine with no frame coming to show it. Measured before
+        // this line existed: dragging *Environment rotation* 302° → 100° and *Exposure*
+        // 1.00 → 2.72 on the parked scene produced 0 Filament frames and a viewport still lit
+        // the old way (#3718). `cameraNode.setExposure` invalidates on its own — it is an SDK
+        // mutator — and this covers the two that cannot.
+        cameraNode.requestRender()
     }
 
     // ── Rig geometry ─────────────────────────────────────────────────────────────────────────
@@ -260,7 +275,7 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingStage.RIM_ELEVATION_DEGREES,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,
@@ -468,6 +483,8 @@ fun LightingDemo(onBack: () -> Unit) {
                     yHeight = LightingStage.orbitHeight(orbitRadius),
                     durationMillis = LightingStage.ORBIT_DURATION_MILLIS,
                     staticYaw = LightingStage.STATIC_YAW,
+                    // Keeps an upward drag from carrying the camera under the floor (#3794).
+                    maxPolarDegrees = LightingStage.maxOrbitPolarDegrees(orbitRadius),
                 ),
             ) {
                 // ── The stage: identical on both lighting screens ────────────────────────────
@@ -599,17 +616,12 @@ private enum class LightingRig(
 
 @Composable
 private fun RigSelector(current: LightingRig, onRigChange: (LightingRig) -> Unit) {
-    val rigs = LightingRig.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        rigs.forEachIndexed { index, rig ->
-            SegmentedButton(
-                selected = rig == current,
-                onClick = { onRigChange(rig) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = rigs.size),
-                label = { Text(stringResource(rig.labelRes)) },
-            )
-        }
-    }
+    ConnectedChoiceRow(
+        options = LightingRig.entries,
+        selected = current,
+        onSelect = onRigChange,
+        label = { stringResource(it.labelRes) },
+    )
     Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 }
 

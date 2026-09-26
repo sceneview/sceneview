@@ -2,60 +2,77 @@ import SwiftUI
 import RealityKit
 import SceneViewSwift
 
-/// ImageNode demo -- colored planes arranged in a gallery layout.
-/// Named `ImageDemo` to mirror the Android demo of the same name.
+/// `ImageNode` — flat pictures standing in 3D space, hung here as a curved
+/// gallery wall. Named `ImageDemo` to mirror the Android demo of the same name.
+///
+/// The pictures are the app's own bundled model portraits (`model_thumb_*` in
+/// the asset catalog), loaded with `ImageNode.load` — real images, not
+/// colour swatches (#3788).
 struct ImageDemo: View {
+    /// Asset-catalog image and caption for each frame, left to right, top row first.
+    private static let pictures: [(asset: String, caption: String)] = [
+        ("model_thumb_khronos_fox", "Fox"),
+        ("model_thumb_khronos_damaged_helmet", "Helmet"),
+        ("model_thumb_khronos_lantern", "Lantern"),
+        ("model_thumb_khronos_toy_car", "Toy Car"),
+        ("model_thumb_shiba", "Shiba"),
+        ("model_thumb_animated_butterfly", "Butterfly"),
+    ]
+    private static let columns = 3
+    private static let pictureSize: Float = 0.45
+
+    /// The loaded frames, in `pictures` order. Empty until the `.task` lands.
+    @State private var frames: [(node: ImageNode, caption: String)] = []
+
     var body: some View {
-        ZStack {
+        DemoScaffold("Image Planes") {
             SceneView { root in
-                // Create a gallery of colored image planes
-                let colors: [(UIColor, String)] = [
-                    (.systemRed, "Red"),
-                    (.systemOrange, "Orange"),
-                    (.systemYellow, "Yellow"),
-                    (.systemGreen, "Green"),
-                    (.systemBlue, "Blue"),
-                    (.systemPurple, "Purple"),
-                ]
+                let wallRadius: Float = 1.6
+                let rows = (frames.count + Self.columns - 1) / Self.columns
+                for (index, frame) in frames.enumerated() {
+                    let row = index / Self.columns
+                    let column = index % Self.columns
+                    // Spread each row around the middle of the wall, every plane
+                    // turned to face the centre of the curve.
+                    let angle = (Float(column) - Float(Self.columns - 1) / 2) * 0.36
+                    let y = (Float(rows - 1) / 2 - Float(row)) * 0.72
+                    let picture = frame.node
+                        .position([sin(angle) * wallRadius, y, (1 - cos(angle)) * wallRadius])
+                        .rotation(angle: -angle, axis: [0, 1, 0])
+                    root.addChild(picture.entity)
 
-                // Arrange in an arc
-                let arcRadius: Float = 1.5
-                for (i, (color, name)) in colors.enumerated() {
-                    let angle = Float(i - colors.count / 2) * 0.35
-                    let x = sin(angle) * arcRadius
-                    let z = -cos(angle) * arcRadius - 0.5
+                    // A light mat behind the picture, so a dark photo still reads
+                    // as a framed print against the dark stage.
+                    let mat = ImageNode.color(UIColor(SceneViewTokens.Glass.onGlass),
+                                              width: Self.pictureSize + 0.03,
+                                              height: Self.pictureSize + 0.03)
+                        .position([0, 0, -0.004])
+                    picture.entity.addChild(mat.entity)
 
-                    let imageNode = ImageNode.color(color, width: 0.3, height: 0.3)
-                        .position(.init(x: x, y: 0.1, z: z))
-                        .rotation(angle: angle, axis: .init(x: 0, y: 1, z: 0))
-                    root.addChild(imageNode.entity)
-
-                    // Billboard label beneath
-                    let label = BillboardNode.text(name, fontSize: 0.03, color: color)
-                        .position(.init(x: x, y: -0.15, z: z))
-                    root.addChild(label.entity)
+                    // A child of the plane: the caption hangs under it and turns with it.
+                    let caption = TextNode(text: frame.caption, fontSize: 0.07,
+                                           color: UIColor(SceneViewTokens.Glass.onGlass), depth: 0.004)
+                        .centered()
+                        .position([0, -Self.pictureSize / 2 - 0.09, 0])
+                    picture.entity.addChild(caption.entity)
                 }
-
-                // Large background plane
-                let backdrop = ImageNode.color(
-                    UIColor(white: 0.08, alpha: 1.0),
-                    width: 4.0,
-                    height: 2.0
-                )
-                .position(.init(x: 0, y: 0, z: -3))
-                root.addChild(backdrop.entity)
             }
             .cameraControls(.orbit)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                Text("ImageNode.color -- solid-color planes in an arc")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.bottom, 12)
-            }
+            .contentID(frames.count)
+            .task { await loadFrames() }
+        } accessory: {
+            DemoHint("Six pictures hung on a curved wall — drag to orbit")
         }
-        .background(Color.black)
+    }
+
+    private func loadFrames() async {
+        var loaded: [(node: ImageNode, caption: String)] = []
+        for picture in Self.pictures {
+            guard let node = try? await ImageNode.load(picture.asset,
+                                                       width: Self.pictureSize,
+                                                       height: Self.pictureSize) else { continue }
+            loaded.append((node, picture.caption))
+        }
+        frames = loaded
     }
 }

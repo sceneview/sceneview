@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.37.0)
+  Source of truth: /llms.txt  (SceneView 4.40.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.37.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.40.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -664,53 +664,47 @@ and surfaces in the Samples tab. This section is generated from the per-demo
 fragments under `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/`
 by `samples/android-demo/scripts/collate-demos.sh` — never edit between the markers (#1871).
 
-### Viewer
+### View in 3D
 
 - `model-viewer` — Models. Explore a model in 3D or in your room.
-- `splat-preview` — Gaussian Splat Study. Inspect a procedural cloud of soft points.
+- `splat-preview` — Real-World Scan. A tree stump and its raccoons, scanned with a phone.
+- `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
+- `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `animation-physics` — Animation & Physics. Play character animations and try collisions.
 - `double-pendulum` — Double Pendulum. Explore two linked arms in chaotic motion.
 
-### Geometry & Materials
+### Create & record
 
 - `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
 - `lines-paths` — Lines & Paths. Follow animated curves and paths.
-- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
 - `materials` — Materials. Compare metal, glass, fabric and glow.
-
-### Rendering
-
 - `lighting` — Lighting. Compare studio light, daylight and reflections.
 - `lighting-lab` — Lighting Lab. See how light and reflections shape a model.
 - `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
+- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
+- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
+- `video-recording` — Scene to MP4. Record and share a moving 3D model.
 
-### Interaction
-
-- `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
-- `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
-
-### AR Placement
+### Place in AR
 
 - `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
 - `placement-scene` — One-Call AR. The same tap-to-place screen, in a single SDK call.
 - `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
 - `ar-plane-renderer-v2` — Plane Renderer V2. See floors, walls and ceilings as they are found.
 - `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
-- `ar-measure` — Measure. Tap two points, read the distance.
+- `ar-measure` — Measure. Add two points, read the distance.
 - `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
+- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
+- `ar-collaborative` — Collaborative AR. Place one object in two shared views.
+- `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
 
-### AR Tracking
+### Understand the world
 
 - `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization. Electronic stabilization of the AR feed.
 - `ar-body-tracker` — AR Body Tracker. Follow a person with a live skeleton.
-- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
-- `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
-
-### AR Understanding
-
 - `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
 - `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
 - `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
@@ -718,24 +712,18 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Explore the shape of your surroundings.
 - `ar-point-cloud` — Point Cloud. See the points your camera tracks.
-- `ar-scene-mesh` — Scene Geometry. Explore the shape of nearby buildings.
 - `ar-scene-semantics` — Scene Semantics. Recognize parts of the outdoor scene.
 - `ar-ml-object-label` — ML Kit Object Labels. Recognize objects and label them in space.
 - `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
+- `ar-scene-mesh` — Scene Geometry. Explore the shape of nearby buildings.
+- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
+- `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 
-### AR Anchors
+### Developer tools
 
-- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
-- `ar-collaborative` — Collaborative AR. Place one object in two shared views.
-- `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
-
-### Platform
-
-- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `video-recording` — Scene to MP4. Record and share a moving 3D model.
-- `secondary-camera` — Secondary Camera (PiP). Add an independent camera inset to a 3D viewer.
 - `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
+- `secondary-camera` — Secondary Camera (PiP). Add an independent camera inset to a 3D viewer.
 - `ar-record-playback` — AR Recording. Record an AR session and replay it anywhere.
 - `ar-rerun` — Rerun Debug. Stream pose and planes to the Rerun viewer.
 

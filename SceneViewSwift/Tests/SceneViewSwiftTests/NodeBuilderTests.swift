@@ -71,6 +71,7 @@ final class NodeBuilderTests: XCTestCase {
         XCTAssertNotNil(sky.sceneEntity)
     }
 
+    @available(*, deprecated)
     func testFogNodeConformsToEntityProvider() {
         let fog = FogNode.linear()
         XCTAssertNotNil(fog.sceneEntity)

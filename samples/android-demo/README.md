@@ -11,7 +11,7 @@ Play Store-ready showcase app demonstrating SceneView's full feature set.
 - **Shared demo chrome**: edge-to-edge scene with a glass back button, identity pill
   and overflow menu on top, and a floating bottom dock whose Controls item opens the
   settings sheet — tap the scene to hide the chrome
-- **50+ interactive demos** covering all node types
+- **48 interactive demos** in 9 catalogue sections (18 3D, 30 AR)
 - 3D model viewer with fitted framing, orbit camera, HDR environments, animation
   controls and an AR handoff
 - AR tap-to-place with plane detection

@@ -131,20 +131,7 @@ struct ARSceneMeshDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "grid")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Scene mesh reconstruction requires a real camera feed and LiDAR.\nRun on iPhone 12 Pro+ or LiDAR iPad Pro.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "grid", message: "Scene mesh reconstruction requires a real camera feed and LiDAR.\nRun on iPhone 12 Pro+ or LiDAR iPad Pro.")
     }
 }
 

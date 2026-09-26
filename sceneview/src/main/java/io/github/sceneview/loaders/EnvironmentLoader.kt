@@ -1,6 +1,7 @@
 package io.github.sceneview.loaders
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.annotation.RawRes
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
@@ -10,12 +11,14 @@ import com.google.android.filament.utils.HDRLoader
 import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.IBLPrefilter
+import io.github.sceneview.logDeferredTeardown
 import io.github.sceneview.safeDestroyIndirectLight
 import io.github.sceneview.safeDestroySkybox
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.use
 import io.github.sceneview.utils.loadFileBuffer
 import io.github.sceneview.utils.readBuffer
+import io.github.sceneview.whenBackendIdle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -464,5 +467,28 @@ class EnvironmentLoader(
         clear()
 
         iblPrefilter.destroy()
+    }
+
+    /**
+     * [destroy] for a loader leaving the composition: the scope and the environments are released
+     * right away, the [iblPrefilter]'s GPU state once the engine's backend has drained what was
+     * already queued — without blocking the calling thread on that drain (#3885).
+     *
+     * The prefilter context's destructor destroys its own `Renderer`, and `FRenderer::terminate`
+     * waits for every queued backend command. A scene left right after it appeared still has its
+     * shader links and HDR prefilter passes queued: seconds on the main thread, an ANR. When the
+     * backend is idle — the usual case — or the prefilter was never used, nothing is deferred. The
+     * engine's own teardown ([io.github.sceneview.safeDestroy]) runs a release still pending first.
+     */
+    internal fun destroyWhenBackendIdle() {
+        runCatching { coroutineScope.cancel() }
+        clear()
+
+        if (!iblPrefilter.hasGpuState) return
+        val startedAt = SystemClock.uptimeMillis()
+        engine.whenBackendIdle { deferred ->
+            iblPrefilter.destroy()
+            if (deferred) logDeferredTeardown("IBL prefilter", startedAt)
+        }
     }
 }

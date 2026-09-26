@@ -2,6 +2,8 @@ package io.github.sceneview.node
 
 import android.graphics.SurfaceTexture
 import android.media.MediaPlayer
+import android.os.Handler
+import android.os.Looper
 import android.view.Surface
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
@@ -136,6 +138,28 @@ open class VideoNode(
             value.setOnVideoSizeChangedListener(onVideoSizeChanged)
         }
 
+    /**
+     * Bridges "a video frame landed on our `SurfaceTexture`" to the render gate. Delivered on the
+     * main thread (see the [Handler] below) because the gate it ends up marking is the render
+     * loop's own state.
+     */
+    private val frameSignal = SurfaceFrameSignal(::requestRender)
+
+    /**
+     * A playing video pushes new frames into the node's `SurfaceTexture` from outside the library,
+     * so nothing else would invalidate — a render-on-demand scene would show a frozen first frame.
+     * `isPlaying` throws on a released player; a released player is not playing.
+     *
+     * `isPlaying` is not the whole answer, though, and that was a real "frozen picture" case: a
+     * **seek** or a **frame-step** on a paused player produces exactly one new frame and leaves
+     * `isPlaying` false throughout, so a parked scene kept showing the frame from before the seek.
+     * [SurfaceFrameSignal] answers for those — every frame the surface receives, playing or not.
+     */
+    override val isFrameActive: Boolean
+        get() = frameSignal.isActive(
+            forcedActive = runCatching { player.isPlaying }.getOrDefault(false)
+        ) || super.isFrameActive
+
     private val onVideoSizeChanged = MediaPlayer.OnVideoSizeChangedListener { _, width, height ->
         if (size == null && width > 0 && height > 0) {
             updateGeometry(size = normalize(Size(width.toFloat(), height.toFloat())))
@@ -145,6 +169,13 @@ open class VideoNode(
     init {
         // Route the player's output to our surface and register the size listener.
         this.player = player
+        // Every frame the producer queues — a playing video, but also the single frame a seek or a
+        // frame-step produces on a paused player — wakes the render loop. Dispatched on the main
+        // looper so `requestRender()` reaches the gate from the thread that owns it.
+        surfaceTexture.setOnFrameAvailableListener(
+            { frameSignal.onFrameAvailable() },
+            Handler(Looper.getMainLooper())
+        )
     }
 
     /**
@@ -169,6 +200,7 @@ open class VideoNode(
         val mi = materialInstance
         super.destroy()
         player.setOnVideoSizeChangedListener(null)
+        surfaceTexture.setOnFrameAvailableListener(null)
         surface.release()
         materialLoader.destroyMaterialInstance(mi)
         // Flush the render pipeline so the just-destroyed MaterialInstance is reclaimed before

@@ -3,12 +3,18 @@ import SwiftUI
 import RealityKit
 import ARKit
 
-/// AR Body Tracker demo — tracks body skeleton joints in real time (#910).
+/// AR body anchor tracking demo — follows a detected body anchor (#910).
 ///
-/// Uses `ARBodyTrackingConfiguration` + RealityKit's `BodyTrackedEntity` to detect
-/// and follow a full-body skeleton (91 joints). A small coloured sphere is placed at
-/// the root hip joint so you can see the tracker is active. Mirrors the Android
-/// `ar-body-tracker` demo.
+/// Uses `ARBodyTrackingConfiguration` to detect a person and place a small
+/// coloured sphere at the body anchor's root so you can see tracking is live.
+///
+/// ### Honest-subset note
+///
+/// ARKit's skeleton does carry a 91-joint hierarchy, but this screen reads the
+/// anchor transform only — it does not render or expose per-joint data, so the
+/// catalogue no longer claims joint tracking. A real joint demo needs the SDK
+/// to surface `ARSkeleton3D` through a node type; until then this is body
+/// anchor tracking, named as such.
 ///
 /// Requires a physical iOS device with an A12+ chip and iOS 13+.
 struct ARBodyTrackerDemo: View {
@@ -77,20 +83,7 @@ struct ARBodyTrackerDemo: View {
     }
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "figure.walk.motion")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "figure.walk.motion", message: "Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
     }
 }
 

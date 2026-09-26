@@ -59,3 +59,13 @@ fun viewport(x: Int, y: Int, width: Int, height: Int): dynamic {
  * literally `Filament.Camera$Fov.VERTICAL`.
  */
 fun fovVertical(): dynamic = js("Filament.Camera\$Fov.VERTICAL")
+
+/**
+ * `Filament.View$BlendMode.TRANSLUCENT`, resolved lazily like [fovVertical].
+ *
+ * A translucent view clears its own buffers to transparent and composites the tone-mapped
+ * scene over the swap chain, which the renderer clears with `clearColor` as a raw value.
+ * The background colour therefore skips the tone mapper and lands on screen exactly as
+ * given (#3879).
+ */
+fun viewBlendModeTranslucent(): dynamic = js("Filament.View\$BlendMode.TRANSLUCENT")

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo
 
 import androidx.compose.animation.core.LinearEasing
@@ -14,7 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,12 +27,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.acos
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -43,7 +49,10 @@ import kotlin.math.sqrt
  * SceneView — the scrim is semi-transparent so the first rendered frame shows through.
  */
 @Composable
-fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
+fun LoadingScrim(
+    loading: Boolean,
+    label: String = stringResource(R.string.demo_loading_generic),
+) {
     if (!loading) return
     Box(
         modifier = Modifier
@@ -59,12 +68,10 @@ fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.90f))
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(44.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 4.dp,
-            )
-            Text(
+            // M3 Expressive morphing-shape indicator: it reads as "a scene is coming",
+            // where a bare ring reads as "the network is slow".
+            LoadingIndicator(color = MaterialTheme.colorScheme.primary)
+            io.github.sceneview.demo.ui.NarrationText(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -185,13 +192,18 @@ fun ErrorScrim(
  * painted a parasitic band across the fallback screen. See [arCameraInitScrimVisibility].
  * The happy path (first frame in ~1–3 s) flips [initializing] false long before the
  * timeout, so this only ever fires on a genuinely stuck start.
+ *
+ * [onNarratingChange] reports whether the spinner card is on screen. A demo with its own
+ * status pill uses it to keep one loader per screen (#3825): silent while this card
+ * narrates the camera start, and taking over once the card has stepped aside.
  */
 @Composable
 fun ARCameraInitScrim(
     initializing: Boolean,
     arCoreAvailability: ARCoreAvailability?,
-    label: String = "Starting camera…",
+    label: String = stringResource(R.string.ar_starting_camera),
     timeoutMillis: Long = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS,
+    onNarratingChange: ((Boolean) -> Unit)? = null,
 ) {
     // Defensive fallback: force-dismiss even if the first camera frame never reports.
     var timedOut by androidx.compose.runtime.remember(initializing) {
@@ -216,6 +228,12 @@ fun ARCameraInitScrim(
         qaBackdropEnabled = io.github.sceneview.demo.common.qaCameraBackdropEnabled(),
         arCoreUnavailable = arCoreAvailability != null,
     )
+    // Tells a demo whether this scrim's card is the one narrating the camera start, so its own
+    // status pill can stay silent instead of saying the same thing underneath (#3825).
+    if (onNarratingChange != null) {
+        val narrating = visibility == ArCameraInitScrimVisibility.BackdropAndSpinner
+        androidx.compose.runtime.LaunchedEffect(narrating) { onNarratingChange(narrating) }
+    }
     if (visibility == ArCameraInitScrimVisibility.Hidden) return
     Box(
         modifier = Modifier
@@ -232,12 +250,8 @@ fun ARCameraInitScrim(
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
                 .padding(horizontal = 28.dp, vertical = 22.dp),
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(44.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 4.dp,
-            )
-            Text(
+            LoadingIndicator(color = MaterialTheme.colorScheme.primary)
+            io.github.sceneview.demo.ui.NarrationText(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -368,7 +382,7 @@ fun rememberArPlaybackDataset(): File? {
  * can flip the scrim off exactly when the scene is really on screen:
  *
  * ```kotlin
- * val firstFrame = rememberFirstFrameState()
+ * val firstFrame = rememberFirstFrameState(engine)
  * DemoScaffold(title = …, onBack = onBack, firstFrameRendered = firstFrame.rendered) {
  *     SceneView(onFrame = firstFrame.onFrame, …) { … }
  * }
@@ -386,15 +400,42 @@ fun rememberArPlaybackDataset(): File? {
  * "Still loading…" card, which is what the QA screenshot (taken at ~11 s), the
  * store capture and the bug reporter all recorded.
  *
- * So the signal is **sustained cadence**, not count:
- * [READY_FRAME_STREAK] presented frames in a row, each within
- * [CAUGHT_UP_INTERVAL_MILLIS] of the one before, mean the loop is no longer
- * waiting on the driver — so what the surface shows is current. A single close
- * pair is not enough: a warming driver still emits one now and then between its
- * long stalls, which is why a one-interval test lifted the cover at ~3 s while the
- * viewport stayed black to ~10 s. A device that never reaches that cadence is not
- * left under the cover forever — `DemoScaffold` still gives way to its
- * "Still loading…" card after 12 s.
+ * ### Why sustained cadence is not the signal either (#3108)
+ *
+ * The first answer to the paragraph above was a **cadence streak**: eight presented
+ * frames in a row, each within 250 ms of the one before, on the reasoning that a
+ * loop running at speed is a loop no longer waiting on the driver. That reasoning
+ * silently assumed a loop that keeps ticking — true when every `SceneView` drew
+ * every vsync forever, false the moment rendering became on-demand.
+ *
+ * Measured on `emulator-5554` after the switch: `model-viewer` and `splat-preview`
+ * present **3 frames in 10 s** and then park, with the model fully drawn and lit on
+ * screen. The streak needs eight and can never be paid, so `rendered` stayed
+ * `false`, and at 12 s `DemoScaffold` replaced the spinner with its "Still loading…"
+ * card — permanently, over a finished scene. Nudging the camera restarted the loop,
+ * completed the streak and dismissed the card, which is the proof: the signal was
+ * reading the *frame rate* and reporting it as *progress*.
+ *
+ * **A readiness signal must never depend on cadence. A parked scene is a ready
+ * scene** — parking is what the renderer does when there is nothing left to draw.
+ *
+ * ### The signal
+ *
+ * [READY_PRESENTED_FRAMES] presented frames, **at any interval**, and then one
+ * backend drain: a fence that signals only once the backend has actually executed the
+ * queued work rather than merely accepted it. That is the driver truth the streak
+ * was trying to infer from timing, asked directly.
+ *
+ * The drain is polled ([BackendDrainWait]), never awaited. This used to be an
+ * `Engine.flushAndWait()` on the main thread, and on a software GL it blocked there for
+ * the whole material-link time. A BACK press during that stall hit the 5 s input-dispatch
+ * limit and raised an ANR (#3799).
+ *
+ * Two frames rather than one because Filament applies backpressure: a *second*
+ * accepted submission is itself the evidence that the first was drained. Neither
+ * number is a cadence — a scene that presents its two frames 1.5 s apart during
+ * shader compilation waits exactly as long as it should, and a scene that presents
+ * them in the settle tail and parks is ready in 33 ms.
  *
  * @property rendered Read in the scaffold — `false` until the scene is really on
  *                    screen, then `true`. Never goes back to `false`.
@@ -403,52 +444,50 @@ fun rememberArPlaybackDataset(): File? {
  */
 class FirstFrameState internal constructor(
     private val renderedState: androidx.compose.runtime.MutableState<Boolean>,
-) {
-    /** Timestamp of the previous presented frame, or `0L` before the first one. */
-    private var previousFrameTimeNanos: Long = 0L
-
-    /** How many presented frames in a row have arrived within [CAUGHT_UP_INTERVAL_MILLIS]. */
-    private var streak: Int = 0
+    private val backendDrain: BackendDrainWait? = null,
+) : androidx.compose.runtime.RememberObserver {
+    /** How many frames the scene has presented so far, capped once [rendered] latches. */
+    private var presentedFrames: Int = 0
 
     val rendered: androidx.compose.runtime.State<Boolean> get() = renderedState
 
-    val onFrame: (frameTimeNanos: Long) -> Unit = { frameTimeNanos ->
-        if (!renderedState.value) {
-            val previous = previousFrameTimeNanos
-            previousFrameTimeNanos = frameTimeNanos
-            // `previous == 0L` is the very first presented frame — there is no interval to
-            // judge yet, so it only seeds the comparison.
-            streak = if (previous != 0L &&
-                frameTimeNanos - previous <= CAUGHT_UP_INTERVAL_MILLIS * 1_000_000L
-            ) {
-                streak + 1
-            } else {
-                0
-            }
-            if (streak >= READY_FRAME_STREAK) renderedState.value = true
+    val onFrame: (frameTimeNanos: Long) -> Unit = {
+        if (!renderedState.value && presentedFrames < READY_PRESENTED_FRAMES) {
+            presentedFrames++
         }
+        if (!renderedState.value && presentedFrames >= READY_PRESENTED_FRAMES) {
+            // Latches once the backend has executed what those frames queued: on a software
+            // GL that is the whole material-link time, on hardware ~100 ms. The cover is a
+            // static image, so the wait is invisible — and it is the only thing here that
+            // speaks to the driver rather than about it. Polled, never awaited (#3799);
+            // repeated calls while the fence is out are no-ops.
+            val drain = backendDrain
+            if (drain == null) renderedState.value = true else drain.start { renderedState.value = true }
+        }
+    }
+
+    override fun onRemembered() = Unit
+
+    override fun onForgotten() {
+        backendDrain?.cancel()
+    }
+
+    override fun onAbandoned() {
+        backendDrain?.cancel()
     }
 }
 
 /**
- * Longest gap between two presented frames that still counts as "the render loop has caught
- * up with the driver" ([FirstFrameState]).
+ * Presented frames [FirstFrameState] needs, **at any interval**, before it flushes the backend
+ * and calls the scene visible.
  *
- * 250 ms — 4 fps — sits far below the ~1.5 s per frame a warming Filament driver produces and
- * far above any frame rate a device would sustain in normal use, so it separates the two
- * regimes without stranding a genuinely slow device under the loading cover.
+ * Two, and the second one carries the argument: Filament refuses a new frame while the driver
+ * is behind, so a second accepted submission proves the first was drained. One frame would
+ * prove only that the loop asked. Anything larger re-introduces the failure this replaced —
+ * a render-on-demand scene presents a handful of frames and parks, so a threshold above what
+ * the settle tail pays is a threshold that is never reached.
  */
-private const val CAUGHT_UP_INTERVAL_MILLIS = 250L
-
-/**
- * Consecutive on-cadence presented frames [FirstFrameState] needs before it calls the scene
- * visible.
- *
- * 8 frames is ~133 ms once the loop runs at 60 fps — imperceptible — but unreachable for a
- * driver that is presenting 4 frames in 6 s, which is what the warm-up regime looks like.
- * The streak resets on every long gap, so one lucky close pair mid-warm-up cannot satisfy it.
- */
-private const val READY_FRAME_STREAK = 8
+private const val READY_PRESENTED_FRAMES = 2
 
 /**
  * Is the viewport showing something worth looking at?
@@ -468,13 +507,22 @@ internal fun demoSceneReady(firstFrameRendered: Boolean?): Boolean = firstFrameR
 /**
  * Remembers a [FirstFrameState] for wiring the [DemoScaffold] loading scrim to a
  * SceneView's first presented frame. See [FirstFrameState] for the usage pattern.
+ *
+ * @param engine the scene's engine. Optional only so a preview or a test can leave it out:
+ *               without it the cover lifts on the presented-frame count alone, which says the
+ *               loop accepted the work but not that the backend finished it. Pass the same
+ *               `rememberEngine()` the `SceneView` uses.
  */
 @Composable
-fun rememberFirstFrameState(): FirstFrameState {
+fun rememberFirstFrameState(
+    engine: com.google.android.filament.Engine? = null,
+): FirstFrameState {
     val rendered = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    return androidx.compose.runtime.remember { FirstFrameState(rendered) }
+    return androidx.compose.runtime.remember(engine) {
+        FirstFrameState(rendered, engine?.let(::filamentBackendDrainWait))
+    }
 }
 
 /**
@@ -683,17 +731,25 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  * environment comparison) so the viewer sees the model from different angles without
  * the model rotating through its own light setup.
  *
- * On first gesture the manipulator captures the current orbit pose as the new
+ * On first gesture the manipulator captures the pose on screen as the new
  * [DefaultCameraManipulator.eyePosition], so there's no snap — the user's first
  * drag continues from exactly where the idle orbit left off.
  *
- * ### Auto-orbit resume after idle (#2225)
+ * ### Auto-orbit resume after idle (#2225, #3642)
  *
  * Once the user releases a grab/scroll the manipulator stays in user-control mode for
- * [resumeAfterMillis] of inactivity, then clears the fallback so the idle auto-orbit
- * resumes from the user's last pose (no snap — the next orbit yaw is read from
- * [yawProvider] when [getTransform] falls through to [orbitTransform]). Set
- * [resumeAfterMillis] to `0L` or negative to disable the resume — the manipulator then
+ * [resumeAfterMillis] of inactivity, then gives the camera back to the idle orbit **from the
+ * pose on screen**: the user's framing is measured against the authored one
+ * ([OrbitFramingOffset]) and the orbit carries on underneath it. [resume] picks what happens to
+ * that offset next — kept for good ([HeroOrbitResume.KeepUserFraming], the default) or eased
+ * away over [resumeBlendMillis] ([HeroOrbitResume.ReturnToAuthoredPath]).
+ *
+ * It used to simply drop the user-control manipulator, which put the camera back on the
+ * authored pose within one frame. That cut is what #3642 reports on every demo sharing this
+ * class, and what #3640 reads as "the camera resets when I flip a switch": the switch is just
+ * what the user is reaching for three seconds after framing the subject.
+ *
+ * Set [resumeAfterMillis] to `0L` or negative to disable the resume — the manipulator then
  * stays in user control forever after the first touch (legacy behaviour).
  */
 class HeroOrbitCameraManipulator(
@@ -720,18 +776,64 @@ class HeroOrbitCameraManipulator(
      * replaced by one tilted down cuts to a different angle at the last frame.
      */
     private val yHeightProvider: (() -> Float)? = null,
+    /** What becomes of the user's framing once the idle orbit has the camera back. */
+    private val resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
+    /** How long [HeroOrbitResume.ReturnToAuthoredPath] takes to ease back, in milliseconds. */
+    private val resumeBlendMillis: Long = DEFAULT_RESUME_BLEND_MILLIS,
+    /**
+     * Floor of the polar-angle clamp [userControlTransform] applies to a user drag, passed
+     * straight through to [clampOrbitEyePitch]. The library default (just off the top pole)
+     * is right for a scene with nothing to hide near it; a demo with a floor plane close to
+     * [target] (#3794) tightens this instead.
+     */
+    private val minPolarDegrees: Float = DEFAULT_MIN_ORBIT_POLAR_DEGREES,
+    /** Ceiling of the same clamp — see [minPolarDegrees]. */
+    private val maxPolarDegrees: Float = DEFAULT_MAX_ORBIT_POLAR_DEGREES,
+    /** Monotonic clock, in nanoseconds. The JVM tests drive it by hand. */
+    private val nanoTime: () -> Long = System::nanoTime,
+    /**
+     * The turntable behind [yawProvider], when the manipulator is to drive it itself: [update]
+     * then advances it once per rendered frame, towards [spinDegreesPerSecond], and only while
+     * the idle orbit has the camera. One writer, one clock — and a speed that eases in at open,
+     * after a hand-back, and out on pause, where a looping tween cut from rest to full speed in
+     * a frame. `null` leaves the yaw entirely to [yawProvider] (a choreographed sweep).
+     */
+    private val spin: OrbitSpin? = null,
+    /** Goal speed of [spin], read every frame; `0` pauses it where it stands. */
+    private val spinDegreesPerSecond: () -> Float = { 0f },
+    /**
+     * Builds the manipulator the user drives, from the eye and pivot on screen. Injectable
+     * because the stock one owns a native Filament `Manipulator`, which a JVM test cannot load.
+     */
+    private val userControlFactory: (
+        eye: Position,
+        pivot: Position,
+    ) -> io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator = { eye, pivot ->
+        io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
+            eyePosition = eye,
+            targetPosition = pivot,
+        )
+    },
 ) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
-    private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
-        null
+    private var fallback: io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator? = null
+
+    /** The pivot [fallback] was built around — the stock manipulator does not publish its own. */
+    private var fallbackPivot: Position = target
     private var viewportW = 1
     private var viewportH = 1
 
     /**
-     * Timestamp (from [System.nanoTime]) when the last user gesture released, or `0L`
+     * Timestamp (from [nanoTime]) when the last user gesture released, or `0L`
      * if the user is still actively dragging / scrolling (or has never touched yet).
-     * Used by [update] to know when to clear the [fallback] and resume the auto-orbit.
+     * Used by [settle] to know when to give the camera back to the auto-orbit.
      */
     private var grabEndTimeNanos: Long = 0L
+
+    /**
+     * The user's framing, carried by the idle orbit after the hand-back. Empty while the camera
+     * is on the authored path — the state every demo starts in, and the only one QA mode sees.
+     */
+    private val carried = CarriedFraming(nanoTime)
 
     fun isPaused(): Boolean = fallback != null
 
@@ -747,13 +849,23 @@ class HeroOrbitCameraManipulator(
      * (#3609): the animation drives [radiusProvider] / [targetProvider], which the
      * user-control fallback ignores, so an un-cleared fallback would freeze the camera for
      * the whole animation and the zoom would simply not play.
+     *
+     * The user's framing is eased away over [blendMillis] **while** that animation plays, so
+     * the flight starts from the pose on screen instead of cutting to the authored one first
+     * (#3642). Pass the animation's own duration; `0` cuts, for QA mode's instant flights.
      */
-    fun resumeAuto() {
-        fallback = null
-        grabEndTimeNanos = 0L
+    fun resumeAuto(blendMillis: Long = resumeBlendMillis) {
+        handBack()
+        if (blendMillis <= 0L) {
+            dropUserFraming()
+        } else if (!carried.isEasing) {
+            // An ease already under way keeps its own clock: restarting it from weight 1 would
+            // throw the camera back out to the pose it is half-way home from.
+            carried.easeBack(blendMillis)
+        }
     }
 
-    private fun currentEye(): Position {
+    private fun authoredEye(): Position {
         val rad = Math.toRadians(yawProvider().toDouble()).toFloat()
         val radius = currentRadius()
         val target = currentTarget()
@@ -764,11 +876,21 @@ class HeroOrbitCameraManipulator(
         )
     }
 
+    private fun authoredFraming(): OrbitFraming = authoredOrbitFraming(
+        yawDegrees = yawProvider(),
+        radius = currentRadius(),
+        height = currentYHeight(),
+        target = currentTarget(),
+    )
+
     private fun orbitTransform(): io.github.sceneview.math.Transform {
-        val eye = currentEye()
+        // `null` on the bare authored path, which keeps the eye formula it always had rather
+        // than going through OrbitFraming: a round trip through atan2 / sqrt would move every
+        // golden by a float's last bit for no visible gain.
+        val framing = carried.over(::authoredFraming)
         val mat = dev.romainguy.kotlin.math.lookAt(
-            eye = eye,
-            target = currentTarget(),
+            eye = framing?.eye() ?: authoredEye(),
+            target = framing?.pivot ?: currentTarget(),
             up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
         )
         return io.github.sceneview.math.Transform(mat)
@@ -776,17 +898,99 @@ class HeroOrbitCameraManipulator(
 
     private fun ensureFallback() {
         if (fallback == null) {
-            // Capture the current orbit eye as the manipulator's home so the hand-off is
-            // seamless — the first drag begins exactly where we stopped orbiting.
-            fallback = io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
-                eyePosition = currentEye(),
-                targetPosition = currentTarget(),
-            ).also { it.setViewport(viewportW, viewportH) }
+            // Capture the pose on screen — the authored orbit, the user's framing it carries, or
+            // wherever an ease back has got to — as the manipulator's home, so the hand-off is
+            // seamless: the first drag begins exactly where the idle camera stood.
+            val framing = carried.over(::authoredFraming)
+            val pivot = framing?.pivot ?: currentTarget()
+            fallbackPivot = pivot
+            fallback = userControlFactory(framing?.eye() ?: authoredEye(), pivot)
+                .also { it.setViewport(viewportW, viewportH) }
+            carried.clear()
         }
         // A new gesture is starting — clear the "idle since" stamp so the resume timer
         // doesn't fire mid-drag.
         grabEndTimeNanos = 0L
     }
+
+    /**
+     * Gives the camera back to the idle orbit **on the pose it shows**: what the user changed is
+     * kept as an offset from the authored framing, so the next frame draws the same picture.
+     */
+    private fun handBack() {
+        if (fallback == null) return
+        val shown = userControlTransform()
+        val eye = shown.position
+        // A camera looks down its own -Z.
+        val back = shown.z
+        val depth = sqrt(
+            (eye.x - fallbackPivot.x) * (eye.x - fallbackPivot.x) +
+                (eye.y - fallbackPivot.y) * (eye.y - fallbackPivot.y) +
+                (eye.z - fallbackPivot.z) * (eye.z - fallbackPivot.z),
+        )
+        val pivot = lookPoint(eye, Position(-back.x, -back.y, -back.z), depth)
+        carried.hold(orbitFramingOffset(orbitFramingOf(eye, pivot), authoredFraming()))
+        fallback = null
+        grabEndTimeNanos = 0L
+    }
+
+    /** Back on the bare authored path, this frame. Only ever used where nobody can see the cut. */
+    private fun dropUserFraming() {
+        fallback = null
+        grabEndTimeNanos = 0L
+        carried.clear()
+    }
+
+    /** Runs the idle timer: past [resumeAfterMillis], the orbit gets the camera back. */
+    private fun settle() {
+        // `resumeAfterMillis <= 0L` disables the resume — legacy behaviour where the user
+        // keeps the camera for good after the first touch.
+        if (fallback == null || grabEndTimeNanos == 0L || resumeAfterMillis <= 0L) return
+        val idleNanos = nanoTime() - grabEndTimeNanos
+        val resumeNanos = resumeAfterMillis * NANOS_PER_MILLI
+        if (idleNanos <= resumeNanos) return
+        when {
+            resume == HeroOrbitResume.KeepUserFraming -> handBack()
+            // Far past the deadline means nobody was calling: the manipulator was swapped out
+            // (Materials' two cameras) or the app was in the background. The demo that swaps it
+            // back in expects the authored pose, and there is no frame to be continuous with.
+            idleNanos > resumeNanos + UNWATCHED_MARGIN_NANOS -> dropUserFraming()
+            else -> {
+                handBack()
+                // Nobody timed this one: it takes as long as the way home needs.
+                if (resumeBlendMillis > 0L) {
+                    carried.easeBack(resumeBlendMillis, paced = true)
+                } else {
+                    dropUserFraming()
+                }
+            }
+        }
+    }
+
+    /**
+     * `true` while the camera is **waiting** rather than moving: the countdown [settle] runs
+     * between the last gesture and the hand-back, and the ease that carries the user's framing
+     * home afterwards.
+     *
+     * Both advance from [update] / [getTransform], so both only exist while the render loop
+     * runs — and under [io.github.sceneview.FrameRatePolicy.OnDemand] the loop parks about half a
+     * second after the camera stops moving, which is well inside the three seconds
+     * [resumeAfterMillis] asks for. Without this the loop would park on the user's pose and the
+     * idle orbit would never come back: the auto-orbit of #3700 would simply stop existing under
+     * the new default. Worse, whatever woke the loop minutes later would find the deadline missed
+     * by more than `UNWATCHED_MARGIN_NANOS` and cut straight to the authored pose — the very jump
+     * #3700 removed.
+     *
+     * It goes `false` as soon as the hand-back has happened and the ease has landed, so a screen
+     * the user never touches still parks: the cost is the three seconds after a gesture, on a
+     * screen whose turntable is about to render continuously anyway.
+     */
+    override val isFrameActive: Boolean
+        get() = isResumePending || carried.isEasing
+
+    /** The [settle] countdown is armed and has not fired yet. */
+    private val isResumePending: Boolean
+        get() = fallback != null && grabEndTimeNanos != 0L && resumeAfterMillis > 0L
 
     override fun setViewport(width: Int, height: Int) {
         viewportW = width.coerceAtLeast(1)
@@ -795,6 +999,11 @@ class HeroOrbitCameraManipulator(
     }
 
     override fun getTransform(): io.github.sceneview.math.Transform {
+        settle()
+        return if (fallback != null) userControlTransform() else orbitTransform()
+    }
+
+    private fun userControlTransform(): io.github.sceneview.math.Transform {
         val fb = fallback ?: return orbitTransform()
         // While the user is dragging (or in the post-drag resume window) the camera
         // pose comes from the stock Filament orbit manipulator, which does NOT clamp
@@ -802,17 +1011,16 @@ class HeroOrbitCameraManipulator(
         // the eye onto the orbit pole, the lookAt's fixed world-up collapses, and the
         // model snaps fully upside-down (#2487, Pixel 9 review). Re-derive the eye from
         // the manipulator's transform, clamp its pitch just shy of the poles, and
-        // re-aim it at the (unchanged) orbit target so the flip can never happen. The
-        // idle auto-orbit path (`orbitTransform`) sits at a gentle down-tilt well clear
-        // of the poles and needs no clamp.
+        // re-aim it at the orbit pivot so the flip can never happen. The pivot is the one
+        // the fallback was BUILT around: once the idle orbit carries the user's framing,
+        // that is no longer always the authored target.
         val transform = fb.getTransform()
         val eye = transform.position
-        val target = currentTarget()
-        val clampedEye = clampOrbitEyePitch(eye, target)
+        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot, minPolarDegrees, maxPolarDegrees)
         if (clampedEye == eye) return transform
         val mat = dev.romainguy.kotlin.math.lookAt(
             eye = clampedEye,
-            target = target,
+            target = fallbackPivot,
             up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
         )
         return io.github.sceneview.math.Transform(mat)
@@ -829,9 +1037,10 @@ class HeroOrbitCameraManipulator(
 
     override fun grabEnd() {
         fallback?.grabEnd()
-        // Mark the moment the user released — `update` watches this timestamp and
-        // clears the fallback after `resumeAfterMillis`, restoring the auto-orbit.
-        grabEndTimeNanos = System.nanoTime()
+        // Mark the moment the user released — `settle` watches this timestamp and gives the
+        // camera back after `resumeAfterMillis`, restoring the auto-orbit. The detector also
+        // sends this for a plain tap, which never began a grab: nothing to time then.
+        if (fallback != null) grabEndTimeNanos = nanoTime()
     }
 
     override fun scrollBegin(x: Int, y: Int, separation: Float) {
@@ -845,21 +1054,34 @@ class HeroOrbitCameraManipulator(
 
     override fun scrollEnd() {
         fallback?.scrollEnd()
-        grabEndTimeNanos = System.nanoTime()
+        if (fallback != null) grabEndTimeNanos = nanoTime()
+    }
+
+    /**
+     * Double-tap to zoom (#3641). The interface's default is a no-op, so until this override
+     * existed the gesture was dead on every screen using this manipulator. The zoom is the
+     * stock manipulator's own — same factor, same ease, same toggle — started from the pose on
+     * screen like any other gesture, and the idle orbit then resumes from wherever it lands.
+     */
+    override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
+        ensureFallback()
+        fallback?.doubleTapZoom(x, y, zoomIn)
+        grabEndTimeNanos = nanoTime()
     }
 
     override fun update(deltaTime: Float) {
         fallback?.update(deltaTime)
-        // Clear the fallback after `resumeAfterMillis` of post-gesture inactivity so the
-        // auto-orbit resumes (#2225). `resumeAfterMillis <= 0L` disables the resume —
-        // legacy behaviour where the fallback is never cleared.
-        if (fallback != null && grabEndTimeNanos != 0L && resumeAfterMillis > 0L) {
-            val idleNs = System.nanoTime() - grabEndTimeNanos
-            if (idleNs > resumeAfterMillis * 1_000_000L) {
-                fallback = null
-                grabEndTimeNanos = 0L
-            }
-        }
+        settle()
+        // While the user holds the camera the turntable winds down out of sight, so the orbit
+        // that gets it back starts from rest instead of lurching off at full speed.
+        spin?.advance(deltaTime, if (fallback == null) spinDegreesPerSecond() else 0f)
+    }
+
+    private companion object {
+        const val NANOS_PER_MILLI = 1_000_000L
+
+        /** Long enough to clear a dropped frame or two, short enough that nobody saw the pose. */
+        const val UNWATCHED_MARGIN_NANOS = 1_000L * NANOS_PER_MILLI
     }
 }
 
@@ -868,6 +1090,26 @@ class HeroOrbitCameraManipulator(
  * animator. Returns the manipulator ready to drop into a `SceneView(cameraManipulator = ...)`.
  *
  * In [DemoSettings.qaMode] the yaw is frozen at [staticYaw] so screenshot tests stay stable.
+ *
+ * ### The yaw never jumps (#3640), and neither does its speed
+ *
+ * The yaw is an [OrbitSpin] the manipulator advances on the render loop's own clock, with an
+ * eased angular speed: the orbit accelerates in at open and after every hand-back from a gesture,
+ * and coasts to a stop on pause, instead of cutting between rest and full speed in one frame.
+ *
+ * [trigger] going `false` **pauses** the turntable and `true` lets it carry on from the same
+ * angle. It used to restart from 0° each time, so anything a demo wires into [trigger] — the
+ * Orbit switch of the lighting screens, Lines & Paths' Animate, a model chip whose instance
+ * goes `null` while the next one loads — threw the camera back to its opening azimuth.
+ *
+ * ### A new framing is a camera move, not a cut
+ *
+ * A new framing ([radius], [yHeight], [target]) is still a new manipulator, and so the authored
+ * pose: those change when the *subject* does, and a framing the user chose for the previous
+ * model means nothing for the next. But `SceneView` never sees that swap: what it is handed is a
+ * [ContinuousCameraManipulator] remembered once, which eases from the pose on screen into the
+ * new framing. It used to cut there — on the next model of a viewer, when a loaded model's
+ * measured bounds replaced the placeholder fit, on a rotation that re-fits the radius.
  *
  * ### Deep-link zoom override (#1571)
  *
@@ -887,36 +1129,50 @@ fun rememberHeroOrbitCameraManipulator(
     staticYaw: Float = 45f,
     target: Position = Position(0f, 0f, 0f),
     resumeAfterMillis: Long = 3_000L,
-): HeroOrbitCameraManipulator {
-    val anim = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
-    androidx.compose.runtime.LaunchedEffect(trigger, DemoSettings.qaMode) {
-        if (trigger && !DemoSettings.qaMode) {
-            while (true) {
-                anim.snapTo(0f)
-                anim.animateTo(
-                    targetValue = 360f,
-                    animationSpec = androidx.compose.animation.core.tween(
-                        durationMillis = durationMillis,
-                        easing = androidx.compose.animation.core.LinearEasing,
-                    ),
-                )
-            }
-        }
-    }
+    resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
+    contentShown: Boolean = true,
+    /**
+     * User-drag pitch clamp, forwarded to [HeroOrbitCameraManipulator]. The defaults only keep
+     * the eye off the orbit poles; a demo whose floor sits close to [target] (#3794) passes a
+     * tighter [maxPolarDegrees] so an upward drag cannot carry the camera under it.
+     */
+    minPolarDegrees: Float = DEFAULT_MIN_ORBIT_POLAR_DEGREES,
+    maxPolarDegrees: Float = DEFAULT_MAX_ORBIT_POLAR_DEGREES,
+): io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
+    val continuity = rememberContinuousCameraManipulator(pivot = target)
+    // The turntable outlives the manipulator: a new framing rebuilds the latter, and the yaw —
+    // and its speed — carry on across the rebuild.
+    val spin = androidx.compose.runtime.remember { OrbitSpin() }
+    val running = androidx.compose.runtime.rememberUpdatedState(trigger)
+    val turnMillis = androidx.compose.runtime.rememberUpdatedState(durationMillis)
     // Deep-link zoom override (#1571): a non-null DemoSettings.cameraDistance wins over the
     // caller's auto-fit `radius`. Reading the Compose state here (not inside remember{})
     // keeps it a recomposition input; it is also a remember{} key so the manipulator is
     // rebuilt with the new orbit distance if the zoom changes (e.g. a warm-start onNewIntent).
     val effectiveRadius = DemoSettings.cameraDistance ?: radius
-    return androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis) {
+    val orbit = androidx.compose.runtime.remember(
+        effectiveRadius, yHeight, target, resumeAfterMillis, resume, minPolarDegrees, maxPolarDegrees,
+    ) {
         HeroOrbitCameraManipulator(
-            yawProvider = { if (DemoSettings.qaMode) staticYaw else anim.value },
+            yawProvider = { if (DemoSettings.qaMode) staticYaw else spin.yawDegrees },
             radius = effectiveRadius,
             yHeight = yHeight,
             target = target,
             resumeAfterMillis = resumeAfterMillis,
+            resume = resume,
+            spin = spin,
+            spinDegreesPerSecond = {
+                if (running.value && !DemoSettings.qaMode) {
+                    OrbitSpin.degreesPerSecond(turnMillis.value)
+                } else {
+                    0f
+                }
+            },
+            minPolarDegrees = minPolarDegrees,
+            maxPolarDegrees = maxPolarDegrees,
         )
     }
+    return continuity.driving(orbit, contentShown = contentShown)
 }
 
 /**
@@ -1103,6 +1359,80 @@ internal fun clampOrbitEyePitch(
         y = target.y + newDy,
         z = target.z + hz * newHorizontal,
     )
+}
+
+/**
+ * Absolute yaw distance, in degrees, between an orbit eye and [referenceYawDegrees] around
+ * [target] — the same convention [HeroOrbitCameraManipulator]'s authored path uses (`x =
+ * sin(yaw) * radius`, `z = cos(yaw) * radius`, both relative to [target]). Returns `0` when the
+ * eye sits directly above/below [target] (no azimuth to measure) or when any component is
+ * non-finite. The counterpart read (not a clamp) to [clampOrbitEyePitch] — see
+ * [orbitLabelFadeAlpha] for why #3802 wants a measurement here instead of a bound.
+ *
+ * @param eye                  orbit eye world position to measure.
+ * @param target               orbit target the eye looks at / pivots around.
+ * @param referenceYawDegrees  yaw, in degrees, the deviation is measured from (the authored /
+ *                             front-on framing — usually `0`).
+ */
+internal fun orbitYawDeviationDegrees(
+    eye: Position,
+    target: Position,
+    referenceYawDegrees: Float,
+): Float {
+    val dx = eye.x - target.x
+    val dz = eye.z - target.z
+    if (!dx.isFinite() || !dz.isFinite()) return 0f
+
+    val horizontal = sqrt(dx * dx + dz * dz)
+    if (horizontal <= 1e-6f) return 0f
+
+    val yawDegrees = Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
+    // Delta from the reference, wrapped into [-180, 180) so a reference near +/-180 does not
+    // read a false, near-360-degree deviation.
+    var delta = (yawDegrees - referenceYawDegrees) % 360f
+    if (delta < -180f) delta += 360f
+    if (delta >= 180f) delta -= 360f
+    return abs(delta)
+}
+
+/** Yaw deviation, in degrees, below which [orbitLabelFadeAlpha] returns full opacity. */
+internal const val DEFAULT_LABEL_FADE_START_DEGREES: Float = 25f
+
+/** Yaw deviation, in degrees, at and beyond which [orbitLabelFadeAlpha] returns zero. */
+internal const val DEFAULT_LABEL_FADE_END_DEGREES: Float = 45f
+
+/**
+ * Opacity for a caption anchored to a subject on a flat orbit wall, as a function of
+ * [deviationDegrees] — [orbitYawDeviationDegrees] between the camera and the wall's front-on
+ * framing (#3802).
+ *
+ * A flat wall of captioned subjects (Materials' 3×3 sphere grid, Contact Shadow Preview's box
+ * pair) is captioned for a roughly head-on view: drag the camera towards broadside and
+ * perspective foreshortening collapses the gap between neighbours' screen-space positions
+ * faster than a fixed-width or fixed-position caption accounts for, so adjacent labels overlap
+ * and merge into unreadable text (Materials) or merge into one ("NShadow", Contact Shadow
+ * Preview). The orbit itself has to stay completely free — these demos are calibrated against
+ * Sketchfab/Polycam, where nothing ever stops the drag, and Materials exists specifically to
+ * turn a reflection around — so the fix reads the angle instead of bounding it: full opacity
+ * for [fullyVisibleDegrees] either side of front-on, easing smoothly to fully transparent by
+ * [fullyHiddenDegrees], and back the moment the drag returns.
+ *
+ * @param deviationDegrees    yaw distance from the front-on framing, in degrees; see
+ *                            [orbitYawDeviationDegrees].
+ * @param fullyVisibleDegrees deviation up to which the caption is fully opaque.
+ * @param fullyHiddenDegrees  deviation at and beyond which the caption is fully transparent.
+ */
+internal fun orbitLabelFadeAlpha(
+    deviationDegrees: Float,
+    fullyVisibleDegrees: Float = DEFAULT_LABEL_FADE_START_DEGREES,
+    fullyHiddenDegrees: Float = DEFAULT_LABEL_FADE_END_DEGREES,
+): Float {
+    if (deviationDegrees <= fullyVisibleDegrees) return 1f
+    if (deviationDegrees >= fullyHiddenDegrees) return 0f
+    val t = (deviationDegrees - fullyVisibleDegrees) / (fullyHiddenDegrees - fullyVisibleDegrees)
+    // Smoothstep: eases in/out at both ends instead of fading at a constant, visibly linear rate.
+    val eased = t * t * (3f - 2f * t)
+    return 1f - eased
 }
 
 /**

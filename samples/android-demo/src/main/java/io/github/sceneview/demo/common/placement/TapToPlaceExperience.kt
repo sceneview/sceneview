@@ -1,75 +1,51 @@
 package io.github.sceneview.demo.common.placement
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
-import io.github.sceneview.demo.R
-import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.model.model
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 
 /**
- * **The** tap-to-place experience — one screen, rendered by both AR entry points
+ * **The** placement experience — one screen, rendered by both AR entry points
  * ([#2482](https://github.com/sceneview/sceneview/issues/2482)).
  *
- * [TapToPlaceArSession] already unified the *engine* (reticle, plane guide, anchors,
- * status vocabulary). What stayed forked afterwards was everything the user actually
- * touches: two model catalogues, two pickers (a bottom-sheet grid on the AR View tab, a
- * chip strip in the demo's Settings sheet), two "what will the next tap place?" answers,
- * two reset controls, and each host writing its own `onPlaceModel`. This composable owns
- * that layer, so there is exactly one implementation of:
+ * [TapToPlaceArSession] owns the engine (the automatic surface search, the anchor, the
+ * status vocabulary). This composable owns the layer the user touches around it, so there
+ * is exactly one implementation of:
  *
- *  - the **back affordance** — a top-start back arrow, never an X ([#2482]'s original
- *    review note). Drawn here only for a host that has no app bar of its own (the AR View
- *    tab); inside a [io.github.sceneview.demo.DemoScaffold] the scaffold's own top-start
- *    back arrow is the same affordance and this one stays off.
- *  - the **coaching line** — inherited from the session's default overlays, fed the one
- *    label computed here, so both surfaces say "Tap to place Fox" in the same words at the
- *    same moment, and both go quiet at the same moment too (#3326).
- *  - the **model picker** — [PlacementModelPickerSheet] plus [PlacementModelBar], the
- *    richer of the two variants, and now applied on both surfaces.
- *  - **tap-time model resolution** — the [PlacementModel] is read from [picker] *inside*
- *    the tap handler, never captured at composition. That is the
- *    [#2476](https://github.com/sceneview/sceneview/issues/2476) invariant, and having one
- *    call site for it is what stops it regressing on one surface only.
+ *  - **asset delivery** — the armed [PlacementModel] is resolved here and offered to the
+ *    session with an [AssetTicket]. A ticket is minted per selection inside the current
+ *    session generation, so a result that arrives after the user changed model or left the
+ *    camera is refused rather than placed (the
+ *    [#2476](https://github.com/sceneview/sceneview/issues/2476) invariant, made a type).
+ *  - **unresolved assets block** — a streamed row that is still downloading is not offered.
+ *    The session keeps scanning and places the real file when it lands, instead of standing
+ *    a bundled stand-in in the room and swapping it later.
+ *  - the **model picker** — the [PlacementModelPickerSheet], opened from the host's dock.
+ *    Changing the model while an object stands replaces it at the same placement once the
+ *    new asset loads (§2.2), with a `selection()` haptic.
  *
- * The two hosts still differ in the ways their *roles* differ, and only there: the AR View
- * tab is a quick launcher (bundled catalogue, no dev toggles, its own fullscreen chrome),
- * the `ar-placement` demo is the feature demo (bundled + streamed catalogue, Snap-to-plane
- * / Show-reticle toggles, the QA tracking-failure shim, and the scaffold's bottom band
- * hosting the very same [PlacementModelBar]).
+ * The scaffold hosts both surfaces, so the back arrow, the *Models* item and the *Reset
+ * placement* item are the same controls in the same places on the AR View tab and in the
+ * `ar-placement` demo.
  *
  * @param models Catalogue offered by the picker. May grow/shrink between compositions —
  *   selection is by id, so it cannot be shifted by a row appearing.
- * @param picker Hoisted selection + sheet state. See [rememberPlacementPickerState].
- * @param onBack Non-null ⇒ draw the canonical top-start back arrow over the camera. Pass
- *   `null` inside a [io.github.sceneview.demo.DemoScaffold], which already has one.
- * @param onReset Non-null ⇒ the bar carries the Reset control. Ignored when
- *   [showModelBar] is `false`; that host renders the bar itself.
- * @param showModelBar `false` ⇒ the host renders [PlacementModelBar] in its own bottom
- *   band (the scaffold's `bottomOverlay` slot) instead of floating it over the camera.
+ * @param picker Hoisted selection + sheet state. See [rememberPlacementPickerState]. The
+ *   host's dock opens the sheet with `picker::openSheet`.
+ * @param onViewIn3D The no-surface card's primary action — the host decides where "3D" is.
+ * @param onRestartSession The camera-error card's *Try again* — the host recreates the session.
  */
 @Composable
 fun TapToPlaceExperience(
@@ -80,132 +56,74 @@ fun TapToPlaceExperience(
     engine: Engine = rememberEngine(),
     modelLoader: ModelLoader = rememberModelLoader(engine),
     materialLoader: MaterialLoader = rememberMaterialLoader(engine),
-    onBack: (() -> Unit)? = null,
-    onReset: (() -> Unit)? = null,
-    showModelBar: Boolean = true,
-    snapToPlane: Boolean = true,
-    showReticle: Boolean = true,
-    /**
-     * `true` ⇒ the folded instant-placement mode (#3405). Forwarded to the session, which
-     * configures `LOCAL_Y_UP` and falls back to `hitTestInstantPlacement` when no plane is
-     * under the tap, and to the overlays, which stop coaching "point at a surface" for a tap
-     * that would land anyway.
-     */
-    instantPlacement: Boolean = false,
     onModelPlaced: ((PlacementSpec) -> Unit)? = null,
-    floorOnly: Boolean = false,
+    onViewIn3D: (() -> Unit)? = null,
+    onRestartSession: (() -> Unit)? = null,
 ) {
-    val armedModel = models.armed(picker)
-    // What the status pill announces. A streamed row that is still downloading says so —
-    // and stays placeable, because it carries its own bundled stand-in.
-    val nextModelLabel = armedModel?.let { model ->
+    val armed = models.armed(picker)
+    val haptic = rememberHapticFeedback()
+
+    // One ticket per (selection, resolution). Keyed on what the row resolves to, so a
+    // streamed row is re-offered — with a fresh ticket — the moment its file lands, and a
+    // row still downloading offers nothing at all.
+    LaunchedEffect(state, armed?.id, armed?.assetLocation, armed?.pending, state.assetRetry) {
+        val model = armed ?: return@LaunchedEffect
         if (model.pending) {
-            stringResource(R.string.ar_picker_streaming, model.displayName)
-        } else {
-            model.displayName
+            // Nothing to offer yet — and the previous offer must not be placed under this
+            // row's name while its file downloads.
+            state.holdForPendingAsset()
+            return@LaunchedEffect
         }
+        val replacing = state.placedCount > 0
+        val ticket = state.controller.selectModel()
+        state.controller.withdrawRequest()
+        state.modelLoading = true
+        state.modelError = false
+        val instance = try { modelLoader.loadModelInstance(model.assetLocation) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+        if (!state.controller.acceptsAsset(ticket)) {
+            instance?.let { modelLoader.destroyModel(it.model) }
+            return@LaunchedEffect
+        }
+        state.modelLoading = false
+        if (instance == null) {
+            state.modelError = true
+            return@LaunchedEffect
+        }
+        state.modelInstance = instance
+        val accepted = state.offerAsset(
+            ticket = ticket,
+            spec = PlacementSpec(
+                assetLocation = model.assetLocation,
+                displayName = model.displayName,
+                realWorldSizeMeters = model.realWorldSizeMeters,
+                sizeIsMeasured = model.sizeIsMeasured,
+            ),
+        )
+        // §2.8 — a picker change that swaps the standing object is a selection.
+        if (accepted && replacing) haptic.selection()
+    }
+
+    val ownedInstance = state.modelInstance
+    DisposableEffect(ownedInstance) {
+        onDispose { ownedInstance?.let { modelLoader.destroyModel(it.model) } }
+    }
+    DisposableEffect(state) {
+        onDispose { state.clearAll(); state.modelInstance = null }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
         TapToPlaceArSession(
-            nextModelLabel = nextModelLabel,
-            // #2476 invariant, single call site: re-read the catalogue and the armed id
-            // HERE, inside the tap handler, on the main thread. Nothing about the
-            // selection is captured when this lambda is created.
-            onPlaceModel = {
-                models.armed(picker)?.let { model ->
-                    PlacementSpec(
-                        assetLocation = model.assetLocation,
-                        displayName = model.displayName,
-                        realWorldSizeMeters = model.realWorldSizeMeters,
-                    )
-                }
-            },
             state = state,
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
-            snapToPlane = snapToPlane,
-            showReticle = showReticle,
-            instantPlacement = instantPlacement,
-            sessionConfiguration = { _, config ->
-                config.planeFindingMode = if (floorOnly) com.google.ar.core.Config.PlaneFindingMode.HORIZONTAL
-                    else com.google.ar.core.Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-            },
             onModelPlaced = onModelPlaced,
-            overlays = { s ->
-                TapToPlaceStatusOverlays(
-                    state = s,
-                    nextModelLabel = nextModelLabel,
-                    instantPlacement = instantPlacement,
-                )
-            },
+            onViewIn3D = onViewIn3D,
+            onRestartSession = onRestartSession,
         )
-
-        if (onBack != null) {
-            PlacementBackButton(
-                onClick = onBack,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
-        }
-
-        if (showModelBar) {
-            PlacementModelBar(
-                model = armedModel,
-                onPickModel = picker::openSheet,
-                onReset = onReset,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                        )
-                    )
-                    .padding(SceneViewTokens.Space.md),
-            )
-        }
     }
 
     PlacementModelPickerSheet(models = models, picker = picker)
 }
-
-/**
- * The canonical back affordance over a live camera: a top-**start** arrow, on a
- * translucent surface disc so it stays legible over an arbitrary camera frame.
- *
- * A top-end X used to sit here instead, which is the mismatch #2482 opened on — the review
- * note was, in as many words, "I don't know why this is a cross rather than a back". Every
- * other screen in the app exits with a back arrow at the top start; a camera is not a
- * reason to exit differently.
- */
-@Composable
-private fun PlacementBackButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    FilledIconButton(
-        onClick = onClick,
-        modifier = modifier
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
-                )
-            )
-            .padding(SceneViewTokens.Space.sm)
-            .size(BACK_BUTTON_SIZE),
-        shape = CircleShape,
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = stringResource(R.string.cd_back_button),
-            modifier = Modifier.size(BACK_BUTTON_ICON_SIZE),
-        )
-    }
-}
-
-private val BACK_BUTTON_SIZE = 40.dp
-private val BACK_BUTTON_ICON_SIZE = 20.dp

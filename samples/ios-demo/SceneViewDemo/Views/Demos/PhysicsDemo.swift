@@ -54,9 +54,19 @@ struct PhysicsDemo: View {
 
     var body: some View {
         sceneContent
-            .assetSourcePill(assetSource,
-                             placeholder: selectedSlug?.fallbackRole == .placeholder)
-            .demoChrome { controlsSheet }
+            .demoChrome(
+                dock: [DockItem(icon: "arrow.counterclockwise", label: "Reset") { resetSimulation() }],
+                onReset: resetSimulation,
+                accessory: {
+                    DemoHint(selectedSlug == nil
+                             ? "Dynamic cubes fall under gravity"
+                             : "Streamed \(selectedSlug?.displayName ?? "model") falling")
+                },
+                status: {
+                    AssetSourceStatus(state: assetSource,
+                                      isPlaceholder: selectedSlug?.fallbackRole == .placeholder)
+                }
+            ) { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "physics")
             }
@@ -79,38 +89,17 @@ struct PhysicsDemo: View {
             // re-key did and which intermittently left the viewport black on
             // iOS 26 Simulator (#3008).
             .contentID(sceneKey)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                HStack {
-                    Text(selectedSlug == nil
-                         ? "Dynamic cubes fall under gravity"
-                         : "Streamed \(selectedSlug?.displayName ?? "model") falling")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.6))
-                    Spacer()
-                    Button {
-                        sceneKey = UUID()
-                        bodyCount = 5
-                        #if os(iOS)
-                        SceneViewHaptic.shared.medium()
-                        #endif
-                    } label: {
-                        Label("Reset", systemImage: "arrow.counterclockwise")
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Capsule())
-                    }
-                    .foregroundStyle(.white)
-                    .accessibilityLabel("Reset physics simulation")
-                }
-                .padding()
-            }
         }
-        .background(Color.black)
+    }
+
+    /// Rebuilds the floor and the five starting bodies — the dock's Reset
+    /// and the sheet's.
+    private func resetSimulation() {
+        sceneKey = UUID()
+        bodyCount = 5
+        #if os(iOS)
+        SceneViewHaptic.shared.medium()
+        #endif
     }
 
     /// Imperative scene setup — recomposes the floor + bodies whenever

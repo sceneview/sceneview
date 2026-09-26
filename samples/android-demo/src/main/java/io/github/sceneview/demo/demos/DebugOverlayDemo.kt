@@ -6,9 +6,6 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import android.util.Log
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
@@ -50,7 +47,11 @@ import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.driving
+import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
+import dev.romainguy.kotlin.math.length
+import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
@@ -62,7 +63,6 @@ import io.github.sceneview.utils.rememberDebugStats
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.max
-import kotlin.math.round
 import kotlin.math.sqrt
 import kotlin.math.tan
 
@@ -88,10 +88,9 @@ import kotlin.math.tan
  *     and the camera manipulator is re-keyed via `eyePosition` so the home actually
  *     applies (the previous `SideEffect`-only assignment was overridden by the manipulator
  *     each frame).
- *  2. **Smooth dolly between presets** — distance is animated through an [Animatable]
- *     with a low-stiffness spring, snapped to a 5 cm grid for re-keying the manipulator
- *     (each manipulator rebuild is ~free, and the snap cap keeps re-builds at ≤ 30 over
- *     a typical transition).
+ *  2. **Smooth dolly between presets** — one manipulator per auto-fit distance, eased into by
+ *     the screen's single camera writer ([rememberContinuousCameraManipulator]): the camera
+ *     dollies from the pose on screen, along the line of sight the user set.
  *  3. **Stress-test crash hardened** — cap lowered 5 000 → 2 000, spawn wrapped in
  *     try/catch with graceful auto-stop + Logcat tag `DebugOverlayDemo` for debugging.
  *
@@ -143,45 +142,40 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     // sparkline width matters more than wall-clock time so we just show the most recent
     // 120 frame samples). Updated each frame; bypasses Compose state to avoid one
     // recomposition per frame — the overlay reads it on its own 250 ms tick instead.
+    //
+    // The cursor is in the same remembered array as the samples, and for the same reason. It
+    // used to be two `mutableIntStateOf`, written from `onFrame`: the samples avoided the
+    // per-frame recomposition and the two ints handed it straight back, so the comment above
+    // was false for as long as it existed. A screen that recomposes once per frame to show its
+    // own frame rate is measuring itself, and it is the exact pattern render-on-demand asks
+    // applications not to write.
     val fpsHistory = remember { FloatArray(FPS_HISTORY_SIZE) }
-    var fpsHead by remember { mutableIntStateOf(0) }
-    var historySize by remember { mutableIntStateOf(0) }
+    val fpsCursor = remember { FpsCursor() }
 
     // Auto-fit camera target (the distance we WANT). Recomputed on every targetCount
     // change. The animated distance below tweens toward this.
     val targetDistance = remember(targetCount) { autoFitDistance(targetCount) }
 
-    // Animated distance — low-stiffness spring so transitions feel like a smooth dolly
-    // instead of a hard snap. Initial value matches the first targetDistance so we don't
-    // open with a jarring outward zoom on screen entry.
-    val animatedDistance = remember { Animatable(targetDistance) }
-    LaunchedEffect(targetDistance) {
-        animatedDistance.animateTo(
-            targetValue = targetDistance,
-            animationSpec = spring(
-                stiffness = Spring.StiffnessLow,
-                dampingRatio = Spring.DampingRatioNoBouncy,
-            ),
-        )
-    }
-
-    // The manipulator caches its orbit home at construction. We re-key it on each
-    // *snapped* distance value so the smooth tween is re-rendered as a series of small
-    // dolly steps. CAMERA_REKEY_SNAP_M = 5 cm, so a 0.6 → 6 m transition produces ≤ ~108
-    // rebuilds spread over the spring duration; in practice the spring resolves in < 1 s
-    // and we get ~10–25 rebuilds, which is essentially free (a `Manipulator.Builder()`
-    // is just a few field writes + one JNI call).
-    val snappedDistance = round(animatedDistance.value / CAMERA_REKEY_SNAP_M) * CAMERA_REKEY_SNAP_M
+    // The stock manipulator takes its orbit home at construction, so a new auto-fit distance is a
+    // new manipulator — one per stress-test toggle. `SceneView` never sees it: it is handed the
+    // screen's one camera writer, which dollies from the pose on screen to the new distance. This
+    // used to be a spring re-keying a fresh manipulator every 5 cm of travel: some twenty
+    // rebuilds a second, each one a cut, and each one dropping whatever orbit the user had set —
+    // the camera juddered out in steps and snapped back onto the +Z axis.
     val cameraNode = rememberCameraNode(engine)
-    // Explicit key on snappedDistance — the SDK's `rememberCameraManipulator` already
-    // re-keys when its `creator` lambda identity changes, but going through `remember`
-    // ourselves makes the rebuild contract obvious (one rebuild per 5 cm of dolly).
-    val cameraManipulator = remember(snappedDistance) {
+    val continuity = rememberContinuousCameraManipulator(blendMillis = FIT_DOLLY_MILLIS)
+    val fitManipulator = remember(targetDistance) {
+        // A new count reframes, it does not re-aim: dolly along the line of sight the user set.
+        val sightLine = continuity.eyePosition
+            ?.takeIf { length(it) > MIN_SIGHT_LINE_M }
+            ?.let { normalize(it) }
+            ?: Position(z = 1f)
         createDefaultCameraManipulator(
-            eyePosition = Position(z = snappedDistance),
+            eyePosition = sightLine * targetDistance,
             targetPosition = Position(0f),
         )
     }
+    val cameraManipulator = continuity.driving(fitManipulator)
 
     // Progressive spawn: incrementally bring `currentCount` toward `targetCount` so the
     // user sees nodes appear in real time instead of staring at a frozen UI thread.
@@ -212,7 +206,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
         }
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_debug_overlay_title),
@@ -368,8 +362,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
             DebugOverlay(
                 stats = stats,
                 fpsHistory = fpsHistory,
-                fpsHistoryHead = fpsHead,
-                fpsHistorySize = historySize,
+                fpsCursor = fpsCursor,
                 modifier = Modifier
                     .align(Alignment.Start)
                     .padding(horizontal = SceneViewTokens.Space.sm)
@@ -407,9 +400,8 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     stats.onFrame(frameTimeNanos, nodeCount = currentCount)
                     // Push the just-computed FPS into the ring buffer. We read
                     // stats.fps after onFrame() so we get the freshest value.
-                    fpsHistory[fpsHead] = stats.fps
-                    fpsHead = (fpsHead + 1) % fpsHistory.size
-                    if (historySize < fpsHistory.size) historySize++
+                    fpsHistory[fpsCursor.head] = stats.fps
+                    fpsCursor.advance(fpsHistory.size)
                 }
             ) {
                 // Key light — without an explicit light the scene was unlit and the
@@ -500,12 +492,29 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
  * the SDK doesn't expose engine-level draw-call/triangle counters yet, so we can't make
  * it accurate for arbitrary scenes.
  */
+/**
+ * Head and fill level of [fpsHistory], as plain mutable ints.
+ *
+ * A class rather than two `mutableIntStateOf`: these are written once per rendered frame, and a
+ * snapshot write is a recomposition. Read them from a composable that ticks on its own.
+ */
+private class FpsCursor {
+    var head = 0
+        private set
+    var size = 0
+        private set
+
+    fun advance(capacity: Int) {
+        head = (head + 1) % capacity
+        if (size < capacity) size++
+    }
+}
+
 @Composable
 private fun DebugOverlay(
     stats: io.github.sceneview.utils.DebugStats,
     fpsHistory: FloatArray,
-    fpsHistoryHead: Int,
-    fpsHistorySize: Int,
+    fpsCursor: FpsCursor,
     modifier: Modifier = Modifier,
 ) {
     // Periodic recomposition so the text updates even when no other state changes.
@@ -521,6 +530,11 @@ private fun DebugOverlay(
     }
     @Suppress("UNUSED_EXPRESSION") tick
 
+    // Read through the tick, never through a subscription: everything below is a plain field.
+    val isIdle = stats.isIdle()
+    val fpsHistoryHead = fpsCursor.head
+    val fpsHistorySize = fpsCursor.size
+
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
@@ -529,16 +543,25 @@ private fun DebugOverlay(
         val mono = FontFamily.Monospace
         val fps = stats.fps
         val fpsColor = when {
+            isIdle -> MaterialTheme.colorScheme.secondary
             fps >= 55f -> MaterialTheme.colorScheme.primary
             fps >= 30f -> MaterialTheme.colorScheme.tertiary
             else -> MaterialTheme.colorScheme.error
         }
         BasicText(
-            text = stringResource(R.string.demo_debug_overlay_fps, fps),
+            text = if (isIdle) {
+                stringResource(R.string.demo_debug_overlay_fps_idle)
+            } else {
+                stringResource(R.string.demo_debug_overlay_fps, fps)
+            },
             style = MaterialTheme.typography.labelSmall.copy(color = fpsColor, fontFamily = mono)
         )
         BasicText(
-            text = stringResource(R.string.demo_debug_overlay_frame, stats.frameTimeMs),
+            text = if (isIdle) {
+                stringResource(R.string.demo_debug_overlay_frame_idle)
+            } else {
+                stringResource(R.string.demo_debug_overlay_frame, stats.frameTimeMs)
+            },
             style = MaterialTheme.typography.labelSmall.copy(
                 color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = mono,
@@ -646,13 +669,11 @@ private const val STRESS_TICK_MS = 50L
 /** Distance for a single sphere — close enough to fill ~25 % of vertical FOV at 35°. */
 private const val SINGLE_SPHERE_DISTANCE = 0.8f
 
-/**
- * Snap the animated camera distance to this grid (in metres) when re-keying the
- * orbit manipulator. 5 cm is below visible-step threshold for a smooth dolly while
- * keeping rebuild count bounded for any reasonable transition (max ~120 rebuilds for
- * a 0 → 6 m sweep, all of them cheap).
- */
-private const val CAMERA_REKEY_SNAP_M = 0.05f
+/** How long the camera takes to dolly to a new auto-fit distance. */
+private const val FIT_DOLLY_MILLIS = 900L
+
+/** Closer to the grid's centre than this, the eye has no line of sight worth keeping. */
+private const val MIN_SIGHT_LINE_M = 1e-3f
 
 /**
  * Camera distance that frames a 10×10×N sphere grid (sphere radius [NODE_RADIUS],

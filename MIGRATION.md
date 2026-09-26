@@ -1,8 +1,8 @@
 # Migration Guide
 
 The full SceneView migration guide lives in **[`docs/docs/migration.md`](docs/docs/migration.md)** —
-that's the canonical source consumed by the website at
-<https://sceneview.github.io/migration/>.
+that's the canonical source, published by the website at
+<https://sceneview.github.io/docs/migration/>.
 
 It covers, in chronological order:
 

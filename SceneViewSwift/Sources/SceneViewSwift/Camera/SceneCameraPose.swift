@@ -116,6 +116,9 @@ extension CameraControls {
         elevation = Swift.min(Swift.max(pose.elevation, minElevation), maxElevation)
         orbitRadius = Swift.min(Swift.max(pose.distance, minRadius), maxRadius)
         target = pose.target
+        // The host placed the camera: whatever coast was left must not carry
+        // it away from that pose on the next frame.
+        inertiaVelocity = .zero
     }
 }
 #endif

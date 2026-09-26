@@ -47,6 +47,16 @@ final class DemoRegistryGuardTests: XCTestCase {
 
     // MARK: - Registry shape (non-emptiness, format)
 
+    func testPlacementHasOneCanonicalEntry() {
+        let placementIds: Set<String> = ["ar-placement", "ar-instant-placement", "placement-scene"]
+        XCTAssertEqual(GeneratedScenes.allowedIds.intersection(placementIds), ["ar-placement"])
+        XCTAssertEqual(GeneratedScenes.all().filter { placementIds.contains($0.sceneId) }.count, 1)
+        for removed in ["ar-instant-placement", "placement-scene"] {
+            XCTAssertFalse(DemoDeepLinkRegistry.allowedIds.contains(removed))
+            XCTAssertNil(GeneratedScenes.destination(for: removed))
+        }
+    }
+
     func testAllowedIdsIsNonEmpty() {
         // A regression in the collator (or an empty Scenes dir) would
         // silently ship a zero-demo deep-link gate.
@@ -177,6 +187,30 @@ final class DemoRegistryGuardTests: XCTestCase {
             XCTAssertNotNil(GeneratedScenes.destination(for: id),
                             "'\(id)' is expected to be a real, working demo but resolved to nil " +
                             "(placeholder) — check its Scene file's @available directive")
+        }
+    }
+
+    /// Removed-on-iOS ids: a feature that cannot be done faithfully here is
+    /// removed, not faked. `fog` shipped as a translucent volume standing in
+    /// for depth-based fog, which RealityKit has no equivalent of, so the
+    /// screen is gone — and must not come back as a card or a live deep link.
+    func testRemovedFeatureIdsAreGoneAndStillReachThePlaceholder() {
+        let removed = Array(DemoDeepLinkRegistry.removedIds.keys)
+        XCTAssertEqual(Set(removed), ["fog"],
+                       "The removed-id table changed — update this pin deliberately.")
+        for id in removed {
+            XCTAssertNil(GeneratedScenes.destination(for: id),
+                         "'\(id)' was removed on iOS — it must not resolve to a real screen.")
+            XCTAssertFalse(GeneratedScenes.allowedIds.contains(id),
+                           "'\(id)' was removed on iOS — it must not be a catalogue id.")
+            XCTAssertFalse(DemoDeepLinkRegistry.allowedIds.contains(id),
+                           "'\(id)' was removed on iOS — its deep link must not be registered.")
+            // Still honest, never a silent no-op: the placeholder answers, and
+            // the host titles it with the name the demo shipped under rather
+            // than the bare lower-case id.
+            _ = DemoDeepLinkRegistry.destination(for: id)
+            XCTAssertEqual(DemoDeepLinkRegistry.title(for: id), DemoDeepLinkRegistry.removedIds[id],
+                           "A removed demo must keep a human title in the host's bar.")
         }
     }
 

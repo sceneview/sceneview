@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
@@ -54,7 +55,6 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
-import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -102,9 +102,9 @@ import kotlin.math.sqrt
 @Composable
 fun SpatialAudioDemo(onBack: () -> Unit) {
     var falloffMode by remember { mutableStateOf(FalloffMode.Inverse) }
-    val firstFrame = rememberFirstFrameState()
 
     val engine = rememberEngine()
+    val firstFrame = rememberFirstFrameState(engine)
     val materialLoader = rememberMaterialLoader(engine)
 
     // Camera home. The binding constraint here is the *horizontal* field of
@@ -389,7 +389,11 @@ private fun SpatialAudioLegend(distanceMeters: Float, gain: Float) {
             Text(
                 text = stringResource(
                     R.string.demo_spatial_audio_readout,
-                    String.format(Locale.getDefault(), "%.2f", distanceMeters),
+                    // `LocalLocale`, not `Locale.getDefault()`: the latter is not
+                    // observable state, so the formatted distance would keep the old
+                    // decimal separator until something else happened to recompose
+                    // this row (`NonObservableLocale`, #3660).
+                    String.format(LocalLocale.current.platformLocale, "%.2f", distanceMeters),
                     (gain * 100f).roundToInt(),
                 ),
                 style = SceneViewTokens.Type.caption,

@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -104,6 +105,7 @@ import io.github.sceneview.demo.ai.rememberAskEngine
 import io.github.sceneview.demo.ai.toAvailability
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.placement.PivotedModelNode
 import io.github.sceneview.demo.common.putVoiceSilenceExtras
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
@@ -417,9 +419,14 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     val defaultQuestion = stringResource(R.string.demo_point_and_ask_question)
     var questionText by rememberSaveable { mutableStateOf("") }
     val question = questionText.trim().ifBlank { defaultQuestion }
-    // Resolved through the context — anchored panels route results from non-composable
-    // callbacks, and the message now depends on which failure occurred (#3343).
-    val failedText: (AskFailure) -> String = { context.getString(it.messageRes) }
+    // Resolved through `LocalResources` — anchored panels route results from non-composable
+    // callbacks, and the message now depends on which failure occurred (#3343). Reading the
+    // `Resources` rather than the `Context` is what keeps the lambda fresh: a `Context` read
+    // is not invalidated by a configuration change, so after an in-place locale switch the
+    // failure copy would still come out in the previous language
+    // (`LocalContextGetResourceValueCall`, #3660).
+    val resources = LocalResources.current
+    val failedText: (AskFailure) -> String = { resources.getString(it.messageRes) }
 
     // Where the last tap landed, in window pixels. The capture is cropped around it so the
     // model is shown what the user pointed at rather than the whole floor-to-ceiling frame
@@ -992,12 +999,19 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             )
                             val textured = rememberTexturesSettled(ready = instance != null)
                             instance?.let {
-                                ModelNode(
+                                // Editable + an asset correction is exactly the #3735
+                                // pattern, so it goes through the shared pivot hierarchy
+                                // rather than putting the correction on the node the twist
+                                // turns. Latent here only because every asset in `PROPS`
+                                // happens to need no correction today — which is the kind
+                                // of "fixed there, still broken here" the issue is about.
+                                PivotedModelNode(
                                     modelInstance = it,
+                                    assetRotation = DemoMath.placementRotationFor(
+                                        placed.prop.asset,
+                                    ),
                                     scaleToUnits = placed.prop.scaleUnits,
-                                    rotation = DemoMath.placementRotationFor(placed.prop.asset),
                                     isVisible = textured,
-                                    isEditable = true,
                                 )
                             }
                         }

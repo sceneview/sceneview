@@ -14,9 +14,9 @@ object ArDepthVisualizationFragment : DemoFragment {
         id = "ar-depth-visualization",
         titleRes = R.string.demo_ar_depth_visualization_title,
         subtitleRes = R.string.demo_ar_depth_visualization_subtitle,
-        category = DemoCategory.AR_UNDERSTANDING,
+        category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Palette,
-        order = 32,
+        order = 35,
         tags = setOf("ar", "depth", "visualization", "false-color", "depth-map"),
     )
 

@@ -57,7 +57,7 @@ struct AssetSourcePill: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Asset source: \(label)")
         // The QA harness and the screenshot suite locate the pill by this id;
@@ -66,30 +66,20 @@ struct AssetSourcePill: View {
     }
 }
 
-extension View {
-    /// Pins an ``AssetSourcePill`` to the top-trailing corner of the scene,
-    /// inside the safe area — the same corner Android uses, and the one corner
-    /// no demo's own controls occupy (settings sit bottom-trailing, chips sit
-    /// bottom-centre).
-    ///
-    /// Pass `nil` for a demo that never touches `SketchfabAssetResolver`: it
-    /// has no origin question to answer and must show no pill.
-    ///
-    /// The overlay is applied unconditionally and the *pill* is what the `nil`
-    /// case drops. Branching on `if let state { overlay(…) } else { self }`
-    /// instead handed SwiftUI two structurally different views, so the first
-    /// time a demo went from no-pill to pill — `AnimationDemo` moving off its
-    /// bundled slot 0 — the whole modified subtree was discarded and rebuilt,
-    /// taking the scene's `RealityView` with it. That is the same teardown
-    /// `.contentID(_:)` exists to avoid, and it was measured re-creating the
-    /// scene on exactly the first subject change and no other (#3008).
-    func assetSourcePill(_ state: AssetSourceState?, placeholder: Bool = false) -> some View {
-        overlay(alignment: .topTrailing) {
-            if let state {
-                AssetSourcePill(state: state, isPlaceholder: placeholder)
-                    .padding(.top, 12)
-                    .padding(.trailing, 16)
-            }
+/// The pill in the chrome's `status` slot — `nil` while nothing streams,
+/// so a demo whose subject is bundled shows no pill at all.
+///
+/// It lives in the identity row of ``DemoScaffold``, never as an overlay on
+/// the scene: an `if let` overlay around the stage handed SwiftUI two
+/// structurally different views, and the first no-pill → pill transition
+/// rebuilt the whole subtree, `RealityView` included (#3008).
+struct AssetSourceStatus: View {
+    let state: AssetSourceState?
+    var isPlaceholder: Bool = false
+
+    var body: some View {
+        if let state {
+            AssetSourcePill(state: state, isPlaceholder: isPlaceholder)
         }
     }
 }

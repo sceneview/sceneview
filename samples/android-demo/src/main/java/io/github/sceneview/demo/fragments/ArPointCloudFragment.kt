@@ -14,9 +14,9 @@ object ArPointCloudFragment : DemoFragment {
         id = "ar-point-cloud",
         titleRes = R.string.demo_ar_point_cloud_title,
         subtitleRes = R.string.demo_ar_point_cloud_subtitle,
-        category = DemoCategory.AR_UNDERSTANDING,
+        category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.BlurOn,
-        order = 34,
+        order = 37,
         tags = setOf("ar", "point-cloud", "feature-points", "tracking"),
     )
 

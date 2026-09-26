@@ -2,7 +2,7 @@
   "name": "sceneview-mcp",
   "version": "4.1.0",
   "mcpName": "io.github.sceneview/mcp",
-  "description": "MCP server for SceneView — cross-platform 3D & AR SDK for Android and iOS. Give Claude the full SceneView SDK so it writes correct, compilable code.",
+  "description": "MCP server for SceneView — cross-platform 3D & AR SDK for Android and iOS. Gives your AI coding assistant the full SceneView SDK so it writes correct, compilable code.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -18,8 +18,9 @@
     "jetpack-compose",
     "swiftui",
     "kotlin-multiplatform",
-    "claude",
-    "ai"
+    "ai",
+    "ai-coding-assistant",
+    "llm"
   ],
   "license": "MIT",
   "author": "SceneView (https://github.com/sceneview)",
@@ -74,12 +75,12 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.0.0",
-    "@types/node": "^26.0.1",
+    "@biomejs/biome": "^2.5.14",
+    "@types/node": "^26.6.2",
     "tsx": "^4.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0",
-    "wrangler": "^4.130.0"
+    "vitest": "^5.0.1",
+    "wrangler": "^4.136.2"
   },
   "overrides": {
     "picomatch": ">=4.0.4",
@@ -88,11 +89,11 @@
   },
   "funding": [
     {
-      "type": "github",
-      "url": "https://github.com/sponsors/sceneview"
+      "type": "opencollective",
+      "url": "https://opencollective.com/sceneview"
     },
     {
-      "type": "individual",
+      "type": "github",
       "url": "https://github.com/sponsors/sceneview"
     }
   ]

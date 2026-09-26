@@ -131,9 +131,14 @@ export interface SceneViewer {
   /** Turn auto-rotation on/off at runtime. */
   setAutoRotate(enabled: boolean): void;
 
-  /** Auto-rotate angular speed in **radians per frame** — the controller
-   *  advances the orbit angle by this amount once per `requestAnimationFrame`
-   *  tick. At 60 fps the default is `30° / 60 ≈ 0.00873` rad/frame. */
+  /** Auto-rotate angular speed in **radians per second** — the controller
+   *  integrates it against the time elapsed since the previous
+   *  `requestAnimationFrame` tick, so the turntable turns at the same speed on
+   *  a 60 Hz and on a 120 Hz display. Default `30 * Math.PI / 180 ≈ 0.5236`
+   *  rad/s (30°/s, a revolution every 12 s).
+   *
+   *  BREAKING (was radians per *frame*): multiply a value tuned against the
+   *  old unit by 60. */
   setAutoRotateSpeed(speed: number): void;
 
   /** Constrain pinch-zoom to `[min, max]` metres from the target. */
@@ -148,14 +153,20 @@ export interface SceneViewer {
   /** Resize the underlying canvas. */
   resize(width: number, height: number): void;
 
-  /** Clear-colour for the framebuffer. Components are `0..1`. */
-  setBackgroundColor(r: number, g: number, b: number, a: number): void;
+  /** Background colour, components `0..1` — the exact colour on screen, never
+   *  tone-mapped: `#EEF0F3` is `setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)`.
+   *  `a < 1` lets the page behind the canvas show through (`0`: transparent canvas);
+   *  omitted, it is `1`. A skybox, when set, covers it. Default `#333443`. */
+  setBackgroundColor(r: number, g: number, b: number, a?: number): void;
 
   /** Frame the camera so every loaded model is fully visible.
    *  `margin` multiplies the fit distance (iOS `framingMargin` convention):
    *  `1.0` (default) keeps the historical fit, `< 1` frames tighter, `> 1`
    *  leaves more air. Clamped to `0.2…10`. Not Android's additive `padding`
-   *  fraction — `margin == 1 + padding`. */
+   *  fraction — `margin == 1 + padding`. The models end up centred, the margin
+   *  is kept by the automatic re-framing after a load (safe to call from the
+   *  `loadModel` promise), and the clip planes follow the model size, so a 2 cm
+   *  part renders whole. */
   fitToModels(margin?: number): void;
 
   /** Toggle library-level auto-centring of loaded content. When enabled

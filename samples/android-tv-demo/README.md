@@ -7,7 +7,7 @@
 - D-pad controls for model rotation and selection
 - Model cycling through multiple 3D assets
 - Auto-rotation mode
-- Leanback TV UI
+- Compose for TV UI (`androidx.tv`), declared as a Leanback launcher app
 
 ## Run
 
@@ -17,4 +17,4 @@
 
 ## Requirements
 
-- Android TV device or emulator (API 24+)
+- Android TV device or emulator (API 28+ — the demo's `minSdk`)

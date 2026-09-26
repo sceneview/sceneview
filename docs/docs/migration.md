@@ -7,6 +7,218 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 
 ---
 
+## SceneView 4.37.x to 4.38.0 (Android) — `isRendering` replaced by `frameRatePolicy`
+
+### `SceneView(isRendering:)` is removed; render-on-demand is the default ([#3108](https://github.com/sceneview/sceneview/issues/3108))
+
+A `SceneView` no longer renders every vsync for as long as it is composed. The new
+`frameRatePolicy` parameter defaults to `FrameRatePolicy.OnDemand()`: the library tracks what makes
+the picture change, holds the display's full cadence while anything is happening, then draws a
+short tail of settle frames and parks the loop.
+
+`isRendering: Boolean` is **removed outright — there is no deprecated overload.** Keeping one
+would have meant two parameters that can disagree about the same thing, and the boolean's whole
+contract ("you work out when the scene is dirty") is precisely what the new default replaces.
+
+```kotlin
+// Before — you computed "is anything dirty" yourself and fed it in
+var isDirty by remember { mutableStateOf(true) }
+LaunchedEffect(dirtyToken) {
+    isDirty = true
+    delay(200)
+    isDirty = false
+}
+SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
+
+// After — that is the library's job now
+SceneView { /* … */ }
+```
+
+**Key differences:**
+
+- `isRendering = true` (or omitting the parameter) becomes
+  `frameRatePolicy = FrameRatePolicy.Continuous()` if you genuinely want a frame every vsync. If you
+  never passed the parameter at all, the honest migration is usually to change **nothing** and take
+  the new default.
+- The `isDirty` state, the `dirtyToken`, the `LaunchedEffect { delay(200) }` window — **delete
+  them, do not translate them.** Every source they were standing in for (touch, camera coast,
+  animation, smooth transform, video, `ViewNode`, splat sort, async load, mirrorer, auto-fit, node
+  added/moved/removed, visibility, geometry, material swap, surface resize, lifecycle resume) is
+  now tracked by the library.
+- **Never invalidate from a recomposition, and never write Compose state from `onFrame`.** The
+  library asks for a frame from the thing that changed, never from the fact that a recomposition
+  happened — and your screen should do the same. A counter that writes snapshot state on every
+  presented frame recomposes its host on every presented frame; if any of that feeds back into the
+  scene, the screen is measuring its own loop rather than the scene's. `DebugStats` holds plain
+  fields and `DebugOverlay` reads them on a 250 ms tick, which is the pattern to copy.
+- **A `ViewNode` keeps the scene awake while its view is drawing, and only then.** The hosted
+  Android `View` animates on its own schedule — a ripple, a spinner, a cursor, an inner fling, a
+  recomposition of hosted Compose content — and
+  the library cannot see inside it, so the node reports itself active from the one thing that is
+  observable: every buffer the view hierarchy queues onto its `SurfaceTexture`. An animating view
+  therefore holds the full cadence for as long as it animates, and a view that has finished drawing
+  parks with the rest of the scene. A `VideoNode` answers the same way, plus a direct read of
+  `player.isPlaying`.
+- Pre-compiled consumers must recompile. A caller passing nine or more **positional** arguments
+  gets a type error at slot 9 rather than a silent behaviour change — the slot went from `Boolean`
+  to `FrameRatePolicy`.
+- `maxFps` is new, and it is an argument of both modes rather than a policy of its own:
+  `OnDemand(maxFps = 30)` renders on demand and, when it does render, never faster than 30 fps;
+  `Continuous(maxFps = 30)` is a steady 30 fps. Either way the display is voted `maxFps` rather
+  than the panel maximum. `null` (the default) means the display's own cadence.
+- **Direct Filament edits are the one thing the default cannot see.** Anything written below the
+  scene graph leaves nothing to invalidate on. The full list, and it is a list rather than an
+  example, because the cost of missing one is a frozen image:
+  - a `MaterialInstance` parameter (`setParameter`) on an instance you already hold;
+  - a light property written through `LightManager` rather than through the node;
+  - a `Skybox` or `IndirectLight` assigned straight onto the Filament `Scene`;
+  - morph-target weights and bone transforms written through `RenderableManager`;
+  - an external `Stream` — a camera or video surface — pushing new content;
+  - `View` options changed at runtime (bloom, ambient occlusion, dynamic resolution, blend mode)
+    on a `View` you own.
+
+  For all of them: call `node.requestRender()` on a node you hold, or take the new
+  `renderInvalidator` parameter with `rememberRenderInvalidator()` and call
+  `invalidator.requestRender()` after the edit. Call it on the main thread — post to it from a
+  background upload rather than calling across. Before a `PixelCopy` or a screenshot, request a
+  frame and then **wait for your next `onFrame`**: the request is fire-and-forget, and there is no
+  "await one frame" API.
+- **`ARSceneView` does not take this parameter, and its loop never parks.** A live camera feed is
+  never idle, so there is no idle frame to skip. What it does do is skip the *GPU submit* on a
+  vsync where ARCore hands back a duplicate `Frame.timestamp` and nothing in the scene changed —
+  `session.update()` still runs every vsync, so tracking, anchors and plane detection are
+  unaffected.
+
+**Action:** delete the `isRendering` argument and the dirty-tracking behind it. Pass
+`frameRatePolicy = FrameRatePolicy.Continuous()` only if your scene is driven by something the
+library cannot observe — an external simulation writing into Filament each frame, a custom
+`Renderer` hook, a texture updated off-thread.
+
+### Where the line is: SDK mutators invalidate, raw Filament objects do not
+
+This is the one rule to carry out of the migration, and it is the adoption risk the whole default
+turns on — a missed invalidation does not crash, log or fail a test. It shows the previous frame,
+forever, and reads as "the slider is broken".
+
+**Anything you change through a SceneView type asks for its own frame.** Setting
+`lightNode.intensity`, `lightNode.color`, `lightNode.lightDirection`, `cameraNode.setExposure(…)`,
+a projection, `focusDistance`, a node's transform, `materialInstance` / `setMaterialInstanceAt`,
+`setGeometry`, `setLayerVisible`, morph weights or bone matrices *through the node*, shadow flags,
+priority, culling, blend order — all of these invalidate on their own. You do not call
+`requestRender()` after them, and you do not need `Continuous()` to make them show.
+
+**Anything you change on a raw Filament object does not.** The SDK hands these out and never sees
+them again, so nothing is left to observe the write:
+
+```kotlin
+// Raw Filament object → the SDK cannot see this. Ask for the frame yourself.
+indirectLight.intensity = 30_000f
+indirectLight.setRotation(rotation)
+materialInstance.setParameter("baseColorFactor", color)
+view.ambientOcclusionOptions = options
+scene.skybox = skybox
+lightManager.setIntensity(instance, lux)   // through the manager, not the node
+
+renderInvalidator.requestRender()          // ← the missing line
+```
+
+Take the invalidator with `rememberRenderInvalidator()` and pass it as
+`SceneView(renderInvalidator = …)`, or call `requestRender()` on any node you hold. The rule of
+thumb that costs nothing to apply: **if the type you are writing to came from `com.google.android
+.filament`, ask for a frame.**
+
+Measured, so it is not hypothetical: a demo screen dragging *Environment rotation* from 302° to
+100° and *Exposure* from 1.00 to 2.72 on a parked scene produced **0** frames and a viewport still
+lit the old way. Both writes went into an `IndirectLight`.
+
+### Check your app for heuristics that read the frame rate
+
+This is the failure mode that survives the mechanical migration, because it compiles, it is in
+*your* code, and it looks like it is measuring something else.
+
+**Any heuristic built on a run of closely spaced frames breaks under `OnDemand`.** The pattern is
+always some form of "I will believe the scene is up once I have seen N frames within M
+milliseconds of each other" — a loading cover, a splash dismissal, a warm-up probe, an "is the GPU
+keeping up" check. It worked because every `SceneView` drew every vsync forever, so frames were a
+clock you could count on. They are not a clock any more. A finished scene presents a short settle
+tail and parks: our own demo app measured **3 frames in 10 s** on a fully drawn model, and its
+loading cover — which wanted 8 frames within 250 ms of each other — never lifted. At 12 s the
+scaffold replaced the spinner with a "Still loading…" card, over a scene that had been complete
+for ten seconds. Nudging the camera restarted the loop, satisfied the streak and dismissed the
+card, which is the tell: the signal was reading the frame rate and reporting it as progress.
+
+**A readiness signal must never depend on cadence — a parked scene is a ready scene.** Rewrite the
+rule to count frames without looking at the intervals between them, and if what you actually need
+is "has the GPU finished", ask the GPU: `Engine.flushAndWait()` blocks until the backend has
+executed the queued work, which is the fact the timing was being used to guess. Two presented
+frames are enough to start that question, because Filament refuses a new frame while the driver is
+behind — a second accepted submission is itself the evidence that the first was drained.
+
+Do **not** fix this by holding the loop awake to feed the heuristic. That re-creates exactly the
+drain this release exists to remove, and hides the bug instead of closing it.
+
+### `onFrame` cannot be what keeps your loop awake
+
+The same shape, one level down, and it is the one that costs you a screen rather than a cover.
+
+`onFrame` fires **once per presented frame, right after that frame reached the surface**. Under
+`Continuous` that was indistinguishable from "every vsync, forever", so it became the natural home
+for anything per-frame: advancing an animation clock, stepping a physics simulation, driving a
+turntable, syncing an audio listener pose. Under `OnDemand` it closes on itself. Nothing else
+invalidates the scene, so the loop settles and parks; parked means no presented frame; no presented
+frame means no `onFrame`; and the clock that was going to ask for the next frame is the one that
+just stopped running. The screen does not stutter — it freezes on open, with a fully drawn, entirely
+correct first frame, which is why it reads as "the animation is broken" and not as "the loop
+stopped".
+
+Two things to check in every per-frame callback you own:
+
+- **Does it drive motion?** Then say so: `frameRatePolicy = FrameRatePolicy.Continuous()` while it
+  runs, and back to `OnDemand()` when the user pauses it. This is what the mode is for, and it also
+  lets the cadence vote tell the display. A `RenderInvalidator.requestRender()` called from inside
+  `onFrame` works too — each rendered frame buys the next — but it says "one more frame" sixty times
+  a second to mean "keep going", and nothing tells the panel.
+- **Does it apply a change the user just made?** Then apply it **outside** `onFrame` and request the
+  frame after: `onFrame` runs after presentation, so a pose written there lands in the *next* frame.
+  One `requestRender()` would draw the old pose, then park one frame behind, permanently.
+
+The state that decides — `isPlaying`, `isReplaying`, "is this band on screen" — also needs a rising
+edge. Going from paused to playing while the loop is parked changes a flag no one is reading;
+request one frame from a `LaunchedEffect` on that flag, and the callback takes it from there.
+
+And it must follow the motion, not a flag only a gesture clears. A `Continuous()` held by
+`isReplaying`, where `isReplaying` goes false only when the user presses Reset, is the same lie as a
+loader that never resolves: the spheres stop bouncing, the flag stays true, and the screen renders a
+frozen picture at 57 fps until someone touches it. Tie the declaration to the thing that is actually
+moving.
+
+### `Node.onFrame` holds the loop open; `SceneView(onFrame = …)` does not
+
+They share a name and nothing else, and the asymmetry is deliberate:
+
+| | when it runs | effect on the loop |
+|---|---|---|
+| `SceneView(onFrame = …)` | after its frame was presented | **none** — it is an observer |
+| `node.onFrame = { … }` | before the frame is drawn | **pins** — a non-null slot asks for a frame every tick |
+
+`Node.onFrame` is a *driver*: `PhysicsNode` steps its simulation there, and a driver that only runs
+when a frame happens could never produce the first one. So setting it is read as "keep rendering",
+and `node.onFrame = null` is how you stop asking. A transform written there is on screen in the same
+frame — it runs ahead of the GPU submit, not after it.
+
+Two consequences worth knowing before you go looking for a leak:
+
+- **A node you hand an `onFrame` to will not let its scene park.** That is the safe default, and it
+  is under your control. If the callback only *observes*, hold the value in Compose state instead.
+- **The library's own per-frame work does not go through that slot** and does not pin anything.
+  `BillboardNode` (and `TextNode`, which is one) re-orients only when the camera has actually moved;
+  a settled `PhysicsNode` reports itself idle; `rememberModelAnimationState` observes without
+  costing you a frame. Before 4.37 every one of them quietly held its scene at full cadence — a
+  screen with two `TextNode`s on it ran at 57 fps on a still picture. None of this needs a change in
+  your code.
+
+---
+
 ## SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to `CameraControlMode`
 
 ### Three new `CameraControlMode` cases — `.none`, `.tilt`, `.dolly` ([#1049](https://github.com/sceneview/sceneview/issues/1049))
@@ -67,7 +279,7 @@ the billing event lands on your Google Cloud project even after the user has
 navigated away from the screen that started it. For apps that surface a "Place
 anchor" CTA inside a navigable hierarchy (Compose / Fragment / Activity stack)
 this is a measurable cost on cancelled user flows — see
-[Google's ARCore Cloud Anchors pricing](https://developers.google.com/ar/develop/cloud-anchors-faq#pricing).
+[Google's ARCore Cloud Anchors documentation](https://developers.google.com/ar/develop/cloud-anchors).
 Cancellation does **not** invoke the `onCompleted` callback (matches ARCore
 semantics), so observers stay clean.
 
@@ -323,24 +535,24 @@ Update your Gradle / SPM / pubspec / package.json references:
 
 ```kotlin
 // Before
-implementation("io.github.sceneview:sceneview:4.37.0")
-implementation("io.github.sceneview:arsceneview:4.37.0")
+implementation("io.github.sceneview:sceneview:4.40.0")
+implementation("io.github.sceneview:arsceneview:4.40.0")
 
 // After (4.0.0)
-implementation("io.github.sceneview:sceneview:4.37.0")
-implementation("io.github.sceneview:arsceneview:4.37.0")
+implementation("io.github.sceneview:sceneview:4.40.0")
+implementation("io.github.sceneview:arsceneview:4.40.0")
 ```
 
-**Release candidate caveat:** Maven Central does **not** currently ship `4.0.0`. Either build from source (`./gradlew :sceneview:publishToMavenLocal`) or wait for `v4.0.0` stable.
+`4.0.0` and every later 4.x release are on Maven Central — use the current version shown above.
 
-### 4. `sceneview-mcp` gained a `@next` dist-tag
+### 4. `sceneview-mcp` moved to the 4.x line
 
-If you use the [`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) npm package in Claude Desktop / Cursor / etc., the `@latest` tag is still on `3.6.4` (unchanged, intentionally). The `@next` tag is on `4.0.0`, which includes the Rerun integration docs and v4 lite-proxy routing to the hosted gateway. Opt in with:
+During the 4.0.0 release candidate, the 4.x line of the [`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) npm package shipped under the `@next` tag while `@latest` stayed on `3.6.4`. That is over: `@latest` is now on the 4.x line (with the Rerun integration docs), so the plain package name is all you need:
 
 ```json
 "sceneview": {
   "command": "npx",
-  "args": ["-y", "sceneview-mcp@next"]
+  "args": ["-y", "sceneview-mcp"]
 }
 ```
 
@@ -526,8 +738,8 @@ implementation("io.github.sceneview:sceneview:2.3.0")
 implementation("io.github.sceneview:arsceneview:2.3.0")
 
 // After
-implementation("io.github.sceneview:sceneview:4.37.0")
-implementation("io.github.sceneview:arsceneview:4.37.0")
+implementation("io.github.sceneview:sceneview:4.40.0")
+implementation("io.github.sceneview:arsceneview:4.40.0")
 ```
 
 ---

@@ -4,7 +4,8 @@ import RealityKit
 import ARKit
 import SceneViewSwift
 
-/// AR Augmented Faces demo — mirrors Android's `AugmentedFaceDemo.kt` (#910).
+/// AR face anchor accessories demo — mirrors Android's `AugmentedFaceDemo.kt`
+/// (#910) as far as ARKit allows: the face ANCHOR is tracked, not a mesh.
 ///
 /// Uses ARKit's `ARFaceTrackingConfiguration` (TrueDepth front camera) via
 /// `ARSceneView(faceTracking: true)` to detect and track the user's face.
@@ -99,20 +100,7 @@ struct ARAugmentedFacesDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "face.smiling")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Face tracking requires the TrueDepth front camera (iPhone X+).\nRun on a real device to see face anchors in AR.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "face.smiling", message: "Face tracking requires the TrueDepth front camera (iPhone X+).\nRun on a real device to see face anchors in AR.")
     }
 }
 

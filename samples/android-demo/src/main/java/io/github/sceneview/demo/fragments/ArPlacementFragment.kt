@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -14,10 +14,13 @@ object ArPlacementFragment : DemoFragment {
         id = "ar-placement",
         titleRes = R.string.demo_ar_placement_title,
         subtitleRes = R.string.demo_ar_placement_subtitle,
-        category = DemoCategory.AR_PLACEMENT,
-        icon = Icons.Filled.TouchApp,
-        order = 15,
-        tags = setOf("ar", "plane", "tap-to-place", "anchor", "gltf", "model", "floor", "wall", "tv"),
+        category = DemoCategory.PLACE_AR,
+        icon = Icons.Filled.ViewInAr,
+        order = 17,
+        // 4.39.0: the cursor and the tap are gone — the model lands on the first
+        // usable surface by itself (#3766, #3771).
+        updatedIn = "4.39.0",
+        tags = setOf("ar", "plane", "auto-place", "anchor", "gltf", "model", "floor", "wall", "tv"),
     )
 
     @Composable

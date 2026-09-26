@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-npm install @sceneview/sceneview-web
+npm install sceneview-web
 ```
 
 ## Quick Start
@@ -35,7 +35,7 @@ For browser usage without Kotlin, load the `sceneview-web.js` bundle and use the
 global `sceneview` object it registers on `window`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.37.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.40.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer("scene-canvas", "model.glb").then((viewer) => {
     viewer.setBackgroundColor(0.05, 0.05, 0.08, 1);
@@ -55,6 +55,9 @@ global `sceneview` object it registers on `window`:
 | `sceneview.createViewerFull(canvasId, autoRotate, cameraControls, cameraX, cameraY, cameraZ, fov, lightIntensity)` | Full factory — every option in one call |
 | `sceneview.modelViewer(canvasId, modelUrl)` | One-call helper: create a viewer AND load a model |
 | `sceneview.modelViewerAutoRotate(canvasId, modelUrl, autoRotate)` | Like `modelViewer` with explicit auto-rotate override |
+| `sceneview.isThreeMf(bytes)` | `true` if the `ArrayBuffer` / typed array is a 3MF package |
+| `sceneview.threeMfToGlb(bytes)` | Convert 3MF bytes to GLB bytes (`Uint8Array`); `loadModel` already accepts a `.3mf` URL directly |
+| `sceneview.haptic` | Cross-platform haptic facade (`sceneview.haptic.light()` etc.); no-op where the browser has no vibration API |
 | `sceneview.version` | Library version string |
 
 Every factory returns a `Promise<SceneViewer>`.
@@ -71,11 +74,29 @@ Every factory returns a `Promise<SceneViewer>`.
 | `viewer.setAutoRotate(enabled)` | Toggle auto-rotation |
 | `viewer.setAutoRotateSpeed(speed)` | Auto-rotate angular speed (radians/sec) |
 | `viewer.setZoomLimits(min, max)` | Constrain pinch-zoom range (metres) |
-| `viewer.setBackgroundColor(r, g, b, a)` | Set clear color (components `0..1`) |
+| `viewer.setBackgroundColor(r, g, b, a?)` | Background color, components `0..1`, shown exactly as given (not tone-mapped); `a < 1` lets the page show through. See [Matching the page background](#matching-the-page-background) |
 | `viewer.startRendering()` / `viewer.stopRendering()` | Start/stop the render loop |
 | `viewer.resize(width, height)` | Resize the underlying canvas |
-| `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`) |
+| `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`). The model ends up centred, the margin survives the automatic re-framing after a load, and the clip planes follow the model size (a 2 cm part renders whole) |
 | `viewer.dispose()` | Release Filament resources |
+
+The viewer also manages individual nodes (`addModelNode`, `addSplatNode`, `addCubeNode`,
+`addSphereNode`, `addLightNode`, `removeNode`, `hitTest`, `setAutoCenterContent`) —
+see [`sceneview-web.d.ts`](sceneview-web.d.ts) for the full typed surface.
+
+### Matching the page background
+
+`setBackgroundColor` paints the canvas with the exact color you pass: it is applied after
+tone mapping, so `#EEF0F3` in is `#EEF0F3` on screen and an embed blends into its page.
+Divide each hex byte by 255. The default is `#333443`.
+
+```js
+viewer.setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255);  // opaque #EEF0F3
+viewer.setBackgroundColor(0, 0, 0, 0);                           // transparent: the page shows through
+```
+
+With `a < 1` the canvas is see-through and whatever sits behind it (page color, gradient,
+image) shows around the model. A skybox (`setEnvironmentWithSkybox`) covers the background.
 
 ## Features
 
@@ -85,11 +106,13 @@ Every factory returns a `Promise<SceneViewer>`.
 - Camera configuration (FOV, position, orbit, zoom limits)
 - Auto-rotation with configurable speed
 - Kotlin/JS DSL API + vanilla JavaScript API
+- WebXR AR / VR from Kotlin/JS (`ARSceneView` / `VRSceneView` in `io.github.sceneview.web.xr`)
 
 ## Requirements
 
 - WebGL2 browser (~95% coverage)
-- No AR support (requires native sensors)
+- AR / VR: a WebXR browser that supports `immersive-ar` / `immersive-vr` (e.g. Chrome on
+  Android, Quest Browser); the plain-JS `sceneview` global has no AR entry point
 
 ## Part of SceneView
 

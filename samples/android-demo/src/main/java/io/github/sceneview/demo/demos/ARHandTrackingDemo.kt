@@ -77,7 +77,7 @@ fun ARHandTrackingDemo(onBack: () -> Unit) {
     val jointMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Primary)
     val boneMaterial = rememberMaterialInstance(materialLoader, SceneViewTokens.ArOverlay.onScrim)
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // Static reference pose — indexed by XrHandJoint.ordinal so it plugs
     // straight into the XrHandSkeleton helpers.

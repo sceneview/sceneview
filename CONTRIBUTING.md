@@ -138,32 +138,30 @@ legacy `sdkmanager` from `cmdline-tools`.
 
 ---
 
-## AI-assisted workflow (recommended)
+## AI-assisted workflow
 
-SceneView ships with a full Claude Code setup so you can contribute with AI assistance
-from the first keystroke — no context-gathering needed.
+Contribute with whichever assistant you already use. No tool is recommended over another.
 
-### Quick start
+### Rules files
 
-1. Install [Claude Code](https://claude.ai/code)
-2. Clone the repo and open it: `claude` inside the project root
-3. Run `/contribute` — Claude walks you through the entire workflow
+A checkout carries the repository conventions under each of the filenames these tools
+look for, so yours picks them up with no setup (alphabetical):
 
-See [CLAUDE.md](CLAUDE.md) for the full module map, architecture overview, threading rules, and AI contributor guidelines.
-
-### Available slash commands
-
-| Command | What it does |
+| Read by | File |
 |---|---|
-| `/contribute` | Full guided workflow from understanding to PR |
-| `/review` | Checks threading rules, Compose API, Kotlin style, module boundaries |
-| `/document` | Generates/updates KDoc and `llms.txt` for changed APIs |
-| `/review --coverage` | Audits coverage and generates missing tests |
+| Claude Code | `CLAUDE.md` |
+| Codex, and any agent following the AGENTS.md convention | `AGENTS.md` |
+| Cursor | `.cursorrules` — legacy single file, still read; Cursor's current mechanism is `.cursor/rules/*.mdc` plus `AGENTS.md` |
+| Devin Desktop / Windsurf | `.windsurfrules` — legacy single file, still read; the current mechanism is `.devin/rules/` (or `.windsurf/rules/`) plus `AGENTS.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
 
-### MCP server (optional)
+Point your assistant at [AGENTS.md](AGENTS.md) and ask for the workflow you want.
+[CLAUDE.md](CLAUDE.md) carries the module map, architecture overview and threading rules
+in the most detail.
 
-If you use Claude Desktop or another MCP-compatible editor, add the SceneView MCP server
-for full API context in any chat:
+### MCP server
+
+The SceneView MCP server gives any MCP client the full API context:
 
 ```json
 {
@@ -173,14 +171,32 @@ for full API context in any chat:
 }
 ```
 
-### ChatGPT / Codex
+Where that JSON lives, and what its keys are called, differs per client — per-tool setup
+is in [docs/docs/ai-development.md](docs/docs/ai-development.md).
 
-The repository is also an OpenAI plugin — `.codex-plugin/plugin.json` points at the three
-skills under [`agents/`](agents/). Install it into Codex from your checkout:
+### Slash commands
+
+Slash commands are a Claude Code feature, so this section is specific to it. Working in
+the repo with another assistant? `AGENTS.md` describes the same workflows in prose — ask
+for them by name.
+
+| Command | What it does |
+|---|---|
+| `/contribute` | Full guided workflow from understanding to PR |
+| `/review` | Checks threading rules, Compose API, Kotlin style, module boundaries |
+| `/document` | Generates/updates KDoc and `llms.txt` for changed APIs |
+| `/review --coverage` | Audits coverage and generates missing tests |
+
+### Codex plugin and skills
+
+The repository is also a Codex plugin. The three skills under [`agents/`](agents/) are
+mirrored at `.agents/skills/`, which Codex scans from the working directory up to the
+repository root, and `.agents/plugins/marketplace.json` declares the local marketplace
+(`.codex-plugin/plugin.json` is kept as the compatibility fallback). To install it from
+your checkout:
 
 ```bash
-codex plugin marketplace add "$PWD"    # absolute path — a relative one does not resolve
-codex plugin add sceneview@sceneview-local
+codex plugin marketplace add .
 ```
 
 [AGENTS.md](AGENTS.md) carries the rules a delegated Codex session must respect — it
@@ -364,13 +380,16 @@ correct. Specifically:
   docs-only PR runs none of them. (Before #1370 this was three separate
   workflows — `ci.yml`, `pr-check.yml`, `quality-gate.yml` — each with its
   own `changes` job; they are now one workflow with one path-detection job.)
-- **`render-tests.yml`** has its own `pull_request` path filter: only a PR
-  touching `sceneview/**`, `sceneview-core/**`, `arsceneview/src/**` or the
-  Gradle build files runs it, and then only its `android-library-render` job
-  (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216). The demo
-  screenshot, iOS and web legs are push-to-main + nightly + `workflow_dispatch`
-  only. A docs-only PR matches none of the paths, so the workflow does not
-  run at all.
+- **`render-tests.yml`** has its own `pull_request` path filter, and its own
+  `changes` job that gates each leg on its half of that filter. A PR touching
+  `sceneview/**`, `sceneview-core/**`, `arsceneview/**` or the Gradle build
+  files runs the `android-library-render` job
+  (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216); a PR
+  touching `samples/web-demo/**` or `sceneview-web/**` runs the advisory
+  `web-render` Playwright job. The demo screenshot and iOS legs are
+  push-to-main + nightly + `workflow_dispatch` only, and on a push each leg
+  runs only when its platform's paths changed. A docs-only PR matches none of
+  the paths, so the workflow does not run at all.
 - The **`Path filter completed`** job (`changes-verdict` in `ci.yml`) runs
   on every PR whatever it touches, and it is the required check: it resolves
   green once path detection has run. That is how a docs-only PR stays
@@ -393,7 +412,31 @@ were testing was never covered. The one place cancellation is still allowed
 is a pull request on `render-tests.yml`, where a new push to the same PR
 supersedes the previous SHA. The cost is GitHub-hosted minutes proportional
 to the merge rate; if the queue becomes a problem, the lever is the `paths:`
-filter on each workflow, not `cancel-in-progress`.
+filter on each workflow (and the per-job `changes` gate that both
+`render-tests.yml` and `device-qa.yml` carry), not `cancel-in-progress`. The
+web Playwright suite runs on `main` through `device-qa.yml`'s blocking web leg
+only, and only when the push touched `samples/web-demo/**` (or the harness);
+the Android legs likewise need `samples/android-demo/**`, `.maestro/**` or
+their scripts. `render-tests.yml`'s `web-render` job, which cannot go red, no
+longer repeats the web suite on push or at night. On `workflow_dispatch` and
+in the nightly every leg of both workflows still runs.
+
+### Other workflow triggers worth knowing
+
+- **Superseded PR runs are cancelled.** `ci.yml`, `snippets-check.yml`,
+  `mcp-ts-check.yml` and `rn-ts-check.yml` key their PR concurrency group on
+  the PR number, so pushing a new commit cancels the previous run of the same
+  PR. Pushes to `main` in `ci.yml` are never cancelled.
+- **`ios.yml`** runs for `SceneViewSwift/**`, `samples/ios-demo/**` and its
+  own file — not for `sceneview-core/**`, which no Swift target links. The
+  core's iOS Kotlin/Native compile is `ci.yml`'s `compile-kmp`.
+- **`build-apks.yml`** runs on a release tag or by hand only; `ci.yml`'s
+  `build` job already assembles the same demo APKs on every push to `main`.
+- **`docs.yml`** deploys on a push to `main` that touches the site's actual
+  inputs (`docs/**`, `website-static/**`, `llms.txt`, `CHANGELOG.md`,
+  `CONTRIBUTING.md`, `marketing/codelabs/**`, `samples/web-demo/site/**`, its
+  requirements files), not on every `*.md` — a `changelog.d/` fragment alone no
+  longer redeploys the site; the generated `CHANGELOG.md` does.
 
 ### Code style
 
@@ -499,3 +542,9 @@ A material change can compile, pass unit tests, and still render wrong (the v4.1
 - **Questions**: open a [Discussion](https://github.com/sceneview/sceneview/discussions) instead of an issue.
 - **Feature requests**: welcomed as issues or discussions.
 - **Chat**: join the [Discord](https://discord.gg/UbNDDBTNqb) to talk with the community and maintainers.
+
+---
+
+## License of contributions
+
+SceneView is licensed under the [Apache License 2.0](LICENSE); the `mcp/` directory (the `sceneview-mcp` npm package) is licensed under the [MIT License](mcp/LICENSE). By submitting a pull request you agree that your contribution is licensed under the same license as the files it changes (Apache License 2.0, Section 5: inbound = outbound), and that you have the right to submit it. Code copied or ported from another project must keep that project's copyright and license notice in the file header and be listed in [`NOTICE`](NOTICE).

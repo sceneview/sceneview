@@ -1,10 +1,10 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo.ui
 
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -18,8 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,7 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -50,6 +56,49 @@ import io.github.sceneview.demo.theme.SceneViewTokens
  *
  * Every colour and size here is a [SceneViewTokens] token.
  */
+/**
+ * `over-media-edge` — the two-band boundary of a control that floats over live media.
+ *
+ * WCAG 1.4.11 asks 3:1 for the visual information needed to identify a component. A
+ * single white line cannot deliver that over a camera frame, because the frame is not a
+ * colour we chose: 36 % white is 1.4:1 on a white wall, and 75 % black is 1.5:1 on a night
+ * scene. Two adjacent bands can, because the room can only lose to one of them at a time —
+ * the white ring carries the dark grounds, the black halo carries the bright ones.
+ *
+ * Both are painted **outside** the element's fill, which is the other half of the fix.
+ * `Modifier.border` strokes inside the bounds, over the element's own 14 % white glass:
+ * white-on-glass is 1.03:1, so the old border was invisible by construction whatever its
+ * opacity. Here the ring straddles the boundary (half on the fill, half on the media) and
+ * the halo sits entirely on the media, 1 dp further out.
+ *
+ * Apply it **before** any `clip`/`background` in the chain — it draws past the layout
+ * bounds on purpose, and a clip earlier in the chain would cut the halo off:
+ *
+ * ```
+ * Modifier.overMediaEdge(shape).clip(shape).background(SceneViewTokens.Glass.surface)
+ * ```
+ */
+fun Modifier.overMediaEdge(shape: Shape): Modifier = drawWithContent {
+    drawContent()
+    val band = SceneViewTokens.Glass.edgeWidth.toPx()
+    drawOutline(
+        outline = shape.createOutline(size, layoutDirection, this),
+        color = SceneViewTokens.Glass.edgeRing,
+        style = Stroke(width = band),
+    )
+    translate(left = -band, top = -band) {
+        drawOutline(
+            outline = shape.createOutline(
+                Size(size.width + 2 * band, size.height + 2 * band),
+                layoutDirection,
+                this,
+            ),
+            color = SceneViewTokens.Glass.edgeHalo,
+            style = Stroke(width = band),
+        )
+    }
+}
+
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
@@ -58,12 +107,14 @@ fun GlassSurface(
 ) {
     Box(
         modifier = modifier
+            .overMediaEdge(shape)
             .clip(shape)
-            .background(SceneViewTokens.Glass.surface)
-            .border(
-                BorderStroke(SceneViewTokens.Glass.borderWidth, SceneViewTokens.Glass.border),
-                shape,
-            ),
+            .background(SceneViewTokens.Glass.surface),
+        // Centred, not the Box default of top-start (#3835). A caller that raises the
+        // surface's minimum size — `GlassActionPill` lifts a 36 dp pill to the 48 dp
+        // touch target — got its content pinned to the top 36 dp, 12 dp off the
+        // pill's vertical centre. A wrap-content surface is unaffected.
+        contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalContentColor provides SceneViewTokens.Glass.onGlass) {
             content()
@@ -163,6 +214,7 @@ fun GlassActionPill(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
+    progress: Float? = null,
     contentDescription: String = label,
 ) {
     val accessibleName = contentDescription
@@ -193,11 +245,21 @@ fun GlassActionPill(
             modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
             contentAlignment = Alignment.Center,
         ) {
-            if (loading) {
-                CircularProgressIndicator(
+            if (loading && progress != null) {
+                // Determinate once the byte count is known (#3825): a ring that fills says
+                // how long is left, which the morphing indicator cannot.
+                NarrationProgressRing(
+                    progress = progress,
                     modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
                     color = SceneViewTokens.Glass.onGlass,
-                    strokeWidth = SceneViewTokens.Glass.borderWidth * 2,
+                    // The track is the `over-media-edge` ring: the same white that outlines every
+                    // element over media, so the unfilled arc reads without a new colour.
+                    trackColor = SceneViewTokens.Glass.edgeRing,
+                )
+            } else if (loading) {
+                LoadingIndicator(
+                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    color = SceneViewTokens.Glass.onGlass,
                 )
             } else {
                 Icon(
@@ -209,7 +271,8 @@ fun GlassActionPill(
             }
         }
         Spacer(Modifier.size(SceneViewTokens.Space.sm))
-        Text(
+        // While loading, the label is the narration of the step in flight (#3825).
+        NarrationText(
             text = label,
             style = MaterialTheme.typography.labelLarge,
             color = SceneViewTokens.Glass.onGlass,

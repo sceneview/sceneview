@@ -73,6 +73,8 @@ bash tools/GenerateFilamat.sh                        # all 22 blobs
 bash tools/GenerateFilamat.sh --mat unlit_colored    # one web blob
 ```
 
-The `--check` mode (wired into `quality-gate.sh`) fails CI if any committed
-blob drifts from its `.mat` source. See CONTRIBUTING.md
+The `--check` mode fails if any committed blob drifts from its `.mat` source.
+Nothing runs it for you: this line used to credit `quality-gate.sh`, which went
+with the local harness in #3244 and was not replaced, so run it by hand after
+editing a `.mat`. See CONTRIBUTING.md
 "Filament runtime ↔ `.filamat` ABI invariant".

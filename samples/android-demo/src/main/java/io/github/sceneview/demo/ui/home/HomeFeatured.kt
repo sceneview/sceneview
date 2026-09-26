@@ -249,7 +249,7 @@ private fun FeaturedCard(
                 onClick = onClick,
             ),
         shape = RoundedCornerShape(SceneViewTokens.Radius.xl),
-        color = colors.heroField,
+        color = heroField(),
         shadowElevation = if (dark) 0.dp else SceneViewTokens.Elevation.md,
         border = if (dark) BorderStroke(home.cardOutlineWidth, outlineSubtle()) else null,
     ) {

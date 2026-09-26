@@ -48,15 +48,73 @@ object SceneViewTokens {
      *
      * Theme-independent on purpose: the chrome floats over a live Filament/ARCore
      * viewport, which is media, not a themed surface. White on media reads in both
-     * themes, and the fill is the same 8 % in light and dark per the spec. There is
-     * no blur: a `SurfaceView` cannot be sampled by a Compose render effect.
+     * themes, so the same values serve light and dark. There is no blur: a
+     * `SurfaceView` cannot be sampled by a Compose render effect.
+     *
+     * ## Why this is no longer the spec's 8 % (#3681)
+     *
+     * 8 % white is a value borrowed from platforms that back it with a real backdrop
+     * blur, which separates the panel from the media by *structure* — the fill alone was
+     * never doing the work. Without blur it has to, and it cannot: 8 % over the
+     * `#0B0F16` stage is 1.47 → **1.20:1**, and 1.14:1 over a 60 %-scrimmed camera
+     * feed. The panel edge was a guess in both themes.
+     *
+     * 14 % is the first fill that clears 1.25:1 on both grounds with margin — 1.47:1 and
+     * 1.35:1 — while staying obviously glass rather than a solid sheet. The web and iOS
+     * surfaces keep 8 % where they have real blur.
+     *
+     * ## And why the border became an edge (#3503)
+     *
+     * 1.25:1 is a *fill* bar. The line that tells you where a control begins is measured by
+     * WCAG 1.4.11 at **3:1**, and the 24 % white border never came close — not because of
+     * its opacity but because of where Compose drew it: `Modifier.border` strokes inside
+     * the bounds, on top of the panel's own 14 % white fill, which is 1.03:1. Every value
+     * we could have chosen was invisible. The replacement is [edgeRing] + [edgeHalo],
+     * painted outside the shape, on the media itself.
      */
     object Glass {
-        /** `glass-surface` over media — white at 8 %. */
-        val surface = Color(0x14FFFFFF)
-        /** `glass-border` — white at 8 %, 1 dp. */
-        val border = Color(0x14FFFFFF)
+        /** `glass-surface` over media — white at 14 %. */
+        val surface = Color(0x24FFFFFF)
+        /**
+         * `glass-border` — white at 24 %, 1 dp.
+         *
+         * Kept as a *width* only. The colour is gone: a hairline painted inside a glass
+         * panel is 1.03:1 against its own fill, so it never identified anything. The edge
+         * of an over-media control is [edgeRing] + [edgeHalo], applied with
+         * `Modifier.overMediaEdge(shape)`.
+         */
         val borderWidth = 1.dp
+
+        /**
+         * `over-media-edge`, inner band — white at 36 %, 1 dp.
+         *
+         * The boundary that says "this is a control" on an element floating over a camera
+         * frame. It is measured against WCAG 1.4.11, which asks **3:1** for the visual
+         * information needed to identify a component — not against the 1.25:1 surface bar
+         * the old `glass-border` was tuned to, which is a *fill* threshold and was never
+         * the right test for an edge.
+         *
+         * White alone cannot pass it: over a white wall (#F5F5F5) a 36 % white line is
+         * 1.4:1, and raising the opacity makes it worse, not better. The edge therefore has
+         * two bands — this one plus [edgeHalo] immediately outside it — so whichever band
+         * loses against the room, the other one wins. Applied with
+         * `Modifier.overMediaEdge(shape)`.
+         */
+        val edgeRing = Color(0x5CFFFFFF)
+
+        /**
+         * `over-media-edge`, outer band — black at 75 %, 1 dp, drawn **outside** the shape.
+         *
+         * Outside is the whole point. Compose's `Modifier.border` strokes *inside* the
+         * bounds, i.e. on top of the element's own fill, where a 14 % white glass panel and
+         * a white line differ by 1.03:1 — the border was invisible by construction, on every
+         * ground, in both themes. Painted outside, the pair is read against the media:
+         * ≥ 3:1 on a white wall via the halo, ≥ 3:1 on a night scene via the ring.
+         */
+        val edgeHalo = Color(0xBF000000)
+
+        /** Width of each of the two [edgeRing] / [edgeHalo] bands. */
+        val edgeWidth = 1.dp
         /** Foreground on glass over media: always white. */
         val onGlass = Color.White
         /** Secondary foreground on glass — white at 72 %. */
@@ -80,6 +138,35 @@ object SceneViewTokens {
          * brightest scene the demos ship and stays unobtrusive on the darkest.
          */
         val scrim = Color(0x99000000)
+
+        /**
+         * `chrome-scrim-dock` — the same wash, two points darker, under the **bottom**
+         * band only.
+         *
+         * The bottom band carries something the top band does not: the dock's captions
+         * sit on the dock's own [surface] fill — white at 14 % — and *that* sits on the
+         * scrim. [scrim]'s own "~5.6:1" is measured for text directly on the wash, and
+         * it is right for the identity row. It does not describe the dock, because the
+         * glass fill lifts the ground back up before the caption ever lands on it.
+         *
+         * Over a white scene, composing the real stack (white caption / white 14 % /
+         * black α / white):
+         *
+         * ```
+         * 60 %  scene 255 -> scrim 102.0 -> glass 123.6  ->  white text  4.20:1   FAIL
+         * 68 %  scene 255 -> scrim  82.0 -> glass 106.4  ->  white text  5.37:1   pass
+         * ```
+         *
+         * Computed from the tokens, not sampled: it takes a white *camera frame* to
+         * photograph, and 1.4.3's threshold is about the worst case anyway. On a black
+         * scene both values are the same 15.5:1 — the scrim is doing nothing there.
+         *
+         * It is deliberately *not* applied to [scrim] wholesale. The top band's text
+         * lands on the wash directly, already clears 4.5:1 at 60 %, and darkening the
+         * status-bar end of the screen would buy contrast nobody asked for at the cost
+         * of hiding more of the scene. One number moves, where the defect is.
+         */
+        val scrimDock = Color(0xAD000000)
         /** Height of the top scrim: the identity row, its gutter and the status bar. */
         val scrimTopHeight = 160.dp
         /**
@@ -94,6 +181,40 @@ object SceneViewTokens {
          * height measured from the screen edge. The chrome sits inside the flat part.
          */
         const val scrimPlateau = 0.55f
+
+        /**
+         * `glass-sheet`, light — `surface-container` at 88 %, with no scrim behind it (#3827).
+         *
+         * A settings sheet exists to be watched through: you drag a slider and look at what
+         * it did to the scene. An opaque sheet over a dimming scrim hid exactly that. There
+         * is still no blur (a `SurfaceView` cannot be sampled), so the fill alone carries
+         * legibility. Composited over the three grounds a demo can put behind it — the
+         * `#0B0F16` stage, a mid-grey scene, a white AR wall — `on-surface` never drops
+         * under 13:1 and `on-surface-variant` never under 7.4:1 (stage is the worst ground
+         * in light). 78 % already passed on contrast (5.8:1), but on the emulator a lit
+         * model read through the chips as a second, sharp image under the labels; 88 %
+         * keeps the scene as a silhouette and the controls as the only thing in focus.
+         */
+        const val sheetAlphaLight = 0.88f
+
+        /**
+         * `glass-sheet`, dark — `surface-container` at 90 %.
+         *
+         * The worst ground flips in dark: a dark sheet over a *white* scene.
+         * At 78 % `on-surface-variant` fell to 3.0:1 there; 90 % holds 4.5:1, and
+         * `on-surface` 9.5:1. Over the dark stage the extra opacity costs nothing visible —
+         * the translucency that matters is over bright content, and it is still there.
+         */
+        const val sheetAlphaDark = 0.90f
+
+        /**
+         * `sheet-peek` — the resting detent of the demo settings sheet, as a fraction of
+         * the window height (#3827). About a third: the header and the first controls are
+         * in reach, and the upper two thirds — where every demo frames its hero — stay
+         * visible and live. Dragging up reveals the rest; a sheet whose controls are
+         * shorter than this hugs them instead.
+         */
+        const val sheetPeekFraction = 0.36f
     }
 
     /**
@@ -130,13 +251,35 @@ object SceneViewTokens {
         val heroSubtitle = Color(0xCCFFFFFF)
         val heroPillBackground = Color(0xFFFFFFFF)
         val heroPillText = Color(0xFF1A1A2E)
-        /** Hero placeholder / stage field, `#0B0F16` — matches the viewer stage clear colour. */
+        /**
+         * Hero placeholder / stage field, `#0B0F16` — matches the viewer stage clear
+         * colour. This is the **light** and full-screen value; see
+         * [heroFieldEmbeddedDark] for why a stage inside a card needs its own.
+         */
         val heroField = Color(0xFF0B0F16)
 
+        /**
+         * A stage **embedded in a card**, in dark: `surface-container`.
+         *
+         * `#0B0F16` against the `#0D1117` dark page is 1.01:1 — the stage field, and so
+         * the whole card carrying it, is the page. Painted over the card fill it also
+         * defeats whatever surface role the card was given, which is why this cannot be
+         * fixed from the colour scheme alone. A full-screen stage keeps `#0B0F16`: there
+         * is no card for it to disappear into.
+         */
+        val heroFieldEmbeddedDark = Color(0xFF232A39)
+
         val chipBackgroundLight = Color(0xFFF1F3F5)
-        val chipBackgroundDark = Color(0xFF161B22)
+        /**
+         * Tracks `surfaceContainerHigh`: a chip is a container and has to read as one.
+         * #161B22 was 1.09:1 against the page — in light the identical construction is
+         * 1.11:1 and reads, because at the light end that ratio is a visible step and at
+         * the dark end it is not. 1.54:1 now.
+         */
+        val chipBackgroundDark = Color(0xFF2C3546)
         val chipTextLight = Color(0xFF3D4654)
-        val chipTextDark = Color(0xFF9CA3AF)
+        /** Tracks `onSurfaceVariant`; 5.33:1 on the chip background above. */
+        val chipTextDark = Color(0xFFA4ABB7)
         val chipSelectedBackgroundLight = Color(0xFF1A1A2E)
         val chipSelectedBackgroundDark = Color(0xFFF3F4F6)
         val chipSelectedTextLight = Color(0xFFFFFFFF)
@@ -151,9 +294,17 @@ object SceneViewTokens {
         const val primaryLightAlphaLight = 0.08f
         const val primaryLightAlphaDark = 0.10f
 
-        /** `outline-subtle` — #EBEDF0 / #1F2937, the 1 dp card + header hairline. */
+        /**
+         * `outline-subtle` — the 1 dp card + header hairline, and the home search
+         * field's unfocused border.
+         *
+         * The dark value was #1F2937: 1.29:1 against the page, which is why the search
+         * field only existed once you focused it. It now tracks `outlineVariant`
+         * (2.38:1 on the page, 1.81:1 on a card) so the hairline is a boundary rather
+         * than a texture. Light is unchanged.
+         */
         val outlineSubtleLight = Color(0xFFEBEDF0)
-        val outlineSubtleDark = Color(0xFF1F2937)
+        val outlineSubtleDark = Color(0xFF46516A)
 
         const val headerOverlayAlpha = 1f
     }
@@ -257,15 +408,20 @@ object SceneViewTokens {
          */
         val meterTrack = Color(0x14FFFFFF)
 
-        val borderLight = Color(0x29FFFFFF)
-        val borderDark = Color(0x1AFFFFFF)
-        val borderWidth = 1.dp
-
         /** Transient work in progress — spinner accent. `primary` (dark value). */
         val accentProgress = Color(0xFFA4C1FF)
 
         /** Waiting on the user to move the phone — `warning`. */
         val accentGuidance = Color(0xFFF59E0B)
+
+        /**
+         * A step just finished and needs no more of the user's effort — `success`
+         * ([#3834](https://github.com/sceneview/sceneview/issues/3834)). Distinct from
+         * [accentProgress]: "Well mapped" is not merely further along than "Good enough",
+         * it is the state that unblocks Host, and it read as identical to every other
+         * lavender bar until this was added.
+         */
+        val accentSuccess = Color(0xFF16A34A)
 
         /** Broken until something changes — dark-scheme `error`. */
         val accentBlocked = Color(0xFFFFB4AB)
@@ -358,9 +514,24 @@ object SceneViewTokens {
         val dockHeight = 64.dp
         /** Dock items are [touchTarget] square; their icons are this size. */
         val dockIconSize = 22.dp
+        /**
+         * `dock-accent` — visual diameter of the dock's filled accent disc. Its touch
+         * target stays [touchTarget]. 40 dp inside the 64 dp dock leaves **12 dp on
+         * every side** — the same air as the first labelled item has from the leading
+         * end (8 dp toolbar padding + the item's 4 dp inset). At 48 dp the disc sat
+         * 8 dp from the rounded end and read as touching it (#3835).
+         */
+        val dockAccentSize = 40.dp
         val viewerEnvironmentTile = 72.dp
         val viewerAnimationButton = 48.dp
         val selectedOutlineWidth = 2.dp
+        /**
+         * The 1 dp `outlineVariant` hairline that separates a container from the
+         * container behind it, where the tonal step alone cannot: nesting two deep
+         * (page → sheet → tile) leaves 1.17:1 at the dark end, short of the 1.25:1 a
+         * fill needs to read. See the ramp note in `Color.kt`.
+         */
+        val hairlineWidth = 1.dp
         val heroStageHeight = 360.dp
         const val mediaAspect = 1.25f
     }

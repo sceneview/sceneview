@@ -271,4 +271,91 @@ class SystemHapticEngineRobolectricTest {
             hapticLogs.single().msg.contains("VIBRATE permission"),
         )
     }
+
+    // ── Composition, attributes, Touch feedback setting, View tier ──────────
+
+    @Test
+    @Config(sdk = [Build.VERSION_CODES.S])
+    fun composition_onApi31_playsThePrimitives_whenSupported() {
+        val (vibrator, shadow) = vibrator()
+        shadow.setSupportedPrimitives(
+            listOf(VibrationEffect.Composition.PRIMITIVE_THUD, VibrationEffect.Composition.PRIMITIVE_TICK),
+        )
+        val haptic = AndroidSceneViewHaptic(
+            engine = SystemHapticEngine(vibrator),
+            hasVibratePermission = true,
+        )
+        haptic.play(ARHapticEvent.Placed)
+        assertEquals(
+            listOf(
+                ShadowVibrator.PrimitiveEffect(VibrationEffect.Composition.PRIMITIVE_THUD, 0.7f, 0),
+                ShadowVibrator.PrimitiveEffect(VibrationEffect.Composition.PRIMITIVE_TICK, 0.5f, 60),
+            ),
+            // API 31+ records a composition as primitive segments.
+            shadow.primitiveSegmentsInPrimitiveEffects,
+        )
+    }
+
+    @Test
+    @Config(sdk = [Build.VERSION_CODES.S])
+    fun unsupportedPrimitives_onApi31_fallBackToPredefined() {
+        val (vibrator, shadow) = vibrator()
+        shadow.setSupportedPrimitives(emptyList())
+        val haptic = AndroidSceneViewHaptic(engine = SystemHapticEngine(vibrator), hasVibratePermission = true)
+        haptic.play(ARHapticEvent.Placed)
+        assertTrue(shadow.primitiveSegmentsInPrimitiveEffects.orEmpty().isEmpty())
+        assertEquals("predefined effect (no concrete duration)", -1L, shadow.milliseconds)
+    }
+
+    @Test
+    @Config(sdk = [Build.VERSION_CODES.TIRAMISU])
+    fun everyVibration_onApi33_carriesTouchUsage() {
+        val (vibrator, shadow) = vibrator()
+        SystemHapticEngine(vibrator).playPredefined(VibrationEffect.EFFECT_CLICK)
+        val attributes = shadow.vibrationAttributesFromLastVibration as android.os.VibrationAttributes
+        assertEquals(android.os.VibrationAttributes.USAGE_TOUCH, attributes.usage)
+    }
+
+    @Test
+    @Config(sdk = [Build.VERSION_CODES.R])
+    fun everyVibration_belowApi33_carriesSonificationAudioAttributes() {
+        val (vibrator, shadow) = vibrator()
+        SystemHapticEngine(vibrator).playPredefined(VibrationEffect.EFFECT_CLICK)
+        assertEquals(
+            android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION,
+            shadow.audioAttributesFromLastVibration?.usage,
+        )
+    }
+
+    @Test
+    @Config(sdk = [Build.VERSION_CODES.R])
+    fun touchFeedbackOff_belowApi33_nothingReachesTheVibrator() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        @Suppress("DEPRECATION")
+        android.provider.Settings.System.putInt(
+            context.contentResolver, android.provider.Settings.System.HAPTIC_FEEDBACK_ENABLED, 0,
+        )
+        val (vibrator, shadow) = vibrator()
+        val engine = SystemHapticEngine(vibrator, context.contentResolver)
+        assertTrue(!engine.touchFeedbackEnabled)
+        val haptic = AndroidSceneViewHaptic(engine = engine, hasVibratePermission = true)
+        haptic.medium()
+        haptic.play(ARHapticEvent.TrackingLost)
+        haptic.continuous(0.5f, 100L)
+        assertEquals(0L, shadow.milliseconds)
+    }
+
+    @Test
+    @Config(sdk = [Build.VERSION_CODES.UPSIDE_DOWN_CAKE])
+    fun viewFactory_playsThePlatformConstant_notTheVibrator() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        val view = android.view.View(context)
+        val (_, shadow) = vibrator()
+        SceneViewHaptic(view).play(ARHapticEvent.ScaleSnapped)
+        assertEquals(
+            android.view.HapticFeedbackConstants.SEGMENT_TICK,
+            shadowOf(view).lastHapticFeedbackPerformed(),
+        )
+        assertEquals(0L, shadow.milliseconds)
+    }
 }

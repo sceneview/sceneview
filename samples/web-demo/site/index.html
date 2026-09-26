@@ -27,20 +27,23 @@
             --sv-green-light: #55efc4;
             --sv-dark: #0D1117;
             --sv-dark-surface: #161B22;
-            --sv-dark-card: #1c2333;
+            --sv-dark-card: #2b323d;
             --sv-dark-overlay: rgba(13, 17, 23, 0.88);
             --sv-text: #f3f4f6;
             --sv-text-dim: #9ca3af;
-            --sv-text-faint: #6b7280;
-            --sv-border: rgba(255,255,255,0.08);
-            --sv-border-hover: rgba(255,255,255,0.18);
+            /* Overlay UI sits on top of an arbitrary 3D scene, so the panels have to
+               carry their own background: faint text was 3.3-3.9:1 and the panels were
+               75%-opaque over the canvas, which made them read as part of the scene. */
+            --sv-text-faint: #8b949e;
+            --sv-border: rgba(255,255,255,0.14);
+            --sv-border-hover: rgba(255,255,255,0.28);
             --sv-radius-sm: 8px;
             --sv-radius: 12px;
             --sv-radius-lg: 16px;
             --sv-radius-pill: 28px;
             --sv-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            --sv-glass: rgba(22, 27, 34, 0.75);
-            --sv-glass-border: rgba(255,255,255,0.06);
+            --sv-glass: rgba(38, 44, 54, 0.90);
+            --sv-glass-border: rgba(255,255,255,0.14);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -740,7 +743,7 @@
         <a href="https://sceneview.github.io" target="_blank" class="logo" title="SceneView — 3D and AR for Compose and SwiftUI">
             <div class="logo-icon">S</div>
             <span class="logo-text">SceneView Web Demo</span>
-            <span class="logo-version">v4.37.0</span>
+            <span class="logo-version">v4.40.0</span>
         </a>
         <div class="top-right">
             <button id="auto-rotate-toggle" class="auto-rotate-btn active" title="Toggle auto-rotation">Auto-rotate</button>
@@ -1230,7 +1233,7 @@
             instance.setAutoRotate(autoRotate);
             instance.setQuality('medium');
             loadingOverlay.classList.add('hidden');
-            console.log('SceneView Web Demo initialized — v4.37.0');
+            console.log('SceneView Web Demo initialized — v4.40.0');
             // Engine init complete — surface any update snackbar deferred
             // while the loading overlay was still covering the viewport.
             flushPendingUpdateSnackbar();
@@ -2646,7 +2649,7 @@
       // No-op if version.json is missing (dev mode, no deploy yet, fetch
       // blocked by an ad-blocker, …) — the snackbar just stays hidden.
 
-      var BUILD_VERSION = '4.37.0';
+      var BUILD_VERSION = '4.40.0';
       var VERSION_URL = '/version.json';
       var UPDATE_THROTTLE_MS = 12 * 60 * 60 * 1000;     // 12 hours
       var UPDATE_LAST_CHECK_KEY = 'sceneview.update.lastCheckAt';

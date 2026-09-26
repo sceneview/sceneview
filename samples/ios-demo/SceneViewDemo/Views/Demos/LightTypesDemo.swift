@@ -201,37 +201,45 @@ struct LightingDemo: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            SceneView { root in
-                addStage(to: root)
-                switch rig {
-                case .image:
-                    break                       // the environment is the whole rig
-                case .studio:
-                    addStudioRig(to: root)
-                case .sun:
-                    addSunRig(to: root)
-                }
-            }
-            // The fix for "aucune différence": without these two the scene
-            // carries a 10 000 lux key and a 3 000 lux fill that no rig here
-            // asked for, and every rig looks like every other one.
-            .mainLight(.disabled)
-            .fillLight(.disabled)
-            .environment(environment)
-            .contentID(contentKey)
-            .cameraControls(.orbit)
-            // A low orbit keeps the floor, both probes and the sky in frame.
-            .cameraOrbit(elevation: .pi / 12)
-            .framingMargin(qaMode ? 0.75 : 1.05)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                controls
+        SceneView { root in
+            addStage(to: root)
+            switch rig {
+            case .image:
+                break                       // the environment is the whole rig
+            case .studio:
+                addStudioRig(to: root)
+            case .sun:
+                addSunRig(to: root)
             }
         }
-        .background(Color.black)
+        // The fix for "aucune différence": without these two the scene
+        // carries a 10 000 lux key and a 3 000 lux fill that no rig here
+        // asked for, and every rig looks like every other one.
+        .mainLight(.disabled)
+        .fillLight(.disabled)
+        .environment(environment)
+        .contentID(contentKey)
+        .cameraControls(.orbit)
+        // A low orbit keeps the floor, both probes and the sky in frame.
+        .cameraOrbit(elevation: .pi / 12)
+        .framingMargin(qaMode ? 0.75 : 1.05)
+        // The rig picker and the rig's one control ride the scaffold's
+        // accessory cluster on glass; the explainer lives in the sheet. The
+        // previous `.ultraThinMaterial` card went near-white in dark mode
+        // and the screen had no back button at all (#3766 P2 §3, §6).
+        .demoChrome(
+            accessory: {
+                VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
+                    rigControl
+                    DemoOptionStrip(Rig.allCases, selection: $rig) { $0.title }
+                }
+            }
+        ) {
+            Text(rig.explainer)
+                .font(SceneViewTokens.TypeScale.body)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Stage
@@ -375,102 +383,46 @@ struct LightingDemo: View {
 
     // MARK: - Controls
 
-    @ViewBuilder
-    private var controls: some View {
-        VStack(spacing: 12) {
-            Text(rig.explainer)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.75))
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-            rigControl
-
-            HStack(spacing: 8) {
-                ForEach(Rig.allCases) { option in
-                    Button {
-                        rig = option
-                        #if os(iOS)
-                        SceneViewHaptic.shared.selection()
-                        #endif
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: option.icon)
-                                .font(.body)
-                            Text(option.title)
-                                .font(.caption2)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            option == rig
-                                ? AnyShapeStyle(.orange)
-                                : AnyShapeStyle(.white.opacity(0.15))
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .foregroundStyle(.white)
-                    }
-                    .accessibilityLabel("\(option.title) lighting rig")
-                    .accessibilityAddTraits(option == rig ? .isSelected : [])
-                }
-            }
-        }
-        .padding()
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .padding()
-    }
-
     /// One control per rig — the handful of knobs that rig actually needs.
     @ViewBuilder
     private var rigControl: some View {
         switch rig {
         case .image:
-            HStack(spacing: 8) {
-                ForEach(Array(Self.imageEnvironments.enumerated()), id: \.offset) { index, preset in
-                    Button {
-                        environmentIndex = index
-                        #if os(iOS)
-                        SceneViewHaptic.shared.selection()
-                        #endif
-                    } label: {
-                        Text(preset.name)
-                            .font(.caption2)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .background(
-                                index == environmentIndex
-                                    ? AnyShapeStyle(.white.opacity(0.35))
-                                    : AnyShapeStyle(.white.opacity(0.12))
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .foregroundStyle(.white)
-                    }
-                    .accessibilityLabel("\(preset.name) environment")
-                    .accessibilityAddTraits(index == environmentIndex ? .isSelected : [])
-                }
+            DemoOptionStrip(Array(Self.imageEnvironments.indices), selection: $environmentIndex) {
+                Self.imageEnvironments[$0].name
             }
+            .accessibilityLabel("Environment")
         case .studio:
-            LabeledSlider(
-                label: "Key angle",
-                value: $keyAzimuth,
-                range: 0...360,
-                step: 5,
-                decimals: 0,
-                unit: "°"
-            )
-            .tint(.orange)
+            glassSlider {
+                LabeledSlider(
+                    label: "Key angle",
+                    value: $keyAzimuth,
+                    range: 0...360,
+                    step: 5,
+                    decimals: 0,
+                    unit: "°"
+                )
+            }
         case .sun:
-            LabeledSlider(
-                label: "Time of day",
-                value: $hour,
-                range: 0...24,
-                step: 0.25,
-                valueText: Self.clock(hour)
-            )
-            .tint(.orange)
+            glassSlider {
+                LabeledSlider(
+                    label: "Time of day",
+                    value: $hour,
+                    range: 0...24,
+                    step: 0.25,
+                    valueText: Self.clock(hour)
+                )
+            }
         }
+    }
+
+    /// A slider on the same glass as the option strip beside it.
+    private func glassSlider<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, SceneViewTokens.Glass.pillPaddingHorizontal)
+            .padding(.vertical, SceneViewTokens.Space.sm)
+            .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg,
+                                                  style: .continuous))
     }
 
     /// `15.25` → `"15:15"`. A bare decimal hour reads as a number, not a time.

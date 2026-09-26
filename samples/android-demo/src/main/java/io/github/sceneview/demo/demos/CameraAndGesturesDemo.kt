@@ -50,6 +50,7 @@ import io.github.sceneview.demo.demos.internal.StudioCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.demo.ui.GlassSurface
 import io.github.sceneview.gesture.NodeEditingOverlay
 import io.github.sceneview.gesture.rememberNodeEditingFeedback
@@ -244,7 +245,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
         if (moveMode && focus == null) flyTo(RigSubject.Helmet, CameraView.Hero)
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     val resetAll = {
         cinematic = false
@@ -538,24 +539,24 @@ private fun CameraViewChips(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CameraView.entries.forEach { view ->
+            val chipShape = FilterChipDefaults.shape
             FilterChip(
                 selected = view == selected,
                 onClick = { onSelect(view) },
                 label = { Text(view.label, style = SceneViewTokens.Type.caption) },
+                // `over-media-edge` instead of Material's own border: `filterChipBorder`
+                // strokes *inside* the chip, over its own 14 % white fill, where a white
+                // line is 1.03:1 — invisible whatever its opacity. The edge belongs
+                // outside, on the scene (WCAG 1.4.11, 3:1).
+                modifier = Modifier.overMediaEdge(chipShape),
+                shape = chipShape,
                 colors = FilterChipDefaults.filterChipColors(
                     containerColor = SceneViewTokens.Glass.surface,
                     labelColor = SceneViewTokens.Glass.onGlass,
                     selectedContainerColor = SceneViewTokens.Glass.onGlass,
                     selectedLabelColor = SceneViewTokens.Stage.background,
                 ),
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled = true,
-                    selected = view == selected,
-                    borderColor = SceneViewTokens.Glass.border,
-                    selectedBorderColor = SceneViewTokens.Glass.onGlass,
-                    borderWidth = SceneViewTokens.Glass.borderWidth,
-                    selectedBorderWidth = SceneViewTokens.Glass.borderWidth,
-                ),
+                border = null,
             )
         }
     }

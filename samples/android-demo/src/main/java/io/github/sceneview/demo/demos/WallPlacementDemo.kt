@@ -1,249 +1,266 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.RotateLeft
-import androidx.compose.material.icons.automirrored.filled.RotateRight
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import android.os.SystemClock
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import com.google.ar.core.Anchor
-import io.github.sceneview.ar.WallPlacementPhase
-import io.github.sceneview.ar.WallPlacementScene
-import io.github.sceneview.ar.node.AnchorNode
+import com.google.android.filament.Engine
+import com.google.ar.core.TrackingFailureReason
+import io.github.sceneview.SceneScope
+import io.github.sceneview.ar.*
+import io.github.sceneview.demo.ARCameraInitScrim
+import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
-import io.github.sceneview.math.Direction
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.common.placement.PlacementActionCard
+import io.github.sceneview.demo.common.placement.PlacementCard
+import io.github.sceneview.demo.common.placement.PlacementPreviewSheet
+import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.ar.ARHapticFeedback
+import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.material.setColor
+import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
-import io.github.sceneview.node.ContactShadowContext
-import io.github.sceneview.node.CubeNode
-import io.github.sceneview.node.Node
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import kotlinx.coroutines.delay
+import java.io.File
 
-/**
- * Wall-placement demo (#2740, sub-task F) — mounts a procedural TV on a vertical surface
- * through [WallPlacementScene], reproducing the Amazon "AR View" wall flow the umbrella
- * teardown documented:
- *
- * 1. the phase banner walks the user through FINDING_FLOOR → FINDING_WALL → ALIGNING_EDGE →
- *    PLACED (the scene's own state machine, surfaced via `onPhaseChanged`);
- * 2. during ALIGNING_EDGE a fixed **orange guide line** is drawn on screen — the user
- *    physically aligns it with the floor↔wall seam before tapping (the Amazon trick that
- *    makes wall placement work without relying on the seam being perfectly tracked);
- * 3. after placement a **D-pad** fine-tunes the TV (2 cm nudges along the wall, 2° yaw
- *    steps) — the "precise" half of the umbrella's dual manipulation model (sub-task D;
- *    the free gizmo half is a follow-up).
- *
- * The TV is procedural (two [CubeNode]s: matte body + glossy screen) so the demo needs no
- * bundled asset and stays deterministic — consistent with the local-assets rule.
- */
-/** Height of the orange alignment-guide Canvas — must be non-zero or the stroke is clipped. */
-private val GUIDE_LINE_HEIGHT = 16.dp
-
-/** D-pad step: 2 cm per nudge, 2° per rotation press. */
-private const val NUDGE_STEP = 0.02f
-private const val YAW_STEP = 2f
-
-/**
- * One placed TV's fine-adjust, in the anchor's local frame: [offset] x = along the wall,
- * y = up; [yaw] is an extra rotation on top of the wall-facing orientation.
- */
-private data class Adjustment(
-    val offset: Position = Position(0f, 0f, 0f),
-    val yaw: Float = 0f,
-)
-
+/** One TV, automatically placed on the first usable wall. The SDK owns all placement decisions. */
 @Composable
-fun WallPlacementDemo(onBack: () -> Unit) {
+fun WallPlacementDemo(onBack: () -> Unit, playbackDataset: File? = rememberArPlaybackDataset()) {
+    var sessionKey by remember { mutableIntStateOf(0) }
+    key(sessionKey) {
+        WallPlacementExperience(onBack, playbackDataset, onRestart = { sessionKey++ })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, onRestart: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    val state = rememberAutoPlacementState()
+    // The scene draws the animated wall coaching itself; this keeps the pill quiet meanwhile.
+    val guidance = rememberArGuidanceState(state, PlacementSurface.WALL)
+    var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
+    var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    var invalidMove by remember { mutableStateOf(false) }
+    var show3D by remember { mutableStateOf(false) }
+    var hintShown by remember { mutableStateOf(false) }
+    var showHint by remember { mutableStateOf(false) }
+    var hadPlacement by remember { mutableStateOf(false) }
 
-    var phase by remember { mutableStateOf(WallPlacementPhase.FINDING_FLOOR) }
-    // D-pad state — offset in the anchor's local frame (x = along the wall, y = up)
-    // and an extra yaw on top of the wall-facing orientation.
-    // Per-anchor fine-adjust, so each placed TV keeps its own tweak.
-    val adjustments = remember { mutableStateMapOf<Anchor, Adjustment>() }
-    // Which placed anchor the D-pad currently drives (the most recent one).
-    var latestAnchor by remember { mutableStateOf<Anchor?>(null) }
-
+    // Placement, selection, snap, limits, invalid moves and tracking: the SDK's opt-in haptics.
+    ARHapticFeedback(state)
+    LaunchedEffect(state.hasPlacement) {
+        if (state.hasPlacement && !hadPlacement && !hintShown) { hintShown = true; showHint = true }
+        hadPlacement = state.hasPlacement
+    }
+    LaunchedEffect(showHint) {
+        if (showHint) { delay(5_000); showHint = false }
+    }
+    LaunchedEffect(state.phase) {
+        if (state.phase == PlacementPhase.ADJUSTING) showHint = false
+        if (state.phase != PlacementPhase.PLACED && state.phase != PlacementPhase.ADJUSTING) invalidMove = false
+    }
+    LaunchedEffect(state.phase, availability) {
+        if (state.phase == PlacementPhase.INITIALIZING && availability == null) {
+            delay(AR_CAMERA_INIT_SCRIM_TIMEOUT_MS)
+            state.cameraFailed()
+        }
+    }
+    fun reset() {
+        invalidMove = false
+        state.resetPlacement(SystemClock.uptimeMillis())
+    }
+    fun move(x: Float, y: Float) { state.moveBy(x, y) }
+    val card = when (state.phase) {
+        PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
+        PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
+        // CAMERA_ERROR is raised only when AR never started, which is exactly when the SDK
+        // already shows its own full-screen "Couldn't start AR" retry. A second card here
+        // stacked two competing "Try again" buttons. iOS leaves this to ARExperienceContainer.
+        else -> null
+    }
     DemoScaffold(
-        title = stringResource(R.string.demo_ar_placement_title),
+        title = stringResource(R.string.wall_title),
         onBack = onBack,
-        topOverlay = {
-            // Phase banner — mirrors the scene's onboarding state machine.
-            Surface(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-            ) {
-                Text(
-                    text = stringResource(
-                        when (phase) {
-                            WallPlacementPhase.FINDING_FLOOR -> R.string.wall_phase_finding_floor
-                            WallPlacementPhase.FINDING_WALL -> R.string.wall_phase_finding_wall
-                            WallPlacementPhase.ALIGNING_EDGE -> R.string.wall_phase_aligning_edge
-                            WallPlacementPhase.PLACED -> R.string.wall_phase_placed
-                        }
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+        controls = {
+            Text(stringResource(R.string.wall_preview_size), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.ar_scale_preview_size, (state.scaleFactor * 100).toInt()))
+            TextButton(onClick = ::reset, enabled = state.hasPlacement) {
+                Text(stringResource(R.string.wall_reset))
+            }
+            TextButton(onClick = { show3D = true }) { Text(stringResource(R.string.ar_place_view_in_3d)) }
+            if (state.hasPlacement && state.isSelected) {
+                val enabled = state.phase == PlacementPhase.PLACED
+                // Sheet-only accessibility alternatives; never a default D-pad over the camera.
+                WallAdjustment(R.string.wall_dpad_left, R.string.wall_dpad_right, enabled,
+                    { move(-0.02f, 0f) }, { move(0.02f, 0f) })
+                WallAdjustment(R.string.wall_dpad_down, R.string.wall_dpad_up, enabled,
+                    { move(0f, -0.02f) }, { move(0f, 0.02f) })
+                WallAdjustment(R.string.wall_dpad_rotate_left, R.string.wall_dpad_rotate_right, enabled,
+                    { state.rotateBy(-2f) }, { state.rotateBy(2f) })
+                WallAdjustment(R.string.wall_scale_down, R.string.wall_scale_up, enabled,
+                    { state.scaleTo(state.scaleFactor - 0.1f) }, { state.scaleTo(state.scaleFactor + 0.1f) })
             }
         },
-        // D-pad fine-adjust — the precise half of the dual manipulation model.
-        // Drives the most recently placed TV; absent until one is placed.
-        //
-        // In the scaffold's bottom slot rather than hand-anchored in the scene: the
-        // slot is bottom-aligned, centred and already clear of the system bars, so
-        // the pad no longer needs the `bottom = 24.dp` clearance it used to guess at.
         bottomOverlay = {
-            val target = latestAnchor
-            if (phase == WallPlacementPhase.PLACED && target != null) {
-                // Read-modify-write the target's own adjustment, so earlier TVs keep theirs.
-                fun adjust(transform: (Adjustment) -> Adjustment) {
-                    adjustments[target] = transform(adjustments[target] ?: Adjustment())
-                }
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    FilledTonalIconButton(onClick = {
-                        adjust { it.copy(offset = it.offset.copy(y = it.offset.y + NUDGE_STEP)) }
-                    }) {
-                        Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.wall_dpad_up))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        FilledTonalIconButton(onClick = { adjust { it.copy(yaw = it.yaw + YAW_STEP) } }) {
-                            Icon(Icons.AutoMirrored.Filled.RotateLeft, stringResource(R.string.wall_dpad_rotate_left))
-                        }
-                        FilledTonalIconButton(onClick = {
-                            adjust { it.copy(offset = it.offset.copy(x = it.offset.x - NUDGE_STEP)) }
-                        }) {
-                            Icon(Icons.Filled.KeyboardArrowLeft, stringResource(R.string.wall_dpad_left))
-                        }
-                        FilledTonalIconButton(onClick = {
-                            adjust { it.copy(offset = it.offset.copy(x = it.offset.x + NUDGE_STEP)) }
-                        }) {
-                            Icon(Icons.Filled.KeyboardArrowRight, stringResource(R.string.wall_dpad_right))
-                        }
-                        FilledTonalIconButton(onClick = { adjust { it.copy(yaw = it.yaw - YAW_STEP) } }) {
-                            Icon(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.wall_dpad_rotate_right))
-                        }
-                    }
-                    FilledTonalIconButton(onClick = {
-                        adjust { it.copy(offset = it.offset.copy(y = it.offset.y - NUDGE_STEP)) }
-                    }) {
-                        Icon(Icons.Filled.KeyboardArrowDown, stringResource(R.string.wall_dpad_down))
-                    }
+            val text = when {
+                card != null -> null
+                guidance.isCoaching &&
+                    !(state.phase == PlacementPhase.TRACKING_LOST &&
+                        trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) -> null
+                invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
+                else -> when (state.phase) {
+                    PlacementPhase.SCANNING -> stringResource(R.string.wall_phase_scanning)
+                    PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused) +
+                        if (trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT)
+                            " " + stringResource(R.string.ar_place_try_brighter_area) else ""
+                    PlacementPhase.RECOVERING -> stringResource(R.string.ar_place_finding_placement)
+                    PlacementPhase.PLACED -> if (showHint) stringResource(R.string.ar_place_gesture_hint) else null
+                    PlacementPhase.ADJUSTING ->
+                        stringResource(
+                            R.string.ar_scale_preview_size,
+                            (state.scaleFactor * 100).toInt(),
+                        )
+                    else -> null
                 }
             }
+            DemoStatusBanner(text, tone = DemoStatusTone.Guidance)
+            PlacementActionCard(card, { show3D = true },
+                { state.keepScanning(SystemClock.uptimeMillis()) }, ::reset, onRestart,
+                surface = PlacementSurface.WALL)
         },
     ) {
-        WallPlacementScene(
+        AutoPlacementScene(
+            assetReady = true,
             modifier = Modifier.fillMaxSize(),
+            state = state,
+            surface = PlacementSurface.WALL,
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
-            // TV centre ~1.1 m above the floor — typical living-room mount height.
-            mountHeight = 1.1f,
-            onPhaseChanged = { phase = it },
-            onPlaced = { anchor ->
-                // Each placed TV owns its adjustment; the D-pad drives whichever was
-                // placed last. A single shared offset would both drag every earlier TV
-                // along and wipe their adjustments when a new one lands. Registered in
-                // an effect, never inline: mutating state during composition would risk
-                // an unstable recomposition loop.
-                LaunchedEffect(anchor) {
-                    adjustments[anchor] = Adjustment()
-                    latestAnchor = anchor
-                }
-                val adjustment = adjustments[anchor] ?: Adjustment()
-                AnchorNode(anchor = anchor) {
-                    Node(
-                        position = adjustment.offset,
-                        rotation = Rotation(y = adjustment.yaw),
-                    ) {
-                        val body = remember(materialLoader) {
-                            materialLoader.createColorInstance(
-                                Color(0xFF20242A), metallic = 0f, roughness = 0.8f,
-                            )
-                        }
-                        val screen = remember(materialLoader) {
-                            materialLoader.createColorInstance(
-                                Color(0xFF06080C), metallic = 0f, roughness = 0.15f,
-                            )
-                        }
-                        // Contact shadow on the WALL, behind the TV (#2740 sub-task C). A real
-                        // shadow map would render nothing here — the estimated indoor light comes
-                        // from the ceiling and grazes the wall — so the panel would read as
-                        // floating. This procedural pool grounds it. XY quad (normal +Z) to match
-                        // the wall plane; sized larger than the TV so the gradient shows around it.
-                        ContactShadow(
-                            size = Size(1.9f, 1.3f, 0f),
-                            context = ContactShadowContext.Wall,
-                            normal = Direction(z = 1f),
-                        )
-                        // 55" TV: body slightly proud of the wall, screen on its front face.
-                        CubeNode(size = Size(1.26f, 0.74f, 0.04f), position = Position(z = 0.02f), materialInstance = body)
-                        CubeNode(size = Size(1.20f, 0.68f, 0.01f), position = Position(z = 0.045f), materialInstance = screen)
-                    }
-                }
-            },
-        )
-
-        // Orange alignment guide — fixed screen-space line the user physically aligns
-        // with the floor↔wall seam (the Amazon "ligne orange" from the teardown).
-        if (phase == WallPlacementPhase.ALIGNING_EDGE) {
-            // The Canvas needs an explicit height — `fillMaxWidth()` alone leaves it
-            // zero-high and the stroke gets clipped away entirely.
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(GUIDE_LINE_HEIGHT)
-                    .align(Alignment.Center)
-                    .padding(horizontal = 24.dp),
-            ) {
-                val midY = size.height / 2f
-                drawLine(
-                    color = Color(0xFFFF8A00),
-                    start = Offset(0f, midY),
-                    end = Offset(size.width, midY),
-                    strokeWidth = 6.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
+            // No synthetic wall shadow. See the documented renderer parity limitation.
+            groundShadows = false,
+            playbackDataset = playbackDataset,
+            onARCoreAvailability = { availability = it },
+            onTrackingFailureChanged = { trackingFailure = it },
+        ) { placement ->
+            AutoPlacementNode(placement, state,
+                onInvalidMove = { invalidMove = it },
+            ) { opacity -> WallTV(opacity) }
         }
+        // Keyed on the first camera frame, not on INITIALIZING: untracked start-up frames
+        // already show the camera, and the coaching overlay speaks over them.
+        ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING && !state.hasCameraFrame, availability)
+    }
+    if (show3D) {
+        WallTvPreviewSheet(engine, modelLoader, materialLoader, onDismiss = { show3D = false })
+    }
+}
+
+/** Vertical button layout keeps every adjustment readable at large text sizes. */
+@Composable
+private fun WallAdjustment(decreaseLabel: Int, increaseLabel: Int, enabled: Boolean,
+                           decrease: () -> Unit, increase: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs)) {
+        OutlinedButton(onClick = decrease, enabled = enabled) { Text(stringResource(decreaseLabel)) }
+        OutlinedButton(onClick = increase, enabled = enabled) { Text(stringResource(increaseLabel)) }
+    }
+}
+
+/** The TV as authored, in metres, before [WALL_TV_SCALE]: same geometry as iOS `makeWallTV`. */
+private val TV_BODY = Size(1.26f, 0.74f, 0.04f)
+private val TV_SCREEN = Size(1.20f, 0.68f, 0.01f)
+
+/** The screen's centre, proud of the body's front face (z = 0.04) by half its own depth. */
+private const val TV_SCREEN_CENTER_Z = 0.045f
+
+/** Brings the authored 1.26 m TV to the demo's 0.3 m preview size, not a 55-inch claim. */
+private const val WALL_TV_SCALE = 0.3f / 1.26f
+
+/** The TV as drawn: width, height and depth in metres, screen included. */
+internal val wallTvExtent: Size = Size(
+    TV_BODY.x * WALL_TV_SCALE,
+    TV_BODY.y * WALL_TV_SCALE,
+    (TV_SCREEN_CENTER_Z + TV_SCREEN.z / 2f) * WALL_TV_SCALE,
+)
+
+/**
+ * "View in 3D": the TV in the shared studio preview (#3864, #3884).
+ *
+ * The TV is near-black on purpose, like a real one and like iOS: the studio room is the backdrop
+ * it reads against and the reflection that makes the glossy screen look like a screen. It is not
+ * selectable here, so a drag that starts on it orbits the camera.
+ */
+@Composable
+internal fun WallTvPreviewSheet(
+    engine: Engine,
+    modelLoader: ModelLoader,
+    materialLoader: MaterialLoader,
+    onDismiss: () -> Unit,
+) {
+    PlacementPreviewSheet(
+        title = stringResource(R.string.wall_preview_size),
+        subjectExtent = wallTvExtent,
+        engine = engine,
+        modelLoader = modelLoader,
+        materialLoader = materialLoader,
+        onDismiss = onDismiss,
+    ) { WallTV(selectable = false) }
+}
+
+/**
+ * Same authored geometry/materials as iOS; the base size is a 0.3 m preview, not a 55-inch claim.
+ *
+ * [selectable] routes a touch on the TV to the placement: in AR its parts are editable so a drag
+ * on them reaches `AutoPlacementNode`'s pivot. SceneView never hands a touch on an editable node
+ * to the camera, so the orbit-only preview passes `false` (#3884).
+ */
+@Composable
+private fun SceneScope.WallTV(opacity: Float = 1f, selectable: Boolean = true) {
+    val body = remember(materialLoader) {
+        materialLoader.createColorInstance(Color(0xFF20242A).copy(alpha = 0f), metallic = 0f, roughness = 0.8f)
+    }
+    val screen = remember(materialLoader) {
+        materialLoader.createColorInstance(Color(0xFF06080C).copy(alpha = 0f), metallic = 0f, roughness = 0.15f)
+    }
+    SideEffect {
+        body.setColor(Color(0xFF20242A).copy(alpha = opacity))
+        screen.setColor(Color(0xFF06080C).copy(alpha = opacity))
+    }
+    Node(scale = Scale(WALL_TV_SCALE)) {
+        // The whole TV moves and scales as one: only the parent node takes gestures.
+        val fixedChild: CubeNodeImpl.() -> Unit = {
+            isEditable = selectable
+            isPositionEditable = false
+            isRotationEditable = false
+            isScaleEditable = false
+        }
+        CubeNode(
+            size = TV_BODY,
+            position = Position(0f, TV_BODY.y / 2f, TV_BODY.z / 2f),
+            materialInstance = body,
+            apply = fixedChild,
+        )
+        CubeNode(
+            size = TV_SCREEN,
+            position = Position(0f, TV_BODY.y / 2f, TV_SCREEN_CENTER_Z),
+            materialInstance = screen,
+            apply = fixedChild,
+        )
     }
 }
