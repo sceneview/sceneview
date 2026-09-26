@@ -542,3 +542,9 @@ A material change can compile, pass unit tests, and still render wrong (the v4.1
 - **Questions**: open a [Discussion](https://github.com/sceneview/sceneview/discussions) instead of an issue.
 - **Feature requests**: welcomed as issues or discussions.
 - **Chat**: join the [Discord](https://discord.gg/UbNDDBTNqb) to talk with the community and maintainers.
+
+---
+
+## License of contributions
+
+SceneView is licensed under the [Apache License 2.0](LICENSE); the `mcp/` directory (the `sceneview-mcp` npm package) is licensed under the [MIT License](mcp/LICENSE). By submitting a pull request you agree that your contribution is licensed under the same license as the files it changes (Apache License 2.0, Section 5: inbound = outbound), and that you have the right to submit it. Code copied or ported from another project must keep that project's copyright and license notice in the file header and be listed in [`NOTICE`](NOTICE).

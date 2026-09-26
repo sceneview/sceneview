@@ -70,6 +70,16 @@ final class ARExperienceModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .error("This feature isn't available on this device."))
     }
 
+    /// #3912 — a session that ran and never delivered a frame is a camera
+    /// that did not start, not an unsupported device: the transient card,
+    /// whose "Try again" reruns the camera.
+    func testNoCameraFramesUsesTheTransientErrorCopy() {
+        let model = model()
+        model.resolve()
+        model.arSession(didEmit: .failed(ARSceneViewError.noCameraFrames), in: ARView(frame: .zero))
+        XCTAssertEqual(model.phase, .error("Camera couldn't start."))
+    }
+
     // MARK: - Routing
 
     func testPlacementFeatureRoutesRejectUnsupportedDevicesBeforeCameraPermission() {

@@ -508,6 +508,8 @@ jobs:
           # enough that a hand-maintained file is cheaper than wiring
           # dtsGenerator. See #946.
           cp sceneview-web/sceneview-web.d.ts "$BUILD_DIR/sceneview-web.d.ts"
+          # Apache-2.0 §4(a)/(d): the tarball must carry the license and the NOTICE.
+          cp LICENSE NOTICE "$BUILD_DIR/"
           cat > "$BUILD_DIR/package.json" << EOF
           {
             "name": "sceneview-web",

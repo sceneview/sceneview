@@ -132,9 +132,9 @@
         {
           "file": "Models/khronos_damaged_helmet.usdz",
           "name": "Damaged Helmet",
-          "author": "KhronosGroup (theblueturtle_)",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
           "size": 4191290,
           "note": ""
@@ -153,8 +153,8 @@
           "file": "Models/khronos_lantern.usdz",
           "name": "Lantern",
           "author": "Microsoft",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern",
           "size": 9356255,
           "note": ""
@@ -416,7 +416,7 @@
           "license": "Apache-2.0",
           "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
           "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
-          "size": 2006,
+          "size": 7043,
           "note": "QR-like reference pattern drawn for `ARImageDemo`"
         },
         {

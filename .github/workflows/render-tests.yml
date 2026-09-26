@@ -607,7 +607,7 @@ jobs:
             # though the camera feed comes from the bundled MP4. Sideload the
             # official multi-arch APK — see samples/android-demo/AR_TESTING.md.
             # `|| true`: a sideload failure just makes the test assumeTrue-skip.
-            ARCORE_VERSION=1.54.0
+            ARCORE_VERSION=1.56.0
             curl -L --retry 3 --retry-delay 5 -o /tmp/arcore.apk "https://github.com/google-ar/arcore-android-sdk/releases/download/${ARCORE_VERSION}/Google_Play_Services_for_AR_${ARCORE_VERSION}.apk" || true
             adb install -r /tmp/arcore.apk || true
 

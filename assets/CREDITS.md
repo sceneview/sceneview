@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **75** (plus 16 pending metadata, 7 pending license review).
+Total models: **74** (plus 16 pending metadata, 8 pending license review).
 
 ---
 
@@ -79,13 +79,12 @@ Total models: **75** (plus 16 pending metadata, 7 pending license review).
 - **[Chronograph Watch](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Chronograph Watch (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Corset](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Corset)** by KhronosGroup (UX3D) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by KhronosGroup (theblueturtle_) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Diffuse Transmission Teacup](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DiffuseTransmissionTeacup)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Dragon (Attenuation)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DragonAttenuation)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Iridescent Dish with Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Materials Variants Shoe](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe)** by Shopify — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Sheen Chair (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
@@ -122,6 +121,7 @@ Replace or remove before the next store publication:
 - **[Mercedes-Benz A45 AMG 2018](https://sketchfab.com/3d-models/mercedes-benz-a45-amg-2018-9482f251f9c34a6e91d7777db5934cfc)** by Lexyc16 — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 - **[Nintendo Switch Diorama](https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4)** by Mikkel Garde Blaase — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 - **[BMW M3 Coupe (E30) 1986](https://sketchfab.com/3d-models/bmw-m3-coupe-e30-1986-8fa21fe97a6042a2a09e0b09fd546b91)** by Lexyc16 — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/)
+- **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0) — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 
 ---
 

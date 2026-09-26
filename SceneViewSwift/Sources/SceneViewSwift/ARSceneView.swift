@@ -40,8 +40,20 @@ public enum ARSceneViewError: Error, Sendable, Equatable, LocalizedError {
     /// unsupported-device state naming the requirement.
     case unsupported(ARSessionConfiguration.Requirement)
 
+    /// The session ran but ARKit delivered no frame within the start budget,
+    /// even after one re-run with a tracking reset (#3912): the camera is
+    /// held by another client or the capture pipeline never came up. The
+    /// view had nothing to draw behind its content the whole time; the host
+    /// renders its error state with a retry instead of waiting on a black
+    /// stage. Reported through ``ARSessionEvent/failed(_:)`` while the view
+    /// stays alive — a frame that arrives later still flips it to
+    /// ``ARSessionState/running``.
+    case noCameraFrames
+
     public var errorDescription: String? {
         switch self {
+        case .noCameraFrames:
+            return "The camera delivered no frames after the AR session started."
         case .faceTrackingUnsupported:
             return "Face tracking is not supported on this device (no TrueDepth camera)."
         case .unsupported(.worldTracking):
@@ -444,9 +456,21 @@ public struct ARSceneView: UIViewRepresentable {
 
     // MARK: - UIViewRepresentable
 
+    /// The `ARView` every ``ARSceneView`` renders into: camera-composited
+    /// (`cameraMode: .ar`, background `.cameraFeed()`) and running only the
+    /// session this view configures — each stated on the view, never
+    /// inherited from what the process rendered before it. A `.virtual`
+    /// `RealityView` shown earlier in the process (``SceneView`` on iOS) has
+    /// been reported to leave a later camera view drawing over black
+    /// (#3912); nothing here is left to a default. `internal` for the tests.
+    static func makeARView() -> ARView {
+        let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+        arView.environment.background = .cameraFeed()
+        return arView
+    }
+
     public func makeUIView(context: Context) -> ARView {
-        let arView = ARView(frame: .zero)
-        arView.automaticallyConfigureSession = false
+        let arView = Self.makeARView()
         let coordinator = context.coordinator
         // Every callback is wired BEFORE the session runs, so the first
         // delegate message (a failure, the first frame) is never lost between
@@ -918,6 +942,18 @@ public struct ARSceneView: UIViewRepresentable {
         /// ``ARSessionEvent/firstFrame`` fires exactly once per resumption.
         var awaitingFirstFrame = false
 
+        /// First-frame policy for the current start (#3912) — see
+        /// ``ARSessionStartWatchdog``. The tests replace it to shorten or
+        /// remove the retry.
+        var startWatchdog = ARSessionStartWatchdog()
+        /// The pending expiry of ``startWatchdog``; `nil` while nothing is
+        /// watched. Cancelled by the first frame, an interruption, a failure
+        /// and the teardown.
+        private var startWatchdogExpiry: DispatchWorkItem?
+        /// `true` while a run is waiting for its first frame under the
+        /// watchdog. `internal` for the tests.
+        var isWatchingForFirstFrame: Bool { startWatchdogExpiry != nil }
+
         /// Exposure value currently installed (`nil` = none). Diffed by
         /// `applyExposure` so the post-process closure is built once per
         /// change, not once per render.
@@ -1087,13 +1123,7 @@ public struct ARSceneView: UIViewRepresentable {
             arView.session.delegate = self
             self.arView = arView
             if resetTracking {
-                // Tracking starts from scratch: the detected image anchors are
-                // gone, forget them or the same target is never reported again.
-                trackedImageAnchors.removeAll()
-                for visualizer in planeOverlays.values {
-                    arView.scene.removeAnchor(visualizer.anchor)
-                }
-                planeOverlays.removeAll()
+                forgetTrackedAnchors(on: arView)
             }
             arView.session.run(
                 configuration.makeARConfiguration(),
@@ -1105,8 +1135,77 @@ public struct ARSceneView: UIViewRepresentable {
             sessionDidStart = true
             awaitingFirstFrame = true
             trackingStatus = nil
+            startWatchdog.startedFresh()
+            armStartWatchdog(in: arView)
             emit(.started(configuration), in: arView)
             transition(to: .starting, in: arView)
+        }
+
+        /// Tracking starts from scratch: the detected image anchors are gone
+        /// — forget them or the same target is never reported again — and so
+        /// are the planes the overlays were drawn on.
+        @MainActor
+        private func forgetTrackedAnchors(on arView: ARView) {
+            trackedImageAnchors.removeAll()
+            for visualizer in planeOverlays.values {
+                arView.scene.removeAnchor(visualizer.anchor)
+            }
+            planeOverlays.removeAll()
+        }
+
+        // MARK: First-frame watchdog (#3912)
+
+        /// Starts the first-frame budget for the run that just went out,
+        /// replacing any budget still pending.
+        @MainActor
+        func armStartWatchdog(in arView: ARView) {
+            startWatchdogExpiry?.cancel()
+            let expiry = DispatchWorkItem { [weak self, weak arView] in
+                guard let self, let arView else { return }
+                MainActor.assumeIsolated { self.startWatchdogExpired(in: arView) }
+            }
+            startWatchdogExpiry = expiry
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + startWatchdog.budget,
+                execute: expiry
+            )
+        }
+
+        @MainActor
+        func disarmStartWatchdog() {
+            startWatchdogExpiry?.cancel()
+            startWatchdogExpiry = nil
+        }
+
+        /// The budget ran out. Split from the timer so the decision is
+        /// testable without waiting on one: nothing happens once a frame has
+        /// arrived or when no session ran; otherwise the session is run once
+        /// more with a tracking reset, and after that
+        /// ``ARSceneViewError/noCameraFrames`` is reported. The session is
+        /// left running: a frame that arrives after the report still counts.
+        @MainActor
+        func startWatchdogExpired(in arView: ARView) {
+            startWatchdogExpiry = nil
+            guard sessionDidStart, awaitingFirstFrame else { return }
+            switch startWatchdog.budgetExpired() {
+            case .retry:
+                print("[SceneViewSwift] AR session delivered no frame in \(startWatchdog.budget)s — running again with a tracking reset")
+                forgetTrackedAnchors(on: arView)
+                // The configuration the session holds is the one to rerun:
+                // it carries what the host mutated after `run` (frame
+                // semantics, scene reconstruction) — same rule as
+                // `resumeAfterInterruption`.
+                arView.session.run(
+                    arView.session.configuration
+                        ?? (appliedConfiguration ?? configuration).makeARConfiguration(),
+                    options: [.resetTracking, .removeExistingAnchors]
+                )
+                trackingStatus = nil
+                armStartWatchdog(in: arView)
+            case .fail:
+                print("[SceneViewSwift] AR session delivered no frame after a tracking reset — reporting noCameraFrames")
+                reportFailure(ARSceneViewError.noCameraFrames, in: arView)
+            }
         }
 
         /// Applies `configuration` to the live session when it differs from
@@ -1145,6 +1244,7 @@ public struct ARSceneView: UIViewRepresentable {
         /// `onSessionError` closure.
         @MainActor
         func reportFailure(_ error: Error, in arView: ARView) {
+            disarmStartWatchdog()
             transition(to: .failed, in: arView)
             emit(.failed(error), in: arView)
             onSessionError?(error, arView)
@@ -1175,6 +1275,7 @@ public struct ARSceneView: UIViewRepresentable {
         func noteFrame(trackingState: ARCamera.TrackingState, in arView: ARView) {
             if awaitingFirstFrame {
                 awaitingFirstFrame = false
+                disarmStartWatchdog()
                 emit(.firstFrame, in: arView)
                 transition(to: .running, in: arView)
             }
@@ -1190,6 +1291,9 @@ public struct ARSceneView: UIViewRepresentable {
         /// reason as ``noteFrame(trackingState:in:)``.
         @MainActor
         func noteInterruption(in arView: ARView) {
+            // No frames are expected while interrupted; the budget restarts
+            // when the interruption ends.
+            disarmStartWatchdog()
             emit(.interrupted, in: arView)
             transition(to: .interrupted, in: arView)
         }
@@ -1223,6 +1327,8 @@ public struct ARSceneView: UIViewRepresentable {
             awaitingFirstFrame = true
             trackingStatus = nil
             guard let arView else { return }
+            startWatchdog.startedFresh()
+            armStartWatchdog(in: arView)
             emit(.interruptionEnded, in: arView)
         }
 
@@ -1291,6 +1397,7 @@ public struct ARSceneView: UIViewRepresentable {
             arView.session.delegate = nil
             sessionDidStart = false
             awaitingFirstFrame = false
+            disarmStartWatchdog()
         }
 
         deinit {

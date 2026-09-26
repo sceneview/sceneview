@@ -82,9 +82,9 @@
         {
           "file": "models/khronos_damaged_helmet.glb",
           "name": "Damaged Helmet",
-          "author": "KhronosGroup (theblueturtle_)",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
           "size": 3773916,
           "note": ""

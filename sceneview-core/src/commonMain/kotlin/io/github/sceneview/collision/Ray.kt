@@ -1,3 +1,4 @@
+// Derived from Google Sceneform (Apache-2.0), modified by the SceneView contributors.
 package io.github.sceneview.collision
 
 /** Mathematical representation of a ray. Used to perform intersection and collision tests. */

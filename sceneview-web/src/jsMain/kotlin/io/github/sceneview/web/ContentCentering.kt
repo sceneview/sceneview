@@ -92,6 +92,31 @@ internal object ContentCentering {
         )
     }
 
+    /**
+     * The axis-aligned box enclosing [box] once transformed by the column-major 4×4 [matrix]
+     * (a Filament world transform): the eight corners are transformed and re-bounded.
+     *
+     * `fitToModels()` frames models where they are *drawn*: an asset's `getBoundingBox()` is
+     * in asset space, while the drawn geometry sits under the content-root centring pivot and
+     * any root scale or node transform. Framing the asset-space box aimed the camera at where
+     * the content was before it was centred (#3880).
+     */
+    fun transformed(box: Aabb, matrix: DoubleArray): Aabb {
+        val min = doubleArrayOf(Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE)
+        val max = doubleArrayOf(-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE)
+        for (corner in 0 until 8) {
+            val x = if ((corner and 1) == 0) box.min[0] else box.max[0]
+            val y = if ((corner and 2) == 0) box.min[1] else box.max[1]
+            val z = if ((corner and 4) == 0) box.min[2] else box.max[2]
+            for (axis in 0 until 3) {
+                val v = matrix[axis] * x + matrix[4 + axis] * y + matrix[8 + axis] * z + matrix[12 + axis]
+                if (v < min[axis]) min[axis] = v
+                if (v > max[axis]) max[axis] = v
+            }
+        }
+        return Aabb(min, max)
+    }
+
     /** Per-axis extents `(max - min)` of [box], `[ex, ey, ez]`. */
     fun extents(box: Aabb): DoubleArray = doubleArrayOf(
         box.max[0] - box.min[0],
@@ -136,6 +161,41 @@ internal object ContentCentering {
         if (!(radius > 0.0)) return 0.0
         val m = if (margin.isFinite()) margin.coerceIn(MIN_FIT_MARGIN, MAX_FIT_MARGIN) else 1.0
         return radius * FIT_DISTANCE_RADII * m
+    }
+
+    /** Near clip plane of a scene the fit never ran on (metre-scale content). */
+    const val DEFAULT_NEAR: Double = 0.1
+
+    /** Far clip plane of a scene the fit never ran on. Filament projects with an infinite
+     * far plane; this value only culls. */
+    const val DEFAULT_FAR: Double = 1000.0
+
+    /** Near plane as a fraction of the content radius, once that is below [DEFAULT_NEAR]. */
+    const val NEAR_RADIUS_FRACTION: Double = 0.1
+
+    /**
+     * Near and far clip planes, `[near, far]`, for content of bounding-sphere [radius] that
+     * the orbit camera can view from up to [maxDistance] away from its centre (#3747, #3880).
+     *
+     * The fixed `0.1 / 1000` pair assumed metre-scale content. A 2 cm model is framed at
+     * `2.5 × radius` ≈ 4 cm, entirely in front of a 10 cm near plane, so it rendered nothing;
+     * a model a few hundred metres across was culled by the far plane. The planes only ever
+     * widen from `0.1 / 1000`, so nothing that rendered before starts clipping, and content
+     * between 1 m and ~45 m in radius keeps exactly the planes it had:
+     *
+     * - `near = min(0.1, radius × 0.1)`: a tenth of the radius, far closer than the front
+     *   of the content at the `2.5 × radius` fit (`1.5 × radius` away);
+     * - `far = max(1000, 2 × (maxDistance + radius))`: the far side of the content stays
+     *   inside the frustum with the camera fully zoomed out.
+     *
+     * A non-positive or non-finite [radius] returns the defaults.
+     */
+    fun clipPlanes(radius: Double, maxDistance: Double): DoubleArray {
+        if (!(radius > 0.0) || !radius.isFinite()) return doubleArrayOf(DEFAULT_NEAR, DEFAULT_FAR)
+        val near = minOf(DEFAULT_NEAR, radius * NEAR_RADIUS_FRACTION)
+        val reach = if (maxDistance.isFinite() && maxDistance > 0.0) maxDistance + radius else radius
+        val far = maxOf(DEFAULT_FAR, 2.0 * reach)
+        return doubleArrayOf(near, far)
     }
 
     /**

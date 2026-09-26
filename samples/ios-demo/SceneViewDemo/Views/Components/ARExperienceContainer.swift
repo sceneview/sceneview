@@ -234,11 +234,15 @@ extension ARExperienceModel: ARSceneSessionObserver {
 
     /// Plan §2.2: "Camera couldn't start." — the SDK's `unsupported` errors
     /// are routed to the Unsupported card instead, they are not transient.
+    /// A session that ran and delivered no frame (#3912) is transient: the
+    /// camera is the thing that did not start, and "Try again" reruns it.
     static func errorCopy(for error: Error) -> String {
         if let sdk = error as? ARSceneViewError {
             switch sdk {
             case .faceTrackingUnsupported, .unsupported:
                 return "This feature isn't available on this device."
+            case .noCameraFrames:
+                return "Camera couldn't start."
             }
         }
         return "Camera couldn't start."

@@ -163,7 +163,10 @@ export interface SceneViewer {
    *  `margin` multiplies the fit distance (iOS `framingMargin` convention):
    *  `1.0` (default) keeps the historical fit, `< 1` frames tighter, `> 1`
    *  leaves more air. Clamped to `0.2…10`. Not Android's additive `padding`
-   *  fraction — `margin == 1 + padding`. */
+   *  fraction — `margin == 1 + padding`. The models end up centred, the margin
+   *  is kept by the automatic re-framing after a load (safe to call from the
+   *  `loadModel` promise), and the clip planes follow the model size, so a 2 cm
+   *  part renders whole. */
   fitToModels(margin?: number): void;
 
   /** Toggle library-level auto-centring of loaded content. When enabled

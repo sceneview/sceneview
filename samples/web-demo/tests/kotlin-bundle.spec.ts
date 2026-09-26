@@ -37,6 +37,79 @@ import { test, expect, sampleCanvas, assertCanvasContextAlive } from './helpers'
 const BUNDLE_PATH = join(__dirname, '..', 'site', 'kotlin-bundle', 'sceneview-web.js');
 const BUNDLE_STAGED = existsSync(BUNDLE_PATH);
 
+/**
+ * A UV-sphere GLB of `radius` metres centred on `center`, flat orange. On the optical axis a
+ * sphere's silhouette is a circle whatever the orbit angle, so the bounding box of its pixels
+ * measures centring and on-screen size without perspective bias (#3880).
+ */
+function sphereGlb(center: number[], radius: number, seg = 24, rings = 16): Buffer {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const idx: number[] = [];
+  for (let r = 0; r <= rings; r++) {
+    const phi = (Math.PI * r) / rings;
+    for (let s = 0; s <= seg; s++) {
+      const th = (2 * Math.PI * s) / seg;
+      const n = [Math.sin(phi) * Math.cos(th), Math.cos(phi), Math.sin(phi) * Math.sin(th)];
+      nor.push(...n);
+      pos.push(center[0] + radius * n[0], center[1] + radius * n[1], center[2] + radius * n[2]);
+    }
+  }
+  for (let r = 0; r < rings; r++) {
+    for (let s = 0; s < seg; s++) {
+      const a = r * (seg + 1) + s;
+      const b = a + seg + 1;
+      idx.push(a, a + 1, b, b, a + 1, b + 1);
+    }
+  }
+  const count = pos.length / 3;
+  const posBuf = Buffer.from(new Float32Array(pos).buffer);
+  const norBuf = Buffer.from(new Float32Array(nor).buffer);
+  const idxBuf = Buffer.from(new Uint16Array(idx).buffer);
+  const bin = Buffer.concat([posBuf, norBuf, idxBuf, Buffer.alloc((4 - (idxBuf.length % 4)) % 4)]);
+  const json = {
+    asset: { version: '2.0', generator: 'kotlin-bundle.spec' },
+    scene: 0,
+    scenes: [{ nodes: [0] }],
+    nodes: [{ mesh: 0 }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2, material: 0 }] }],
+    materials: [
+      { pbrMetallicRoughness: { baseColorFactor: [0.9, 0.35, 0.1, 1], metallicFactor: 0, roughnessFactor: 0.8 } },
+    ],
+    buffers: [{ byteLength: bin.length }],
+    bufferViews: [
+      { buffer: 0, byteOffset: 0, byteLength: posBuf.length, target: 34962 },
+      { buffer: 0, byteOffset: posBuf.length, byteLength: norBuf.length, target: 34962 },
+      { buffer: 0, byteOffset: posBuf.length + norBuf.length, byteLength: idxBuf.length, target: 34963 },
+    ],
+    accessors: [
+      {
+        bufferView: 0,
+        componentType: 5126,
+        count,
+        type: 'VEC3',
+        min: center.map((c) => c - radius),
+        max: center.map((c) => c + radius),
+      },
+      { bufferView: 1, componentType: 5126, count, type: 'VEC3' },
+      { bufferView: 2, componentType: 5123, count: idx.length, type: 'SCALAR' },
+    ],
+  };
+  let jsonBuf = Buffer.from(JSON.stringify(json));
+  jsonBuf = Buffer.concat([jsonBuf, Buffer.alloc((4 - (jsonBuf.length % 4)) % 4, 0x20)]);
+  const chunk = (len: number, type: number) => {
+    const b = Buffer.alloc(8);
+    b.writeUInt32LE(len, 0);
+    b.writeUInt32LE(type, 4);
+    return b;
+  };
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67, 0); // "glTF"
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + 8 + jsonBuf.length + 8 + bin.length, 8);
+  return Buffer.concat([header, chunk(jsonBuf.length, 0x4e4f534a), jsonBuf, chunk(bin.length, 0x004e4942), bin]);
+}
+
 test.describe('SceneView Kotlin/JS bundle — browser init', () => {
   test.skip(
     !BUNDLE_STAGED,
@@ -121,6 +194,96 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
     const { hasContent, headlessGpuOk } = await sampleCanvas(page, 'full');
     expect(headlessGpuOk, 'canvas element is missing or zero-sized').toBe(true);
     expect(hasContent, 'canvas is blank — the Kotlin bundle rendered nothing').toBe(true);
+  });
+
+  /**
+   * #3880: `fitToModels(margin)` frames the model where it is drawn, keeps the margin through
+   * the automatic re-framing that follows a load, and the clip planes follow the model size.
+   * The page's model is swapped for a 2 cm sphere authored off the origin: on 4.31 it drew
+   * nothing (wholly in front of the fixed 0.1 m near plane), and a margin passed from the
+   * load promise was overwritten by the auto-centre pass's own `1.0` fit.
+   */
+  test('fitToModels centres a 2 cm model with the requested margin (#3880)', async ({ page }) => {
+    const glb = sphereGlb([0.05, 0.03, 0.02], 0.01);
+    await page.route('**/models/khronos_damaged_helmet.glb', (route) =>
+      route.fulfill({ status: 200, contentType: 'model/gltf-binary', body: glb }),
+    );
+    await page.goto('/kotlin-bundle/index.html');
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.modelLoaded), { timeout: 30_000 })
+      .toBe(true);
+
+    const box = await page.locator('#scene-canvas').boundingBox();
+    expect(box, 'canvas has no layout box').not.toBeNull();
+    const clip = { x: box!.x, y: box!.y, width: box!.width, height: box!.height };
+
+    // Bounding box of the pixels that differ from the top-left background pixel.
+    const measure = async () => {
+      const png = await page.screenshot({ type: 'png', clip });
+      const uri = 'data:image/png;base64,' + png.toString('base64');
+      return page.evaluate(async (u: string) => {
+        const img = new Image();
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('decode failed'));
+          img.src = u;
+        });
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d')!;
+        ctx.drawImage(img, 0, 0);
+        const { data, width: W, height: H } = ctx.getImageData(0, 0, c.width, c.height);
+        const bg = [data[0], data[1], data[2]];
+        let minX = W;
+        let minY = H;
+        let maxX = -1;
+        let maxY = -1;
+        let count = 0;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const i = (y * W + x) * 4;
+            const d = Math.max(
+              Math.abs(data[i] - bg[0]),
+              Math.abs(data[i + 1] - bg[1]),
+              Math.abs(data[i + 2] - bg[2]),
+            );
+            if (d > 16) {
+              count++;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        return {
+          count,
+          dx: ((minX + maxX) / 2 - W / 2) / W,
+          dy: ((minY + maxY) / 2 - H / 2) / H,
+          height: (maxY - minY + 1) / H,
+        };
+      }, uri);
+    };
+
+    // The consumer pattern from the report: frame with a margin as soon as the load resolves.
+    // The auto-centre pass keeps re-framing for a few frames after that; the margin must stick.
+    await page.evaluate(() => (window as any).__sv.fitToModels(1.3));
+    await page.waitForTimeout(1500);
+    const loose = await measure();
+    expect(loose.count, 'the 2 cm model rendered no pixels (near-plane clipping)').toBeGreaterThan(1000);
+    expect(Math.abs(loose.dx), `off-centre horizontally by ${loose.dx}`).toBeLessThan(0.03);
+    expect(Math.abs(loose.dy), `off-centre vertically by ${loose.dy}`).toBeLessThan(0.03);
+
+    await page.evaluate(() => (window as any).__sv.fitToModels(1.0));
+    await page.waitForTimeout(500);
+    const tight = await measure();
+    expect(Math.abs(tight.dx), `off-centre horizontally by ${tight.dx}`).toBeLessThan(0.03);
+    expect(Math.abs(tight.dy), `off-centre vertically by ${tight.dy}`).toBeLessThan(0.03);
+    // Distance scales with the margin, so on-screen size scales with its inverse.
+    const ratio = tight.height / loose.height;
+    expect(ratio, `margin 1.0 vs 1.3 size ratio ${ratio}`).toBeGreaterThan(1.2);
+    expect(ratio).toBeLessThan(1.4);
   });
 
   /**

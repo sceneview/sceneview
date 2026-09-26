@@ -2789,7 +2789,7 @@ ul { list-style: none; }
 
 .metrics__grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
 }
 
@@ -2896,6 +2896,232 @@ ul { list-style: none; }
   font-weight: 600;
   color: var(--color-on-surface-variant);
   line-height: 1.4;
+}
+
+.metric-card__icon-wrap--flutter {
+  background: rgba(2, 86, 155, 0.08);
+  color: #02569b;
+}
+
+[data-theme="dark"] .metric-card__icon-wrap--flutter {
+  background: rgba(84, 197, 248, 0.12);
+  color: #54c5f8;
+}
+
+/* ===== ADOPTION — public-repo count + named teams (home) ===== */
+.adoption {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.adoption__lead,
+.adoption__orgs {
+  background: var(--color-surface-container-lowest);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  padding: 32px;
+}
+
+.adoption__lead {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.adoption__value {
+  font-size: clamp(3rem, 6vw, 4.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--color-primary);
+  margin-bottom: 12px;
+}
+
+.adoption__label {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--color-on-surface);
+  margin-bottom: 12px;
+}
+
+.adoption__detail {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-on-surface-variant);
+}
+
+.adoption__detail code,
+.adoption__sources code {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.85em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 91, 193, 0.07);
+  overflow-wrap: anywhere;
+}
+
+[data-theme="dark"] .adoption__detail code,
+[data-theme="dark"] .adoption__sources code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.adoption__orgs-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-on-surface);
+  margin-bottom: 16px;
+}
+
+.adoption__org-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.adoption-org__link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--color-surface-container-low);
+  border: 1px solid rgba(104, 123, 163, 0.28);
+  transition: border-color var(--duration-short), transform var(--duration-short) var(--ease-spring);
+}
+
+[data-theme="dark"] .adoption-org__link {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.adoption-org__link:hover,
+.adoption-org__link:focus-visible {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+}
+
+.adoption-org__name {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-on-surface);
+}
+
+.adoption-org__what {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--color-on-surface-variant);
+}
+
+.adoption__orgs-note {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-on-surface-variant);
+}
+
+.adoption__maven {
+  font-size: 0.9375rem;
+  color: var(--color-on-surface-variant);
+  margin-bottom: 20px;
+}
+
+.adoption__sources {
+  margin-top: 24px;
+  max-width: 980px;
+}
+
+.adoption__sources p {
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: var(--color-on-surface-variant);
+}
+
+.adoption__sources strong {
+  color: var(--color-on-surface);
+  font-weight: 600;
+}
+
+.adoption__companies {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 32px;
+  padding: 20px 24px;
+  border-radius: 20px;
+  background: rgba(0, 91, 193, 0.06);
+  border: 1px solid rgba(0, 91, 193, 0.16);
+  transition: transform var(--duration-medium) var(--ease-spring), background var(--duration-short);
+}
+
+[data-theme="dark"] .adoption__companies {
+  background: rgba(121, 192, 255, 0.1);
+  border-color: rgba(121, 192, 255, 0.28);
+}
+
+.adoption__companies:hover,
+.adoption__companies:focus-visible {
+  transform: translateY(-2px);
+  background: rgba(0, 91, 193, 0.1);
+}
+
+[data-theme="dark"] .adoption__companies:hover,
+[data-theme="dark"] .adoption__companies:focus-visible {
+  background: rgba(121, 192, 255, 0.16);
+}
+
+.adoption__companies-icon,
+.adoption__companies-arrow {
+  font-size: 28px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.adoption__companies-arrow { font-size: 24px; }
+
+.adoption__companies-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.adoption__companies-title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--color-on-surface);
+}
+
+.adoption__companies-desc {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-on-surface-variant);
+}
+
+@media (max-width: 900px) {
+  .adoption { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .adoption__lead,
+  .adoption__orgs { padding: 24px 20px; }
+  /* Two even columns read better than ragged chips on a phone. */
+  .adoption__org-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .adoption-org { display: flex; }
+  .adoption-org__link { flex: 1; padding: 10px 12px; }
+  .adoption-org__name { font-size: 0.875rem; }
+  .adoption__companies { padding: 16px; gap: 12px; }
+  /* fonts.css (loaded after this file) sets display on .material-symbols-outlined. */
+  .adoption__companies .adoption__companies-icon { display: none; }
 }
 
 /* ===== SHOWCASE LINK ===== */
@@ -3226,7 +3452,7 @@ ul { list-style: none; }
   .ai-section__inner { grid-template-columns: 1fr; gap: 48px; }
   .use-cases__compact-grid { grid-template-columns: repeat(2, 1fr); }
   .platforms__grid-v2 { grid-template-columns: repeat(3, 1fr); }
-  .metrics__grid { grid-template-columns: repeat(3, 1fr); }
+  .metrics__grid { grid-template-columns: repeat(4, 1fr); }
   .try-sv__grid { grid-template-columns: repeat(2, 1fr); }
   .try-card--featured { grid-column: span 2; }
   .get-involved__grid { grid-template-columns: repeat(2, 1fr); }

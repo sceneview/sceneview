@@ -156,8 +156,9 @@ class ViewNode(
 
     private val touchForwarder = ViewTouchForwarder(layout)
 
-    private val surfaceTexture = SurfaceTexture(0).also { it.detachFromGLContext() }
-    private val surface = Surface(surfaceTexture)
+    // internal, not private: read by ViewNodeTest to assert the release ordering fixed by #3734.
+    internal val surfaceTexture = SurfaceTexture(0).also { it.detachFromGLContext() }
+    internal val surface = Surface(surfaceTexture)
 
     /**
      * Bridges "the hosted view drew something" to the render gate. Delivered on the main thread
@@ -366,17 +367,30 @@ class ViewNode(
         surfaceTexture.setOnFrameAvailableListener(null)
         windowManager.removeView(layout)
         // Capture MI before super.destroy() removes the renderable component (after which
-        // getMaterialInstanceAt would fail). Order: renderable (via super) → MI → texture → stream.
-        // The texture/stream destroys are frame-deferred via EngineDestroyQueue so Filament has
-        // reclaimed the MaterialInstance before the external Texture it was bound to is freed —
-        // destroying it eagerly can race that reclamation, mirroring the ImageNode crash that
-        // sceneview/sceneview#874 fixes. The queue keeps the FIFO texture-before-stream order.
+        // getMaterialInstanceAt would fail). Order: renderable (via super) → MI → texture → stream
+        // → surface/surfaceTexture. The texture/stream destroys are frame-deferred via
+        // EngineDestroyQueue so Filament has reclaimed the MaterialInstance before the external
+        // Texture it was bound to is freed — destroying it eagerly can race that reclamation,
+        // mirroring the ImageNode crash that sceneview/sceneview#874 fixes. The queue keeps the
+        // FIFO texture-before-stream order.
+        //
+        // The Surface/SurfaceTexture backing the Stream must outlive it for the same reason: the
+        // Stream's native `stream()` binding reads from the SurfaceTexture, and Filament's stream
+        // teardown (itself deferred to the same grace-period frame as the Texture) is not
+        // guaranteed to have run yet on the frame destroy() is called. Releasing them eagerly here
+        // could free the SurfaceTexture out from under a still-live Stream (sceneview/sceneview#3734).
+        // Enqueuing the release on the same queue, after enqueueStream, guarantees it always runs
+        // strictly after the Stream has actually been destroyed.
         val mi = materialInstance
         super.destroy()
         materialLoader.destroyMaterialInstance(mi)
         EngineDestroyQueue.of(engine).apply {
             enqueueTexture(texture)
             enqueueStream(stream)
+            enqueueAction {
+                surface.release()
+                surfaceTexture.release()
+            }
         }
     }
 

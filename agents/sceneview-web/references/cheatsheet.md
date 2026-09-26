@@ -47,6 +47,7 @@ sv.setZoomLimits(min, max)
 sv.setBackgroundColor(r, g, b, a)       // 0-1 range, exact on screen; a < 1 = page shows through
 sv.fitToModels()                        // frame every loaded model
 sv.fitToModels(margin)                  // multiplier on the fit distance: 1 = default, <1 tighter, >1 more air (0.2…10)
+                                        // centred, kept through auto-centring; clip planes follow the model size
 sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)

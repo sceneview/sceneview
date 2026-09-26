@@ -33,11 +33,11 @@ Assets bundled: **25**.
 
 ## 3D models
 
-- `models/khronos_damaged_helmet.glb` — **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by KhronosGroup (theblueturtle_) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.5 MB)
+- `models/khronos_damaged_helmet.glb` — **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0) — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) (3.5 MB)
 - `models/khronos_fox.glb` — **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (96 KB)
 - `models/khronos_glam_velvet_sofa.glb` — **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.1 MB)
 - `models/khronos_iridescent_dish.glb` — **[Iridescent Dish with Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (5.7 MB)
-- `models/khronos_lantern.glb` — **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (9.0 MB)
+- `models/khronos_lantern.glb` — **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (9.0 MB)
 - `models/khronos_sheen_chair.glb` — **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (4.1 MB)
 - `models/khronos_toy_car.glb` — **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (2.2 MB)
 - `models/shiba.glb` — **[Shiba](https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c)** by zixisun51 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (669 KB)

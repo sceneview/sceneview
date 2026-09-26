@@ -203,6 +203,12 @@ class SceneViewJS {
      *   the historical fit, `< 1` frames tighter, `> 1` leaves more air.
      *   Clamped to `0.2…10`. Unlike Android's additive `padding` fraction
      *   (`margin == 1 + padding`).
+     *
+     * The models are centred where they are drawn (after auto-centring), the
+     * margin is kept by the automatic re-framing that follows a load — so
+     * calling this from the `loadModel` promise sticks — and the clip planes
+     * follow the model size, so a 2 cm part and a 40 m building both render
+     * whole (#3880).
      */
     @JsName("fitToModels")
     fun fitToModels(margin: Double = 1.0) {

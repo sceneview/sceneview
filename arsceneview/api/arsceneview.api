@@ -1871,6 +1871,7 @@ public class io/github/sceneview/ar/node/ARCameraNode : io/github/sceneview/node
 
 public final class io/github/sceneview/ar/node/ARFogConfig {
 	public static final field $stable I
+	public fun <init> ()V
 	public synthetic fun <init> (FFFJZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun <init> (FFFJZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()F

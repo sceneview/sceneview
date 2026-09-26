@@ -8,7 +8,7 @@ Pod::Spec.new do |s|
                        DESC
   s.homepage         = 'https://github.com/sceneview/sceneview'
   s.license          = { :type => 'Apache-2.0', :file => 'LICENSE' }
-  s.author           = { 'SceneView' => 'contact@sceneview.github.io' }
+  s.author           = 'SceneView contributors'
   s.source           = {
     :git => 'https://github.com/sceneview/sceneview.git',
     :tag => "v#{s.version}"

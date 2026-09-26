@@ -7,7 +7,7 @@ Pod::Spec.new do |s|
                        DESC
   s.homepage         = 'https://github.com/sceneview/sceneview'
   s.license          = { :type => 'Apache-2.0' }
-  s.author           = { 'SceneView' => 'contact@sceneview.github.io' }
+  s.author           = 'SceneView contributors'
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
