@@ -185,7 +185,10 @@ class NodeGestureDelegate(
             // Find the hit test location in the parent to place the child at the
             // corresponding location
             node.collisionSystem?.hitTest(e)?.firstOrNull { it.node == node.parent }?.let {
-                onMove(detector, e, it.getWorldPosition())
+                // Dispatch through the node so an overridden Node.onMove(detector, e,
+                // worldPosition) actually runs (sceneview/sceneview#3739) — calling this
+                // delegate's own 3-arg onMove directly would bypass it.
+                node.onMove(detector, e, it.getWorldPosition())
             } ?: false
         } else {
             // Delegate to parent via its virtual method to preserve polymorphic overrides
@@ -286,7 +289,10 @@ class NodeGestureDelegate(
     override fun onScale(detector: ScaleGestureDetector, e: MotionEvent): Boolean {
         return if (node.isScaleEditable) {
             editingTransforms = editingTransforms + Node::scale
-            onScale(detector, e, detector.scaleFactor)
+            // Dispatch through the node so an overridden Node.onScale(detector, e, scaleFactor)
+            // actually runs (sceneview/sceneview#3739) — calling this delegate's own 3-arg
+            // onScale directly would bypass it.
+            node.onScale(detector, e, detector.scaleFactor)
         } else {
             node.parent?.onScale(detector, e) ?: false
         }

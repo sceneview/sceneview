@@ -22,6 +22,14 @@ import io.github.sceneview.math.Scale
  * @param range Allowed range for each scale component.
  * @return New scale if within range, or null if the result would be out of range.
  */
+@Deprecated(
+    "Unused internally since #3739 — scale clamping now lives in the Android " +
+        "sceneview module's internal evaluateScaleEdit(NodeEditingListener.kt), which " +
+        "additionally reports which bound (min/max) rejected the edit. Kept here, " +
+        "unchanged, for public binary compatibility — major version 4 is frozen, so " +
+        "this can only be removed in 5.0.0.",
+    level = DeprecationLevel.WARNING
+)
 fun applyScaleGesture(
     scale: Scale,
     scaleFactor: Float,
