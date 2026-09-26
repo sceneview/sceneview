@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Website**: the home page's "Community & adoption" section shows the number of public GitHub repositories that declare a SceneView dependency and names the teams whose own public code or talks use it, each with a link to that evidence, plus the source and date of every figure. The new [SceneView for companies](https://sceneview.github.io/companies.html) page answers what an evaluating team checks first: license, what the SDK sends over the network, platform maturity, release cadence, versioning, vulnerability reporting and third-party notices.

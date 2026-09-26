@@ -1226,11 +1226,36 @@ CLAUDE.md</code></pre>
     </div>
   </section>
 
-  <!-- ===== COMMUNITY & METRICS ===== -->
+  <!-- ===== COMMUNITY & ADOPTION ===== -->
+  <!-- Every figure in this section can be re-checked with a public command; the small print
+       under the cards names the source and the date. The data-metric="stars|contributors|
+       releases|web-downloads" anchors are rewritten weekly by
+       .claude/scripts/update-site-metrics.sh (site-metrics.yml): keep each data-metric
+       anchor exactly once and keep its element text-only. The named teams live in
+       assets/adoption-orgs.js, the one place to edit that list. -->
   <section class="metrics" id="metrics">
     <div class="metrics__container">
-      <h2 class="metrics__title reveal">Community &amp; Metrics</h2>
-      <p class="metrics__subtitle reveal">Real numbers from a growing open-source ecosystem.</p>
+      <h2 class="metrics__title reveal">Community &amp; adoption</h2>
+      <p class="metrics__subtitle reveal">Public numbers anyone can re-check. Sources and dates are in the small print below.</p>
+
+      <div class="adoption reveal">
+        <div class="adoption__lead">
+          <div class="adoption__value">700+</div>
+          <p class="adoption__label">public GitHub repositories declare a SceneView dependency</p>
+          <p class="adoption__detail">Gradle build files and version catalogs that pull <code>io.github.sceneview</code>, or the maintained Sceneform line SceneView grew from. Private code is invisible to this search.</p>
+        </div>
+        <div class="adoption__orgs">
+          <h3 class="adoption__orgs-title">Found in public code and talks from teams at</h3>
+          <ul class="adoption__org-list" data-adoption-orgs></ul>
+          <p class="adoption__orgs-note">Each name links to that team&rsquo;s own public repository, library, blog post or talk. A name here is not an endorsement.</p>
+        </div>
+      </div>
+
+      <!-- MAVEN CENTRAL SLOT — keep commented out until the figure is re-checked in Sonatype
+           Central Publisher Insights and the maintainer decides to publish it. Use this exact
+           wording; never turn it into "used by N companies", "customers" or "in production".
+      <p class="adoption__maven reveal">Downloaded from Maven Central by ~2,300 organizations over the last 90 days (Sonatype Central Publisher Insights).</p>
+      -->
 
       <div class="metrics__grid">
         <a href="https://github.com/sceneview/sceneview/stargazers" class="metric-card reveal" target="_blank" rel="noopener" aria-label="GitHub stars on sceneview/sceneview">
@@ -1244,38 +1269,69 @@ CLAUDE.md</code></pre>
           <div class="metric-card__icon-wrap metric-card__icon-wrap--forks">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M7 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 9a4 4 0 0 0 3 3.874V13a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-.126A4 4 0 0 0 17 9h-2a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2H7z"/></svg>
           </div>
-          <div class="metric-card__value" data-metric="forks">223</div>
+          <div class="metric-card__value" data-metric="forks">246</div>
           <div class="metric-card__label">GitHub forks</div>
         </a>
-        <a href="https://www.npmjs.com/package/sceneview-mcp" class="metric-card reveal" target="_blank" rel="noopener" aria-label="sceneview-mcp package on npm">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--npm">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
+        <a href="https://github.com/sceneview/sceneview/graphs/contributors" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Contributors to sceneview/sceneview">
+          <div class="metric-card__icon-wrap metric-card__icon-wrap--contributors">
+            <span class="material-symbols-outlined" aria-hidden="true">group</span>
           </div>
-          <div class="metric-card__value" data-metric="mcp-downloads">768</div>
-          <div class="metric-card__label">npm downloads (MCP, 30&nbsp;d)</div>
+          <div class="metric-card__value" data-metric="contributors">47</div>
+          <div class="metric-card__label">Contributors</div>
+        </a>
+        <a href="https://github.com/sceneview/sceneview/releases" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Releases of sceneview/sceneview on GitHub">
+          <div class="metric-card__icon-wrap metric-card__icon-wrap--maven">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z"/></svg>
+          </div>
+          <div class="metric-card__value" data-metric="releases">142</div>
+          <div class="metric-card__label">GitHub releases</div>
         </a>
         <a href="https://www.npmjs.com/package/sceneview-web" class="metric-card reveal" target="_blank" rel="noopener" aria-label="sceneview-web package on npm">
           <div class="metric-card__icon-wrap metric-card__icon-wrap--npm2">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
           </div>
-          <div class="metric-card__value" data-metric="web-downloads">1.1K</div>
+          <div class="metric-card__value" data-metric="web-downloads">349</div>
           <div class="metric-card__label">npm downloads (Web, 30&nbsp;d)</div>
         </a>
-        <a href="https://github.com/sceneview/sceneview/graphs/contributors" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Contributors to sceneview/sceneview">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--contributors">
-            <span class="material-symbols-outlined">group</span>
+        <a href="https://www.npmjs.com/package/@sceneview-sdk/react-native" class="metric-card reveal" target="_blank" rel="noopener" aria-label="@sceneview-sdk/react-native package on npm">
+          <div class="metric-card__icon-wrap metric-card__icon-wrap--npm">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
           </div>
-          <div class="metric-card__value" data-metric="contributors">47</div>
-          <div class="metric-card__label">Contributors</div>
+          <div class="metric-card__value" data-metric="rn-downloads">367</div>
+          <div class="metric-card__label">npm downloads (React&nbsp;Native, 30&nbsp;d)</div>
         </a>
-        <a href="https://central.sonatype.com/artifact/io.github.sceneview/sceneview/versions" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Released versions on Maven Central">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--maven">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z"/></svg>
+        <a href="https://pub.dev/packages/flutter_sceneview" class="metric-card reveal" target="_blank" rel="noopener" aria-label="flutter_sceneview package on pub.dev">
+          <div class="metric-card__icon-wrap metric-card__icon-wrap--flutter">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M14.314 0L2.3 12 6 15.7 21.684.013h-7.357L14.314 0zm.014 11.072L7.857 17.53l6.47 6.47H21.7l-6.46-6.468 6.46-6.46h-7.37z"/></svg>
           </div>
-          <div class="metric-card__value" data-metric="releases">135</div>
-          <div class="metric-card__label">Releases on Maven&nbsp;Central</div>
+          <div class="metric-card__value" data-metric="flutter-downloads">472</div>
+          <div class="metric-card__label">pub.dev downloads (Flutter, 30&nbsp;d)</div>
+        </a>
+        <a href="https://www.npmjs.com/package/sceneview-mcp" class="metric-card reveal" target="_blank" rel="noopener" aria-label="sceneview-mcp package on npm">
+          <div class="metric-card__icon-wrap metric-card__icon-wrap--npm">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
+          </div>
+          <div class="metric-card__value" data-metric="mcp-downloads">648</div>
+          <div class="metric-card__label">npm downloads (MCP, 30&nbsp;d)</div>
         </a>
       </div>
+
+      <div class="adoption__sources reveal">
+        <p><strong>Sources, checked on September&nbsp;26,&nbsp;2026.</strong>
+          Stars, forks, contributors (bots and anonymous commits included) and releases: the GitHub REST API for <code>sceneview/sceneview</code>.
+          Downloads over the last 30 days: <code>api.npmjs.org</code> and the pub.dev package API.
+          Public repositories: GitHub code search for <code>io.github.sceneview</code> and <code>com.gorisse.thomas.sceneform</code>, 738 distinct repositories with a match in a Gradle build file or version catalog, default branches only, SceneView&rsquo;s own repositories excluded; the search returns at most 1,000 results per query.
+          Stars, contributors, releases and the Web downloads are refreshed weekly by an automated job, so they can be newer than this date.</p>
+      </div>
+
+      <a class="adoption__companies reveal" href="/companies.html">
+        <span class="material-symbols-outlined adoption__companies-icon" aria-hidden="true">apartment</span>
+        <span class="adoption__companies-text">
+          <span class="adoption__companies-title">Evaluating SceneView for your company?</span>
+          <span class="adoption__companies-desc">License, data collection, platform maturity, release cadence and security reporting, on one page.</span>
+        </span>
+        <span class="material-symbols-outlined adoption__companies-arrow" aria-hidden="true">arrow_forward</span>
+      </a>
     </div>
   </section>
 
@@ -1473,6 +1529,7 @@ CLAUDE.md</code></pre>
           <ul class="footer__col-list">
             <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
             <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
+            <li><a href="/companies.html">For companies</a></li>
           </ul>
         </div>
         <div class="footer__col">
@@ -1488,6 +1545,7 @@ CLAUDE.md</code></pre>
     </div>
   </footer>
 
+  <script src="assets/adoption-orgs.js"></script>
   <script src="script.js"></script>
 
   <!-- Hero drag hint auto-hide -->

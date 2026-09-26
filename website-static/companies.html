@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; base-uri 'self'; object-src 'none'">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH). -->
+  <script src="/assets/analytics.js"></script>
+  <title>SceneView for companies — license, data, maturity, releases</title>
+  <meta name="description" content="What a company needs to evaluate SceneView: Apache-2.0 license, no telemetry in the SDK, platform maturity, release cadence, versioning, security reporting and third-party notices.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://sceneview.github.io/companies.html">
+  <meta property="og:title" content="SceneView for companies">
+  <meta property="og:description" content="Apache-2.0, no telemetry in the SDK, Android stable, other platforms alpha, a release every few days. The facts a company checks before adopting SceneView.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sceneview.github.io/companies.html">
+  <meta property="og:image" content="https://sceneview.github.io/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="SceneView for companies">
+  <meta name="twitter:description" content="License, data collection, platform maturity, release cadence and security reporting, on one page.">
+  <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
+  <meta name="theme-color" content="#005bc1">
+  <meta property="og:site_name" content="SceneView">
+  <meta property="og:locale" content="en_US">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ===== COMPANIES PAGE ===== */
+    .companies-page {
+      padding-top: var(--nav-height);
+    }
+
+    .companies-hero {
+      padding: 80px 0 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .companies-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 20%, rgba(0,91,193,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    [data-theme="dark"] .companies-hero::before {
+      background: radial-gradient(ellipse 80% 60% at 50% 20%, rgba(141,179,255,0.06) 0%, transparent 70%);
+    }
+
+    .companies-hero__container {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+      position: relative;
+    }
+
+    .companies-hero__title {
+      font-size: clamp(2.25rem, 6vw, 3.75rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-tertiary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+
+    .companies-hero__lead {
+      font-size: 1.125rem;
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+    }
+
+    .companies-hero__updated {
+      margin-top: 12px;
+      font-size: 0.8125rem;
+      color: var(--color-on-surface-variant);
+    }
+
+    /* At a glance */
+    .companies-glance {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .companies-glance__item {
+      background: var(--color-surface-container-lowest);
+      border-radius: 16px;
+      box-shadow: var(--shadow-card);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .companies-glance__icon {
+      font-size: 24px;
+      color: var(--color-primary);
+    }
+
+    .companies-glance__value {
+      font-size: 1.125rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--color-on-surface);
+    }
+
+    .companies-glance__label {
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      color: var(--color-on-surface-variant);
+    }
+
+    /* Content */
+    .companies-content {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 56px var(--container-padding) 80px;
+    }
+
+    .companies-content section + section {
+      margin-top: 48px;
+    }
+
+    .companies-content h2 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--color-outline-variant);
+      color: var(--color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .companies-content h2 .material-symbols-outlined {
+      font-size: 24px;
+      color: var(--color-primary);
+    }
+
+    .companies-content p,
+    .companies-content li {
+      font-size: 0.975rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.7;
+    }
+
+    .companies-content p {
+      margin-bottom: 12px;
+    }
+
+    .companies-content strong {
+      color: var(--color-on-surface);
+      font-weight: 600;
+    }
+
+    .companies-content ul {
+      padding-left: 22px;
+      margin-bottom: 14px;
+      list-style: disc;
+    }
+
+    .companies-content li {
+      margin-bottom: 8px;
+    }
+
+    .companies-content a:not(.adoption-org__link):not(.companies-button) {
+      color: var(--color-primary);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    .companies-content a:not(.adoption-org__link):not(.companies-button):hover {
+      opacity: 0.85;
+    }
+
+    .companies-content code {
+      font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+      font-size: 0.85em;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(0, 91, 193, 0.07);
+      color: var(--color-on-surface);
+      overflow-wrap: anywhere;
+    }
+
+    [data-theme="dark"] .companies-content code {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .companies-source {
+      font-size: 0.8125rem !important;
+      line-height: 1.6 !important;
+    }
+
+    .companies-table-wrap {
+      overflow-x: auto;
+      margin: 16px 0;
+      border-radius: 12px;
+      border: 1px solid var(--color-outline-variant);
+    }
+
+    .companies-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.9rem;
+    }
+
+    .companies-table th,
+    .companies-table td {
+      padding: 11px 14px;
+      text-align: left;
+      vertical-align: top;
+      color: var(--color-on-surface-variant);
+      border-bottom: 1px solid var(--color-outline-variant);
+    }
+
+    .companies-table th {
+      background: var(--color-surface-container-low);
+      font-weight: 600;
+      color: var(--color-on-surface);
+    }
+
+    .companies-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .companies-table td:first-child {
+      color: var(--color-on-surface);
+      font-weight: 600;
+    }
+
+    .companies-status {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .companies-status--stable {
+      color: var(--color-status-stable);
+      background: rgba(22, 163, 74, 0.1);
+    }
+
+    .companies-status--alpha {
+      color: var(--color-status-alpha);
+      background: rgba(124, 58, 237, 0.1);
+    }
+
+    [data-theme="dark"] .companies-status--stable { background: rgba(86, 211, 100, 0.14); }
+    [data-theme="dark"] .companies-status--alpha { background: rgba(188, 140, 255, 0.14); }
+
+    .companies-orgs {
+      background: var(--color-surface-container-lowest);
+      border-radius: 16px;
+      box-shadow: var(--shadow-card);
+      padding: 24px;
+      margin-top: 8px;
+    }
+
+    /* The shared org list keeps the home-page look, not the article's bullets. */
+    .companies-content .adoption__org-list {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .companies-content .adoption__org-list li {
+      margin-bottom: 0;
+      line-height: normal;
+    }
+
+    .companies-content .adoption__orgs-note {
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      margin-bottom: 0;
+    }
+
+    .companies-sponsor {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 20px;
+      margin-top: 8px;
+    }
+
+    .companies-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 999px;
+      background: var(--color-primary);
+      color: var(--color-on-primary, #fff);
+      font-weight: 700;
+      font-size: 0.95rem;
+      transition: transform var(--duration-short) var(--ease-spring), opacity var(--duration-short);
+    }
+
+    .companies-button:hover,
+    .companies-button:focus-visible {
+      transform: translateY(-1px);
+      opacity: 0.92;
+    }
+
+    @media (max-width: 900px) {
+      .companies-glance { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 768px) {
+      .companies-hero { padding: 48px 0 28px; }
+      .companies-content { padding: 40px var(--container-padding) 64px; }
+    }
+
+    @media (max-width: 480px) {
+      .companies-hero { padding: 32px 0 24px; }
+      .companies-hero__lead { font-size: 1rem; }
+      .companies-glance { gap: 10px; }
+      .companies-glance__item { padding: 16px; }
+      .companies-content { padding: 32px var(--container-padding) 48px; }
+      .companies-content h2 { font-size: 1.2rem; }
+      .companies-table { font-size: 0.8125rem; }
+      .companies-table th,
+      .companies-table td { padding: 8px 10px; }
+      .companies-orgs { padding: 18px; }
+    }
+  </style>
+  <link href="assets/fonts/fonts.css" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ===== NAVIGATION ===== -->
+  <nav class="nav" id="nav">
+    <div class="nav__container">
+      <a href="/" class="nav__brand" aria-label="SceneView SDK — home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" style="flex-shrink:0">
+          <defs>
+            <linearGradient id="navTopGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8AB4F8"/><stop offset="100%" stop-color="#42A5F5"/></linearGradient>
+            <linearGradient id="navRightGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#005BC1"/></linearGradient>
+            <linearGradient id="navLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#005BC1"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient>
+          </defs>
+          <polygon points="256,272 122,194 122,340 256,418" fill="url(#navLeftGrad)"/>
+          <polygon points="256,272 390,194 390,340 256,418" fill="url(#navRightGrad)"/>
+          <polygon points="256,126 390,204 256,282 122,204" fill="url(#navTopGrad)"/>
+          <polyline points="96,120 96,82 134,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,120 416,82 378,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="96,392 96,430 134,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,392 416,430 378,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>SceneView SDK</span>
+      </a>
+
+      <div class="nav__links" id="navLinks">
+        <a href="/#features" class="nav__link">Features</a>
+        <a href="/showcase.html" class="nav__link">Showcase</a>
+        <a href="/playground.html" class="nav__link">Playground</a>
+        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
+        <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
+        <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav__actions">
+        <a href="https://github.com/sceneview/sceneview" class="nav__icon-btn" target="_blank" rel="noopener" aria-label="View on GitHub">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="nav__hamburger nav__hamburger--mobile" id="hamburgerMobile" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="companies-page">
+
+    <!-- ===== HERO ===== -->
+    <section class="companies-hero">
+      <div class="companies-hero__container">
+        <h1 class="companies-hero__title reveal">SceneView for companies</h1>
+        <p class="companies-hero__lead reveal">The facts a team checks before it adopts an SDK: the license, what the code sends over the network, which platforms are production-grade, how often it ships and where to report a vulnerability.</p>
+        <p class="companies-hero__updated reveal">Last checked: September 26, 2026 &middot; SceneView 4.40.0</p>
+      </div>
+    </section>
+
+    <!-- ===== AT A GLANCE ===== -->
+    <div class="companies-glance reveal" role="list">
+      <div class="companies-glance__item" role="listitem">
+        <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">gavel</span>
+        <span class="companies-glance__value">Apache-2.0</span>
+        <span class="companies-glance__label">Commercial and closed-source use allowed. The MCP server is MIT.</span>
+      </div>
+      <div class="companies-glance__item" role="listitem">
+        <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">shield</span>
+        <span class="companies-glance__value">No telemetry</span>
+        <span class="companies-glance__label">No analytics, no accounts. One documented web default, below.</span>
+      </div>
+      <div class="companies-glance__item" role="listitem">
+        <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">devices</span>
+        <span class="companies-glance__value">Android stable</span>
+        <span class="companies-glance__label">iOS, web and the cross-platform bridges are alpha.</span>
+      </div>
+      <div class="companies-glance__item" role="listitem">
+        <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">update</span>
+        <span class="companies-glance__value">22 releases</span>
+        <span class="companies-glance__label">in the last 90 days, 75 since 4.0.0 in April 2026.</span>
+      </div>
+    </div>
+
+    <!-- ===== CONTENT ===== -->
+    <div class="companies-content">
+
+      <section id="license" aria-labelledby="license-title">
+        <h2 id="license-title"><span class="material-symbols-outlined" aria-hidden="true">gavel</span>License in plain words</h2>
+        <p>SceneView is released under the <a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Apache License 2.0</a>. In practice:</p>
+        <ul>
+          <li><strong>You can use it in commercial and closed-source apps</strong>, and modify it, without paying or asking.</li>
+          <li><strong>You get a patent grant</strong> from every contributor for their contributions.</li>
+          <li><strong>When you redistribute it</strong>, keep the license text and the <a href="https://github.com/sceneview/sceneview/blob/main/NOTICE" target="_blank" rel="noopener">NOTICE</a> file, and mark the files you changed.</li>
+          <li><strong>No trademark rights</strong>: the license does not let you use the SceneView name or logo to brand your product.</li>
+        </ul>
+        <p>The <code>mcp/</code> directory (the <code>sceneview-mcp</code> server for AI assistants) is under the <a href="https://github.com/sceneview/sceneview/blob/main/mcp/LICENSE" target="_blank" rel="noopener">MIT License</a>. The 3D models used in the samples, docs and this website are third-party works under their own licenses, listed in <a href="https://github.com/sceneview/sceneview/blob/main/assets/CREDITS.md" target="_blank" rel="noopener">assets/CREDITS.md</a>; they are not needed to use the SDK.</p>
+      </section>
+
+      <section id="data" aria-labelledby="data-title">
+        <h2 id="data-title"><span class="material-symbols-outlined" aria-hidden="true">shield</span>What the SDK sends over the network</h2>
+        <p><strong>No analytics, no telemetry, no advertising identifiers and no accounts.</strong> The SDK opens network connections only for the URLs your app gives it, such as a model to load.</p>
+        <p><strong>One exception, on the web.</strong> <code>sceneview-web</code> fetches its default lighting environment from <code>sceneview.github.io</code> when a viewer starts. To avoid that request, host the environment yourself: with the Kotlin/JS builder, <code>environment(iblUrl, skyboxUrl)</code> or <code>noEnvironment()</code> skip the default; with the JavaScript API, <code>viewer.setEnvironment(url)</code> replaces it once the viewer is running.</p>
+        <p><strong>Android permissions</strong> declared by the libraries and merged into your manifest:</p>
+        <ul>
+          <li><code>INTERNET</code> (<code>sceneview</code>), to load models from a URL.</li>
+          <li><code>VIBRATE</code> (<code>sceneview</code>), for optional haptic feedback. Remove it with <code>tools:node="remove"</code> if you do not use it.</li>
+          <li><code>CAMERA</code> (<code>arsceneview</code> only), for augmented reality.</li>
+        </ul>
+        <p><strong>Platform AR services.</strong> On Android, AR runs on Google Play Services for AR (ARCore), under Google&rsquo;s terms. On Apple platforms, AR uses ARKit and RealityKit on the device.</p>
+        <p class="companies-source">This page is about the SDK. The sceneview.github.io website itself uses Google Analytics, as described in the <a href="/privacy.html">privacy policy</a>.</p>
+      </section>
+
+      <section id="platforms" aria-labelledby="platforms-title">
+        <h2 id="platforms-title"><span class="material-symbols-outlined" aria-hidden="true">devices</span>Platforms and maturity</h2>
+        <p>Only Android is marked stable today. Alpha platforms ship and are usable, with fewer guarantees: their APIs may still change between 4.x releases.</p>
+        <div class="companies-table-wrap">
+          <table class="companies-table">
+            <thead>
+              <tr><th scope="col">Platform</th><th scope="col">Status</th><th scope="col">Built on</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Android</td><td><span class="companies-status companies-status--stable">Stable</span></td><td>Jetpack Compose, Filament, ARCore. API 24+, OpenGL ES 3.0.</td></tr>
+              <tr><td>Android TV</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose TV, Filament.</td></tr>
+              <tr><td>iOS, macOS, visionOS</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>SwiftUI, RealityKit. iOS 18, macOS 15, visionOS 2.</td></tr>
+              <tr><td>Web</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Filament.js on WebGL2 / WASM.</td></tr>
+              <tr><td>Compose Multiplatform</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Viewer subset, no AR.</td></tr>
+              <tr><td>Desktop (JVM)</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose Desktop, Filament.</td></tr>
+              <tr><td>Flutter, React Native</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Native bridges to the Android and Apple SDKs.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="companies-source">Source: the platform table in the <a href="https://github.com/sceneview/sceneview#platforms" target="_blank" rel="noopener">README</a>.</p>
+      </section>
+
+      <section id="releases" aria-labelledby="releases-title">
+        <h2 id="releases-title"><span class="material-symbols-outlined" aria-hidden="true">update</span>Release cadence</h2>
+        <p><strong>75 releases</strong> from 4.0.0 (April 13, 2026) to 4.40.0 (September 26, 2026), <strong>22 of them in the last 90 days</strong>. Android artifacts are published on Maven Central, the web and React Native packages on npm, the Flutter plugin on pub.dev and the Apple package through Swift Package Manager.</p>
+        <p class="companies-source">Source: final <code>v4.*</code> tags, counted with <code>git tag</code> on September 26, 2026. Full history: <a href="https://github.com/sceneview/sceneview/releases" target="_blank" rel="noopener">GitHub releases</a> and the <a href="https://github.com/sceneview/sceneview/blob/main/CHANGELOG.md" target="_blank" rel="noopener">changelog</a>.</p>
+      </section>
+
+      <section id="support" aria-labelledby="support-title">
+        <h2 id="support-title"><span class="material-symbols-outlined" aria-hidden="true">verified</span>Versioning and support today</h2>
+        <ul>
+          <li><strong>Semantic versioning.</strong> A binary-compatibility check (<code>apiCheck</code>) runs in CI on pull requests that touch the Android libraries, so their public API cannot change by accident.</li>
+          <li><strong>Deprecations before removals.</strong> Deprecated APIs carry a <code>ReplaceWith</code> hint your IDE can apply, and upgrades are documented in the <a href="https://github.com/sceneview/sceneview/blob/main/MIGRATION.md" target="_blank" rel="noopener">migration guide</a>.</li>
+          <li><strong>Fixes ship in the next 4.x release.</strong> There is no long-term-support branch and no service-level agreement: stay on a recent 4.x release to get fixes.</li>
+        </ul>
+        <p>Where to get help is listed in <a href="https://github.com/sceneview/sceneview/blob/main/.github/SUPPORT.md" target="_blank" rel="noopener">SUPPORT.md</a>, and how the project is run in <a href="https://github.com/sceneview/sceneview/blob/main/.github/GOVERNANCE.md" target="_blank" rel="noopener">GOVERNANCE.md</a>.</p>
+      </section>
+
+      <section id="security" aria-labelledby="security-title">
+        <h2 id="security-title"><span class="material-symbols-outlined" aria-hidden="true">lock</span>Reporting a vulnerability</h2>
+        <p>Report security issues <strong>privately</strong>, never in a public issue, following the <a href="https://github.com/sceneview/sceneview/blob/main/.github/SECURITY.md" target="_blank" rel="noopener">security policy</a>. It lists the supported versions, what to include in a report and the coordinated disclosure process.</p>
+        <!-- PRIVATE VULNERABILITY REPORTING SLOT — uncomment once "Private vulnerability
+             reporting" is enabled in the repository's security settings
+             (gh api repos/sceneview/sceneview/private-vulnerability-reporting → "enabled": true).
+        <p><a href="https://github.com/sceneview/sceneview/security/advisories/new" target="_blank" rel="noopener">Report a vulnerability privately on GitHub</a></p>
+        -->
+      </section>
+
+      <section id="notices" aria-labelledby="notices-title">
+        <h2 id="notices-title"><span class="material-symbols-outlined" aria-hidden="true">description</span>Third-party notices</h2>
+        <p>The <a href="https://github.com/sceneview/sceneview/blob/main/NOTICE" target="_blank" rel="noopener">NOTICE</a> file credits the third-party code SceneView includes or derives from, with its license. Filament, Google&rsquo;s rendering engine, is used as published by Google. The authors and licenses of every sample 3D model are in <a href="https://github.com/sceneview/sceneview/blob/main/assets/CREDITS.md" target="_blank" rel="noopener">assets/CREDITS.md</a>.</p>
+      </section>
+
+      <section id="adoption" aria-labelledby="adoption-title">
+        <h2 id="adoption-title"><span class="material-symbols-outlined" aria-hidden="true">apartment</span>Who uses it</h2>
+        <p>Private code is invisible from the outside, so this list only shows what teams published themselves.</p>
+        <div class="companies-orgs">
+          <h3 class="adoption__orgs-title">Found in public code and talks from teams at</h3>
+          <ul class="adoption__org-list" data-adoption-orgs></ul>
+          <p class="adoption__orgs-note">Each name links to that team&rsquo;s own public repository, library, blog post or talk. A name here is not an endorsement.</p>
+        </div>
+        <p class="companies-source" style="margin-top:16px">More public numbers, with their sources, are on the <a href="/#metrics">home page</a>.</p>
+      </section>
+
+      <section id="contact" aria-labelledby="contact-title">
+        <h2 id="contact-title"><span class="material-symbols-outlined" aria-hidden="true">forum</span>Contact</h2>
+        <p>All contact happens in the open, on GitHub:</p>
+        <ul>
+          <li><a href="https://github.com/sceneview/sceneview/discussions/categories/q-a" target="_blank" rel="noopener">GitHub Discussions</a> for questions, including an evaluation for your company.</li>
+          <li><a href="https://github.com/sceneview/sceneview/issues" target="_blank" rel="noopener">GitHub Issues</a> for bugs and feature requests.</li>
+          <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a> for a quick chat with the community.</li>
+        </ul>
+      </section>
+
+      <section id="sponsor" aria-labelledby="sponsor-title">
+        <h2 id="sponsor-title"><span class="material-symbols-outlined" aria-hidden="true">volunteer_activism</span>Support the project</h2>
+        <p>If SceneView is part of your product, a sponsorship helps keep releases frequent. Contributions are public on Open Collective.</p>
+        <div class="companies-sponsor">
+          <a class="companies-button" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">Sponsor on Open Collective</a>
+          <a href="https://github.com/sponsors/sceneview" target="_blank" rel="noopener">or through GitHub Sponsors</a>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer__container">
+      <div class="footer__grid">
+        <div class="footer__brand-col">
+          <div class="footer__brand-name">SceneView SDK</div>
+          <p class="footer__brand-desc">The architectural logic for building high-performance 3D spatial experiences across all modern platforms.</p>
+          <div class="footer__copyright">&copy; 2026 SceneView SDK. Architectural Logic.</div>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Documentation</h4>
+          <ul class="footer__col-list">
+            <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
+            <li><a href="/showcase.html">Showcase</a></li>
+            <li><a href="/view.html">3D Viewer</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Community</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
+            <li><a href="/companies.html">For companies</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Legal</h4>
+          <ul class="footer__col-list">
+            <li><a href="/privacy.html">Privacy</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/assets/CREDITS.md" target="_blank" rel="noopener">3D asset credits</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/adoption-orgs.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
