@@ -3701,7 +3701,7 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 All `remember*` helpers create and memoize Filament objects, destroying them on disposal.
 Most are default parameter values in `SceneView`/`ARSceneView` — call them explicitly only when sharing resources or customizing.
 
-**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done.
+**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done. `destroyModel` is safe at any point of a load, including while the textures are still decoding: it cancels that model's pending texture load first, so no app-side `resourceLoader.asyncCancelLoad()` is needed.
 
 | Helper | Returns | Purpose |
 |--------|---------|---------|
