@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Play in-app update snackbar (UpdateSnackbarEffect). -->
+    <!-- Play in-app update prompt (UpdatePromptController → the host's prompt composable). -->
     <string name="sample_update_available">Update available</string>
     <string name="sample_update_action">Update</string>
+    <string name="sample_update_waiting">Waiting for Google Play…</string>
+    <string name="sample_update_downloading">Downloading update…</string>
     <string name="sample_update_ready">Update ready</string>
     <string name="sample_update_restart">Restart</string>
+    <string name="sample_update_failed">Update failed</string>
+    <string name="sample_update_retry">Retry</string>
+    <string name="sample_update_dismiss">Dismiss</string>
 </resources>

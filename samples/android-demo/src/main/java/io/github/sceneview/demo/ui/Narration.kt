@@ -139,8 +139,8 @@ private const val NARRATION_DOTS = 3
 /** `motion-narration` in `DESIGN.md`: one sweep across the three dots. */
 private const val NARRATION_CYCLE_MILLIS = 1_200
 
-/** The dimmest a dot gets. */
-private const val NARRATION_DOT_FLOOR = 0.25f
+/** The dimmest a dot gets — also the track of a [NarrationProgressRing] drawn on a dark surface. */
+internal const val NARRATION_DOT_FLOOR = 0.25f
 
 /**
  * The determinate ring a narrated download shows once its byte count is known (#3825): the
