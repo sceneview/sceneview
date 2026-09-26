@@ -520,7 +520,7 @@
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
             Copy link
           </button>
-          <a class="vp-btn vp-btn--tonal" id="vp-armv" hidden>Open in AR Model Viewer</a>
+          <a class="vp-btn vp-btn--tonal" id="vp-armv" hidden>Open in SceneView</a>
         </div>
         <p id="vp-ar-note" class="vp-ar-note" hidden></p>
 
@@ -588,7 +588,7 @@
     // The compiled SceneView KMP core, loaded ONLY to convert a .3mf into a GLB
     // (`sceneview.threeMfToGlb`), exactly as /open/ does. It never renders.
     var THREEMF_SCRIPT = '/js/sceneview-web.js?v=4.34.0';
-    // AR Model Viewer declares a verified App Link on https://ar.sceneview.dev/open?url=
+    // The SceneView: 3D & AR Viewer app declares a verified App Link on https://ar.sceneview.dev/open?url=
     // (VIEW + BROWSABLE, autoVerify), so an Android intent can hand it the model.
     var ARMV_PACKAGE = 'com.gorisse.thomas.arcamera';
     var ARMV_LINK_HOST = 'ar.sceneview.dev';
@@ -1096,7 +1096,7 @@
               'action=android.intent.action.VIEW;S.browser_fallback_url=' + encodeURIComponent(location.href) + ';end;';
           });
         } else {
-          setNote('Google’s AR viewer only reads .glb and .gltf. Open this .3mf in AR Model Viewer below.');
+          setNote('Google’s AR viewer only reads .glb and .gltf. Open this .3mf in the SceneView app below.');
         }
         return;
       }
@@ -1129,7 +1129,7 @@
       }
     }
 
-    // "Open in AR Model Viewer" — Android only. The app claims
+    // "Open in SceneView" (the SceneView: 3D & AR Viewer app) — Android only. The app claims
     // https://ar.sceneview.dev/open?url=<https link>; without it installed the intent
     // falls back to its Play Store page.
     function wireArmv() {

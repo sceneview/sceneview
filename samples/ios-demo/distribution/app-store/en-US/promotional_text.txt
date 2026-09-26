@@ -1,1 +1,1 @@
-Explore now searches the online model gallery as you type. Open any 3D file you are sent — USDZ, STL, OBJ, PLY, 3MF — and stand it in your room at its real size.
+See what the SceneView SDK does in SwiftUI: 48 live 3D and AR screens, each one linked to the few lines of code that draw it.

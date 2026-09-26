@@ -627,6 +627,72 @@ try:
 except Exception as e:
     print(f"::warning::Failed to update App Store localization: {e}")
 
+# 4b'. App name + subtitle (per minor bump only).
+#
+# These two fields do not live on the version localization above: Apple
+# keeps them on the app-info localization, which is editable only while a
+# version is being prepared — i.e. right now. Sourced from `name.txt` and
+# `subtitle.txt` next to the other listing files (Apple caps both at 30).
+# Same gate as description/keywords, since a change triggers a review.
+# Non-fatal: a failure leaves the live name in place and the submission
+# proceeds.
+try:
+    import re, pathlib
+    if re.fullmatch(r"\d+\.\d+\.0", version_string):
+        meta_dir = pathlib.Path("distribution/app-store/en-US")
+        info_attrs = {}
+        for field, fname in [("name", "name.txt"), ("subtitle", "subtitle.txt")]:
+            f = meta_dir / fname
+            if f.exists():
+                v = f.read_text(encoding="utf-8").strip()
+                if len(v) > 30:
+                    print(f"::warning::{fname} is {len(v)} chars, over Apple's 30 — not synced")
+                elif v:
+                    info_attrs[field] = v
+        if info_attrs:
+            r = requests.get(f"{BASE}/apps/{app_id}/appInfos", headers=headers)
+            r.raise_for_status()
+            live_states = {"READY_FOR_SALE", "READY_FOR_DISTRIBUTION", "REPLACED_WITH_NEW_INFO"}
+            editable = [
+                i for i in r.json().get("data", [])
+                if (i.get("attributes", {}).get("state")
+                    or i.get("attributes", {}).get("appStoreState")) not in live_states
+            ]
+            if not editable:
+                print("::warning::No editable appInfo — app name/subtitle not synced")
+            else:
+                info_id = editable[0]["id"]
+                r = requests.get(
+                    f"{BASE}/appInfos/{info_id}/appInfoLocalizations", headers=headers)
+                r.raise_for_status()
+                en_us = next(
+                    (loc for loc in r.json().get("data", [])
+                     if loc.get("attributes", {}).get("locale") == "en-US"),
+                    None,
+                )
+                if en_us is None:
+                    print("::warning::No en-US appInfoLocalization — app name/subtitle not synced")
+                else:
+                    live = en_us.get("attributes", {})
+                    changed = {k: v for k, v in info_attrs.items() if live.get(k) != v}
+                    if not changed:
+                        print("App name/subtitle already match the repo")
+                    else:
+                        r = requests.patch(
+                            f"{BASE}/appInfoLocalizations/{en_us['id']}",
+                            headers=headers,
+                            json={"data": {
+                                "type": "appInfoLocalizations",
+                                "id": en_us["id"],
+                                "attributes": changed,
+                            }},
+                        )
+                        r.raise_for_status()
+                        print("App info PATCHed on en-US: " + ", ".join(
+                            f"{k}={len(v)}c" for k, v in changed.items()))
+except Exception as e:
+    print(f"::warning::Failed to update App Store name/subtitle: {e}")
+
 # 4c. Sync the repo's screenshots BEFORE submitting (#2899).
 #
 # This is the ONLY moment in a release when an editable version

@@ -1,1 +1,1 @@
-Open any 3D model you are sent and place it in your room, at its real size.
+See what the SceneView SDK does: 48 live 3D and AR samples, each with its code.

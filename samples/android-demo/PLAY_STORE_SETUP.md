@@ -16,7 +16,8 @@ Step-by-step guide to publish the SceneView app on Google Play.
 1. Go to [Google Play Console](https://play.google.com/console)
 2. Click **"Create app"**
 3. Fill in:
-   - **App name:** `SceneView`
+   - **App name:** `SceneView Demo — SDK samples` (the listing sync keeps it
+     in step with `title.txt`)
    - **Default language:** English (United States) — `en-US`, the one locale
      this repo maintains and the only one the listing-sync job targets
      (`distribution/play-store/en-US/`). The listing was consolidated to a

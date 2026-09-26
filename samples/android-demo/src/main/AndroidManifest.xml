@@ -120,7 +120,7 @@
             -->
 
             <!-- Custom scheme — works on every install, no verification needed. -->
-            <intent-filter android:label="Open in SceneView">
+            <intent-filter android:label="@string/open_model_filter_label">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -157,7 +157,7 @@
                 expected output per build type, are in
                 website-static/.well-known/README.md.
             -->
-            <intent-filter android:label="Open in SceneView" android:autoVerify="true">
+            <intent-filter android:label="@string/open_model_filter_label" android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
