@@ -20,24 +20,25 @@ import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
 
 /**
- * Shared in-app update manager for every Android-host SceneView sample.
+ * Shared in-app update manager for the Android SceneView demo.
  *
  * Wraps Google Play Core's `AppUpdateManager` with a Compose-friendly
  * [updateState] + [downloadProgress] pair driven by [InstallStateUpdatedListener].
+ * What the user sees is decided by [UpdatePromptController] and drawn by
+ * [UpdateSnackbarEffect]: an "Update available · Update" snackbar, then an
+ * "Update ready · Restart" one once the flexible download has finished.
  *
- * ## Demo-UI-native flexible flow (#1941)
- *
- * The Google Play consent modal is shown **exactly once**, only after a
- * deliberate user tap — never unprompted on resume:
+ * ## Flexible flow, one Google modal
  *
  * 1. [checkForUpdate] runs on every `onResume`. On `UPDATE_AVAILABLE` it sets
  *    [updateState] to `AVAILABLE` and **stops** — it does NOT pop the Google
- *    modal. The detected [AppUpdateInfo] is stashed for later.
- * 2. [UpdateBanner] renders an integrated "A new version is available — Update"
- *    card. Only the user's tap on that in-app **Update** button calls
- *    [startUpdate], which triggers Google's single consent modal.
- * 3. Download progress and the "Restart" prompt are the demo's own Material 3
- *    surfaces — no further Google modals.
+ *    modal. The detected [AppUpdateInfo] is stashed for later. The same call
+ *    also re-attaches to a download a previous foreground left running or
+ *    finished, so it is the only call `onResume` needs.
+ * 2. The user taps **Update** on the snackbar, which calls [startUpdate]:
+ *    that is the single tap that pops Google's consent modal.
+ * 3. Play downloads in the background; `DOWNLOADED` flips [updateState] to
+ *    `READY_TO_INSTALL` and the snackbar's **Restart** calls [completeUpdate].
  *
  * Wire it from a [ComponentActivity]:
  *
@@ -51,7 +52,6 @@ import com.google.android.play.core.install.model.UpdateAvailability
  * }
  * override fun onResume() {
  *     super.onResume()
- *     updateManager.checkForStalledUpdate()
  *     updateManager.checkForUpdate()
  * }
  * override fun onDestroy() {
@@ -60,20 +60,17 @@ import com.google.android.play.core.install.model.UpdateAvailability
  * }
  * ```
  *
- * Then compose [UpdateBanner] anywhere in the activity content. The in-app
- * **Update** button it renders calls [startUpdate] — that is the single tap
- * that pops Google's consent modal. The banner stays a no-op while
- * [updateState] is `IDLE` / `CHECKING` / `UP_TO_DATE` and renders during
- * `AVAILABLE` / `DOWNLOADING` / `READY_TO_INSTALL`:
- *
- * ```kotlin
- * UpdateBanner(updateManager = updateManager)
- * ```
+ * **One call on resume, never two.** Until this was folded into [checkForUpdate]
+ * the demo called a separate `checkForStalledUpdate()` first; it took the
+ * re-entrancy guard for its own round-trip, so the `checkForUpdate()` that
+ * followed in the same `onResume` always returned early and `UPDATE_AVAILABLE`
+ * was never read — no Android user ever saw the prompt.
  *
  * Uses [AppUpdateType.FLEXIBLE] (background download + user-driven restart) — see
  * <https://developer.android.com/guide/playcore/in-app-updates>. The Play SDK
  * compares the installed version against the Play Store track automatically, so
- * there is no `VERSION_NAME` plumbing to wire here.
+ * there is no `VERSION_NAME` plumbing to wire here. In-app updates only exist on
+ * phones, tablets and ChromeOS, and only for a Play-installed build.
  *
  * ## Threading
  *
@@ -107,7 +104,7 @@ class InAppUpdateManager(
     // stashed so the user's later `startUpdate()` tap can hand it to
     // `startUpdateFlowForResult` without re-querying the SDK. Kept alive until
     // the download is confirmed started (state DOWNLOADING) so a cancelled
-    // consent modal can still be retried from the in-app Update button.
+    // consent modal can still be retried.
     private var pendingUpdateInfo: AppUpdateInfo? = null
 
     // Re-entrancy guard. Set true on entry to `checkForUpdate()` AND held true
@@ -127,7 +124,7 @@ class InAppUpdateManager(
     // `registerForResult()` from the host activity's `onCreate`. The FLEXIBLE
     // consent modal's CANCEL is delivered HERE (RESULT_CANCELED), not via the
     // install-state listener — without this launcher a cancel would leave the
-    // banner's Update button a permanent no-op.
+    // Update action a permanent no-op.
     private var updateResultLauncher: ActivityResultLauncher<IntentSenderRequest>? = null
 
     private val installStateListener: InstallStateUpdatedListener = InstallStateUpdatedListener { state ->
@@ -164,7 +161,7 @@ class InAppUpdateManager(
             }
             InstallStatus.CANCELED -> {
                 // The user dismissed the Google consent modal. Drop back to
-                // AVAILABLE so the in-app banner stays and the user can retry.
+                // AVAILABLE so the update stays retryable.
                 inFlight = false
                 updateState = UpdateState.AVAILABLE
             }
@@ -182,7 +179,7 @@ class InAppUpdateManager(
      * Cancelling the consent modal is delivered ONLY through this result
      * (`RESULT_CANCELED`) — not through the install-state listener. Without it
      * a cancel would strand the manager with `inFlight == true` and the
-     * banner's Update button would be a permanent no-op.
+     * Update action would be a permanent no-op.
      */
     fun registerForResult(activity: ComponentActivity) {
         updateResultLauncher = activity.registerForActivityResult(
@@ -208,7 +205,7 @@ class InAppUpdateManager(
         }
         // RESULT_CANCELED (or any non-OK code): the user dismissed the consent
         // modal. Reset to a retryable AVAILABLE and KEEP `pendingUpdateInfo`
-        // so the in-app Update button works again.
+        // so a later startUpdate() still works.
         inFlight = false
         if (pendingUpdateInfo != null) {
             updateState = UpdateState.AVAILABLE
@@ -217,9 +214,11 @@ class InAppUpdateManager(
 
     /**
      * Queries the Play Store for a newer release. Safe to call on every
-     * `onResume`. On `UPDATE_AVAILABLE` it sets [updateState] to `AVAILABLE`
-     * and stops — it does **not** start the Google consent flow. Call
-     * [startUpdate] from a deliberate user tap to do that.
+     * `onResume`, and the only call `onResume` needs. On `UPDATE_AVAILABLE` it
+     * sets [updateState] to `AVAILABLE` and stops — it does **not** start the
+     * Google consent flow. Call [startUpdate] from a deliberate user tap to do
+     * that. A download a previous foreground left running (`DOWNLOADING`) or
+     * finished (`DOWNLOADED`) is picked up by the same round-trip.
      */
     fun checkForUpdate() {
         if (destroyed) return
@@ -259,7 +258,7 @@ class InAppUpdateManager(
                     }
                     info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
                         && info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) -> {
-                        // Stash the info and surface the in-app banner. STOP
+                        // Stash the info and surface the in-app prompt. STOP
                         // here: no Google modal until the user taps Update.
                         // `inFlight` stays true through the AVAILABLE window —
                         // a second resume is already blocked by the AVAILABLE
@@ -282,8 +281,8 @@ class InAppUpdateManager(
 
     /**
      * Starts the Play in-app update flow. Triggers Google's **single** consent
-     * modal — call this **only** from a deliberate user tap (the in-app
-     * "Update" button in [UpdateBanner]), never automatically.
+     * modal — call this **only** from a deliberate user tap (the **Update**
+     * action of the update snackbar), never automatically.
      *
      * A no-op unless [updateState] is `AVAILABLE` with a stashed
      * [AppUpdateInfo], so a double tap or a stray call cannot double-prompt.
@@ -326,55 +325,13 @@ class InAppUpdateManager(
 
     /**
      * Finishes a downloaded update and restarts the app. A **no-op unless**
-     * [updateState] is `READY_TO_INSTALL` — guards the [UpdateBanner] "Restart"
-     * button against firing while the install isn't actually ready (#1941).
+     * [updateState] is `READY_TO_INSTALL` — guards the snackbar's **Restart**
+     * action against firing while the install isn't actually ready (#1941).
      */
     fun completeUpdate() {
         if (destroyed) return
         if (updateState != UpdateState.READY_TO_INSTALL) return
         appUpdateManager.completeUpdate()
-    }
-
-    /**
-     * Picks up an update that was already downloaded — or is still downloading —
-     * from a previous foreground (e.g. the user backgrounded the app
-     * mid-install, or a rotation recreated the activity). Should be called from
-     * `onResume()` *before* [checkForUpdate].
-     */
-    fun checkForStalledUpdate() {
-        if (destroyed) return
-        // Hold the re-entrancy guard for the round-trip so a `checkForUpdate()`
-        // landing in the same `onResume` can't race a parallel `appUpdateInfo`
-        // request. Released in the callback unless an in-progress download is
-        // picked up (then the live listener owns the flow).
-        if (inFlight) return
-        inFlight = true
-        appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
-            if (destroyed) return@addOnSuccessListener
-            when (info.installStatus()) {
-                InstallStatus.DOWNLOADED -> {
-                    // Re-register so the post-`completeUpdate()` INSTALLED event
-                    // is still observed on a fresh manager instance.
-                    registerListener()
-                    inFlight = false
-                    updateState = UpdateState.READY_TO_INSTALL
-                }
-                InstallStatus.DOWNLOADING -> {
-                    // A flexible download is still running (rotation mid-download).
-                    // Re-attach the listener and resume the DOWNLOADING state so
-                    // the recreated manager tracks it instead of showing "Update".
-                    // `inFlight` stays true: the listener owns the flow.
-                    registerListener()
-                    updateState = UpdateState.DOWNLOADING
-                }
-                else -> {
-                    inFlight = false
-                }
-            }
-        }.addOnFailureListener {
-            if (destroyed) return@addOnFailureListener
-            inFlight = false
-        }
     }
 
     /** Must be called from `Activity.onDestroy()` to prevent listener leaks. */

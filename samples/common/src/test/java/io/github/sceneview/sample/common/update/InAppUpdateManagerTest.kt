@@ -207,7 +207,7 @@ class InAppUpdateManagerTest {
     }
 
     @Test
-    fun `checkForStalledUpdate picks up an already-DOWNLOADED install on a fresh manager`() {
+    fun `checkForUpdate picks up an already-DOWNLOADED install on a fresh manager`() {
         // Simulate: a prior session downloaded the update; the new
         // InAppUpdateManager comes online in onResume and must surface the
         // DOWNLOADED state without restarting the flow.
@@ -223,7 +223,7 @@ class InAppUpdateManagerTest {
         manager.destroy()
 
         val fresh = newManager()
-        fresh.checkForStalledUpdate()
+        fresh.checkForUpdate()
         shadowOf(activity.mainLooper).idle()
 
         assertEquals(InAppUpdateManager.UpdateState.READY_TO_INSTALL, fresh.updateState)
@@ -231,7 +231,7 @@ class InAppUpdateManagerTest {
     }
 
     @Test
-    fun `checkForStalledUpdate re-attaches to an in-progress download`() {
+    fun `checkForUpdate re-attaches to an in-progress download and observes its completion`() {
         // Rotation mid-download: the recreated manager must resume DOWNLOADING
         // (re-register the listener), not show AVAILABLE and re-pop the modal.
         fake.setUpdateAvailable(42)
@@ -246,7 +246,7 @@ class InAppUpdateManagerTest {
         manager.destroy()
 
         val fresh = newManager()
-        fresh.checkForStalledUpdate()
+        fresh.checkForUpdate()
         shadowOf(activity.mainLooper).idle()
 
         assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, fresh.updateState)
@@ -259,25 +259,20 @@ class InAppUpdateManagerTest {
     }
 
     @Test
-    fun `checkForUpdate re-attaches to an in-progress download after rotation`() {
-        // Same rotation case but via checkForUpdate() (called right after
-        // checkForStalledUpdate in onResume): an already-DOWNLOADING update
-        // must resume DOWNLOADING rather than re-surface AVAILABLE.
+    fun `the first resume of a fresh manager surfaces AVAILABLE`() {
+        // Regression: the demo's onResume used to call a separate
+        // `checkForStalledUpdate()` right before `checkForUpdate()`. The first
+        // took the `inFlight` guard for its own round-trip, the second returned
+        // early on it, and the stalled callback left the state IDLE for a plain
+        // UPDATE_AVAILABLE — so no Android user ever saw the prompt. The one
+        // call onResume makes now must reach AVAILABLE on its own, first time.
         fake.setUpdateAvailable(42)
-        manager.checkForUpdate()
-        shadowOf(activity.mainLooper).idle()
-        manager.startUpdate()
-        shadowOf(activity.mainLooper).idle()
-        fake.userAcceptsUpdate()
-        fake.downloadStarts()
-        shadowOf(activity.mainLooper).idle()
-        manager.destroy()
-
         val fresh = newManager()
-        fresh.checkForUpdate()
+
+        fresh.checkForUpdate() // everything MainActivity.onResume does
         shadowOf(activity.mainLooper).idle()
 
-        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, fresh.updateState)
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, fresh.updateState)
         assertFalse(fake.isConfirmationDialogVisible)
         fresh.destroy()
     }

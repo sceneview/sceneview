@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import io.github.sceneview.sample.common.update.InAppUpdateManager
-import io.github.sceneview.sample.common.update.UpdateBanner
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -84,44 +82,23 @@ internal val models = listOf(
  */
 class TvModelViewerActivity : ComponentActivity() {
 
-    // Exposed (internal) so [TvModelViewerScreen] can overlay the [UpdateBanner]
-    // on top of the SceneView surface. Same pattern as android-demo.
-    internal lateinit var updateManager: InAppUpdateManager
-
+    // No Play in-app update here: Google supports in-app updates on phones,
+    // tablets and ChromeOS only — not Android TV — and this sample ships as a
+    // GitHub-release APK, never through Play. The update prompt lives in
+    // android-demo (`UpdatePromptController` in :samples:common).
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        updateManager = InAppUpdateManager(this)
-        // Register the activity-result launcher for Google's FLEXIBLE consent
-        // modal BEFORE the activity reaches STARTED. Cancelling that modal is
-        // delivered here (RESULT_CANCELED) — without it a cancel would strand
-        // the in-app Update button as a permanent no-op (#1942 review).
-        updateManager.registerForResult(this)
-
         setContent {
             SceneviewTheme {
-                TvModelViewerScreen(updateManager = updateManager)
+                TvModelViewerScreen()
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Re-pick up a download already finished in a previous foreground
-        // before issuing a fresh check — handles the "user backgrounded the
-        // app mid-install" case without double-prompting.
-        updateManager.checkForStalledUpdate()
-        updateManager.checkForUpdate()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        updateManager.destroy()
     }
 }
 
 @Composable
-private fun TvModelViewerScreen(updateManager: InAppUpdateManager? = null) {
+private fun TvModelViewerScreen() {
     var selectedIndex by remember { mutableIntStateOf(0) }
     val selectedModel = models[selectedIndex]
 
@@ -235,23 +212,6 @@ private fun TvModelViewerScreen(updateManager: InAppUpdateManager? = null) {
             autoRotate = autoRotate,
             modifier = Modifier.align(Alignment.BottomStart)
         )
-
-        // Play in-app update banner — overlays the top of the screen during
-        // AVAILABLE / DOWNLOADING / READY_TO_INSTALL (no-op otherwise). On TV
-        // the action CTA must grab D-pad focus the moment the banner appears,
-        // so we hand UpdateBanner a FocusRequester it auto-requests on every
-        // actionable transition — the Update button while AVAILABLE and the
-        // Restart button while READY_TO_INSTALL. Without it the Update button
-        // would be unreachable by D-pad (#1942 review). FLEXIBLE is the
-        // supported Leanback flow.
-        val actionFocusRequester = remember { FocusRequester() }
-        updateManager?.let { mgr ->
-            UpdateBanner(
-                updateManager = mgr,
-                modifier = Modifier.align(Alignment.TopCenter),
-                actionFocusRequester = actionFocusRequester
-            )
-        }
     }
 }
 

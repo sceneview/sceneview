@@ -32,14 +32,11 @@ import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.rememberMotionEnabled
 import io.github.sceneview.demo.ui.RootScreen
 import io.github.sceneview.sample.common.update.InAppUpdateManager
-import io.github.sceneview.sample.common.update.UpdateBanner
+import io.github.sceneview.sample.common.update.QaAppUpdateManager
+import io.github.sceneview.sample.common.update.SharedPreferencesUpdatePromptStore
+import io.github.sceneview.sample.common.update.UpdatePromptController
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,10 +65,11 @@ import androidx.lifecycle.lifecycleScope
 
 class MainActivity : ComponentActivity() {
 
-    // Exposed (internal) so SceneViewDemoApp can hand the manager to UpdateBanner —
-    // the composable renders the demo-native update-available / downloading /
-    // ready-to-restart chrome.
-    internal lateinit var updateManager: InAppUpdateManager
+    // Play in-app update: the manager talks to Play, the controller decides which
+    // snackbar the tab host shows ("Update available" / "Update ready"). Exposed
+    // (internal) so SceneViewDemoApp can hand the controller to RootScreen.
+    private lateinit var updateManager: InAppUpdateManager
+    internal lateinit var updatePrompt: UpdatePromptController
 
     /**
      * Latest demo id parsed from a deep-link intent (`sceneview://demo/<id>`
@@ -102,11 +100,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Clean up any feedback recording stranded in the cache by a prior run.
         sweepStaleFeedbackMedia(this)
-        updateManager = InAppUpdateManager(this)
+        // `--es update_qa available` (debug builds only) swaps Play for Google's fake
+        // update manager, so the real snackbar flow can be driven on an emulator —
+        // a sideloaded build never sees a real Play update.
+        updateManager = if (BuildConfig.DEBUG && intent?.getStringExtra("update_qa") == "available") {
+            InAppUpdateManager(this, QaAppUpdateManager(this))
+        } else {
+            InAppUpdateManager(this)
+        }
+        updatePrompt = UpdatePromptController(updateManager, SharedPreferencesUpdatePromptStore(this))
         // Register the activity-result launcher for Google's FLEXIBLE consent
         // modal BEFORE the activity reaches STARTED. Cancelling that modal is
         // delivered here (RESULT_CANCELED) — without it a cancel would strand
-        // the in-app Update button as a permanent no-op (#1942 review).
+        // the Update action as a permanent no-op (#1942 review).
         updateManager.registerForResult(this)
         // Two ingress channels: (1) `--es demo <id>` from `adb shell am` for QA / instrumented
         // tests, (2) URL deep-links via the public sceneview://demo/<id> scheme parsed by
@@ -305,13 +311,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Two phases (#890): handle a partially-downloaded update from a prior session,
-        // then proactively check the Play Console for a newer release. Called from
-        // onResume (not onCreate) so a backgrounded-then-resumed app re-checks.
-        // checkForUpdate() only surfaces the AVAILABLE state — it never pops the
-        // Google consent modal; that happens solely on the user's deliberate tap of
-        // the in-app "Update" button rendered by UpdateBanner below (#1941).
-        updateManager.checkForStalledUpdate()
+        // ONE call: it picks up a download a previous foreground left running or
+        // finished, and asks Play for a newer release. Called from onResume (not
+        // onCreate) so a backgrounded-then-resumed app re-checks. It never pops the
+        // Google consent modal; only the snackbar's Update action does (#1941).
+        // A separate stalled-download check used to run first and hold the
+        // manager's re-entrancy guard, so this call always returned early and no
+        // user ever saw the prompt.
         updateManager.checkForUpdate()
     }
 
@@ -375,11 +381,9 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         activity?.consumePendingDemo()
     }
 
-    // Wrap the NavHost and the in-app update banner in an explicit Box so the
-    // banner is z-ordered ON TOP of every screen (#1425). Previously the banner
-    // and the NavHost were sibling root composables — the demo screens' own
-    // TopAppBar then drew over the banner, clipping the "Update ready / Restart"
-    // chrome. Drawing the banner last in the Box guarantees it stays visible.
+    // The NavHost and the bug-report sheet share one Box. The Play update
+    // snackbar is RootScreen's own — its Scaffold places it above the bottom
+    // navigation — so it never lands on a demo's dock or AR controls.
     CompositionLocalProvider(LocalMotionEnabled provides motionEnabled) {
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
@@ -416,9 +420,12 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 // Three-tab root (Showcase / AR View / About). Demo deep links
                 // (`adb am start ... --es demo <id>`) never land here — they
                 // navigate straight to "demo/<id>" (see the pending-demo
-                // handling above) — and the in-app update banner floats over
-                // this whole Box, so both stay wired up whatever tab is active.
-                RootScreen(onDemoClick = { id -> navController.navigate("demo/$id") })
+                // handling above). The Play update snackbar lives in RootScreen's
+                // Scaffold, above the bottom navigation, on every tab.
+                RootScreen(
+                    onDemoClick = { id -> navController.navigate("demo/$id") },
+                    updatePrompt = activity?.updatePrompt,
+                )
             }
             composable(
                 route = "demo/{id}?model={model}",
@@ -438,30 +445,6 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             // caller ever navigated to "about". Deletion verified via grep:
             // 0 `navigate("about")` calls anywhere. The @Ignore'd ScreenshotTest
             // for AboutScreen stays disabled per its own comment.
-        }
-
-        // The update banner is a no-op when state is IDLE / CHECKING /
-        // UP_TO_DATE — it renders the demo-native AVAILABLE / DOWNLOADING /
-        // READY_TO_INSTALL chrome so the whole flexible-update flow stays inside
-        // the app's own UI (#890, #1941).
-        //
-        // `safeDrawing`, not `statusBars` — this banner floats over the entire
-        // app, above every screen, so it meets a display cutout that `statusBars`
-        // does not describe: in landscape the notch is a *side* inset, and the
-        // banner ran straight under it. Top + Horizontal is the same frame
-        // DemoScaffold now applies to its own top overlays, which is the point —
-        // this used to be the third distinct inset spelling in the app (#3237).
-        activity?.updateManager?.let { mgr ->
-            UpdateBanner(
-                updateManager = mgr,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top
-                        )
-                    ),
-            )
         }
 
         // Bug-report entry points (#1930, rebuilt permission-free in #2188's

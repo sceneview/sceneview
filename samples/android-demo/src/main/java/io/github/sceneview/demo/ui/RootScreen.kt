@@ -48,6 +48,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -91,6 +93,8 @@ import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 import io.github.sceneview.demo.ui.home.HomeScreen
 import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
 import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
+import io.github.sceneview.sample.common.update.UpdatePromptController
+import io.github.sceneview.sample.common.update.UpdateSnackbarEffect
 
 /**
  * Top-level UI scaffold. Hosts the three primary tabs (Showcase, AR View,
@@ -108,7 +112,10 @@ import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
  * deep-link replay (`sceneview://demo/<id>`) keeps working unchanged.
  */
 @Composable
-fun RootScreen(onDemoClick: (String) -> Unit) {
+fun RootScreen(
+    onDemoClick: (String) -> Unit,
+    updatePrompt: UpdatePromptController? = null,
+) {
     var selectedTab by rememberSaveable { mutableStateOf(RootTab.Showcase) }
     // Tracks whether the AR View tab is in a live camera session. When `true`
     // the bottom NavigationBar is hidden so the AR camera goes truly
@@ -190,7 +197,26 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
         }
     }
 
+    // Play in-app update ("Update available" · Update, then "Update ready" · Restart).
+    // The host sits in the Scaffold's snackbar slot, which Scaffold places above the
+    // bottom navigation; it is withdrawn during a live AR session, where the bottom of
+    // the screen holds the AR controls, and comes back when the session ends.
+    val snackbarHostState = remember { SnackbarHostState() }
+    if (updatePrompt != null) {
+        UpdateSnackbarEffect(
+            controller = updatePrompt,
+            hostState = snackbarHostState,
+            enabled = !arSessionActive,
+        )
+    }
+
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
+            )
+        },
         bottomBar = {
             // Conditional rendering rather than just `visible = !arSessionActive`
             // because the bottomBar slot reserves layout space when present —
