@@ -3,7 +3,7 @@
 
 Usage:
   gen.py prompts.json out_dir [--refs DIR] [--only id,id] [--variants light,dark] [--model M] [--format webp|jpg]
-  gen.py model-thumbs.json out_dir --kind thumb --refs DIR   # square model/environment tiles
+  gen.py tiles.json out_dir --kind thumb --refs DIR         # square 320x320 tiles
   gen.py heroes.json out_dir --kind hero --refs DIR          # the wide home hero banner
   gen.py store.json out_dir --kind store --refs DIR          # the store-listing AR visuals
 
@@ -13,8 +13,9 @@ Output (--kind preview, the default):
   `--format jpg` writes out_dir/jpg/...jpg instead (q85) — the encoding the iOS demo's asset
   catalog imagesets use (see README "iOS imagesets"); the raw and the crop are the same.
 Output (--kind thumb):
-  out_dir/raw/<id>_dark.png and out_dir/webp/model_thumb_<id>.webp (320x320, q80) — the
-  sheet-and-picker tile size `ModelThumbnails` maps by asset stem. Thumbs are dark-only:
+  out_dir/raw/<id>_dark.png and out_dir/webp/model_thumb_<id>.webp (320x320, q80). Not for
+  the bundled models' own thumbnails any more: those are renders of the exact GLB (#3828,
+  README "Model thumbnails"), an image model draws a different object. Thumbs are dark-only:
   the sheets that show them sit on a scrim in both app themes, so a light variant would
   never be read (`--variants` is ignored for this kind).
 Output (--kind hero):

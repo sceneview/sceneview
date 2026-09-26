@@ -16,7 +16,6 @@
     <string name="demo_model_viewer_desc">Load and render glTF/GLB 3D models with orbit camera</string>
     <string name="demo_model_viewer_loading">Loading model…</string>
     <string name="demo_model_viewer_surprise">Surprise me</string>
-    <string name="demo_model_viewer_surprise_subtitle">A random CC-BY model from Sketchfab</string>
     <!-- Surprise me narration (#3825): one line per real step of the roll, in order. -->
     <string name="demo_model_viewer_surprise_searching">Searching Sketchfab…</string>
     <string name="demo_model_viewer_surprise_downloading">Downloading %1$s…</string>
@@ -28,8 +27,24 @@
     <!-- Accessible name of the floating Surprise me pill: the visible label is short, the spoken one says what it does. -->
     <string name="demo_model_viewer_surprise_hint">Surprise me: load another random model</string>
 
-    <!-- Multi-Model section — formerly the `multi-model` demo. -->
-    <string name="demo_multi_model_title">Multi-Model Scene</string>
+    <!-- Models sheet (#3828): one picker for the three sections. -->
+    <string name="demo_model_picker_title">Models</string>
+    <string name="demo_model_picker_scenes">Scenes</string>
+    <string name="demo_model_picker_models">Single models</string>
+    <string name="demo_model_picker_park_desc">Four models in one scene</string>
+    <string name="demo_model_picker_gallery_desc">Online models from Sketchfab</string>
+    <!-- One line under each bundled model's name: what the model shows off. -->
+    <string name="demo_model_desc_damaged_helmet">Scuffed metal and glass</string>
+    <string name="demo_model_desc_velvet_sofa">Velvet fabric sheen</string>
+    <string name="demo_model_desc_sheen_chair">Tufted fabric sheen</string>
+    <string name="demo_model_desc_olive_dish">Olives under a glass lid</string>
+    <string name="demo_model_desc_lantern">Wooden post, metal lantern</string>
+    <string name="demo_model_desc_toy_car">Clearcoat car on velvet</string>
+    <string name="demo_model_desc_soldier">Walk, run and idle clips</string>
+
+    <!-- Multi-Model section — formerly the `multi-model` demo. Its title is the name the Models
+         sheet's card uses too, so the card and the screen it opens agree (#3828). -->
+    <string name="demo_multi_model_title">Park Scene</string>
     <!-- %1$d models ready so far, %2$d models in the scene. -->
     <string name="demo_multi_model_loading_fetching">Fetching the models (%1$d of %2$d)…</string>
     <string name="demo_multi_model_loading_decoding">Decoding the models (%1$d of %2$d)…</string>

@@ -3,8 +3,11 @@ package io.github.sceneview.demo.ui.viewer
 import io.github.sceneview.demo.R
 
 /**
- * Generated thumbnail resources, keyed by asset stem. The image pipeline fills this with
- * `res/drawable-nodpi/model_thumb_<name>.webp`; placeholders render until then.
+ * Thumbnail resources of the bundled models, keyed by asset stem:
+ * `res/drawable-nodpi/model_thumb_<name>.webp`. Each one is a render of that exact GLB through the
+ * demo's own Filament renderer, with a transparent background so it sits on the card fill of either
+ * theme (#3828 — the image-generated ones drew a different Soldier). How to re-render one:
+ * `tools/demo-previews/README.md`, "Model thumbnails".
  */
 object ModelThumbnails {
     private val resources: Map<String, Int> = mapOf(
