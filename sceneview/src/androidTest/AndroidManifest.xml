@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Bare window host for instrumented tests that need a real, hardware-accelerated
+             view hierarchy (a TextureView only gets a SurfaceTexture once it is attached to one). -->
+        <activity
+            android:name="io.github.sceneview.SurfaceHostActivity"
+            android:exported="false" />
+    </application>
+</manifest>

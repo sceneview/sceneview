@@ -378,10 +378,20 @@ class SceneRenderer(
         votable: Boolean
     ) = object : UiHelper.RendererCallback {
         override fun onNativeWindowChanged(surface: Surface) {
-            // Create a new swap chain for the surface; destroy the old one if any.
-            swapChainRef.getAndSet(
-                engine.createSwapChain(surface, uiHelper.swapChainFlags)
-            )?.let { engine.destroySwapChain(it) }
+            // Destroy the old swap chain BEFORE creating the new one (#3944). This callback also
+            // fires on a live surface: UiHelper answers every TextureView resize by handing back
+            // the SAME Surface so the swap chain is rebuilt at the new buffer size. A window
+            // accepts one producer at a time, so creating first made the new EGL surface's
+            // connect fail (`BufferQueueProducer: connect: already connected` → EGL_BAD_ALLOC)
+            // and then destroyed the only working one — the view froze on its last frame.
+            //
+            // No wait is needed between the two: both calls are commands on the same in-order
+            // backend stream, so the old surface is released (made non-current, then
+            // disconnected) after every frame already submitted to it and before the new one
+            // connects. Clearing the reference first means renderFrame — which runs on this same
+            // main thread — can never pick up the destroyed swap chain.
+            swapChainRef.getAndSet(null)?.let { engine.destroySwapChain(it) }
+            swapChainRef.set(engine.createSwapChain(surface, uiHelper.swapChainFlags))
 
             if (votable) votableSurfaceRef.set(surface)
 
