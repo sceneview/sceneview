@@ -1,22 +1,24 @@
 name: iOS CI
 
 on:
-  # `sceneview-core/**` is shared KMP logic consumed by the Apple
-  # (RealityKit) renderer, so an iOS-affecting core change must re-run
-  # iOS CI — it also triggers Android CI in ci.yml's path filter. See #1295.
+  # No `sceneview-core/**` (dropped 2026-09; #1295 had added it): nothing built
+  # here consumes the KMP core — SceneViewSwift/Package.swift has no dependency
+  # on it and there is no XCFramework; the Swift sources only name it in
+  # comments about hand-ported math. A core-only change therefore cannot alter
+  # this workflow's result, yet it cost a ~15-min macOS run on every core PR.
+  # The core's own iOS (Kotlin/Native) compile stays covered by ci.yml's
+  # `compile-kmp` job. Re-add the path the day Swift links the core.
   push:
     branches: [main]
     paths:
       - 'SceneViewSwift/**'
       - 'samples/ios-demo/**'
-      - 'sceneview-core/**'
       - '.github/workflows/ios.yml'
   pull_request:
     branches: [main]
     paths:
       - 'SceneViewSwift/**'
       - 'samples/ios-demo/**'
-      - 'sceneview-core/**'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 

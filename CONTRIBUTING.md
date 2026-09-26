@@ -412,10 +412,31 @@ were testing was never covered. The one place cancellation is still allowed
 is a pull request on `render-tests.yml`, where a new push to the same PR
 supersedes the previous SHA. The cost is GitHub-hosted minutes proportional
 to the merge rate; if the queue becomes a problem, the lever is the `paths:`
-filter on each workflow (and `render-tests.yml`'s per-job `changes` gate),
-not `cancel-in-progress`. The web Playwright suite runs on `main` through
-`device-qa.yml`'s blocking web leg only; `render-tests.yml`'s `web-render`
-job, which cannot go red, no longer repeats it on push or at night.
+filter on each workflow (and the per-job `changes` gate that both
+`render-tests.yml` and `device-qa.yml` carry), not `cancel-in-progress`. The
+web Playwright suite runs on `main` through `device-qa.yml`'s blocking web leg
+only, and only when the push touched `samples/web-demo/**` (or the harness);
+the Android legs likewise need `samples/android-demo/**`, `.maestro/**` or
+their scripts. `render-tests.yml`'s `web-render` job, which cannot go red, no
+longer repeats the web suite on push or at night. On `workflow_dispatch` and
+in the nightly every leg of both workflows still runs.
+
+### Other workflow triggers worth knowing
+
+- **Superseded PR runs are cancelled.** `ci.yml`, `snippets-check.yml`,
+  `mcp-ts-check.yml` and `rn-ts-check.yml` key their PR concurrency group on
+  the PR number, so pushing a new commit cancels the previous run of the same
+  PR. Pushes to `main` in `ci.yml` are never cancelled.
+- **`ios.yml`** runs for `SceneViewSwift/**`, `samples/ios-demo/**` and its
+  own file — not for `sceneview-core/**`, which no Swift target links. The
+  core's iOS Kotlin/Native compile is `ci.yml`'s `compile-kmp`.
+- **`build-apks.yml`** runs on a release tag or by hand only; `ci.yml`'s
+  `build` job already assembles the same demo APKs on every push to `main`.
+- **`docs.yml`** deploys on a push to `main` that touches the site's actual
+  inputs (`docs/**`, `website-static/**`, `llms.txt`, `CHANGELOG.md`,
+  `CONTRIBUTING.md`, `marketing/codelabs/**`, `samples/web-demo/site/**`, its
+  requirements files), not on every `*.md` — a `changelog.d/` fragment alone no
+  longer redeploys the site; the generated `CHANGELOG.md` does.
 
 ### Code style
 
