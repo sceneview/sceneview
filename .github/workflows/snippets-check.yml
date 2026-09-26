@@ -55,10 +55,10 @@ on:
       - '.github/actions/setup-gradle/**'
   workflow_dispatch:
 
-# Same head-SHA key as ci.yml (#2089): cancel only genuinely superseded runs,
-# never an unrelated PR's run after a base-ref recompute.
+# PR-number key, like ci.yml: a new commit on the same PR cancels the stale
+# run (the former head-sha key never did), and different PRs never share a group.
 concurrency:
-  group: snippets-${{ github.event.pull_request.head.sha || github.ref }}
+  group: snippets-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:

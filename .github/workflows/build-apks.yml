@@ -1,26 +1,23 @@
 name: Build sample APKs
 
 on:
-  # PRs are NOT triggered here — ci.yml's `build` job already builds the
-  # same APKs via `:samples:android-demo:assembleDebug` on every PR. This
-  # workflow now only produces the artifact-uploaded + release-attached APKs
-  # on main and tag pushes, which is the only unique value vs ci.yml's build.
+  # Release tags and manual dispatch only. Its one unique output is the pair of
+  # debug APKs attached to a GitHub Release.
   #
-  # Strictly path-gated (#1311, #1321): SKIPPED on doc-only, CI-only
-  # (`.github/**`), and `mcp/`-only merges — none of those change the
-  # built APKs. Still runs on every real code/build-script change to
-  # `main` so squash-merged integration regressions are caught.
+  # No `push: branches: [main]` any more (2026-09): ci.yml's `build` job already
+  # runs the same `:samples:android-demo:assembleDebug` +
+  # `:samples:android-tv-demo:assembleDebug` on every push to `main`, so the
+  # main-push run here was the same build a second time (90 of 125 merges over
+  # 2026-09-12..26, never red), and nothing reads its `sample-apks` artifact.
+  #
+  # Known gap, not fixed here: .claude/scripts/tag-release.sh pushes release
+  # tags with GITHUB_TOKEN, and a GITHUB_TOKEN push triggers no workflow — which
+  # is why it dispatches release.yml / play-store.yml / app-store.yml on the tag
+  # ref by hand. This file is not in that list, so the tag trigger below has not
+  # fired since v4.33.0 and later releases carry no APKs. Wiring it in means a
+  # dispatch there AND widening the two tag-only `if:` below, which test
+  # `event_name == 'push'`.
   push:
-    branches: [main]
-    paths:
-      - 'sceneview/**'
-      - 'arsceneview/**'
-      - 'sceneview-core/**'
-      - 'samples/**'
-      - 'gradle/**'
-      - 'build.gradle*'
-      - 'settings.gradle*'
-      - 'gradle.properties'
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
@@ -45,10 +42,9 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      # Tag pushes only — see #1909. `build-apks.yml` runs on every main push
-      # too (debug APKs for QA), but those builds intentionally tolerate a
-      # missing key (forks, internal snapshots). Only the tag-attached release
-      # APKs must fail-fast on a blank secret.
+      # Tag pushes only — see #1909. A manual dispatch intentionally tolerates
+      # a missing key (forks, internal snapshots). Only the tag-attached
+      # release APKs must fail-fast on a blank secret.
       - name: Verify Sketchfab API key wiring (#1909)
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:

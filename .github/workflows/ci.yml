@@ -83,14 +83,21 @@ on:
 # cancelled check that left `CI Gate` red and blocked squash auto-merge
 # (bit #2062 and #1818).
 #
-# Keying PRs on their HEAD sha means a run is cancelled ONLY when a new commit
-# is genuinely pushed to that same PR — a base-ref recompute keeps the head sha
-# unchanged, so other PRs' runs are left alone. Pushes to `main` instead use
-# their immutable commit sha and never cancel in progress: every pushed commit
-# must finish path detection against its own parent, even when merges land in
-# quick succession. Other events fall back to `github.ref`.
+# The fix that followed (2026-05) keyed PRs on their HEAD sha — which also
+# meant a new commit on the same PR got a NEW group and never cancelled the
+# previous one: over 2026-09-12..26, 52 superseded PR runs (~790 runner-min,
+# ~19 % of CI's PR minutes) ran to the end for nothing, while the same window
+# shows zero same-sha re-fires. PRs are now keyed on their NUMBER: a new commit
+# cancels the stale run, and different PRs never share a group. Should a
+# same-sha re-fire ever come back, it only replaces an in-flight run with an
+# identical one — the `CI Gate` aggregate it used to turn red is gone (#1370),
+# and each required check reads its latest run. Pushes to `main` keep their
+# immutable commit sha and never cancel in progress: every pushed commit must
+# finish path detection against its own parent, even when merges land in quick
+# succession. Other events (workflow_dispatch from release-fast.yml,
+# workflow_call from nightly-ci.yml) fall back to `github.ref`.
 concurrency:
-  group: ci-${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha || github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
