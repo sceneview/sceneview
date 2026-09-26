@@ -849,7 +849,7 @@ class ARSceneViewPlatformView(
                 result.success(null)
             }
             "placeModel" -> {
-                val request = parsePlaceModelRequest(call.arguments as? Map<*, *>) ?: run {
+                val parsed = parsePlaceModelRequest(call.arguments as? Map<*, *>) ?: run {
                     result.error(
                         "INVALID_ARGS",
                         "placeModel needs a hit and a model with a modelPath",
@@ -857,6 +857,8 @@ class ARSceneViewPlatformView(
                     )
                     return
                 }
+                // A Dart asset key lives under flutter_assets/ in the APK.
+                val request = parsed.copy(modelPath = binding.assetPathOf(parsed.modelPath))
                 val anchor = createPlacementAnchor(request) ?: run {
                     result.error(
                         "NOT_TRACKING",
