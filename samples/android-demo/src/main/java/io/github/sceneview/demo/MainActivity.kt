@@ -120,11 +120,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Clean up any feedback recording stranded in the cache by a prior run.
         sweepStaleFeedbackMedia(this)
-        // `--es update_qa available` (debug builds only) swaps Play for Google's fake
-        // update manager, so the real snackbar flow can be driven on an emulator —
-        // a sideloaded build never sees a real Play update.
-        updateManager = if (BuildConfig.DEBUG && intent?.getStringExtra("update_qa") == "available") {
-            InAppUpdateManager(this, QaAppUpdateManager(this))
+        // `--es update_qa available|cancel|fail` (debug builds only) swaps Play for Google's
+        // fake update manager, so the real prompt flow can be driven on an emulator — a
+        // sideloaded build never sees a real Play update. The fake is process-scoped, like
+        // Play: a recreated activity re-attaches to the download it left running.
+        val qaUpdate = if (BuildConfig.DEBUG) {
+            QaAppUpdateManager.Scenario.fromId(intent?.getStringExtra("update_qa"))
+        } else {
+            null
+        }
+        updateManager = if (qaUpdate != null) {
+            InAppUpdateManager(this, QaAppUpdateManager.forProcess(this, qaUpdate))
         } else {
             InAppUpdateManager(this)
         }

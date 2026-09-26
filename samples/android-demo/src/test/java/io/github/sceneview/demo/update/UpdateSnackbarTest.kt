@@ -6,9 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -21,7 +18,6 @@ import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.UpdatePromptController
 import io.github.sceneview.sample.common.update.UpdatePromptStore
-import io.github.sceneview.sample.common.update.UpdateSnackbarEffect
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,8 +32,12 @@ import org.robolectric.annotation.Config
 
 /**
  * The Play update snackbar as the user meets it: real [InAppUpdateManager], real
- * [UpdatePromptController], real Material 3 snackbar, Google's `FakeAppUpdateManager`
+ * [UpdatePromptController], the real [UpdatePromptHost], Google's `FakeAppUpdateManager`
  * standing in for Play (a real update needs a Play-installed build and a newer release).
+ *
+ * #3947: a tap on **Update** must be answered on screen at once — "Waiting for Google Play…",
+ * then "Downloading update…" with its percentage — never by an empty screen until the
+ * restart prompt.
  *
  * The activity is built by hand rather than by a compose rule because the consent-modal
  * launcher must be registered before the activity is STARTED, as `MainActivity` does.
@@ -78,15 +78,23 @@ class UpdateSnackbarTest {
         val prompt = UpdatePromptController(manager, store)
         activity.setContent {
             SceneViewDemoTheme(dynamicColor = false) {
-                val hostState = remember { SnackbarHostState() }
-                UpdateSnackbarEffect(controller = prompt, hostState = hostState, enabled = enabled)
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    snackbarHost = { SnackbarHost(hostState) },
+                    snackbarHost = { UpdatePromptHost(controller = prompt, enabled = enabled) },
                 ) { padding -> Box(Modifier.padding(padding).fillMaxSize()) }
             }
         }
         composeRule.waitForIdle()
+    }
+
+    private fun tapUpdate() {
+        composeRule.onNodeWithText("Update").performClick()
+        composeRule.waitForIdle()
+    }
+
+    // The narration ellipsis breathes, so its dots are not matched.
+    private fun assertNarrating(message: String) {
+        composeRule.onNodeWithText(message, substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -99,17 +107,31 @@ class UpdateSnackbarTest {
     }
 
     @Test
-    fun update_startsTheFlexibleFlow_thenRestartCompletesIt() {
+    fun update_answersTheTap_showsTheDownload_thenRestartCompletesIt() {
         showRootWithUpdateAvailable()
 
-        composeRule.onNodeWithText("Update").performClick()
-        composeRule.waitForIdle()
+        tapUpdate()
         assertTrue(fake.isConfirmationDialogVisible)
         assertEquals(AppUpdateType.FLEXIBLE, fake.typeForUpdateInProgress)
         composeRule.onNodeWithText("Update available").assertDoesNotExist()
+        assertNarrating("Waiting for Google Play")
 
         fake.userAcceptsUpdate()
+        composeRule.waitForIdle()
+        assertNarrating("Waiting for Google Play")
+
         fake.downloadStarts()
+        composeRule.waitForIdle()
+        assertNarrating("Downloading update")
+        composeRule.onNodeWithText("0%").assertDoesNotExist()
+
+        fake.setTotalBytesToDownload(1_000)
+        fake.setBytesDownloaded(420)
+        composeRule.waitForIdle()
+        assertNarrating("Downloading update")
+        composeRule.onNodeWithText("42%").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Dismiss").assertDoesNotExist()
+
         fake.downloadCompletes()
         composeRule.waitForIdle()
 
@@ -118,6 +140,24 @@ class UpdateSnackbarTest {
         composeRule.onNodeWithText("Restart").performClick()
         composeRule.waitForIdle()
         assertTrue(fake.isInstallSplashScreenVisible)
+    }
+
+    @Test
+    fun aFailedDownload_offersRetry() {
+        showRootWithUpdateAvailable()
+        tapUpdate()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.downloadFails()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Update failed").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Dismiss").assertIsDisplayed()
+        composeRule.onNodeWithText("Retry").performClick()
+        composeRule.waitForIdle()
+
+        assertNarrating("Waiting for Google Play")
+        assertTrue(fake.isConfirmationDialogVisible)
     }
 
     @Test

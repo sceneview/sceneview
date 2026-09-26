@@ -5,13 +5,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-/** The two update messages the user can be shown. */
-enum class UpdatePrompt {
-    /** "Update available" + **Update** → [InAppUpdateManager.startUpdate]. */
-    AVAILABLE,
+/**
+ * The update message on screen. One prompt moves through these in place, so a tap on
+ * **Update** is answered in the same frame and something is always visible until the
+ * update is ready or the user lets it go.
+ */
+sealed interface UpdatePrompt {
+    /** "Update available" + **Update** → [InAppUpdateManager.startUpdate]. Dismissible. */
+    data object Available : UpdatePrompt
+
+    /** "Waiting for Google Play…", indeterminate: the consent modal is up, or Play has queued the download. */
+    data object Waiting : UpdatePrompt
+
+    /**
+     * "Downloading update…" with a determinate indicator and a percentage once [progress]
+     * is known (`0f..1f`), indeterminate while it is `null` (Play has not reported a size).
+     */
+    data class Downloading(val progress: Float?) : UpdatePrompt
 
     /** "Update ready" + **Restart** → [InAppUpdateManager.completeUpdate]. Stays until answered. */
-    READY_TO_INSTALL,
+    data object ReadyToInstall : UpdatePrompt
+
+    /** "Update failed" + **Retry** → [InAppUpdateManager.retry]. Dismissible. */
+    data object Failed : UpdatePrompt
 }
 
 /** Where the "available" dismissal is remembered across launches. */
@@ -41,15 +57,20 @@ class SharedPreferencesUpdatePromptStore(context: Context) : UpdatePromptStore {
  * Decides which update message is on screen, and what answering it does.
  *
  * A plain class — no Compose UI, no Activity — so the whole policy runs on the JVM
- * against a `FakeAppUpdateManager`; [UpdateSnackbarEffect] only draws what [prompt] says.
+ * against a `FakeAppUpdateManager`; the host's prompt composable only draws what [prompt]
+ * says and reports taps back through [onAction] / [onDismissed].
  *
- * - `AVAILABLE` → [UpdatePrompt.AVAILABLE], at most once per session. Tapping **Update**
- *   starts the flexible flow; any other ending (timeout, swipe, close) is a dismissal.
+ * - `AVAILABLE` → [UpdatePrompt.Available]. Tapping **Update** starts the flexible flow;
+ *   any other ending (timeout, close) is a dismissal. A cancelled consent modal brings the
+ *   offer back — it is still the user's to take.
  * - A dismissal is remembered for [snoozeMillis] (24 h). The window is read once, when the
  *   controller is built — i.e. per activity creation — so the prompt comes back on the first
  *   launch after the window, never in the middle of a session and never on every resume.
- * - `READY_TO_INSTALL` → [UpdatePrompt.READY_TO_INSTALL], whatever the snooze: the download
- *   the user asked for is done, and **Restart** is the only way to finish it.
+ * - `PENDING` / `DOWNLOADING` → [UpdatePrompt.Waiting] / [UpdatePrompt.Downloading], whatever
+ *   the snooze: the user asked for this download and watches it run.
+ * - `READY_TO_INSTALL` → [UpdatePrompt.ReadyToInstall], whatever the snooze: **Restart** is the
+ *   only way to finish the download the user asked for.
+ * - `FAILED` → [UpdatePrompt.Failed]; **Retry** starts over, closing it forgets the failure.
  */
 class UpdatePromptController(
     private val manager: InAppUpdateManager,
@@ -59,36 +80,35 @@ class UpdatePromptController(
 ) {
 
     // Read once: a dismissal inside the window keeps the "available" prompt away for this
-    // whole session. `mutableStateOf` so a dismissal or an answer recomposes the reader.
+    // whole session. `mutableStateOf` so a dismissal recomposes the reader.
     private var availableSuppressed by mutableStateOf(isInsideSnoozeWindow())
 
     /** The message that should be on screen right now, or `null` for none. */
     val prompt: UpdatePrompt?
-        get() = when (manager.updateState) {
-            InAppUpdateManager.UpdateState.AVAILABLE ->
-                if (availableSuppressed) null else UpdatePrompt.AVAILABLE
-            InAppUpdateManager.UpdateState.READY_TO_INSTALL -> UpdatePrompt.READY_TO_INSTALL
-            else -> null
-        }
+        get() = promptFor(manager.updateState, manager.downloadProgress, availableSuppressed)
 
-    /** The user tapped the snackbar's action for [prompt]. */
+    /** The user tapped the action of [prompt]. */
     fun onAction(prompt: UpdatePrompt) {
         when (prompt) {
-            UpdatePrompt.AVAILABLE -> {
-                // Answered: never offered twice in one session, even if the user then
-                // cancels Google's consent modal (the manager drops back to AVAILABLE).
-                availableSuppressed = true
-                manager.startUpdate()
-            }
-            UpdatePrompt.READY_TO_INSTALL -> manager.completeUpdate()
+            UpdatePrompt.Available -> manager.startUpdate()
+            UpdatePrompt.ReadyToInstall -> manager.completeUpdate()
+            UpdatePrompt.Failed -> manager.retry()
+            // Progress has no action.
+            UpdatePrompt.Waiting, is UpdatePrompt.Downloading -> {}
         }
     }
 
-    /** The snackbar for [prompt] went away without its action being tapped. */
+    /** [prompt] went away without its action being tapped (timeout, close). */
     fun onDismissed(prompt: UpdatePrompt) {
-        if (prompt != UpdatePrompt.AVAILABLE) return
-        store.availableDismissedAtMillis = clock()
-        availableSuppressed = true
+        when (prompt) {
+            UpdatePrompt.Available -> {
+                store.availableDismissedAtMillis = clock()
+                availableSuppressed = true
+            }
+            UpdatePrompt.Failed -> manager.dismissFailure()
+            // Not dismissible: the user asked for this download.
+            UpdatePrompt.Waiting, is UpdatePrompt.Downloading, UpdatePrompt.ReadyToInstall -> {}
+        }
     }
 
     private fun isInsideSnoozeWindow(): Boolean {
@@ -103,4 +123,25 @@ class UpdatePromptController(
         /** How long a dismissed "Update available" stays away: until the first launch after 24 h. */
         const val DEFAULT_SNOOZE_MILLIS: Long = 24L * 60 * 60 * 1000
     }
+}
+
+/**
+ * The prompt for a manager [state] — the whole state → UI mapping, pure so it is tested
+ * on its own. [progress] is [InAppUpdateManager.downloadProgress]; [availableSuppressed]
+ * is the snooze, which only ever hides the unsolicited offer.
+ */
+internal fun promptFor(
+    state: InAppUpdateManager.UpdateState,
+    progress: Float?,
+    availableSuppressed: Boolean,
+): UpdatePrompt? = when (state) {
+    InAppUpdateManager.UpdateState.AVAILABLE -> if (availableSuppressed) null else UpdatePrompt.Available
+    InAppUpdateManager.UpdateState.PENDING -> UpdatePrompt.Waiting
+    InAppUpdateManager.UpdateState.DOWNLOADING -> UpdatePrompt.Downloading(progress)
+    InAppUpdateManager.UpdateState.READY_TO_INSTALL -> UpdatePrompt.ReadyToInstall
+    InAppUpdateManager.UpdateState.FAILED -> UpdatePrompt.Failed
+    InAppUpdateManager.UpdateState.IDLE,
+    InAppUpdateManager.UpdateState.CHECKING,
+    InAppUpdateManager.UpdateState.UP_TO_DATE,
+    -> null
 }

@@ -3,12 +3,21 @@ package io.github.sceneview.sample.common.update
 import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.play.core.appupdate.AppUpdateInfo
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.appupdate.testing.FakeAppUpdateManager
+import com.google.android.play.core.install.model.ActivityResult.RESULT_IN_APP_UPDATE_FAILED
+import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.AppUpdateType
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -68,7 +77,7 @@ class InAppUpdateManagerTest {
     @Test
     fun `idle on construction`() {
         assertEquals(InAppUpdateManager.UpdateState.IDLE, manager.updateState)
-        assertEquals(0f, manager.downloadProgress, 0f)
+        assertNull(manager.downloadProgress)
     }
 
     @Test
@@ -365,8 +374,7 @@ class InAppUpdateManagerTest {
     fun `cancelling the consent modal returns to a retryable AVAILABLE`() {
         // MAJOR 1+2: the FLEXIBLE consent modal's CANCEL is delivered via the
         // activity result (RESULT_CANCELED), not the install-state listener.
-        // It must reset to AVAILABLE and KEEP pendingUpdateInfo so a second
-        // startUpdate() still works.
+        // It must reset to AVAILABLE so a second startUpdate() still works.
         fake.setUpdateAvailable(42)
         manager.checkForUpdate()
         shadowOf(activity.mainLooper).idle()
@@ -378,13 +386,14 @@ class InAppUpdateManagerTest {
         assertTrue(fake.isConfirmationDialogVisible)
 
         // The user dismisses the modal — RESULT_CANCELED comes back.
+        fake.userRejectsUpdate()
         manager.onUpdateFlowResult(ActivityResult(Activity.RESULT_CANCELED, null))
         shadowOf(activity.mainLooper).idle()
 
         // Back to a retryable AVAILABLE.
         assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
 
-        // The retry must still work — pendingUpdateInfo was retained.
+        // The retry must still work — with a fresh AppUpdateInfo (see below).
         manager.startUpdate()
         shadowOf(activity.mainLooper).idle()
         assertTrue(fake.isConfirmationDialogVisible)
@@ -430,7 +439,7 @@ class InAppUpdateManagerTest {
         shadowOf(activity.mainLooper).idle()
 
         assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, manager.updateState)
-        assertEquals(0.25f, manager.downloadProgress, 0.001f)
+        assertEquals(0.25f, manager.downloadProgress!!, 0.001f)
     }
 
     @Test
@@ -442,9 +451,10 @@ class InAppUpdateManagerTest {
         shadowOf(activity.mainLooper).idle()
         fake.userAcceptsUpdate()
         fake.downloadStarts()
-        // Surviving the idle() pump without throwing is the assertion.
         shadowOf(activity.mainLooper).idle()
-        assertTrue(manager.downloadProgress in 0f..1f)
+        // No size yet: the prompt draws an indeterminate indicator, not 0 %.
+        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, manager.updateState)
+        assertNull(manager.downloadProgress)
     }
 
     // ---- #3939: the Play round-trip leaves the caller's thread; a quiet answer is throttled ----
@@ -539,5 +549,238 @@ class InAppUpdateManagerTest {
         assertEquals(2, executor.runs)
         assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, second.updateState)
         second.destroy()
+    }
+
+    // ---- #3947: the prompt answers the tap and shows the download ----
+
+    /** Records every AppUpdateInfo a flow is launched with; can refuse the launch like Play does. */
+    private class LaunchRecordingManager(
+        private val delegate: FakeAppUpdateManager,
+        private val refuseLaunch: Boolean = false,
+    ) : AppUpdateManager by delegate {
+        val launchedWith = mutableListOf<AppUpdateInfo>()
+        override fun startUpdateFlowForResult(
+            appUpdateInfo: AppUpdateInfo,
+            activityResultLauncher: ActivityResultLauncher<IntentSenderRequest>,
+            options: AppUpdateOptions,
+        ): Boolean {
+            launchedWith += appUpdateInfo
+            if (refuseLaunch) return false
+            return delegate.startUpdateFlowForResult(appUpdateInfo, activityResultLauncher, options)
+        }
+    }
+
+    /** A second activity + manager on [appUpdateManager], its launcher registered before STARTED. */
+    private fun managerOn(appUpdateManager: AppUpdateManager): Pair<ComponentActivity, InAppUpdateManager> {
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java).create()
+        val host = controller.get()
+        val built = InAppUpdateManager(host, appUpdateManager)
+        built.registerForResult(host)
+        controller.start().resume()
+        return host to built
+    }
+
+    private fun resumeAndTapUpdate() {
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        manager.startUpdate()
+        shadowOf(activity.mainLooper).idle()
+    }
+
+    @Test
+    fun `the tap flips to PENDING before startUpdate returns`() {
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        manager.startUpdate()
+
+        // No looper pump: the prompt redraws "Waiting for Google Play…" in the tap's frame.
+        assertEquals(InAppUpdateManager.UpdateState.PENDING, manager.updateState)
+        assertNull(manager.downloadProgress)
+    }
+
+    @Test
+    fun `accepting keeps PENDING, then the download reports its bytes`() {
+        resumeAndTapUpdate()
+        manager.onUpdateFlowResult(ActivityResult(Activity.RESULT_OK, null))
+        fake.userAcceptsUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.PENDING, manager.updateState)
+
+        fake.downloadStarts()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, manager.updateState)
+        assertNull(manager.downloadProgress)
+
+        fake.setTotalBytesToDownload(1_000)
+        fake.setBytesDownloaded(0)
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(0f, manager.downloadProgress!!, 0f)
+        fake.setBytesDownloaded(1_000)
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(1f, manager.downloadProgress!!, 0f)
+
+        fake.downloadCompletes()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.READY_TO_INSTALL, manager.updateState)
+    }
+
+    @Test
+    fun `a failed download lands on FAILED, and retry starts a fresh flow`() {
+        resumeAndTapUpdate()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.downloadFails()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.FAILED, manager.updateState)
+
+        // A resume while "Update failed · Retry" is up leaves it alone.
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.FAILED, manager.updateState)
+
+        manager.retry()
+        assertEquals(InAppUpdateManager.UpdateState.PENDING, manager.updateState)
+        shadowOf(activity.mainLooper).idle()
+        assertTrue(fake.isConfirmationDialogVisible)
+
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.downloadCompletes()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.READY_TO_INSTALL, manager.updateState)
+    }
+
+    @Test
+    fun `dismissing the failure lets the next resume check again`() {
+        resumeAndTapUpdate()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.downloadFails()
+        shadowOf(activity.mainLooper).idle()
+
+        manager.dismissFailure()
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, manager.updateState)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+    }
+
+    @Test
+    fun `a consent modal that reports a failure lands on FAILED`() {
+        resumeAndTapUpdate()
+        manager.onUpdateFlowResult(ActivityResult(RESULT_IN_APP_UPDATE_FAILED, null))
+        assertEquals(InAppUpdateManager.UpdateState.FAILED, manager.updateState)
+    }
+
+    @Test
+    fun `a download cancelled from Play's notification returns to AVAILABLE`() {
+        resumeAndTapUpdate()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.userCancelsDownload()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+    }
+
+    @Test
+    fun `a retry after a cancelled consent launches with a fresh AppUpdateInfo`() {
+        // Play launches a flow from an AppUpdateInfo once; reusing the spent one
+        // made the second tap a silent no-op with real Play.
+        val recording = LaunchRecordingManager(fake)
+        val (host, recorded) = managerOn(recording)
+
+        fake.setUpdateAvailable(42)
+        recorded.checkForUpdate()
+        shadowOf(host.mainLooper).idle()
+        recorded.startUpdate()
+        fake.userRejectsUpdate()
+        recorded.onUpdateFlowResult(ActivityResult(Activity.RESULT_CANCELED, null))
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, recorded.updateState)
+
+        recorded.startUpdate()
+        shadowOf(host.mainLooper).idle()
+
+        assertEquals(2, recording.launchedWith.size)
+        assertNotSame(recording.launchedWith[0], recording.launchedWith[1])
+        assertEquals(InAppUpdateManager.UpdateState.PENDING, recorded.updateState)
+        recorded.destroy()
+    }
+
+    @Test
+    fun `a launch Play refuses lands on FAILED instead of waiting forever`() {
+        val (host, recorded) = managerOn(LaunchRecordingManager(fake, refuseLaunch = true))
+
+        fake.setUpdateAvailable(42)
+        recorded.checkForUpdate()
+        shadowOf(host.mainLooper).idle()
+        recorded.startUpdate()
+
+        assertEquals(InAppUpdateManager.UpdateState.FAILED, recorded.updateState)
+        recorded.destroy()
+    }
+
+    @Test
+    fun `a recreated manager re-attaches to the download with its progress`() {
+        resumeAndTapUpdate()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.setTotalBytesToDownload(2_000)
+        fake.setBytesDownloaded(1_500)
+        shadowOf(activity.mainLooper).idle()
+        manager.destroy()
+
+        val fresh = newManager()
+        fresh.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, fresh.updateState)
+        assertEquals(0.75f, fresh.downloadProgress!!, 0.001f)
+        fresh.destroy()
+    }
+
+    @Test
+    fun `a recreated manager re-attaches to a queued download`() {
+        resumeAndTapUpdate()
+        fake.userAcceptsUpdate()
+        shadowOf(activity.mainLooper).idle()
+        manager.destroy()
+
+        val fresh = newManager()
+        fresh.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        assertEquals(InAppUpdateManager.UpdateState.PENDING, fresh.updateState)
+        fake.downloadStarts()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, fresh.updateState)
+        fresh.destroy()
+    }
+
+    @Test
+    fun `install status maps to the manager state`() {
+        assertEquals(InAppUpdateManager.UpdateState.PENDING, updateStateFor(InstallStatus.PENDING))
+        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, updateStateFor(InstallStatus.DOWNLOADING))
+        assertEquals(InAppUpdateManager.UpdateState.READY_TO_INSTALL, updateStateFor(InstallStatus.DOWNLOADED))
+        assertEquals(InAppUpdateManager.UpdateState.FAILED, updateStateFor(InstallStatus.FAILED))
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, updateStateFor(InstallStatus.CANCELED))
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, updateStateFor(InstallStatus.INSTALLED))
+        assertNull(updateStateFor(InstallStatus.INSTALLING))
+        assertNull(updateStateFor(InstallStatus.UNKNOWN))
+    }
+
+    @Test
+    fun `bytes map to a fraction only once the size is known`() {
+        assertNull(downloadFractionOf(bytesDownloaded = 0, totalBytesToDownload = 0))
+        assertNull(downloadFractionOf(bytesDownloaded = 10, totalBytesToDownload = -1))
+        assertEquals(0f, downloadFractionOf(0, 48_000_000)!!, 0f)
+        assertEquals(0.42f, downloadFractionOf(20_160_000, 48_000_000)!!, 0.0001f)
+        assertEquals(1f, downloadFractionOf(48_000_000, 48_000_000)!!, 0f)
+        // A byte count past the total never draws past 100 %.
+        assertEquals(1f, downloadFractionOf(50_000_000, 48_000_000)!!, 0f)
+        // Multi-gigabyte sizes keep their precision.
+        assertEquals(0.5f, downloadFractionOf(3_000_000_000, 6_000_000_000)!!, 0.0001f)
     }
 }

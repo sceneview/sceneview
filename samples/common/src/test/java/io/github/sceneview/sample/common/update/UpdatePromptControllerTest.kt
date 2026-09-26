@@ -1,9 +1,12 @@
 package io.github.sceneview.sample.common.update
 
+import android.app.Activity
 import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResult
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.play.core.appupdate.testing.FakeAppUpdateManager
 import com.google.android.play.core.install.model.AppUpdateType
+import io.github.sceneview.sample.common.update.InAppUpdateManager.UpdateState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,9 +24,9 @@ import org.robolectric.annotation.Config
  * The update prompt policy, end to end on the JVM: the real [InAppUpdateManager] against
  * Google's `FakeAppUpdateManager`, with [UpdatePromptController] deciding what is shown.
  *
- * Covers the four behaviours the snackbar is built on — available → prompt, Update → the
- * flexible flow, downloaded → Restart, dismissed → quiet for 24 h — plus the edges that
- * would make it nag or go silent for good.
+ * Covers the behaviours the snackbar is built on — available → prompt, Update → waiting
+ * in the same frame, downloading with its progress, downloaded → Restart, failed → Retry,
+ * dismissed → quiet for 24 h — plus the edges that would make it nag or go silent for good.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
@@ -78,22 +81,24 @@ class UpdatePromptControllerTest {
         val prompt = newController()
         resumeWithUpdateAvailable()
 
-        assertEquals(UpdatePrompt.AVAILABLE, prompt.prompt)
+        assertEquals(UpdatePrompt.Available, prompt.prompt)
         // Offering is not starting: Google's modal only follows a tap on Update.
         assertFalse(fake.isConfirmationDialogVisible)
     }
 
     @Test
-    fun `Update starts the flexible flow and withdraws the offer`() {
+    fun `Update starts the flexible flow and answers the tap in the same frame`() {
         val prompt = newController()
         resumeWithUpdateAvailable()
 
-        prompt.onAction(UpdatePrompt.AVAILABLE)
+        prompt.onAction(UpdatePrompt.Available)
+        // No looper pump: the snackbar already says "Waiting for Google Play…".
+        assertEquals(UpdatePrompt.Waiting, prompt.prompt)
         idle()
 
         assertTrue(fake.isConfirmationDialogVisible)
         assertEquals(AppUpdateType.FLEXIBLE, fake.typeForUpdateInProgress)
-        assertNull(prompt.prompt)
+        assertEquals(UpdatePrompt.Waiting, prompt.prompt)
         // Answering is not dismissing: nothing is snoozed for the next launches.
         assertEquals(0L, store.availableDismissedAtMillis)
     }
@@ -102,30 +107,103 @@ class UpdatePromptControllerTest {
     fun `a finished download asks for a restart, and Restart completes the install`() {
         val prompt = newController()
         resumeWithUpdateAvailable()
-        prompt.onAction(UpdatePrompt.AVAILABLE)
+        prompt.onAction(UpdatePrompt.Available)
         idle()
 
         fake.userAcceptsUpdate()
+        idle()
+        assertEquals(UpdatePrompt.Waiting, prompt.prompt)
+
         fake.downloadStarts()
         idle()
-        assertNull("no snackbar while Play shows its own download notification", prompt.prompt)
+        assertEquals("indeterminate until Play knows the size", UpdatePrompt.Downloading(null), prompt.prompt)
+
+        fake.setTotalBytesToDownload(1_000)
+        fake.setBytesDownloaded(420)
+        idle()
+        val downloading = prompt.prompt as UpdatePrompt.Downloading
+        assertEquals(0.42f, downloading.progress!!, 0.001f)
 
         fake.downloadCompletes()
         idle()
-        assertEquals(UpdatePrompt.READY_TO_INSTALL, prompt.prompt)
+        assertEquals(UpdatePrompt.ReadyToInstall, prompt.prompt)
 
-        prompt.onAction(UpdatePrompt.READY_TO_INSTALL)
+        prompt.onAction(UpdatePrompt.ReadyToInstall)
         idle()
         assertTrue(fake.isInstallSplashScreenVisible)
+    }
+
+    @Test
+    fun `a cancelled consent modal brings the offer back`() {
+        val prompt = newController()
+        resumeWithUpdateAvailable()
+        prompt.onAction(UpdatePrompt.Available)
+        idle()
+
+        fake.userRejectsUpdate()
+        manager.onUpdateFlowResult(ActivityResult(Activity.RESULT_CANCELED, null))
+
+        assertEquals(UpdatePrompt.Available, prompt.prompt)
+        assertEquals("a cancel is not a snooze", 0L, store.availableDismissedAtMillis)
+    }
+
+    @Test
+    fun `a failed download offers Retry, and Retry starts over`() {
+        val prompt = newController()
+        resumeWithUpdateAvailable()
+        prompt.onAction(UpdatePrompt.Available)
+        idle()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.downloadFails()
+        idle()
+        assertEquals(UpdatePrompt.Failed, prompt.prompt)
+
+        prompt.onAction(UpdatePrompt.Failed)
+        assertEquals(UpdatePrompt.Waiting, prompt.prompt)
+        idle()
+        assertTrue(fake.isConfirmationDialogVisible)
+    }
+
+    @Test
+    fun `closing the failure clears it without snoozing the offer`() {
+        val prompt = newController()
+        resumeWithUpdateAvailable()
+        prompt.onAction(UpdatePrompt.Available)
+        idle()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        fake.downloadFails()
+        idle()
+
+        prompt.onDismissed(UpdatePrompt.Failed)
+
+        assertNull(prompt.prompt)
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, manager.updateState)
+        assertEquals(0L, store.availableDismissedAtMillis)
+    }
+
+    @Test
+    fun `manager state maps to the prompt`() {
+        assertEquals(UpdatePrompt.Available, promptFor(UpdateState.AVAILABLE, null, availableSuppressed = false))
+        assertNull(promptFor(UpdateState.AVAILABLE, null, availableSuppressed = true))
+        assertEquals(UpdatePrompt.Waiting, promptFor(UpdateState.PENDING, null, availableSuppressed = true))
+        assertEquals(UpdatePrompt.Downloading(null), promptFor(UpdateState.DOWNLOADING, null, availableSuppressed = true))
+        assertEquals(UpdatePrompt.Downloading(0.5f), promptFor(UpdateState.DOWNLOADING, 0.5f, availableSuppressed = false))
+        assertEquals(UpdatePrompt.ReadyToInstall, promptFor(UpdateState.READY_TO_INSTALL, 1f, availableSuppressed = true))
+        assertEquals(UpdatePrompt.Failed, promptFor(UpdateState.FAILED, null, availableSuppressed = true))
+        assertNull(promptFor(UpdateState.IDLE, null, availableSuppressed = false))
+        assertNull(promptFor(UpdateState.CHECKING, null, availableSuppressed = false))
+        assertNull(promptFor(UpdateState.UP_TO_DATE, null, availableSuppressed = false))
     }
 
     @Test
     fun `a dismissed offer stays away for 24 hours, then comes back on the next launch`() {
         val first = newController()
         resumeWithUpdateAvailable()
-        assertEquals(UpdatePrompt.AVAILABLE, first.prompt)
+        assertEquals(UpdatePrompt.Available, first.prompt)
 
-        first.onDismissed(UpdatePrompt.AVAILABLE)
+        first.onDismissed(UpdatePrompt.Available)
         assertNull(first.prompt)
         assertEquals(now, store.availableDismissedAtMillis)
 
@@ -135,7 +213,7 @@ class UpdatePromptControllerTest {
 
         // First launch after the window: offered again.
         now += 1
-        assertEquals(UpdatePrompt.AVAILABLE, newController().prompt)
+        assertEquals(UpdatePrompt.Available, newController().prompt)
     }
 
     @Test
@@ -153,12 +231,12 @@ class UpdatePromptControllerTest {
         fake.downloadCompletes()
         idle()
 
-        assertEquals(UpdatePrompt.READY_TO_INSTALL, prompt.prompt)
+        assertEquals(UpdatePrompt.ReadyToInstall, prompt.prompt)
     }
 
     @Test
     fun `dismissing the restart snackbar is not recorded as a snooze`() {
-        newController().onDismissed(UpdatePrompt.READY_TO_INSTALL)
+        newController().onDismissed(UpdatePrompt.ReadyToInstall)
         assertEquals(0L, store.availableDismissedAtMillis)
     }
 
@@ -168,7 +246,7 @@ class UpdatePromptControllerTest {
         val prompt = newController()
         resumeWithUpdateAvailable()
 
-        assertEquals(UpdatePrompt.AVAILABLE, prompt.prompt)
+        assertEquals(UpdatePrompt.Available, prompt.prompt)
     }
 
     @Test
