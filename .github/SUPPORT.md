@@ -17,7 +17,7 @@
 Most questions are answered in the README and docs:
 - [README](https://github.com/sceneview/sceneview#readme) — Quick start, install, API overview
 - [llms.txt](https://github.com/sceneview/sceneview/blob/main/llms.txt) — Complete API reference
-- [Migration Guide](https://github.com/sceneview/sceneview/blob/main/MIGRATION.md) — Upgrading from v2.x to v3.x
+- [Migration Guide](https://github.com/sceneview/sceneview/blob/main/MIGRATION.md) — Upgrading between SceneView versions
 
 ### 2. Ask AI Assistants
 

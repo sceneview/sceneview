@@ -201,6 +201,21 @@ class SceneView private constructor(
     private val autoCenterGate = AutoCenterGate()
 
     /**
+     * The margin of the last [fitToModels] call, reused by every later automatic fit
+     * ([refreshContentCentering]). Without it, the auto-centre pass that runs on the frames
+     * after a load re-framed at the default margin and discarded the caller's (#3880).
+     */
+    private var framingMargin: Double = 1.0
+
+    /**
+     * Current near/far clip planes. They follow the fitted content — see
+     * [ContentCentering.clipPlanes] — and [resize] re-applies them, so a resize never resets
+     * a fitted tiny or huge model back to the metre-scale defaults (#3747, #3880).
+     */
+    private var clipNear: Double = ContentCentering.DEFAULT_NEAR
+    private var clipFar: Double = ContentCentering.DEFAULT_FAR
+
+    /**
      * The engine's [TransformManager], resolved once at construction instead of
      * per model per frame. `engine.getTransformManager()` crosses the WASM↔JS
      * boundary; the auto-center pass ([refreshContentCentering]) ran it inside
@@ -301,7 +316,10 @@ class SceneView private constructor(
     }
 
     companion object {
-        /** Default IBL URL — same "neutral" environment as SceneView Android. */
+        /**
+         * Default IBL URL — same "neutral" environment as SceneView Android. It is fetched from
+         * sceneview.github.io at runtime, not bundled in the package.
+         */
         const val DEFAULT_IBL_URL = "https://sceneview.github.io/assets/environments/neutral_ibl.ktx"
         const val DEFAULT_SKYBOX_URL = "https://sceneview.github.io/assets/environments/neutral_skybox.ktx"
 
@@ -387,8 +405,10 @@ class SceneView private constructor(
                     camera.setProjectionFov(
                         fovInDegrees = 45.0,
                         aspect = aspect,
-                        near = 0.1,
-                        far = 1000.0,
+                        // Metre-scale defaults until a fit derives them from the
+                        // content (ContentCentering.clipPlanes, #3747).
+                        near = ContentCentering.DEFAULT_NEAR,
+                        far = ContentCentering.DEFAULT_FAR,
                         // Required — embind enforces strict arity 5. See fovVertical().
                         fov = fovVertical()
                     )
@@ -469,16 +489,28 @@ class SceneView private constructor(
         canvas.width = width
         canvas.height = height
         view.setViewport(viewport(0, 0, width, height))
+        applyProjection()
+        // A new viewport / projection changes every pixel — repaint (#2332).
+        requestRender()
+    }
+
+    /**
+     * Re-apply the perspective projection for the canvas' current aspect and the current
+     * [clipNear] / [clipFar] — the single place outside init that sets it, so a fit and a
+     * resize can never disagree on the clip planes (#3747).
+     */
+    private fun applyProjection() {
+        val width = canvas.width
+        val height = canvas.height
+        if (width <= 0 || height <= 0) return
         camera.setProjectionFov(
             fovInDegrees = 45.0,
             aspect = width.toDouble() / height.toDouble(),
-            near = 0.1,
-            far = 1000.0,
+            near = clipNear,
+            far = clipFar,
             // Required — embind enforces strict arity 5. See fovVertical().
             fov = fovVertical()
         )
-        // A new viewport / projection changes every pixel — repaint (#2332).
-        requestRender()
     }
 
     /**
@@ -1162,11 +1194,18 @@ class SceneView private constructor(
      *   convention: `1.0` (default) keeps the historical `2.5 × radius` fit,
      *   `< 1` frames tighter, `> 1` leaves more air. Clamped to `0.2…10`
      *   (#2946). **Not** Android's additive `padding` fraction —
-     *   `margin == 1 + padding`.
+     *   `margin == 1 + padding`. The margin is kept for the automatic
+     *   re-framing that follows a load, so calling this from the `loadModel`
+     *   promise sticks (#3880).
+     *
+     * Models are framed where they are drawn (world space, after auto-centring),
+     * and the clip planes follow their size, so a 2 cm part and a 40 m building
+     * both land centred and unclipped (#3880, #3747).
      */
-        fun fitToModels(margin: Double = 1.0) {
+    fun fitToModels(margin: Double = 1.0) {
+        framingMargin = margin
         if (models.isEmpty()) return
-        fitToBounds(ContentCentering.union(contentBoxes()), margin)
+        fitToBounds(ContentCentering.union(worldContentBoxes()), margin)
         // The camera dolly/target moved — repaint (#2332). The orbit controller
         // also detects the move on its next tick, but request explicitly so a
         // fit on an otherwise-idle scene paints immediately.
@@ -1188,31 +1227,60 @@ class SceneView private constructor(
     private fun contentBoxes(
         source: List<LoadedModel> = models,
     ): List<ContentCentering.Aabb> = source.mapNotNull { model ->
+        // #2432: `getBoundingBox()` is asset-space (unscaled). Scale the box
+        // by the model's uniform `scale` so the centring offset and
+        // auto-dolly use the box the geometry actually renders at — the root
+        // transform was scaled by the same factor in `applyRootScale`.
+        assetBox(model)?.let { ContentCentering.scale(it, model.scale.toDouble()) }
+    }
+
+    /**
+     * Every fully loaded model's box **where it is drawn**: the asset-space box
+     * transformed by the asset root's world transform, which carries the #2432
+     * root scale, the content-root centring pivot and any node transform.
+     * [fitToModels] frames these; [contentBoxes] stays pre-centring because the
+     * auto-centre pass computes an absolute pivot offset from it (#3880).
+     */
+    private fun worldContentBoxes(): List<ContentCentering.Aabb> = models.mapNotNull { model ->
+        val box = assetBox(model) ?: return@mapNotNull null
+        try {
+            val tm = transformManager
+            val root = model.asset.getRoot()
+            if (!tm.hasComponent(root)) return@mapNotNull ContentCentering.scale(box, model.scale.toDouble())
+            ContentCentering.transformed(box, readMat4(tm.getWorldTransform(tm.getInstance(root))))
+        } catch (e: Throwable) {
+            console.warn("SceneView: framing a model on its asset-space bounds (no world transform)", e)
+            ContentCentering.scale(box, model.scale.toDouble())
+        }
+    }
+
+    /**
+     * [model]'s asset-space `getBoundingBox()`, or `null` while it is not readable.
+     *
+     * `getBoundingBox()` reports a degenerate/wrong box until `loadResources()`
+     * has populated the renderables, so a model whose [LoadedModel.loaded] flag
+     * is still `false` is excluded entirely (#1597). The `try/catch` stays as a
+     * second guard.
+     */
+    private fun assetBox(model: LoadedModel): ContentCentering.Aabb? {
         // #1597: skip models whose resources are still in flight — their box is
         // not yet readable, so including them would frame on a wrong diagonal.
-        if (!model.loaded) return@mapNotNull null
-        try {
+        if (!model.loaded) return null
+        return try {
             val aabb = model.asset.getBoundingBox()
             val mn: dynamic = aabb.min
             val mx: dynamic = aabb.max
-            // #2432: `getBoundingBox()` is asset-space (unscaled). Scale the box
-            // by the model's uniform `scale` so the centring offset and
-            // auto-dolly use the box the geometry actually renders at — the root
-            // transform was scaled by the same factor in `applyRootScale`.
-            ContentCentering.scale(
-                ContentCentering.Aabb(
-                    doubleArrayOf(
-                        (mn[0] as Number).toDouble(),
-                        (mn[1] as Number).toDouble(),
-                        (mn[2] as Number).toDouble(),
-                    ),
-                    doubleArrayOf(
-                        (mx[0] as Number).toDouble(),
-                        (mx[1] as Number).toDouble(),
-                        (mx[2] as Number).toDouble(),
-                    ),
+            ContentCentering.Aabb(
+                doubleArrayOf(
+                    (mn[0] as Number).toDouble(),
+                    (mn[1] as Number).toDouble(),
+                    (mn[2] as Number).toDouble(),
                 ),
-                model.scale.toDouble(),
+                doubleArrayOf(
+                    (mx[0] as Number).toDouble(),
+                    (mx[1] as Number).toDouble(),
+                    (mx[2] as Number).toDouble(),
+                ),
             )
         } catch (e: Throwable) {
             // The asset's bounds are not readable yet (resources still loading) — skip
@@ -1229,20 +1297,33 @@ class SceneView private constructor(
      * camera controls are disabled. Extracted so [fitToModels] and the
      * auto-centre path ([refreshContentCentering]) share one implementation
      * and one union-AABB read.
+     *
+     * The clip planes follow the content: a 2 cm model framed at a few
+     * centimetres sat wholly in front of the fixed 0.1 m near plane and drew
+     * nothing (#3880, #3747) — see [ContentCentering.clipPlanes].
      */
-    private fun fitToBounds(bounds: ContentCentering.Aabb?, margin: Double = 1.0) {
+    private fun fitToBounds(bounds: ContentCentering.Aabb?, margin: Double) {
         if (bounds == null) return
         val controller = cameraController ?: return
         val center = ContentCentering.center(bounds)
         val radius = ContentCentering.diagonal(bounds) / 2.0
-        if (radius <= 0.0) return
+        if (!(radius > 0.0) || !radius.isFinite()) return
 
-        controller.target(center[0], center[1], center[2])
         // `margin` is the iOS `framingMargin` multiplier (1.0 = the historical
         // 2.5 × radius fit) — see ContentCentering.fitDistance (#2946).
-        controller.distance = ContentCentering.fitDistance(radius, margin)
-        controller.minDistance = radius * 0.5
-        controller.maxDistance = radius * 10.0
+        val distance = ContentCentering.fitDistance(radius, margin)
+        // The zoom limits must admit the fit distance, or the controller clamps
+        // it away and a requested margin silently has no effect (#3880).
+        controller.minDistance = minOf(radius * 0.5, distance)
+        controller.maxDistance = maxOf(radius * 10.0, distance)
+        controller.target(center[0], center[1], center[2])
+        controller.distance = distance
+
+        val planes = ContentCentering.clipPlanes(radius, controller.maxDistance)
+        clipNear = planes[0]
+        clipFar = planes[1]
+        applyProjection()
+        requestRender()
     }
 
     /**
@@ -1352,7 +1433,9 @@ class SceneView private constructor(
         // ≈ 0), which is why it went unnoticed; a **3MF** is authored in the
         // positive octant by definition, so its centroid is a third of a frame
         // off and the part rendered visibly off-centre (#3482).
-        fitToBounds(ContentCentering.translated(union, offset))
+        // The margin is the one the caller last asked `fitToModels` for, so this
+        // automatic re-framing does not undo it (#3880).
+        fitToBounds(ContentCentering.translated(union, offset), framingMargin)
 
         // Record this framing — latches the gate once the diagonal stabilises.
         autoCenterGate.recordFraming(diagonal)
@@ -1717,7 +1800,9 @@ class SceneViewBuilder(private val sceneView: SceneView) {
         if (iblUrl != null) {
             sceneView.loadEnvironment(iblUrl!!, skyboxUrl)
         } else if (useDefaultEnvironment) {
-            // Load the bundled neutral IBL — same as Android SceneView default
+            // Fetch the neutral IBL from sceneview.github.io (DEFAULT_IBL_URL — NOT bundled in
+            // the package), the same environment as the Android default. Call
+            // environment(iblUrl) to self-host it, or noEnvironment() to skip the request.
             sceneView.loadDefaultEnvironment()
         }
 

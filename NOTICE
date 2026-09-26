@@ -29,9 +29,92 @@ SceneView renders through Filament on Android, Web and Desktop. Filament's
 prebuilt binaries are consumed as published by Google; no Filament source is
 vendored here.
 
+--------------------------------------------------------------------------------
+Sceneform SDK for Android and ARCore  —  Google
+--------------------------------------------------------------------------------
+
+    Sceneform SDK for Android
+    Copyright 2018 Google LLC
+    https://github.com/google-ar/sceneform-android-sdk
+
+    ARCore SDK for Android
+    Copyright 2017 Google LLC
+    https://github.com/google-ar/arcore-android-sdk
+
+    Licensed under the Apache License, Version 2.0.
+
+The collision and math classes of sceneview-core (io.github.sceneview.collision:
+Box, ChangeId, CollisionShape, Intersections, MathHelper, Matrix, Plane,
+Preconditions, Quaternion, Ray, RayHit, Sphere, TransformProvider, Vector3) and
+of sceneview (Collider, CollisionSystem) are derived from the Sceneform SDK for
+Android. They were translated to Kotlin and modified by the SceneView
+contributors.
+
+arsceneview/src/main/assets/textures/plane_renderer.png is taken from the
+Sceneform SDK for Android. arsceneview/src/main/res/drawable-xxxhdpi/
+sceneview_fit_to_scan.png is adapted from the augmented_image_java sample of the
+ARCore SDK for Android.
+
+arsceneview/src/main/materials/shadow_receiver.mat is a port of ARCore Depth
+Lab's ShadowReceiverMeshShader (Copyright 2020 Google LLC, Apache License 2.0,
+https://github.com/googlesamples/arcore-depth-lab). PlaneDiscoveryGuide in
+arsceneview is a port of ARCore Elements' PlaneDiscoveryGuide (arcore-unity-sdk,
+Copyright 2018 Google LLC, Apache License 2.0). The class color palette of
+sceneview/src/main/materials/semantics_overlay.mat comes from the semantics_java
+sample of the ARCore SDK for Android (Copyright 2023 Google LLC, Apache License
+2.0).
+
+--------------------------------------------------------------------------------
+Earcut and Delaunator  —  triangulation (sceneview-core)
+--------------------------------------------------------------------------------
+
+Earcut.kt is a port of earcut-kotlin-multiplatform
+(https://github.com/Monkey-Maestro/earcut-kotlin-multiplatform),
+Copyright (c) 2020 urbanistic, MIT License, itself a port of mapbox/earcut
+(https://github.com/mapbox/earcut), Copyright (c) Mapbox, ISC License.
+
+Delaunator.kt is a port of Delaunator-Kt
+(https://github.com/ygdrasil-io/Delaunator-Kt), Copyright (c) 2020 Alexandre
+Mommers, MIT License, derived from delaunator-sharp
+(https://github.com/nol1fe/delaunator-sharp), Copyright (c) 2019 Patryk Grech,
+MIT License, and from mapbox/delaunator (https://github.com/mapbox/delaunator),
+Copyright (c) Mapbox, ISC License.
+
+--------------------------------------------------------------------------------
+twolinks  —  double pendulum (sceneview-core)
+--------------------------------------------------------------------------------
+
+DoublePendulum.kt is adapted from twolinks
+(https://github.com/radcli14/twolinks), Copyright (c) 2022 radcli14, MIT
+License.
+
+The full MIT and ISC license texts are reproduced in the header of each file
+listed in the two sections above.
+
 ================================================================================
 
 3D models shipped with the samples, documentation and website are third-party
 works under their own licenses and are NOT covered by the Apache License above.
 They are credited individually in assets/CREDITS.md, which is generated from
 assets/catalog.json.
+
+================================================================================
+sceneview-mcp
+================================================================================
+
+The mcp/ directory (the sceneview-mcp npm package) is licensed under the MIT
+License, see mcp/LICENSE. Packages under mcp/packages/ that declare their own
+license (a LICENSE file or a package.json "license" field) are distributed under
+that license. Everything else in this repository, apart from the third-party
+works described above, is licensed under the Apache License 2.0.
+
+================================================================================
+Trademarks
+================================================================================
+
+SceneView is not affiliated with or endorsed by Google, Apple, the Khronos
+Group, or any brand shown in the sample 3D models. ARCore, Android, Filament and
+Google are trademarks of Google LLC. ARKit, RealityKit, iOS, macOS and visionOS
+are trademarks of Apple Inc. All other trademarks belong to their respective
+owners. The Apache License 2.0 grants no rights to use the SceneView name or
+logo (Section 6).

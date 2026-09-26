@@ -7297,6 +7297,7 @@ sv.setBackgroundColor(r, g, b, a)  // 0-1 range, exact on screen (not tone-mappe
 sv.setAutoCenterContent(enabled)   // Boolean — center loaded content (default true)
 sv.fitToModels()                   // frame every loaded model
 sv.fitToModels(0.9)                // optional margin — multiplier on the fit distance (1 = default, <1 tighter, >1 more air; clamped 0.2…10)
+                                   // centred, margin kept through auto-centring, any size from 2 cm to a building (#3880)
 sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)
