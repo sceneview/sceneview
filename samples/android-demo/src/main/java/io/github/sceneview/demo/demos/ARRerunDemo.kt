@@ -380,7 +380,11 @@ private fun RerunStatusCard(status: RerunStatusUx) {
 /** "Connect your computer", numbered, commands in mono blocks. Theme colours: it is the sheet. */
 @Composable
 private fun RerunSetupSection() {
-    Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+    // Space.md above: the sheet's intro paragraph sits right before this heading.
+    Column(
+        modifier = Modifier.padding(top = Space.md),
+        verticalArrangement = Arrangement.spacedBy(Space.sm),
+    ) {
         Text(
             text = RERUN_SETUP_TITLE,
             style = MaterialTheme.typography.titleSmall,

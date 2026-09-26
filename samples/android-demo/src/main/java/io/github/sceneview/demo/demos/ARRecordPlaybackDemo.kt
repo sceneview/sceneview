@@ -280,9 +280,10 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_record_playback_title),
         onBack = onBack,
-        // A forced QA state keeps the Record step capturable: the emulator never starts AR.
+        // A forced QA state keeps the Record step and its cards capturable: the emulator
+        // never starts AR (#2754).
         arSessionFailed = showsCamera && take.sessionFailed && qa == null,
-        arOverlaysEnabled = !showsCamera || take.arCoreAvailability == null,
+        arOverlaysEnabled = !showsCamera || take.arCoreAvailability == null || qa != null,
         dock = listOf(
             DockItem(
                 icon = Icons.Rounded.Videocam,
