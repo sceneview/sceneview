@@ -11,6 +11,17 @@
 # Usage: bash tools/measure-demo-cold-start.sh [runs=10] [serial=emulator-5554]
 # The demo must already be installed. Use the emulator, never a personal device;
 # a debuggable (debug) build overstates every number — measure a release build.
+#
+# Reading `first_model` / `model_textured` on the emulator (#3938): the first GPU
+# submission of every guest process pays ~1.55 s in the emulator's GLES-over-Metal
+# translator before anything Filament enqueued completes. That warm-up lands on
+# whatever is submitted first (the IBL prefilter with an HDR environment, frame 1
+# otherwise), shows up as `Renderer.beginFrame` refusing ~85 frames in a row, and
+# moves with the moment the engine is created — it is not the helmet's ubershader,
+# its texture uploads, post-processing or the IBL, which each fit in ~100 ms here.
+# Compare variants by their difference, never read an absolute as a real-device
+# cost; only a physical phone measures the ubershader compile, the blob cache and
+# the runtime IBL prefilter (Filament documents 100–200 ms of GPU for the latter).
 set -euo pipefail
 
 RUNS="${1:-10}"
