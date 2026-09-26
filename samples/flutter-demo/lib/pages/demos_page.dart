@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_sceneview/flutter_sceneview.dart';
 
+import 'tap_to_place_page.dart';
+
 /// Demos tab — a catalog of runnable, per-feature SceneView demos.
 ///
 /// Unlike the [FeaturesPage] reference checklist, each entry here is a live,
 /// interactive scene exercising exactly one bridge capability:
 ///
+/// - **AR Tap to Place** — tap a surface, anchor a model, drag/twist/pinch it.
 /// - **Materials** — lit PBR vs `unlit` geometry materials.
 /// - **Model Animation** — auto-playing glTF animation clips.
 /// - **Environment** — HDR image-based lighting switching.
@@ -24,6 +27,8 @@ class DemosPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: const [
+          _TapToPlaceDemo(),
+          SizedBox(height: 16),
           _MaterialsDemo(),
           SizedBox(height: 16),
           _AnimationDemo(),
@@ -387,6 +392,32 @@ class _EnvironmentDemoState extends State<_EnvironmentDemo> {
 /// Switches the camera control mode at runtime via
 /// [SceneViewController.setCameraControlMode]. On iOS all three modes are
 /// wired; on Android non-orbit modes fall back to orbit (issue #1051).
+/// AR tap-to-place (#3780) — opens full screen, the camera needs the room.
+class _TapToPlaceDemo extends StatelessWidget {
+  const _TapToPlaceDemo();
+
+  @override
+  Widget build(BuildContext context) {
+    return _DemoCard(
+      icon: Icons.touch_app_outlined,
+      title: 'AR Tap to Place',
+      description: 'Tap a detected surface to anchor a model, then drag, '
+          'twist and pinch it. ARSceneView.onPlaneTap + '
+          'SceneViewController.placeModel.',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const TapToPlacePage()),
+          ),
+          icon: const Icon(Icons.view_in_ar),
+          label: const Text('Open AR'),
+        ),
+      ),
+    );
+  }
+}
+
 class _CameraModesDemo extends StatefulWidget {
   const _CameraModesDemo();
 
