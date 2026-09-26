@@ -1,27 +1,25 @@
-Open the 3D file you were just sent, and stand it in your room at the size it really is.
+See what the SceneView SDK can do, on your own phone, before you write a line of code.
 
-SceneView opens GLB, glTF, OBJ, STL, PLY, and 3MF straight from a message, a browser download, or the share sheet, then places it in augmented reality on your actual table. No conversion step, no account, no sign-up.
+SceneView is an open-source 3D and augmented reality SDK for Jetpack Compose, SwiftUI, and the web. This app is its demo: 48 screens, each one a working sample of a feature you can put in your own app. Every screen links to the source code that draws it, and most of them are only a few lines long.
 
-WHAT YOU CAN DO
+WHAT THE SAMPLES SHOW
 
-- Open a 3D file from anywhere — tap it in Files, a chat, or your Downloads and pick SceneView.
-- Place it in your room — point at a flat surface, tap, then drag, pinch, and twist it into position.
-- Trust the size — models arrive in real-world units and right side up, so a part you are about to print shows up on your table at the size it will print.
-- Let the real room win — real furniture stays in front of virtual objects, someone walking past passes in front of the scene, and your room's own light lights the model.
-- Measure a real distance by tapping two points, or hang something flat against a wall.
-- Relight anything — swap HDR environments and watch materials, reflections, and shadows change in real time.
-- Browse and download models from Sketchfab, Icosa, and Poly Haven without leaving the app.
-- Explore 48 demo screens — placement, tracking, anchors, depth, physics, geometry, materials, spatial audio, radiance fields, and more.
+- 3D models — load GLB and glTF files, play their animations, and orbit, pinch, and zoom the camera.
+- Augmented reality — place a model on a table, hang something flat against a wall, track images and faces, and measure a real distance.
+- Real-world blending — real furniture and people stay in front of virtual objects, and the room's own light lights the model.
+- Lighting and materials — swap HDR environments and watch reflections and shadows change in real time.
+- Anchors, depth, physics, geometry, spatial audio, radiance fields, and more.
+- Your own files — open a GLB, glTF, OBJ, STL, PLY, or 3MF file and see how the SDK renders it.
 
 FOR DEVELOPERS
 
-This app is the live showcase for SceneView, the open-source 3D and AR SDK for Jetpack Compose, SwiftUI, and the web. Every screen here is a handful of lines in your own app: a model on screen is one composable, and AR placement is one call. The source of all 48 screens is public, and each screen links to the code that draws it.
+A 3D model on screen is one composable, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples, and this app are free and open source.
 
 github.com/sceneview/sceneview
 
 PRIVACY
 
-No account, no analytics, no tracking, no ads. Your models and the camera feed are processed on your device — the camera is used only for AR, and nothing it sees is stored or uploaded. Two things reach the network, and only when you ask for them: searching the online model galleries, and the handful of demos that host an anchor with Google's ARCore cloud service.
+No account, no analytics, no tracking, no ads. Your models and the camera feed are processed on your device — the camera is used only for AR, and nothing it sees is stored or uploaded. Two things reach the network, and only when you ask for them: searching the online model galleries, and the handful of samples that host an anchor with Google's ARCore cloud service.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview

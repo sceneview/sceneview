@@ -853,7 +853,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         ar: {
           type: "boolean",
           description:
-            "Whether to show the 'Open in AR on your phone' action (a link that opens the model in the AR Model Viewer app, plus a QR code on desktop). Only shown for https model URLs. Default: true.",
+            "Whether to show the 'Open in AR on your phone' action (a link that opens the model in the SceneView: 3D & AR Viewer app, plus a QR code on desktop). Only shown for https model URLs. Default: true.",
         },
         alt: {
           type: "string",

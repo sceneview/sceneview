@@ -556,7 +556,7 @@ sceneview-core (Kotlin Multiplatform)
 
 ## Built with SceneView
 
-- **[AR Model Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera)** —
+- **[SceneView: 3D & AR Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera)** —
   open a 3D file from any app or link (GLB, glTF, STL, OBJ, PLY, 3MF) and see it in your room at
   real size.
 - **[Will It Fit](https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit)** —

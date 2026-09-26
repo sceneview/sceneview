@@ -5,7 +5,10 @@
      references resolve identically. See issue #1870 and
      `samples/android-demo/demo-fragments/README.md`. -->
 <resources>
-    <string name="app_name">SceneView</string>
+    <string name="app_name">SceneView Demo</string>
+    <!-- Home-screen label. "SceneView Demo" is cut to "SceneView …" in the
+         Pixel launcher, which reads as the consumer app "SceneView". -->
+    <string name="launcher_label">SV Demo</string>
 
     <!-- Navigation -->
     <string name="tab_3d">3D</string>
@@ -396,7 +399,7 @@
 
     <!-- "Open with SceneView" (#3482): the label Android shows in the app chooser and the
          share sheet when another app hands over a supported model file. -->
-    <string name="open_model_filter_label">Open in SceneView</string>
+    <string name="open_model_filter_label">Open in SceneView Demo</string>
     <!-- Shown when a handed-over file cannot be read, or is not a model this app opens. -->
     <string name="open_model_failed">Couldn\'t open that file — SceneView reads .3mf, .glb, .gltf, .stl, .obj and .ply</string>
     <string name="ar_placement_floor">Surface</string>

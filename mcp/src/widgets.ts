@@ -172,7 +172,7 @@ const NEUTRAL_IBL_URL = `${CDN_BASE}/environments/neutral_ibl.ktx`;
 const QRCODE_JS_URL = `${CDN_BASE}/js/qrcode-vendor.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 
 /**
- * AR Model Viewer's universal link for a remote model (`ar.sceneview.dev/open?url=`). A phone
+ * The SceneView: 3D & AR Viewer app's universal link for a remote model (`ar.sceneview.dev/open?url=`). A phone
  * with the app opens the model in AR; anything else gets a SceneView-rendered page with the
  * store badges (and a QR on desktop). The worker reads only `url`, `unit` and `name` and ignores
  * any other parameter, which is what makes the `utm_source` tag below harmless.

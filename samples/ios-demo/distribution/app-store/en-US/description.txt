@@ -1,21 +1,19 @@
-A 3D file lands in Messages, Mail or Files. Tap it, and it is standing on your desk at its real size.
+See what the SceneView SDK can do, on your own iPhone or iPad, before you write a line of code.
 
-SceneView opens USDZ, Reality, STL, OBJ, PLY and 3MF — including the mesh formats no stock app on your iPhone will open — straight from the share sheet, with no conversion step and no account.
+SceneView is an open-source 3D and augmented reality SDK for SwiftUI, built on RealityKit. This app is its demo: 48 screens, each one a working sample of a feature you can put in your own app. Every screen links to the source code that draws it, and most of them are only a few lines long.
 
-WHAT YOU CAN DO
+WHAT THE SAMPLES SHOW
 
-- Open a 3D file from anywhere — Files, Mail, Messages or any app's share sheet.
-- See it at true scale — point at a flat surface, tap to place, then drag, pinch and twist it into position.
-- Trust the size — a printable part arrives in real-world units and the right way up, so what sits on your table is what would come off the printer.
-- Let the real room win — real furniture and passing people stay in front of virtual objects, and the light around you lights the model.
-- Hang it on a wall, or place it instantly without waiting for a plane.
-- Change the light — swap HDR environments and watch materials, reflections and shadows answer in real time.
-- Browse Sketchfab from inside the app and open what you find in the viewer.
-- Wander 48 demo screens — placement, image and face tracking, scene mesh, depth, physics, materials, geometry, spatial audio and more.
+- 3D models — load USDZ and Reality files, play their animations, and orbit, pinch and zoom the camera.
+- Augmented reality — place a model on a table, hang it on a wall, track images and faces, or place it instantly without waiting for a plane.
+- Real-world blending — real furniture and passing people stay in front of virtual objects, and the light around you lights the model.
+- Lighting and materials — swap HDR environments and watch reflections and shadows change in real time.
+- Scene mesh, depth, physics, geometry, spatial audio and more.
+- Your own files — open a USDZ, Reality, STL, OBJ, PLY or 3MF file and see how the SDK renders it.
 
 FOR DEVELOPERS
 
-This app is the live showcase for SceneView, the open-source 3D and AR SDK for SwiftUI. A model on screen is one view; AR placement is one call. Every one of the 48 screens ships its source, and each links to the code that draws it.
+A 3D model on screen is one view, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples and this app are free and open source.
 
 github.com/sceneview/sceneview
 
