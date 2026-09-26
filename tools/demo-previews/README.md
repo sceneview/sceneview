@@ -174,6 +174,15 @@ both themes. The throwaway screen is not committed: re-render by rebuilding it f
 above, and review every thumbnail over both card fills next to the viewer's first frame of
 the same model before it ships.
 
+### Scene cards
+
+`model_picker_park.webp` and `model_picker_gallery.webp` (the sheet's "Scenes" row) are
+emulator captures (Pixel_7a, 1080×2400) of a **keyless** debug build, so they show the bundled
+fallback models only — never a streamed Sketchfab model, whose CC-BY licence would then have to
+be credited for the image. Park: `--es demo multi-model --ef camera_distance 6.5`, window
+x 0–1080, y 780–1644, resized to 600×480. Gallery: a 2×2 collage of the four chips' fallbacks
+(Toy Car, Fox, Lantern, Damaged Helmet), each subject cropped 5:4 from its own capture.
+
 ## Store AR visuals
 
 `store.json` + `--kind store` generates the AR marketing visuals that lead both store
