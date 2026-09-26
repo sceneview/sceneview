@@ -1,6 +1,6 @@
 # SceneView — Compact API Reference for AI Systems
 
-> The #1 open-source 3D & AR SDK for Android and iOS. Compose-native on Android (Filament + ARCore), SwiftUI-native on iOS (RealityKit + ARKit), shared core via Kotlin Multiplatform.
+> Open-source 3D & AR SDK for Android and iOS. Compose-native on Android (Filament + ARCore), SwiftUI-native on iOS (RealityKit + ARKit), shared core via Kotlin Multiplatform.
 
 This file is the short one: about 12 kB, sized to fit a small context window.
 The complete reference — every composable, every node type, every recipe — is

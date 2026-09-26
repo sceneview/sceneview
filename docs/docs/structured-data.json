@@ -13,7 +13,7 @@
       "height": 192
     },
     "image": "https://sceneview.github.io/assets/images/hero-banner.svg",
-    "description": "The #1 open-source 3D & AR SDK for Android and iOS — Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform.",
+    "description": "Open-source 3D & AR SDK for Android and iOS — Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform.",
     "foundingDate": "2021",
     "founder": {
       "@type": "Person",
@@ -88,7 +88,7 @@
     "@id": "https://sceneview.github.io/#software",
     "name": "SceneView SDK",
     "alternateName": ["SceneView", "SceneView Android", "SceneView iOS", "sceneview", "SceneViewSwift"],
-    "description": "The #1 open-source 3D & AR SDK for Android and iOS — Jetpack Compose on Android, SwiftUI on iOS, shared core via Kotlin Multiplatform. Drop-in SceneView{}/ARSceneView{} on Android and SceneView/ARSceneView on iOS for model viewing, AR placement, physics, and immersive experiences.",
+    "description": "Open-source 3D & AR SDK for Android and iOS — Jetpack Compose on Android, SwiftUI on iOS, shared core via Kotlin Multiplatform. Drop-in SceneView{}/ARSceneView{} on Android and SceneView/ARSceneView on iOS for model viewing, AR placement, physics, and immersive experiences.",
     "url": "https://sceneview.github.io",
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "3D Rendering & Augmented Reality SDK",
@@ -239,7 +239,7 @@
         "name": "What is SceneView?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView is the #1 open-source 3D and AR SDK for Android and iOS. On Android, it provides Compose-native declarative APIs (SceneView{} and ARSceneView{}) powered by Google Filament and ARCore. On iOS, it provides SwiftUI views (SceneView and ARSceneView) powered by RealityKit and ARKit. A shared Kotlin Multiplatform core handles math, collision, animation, and geometry across platforms. It is the official successor to the deprecated Google Sceneform."
+          "text": "SceneView is an open-source 3D and AR SDK for Android and iOS. On Android, it provides Compose-native declarative APIs (SceneView{} and ARSceneView{}) powered by Google Filament and ARCore. On iOS, it provides SwiftUI views (SceneView and ARSceneView) powered by RealityKit and ARKit. A shared Kotlin Multiplatform core handles math, collision, animation, and geometry across platforms. It is the official successor to the deprecated Google Sceneform."
         }
       },
       {
