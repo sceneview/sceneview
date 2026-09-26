@@ -305,6 +305,8 @@ tools/qa-screenshots/android/*
 !tools/qa-screenshots/2957-legend-overlap
 # keep the light/dark "Scene ready" evidence for the Picking & Collision qa_mode fix (#3795)
 !tools/qa-screenshots/3795-picking-scene-ready
+# keep the Google TV emulator proof for the Android TV demo (launcher banner, viewer, D-pad focus/orbit)
+!tools/qa-screenshots/tv-demo-proof
 
 # Google Drive / iCloud Drive sync-conflict duplicates.
 # When the same file is touched concurrently in two checkouts of a synced

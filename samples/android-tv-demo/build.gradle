@@ -35,7 +35,8 @@ android {
         noCompress 'filamat', 'ktx'
     }
     // Asset folders: TV demo's own assets (src/main/assets) hold the TV-only
-    // models (nike_air_jordan, toon_cat, khronos_duck). The shared models +
+    // models (nike_air_jordan; toon_cat and khronos_duck are no longer listed in
+    // the gallery — see TvModelViewerActivity). The shared models +
     // environments live in the phone demo's folder and are picked up at
     // build time via sourceSets so the TV demo can reference them by their
     // existing `models/...` paths without copying or symlinking. This split
@@ -78,6 +79,9 @@ dependencies {
     // TV Compose (Leanback)
     implementation libs.androidx.tv.foundation
     implementation libs.androidx.tv.material
+
+    // D-pad arrow glyphs in the key hints (material-icons-core, versioned by the BOM).
+    implementation libs.androidx.compose.material.icons
 
     // Unit tests — verify every bundled model referenced by TvModelViewerActivity
     // actually exists in src/main/assets/. Prevents regressing the session-34 fix.

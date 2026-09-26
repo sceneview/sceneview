@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+  <!-- Source of res/drawable-xhdpi/tv_banner.png (the Android TV launcher banner, 320 x 180 px).
+       Regenerate with: rsvg-convert -w 320 -h 180 art/tv_banner.svg -o src/main/res/drawable-xhdpi/tv_banner.png
+       Cube: the paths of res/drawable/ic_launcher_foreground.xml. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0D2137"/>
+      <stop offset="1" stop-color="#0B0F16"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="180" fill="url(#bg)"/>
+  <g transform="translate(14,36)">
+    <path fill="#1558B0" d="M54,54 L30,40 L30,66 L54,80 Z"/>
+    <path fill="#4A90D9" d="M54,54 L78,40 L78,66 L54,80 Z"/>
+    <path fill="#8AB4F8" d="M54,28 L78,42 L54,56 L30,42 Z"/>
+    <path fill="#A8CBFA" d="M54,31 L73,42 L54,53 L35,42 Z"/>
+    <path fill="none" stroke="#DDEEFF" stroke-width="0.6" d="M54,28 L78,42 L54,56 L30,42 Z"/>
+    <path fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" d="M25,28 L25,22 L31,22 M83,28 L83,22 L77,22 M25,78 L25,84 L31,84 M83,78 L83,84 L77,84"/>
+  </g>
+  <text x="112" y="92" font-family="Helvetica Neue" font-weight="bold" font-size="34" fill="#FFFFFF" letter-spacing="-0.6">SceneView</text>
+  <text x="113" y="122" font-family="Helvetica Neue" font-weight="500" font-size="17" fill="#A4C1FF" letter-spacing="1.5">3D VIEWER · TV</text>
+</svg>

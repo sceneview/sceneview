@@ -7,12 +7,14 @@
          silently fails with NETWORK_ERROR and the banner never appears. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Declare this is a Leanback (TV) app -->
+    <!-- Leanback is declared but not required: Play serves the app to Android TV / Google TV
+         from the LEANBACK_LAUNCHER intent and the banner below, and `required="false"` is what
+         the Play TV quality checks ask for so the same APK could also run elsewhere. -->
     <uses-feature
         android:name="android.software.leanback"
-        android:required="true" />
+        android:required="false" />
 
-    <!-- TV apps don't require touchscreen -->
+    <!-- No touchscreen on a TV: the D-pad drives everything. -->
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
