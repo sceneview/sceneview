@@ -18,6 +18,8 @@ import com.google.android.play.core.install.InstallStateUpdatedListener
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 /**
  * Shared in-app update manager for the Android SceneView demo.
@@ -52,6 +54,7 @@ import com.google.android.play.core.install.model.UpdateAvailability
  * }
  * override fun onResume() {
  *     super.onResume()
+ *     // Cheap on the main thread, but still best posted after the first frame.
  *     updateManager.checkForUpdate()
  * }
  * override fun onDestroy() {
@@ -80,17 +83,51 @@ import com.google.android.play.core.install.model.UpdateAvailability
  * [InstallStateUpdatedListener] event to the main `Looper`, and the public
  * methods are all called from `Activity` lifecycle / Compose, so no two threads
  * ever touch this state.
+ *
+ * The one thing that does not run on the main thread is the Play round-trip
+ * itself (#3939): creating the Play `AppUpdateManager` and asking it for
+ * `appUpdateInfo` bind to the Play Store service, and the calling thread waits
+ * on `system_server` and on Play Core's own `AppUpdateService` thread while it
+ * does. Under load that wait reached 1.5 s inside `onResume`, in front of the
+ * first frame. [checkForUpdate] therefore only flips state on the caller's
+ * thread and hands the round-trip to [checkExecutor]; the Task's listeners
+ * still land on the main thread. [UpdateCheckThrottle] then skips the
+ * round-trip on resumes that follow a quiet answer.
  */
-class InAppUpdateManager(
+class InAppUpdateManager @VisibleForTesting constructor(
     private val activity: Activity,
-    // Hook for unit tests: a `FakeAppUpdateManager` can be passed instead of
-    // the production factory result. The single-argument public constructor
-    // below uses `AppUpdateManagerFactory.create(activity)` so callers don't
-    // have to know this exists.
-    private val appUpdateManager: AppUpdateManager,
+    appUpdateManagerFactory: () -> AppUpdateManager,
+    // Where the Play round-trip runs. A background thread in production; tests
+    // and the debug QA fake pass an inline executor.
+    private val checkExecutor: Executor,
+    private val throttle: UpdateCheckThrottle,
 ) {
 
-    constructor(activity: Activity) : this(activity, AppUpdateManagerFactory.create(activity))
+    /** Production wiring: real Play, round-trip on a background thread, process-wide throttle. */
+    constructor(activity: Activity) : this(
+        activity,
+        { AppUpdateManagerFactory.create(activity) },
+        backgroundCheckExecutor,
+        UpdateCheckThrottle.PROCESS,
+    )
+
+    /**
+     * A given [AppUpdateManager] — Google's `FakeAppUpdateManager` for tests, or
+     * [QaAppUpdateManager] for debug QA. Queried inline (a fake never binds to
+     * Play) and never throttled: every call reaches the fake.
+     */
+    constructor(activity: Activity, appUpdateManager: AppUpdateManager) : this(
+        activity,
+        { appUpdateManager },
+        Executor { it.run() },
+        UpdateCheckThrottle(minIntervalMillis = 0L),
+    )
+
+    // Created on first use, which is the first round-trip on [checkExecutor]:
+    // `AppUpdateManagerFactory.create` stays off the main thread and out of
+    // `onCreate`. Every later main-thread use (listener, update flow, restart)
+    // happens after a round-trip has already created it.
+    private val appUpdateManager: AppUpdateManager by lazy(appUpdateManagerFactory)
 
     var updateState by mutableStateOf(UpdateState.IDLE)
         private set
@@ -219,6 +256,11 @@ class InAppUpdateManager(
      * Google consent flow. Call [startUpdate] from a deliberate user tap to do
      * that. A download a previous foreground left running (`DOWNLOADING`) or
      * finished (`DOWNLOADED`) is picked up by the same round-trip.
+     *
+     * Never blocks the calling thread: the round-trip runs on the background
+     * executor and its result is delivered on the main thread. After a quiet
+     * answer (up to date, or a failed query) the next calls are skipped until
+     * [UpdateCheckThrottle.DEFAULT_MIN_INTERVAL_MILLIS] has passed.
      */
     fun checkForUpdate() {
         if (destroyed) return
@@ -234,11 +276,23 @@ class InAppUpdateManager(
         // `startUpdate()` flow: a second `onResume` arriving before either
         // resolves would otherwise issue a parallel `appUpdateInfo` request.
         if (inFlight) return
+        // Play already answered "nothing to do" moments ago in this process.
+        if (!throttle.shouldCheck()) return
         inFlight = true
 
         updateState = UpdateState.CHECKING
+        checkExecutor.execute { requestAppUpdateInfo() }
+    }
+
+    // Runs on [checkExecutor]. Only touches Play: the Task's listeners (added
+    // without an executor) are delivered on the main thread, where every state
+    // mutation below happens.
+    private fun requestAppUpdateInfo() {
         appUpdateManager.appUpdateInfo
             .addOnSuccessListener { info ->
+                // Recorded even when destroyed: the answer holds for the whole
+                // process, and the next manager's first resume relies on it.
+                if (info.showsAFlow()) throttle.recordFlowResult() else throttle.recordQuietResult()
                 if (destroyed) return@addOnSuccessListener
                 when {
                     // An update is already mid-download (e.g. the manager was
@@ -273,11 +327,22 @@ class InAppUpdateManager(
                 }
             }
             .addOnFailureListener {
+                // A device without Play, or a build Play did not install, fails
+                // the same way on every resume: do not rebind just to hear it again.
+                throttle.recordQuietResult()
                 if (destroyed) return@addOnFailureListener
                 inFlight = false
                 updateState = UpdateState.IDLE
             }
     }
+
+    // True when [requestAppUpdateInfo]'s `when` surfaces or resumes a flow
+    // (DOWNLOADING, READY_TO_INSTALL, AVAILABLE) rather than UP_TO_DATE.
+    private fun AppUpdateInfo.showsAFlow(): Boolean =
+        installStatus() == InstallStatus.DOWNLOADING
+            || installStatus() == InstallStatus.DOWNLOADED
+            || (updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
+                && isUpdateTypeAllowed(AppUpdateType.FLEXIBLE))
 
     /**
      * Starts the Play in-app update flow. Triggers Google's **single** consent
@@ -344,5 +409,16 @@ class InAppUpdateManager(
 
     enum class UpdateState {
         IDLE, CHECKING, AVAILABLE, DOWNLOADING, READY_TO_INSTALL, UP_TO_DATE
+    }
+
+    private companion object {
+        // One daemon thread for the whole process, started by the first check.
+        // A check is rare and short, so a single thread is plenty, and its
+        // `appUpdateInfo` binder calls never touch the main thread.
+        val backgroundCheckExecutor: Executor by lazy {
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "InAppUpdateCheck").apply { isDaemon = true }
+            }
+        }
     }
 }

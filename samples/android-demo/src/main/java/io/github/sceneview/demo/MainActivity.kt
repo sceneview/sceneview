@@ -3,6 +3,7 @@ package io.github.sceneview.demo
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.Choreographer
 import androidx.activity.ComponentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
@@ -63,6 +64,7 @@ import io.github.sceneview.demo.feedback.captureBugReportScreenshot
 import io.github.sceneview.demo.feedback.sweepStaleFeedbackMedia
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 
 class MainActivity : ComponentActivity() {
@@ -336,7 +338,18 @@ class MainActivity : ComponentActivity() {
         // A separate stalled-download check used to run first and hold the
         // manager's re-entrancy guard, so this call always returned early and no
         // user ever saw the prompt.
-        updateManager.checkForUpdate()
+        //
+        // Posted behind the next frame, not run inline (#3939): the Play round-trip
+        // already runs off the main thread, and starting it only once that frame is
+        // drawn keeps its binder traffic off the cold-start path as well. The prompt
+        // is a snackbar that appears seconds later anyway.
+        Choreographer.getInstance().postFrameCallback {
+            window.decorView.post {
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    updateManager.checkForUpdate()
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
