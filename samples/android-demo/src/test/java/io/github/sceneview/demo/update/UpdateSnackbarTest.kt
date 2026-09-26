@@ -2,7 +2,9 @@ package io.github.sceneview.demo.update
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -81,7 +83,7 @@ class UpdateSnackbarTest {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     snackbarHost = { SnackbarHost(hostState) },
-                ) { }
+                ) { padding -> Box(Modifier.padding(padding).fillMaxSize()) }
             }
         }
         composeRule.waitForIdle()
