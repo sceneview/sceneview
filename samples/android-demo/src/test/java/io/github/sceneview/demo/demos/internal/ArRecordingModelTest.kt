@@ -384,6 +384,7 @@ class ArRecordingModelTest {
 
     @Test
     fun `QA state ids resolve and unknown ids are ignored`() {
+        assertEquals(RecordingQaState.Idle, RecordingQaState.of("idle"))
         assertEquals(RecordingQaState.Recording, RecordingQaState.of("recording"))
         assertEquals(RecordingQaState.Recordings, RecordingQaState.of("recordings"))
         assertEquals(RecordingQaState.Replaying, RecordingQaState.of("replaying"))

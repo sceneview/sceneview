@@ -52,6 +52,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rerun.RerunBridge
@@ -281,6 +282,13 @@ fun ARRerunDemo(onBack: () -> Unit) {
                     // Bridge gates on its own enabled + connection state, so this
                     // is safe whether or not the recorder is reachable.
                     bridge.logFrame(session, frame)
+                },
+                // A forced QA state hides the SDK's "Couldn't start AR" card so the screen
+                // can be captured on the emulator, which never starts AR (#2754).
+                arCoreAvailabilityOverlay = if (qaState == null) {
+                    { ARCoreAvailabilityOverlay(it) }
+                } else {
+                    null
                 },
                 onARCoreAvailability = { arCoreAvailability = it },
                 onTrackingFailureChanged = { reason ->

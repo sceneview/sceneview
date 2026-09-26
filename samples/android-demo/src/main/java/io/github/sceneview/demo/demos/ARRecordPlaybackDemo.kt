@@ -37,6 +37,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.recording.ARRecordInterpretation
 import io.github.sceneview.ar.recording.ARRecordInterpreter
@@ -279,7 +280,8 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_record_playback_title),
         onBack = onBack,
-        arSessionFailed = showsCamera && take.sessionFailed,
+        // A forced QA state keeps the Record step capturable: the emulator never starts AR.
+        arSessionFailed = showsCamera && take.sessionFailed && qa == null,
         arOverlaysEnabled = !showsCamera || take.arCoreAvailability == null,
         dock = listOf(
             DockItem(
@@ -392,6 +394,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
+                    availabilityOverlay = qa == null,
                 )
             }
             else -> RecordingsGallery(
@@ -527,6 +530,7 @@ private fun TakeScene(
     engine: com.google.android.filament.Engine,
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     materialLoader: io.github.sceneview.loaders.MaterialLoader,
+    availabilityOverlay: Boolean,
 ) {
     val replaying = replayFile != null
     val cameraStream = rememberARCameraStream(materialLoader)
@@ -555,6 +559,11 @@ private fun TakeScene(
             sessionConfiguration = { _: Session, config: Config ->
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+            },
+            arCoreAvailabilityOverlay = if (availabilityOverlay) {
+                { ARCoreAvailabilityOverlay(it) }
+            } else {
+                null
             },
             onARCoreAvailability = { take.arCoreAvailability = it },
             onSessionUpdated = { session: Session, frame: Frame -> take.onFrame(session, frame, replaying) },

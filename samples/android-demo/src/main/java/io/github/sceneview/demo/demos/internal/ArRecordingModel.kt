@@ -524,9 +524,11 @@ fun replayProgress(elapsedMillis: Long, durationMillis: Long): Float =
 
 /**
  * Screens the QA harness can open directly with `--es qa_state <id>` (`qa_mode` only): the
- * phases that otherwise need a live AR session, which the emulator cannot run.
+ * phases that otherwise need a live AR session, which the emulator cannot run. Any state also
+ * keeps the Record step on screen when the emulator's AR session fails, so it can be captured.
  */
 enum class RecordingQaState(val id: String) {
+    Idle("idle"),
     Recording("recording"),
     Saved("saved"),
     Recordings("recordings"),
