@@ -18,17 +18,18 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Roborazzi snapshot tests for [ContactShadowControls] and [WallShadowBeat].
+ * Roborazzi snapshot tests for [ContactShadowControls] and [ContactShadowStageBar].
  *
  * Both composables were extracted `internal` precisely so this could exist: they are pure
  * Compose (no Filament, no SceneView, no ARCore), so a layout regression fails fast in plain
  * JVM without an emulator. Pattern from issue
  * [#880](https://github.com/sceneview/sceneview/issues/880); the demo this covers is #2740.
  *
- * The [WallShadowBeat] cases carry the load the settings panel cannot: the beat's whole
- * argument is that the preset in force is *named on screen*, so `Floor`-on-a-wall and
- * `Wall`-on-a-wall must produce visibly different captions. Two goldens make a silent
- * regression to a single shared caption impossible to merge.
+ * The [ContactShadowStageBar] cases carry the load the settings panel cannot: the bar's whole
+ * argument is that the staged preset is *named on screen* in plain words, so `Floor` and
+ * `Wall` must produce visibly different captions. Two goldens make a silent regression to a
+ * single shared caption impossible to merge. A third pins the held state of the compare pill,
+ * whose label is the only feedback that the gesture registered (#3498).
  *
  * Generate the goldens (run once after a deliberate UI change):
  *   `./gradlew :samples:android-demo:recordRoborazziDebug --tests ContactShadowControlsSnapshotTest`
@@ -84,24 +85,44 @@ class ContactShadowControlsSnapshotTest {
         }
     }
 
-    /** The preset the wall actually wants: a faint, wide halo. */
+/** The default staging — a chair on the floor. */
     @Test
-    fun wall_beat_wall_preset() {
-        captureControls("src/test/snapshots/contact_shadow_wall_beat_wall.png") {
-            WallShadowBeat(
-                wallContext = ContactShadowContext.Wall,
-                onWallContextChange = {},
+    fun stage_bar_floor_preset() {
+        captureControls("src/test/snapshots/contact_shadow_stage_bar_floor.png") {
+            ContactShadowStageBar(
+                stage = ContactShadowContext.Floor,
+                onStageChange = {},
+                comparing = false,
+                onComparingChange = {},
             )
         }
     }
 
-    /** The instructive mistake — `Floor` on a wall. Its caption must differ from `Wall`'s. */
+    /** The wall staging. Its caption must differ from the floor's. */
     @Test
-    fun wall_beat_floor_preset() {
-        captureControls("src/test/snapshots/contact_shadow_wall_beat_floor.png") {
-            WallShadowBeat(
-                wallContext = ContactShadowContext.Floor,
-                onWallContextChange = {},
+    fun stage_bar_wall_preset() {
+        captureControls("src/test/snapshots/contact_shadow_stage_bar_wall.png") {
+            ContactShadowStageBar(
+                stage = ContactShadowContext.Wall,
+                onStageChange = {},
+                comparing = false,
+                onComparingChange = {},
+            )
+        }
+    }
+
+    /**
+     * The compare pill while held. The label swap is the only feedback the gesture registered,
+     * so it gets a golden of its own rather than riding on the default-state capture.
+     */
+    @Test
+    fun stage_bar_comparing() {
+        captureControls("src/test/snapshots/contact_shadow_stage_bar_comparing.png") {
+            ContactShadowStageBar(
+                stage = ContactShadowContext.Floor,
+                onStageChange = {},
+                comparing = true,
+                onComparingChange = {},
             )
         }
     }

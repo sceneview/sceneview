@@ -1,12 +1,8 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Contrast
-import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,10 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -33,19 +28,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
 import com.google.android.filament.LightManager
 import com.google.android.filament.Skybox
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Direction
@@ -57,84 +54,80 @@ import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
 /**
- * **Contact Shadow Preview** — a *non-AR* SceneView that shows what the procedural contact
- * shadow ([ContactShadowContext], #2740 sub-task C) *buys*, not just what it looks like.
+ * **Contact Shadow Preview** — a *non-AR* SceneView that sells what the procedural contact
+ * shadow ([ContactShadowContext], #2740 sub-task C) buys: the cue that puts a 3D object *on*
+ * a real surface instead of floating in front of it.
  *
- * ### Why this screen is a side-by-side comparison (redesign rationale)
+ * ### What this screen is, after #3498
  *
- * The first version of this demo showed one static room with the shadows ON by default and
- * an on/off switch tucked in the settings sheet. Maintainer feedback: *the feature worked,
- * but the screen never communicated what it was demonstrating.* Root causes:
+ * Maintainer feedback on the previous revision (#3498, from the device): *rework the UI and
+ * UX, make it land*. The argument the old screen made was sound — it paired a grounded box
+ * against a floating twin and coupled the pool to the hop — but the *picture* never carried
+ * it. Two flat orange cubes and a black slab of a TV sat in a washed-out grey box, three
+ * overlapping overlays fought for the lower third, and the only real-world object on screen
+ * was a television nobody had asked about. A feature that exists to make renders look
+ * believable cannot be demonstrated by a scene that looks like a placeholder.
  *
- * 1. **A successful contact shadow is invisible as an effect.** With shadows on, the scene
- *    just looks "normal" — the value only exists relative to the shadowless state, which the
- *    default screen never showed.
- * 2. **A toggle is a *sequential* comparison.** Flipping one switch swaps the entire scene
- *    in place, and human change-detection across an interruption is poor (change blindness)
- *    — especially when the eye is on the switch, not the scene.
- * 3. **Nothing moved and nothing was named.** A static grey room gives the eye no reason to
- *    look at the floor, and no label says the *shadow* is the subject.
+ * Three changes, in order of how much they matter:
  *
- * The redesign makes the contrast **simultaneous and kinetic** instead of sequential and
- * static:
+ * 1. **Real subjects, one at a time.** The cubes are gone. Each preset now stages the case it
+ *    was actually designed for, with a real glTF subject and the whole frame to itself —
+ *    [ContactShadowContext.Floor] puts a chair on the floor, [ContactShadowContext.TableTop]
+ *    puts a toy car on a table, [ContactShadowContext.Wall] hangs the TV. A PBR model under
+ *    studio light is what makes a shadow look like a shadow; a flat-shaded cube never did.
+ * 2. **One picker, and it means what it says.** The old chip row sat on screen but drove only
+ *    the TV's pool while two boxes occupied the frame — a control whose scope contradicted
+ *    its position. The same three chips now restage the entire scene, so the chip, the
+ *    subject, the surface and the preset are always the same statement.
+ * 3. **Hold to compare.** The before/after is a *held* gesture on a single pill rather than a
+ *    second object or a latched switch. The old side-by-side rationale was right that a
+ *    latched toggle in a settings sheet fails — the eye is on the switch, the scene swaps
+ *    behind an interruption, and change blindness eats the difference. A press-and-hold does
+ *    not have that flaw: the viewer causes the transition, watches it happen, holds it as
+ *    long as they like and flaps back and forth at will. That is the standard before/after of
+ *    every photo editor, and it buys back the half of the frame the floating twin was using.
  *
- * - **Two boxes, side by side — same size and material, deliberately DIFFERENT motion.** The
- *   left one bounces and lands, grounded by a [ContactShadowContext.Floor] pool; the right one
- *   hovers high and never touches down, with no shadow. The comparison is spatial, so it needs
- *   no memory and no interaction — one glance settles it.
- * - **The left box STRIKES the floor** ([DemoMath.bounceHeight], a rectified sine) every 2.6 s,
- *   and its pool *responds to height*: it slides out from under the box along the key light as
- *   the box lifts, spreading and fading as it goes, then snaps back dark, tight and centred on
- *   landing (see [DemoMath.groundingShadowOffset] / [DemoMath.groundingSpread] /
- *   [DemoMath.groundingIntensityFactor]). The shadow's **path** is the strongest contact cue the
- *   visual system has — the classic "ball-in-a-box" illusion. **The right box does the opposite:**
- *   it hovers high and bobs slowly ([DemoMath.floatHoverY], a plain sine well above the floor),
- *   never landing, with no shadow. The floating is carried by the box's *own motion* — a box that
- *   visibly stays aloft needs no shadow to read as airborne — so the missing shadow reads as
- *   "it's in the air", not "the shadow is broken" (#2740). The earlier revision hopped BOTH boxes
- *   identically, which failed exactly here: a shadowless box doing the same motion as its grounded
- *   twin conveys "floating" only by the *absence* of a shadow, and an absence does not read.
- * - **Overlay chips name the two states** ("Contact shadow" / "No shadow"), so the one-line
- *   takeaway is on screen without opening anything.
- * - **The camera starts low** (about 22° above the floor, pulled in), so the pool subtends
- *   real screen area instead of degenerating into a sliver — at the original high-and-far
- *   framing the shadow was too small to ever be the subject.
+ * The subject also **lifts and settles** on a slow loop ([DemoMath.bounceHeight] at
+ * [LIFT_PERIOD_NANOS]), and the pool answers: it slides out from under the subject along the
+ * key light, spreads and fades as it rises, then snaps back dark and tight on contact (see
+ * [DemoMath.groundingShadowOffset] / [DemoMath.groundingSpread] /
+ * [DemoMath.groundingIntensityFactor]). The shadow's **path** is the strongest contact cue the
+ * visual system has — the classic "ball-in-a-box" illusion — and it is the one thing that
+ * reads at a glance, before any label is read or any control is touched. The wall staging
+ * lifts too: the TV pulls away from the wall and its pool widens and fades, which is exactly
+ * the behaviour a real shadow map cannot produce there.
  *
- * ### The wall TV gets its own beat — it is the decisive argument
+ * ### Why the wall case still earns its chip
  *
- * Behind the comparison, a TV is mounted on the back wall, grounded by a
- * [ContactShadowContext.Wall] pool. This is the case a *real* shadow map cannot serve:
- * indoor light comes from the ceiling, nearly parallel to the wall, so a flat-mounted panel
- * casts essentially nothing onto it.
- *
- * That argument used to be made in a whisper. The TV was scenery, and its preset picker was a
- * settings-sheet row — which failed it twice over: the sheet's scrim dims the scene, so you
- * could never watch the wall pool change *while* changing it, and a control sitting among the
- * global ones read as global while it only ever drove this one pool. [WallShadowBeat] fixes
- * both by anchoring the picker on screen, in the TV's half of the frame, with a one-line
- * verdict per preset — so the A/B is live, and the control's scope is self-evident instead of
- * being patched over by its label.
+ * Indoor light comes from the ceiling, nearly parallel to a wall, so a flat-mounted panel
+ * casts essentially nothing onto it — a shadow map renders a wall-mounted TV as a sticker.
+ * The [ContactShadowContext.Wall] preset is the answer, and it now gets the full frame and a
+ * caption of its own rather than being scenery behind someone else's comparison.
  *
  * ### Why this exists as a non-AR preview
  *
  * The contact shadow is a pure shader effect — an elliptical gradient drawn from the quad's
  * UVs — so nothing about it depends on ARCore. Like [PlaneGridPreviewDemo] (#2224),
- * reproducing the exact geometry + material in a plain
- * `SceneView` makes it visually reviewable on any emulator, with **no ARCore session and no
- * physical AR device** (#2754).
+ * reproducing the exact geometry + material in a plain `SceneView` makes it visually
+ * reviewable on any emulator, with **no ARCore session and no physical AR device** (#2754).
  *
- * The key light deliberately does NOT cast shadows: a real cast shadow on the floor would
- * sit alongside the procedural pool and muddy the comparison. The only grounding cue on
- * screen is the contact shadow — which is the point.
+ * The key light deliberately does NOT cast shadows: a real cast shadow would sit alongside the
+ * procedural pool and muddy the comparison. The only grounding cue on screen is the contact
+ * shadow — which is the point.
  *
- * QA mode ([DemoSettings.qaMode]) freezes the clock at t = 0: the grounded box sits at ground
- * contact (pool at full strength) and the floating box at its hover rest height, so screenshot
- * suites get a deterministic frame that already shows the full grounded-vs-floating contrast.
+ * Both models come from the bundled Khronos sample set and are already credited in
+ * `assets/CREDITS.md`; neither is added by this screen.
+ *
+ * QA mode ([DemoSettings.qaMode]) freezes the clock at t = 0, where the subject rests at
+ * contact and the pool is at full strength — a deterministic frame that already shows the
+ * grounded state a screenshot suite is there to guard.
  */
 @Composable
 fun ContactShadowPreviewDemo(onBack: () -> Unit) {
@@ -144,42 +137,46 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     // v1 slider was a shared absolute value initialised from the Wall preset, which silently
     // weakened the floor pool (0.38 < 0.55) before the user touched anything.
     var intensityFactor by remember { mutableFloatStateOf(1f) }
-    var wallContext by remember { mutableStateOf(ContactShadowContext.Wall) }
+    var stage by remember { mutableStateOf(ContactShadowContext.Floor) }
+
+    // True only while the "hold to compare" pill is held down. Kept separate from
+    // [shadowsEnabled] so releasing always restores whatever the user had set, rather than
+    // forcing the toggle back on behind their back.
+    var comparing by remember { mutableStateOf(false) }
 
     // Whether a shadow is actually DRAWN — the toggle being on is not enough, because the
-    // intensity slider reaches 0 and makes the pool fully transparent. THE single source for
-    // every label that reports the shadow state (peek header + [GroundingLegend]): the first
-    // fix of this contradiction updated the legend alone and left the peek header still
-    // reading the raw toggle, so at intensity 0 the banner announced "Grounded vs floating"
-    // when no shadow was drawn at all. One value means a future label cannot diverge
-    // again (#2740).
+    // intensity slider reaches 0 and makes the pool fully transparent, and the compare
+    // gesture suppresses it outright. THE single source for every label that reports the
+    // shadow state: the first fix of this contradiction updated one label and left another
+    // reading the raw toggle, so at intensity 0 the banner announced a grounded scene when
+    // no shadow was drawn at all. One value means a future label cannot diverge again (#2740).
     //
     // `derivedStateOf`, not a plain expression: reading `intensityFactor` directly in the
     // demo body would drag the scaffold, top bar and settings sheet into every tick of a
     // slider drag. The derived boolean only invalidates when it actually flips — same
-    // recomposition-scope discipline as the hop clock read inside the scene lambda below.
+    // recomposition-scope discipline as the lift clock read inside the scene lambda below.
     val shadowVisible by remember {
-        derivedStateOf { shadowsEnabled && intensityFactor > 0f }
+        derivedStateOf { shadowsEnabled && !comparing && intensityFactor > 0f }
     }
 
-    // Accumulated hop-loop time. Written only from the frame loop / reset callbacks —
+    // Accumulated lift-loop time. Written only from the frame loop / reset callbacks —
     // never during composition.
-    var bounceElapsedNanos by remember { mutableLongStateOf(0L) }
+    var liftElapsedNanos by remember { mutableLongStateOf(0L) }
 
-    // Drive the hop clock off the Choreographer. Lifecycle-aware so the loop stops burning
+    // Drive the lift clock off the Choreographer. Lifecycle-aware so the loop stops burning
     // frames when the app is backgrounded (#936); delta accumulation means the phase resumes
-    // where it left off. QA mode and the Motion toggle freeze the clock at t = 0 — ground
-    // contact, the deterministic full-strength pose.
+    // where it left off. QA mode and the Motion toggle freeze the clock at t = 0 — contact,
+    // the deterministic full-strength pose.
     LifecycleAwareLaunchedEffect(motionEnabled, DemoSettings.qaMode) {
         if (!motionEnabled || DemoSettings.qaMode) {
-            bounceElapsedNanos = 0L
+            liftElapsedNanos = 0L
             return@LifecycleAwareLaunchedEffect
         }
         var lastNanos = 0L
         while (true) {
             withFrameNanos { nanos ->
                 if (lastNanos != 0L) {
-                    bounceElapsedNanos += nanos - lastNanos
+                    liftElapsedNanos += nanos - lastNanos
                 }
                 lastNanos = nanos
             }
@@ -187,23 +184,29 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     }
 
     val engine = rememberEngine()
-    val labelCamera = io.github.sceneview.rememberCameraNode(engine)
-    val groundedLabel = stringResource(R.string.contact_shadow_label_grounded)
-    val noShadowLabel = stringResource(R.string.contact_shadow_label_floating)
-    val labelsFontSize = with(androidx.compose.ui.platform.LocalDensity.current) {
-        SceneViewTokens.Type.card.fontSize.toPx()
-    }
-
+    val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // A neutral room: matte off-white wall, slightly darker floor, so the shadow gradient is
-    // the only thing carrying the grounding cue.
+    // Both subjects are loaded up front rather than keyed on [stage]: together they are under
+    // 7 MB, and loading on chip tap would put a visible stall inside the one interaction the
+    // screen is built around. `rememberModelInstance` keeps the Filament JNI calls on the main
+    // thread, which is mandatory for the model and material loaders.
+    val chairInstance = rememberModelInstance(modelLoader, CHAIR_MODEL)
+    val carInstance = rememberModelInstance(modelLoader, CAR_MODEL)
+
+    // A warm room: the floor is the lighter, warmer surface a contact pool reads on, the wall
+    // sits a shade deeper so the subject has something to separate against. The previous room
+    // ran the other way — a bright wall behind a darker floor — which flattened every subject
+    // into its background.
     val wallMaterial = remember(materialLoader) {
-        materialLoader.createColorInstance(Color(0xFFE8E6E1), metallic = 0f, roughness = 0.9f)
+        materialLoader.createColorInstance(ROOM_WALL_COLOR, metallic = 0f, roughness = 0.95f)
     }
     val floorMaterial = remember(materialLoader) {
-        materialLoader.createColorInstance(Color(0xFFCFCBC4), metallic = 0f, roughness = 0.85f)
+        materialLoader.createColorInstance(ROOM_FLOOR_COLOR, metallic = 0f, roughness = 0.8f)
+    }
+    val tableMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(TABLE_COLOR, metallic = 0f, roughness = 0.55f)
     }
     val tvBody = remember(materialLoader) {
         materialLoader.createColorInstance(Color(0xFF20242A), metallic = 0f, roughness = 0.8f)
@@ -211,22 +214,17 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     val tvScreen = remember(materialLoader) {
         materialLoader.createColorInstance(Color(0xFF06080C), metallic = 0f, roughness = 0.15f)
     }
-    // ONE material instance shared by both boxes — identical look is what isolates the
-    // shadow as the only variable in the comparison.
-    val boxMaterial = remember(materialLoader) {
-        materialLoader.createColorInstance(Color(0xFFB4693C), metallic = 0f, roughness = 0.7f)
-    }
 
     // The room's materials are LIT (PBR), so they need an IBL or they render flat and dark — a
-    // coloured skybox alone supplies no irradiance. Studio HDR does the ambient lighting; the
-    // light-grey skybox below is the fallback while the HDR is still decoding.
+    // coloured skybox alone supplies no irradiance. The warm studio HDR does the ambient
+    // lighting; the skybox below is the fallback while the HDR is still decoding.
     val litEnvironment = rememberHDREnvironment(
         environmentLoader,
-        "environments/studio_2k.hdr",
+        "environments/studio_warm_2k.hdr",
         createSkybox = true,
     )
     val fallbackSkybox = remember(engine) {
-        Skybox.Builder().color(0.72f, 0.73f, 0.75f, 1.0f).build(engine)
+        Skybox.Builder().color(0.80f, 0.78f, 0.75f, 1.0f).build(engine)
     }
     val fallbackEnvironment = remember(fallbackSkybox) { Environment(skybox = fallbackSkybox) }
     val environment = litEnvironment ?: fallbackEnvironment
@@ -237,8 +235,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         shadowsEnabled = true
         motionEnabled = true
         intensityFactor = 1f
-        wallContext = ContactShadowContext.Wall
-        bounceElapsedNanos = 0L
+        stage = ContactShadowContext.Floor
+        liftElapsedNanos = 0L
     }
 
     DemoScaffold(
@@ -253,16 +251,23 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         // what `resetAll` already covers, so wiring `onResetSettings` to the same lambda would
         // put the very same action twice in the merged sheet (#3328).
         onReset = resetAll,
-        dock = listOf(io.github.sceneview.demo.DockItem(
-            icon = Icons.Filled.Contrast,
-            label = "Shadows",
-            selected = shadowsEnabled,
-            onClick = { shadowsEnabled = !shadowsEnabled },
-        )),
-        // Reserve the selector beneath the stage; labels stay attached to their objects.
+        dock = listOf(
+            DockItem(
+                icon = Icons.Filled.Contrast,
+                label = stringResource(R.string.contact_shadow_dock_shadows),
+                selected = shadowsEnabled,
+                onClick = { shadowsEnabled = !shadowsEnabled },
+            )
+        ),
+        // Reserve the picker's band beneath the stage so the subject is never under it.
         bottomOverlayReservesScene = true,
         bottomOverlay = {
-            WallShadowBeat(wallContext = wallContext, onWallContextChange = { wallContext = it })
+            ContactShadowStageBar(
+                stage = stage,
+                onStageChange = { stage = it },
+                comparing = comparing,
+                onComparingChange = { comparing = it },
+            )
         },
         controls = {
             ContactShadowControls(
@@ -279,25 +284,35 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             onFrame = firstFrame.onFrame,
             engine = engine,
-            cameraNode = labelCamera,
             materialLoader = materialLoader,
             environment = environment,
             // Keep the hand-built room where it was authored — auto-centring would reframe the
             // scene and break the deterministic camera below.
             autoCenterContent = false,
             cameraManipulator = rememberCameraManipulator(
-                // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
-                // pair in the lower half and the wall TV in the upper half. Seen high and far
-                // (the v1 framing), a floor pool degenerates into a sliver and can never read.
-                orbitHomePosition = Position(x = 0.0f, y = 1.35f, z = 3.3f),
-                targetPosition = Position(x = 0.0f, y = 0.75f, z = -0.5f),
+                // Low and pulled in, framing a subject standing at the room centre with the
+                // wall behind it. Seen high and far, a floor pool degenerates into a sliver and
+                // can never be the subject of the screen.
+                orbitHomePosition = Position(x = 0.0f, y = 1.10f, z = 2.85f),
+                targetPosition = Position(x = 0.0f, y = 0.72f, z = -0.55f),
             ),
         ) {
-            // Read the hop clock HERE, inside the content lambda, not in the demo body: this
+            // Read the lift clock HERE, inside the content lambda, not in the demo body: this
             // lambda is its own recomposition scope, so the per-frame state change re-executes
             // only the scene nodes — never the scaffold, top bar, or settings sheet (the
             // GeometryDemo spin pattern).
-            val hopHeight = DemoMath.bounceHeight(bounceElapsedNanos)
+            val lift = DemoMath.bounceHeight(
+                liftElapsedNanos,
+                periodNanos = LIFT_PERIOD_NANOS,
+                maxHeight = LIFT_MAX_HEIGHT_METERS,
+            )
+            // The pool's response to that lift, shared by all three stagings: dimmer and wider
+            // the further the subject is from its surface, full strength and tight at contact.
+            val poolIntensity = DemoMath.groundingIntensityFactor(
+                lift,
+                maxHeight = LIFT_MAX_HEIGHT_METERS,
+            )
+            val poolSpread = DemoMath.groundingSpread(lift, maxHeight = LIFT_MAX_HEIGHT_METERS)
 
             // Directional key light for shape and specular — deliberately NOT a shadow caster.
             // The ONLY grounding cue on screen must be the contact shadow, so a real cast
@@ -306,7 +321,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 type = LightManager.Type.DIRECTIONAL,
                 direction = KEY_LIGHT_DIRECTION,
                 apply = {
-                    intensity(60_000f)
+                    intensity(70_000f)
                     castShadows(false)
                 },
             )
@@ -314,187 +329,247 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             // ── The room ──────────────────────────────────────────────────────────────────
             // Floor: an XZ quad (normal +Y).
             PlaneNode(
-                size = Size(x = 6f, y = 0f, z = 6f),
+                size = Size(x = 7f, y = 0f, z = 7f),
                 normal = Direction(y = 1f),
                 materialInstance = floorMaterial,
             )
             // Back wall: an XY quad (normal +Z) — note the DIFFERENT size shape. `Plane` does
             // not rotate its geometry to match `normal`, so a vertical quad is built in XY.
             PlaneNode(
-                size = Size(x = 6f, y = 3f, z = 0f),
+                size = Size(x = 7f, y = 3.4f, z = 0f),
                 normal = Direction(z = 1f),
-                position = Position(x = 0f, y = 1.5f, z = -2f),
+                position = Position(x = 0f, y = 1.7f, z = -2f),
                 materialInstance = wallMaterial,
             )
 
-            // ── The hero comparison: a grounded bouncer vs a floating twin ────────────────
-            // LEFT — grounded, and it BOUNCES to strike the floor. The pool tracks the hop:
-            // full-strength and tight at contact, dimmer and wider at the top (ambient-occlusion
-            // physics). That coupling is what makes this box read as LANDING ON the floor.
-            if (shadowsEnabled) {
-                // The pool follows the light's ground projection as the box lifts (ball-in-a-box):
-                // centred and tight at contact, drifted out from under the box at the top of the
-                // hop. This slide — not the dim/spread alone — is what sells "landing on" vs
-                // "floating"; the shadowless twin gives the eye nothing equivalent to track.
-                val (slideX, slideZ) = DemoMath.groundingShadowOffset(
-                    hopHeight,
-                    KEY_LIGHT_DIRECTION.x, KEY_LIGHT_DIRECTION.y, KEY_LIGHT_DIRECTION.z,
-                )
-                ContactShadow(
-                    size = Size(x = SHADOW_QUAD_METERS, y = 0f, z = SHADOW_QUAD_METERS),
-                    context = ContactShadowContext.Floor,
-                    normal = Direction(y = 1f),
-                    intensity = ContactShadowContext.Floor.intensity * intensityFactor *
-                        DemoMath.groundingIntensityFactor(hopHeight),
-                    position = Position(x = -BOX_HALF_SPACING + slideX, y = 0f, z = BOXES_Z + slideZ),
-                    scale = Scale(DemoMath.groundingSpread(hopHeight)),
-                )
-            }
-            CubeNode(
-                size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
-                position = Position(
-                    x = -BOX_HALF_SPACING,
-                    y = BOX_EDGE_METERS / 2f + hopHeight,
-                    z = BOXES_Z,
-                ),
-                materialInstance = boxMaterial,
-            )
-            // RIGHT — the floating twin. It does NOT bounce to the floor: it hovers high and
-            // bobs slowly (DemoMath.floatHoverY), clearly aloft, with no contact shadow. The
-            // floating is carried by the box's own MOTION — hovering high, never landing — so the
-            // absent shadow reads as "it's in the air", not "the shadow is missing" (#2740). This
-            // is the positive, kinetic cue an identically-hopping shadowless box could never give.
-            CubeNode(
-                size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
-                position = Position(
-                    x = BOX_HALF_SPACING,
-                    y = DemoMath.floatHoverY(bounceElapsedNanos),
-                    z = BOXES_Z,
-                ),
-                materialInstance = boxMaterial,
-            )
+            when (stage) {
+                // ── Floor: a chair standing on the floor ──────────────────────────────────
+                ContactShadowContext.Floor -> {
+                    if (shadowVisible) {
+                        // The pool follows the light's ground projection as the subject lifts
+                        // (ball-in-a-box): centred and tight at contact, drifted out from under
+                        // the chair at the top. This slide — not the dim/spread alone — is what
+                        // sells "standing on" rather than "hanging in front of".
+                        val (slideX, slideZ) = DemoMath.groundingShadowOffset(
+                            lift,
+                            KEY_LIGHT_DIRECTION.x, KEY_LIGHT_DIRECTION.y, KEY_LIGHT_DIRECTION.z,
+                        )
+                        ContactShadow(
+                            size = Size(x = 1.5f, y = 0f, z = 1.5f),
+                            context = ContactShadowContext.Floor,
+                            normal = Direction(y = 1f),
+                            intensity = ContactShadowContext.Floor.intensity *
+                                intensityFactor * poolIntensity,
+                            position = Position(
+                                x = SUBJECT_X + slideX,
+                                y = 0f,
+                                z = SUBJECT_Z + slideZ,
+                            ),
+                            scale = Scale(poolSpread),
+                        )
+                    }
+                    chairInstance?.let { instance ->
+                        ModelNode(
+                            modelInstance = instance,
+                            scaleToUnits = CHAIR_UNITS,
+                            // Seat the model's bounding box on its own origin, so `position.y`
+                            // is the gap between the subject and the floor rather than an
+                            // offset to whatever the exporter chose as the pivot.
+                            centerOrigin = Position(y = -1f),
+                            position = Position(x = SUBJECT_X, y = lift, z = SUBJECT_Z),
+                        )
+                    }
+                }
 
-            listOf(
-                Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + 0.12f, BOXES_Z) to groundedLabel,
-                Position(
-                    BOX_HALF_SPACING,
-                    DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + 0.12f,
-                    BOXES_Z,
-                ) to noShadowLabel,
-            ).forEach { (position, label) ->
-                TextNode(
-                    text = if (!shadowVisible && label == groundedLabel) noShadowLabel else label,
-                    fontSize = labelsFontSize,
-                    textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
-                    backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
-                    widthMeters = 0.62f,
-                    heightMeters = 0.16f,
-                    position = position,
-                    cameraPositionProvider = { labelCamera.worldPosition },
-                )
-            }
+                // ── Table top: a toy car resting on a table ───────────────────────────────
+                ContactShadowContext.TableTop -> {
+                    CubeNode(
+                        size = Size(TABLE_WIDTH, TABLE_HEIGHT, TABLE_DEPTH),
+                        position = Position(
+                            x = SUBJECT_X,
+                            y = TABLE_HEIGHT / 2f,
+                            z = SUBJECT_Z,
+                        ),
+                        materialInstance = tableMaterial,
+                    )
+                    if (shadowVisible) {
+                        val (slideX, slideZ) = DemoMath.groundingShadowOffset(
+                            lift,
+                            KEY_LIGHT_DIRECTION.x, KEY_LIGHT_DIRECTION.y, KEY_LIGHT_DIRECTION.z,
+                        )
+                        ContactShadow(
+                            size = Size(x = 0.62f, y = 0f, z = 0.62f),
+                            context = ContactShadowContext.TableTop,
+                            normal = Direction(y = 1f),
+                            intensity = ContactShadowContext.TableTop.intensity *
+                                intensityFactor * poolIntensity,
+                            // A hair above the table top: co-planar with it, the two quads
+                            // z-fight and the pool flickers in and out as the camera orbits.
+                            position = Position(
+                                x = SUBJECT_X + slideX,
+                                y = TABLE_HEIGHT + SURFACE_EPSILON,
+                                z = SUBJECT_Z + slideZ,
+                            ),
+                            scale = Scale(poolSpread),
+                        )
+                    }
+                    carInstance?.let { instance ->
+                        ModelNode(
+                            modelInstance = instance,
+                            scaleToUnits = CAR_UNITS,
+                            centerOrigin = Position(y = -1f),
+                            position = Position(
+                                x = SUBJECT_X,
+                                y = TABLE_HEIGHT + lift,
+                                z = SUBJECT_Z,
+                            ),
+                        )
+                    }
+                }
 
-            // ── Wall-mounted TV — the case a real shadow map cannot serve ─────────────────
-            if (shadowsEnabled) {
-                ContactShadow(
-                    size = Size(x = 2.4f, y = 1.6f, z = 0f),
-                    context = wallContext,
-                    normal = Direction(z = 1f),
-                    intensity = wallContext.intensity * intensityFactor,
-                    position = Position(x = 0f, y = 1.3f, z = -1.99f),
-                )
-            }
-            Node(position = Position(x = 0f, y = 1.3f, z = -1.98f)) {
-                CubeNode(
-                    size = Size(1.26f, 0.74f, 0.04f),
-                    position = Position(z = 0.02f),
-                    materialInstance = tvBody,
-                )
-                CubeNode(
-                    size = Size(1.20f, 0.68f, 0.01f),
-                    position = Position(z = 0.045f),
-                    materialInstance = tvScreen,
-                )
+                // ── Wall: a TV mounted flat against the wall ──────────────────────────────
+                // The case a real shadow map cannot serve: ceiling light runs nearly parallel
+                // to the wall, so a flat panel casts essentially nothing onto it. Here the
+                // lift pulls the TV away from the wall, and the pool widens and fades exactly
+                // as a real contact shadow would.
+                ContactShadowContext.Wall -> {
+                    if (shadowVisible) {
+                        ContactShadow(
+                            size = Size(x = 2.2f, y = 1.5f, z = 0f),
+                            context = ContactShadowContext.Wall,
+                            normal = Direction(z = 1f),
+                            intensity = ContactShadowContext.Wall.intensity *
+                                intensityFactor * poolIntensity,
+                            position = Position(x = SUBJECT_X, y = TV_CENTER_Y, z = -2f + SURFACE_EPSILON),
+                            scale = Scale(poolSpread),
+                        )
+                    }
+                    Node(
+                        position = Position(
+                            x = SUBJECT_X,
+                            y = TV_CENTER_Y,
+                            z = -2f + TV_MOUNT_GAP + lift,
+                        )
+                    ) {
+                        CubeNode(
+                            size = Size(1.34f, 0.80f, 0.05f),
+                            position = Position(z = 0.025f),
+                            materialInstance = tvBody,
+                        )
+                        CubeNode(
+                            size = Size(1.28f, 0.74f, 0.01f),
+                            position = Position(z = 0.055f),
+                            materialInstance = tvScreen,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 /**
- * The wall TV's own beat: the preset picker for its pool, anchored on screen next to the thing
- * it controls, with a one-line verdict for the preset in force.
+ * The one control bar this screen puts on the scene: the three-preset picker, the caption for
+ * the preset in force, and the hold-to-compare pill.
  *
- * **Why this is not a settings-sheet row (#2740 follow-up).** The picker used to live in the
- * sheet, which failed the TV twice. The sheet's scrim dims the scene, so the wall pool could
- * never be watched *while* being changed — a sequential, half-blind comparison, the very flaw
- * the box pair was redesigned to escape. And sitting among the global controls it read as
- * global, while it only ever drove [wallContext] — the TV's pool, never the two boxes a viewer
- * takes to be the subject. The previous mitigation was to rename it "TV wall preset": a label
- * patch over a scope mismatch. Anchoring the control in the TV's half of the frame makes the
- * scope self-evident and the A/B live, and it takes the settings sheet from four controls down
- * to three.
+ * **Why the picker is here and not in the settings sheet.** The sheet's scrim dims the scene,
+ * so a pool could never be watched *while* it was being changed — a sequential, half-blind
+ * comparison. Anchored on the scene, the A/B is live.
  *
- * **Why every preset gets a verdict, not just the wrong ones.** A caption that appeared only
- * for a mis-set preset would communicate by *absence* — and an absence reads as nothing at
- * all. Each preset states what it costs on a wall, so switching to `Floor` teaches ("too dark,
- * too round — a sticker") rather than merely looking different.
+ * **Why every preset gets a caption, not just the notable ones.** A caption that appeared only
+ * for some presets would communicate by *absence*, and an absence reads as nothing at all.
+ * Each line says, in plain words, what the staged scene is showing — no preset names, no
+ * "elliptical gradient", no jargon a reader has to already know to parse (#3498).
  *
- * Like [GroundingLegend], this is anchored to the *frame*, not to the TV's projected position:
- * the camera is an orbit manipulator, so any drag moves the TV under a fixed overlay. It sits
- * in the upper half because the home framing puts the TV there.
+ * Anchored to the *frame*, not to the subject's projected position: the camera is an orbit
+ * manipulator, so any drag moves the subject under a fixed overlay.
  */
 @Composable
-internal fun WallShadowBeat(
-    wallContext: ContactShadowContext,
-    onWallContextChange: (ContactShadowContext) -> Unit,
+internal fun ContactShadowStageBar(
+    stage: ContactShadowContext,
+    onStageChange: (ContactShadowContext) -> Unit,
+    comparing: Boolean,
+    onComparingChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(SceneViewTokens.Radius.xs))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-            .padding(horizontal = SceneViewTokens.Space.sm, vertical = SceneViewTokens.Space.sm),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Text(
+            text = stringResource(stage.captionRes()),
+            style = SceneViewTokens.Type.body,
+            color = SceneViewTokens.Glass.onGlass,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.lg),
+        )
+        Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
         Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
-            ContactShadowContext.values().forEach { context ->
+            ContactShadowContext.entries.forEach { context ->
                 FilterChip(
-                    selected = context == wallContext,
-                    onClick = { onWallContextChange(context) },
-                    label = { Text(if (context == ContactShadowContext.TableTop) "Table" else context.name) },
+                    selected = context == stage,
+                    onClick = { onStageChange(context) },
+                    label = { Text(stringResource(context.chipLabelRes())) },
                 )
             }
         }
         Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
-        Text(
-            text = stringResource(wallContext.wallVerdictRes()),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // Press-and-hold, not a latched toggle: the viewer causes the transition and watches
+        // it happen, which is what a latched switch in a sheet could never give (#3498).
+        // `detectTapGestures(onPress)` + `tryAwaitRelease` covers the cancel case too — a
+        // finger dragged off the pill releases the comparison instead of stranding it on.
+        GlassPill(
+            modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        onComparingChange(true)
+                        tryAwaitRelease()
+                        onComparingChange(false)
+                    }
+                )
+            }
+        ) {
+            Text(
+                text = stringResource(
+                    if (comparing) R.string.contact_shadow_compare_active
+                    else R.string.contact_shadow_compare_hint
+                ),
+                style = SceneViewTokens.Type.caption,
+            )
+        }
     }
 }
 
 /**
- * The one-line verdict shown under the picker for each preset, phrased as what that preset
- * costs *on a wall* — see [WallShadowBeat] for why all three are covered.
+ * Chip label for each preset — the *surface*, not the enum constant.
  *
  * Exhaustive `when` on purpose: a new [ContactShadowContext] must fail this compile rather
- * than ship a chip with no verdict under it.
- *
- * **The Wall verdict is worded to the measurement, not to the ambition (#2957).** It used to
- * promise "a faint, wide halo below the panel". Device QA sampled the wall against the
- * detected panel bbox and the pool is real but *narrow*: 18.6/255 darker in the first 70 px
- * under a 314 px-tall panel, 0.4 at 70–130 px, 0.0 beyond — and ~12 levels of the same
- * darkening sits above the panel too. "Wide" therefore described something a viewer looking
- * for it cannot find, and a caption whose cue is not on screen teaches nothing (#2740). The
- * wording now names the cue that *is* visible — the thin band of shade against the panel's
- * lower edge — and states what it buys: the panel reads as pressed against the wall.
+ * than ship a chip labelled with a raw enum name.
  */
 @StringRes
-private fun ContactShadowContext.wallVerdictRes(): Int = when (this) {
-    ContactShadowContext.Floor -> R.string.contact_shadow_wall_verdict_floor
-    ContactShadowContext.Wall -> R.string.contact_shadow_wall_verdict_wall
-    ContactShadowContext.TableTop -> R.string.contact_shadow_wall_verdict_tabletop
+private fun ContactShadowContext.chipLabelRes(): Int = when (this) {
+    ContactShadowContext.Floor -> R.string.contact_shadow_stage_floor
+    ContactShadowContext.Wall -> R.string.contact_shadow_stage_wall
+    ContactShadowContext.TableTop -> R.string.contact_shadow_stage_table
+}
+
+/**
+ * The one-line caption shown for each staged preset — see [ContactShadowStageBar] for why all
+ * three are covered.
+ *
+ * **The Wall caption is worded to the measurement, not to the ambition (#2957).** It used to
+ * promise "a faint, wide halo below the panel". Device QA sampled the wall against the
+ * detected panel bbox and the pool is real but *narrow*: 18.6/255 darker in the first 70 px
+ * under a 314 px-tall panel, 0.4 at 70–130 px, 0.0 beyond. "Wide" therefore described
+ * something a viewer looking for it cannot find, and a caption whose cue is not on screen
+ * teaches nothing (#2740). The wording names the cue that *is* visible — the band of shade
+ * against the panel's lower edge — and what it buys: the TV reads as flat against the wall.
+ */
+@StringRes
+private fun ContactShadowContext.captionRes(): Int = when (this) {
+    ContactShadowContext.Floor -> R.string.contact_shadow_caption_floor
+    ContactShadowContext.Wall -> R.string.contact_shadow_caption_wall
+    ContactShadowContext.TableTop -> R.string.contact_shadow_caption_table
 }
 
 @Composable
@@ -580,27 +655,60 @@ private const val MULTIPLIER_SIGN = '×'
 
 // ── Scene layout constants ────────────────────────────────────────────────────────────────
 
-/** Edge length of the two comparison boxes, metres. */
-private const val BOX_EDGE_METERS = 0.38f
+/** The floor subject: a fabric armchair, already bundled and credited. */
+private const val CHAIR_MODEL = "models/khronos_sheen_chair.glb"
 
-/** Half the centre-to-centre spacing of the comparison pair, metres. */
-private const val BOX_HALF_SPACING = 0.38f
+/** The table-top subject: a toy car, already bundled and credited. */
+private const val CAR_MODEL = "models/khronos_toy_car.glb"
 
-/** Z position of the comparison pair — pulled toward the camera, in front of the room. */
-private const val BOXES_Z = 0.35f
+/** Chair height, metres — a real armchair, so the room reads at human scale. */
+private const val CHAIR_UNITS = 0.92f
+
+/** Toy-car length, metres: small enough that the table reads as a table. */
+private const val CAR_UNITS = 0.30f
+
+/** X of every staged subject — centred, so one camera frames all three stagings. */
+private const val SUBJECT_X = 0f
+
+/** Z of the floor and table-top subjects: pulled toward the camera, in front of the wall. */
+private const val SUBJECT_Z = 0.1f
+
+/** Table slab dimensions, metres. */
+private const val TABLE_WIDTH = 1.1f
+private const val TABLE_HEIGHT = 0.44f
+private const val TABLE_DEPTH = 0.66f
+private val TABLE_COLOR = Color(0xFF8C6A4A)
+
+/** Height of the TV's centre above the floor, metres. */
+private const val TV_CENTER_Y = 1.15f
+
+/** Resting gap between the wall plane and the TV's back face, metres. */
+private const val TV_MOUNT_GAP = 0.012f
 
 /**
- * Travel direction of the directional key light — also the axis the grounded pool projects
- * along ([DemoMath.groundingShadowOffset]). The light and the shadow's slide are driven from
- * this single value so they can never drift out of agreement.
+ * Clearance between a contact-shadow quad and the surface it sits on, metres. Co-planar quads
+ * z-fight: the pool flickers in and out as the camera orbits.
+ */
+private const val SURFACE_EPSILON = 0.004f
+
+/**
+ * Period of the lift-and-settle loop, nanoseconds — slower than the hop this replaced
+ * ([DemoMath.CONTACT_BOUNCE_PERIOD_NANOS], 2.6 s). A chair or a mounted TV that bounced like a
+ * ball would read as a physics toy; at 4.4 s the subject rises, hangs and settles, which is the
+ * motion of something being *placed* — the moment the contact shadow exists to sell.
+ */
+private const val LIFT_PERIOD_NANOS = 4_400_000_000L
+
+/** Peak height of the lift, metres. */
+private const val LIFT_MAX_HEIGHT_METERS = 0.30f
+
+/** Warm room surfaces — floor lighter than wall, so a subject separates against the back. */
+private val ROOM_FLOOR_COLOR = Color(0xFFE3DCD1)
+private val ROOM_WALL_COLOR = Color(0xFFC9C0B4)
+
+/**
+ * Travel direction of the directional key light — also the axis the floor and table pools
+ * project along ([DemoMath.groundingShadowOffset]). The light and the shadow's slide are driven
+ * from this single value so they can never drift out of agreement.
  */
 private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
-
-/**
- * Side of the grounded box's square shadow quad, metres. Generously larger than the box
- * ([BOX_EDGE_METERS]) — the Floor gradient fades out well before the quad edge — while
- * keeping the pool clear of the shadowless twin at [BOX_HALF_SPACING], including at the
- * peak of the hop, where it has slid furthest out from under its own box. Only the
- * grounded box has a quad; the comparison depends on the twin's floor staying bare.
- */
-private const val SHADOW_QUAD_METERS = 0.8f
