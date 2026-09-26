@@ -14,9 +14,9 @@ object DoublePendulumFragment : DemoFragment {
         id = "double-pendulum",
         titleRes = R.string.demo_double_pendulum_title,
         subtitleRes = R.string.demo_double_pendulum_subtitle,
-        category = DemoCategory.VIEWER,
+        category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.Vibration,
-        order = 4,
+        order = 6,
         tags = setOf("physics", "pendulum", "chaos", "simulation", "kmp"),
     )
 

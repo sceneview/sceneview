@@ -15,9 +15,9 @@ object MaterialsFragment : DemoFragment {
         id = "materials",
         titleRes = R.string.demo_materials_title,
         subtitleRes = R.string.demo_materials_subtitle,
-        category = DemoCategory.GEOMETRY_MATERIALS,
+        category = DemoCategory.CREATE,
         icon = Icons.Filled.Palette,
-        order = 9,
+        order = 10,
         tags = setOf(
             "pbr", "material", "metallic", "roughness", "clearcoat",
             "sheen", "transmission", "emissive", "occlusion",

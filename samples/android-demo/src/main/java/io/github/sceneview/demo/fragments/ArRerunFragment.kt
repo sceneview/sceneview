@@ -14,7 +14,7 @@ object ArRerunFragment : DemoFragment {
         id = "ar-rerun",
         titleRes = R.string.demo_ar_rerun_title,
         subtitleRes = R.string.demo_ar_rerun_subtitle,
-        category = DemoCategory.PLATFORM,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.BugReport,
         order = 48,
         tags = setOf("ar", "rerun", "streaming", "pose", "plane", "debug"),

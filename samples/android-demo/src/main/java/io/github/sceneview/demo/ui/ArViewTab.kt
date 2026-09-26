@@ -674,8 +674,8 @@ private fun ArDemoCard(
     // The Samples-tab AR accent, read from the shared palette rather than
     // recopied, so the two grids cannot drift into looking like two apps.
     // The AR View tab is one screen about AR as a whole, so it takes the first of
-    // the four AR section accents rather than any one section's (#2239).
-    val accent = DemoCategoryAccent[DemoCategory.AR_PLACEMENT, dark]
+    // the two AR section accents rather than any one section's (#2239, #3836).
+    val accent = DemoCategoryAccent[DemoCategory.PLACE_AR, dark]
 
     Surface(
         modifier = modifier
