@@ -318,7 +318,7 @@ Six tools carry most of what assistants actually do with SceneView. If you read 
 
 | Tool | What it does |
 |---|---|
-| `view_3d_model` | Renders a public GLB / glTF URL in an interactive SceneView.js + Filament.js viewer inline in ChatGPT and any MCP Apps host (orbit, auto-rotate). Returns `structuredContent` + `_meta.ui.resourceUri` |
+| `view_3d_model` | Renders a public GLB / glTF URL in an interactive SceneView.js + Filament.js viewer inline in ChatGPT and any MCP Apps host (orbit, auto-rotate). For an https model it adds an "Open in AR on your phone" action (an `ar.sceneview.dev/open` link to AR Model Viewer, with a QR code on desktop). Returns `structuredContent` + `_meta.ui.resourceUri` |
 
 ### 5 resources
 
