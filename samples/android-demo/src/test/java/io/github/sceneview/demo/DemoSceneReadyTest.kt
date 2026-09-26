@@ -21,8 +21,8 @@ import org.junit.Test
  * "Still loading…" card sat over a fully drawn model for good.
  *
  * What survives both: readiness is a question about the **backend**, never about the
- * frame rate. Frames are counted, intervals are not, and the `flushAndWait` that turns
- * the count into driver truth is the part only a device can prove.
+ * frame rate. Frames are counted, intervals are not, and the backend fence that turns
+ * the count into driver truth is polled, never awaited ([BackendDrainWaitTest], #3799).
  */
 class DemoSceneReadyTest {
 

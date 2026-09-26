@@ -1,6 +1,7 @@
 package io.github.sceneview
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -10,6 +11,9 @@ import org.junit.Test
  * [awaitBackendIdle] is the Filament-free core of `Engine.destroyWhenBackendIdle()`, which
  * `rememberEngine` uses instead of an inline `Engine.destroy()` — whose driver-thread join waits
  * out every queued shader compile of a scene disposed right after it appeared.
+ * [awaitBackendIdleWhileAlive] adds the engine-lifetime guard that
+ * `Engine.destroyRendererWhenBackendIdle()` needs: `rememberRenderer` defers
+ * `Engine.destroyRenderer()` the same way, because `FRenderer::terminate` waits on that backlog too.
  */
 class BackendIdleTeardownTest {
 
@@ -71,6 +75,54 @@ class BackendIdleTeardownTest {
         )
         while (scheduler.hasPending) scheduler.runNext()
         assertEquals(1, teardowns)
+    }
+
+    @Test
+    fun deferredRendererTeardownRunsOnceTheLiveEngineDrains() {
+        val scheduler = RecordingScheduler()
+        var busyChecks = 2
+        var idleAfter = -1
+        var engineGone = false
+        awaitBackendIdleWhileAlive(
+            isEngineAlive = { true },
+            isFenceBusy = { busyChecks-- > 0 },
+            schedule = scheduler.schedule,
+            onIdle = { idleAfter = it },
+            onEngineGone = { engineGone = true },
+        )
+        assertEquals(-1, idleAfter)
+
+        while (scheduler.hasPending) scheduler.runNext()
+
+        assertEquals(2, idleAfter)
+        assertFalse(engineGone)
+    }
+
+    @Test
+    fun engineDestroyedWhilePollingNeverTouchesItsFenceAgain() {
+        // rememberRenderer and rememberEngine both defer their teardown; the engine's fence can
+        // signal first and FEngine::shutdown then frees the renderer's fence with it. Polling
+        // that fence would dereference freed native memory — a SIGSEGV, not an exception.
+        val scheduler = RecordingScheduler()
+        var engineAlive = true
+        var fencePolls = 0
+        var idleCalls = 0
+        var goneCalls = 0
+        awaitBackendIdleWhileAlive(
+            isEngineAlive = { engineAlive },
+            isFenceBusy = { fencePolls++; true },
+            schedule = scheduler.schedule,
+            onIdle = { idleCalls++ },
+            onEngineGone = { goneCalls++ },
+        )
+        assertEquals(1, fencePolls)
+
+        engineAlive = false
+        while (scheduler.hasPending) scheduler.runNext()
+
+        assertEquals("the fence must not be polled once its engine is gone", 1, fencePolls)
+        assertEquals("the renderer is reclaimed by the engine, never destroyed twice", 0, idleCalls)
+        assertEquals(1, goneCalls)
     }
 
     @Test

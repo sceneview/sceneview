@@ -422,9 +422,14 @@ fun rememberArPlaybackDataset(): File? {
  * ### The signal
  *
  * [READY_PRESENTED_FRAMES] presented frames, **at any interval**, and then one
- * [Engine.flushAndWait] — which blocks until the backend has actually executed the
+ * backend drain: a fence that signals only once the backend has actually executed the
  * queued work rather than merely accepted it. That is the driver truth the streak
  * was trying to infer from timing, asked directly.
+ *
+ * The drain is polled ([BackendDrainWait]), never awaited. This used to be an
+ * `Engine.flushAndWait()` on the main thread, and on a software GL it blocked there for
+ * the whole material-link time. A BACK press during that stall hit the 5 s input-dispatch
+ * limit and raised an ANR (#3799).
  *
  * Two frames rather than one because Filament applies backpressure: a *second*
  * accepted submission is itself the evidence that the first was drained. Neither
@@ -439,25 +444,36 @@ fun rememberArPlaybackDataset(): File? {
  */
 class FirstFrameState internal constructor(
     private val renderedState: androidx.compose.runtime.MutableState<Boolean>,
-    private val engine: com.google.android.filament.Engine? = null,
-) {
+    private val backendDrain: BackendDrainWait? = null,
+) : androidx.compose.runtime.RememberObserver {
     /** How many frames the scene has presented so far, capped once [rendered] latches. */
     private var presentedFrames: Int = 0
 
     val rendered: androidx.compose.runtime.State<Boolean> get() = renderedState
 
     val onFrame: (frameTimeNanos: Long) -> Unit = {
-        if (!renderedState.value) {
+        if (!renderedState.value && presentedFrames < READY_PRESENTED_FRAMES) {
             presentedFrames++
-            if (presentedFrames >= READY_PRESENTED_FRAMES) {
-                // Blocks until the backend has executed what those frames queued. On a
-                // software GL this is the whole material-link time; on hardware it is ~100 ms.
-                // The cover is a static image, so the wait is invisible — and it is the only
-                // thing here that speaks to the driver rather than about it.
-                runCatching { engine?.flushAndWait() }
-                renderedState.value = true
-            }
         }
+        if (!renderedState.value && presentedFrames >= READY_PRESENTED_FRAMES) {
+            // Latches once the backend has executed what those frames queued: on a software
+            // GL that is the whole material-link time, on hardware ~100 ms. The cover is a
+            // static image, so the wait is invisible — and it is the only thing here that
+            // speaks to the driver rather than about it. Polled, never awaited (#3799);
+            // repeated calls while the fence is out are no-ops.
+            val drain = backendDrain
+            if (drain == null) renderedState.value = true else drain.start { renderedState.value = true }
+        }
+    }
+
+    override fun onRemembered() = Unit
+
+    override fun onForgotten() {
+        backendDrain?.cancel()
+    }
+
+    override fun onAbandoned() {
+        backendDrain?.cancel()
     }
 }
 
@@ -504,7 +520,9 @@ fun rememberFirstFrameState(
     val rendered = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    return androidx.compose.runtime.remember(engine) { FirstFrameState(rendered, engine) }
+    return androidx.compose.runtime.remember(engine) {
+        FirstFrameState(rendered, engine?.let(::filamentBackendDrainWait))
+    }
 }
 
 /**
