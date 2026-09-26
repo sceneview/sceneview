@@ -102,6 +102,32 @@ not produced by this pipeline and are not in the table; regenerate one only once
 recorded here, so the recorded prompt is always the one that produced the committed image
 (#3474).
 
+### iOS cards cropped from simulator captures (#3786)
+
+Fourteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
+Their cards are real captures of the demo, not generated: the keyless Debug build on the
+iPhone 17 Pro Max simulator (iOS 26.3, 1320×2868), opened through `sceneview://demo/<id>`
+with QA mode on so the orbit is frozen, cropped 5:4 around the subject and resized to
+800×640 (JPEG q85). The demo stage does not follow the app theme, so each imageset holds one
+universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture pixels.
+
+| Imageset | Capture | Crop |
+|---|---|---|
+| `preview_scene_gallery` | `scene-gallery`, "PBR Low-Poly Fox" chip (the bundled fox) | 660, 1500, 1100 |
+| `preview_environment` | `environment`, default HDR | 840, 1386, 850 |
+| `preview_movable_light` | `movable-light` | 662, 1505, 1000 |
+| `preview_billboard` | `billboard` | 652, 1449, 1240 |
+| `preview_image` | `image` | 655, 1399, 1280 |
+| `preview_texture_streaming` | `texture-streaming`, Gold preset | 673, 1478, 1000 |
+| `preview_gesture_editing` | `gesture-editing` | 660, 1110, 1200 |
+| `preview_occlusion_material` | `occlusion-material` | 660, 1307, 960 |
+| `preview_physics` | `physics`, bundled cubes at rest | 680, 1480, 600 |
+| `preview_reflection_probes` | `reflection-probes` | 652, 1412, 1000 |
+| `preview_shape` | `shape`, Star | 639, 1400, 1100 |
+| `preview_multi_model` | `multi-model`, keyless stand-ins (what the App Store build shows) | 650, 1458, 1300 |
+| `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
+| `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
+
 ## Home hero banner
 
 `heroes.json` + `--kind hero` generates the wide `preview_hero_<demo_id>.webp` (1600×1000,
