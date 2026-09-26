@@ -6,6 +6,9 @@
      `samples/android-demo/demo-fragments/README.md`. -->
 <resources>
     <string name="app_name">SceneView Demo</string>
+    <!-- Home-screen label. "SceneView Demo" is cut to "SceneView …" in the
+         Pixel launcher, which reads as the consumer app "SceneView". -->
+    <string name="launcher_label">SV Demo</string>
 
     <!-- Navigation -->
     <string name="tab_3d">3D</string>
