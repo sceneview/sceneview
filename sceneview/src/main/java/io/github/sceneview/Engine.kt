@@ -105,35 +105,102 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
  * it (its shared EGL context, say) here.
  */
 internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
+    val startedAt = SystemClock.uptimeMillis()
+    // Destroyed by someone else while the fence was pending: only the EGL side is left to release.
+    whenBackendIdle(onEngineGone = onDestroyed) { deferredPolls ->
+        safeDestroy()
+        if (deferredPolls > 0) {
+            Log.i(
+                "Sceneview",
+                "Engine destroyed after its backend drained " +
+                    "(${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
+            )
+        }
+        onDestroyed()
+    }
+}
+
+/**
+ * Destroys [renderer] once this engine's backend has executed everything already queued, **without
+ * blocking the calling thread on that drain**.
+ *
+ * [Engine.destroyRenderer] is not a plain handle release: `FRenderer::terminate` first waits for
+ * "all pending commands" to execute (`Fence::waitAndDestroy(engine.createFence())`, Filament
+ * v1.72.1 `Renderer.cpp`). A scene disposed while its shader programs are still being linked — an
+ * activity destroyed right after a demo opened — parks the main thread on that whole backlog, an
+ * ANR on an emulator (#3799). Deferred until the backend is idle, that inner wait has nothing left
+ * to drain. When the backend is already idle — the usual case — the renderer is destroyed before
+ * this function returns, exactly as [safeDestroyRenderer] would.
+ *
+ * If the engine is destroyed first, `FEngine::shutdown` reclaims the renderer with everything else
+ * it still owns, and nothing more is done here.
+ */
+internal fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
+    val startedAt = SystemClock.uptimeMillis()
+    whenBackendIdle(onEngineGone = {}) { deferredPolls ->
+        safeDestroyRenderer(renderer)
+        if (deferredPolls > 0) {
+            Log.i(
+                "Sceneview",
+                "Renderer destroyed after its backend drained " +
+                    "(${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
+            )
+        }
+    }
+}
+
+/**
+ * Runs [onIdle] on the calling thread once this engine's backend has executed everything already
+ * queued, polling a fence from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS] instead
+ * of waiting on it. [onIdle] runs before this function returns when the backend is already idle,
+ * and also — the old blocking behaviour — when the thread has no [Looper] or the fence cannot be
+ * created. [onEngineGone] runs instead when the engine is destroyed while the fence is pending.
+ */
+private fun Engine.whenBackendIdle(
+    onEngineGone: () -> Unit,
+    onIdle: (deferredPolls: Int) -> Unit,
+) {
     val looper = Looper.myLooper()
     val fence = if (looper != null) runCatching { createFence() }.getOrNull() else null
     if (looper == null || fence == null) {
-        safeDestroy()
-        onDestroyed()
+        onIdle(0)
         return
     }
     val handler = Handler(looper)
-    val startedAt = SystemClock.uptimeMillis()
-    awaitBackendIdle(
-        isBackendBusy = {
+    awaitBackendIdleWhileAlive(
+        isEngineAlive = { isValid },
+        isFenceBusy = {
             runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }
                 .getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
         },
         schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
         onIdle = { deferredPolls ->
             runCatching { destroyFence(fence) }
-            safeDestroy()
-            if (deferredPolls > 0) {
-                Log.i(
-                    "Sceneview",
-                    "Engine destroyed after its backend drained " +
-                        "(${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
-                )
-            }
-            onDestroyed()
-        }
+            onIdle(deferredPolls)
+        },
+        onEngineGone = onEngineGone,
     )
 }
+
+/**
+ * [awaitBackendIdle] on a fence owned by an engine that may be destroyed while it is polled.
+ *
+ * `FEngine::shutdown` frees every fence the engine still owns, and the Java `Fence` keeps its
+ * now-dangling native pointer: waiting on it after that is a native crash, not an exception. So
+ * [isEngineAlive] is checked before every poll; once it is `false` the fence is never touched again
+ * and [onEngineGone] runs instead of [onIdle].
+ */
+internal fun awaitBackendIdleWhileAlive(
+    isEngineAlive: () -> Boolean,
+    isFenceBusy: () -> Boolean,
+    schedule: (delayMs: Long, block: () -> Unit) -> Unit,
+    onIdle: (deferredPolls: Int) -> Unit,
+    onEngineGone: () -> Unit,
+) = awaitBackendIdle(
+    isBackendBusy = { isEngineAlive() && isFenceBusy() },
+    schedule = schedule,
+    onIdle = { deferredPolls -> if (isEngineAlive()) onIdle(deferredPolls) else onEngineGone() },
+)
 
 /**
  * The non-blocking poll behind [destroyWhenBackendIdle], kept free of Android and Filament types

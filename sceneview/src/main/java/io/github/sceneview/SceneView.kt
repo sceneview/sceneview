@@ -1507,7 +1507,9 @@ fun rememberARView(engine: Engine, creator: () -> View = { createARView(engine) 
  * Creates and remembers a Filament [Renderer].
  *
  * A `Renderer` represents an operating system window and drives the frame pipeline —
- * `beginFrame`, `render`, `endFrame`. One per window is recommended. Destroyed on disposal.
+ * `beginFrame`, `render`, `endFrame`. One per window is recommended. Destroyed on disposal —
+ * right away when the backend is idle, otherwise as soon as it has drained the work already
+ * queued, without blocking the main thread on that drain.
  *
  * You rarely need to call this directly — `SceneView { }` creates one by default.
  *
@@ -1521,7 +1523,10 @@ fun rememberRenderer(
 ) = remember(engine, creator).also { renderer ->
     DisposableEffect(renderer) {
         onDispose {
-            engine.safeDestroyRenderer(renderer)
+            // Not `safeDestroyRenderer()` inline: Filament's renderer teardown waits for every
+            // queued backend command, and an activity destroyed right after a scene appeared still
+            // has its shader programs linking — seconds on the main thread, an ANR (#3799).
+            engine.destroyRendererWhenBackendIdle(renderer)
         }
     }
 }
