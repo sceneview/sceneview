@@ -368,6 +368,18 @@ enum class GeospatialIndicator {
     Done,
 }
 
+/** Filled accuracy-meter segments for this frame, once ARCore is tracking. */
+private fun GeospatialFrame.meterSegments(): Int = when (localization) {
+    GeospatialLocalization.Pretracking -> 0
+    GeospatialLocalization.Localized -> GEOSPATIAL_ACCURACY_SEGMENTS
+    // Hysteresis can hold "improving" while the estimate is already inside the
+    // thresholds; the meter must not claim a lock the title does not.
+    GeospatialLocalization.Localizing, GeospatialLocalization.TakingLong ->
+        accuracySegments(horizontalAccuracyM, yawAccuracyDeg)
+            .coerceAtMost(GEOSPATIAL_ACCURACY_SEGMENTS - 1)
+            .coerceAtLeast(1)
+}
+
 /** The card for this frame. Only meaningful when [overlay] is [GeospatialOverlay.Status]. */
 fun GeospatialFrame.statusCard(): GeospatialStatusCard {
     if (!cameraTracking) {
@@ -385,16 +397,7 @@ fun GeospatialFrame.statusCard(): GeospatialStatusCard {
             drop = lastDrop,
         )
     }
-    val segments = when (localization) {
-        GeospatialLocalization.Pretracking -> 0
-        GeospatialLocalization.Localized -> GEOSPATIAL_ACCURACY_SEGMENTS
-        // Hysteresis can hold "improving" while the estimate is already inside the
-        // thresholds; the meter must not claim a lock the title does not.
-        GeospatialLocalization.Localizing, GeospatialLocalization.TakingLong ->
-            accuracySegments(horizontalAccuracyM, yawAccuracyDeg)
-                .coerceAtMost(GEOSPATIAL_ACCURACY_SEGMENTS - 1)
-                .coerceAtLeast(1)
-    }
+    val segments = meterSegments()
     val tone = when (segments) {
         GEOSPATIAL_ACCURACY_SEGMENTS -> GeospatialTone.Success
         GEOSPATIAL_ACCURACY_SEGMENTS - 1 -> GeospatialTone.Progress

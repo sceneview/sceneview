@@ -81,18 +81,28 @@ class GeospatialFlowTest {
         assertEquals(GeospatialLocalization.Localizing, lost.phase)
         assertEquals(50_000, lost.localizingSinceMillis)
 
-        val lostHeading = localized.update(true, 3.0, LOCALIZED_YAW_ACCURACY_DEG + LOCALIZED_HYSTERESIS_DEG + 0.1, 60_000)
+        val lostHeading =
+            localized.update(true, 3.0, LOCALIZED_YAW_ACCURACY_DEG + LOCALIZED_HYSTERESIS_DEG + 0.1, 60_000)
         assertEquals(GeospatialLocalization.Localizing, lostHeading.phase)
     }
 
     @Test
     fun `localizing past the timeout is taking long, and still recovers`() {
         val localizing = start.update(true, 30.0, 40.0, 0)
-        assertEquals(GeospatialLocalization.Localizing, localizing.update(true, 30.0, 40.0, LOCALIZING_TIMEOUT_MILLIS).phase)
+        assertEquals(
+            GeospatialLocalization.Localizing,
+            localizing.update(true, 30.0, 40.0, LOCALIZING_TIMEOUT_MILLIS).phase,
+        )
         val stuck = localizing.update(true, 30.0, 40.0, LOCALIZING_TIMEOUT_MILLIS + 1)
         assertEquals(GeospatialLocalization.TakingLong, stuck.phase)
-        assertEquals(GeospatialLocalization.TakingLong, stuck.update(true, 30.0, 40.0, LOCALIZING_TIMEOUT_MILLIS + 5_000).phase)
-        assertEquals(GeospatialLocalization.Localized, stuck.update(true, 4.0, 8.0, LOCALIZING_TIMEOUT_MILLIS + 6_000).phase)
+        assertEquals(
+            GeospatialLocalization.TakingLong,
+            stuck.update(true, 30.0, 40.0, LOCALIZING_TIMEOUT_MILLIS + 5_000).phase,
+        )
+        assertEquals(
+            GeospatialLocalization.Localized,
+            stuck.update(true, 4.0, 8.0, LOCALIZING_TIMEOUT_MILLIS + 6_000).phase,
+        )
     }
 
     @Test
