@@ -197,6 +197,19 @@ internal fun tapNodeName(path: String, fallback: String): String =
         .substringAfterLast('/').substringBeforeLast('.')
         .ifEmpty { fallback }
 
+/**
+ * The APK asset path of a Dart asset key: Flutter packs `environments/x.hdr` as
+ * `flutter_assets/environments/x.hdr`, so opening the key as-is threw
+ * `FileNotFoundException` and crashed the demo at launch (#3928). A path that is
+ * not a Flutter asset (a native Android asset, a file, a URL) is returned unchanged.
+ */
+private fun FlutterPlugin.FlutterPluginBinding.assetPathOf(path: String): String {
+    if (path.contains("://") || path.startsWith("/")) return path
+    val flutterPath = flutterAssets.getAssetFilePathByName(path)
+    val packed = runCatching { applicationContext.assets.open(flutterPath).close() }.isSuccess
+    return if (packed) flutterPath else path
+}
+
 // ---------------------------------------------------------------------------
 // 3D SceneView
 // ---------------------------------------------------------------------------
@@ -418,7 +431,7 @@ class SceneViewPlatformView(
                 result.success(null)
             }
             "setEnvironment" -> {
-                environmentPath = call.argument<String>("hdrPath")
+                environmentPath = call.argument<String>("hdrPath")?.let(binding::assetPathOf)
                 result.success(null)
             }
             "setCameraControlMode" -> {
