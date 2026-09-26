@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android demo, Animation & Physics: the clip card and a subject switch now read correctly while a model loads ([#3883](https://github.com/sceneview/sceneview/issues/3883)).** In dark mode the clip card now uses the `surface-container` card colour, so it stands out from the dark loading cover instead of blending into it. Switching subject in Settings now clears the previous model and shows the loading scrim until the new one is ready, instead of leaving the old model on screen with no indicator.

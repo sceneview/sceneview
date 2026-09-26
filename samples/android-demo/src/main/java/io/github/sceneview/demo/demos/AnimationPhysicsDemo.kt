@@ -376,7 +376,16 @@ private fun AnimationSection(
         // two-arg positional call would bind to the asset-path overload instead and feed the
         // `file://` string to `AssetManager.open`, which throws — the streamed model would
         // silently stay `null` forever (#1422 / the #2302 overload trap).
-        rememberModelInstance(modelLoader, fileLocation = activeFileLocation)
+        //
+        // `key` gives each subject its own load. `rememberModelInstance` is built on
+        // `produceState`, which keeps its last value when its key changes: without `key`, a
+        // subject switch left the previous model on screen, alive, with no loading scrim, until
+        // the new one landed (#3883). Here the previous subject leaves the composition, its model
+        // is destroyed at once, and the instance reads `null` — so the scrim and the card's
+        // "Loading…" cover the switch exactly as they cover the first load.
+        key(activeFileLocation) {
+            rememberModelInstance(modelLoader, fileLocation = activeFileLocation)
+        }
     } else null
 
     // Studio stage (#3820), the Sketchfab default: studio HDR light, a neutral grey backdrop.
@@ -410,8 +419,8 @@ private fun AnimationSection(
     // below to drive play/pause/speed/loop imperatively.
     val modelNodeRef = remember { androidx.compose.runtime.mutableStateOf<ModelNodeImpl?>(null) }
 
-    // Only the node built from the instance we hold right now. On a subject switch
-    // `rememberModelInstance` destroys the previous model as soon as its key changes, but the
+    // Only the node built from the instance we hold right now. On a subject switch the
+    // previous model is destroyed as soon as its key changes (see `key` above), but the
     // ref is only cleared once the scene's own composition drops the old node — later, often not
     // until the new subject has loaded. Reading `animationCount` or posing that stale node in
     // between is a native use-after-free (#3801).
@@ -441,8 +450,8 @@ private fun AnimationSection(
     var blendWeight by remember(node, selectedAnim) { mutableFloatStateOf(0f) }
     val previousFrame = remember(node, selectedAnim, isPlaying, DemoSettings.qaMode) { longArrayOf(0L) }
     // Re-pin the animation track to the subject's default once its node lands. Not on the switch
-    // itself: until the new subject has loaded, `node` is still the previous one, and the clamp
-    // below would fold the new default back to 0 against the old subject's clip count — the
+    // itself: until the new subject has loaded there is no node to clamp against, and clamping
+    // against the previous subject's clip count folded the new default back to 0 — the
     // soldier opened on Idle instead of Walk. We can't always know a streamed model's clip count
     // up-front, so out-of-range defaults are clamped below.
     LaunchedEffect(node) {
@@ -873,8 +882,11 @@ private fun AnimationSection(
         firstFrameRendered = firstFrame.rendered,
         topOverlay = {
             Column(
+                // `surface-container`, DESIGN.md's card role — not `surface`: in dark, `surface`
+                // (#0D1117) is one step off the `stage-background` loading cover (#0B0F16) and the
+                // card vanished into it while the subject loaded (#3883). Light is #FFFFFF either way.
                 modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md)
-                    .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.shapes.small)
                     .padding(SceneViewTokens.Space.sm),
                 verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
             ) {
