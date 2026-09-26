@@ -2,18 +2,22 @@ package io.github.sceneview.demo.demos.internal
 
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Quaternion
+import dev.romainguy.kotlin.math.cross
+import dev.romainguy.kotlin.math.dot
+import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
 import io.github.sceneview.demo.common.placement.PlacementRotation
 import io.github.sceneview.demo.sketchfab.SampleAssets
+import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
 import kotlin.math.atan
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlin.math.tan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -341,16 +345,14 @@ class DemoMathTest {
         assertEquals(PARK_SLOTS.maxOf { it.scale }, PARK_HEIGHT, eps)
         assertEquals(1.80f, PARK_HEIGHT, eps)
 
-        // Each slot orbits the centre at hypot(x, z) AND spins on its own Y, so a model filling its
-        // `scale` cube reaches scale·√2/2 from its own centre at 45° — not scale/2.
-        val expectedSpan = 2f * PARK_SLOTS.maxOf {
-            hypot(it.x, it.z) + it.scale * sqrt(2f) / 2f
-        }
-        assertEquals(expectedSpan, PARK_SPAN, eps)
-        assertTrue(
-            "the formation must be wider than it is tall, or cover framing has nothing to crop",
-            PARK_SPAN > PARK_HEIGHT,
-        )
+        // The framing box is the union of the slots' `scale` cubes, each centred on its x / z and
+        // standing on the ground plane — recomputed here from the literals above.
+        assertEquals(-0.90f, PARK_BOUNDS.minX, eps)
+        assertEquals(0.90f, PARK_BOUNDS.maxX, eps)
+        assertEquals(-0.90f, PARK_BOUNDS.minY, eps)
+        assertEquals(0.90f, PARK_BOUNDS.maxY, eps)
+        assertEquals(-1.10f, PARK_BOUNDS.minZ, eps)
+        assertEquals(0.70f, PARK_BOUNDS.maxZ, eps)
     }
 
     @Test
@@ -373,14 +375,98 @@ class DemoMathTest {
     }
 
     @Test
-    fun `parkCameraDistance frames the formation full height on both portrait classes`() {
-        // The demo's own entry point, not just the math underneath it: phone and tablet portrait
-        // must resolve to the same distance (Filament fixes the VERTICAL fov), and that distance
-        // must be the one that puts PARK_HEIGHT edge to edge.
-        val expected = (PARK_HEIGHT / 2f) / tan(Math.toRadians(defaultVfovDegrees) / 2.0).toFloat()
-        assertEquals(expected, parkCameraDistance(0.47f), 1e-3f)
-        assertEquals(expected, parkCameraDistance(0.64f), 1e-3f)
-        assertEquals(parkCameraDistance(0.47f), parkCameraDistance(PARK_FALLBACK_ASPECT), eps)
+    fun `parkCamera target is the centre of the formation bounds`() {
+        val camera = parkCamera(411f, 914f, 96f, 128f)
+        assertEquals(PARK_BOUNDS.center.x, camera.target.x, eps)
+        assertEquals(PARK_BOUNDS.center.y, camera.target.y, eps)
+        assertEquals(PARK_BOUNDS.center.z, camera.target.z, eps)
+        // In front of the formation, pitched above it, at the returned distance.
+        val dy = camera.eye.y - camera.target.y
+        val dz = camera.eye.z - camera.target.z
+        assertTrue("eye must be in front (+Z)", dz > 0f)
+        assertTrue("eye must be above the target", dy > 0f)
+        assertEquals(camera.distance, hypot(dy, dz), 1e-3f)
+        assertEquals(camera.eye.x, camera.target.x, eps)
+    }
+
+    @Test
+    fun `parkCamera keeps every corner of the formation inside the visible band`() {
+        // The defect in #3923: the old cover distance (~2.1 m) put the lens inside the streamed
+        // trees and cropped the bundled fallbacks to two lanterns. Every corner of PARK_BOUNDS
+        // (an upper bound of whatever stands in the slots) must project inside the band between
+        // the identity row and the dock, in front of the near plane, on phones, tablets and in
+        // landscape.
+        // width, height, top inset, bottom inset (dp)
+        val viewports = listOf(
+            floatArrayOf(411f, 914f, 96f, 128f), // Pixel 7a portrait
+            floatArrayOf(360f, 780f, 96f, 128f), // small phone
+            floatArrayOf(800f, 1280f, 96f, 128f), // tablet portrait
+            floatArrayOf(914f, 411f, 72f, 104f), // phone landscape
+            floatArrayOf(1280f, 800f, 72f, 104f), // tablet landscape
+        )
+        for (viewport in viewports) {
+            val w = viewport[0]
+            val h = viewport[1]
+            val top = viewport[2]
+            val bottom = viewport[3]
+            val camera = parkCamera(w, h, top, bottom)
+            val bandTop = 1f - 2f * top / h
+            val bandBottom = -1f + 2f * bottom / h
+            for (corner in parkCorners()) {
+                val (x, y, depth) = project(camera, corner, aspect = w / h)
+                val where = "viewport ${w}x$h corner $corner"
+                assertTrue("$where is behind the near plane (depth $depth)", depth > DemoMath.DEFAULT_NEAR_PLANE)
+                assertTrue("$where is off the side of the frame (x $x)", abs(x) <= 1f)
+                assertTrue("$where is above the band (y $y > $bandTop)", y <= bandTop)
+                assertTrue("$where is below the band (y $y < $bandBottom)", y >= bandBottom)
+            }
+        }
+    }
+
+    @Test
+    fun `parkCamera no longer opens on the old cover distance`() {
+        // The #2913 cover distance filled the frame height with the tallest model. The fitted
+        // camera must stand well behind it, or the regression of #3923 is back.
+        val cover = (PARK_HEIGHT / 2f) / halfTan
+        val fitted = parkCamera(411f, 914f, 96f, 128f).distance
+        assertTrue("fitted $fitted must be well behind the old cover distance $cover", fitted > 2f * cover)
+    }
+
+    @Test
+    fun `parkCamera honours a camera distance override along the same direction`() {
+        val fitted = parkCamera(411f, 914f, 96f, 128f)
+        val pinned = parkCamera(411f, 914f, 96f, 128f, distanceOverride = 3f)
+        assertEquals(3f, pinned.distance, eps)
+        assertEquals(fitted.target, pinned.target)
+        // Same direction from the target: the eye offsets are proportional.
+        val ratio = 3f / fitted.distance
+        assertEquals((fitted.eye.y - fitted.target.y) * ratio, pinned.eye.y - pinned.target.y, 1e-4f)
+        assertEquals((fitted.eye.z - fitted.target.z) * ratio, pinned.eye.z - pinned.target.z, 1e-4f)
+        // An unusable override is ignored rather than propagated.
+        for (bad in listOf(0f, -1f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            assertEquals("override=$bad", fitted.distance, parkCamera(411f, 914f, 96f, 128f, bad).distance, eps)
+        }
+    }
+
+    /** The eight corners of [PARK_BOUNDS]. */
+    private fun parkCorners(): List<Position> = PARK_BOUNDS.run {
+        listOf(minX, maxX).flatMap { x ->
+            listOf(minY, maxY).flatMap { y -> listOf(minZ, maxZ).map { z -> Position(x, y, z) } }
+        }
+    }
+
+    /**
+     * Pinhole projection of [p] through a camera at [camera]'s eye looking at its target with the
+     * default 28 mm lens: normalised device x / y in `[-1, 1]` across the viewport, and the depth
+     * along the view axis.
+     */
+    private fun project(camera: ParkCamera, p: Position, aspect: Float): Triple<Float, Float, Float> {
+        val forward = normalize(camera.target - camera.eye)
+        val right = normalize(cross(forward, Float3(0f, 1f, 0f)))
+        val up = cross(right, forward)
+        val v = p - camera.eye
+        val depth = dot(v, forward)
+        return Triple(dot(v, right) / (depth * halfTan * aspect), dot(v, up) / (depth * halfTan), depth)
     }
 
     @Test
@@ -390,137 +476,6 @@ class DemoMathTest {
         // 90° CW and -90° CW are mirrored: (0, -1) vs (0, 1).
         assertEquals(pos.first, neg.first, eps)
         assertEquals(-pos.second, neg.second, eps)
-    }
-
-    // ── coverDistance (#2913) ───────────────────────────────────────────────
-
-    /** SceneView's default 28 mm lens against Filament's 24 mm sensor height. */
-    private val defaultVfovDegrees = Math.toDegrees(2.0 * atan(24.0 / (2.0 * 28.0)))
-
-    // The Multi-Model park formation, read from the SAME declarations the demo frames itself with
-    // (`ParkFraming.kt`). Restating them as literals here is exactly what would let the layout and
-    // the framing drift apart in silence: the assertions would stay green while describing a
-    // formation that no longer existed (#2913).
-    private val parkWidth = PARK_SPAN
-    private val parkHeight = PARK_HEIGHT
-
-    /** Half-extents of the world visible at [distance], for the cover assertions below. */
-    private fun visibleHalfExtents(distance: Float, aspect: Float): Pair<Float, Float> {
-        val halfHeight = distance * tan(Math.toRadians(defaultVfovDegrees) / 2.0).toFloat()
-        return (halfHeight * aspect) to halfHeight
-    }
-
-    @Test
-    fun `coverDistance frames the park formation full height on a portrait viewport`() {
-        // The defect in #2913: the camera sat ~0.6 m from the grove centroid, so a wider
-        // viewport revealed backdrop wall instead of more trees. The framing must put the
-        // formation's full height in the frame — d = (h / 2) / tan(vfov / 2).
-        val expected = (parkHeight / 2f) / tan(Math.toRadians(defaultVfovDegrees) / 2.0).toFloat()
-        val phone = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.47f)
-        assertEquals(expected, phone, eps)
-    }
-
-    @Test
-    fun `coverDistance is identical on phone and tablet portrait aspects`() {
-        // Filament fixes the VERTICAL fov, so between two portrait aspects the vertical term
-        // wins on both and the distance does not move — the tablet simply sees more world to
-        // the left and right, which at this distance is more trees rather than backdrop.
-        val phone = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.47f)
-        val tablet = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.64f)
-        assertEquals(phone, tablet, eps)
-    }
-
-    @Test
-    fun `coverDistance covers both axes at every portrait and landscape aspect`() {
-        // The contract: at the returned distance the content is at least as large as the
-        // frame on BOTH axes (cover), never smaller on one of them (which is `fit`).
-        for (aspect in listOf(0.42f, 0.47f, 0.56f, 0.64f, 0.75f, 1.0f, 1.33f, 1.78f, 2.4f)) {
-            val d = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, aspect)
-            val (halfWidth, halfHeight) = visibleHalfExtents(d, aspect)
-            assertTrue(
-                "aspect=$aspect: visible half-width $halfWidth must not exceed the content's " +
-                    "${parkWidth / 2f}",
-                halfWidth <= parkWidth / 2f + eps,
-            )
-            assertTrue(
-                "aspect=$aspect: visible half-height $halfHeight must not exceed the content's " +
-                    "${parkHeight / 2f}",
-                halfHeight <= parkHeight / 2f + eps,
-            )
-        }
-    }
-
-    @Test
-    fun `coverDistance pulls the camera in as the viewport widens past the content`() {
-        // Once the frame is wider than the formation is tall relative to its width, the
-        // horizontal term takes over: a landscape / foldable viewport must come CLOSER, or the
-        // formation stops spanning the width and the backdrop takes over the sides again.
-        val portrait = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.64f)
-        val landscape = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 1.78f)
-        assertTrue("landscape ($landscape) must be closer than portrait ($portrait)", landscape < portrait)
-        val expected = (parkWidth / 2f) /
-            (tan(Math.toRadians(defaultVfovDegrees) / 2.0).toFloat() * 1.78f)
-        assertEquals(expected, landscape, eps)
-    }
-
-    @Test
-    fun `coverDistance scales inversely with fill`() {
-        val base = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.47f)
-        // fill = 2 ⇒ the content spans twice the frame ⇒ half the distance.
-        val cropped = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.47f, fill = 2f)
-        assertEquals(base / 2f, cropped, eps)
-        // fill = 0.5 ⇒ the content spans half the frame ⇒ twice the distance.
-        val roomy = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.47f, fill = 0.5f)
-        assertEquals(base * 2f, roomy, eps)
-    }
-
-    @Test
-    fun `coverDistance falls back to a square viewport on an unmeasured aspect`() {
-        // BoxWithConstraints can report a zero / infinite constraint before layout; a NaN
-        // camera position would black out the viewport, so degenerate input resolves to 1.
-        val square = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 1f)
-        for (bad in listOf(0f, -1f, Float.NaN, Float.POSITIVE_INFINITY)) {
-            assertEquals("aspect=$bad", square, DemoMath.coverDistance(
-                parkWidth, parkHeight, defaultVfovDegrees, bad,
-            ), eps)
-        }
-        assertEquals(square, DemoMath.coverDistance(
-            parkWidth, parkHeight, defaultVfovDegrees, 1f, fill = Float.NaN,
-        ), eps)
-    }
-
-    @Test
-    fun `coverDistance lets a single measurable axis drive the framing`() {
-        // A degenerate axis must not constrain the result (a zero would otherwise win the
-        // `min` and drop the camera onto the subject).
-        val heightOnly = DemoMath.coverDistance(0f, parkHeight, defaultVfovDegrees, 0.47f)
-        val expected = (parkHeight / 2f) / tan(Math.toRadians(defaultVfovDegrees) / 2.0).toFloat()
-        assertEquals(expected, heightOnly, eps)
-        val widthOnly = DemoMath.coverDistance(parkWidth, 0f, defaultVfovDegrees, 1.78f)
-        val expectedWidth = (parkWidth / 2f) /
-            (tan(Math.toRadians(defaultVfovDegrees) / 2.0).toFloat() * 1.78f)
-        assertEquals(expectedWidth, widthOnly, eps)
-    }
-
-    @Test
-    fun `coverDistance never returns NaN for a non-finite field of view`() {
-        // `Double.coerceIn` returns NaN unchanged, so clamping the FOV is not enough on its own —
-        // a NaN would survive every later guard and reach the camera as a NaN position, which
-        // blacks out the viewport. Non-finite input falls back to the default 28 mm lens.
-        val default = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.47f)
-        for (bad in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
-            val d = DemoMath.coverDistance(parkWidth, parkHeight, bad, 0.47f)
-            assertTrue("fov=$bad returned $d", d.isFinite())
-            assertEquals("fov=$bad", default, d, 1e-2f)
-        }
-    }
-
-    @Test
-    fun `coverDistance stays inside its clamp`() {
-        // A fully degenerate box clamps to the far end rather than returning 0 / NaN.
-        assertEquals(50f, DemoMath.coverDistance(0f, 0f, defaultVfovDegrees, 1f), eps)
-        // A hair-thin box clamps to the near end rather than putting the camera at 0.
-        assertEquals(0.2f, DemoMath.coverDistance(0.0001f, 0.0001f, defaultVfovDegrees, 1f), eps)
     }
 
     // ── placementRotationFor (#1477 → #3735) ────────────────────────────────
