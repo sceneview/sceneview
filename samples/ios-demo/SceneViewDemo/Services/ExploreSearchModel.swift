@@ -47,7 +47,7 @@ struct ExploreSearchFailure: Equatable {
     static func keyRejected(_ sourceName: String) -> ExploreSearchFailure {
         ExploreSearchFailure(
             title: "\(sourceName) search is unavailable",
-            message: "The app's API key was rejected. Pick another catalog above — Icosa Gallery and Poly Haven need no key.",
+            message: "The app's API key was rejected. Pick Poly Haven above — it needs no key.",
             icon: "key.slash",
             canRetry: false
         )
@@ -257,5 +257,33 @@ enum ExploreFeedLoad {
     /// banner and the card must not double up on it.
     static func isUnreachable(feedCount: Int, failures: Int, rejected: Bool) -> Bool {
         feedCount > 0 && failures == feedCount && !rejected
+    }
+
+    /// What one feed carousel shows (#3789). A feed used to disappear once it
+    /// came back empty, so a failed Trending looked like no Trending at all.
+    enum SectionState: Equatable {
+        /// Cards, or placeholders while the first load runs.
+        case models
+        case loading
+        /// The heading, then a line saying the feed could not load, with Retry.
+        case failed
+        /// The heading, then a line saying the feed answered with nothing.
+        case empty
+        /// Nothing: a message elsewhere already covers it — the one "couldn't
+        /// reach" card when every feed failed, or the rejected-key banner.
+        case hidden
+    }
+
+    static func sectionState(
+        hasModels: Bool,
+        isLoading: Bool,
+        failed: Bool,
+        unreachable: Bool,
+        keyRejected: Bool
+    ) -> SectionState {
+        if hasModels { return .models }
+        if isLoading { return .loading }
+        if unreachable || keyRejected { return .hidden }
+        return failed ? .failed : .empty
     }
 }
