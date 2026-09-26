@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.39.0)
+  Source of truth: /llms.txt  (SceneView 4.40.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.39.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.40.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -731,10 +731,19 @@ vocabulary (`light`, `medium`, `heavy`, `success`, `warning`, `error`,
 exposes the same surface via `sceneview.haptic.*`, mapped to
 `navigator.vibrate(...)`.
 
-**Phase 1** ships the library API + sample-app migration; the
-**NodeGesture** modifiers (`Modifier.tapHaptic(...)`, drag-tick
-haptics) and **AR-event** modifiers (haptic on anchor placed, tracking
-degraded, plane detected) land in phase 2 / phase 3 of #1901.
+On top of the presets, eight **semantic AR events** (`ARHapticEvent`) cover
+automatic placement — placed, selected, 100 % snap, scale limit, invalid move,
+tracking lost, recovered, help needed — and play automatically once the app
+opts in with `ARHapticFeedback(state)` / `.arHapticFeedback(controller)`.
+Gesture-level modifiers (`Modifier.tapHaptic(...)`) are not shipped (#1901).
+
+**Android respects the *Touch feedback* setting.** Every preset and event
+first tries `View.performHapticFeedback` (when the facade has a `View`, as
+`rememberHapticFeedback()` does), then a primitive composition when the
+vibrator supports it, then a predefined effect. Vibrations carry
+`VibrationAttributes.USAGE_TOUCH` (API 33+) or `AudioAttributes`
+`USAGE_ASSISTANCE_SONIFICATION` (below), and below API 33 the setting is read
+directly: with *Touch feedback* off, **nothing vibrates**.
 
 ### Android (Jetpack Compose)
 
@@ -761,17 +770,18 @@ fun ARAnchorStatus(isStable: Boolean) {
 }
 ```
 
-**Permission policy.** The `sceneview` library does **NOT** auto-merge
-`android.permission.VIBRATE` — consumer apps opt in. Add to your
-`AndroidManifest.xml`:
+**Permission policy.** The `sceneview` library **declares**
+`android.permission.VIBRATE` (a normal permission, granted at install), so it
+is merged into every consumer app. To drop it, remove it in your manifest:
 
 ```xml
-<uses-permission android:name="android.permission.VIBRATE" />
+<uses-permission android:name="android.permission.VIBRATE"
+    tools:node="remove" />
 ```
 
-When the permission is missing (or the device has no vibrator), every
-method becomes a silent no-op + one `Log.d("SceneViewHaptic", …)` line
-on the first call. The API never throws.
+Without the permission (or without a vibrator), the `View` tiers still play;
+the vibrator tiers become silent no-ops with one `Log.d("SceneViewHaptic", …)`
+line on the first call. The API never throws.
 
 ### iOS (SwiftUI)
 
@@ -821,23 +831,67 @@ durations only, so `intensity` is accepted for cross-platform parity but
 ignored at runtime. Desktop browsers / Safari iOS that don't expose
 `navigator.vibrate` are silently no-ops.
 
+### Semantic AR events
+
+```kotlin
+import io.github.sceneview.ar.*
+
+val engine = rememberEngine()
+val modelLoader = rememberModelLoader(engine)
+val model = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+val placement = rememberAutoPlacementState()
+ARHapticFeedback(placement) // opt in: one line, next to AutoPlacementScene
+AutoPlacementScene(
+    assetReady = model != null,
+    state = placement,
+    engine = engine,
+    modelLoader = modelLoader,
+) { result ->
+    model?.let { AutoPlacementModel(result, placement, it, scaleToUnits = 0.3f) }
+}
+```
+
+```swift
+AutoPlacementScene(controller: controller)
+    .arHapticFeedback(controller)      // prepares the generators ahead of each event
+```
+
+Each event plays at most once per 400 ms. `TRACKING_LOST` plays only after
+tracking was established (never at session start). Play one yourself with
+`haptic.play(ARHapticEvent.Placed)` (Swift: `haptic.play(.placed)`).
+
+| Event | Android (first tier that applies) | iOS |
+|---|---|---|
+| `Placed` | `CONFIRM` (30) · `THUD`+`TICK` (31) · `EFFECT_HEAVY_CLICK` | `UIImpactFeedbackGenerator(.soft)` 0.8 |
+| `Selected` | `CONTEXT_CLICK` · `TICK` 0.5 · `EFFECT_TICK` | `UISelectionFeedbackGenerator` |
+| `ScaleSnapped` | `SEGMENT_TICK` (34) · `CLICK` 0.7 · `EFFECT_CLICK` · `CLOCK_TICK` | `UIImpactFeedbackGenerator(.rigid)` 0.7 |
+| `LimitReached` | `LOW_TICK` 0.7 (31) · `EFFECT_TICK` · `CLOCK_TICK` | `.rigid` 0.5 |
+| `InvalidMove` | `REJECT` (30) · `LOW_TICK` 0.5 (31) · `EFFECT_TICK` · `CLOCK_TICK` | `.rigid` 0.5 |
+| `TrackingLost` | `QUICK_FALL`+`LOW_TICK` (31) · `EFFECT_DOUBLE_CLICK` · `REJECT` | `.warning` notification |
+| `Recovered` | `CONFIRM` (30) · `QUICK_RISE`+`CLICK` · `EFFECT_DOUBLE_CLICK` | `.success` notification |
+| `HelpNeeded` | `CLICK`+`CLICK` · `EFFECT_DOUBLE_CLICK` · `REJECT` | `.warning` notification |
+
+iOS mutes every haptic while the app captures audio (an `ARSession` with
+`providesAudioData = true`, or a microphone recording) and when *System
+Haptics* is off. Haptics complement the UI — never the only signal.
+
 ### Preset mapping table
 
-| Preset | Android (API 29+) | iOS | Web |
+| Preset | Android: `View` constant → vibrator (API 29+) | iOS | Web |
 |---|---|---|---|
-| `light()` | `EFFECT_CLICK` | `UIImpactFeedbackGenerator(.light)` | `vibrate(10)` |
-| `medium()` | `EFFECT_TICK` | `UIImpactFeedbackGenerator(.medium)` | `vibrate(20)` |
-| `heavy()` | `EFFECT_HEAVY_CLICK` | `UIImpactFeedbackGenerator(.heavy)` | `vibrate(40)` |
-| `success()` | `EFFECT_DOUBLE_CLICK` | `UINotificationFeedbackGenerator.success` | `vibrate([10,50,20])` |
-| `warning()` | waveform `[0,30,30,30]` | `UINotificationFeedbackGenerator.warning` | `vibrate([30,30,30])` |
-| `error()` | waveform `[0,50,30,50,30,50]` | `UINotificationFeedbackGenerator.error` | `vibrate([50,30,50])` |
-| `selection()` | `EFFECT_TICK` | `UISelectionFeedbackGenerator.selectionChanged` | `vibrate(5)` |
+| `light()` | `CONTEXT_CLICK` → `TICK` 0.7 / `EFFECT_TICK` | `UIImpactFeedbackGenerator(.light)` | `vibrate(10)` |
+| `medium()` | `VIRTUAL_KEY` → `CLICK` 0.7 / `EFFECT_CLICK` | `UIImpactFeedbackGenerator(.medium)` | `vibrate(20)` |
+| `heavy()` | `LONG_PRESS` → `CLICK` 1.0 / `EFFECT_HEAVY_CLICK` | `UIImpactFeedbackGenerator(.heavy)` | `vibrate(40)` |
+| `success()` | `CONFIRM` (30) → `CLICK`×2 / `EFFECT_DOUBLE_CLICK` | `UINotificationFeedbackGenerator.success` | `vibrate([10,50,20])` |
+| `warning()` | `REJECT` (30) → `LOW_TICK`×2 / `EFFECT_DOUBLE_CLICK` | `UINotificationFeedbackGenerator.warning` | `vibrate([30,30,30])` |
+| `error()` | `REJECT` (30) → `LOW_TICK`×3 / `EFFECT_DOUBLE_CLICK` | `UINotificationFeedbackGenerator.error` | `vibrate([50,30,50])` |
+| `selection()` | `SEGMENT_FREQUENT_TICK` (34) / `CLOCK_TICK` → `TICK` 0.5 / `EFFECT_TICK` | `UISelectionFeedbackGenerator.selectionChanged` | `vibrate(5)` |
 
-Android API 24..28 fall back to short one-shots (`light` → 10 ms,
-`medium`/`selection` → 20 ms, `heavy` → 40 ms) when the predefined
-effects aren't available. The fallback table is encoded as part of the
-public contract — see `AndroidSceneViewHaptic` and pinned in
-`SceneViewHapticTest`.
+`medium()` is stronger than `light()` on every tier. Android API 24..28
+without a `View` fall back to short one-shots (`light`/`selection` → 10 ms,
+`medium` → 20 ms, `heavy` → 40 ms) and the waveforms `[0,30,80,30]`
+(success), `[0,30,30,30]` (warning), `[0,50,30,50,30,50]` (error). The
+table is pinned in `HapticRecipesTest` and `SceneViewHapticTest`.
 
 ---
 

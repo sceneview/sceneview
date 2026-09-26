@@ -1,5 +1,0 @@
-<!-- category: Added -->
-- `AutoPlacementScene` now shows an animated AR coaching overlay by default (`coaching = true`): a phone-and-surface glyph for starting the camera, scanning a floor or wall, the surface-found beat, limited tracking and looking back. `rememberArGuidanceState(placement)` exposes the same cue (`ArGuidanceCue`) and an `isCoaching` flag so apps can hide their own chrome while the overlay speaks; `ARCoachingOverlay` can also be used on its own. Motion tokens and the glyph are documented in `DESIGN.md`; reduced motion is honoured.
-- Placed models now grow in with a short entrance and shrink out on tracking loss, inside the SDK.
-- iOS: `AutoPlacementScene(controller:coaching:)` turns Apple's `ARCoachingOverlayView` back on (vertical goal for walls). `ARPlacementController.isCoachingActive` mirrors Android's `isCoaching`, and the overlay's Start Over resets the session and re-arms one placement.
-- Fixed: the first untracked frames of a session no longer report a false tracking loss on Android and iOS (`AutoPlacementState.hasCameraFrame`).

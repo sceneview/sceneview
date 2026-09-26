@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.39.0)
+  Source of truth: /llms.txt  (SceneView 4.40.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.39.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.40.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -362,6 +362,9 @@ STATE's durations, not a fresh copy, or the visual fade desynchronizes from the 
 
 Platform matrix: **iOS** — use `ARSceneView(showCoachingOverlay: true)` (Apple's first-party
 `ARCoachingOverlayView` IS the onboarding; no port needed). **Web** — coming soon.
+
+With `AutoPlacementScene`, don't add `PlaneDiscoveryGuide`: its built-in `ARCoachingOverlay`
+(`coaching = true`, the default) is the animated onboarding — see "Automatic placement".
 
 ### Scene Understanding — grouped AR rendering flags
 
@@ -1216,6 +1219,32 @@ AutoPlacementScene(
 // placement.resetPlacement(android.os.SystemClock.uptimeMillis())
 ```
 
+**Coaching overlay (on by default).** `AutoPlacementScene(coaching = true)` draws
+`ARCoachingOverlay` centred over the camera — the Android twin of Apple's
+`ARCoachingOverlayView`: a phone sweeping over a floor diamond (or a wall for
+`PlacementSurface.WALL`) while scanning, a short "surface found" beat (a cube lands on the
+filled target) when the object is placed, a pause glyph when tracking is limited, a "look
+back" arrow while a placed anchor relocalizes. It is silent when a card is due
+(`NO_SURFACE`, `RECOVERY_FAILED`, `CAMERA_ERROR`). Hide your own status pills while it
+shows:
+
+```kotlin
+val placement = rememberAutoPlacementState()
+val guidance = rememberArGuidanceState(placement, PlacementSurface.SURFACE)
+Box(Modifier.fillMaxSize()) {
+    AutoPlacementScene(assetReady = model != null, state = placement /* coaching = true */) { … }
+    if (!guidance.isCoaching) MyStatusPill(placement.phase)   // one voice at a time
+}
+```
+
+`guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
+`SCAN`, `SURFACE_FOUND` (600 ms after a new placement), `TRACKING_LIMITED`,
+`RELOCALIZING`. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
+render `ARCoachingOverlay(guidance)` yourself in any `Box`. The placed model grows in from
+55 % over 260 ms and shrinks away on tracking loss (opaque glTF materials cannot fade).
+`placement.hasCameraFrame` is true from the first camera frame, tracked or not — key a
+"starting camera" cover on it, not on `INITIALIZING`.
+
 `AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
 while rotating/scaling, and constrains dragging to supported plane geometry. Its
 0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
@@ -1228,8 +1257,11 @@ until its replacement succeeds. Observe `placement.phase`; use `requestPlacement
 removes the wrapper-owned anchor without restarting the camera. Interruption freezes
 manipulation and recovers the existing placement; it does not arm a new request.
 `onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
-capability, tracking, and camera failures. Copy, permissions, asset selection and
-semantic haptics belong to the app.
+capability, tracking, and camera failures. Copy, permissions and asset selection belong
+to the app. Semantic AR haptics ship in the SDK and are **opt-in**: add
+`ARHapticFeedback(placement)` next to the scene (Swift: `.arHapticFeedback(controller)`)
+— see *Haptic Feedback › Semantic AR events*. A pinch snaps to exactly 100 % within
+±4 %, with a short elastic rebound, on both platforms.
 
 States match Swift's `ARPlacementPhase`: `INITIALIZING`, `SCANNING`, `NO_SURFACE`,
 `PLACED`, `ADJUSTING`, `TRACKING_LOST`, `RECOVERING`, `RECOVERY_FAILED`, `CAMERA_ERROR`.
@@ -3624,7 +3656,7 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 All `remember*` helpers create and memoize Filament objects, destroying them on disposal.
 Most are default parameter values in `SceneView`/`ARSceneView` — call them explicitly only when sharing resources or customizing.
 
-**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done.
+**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done. `destroyModel` is safe at any point of a load, including while the textures are still decoding: it cancels that model's pending texture load first, so no app-side `resourceLoader.asyncCancelLoad()` is needed.
 
 | Helper | Returns | Purpose |
 |--------|---------|---------|
@@ -4438,7 +4470,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.39.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.40.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -5054,7 +5086,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.39.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.40.0")
 ```
 
 Import: `import SceneViewSwift`
