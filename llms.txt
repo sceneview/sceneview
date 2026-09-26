@@ -8656,7 +8656,7 @@ For `ARSceneView` it is **Android-only**: SceneViewSwift's `ARSceneView` exposes
 hit-test hook (#2051).
 Controller methods: `loadModel(ModelNode)`, `addGeometry(GeometryNode)`, `addLight(LightNode)`,
 `clearScene()`, `setEnvironment(hdrPath)`, `setCameraControlMode(CameraControlMode)`,
-`setAutoCenterContent(bool)`.
+`setAutoCenterContent(bool)`, `placeModel(ARHitResult, ModelNode)`, `removePlacedModel(PlacedModel)`.
 Note: `GeometryNode` and `LightNode` render on Android; on iOS the bridge acknowledges them but does not render them yet.
 
 v4.3.0 camera + recording APIs:
@@ -8675,6 +8675,34 @@ final path = await recorder.stopRecording();   // returns .mov path
 await recorder.saveToPhotoLibrary(path);
 // recorder.state / recorder.stateChanges — ARRecorderState.idle/recording/error
 ```
+
+AR tap-to-place (#3780) — Android and iOS, same Dart API. Tap a detected plane to anchor a model;
+the user then drags it (one finger), twists it (two fingers, rotation about the plane normal) and
+pinches it (scale clamped to 0.25x–4x):
+```dart
+// One line: every plane tap anchors a copy of the model.
+ARSceneView(placeOnTap: const ModelNode(modelPath: 'models/chair.glb', scale: 0.5))
+
+// Explicit form: take the hit, keep the handle.
+final controller = SceneViewController();
+ARSceneView(
+  controller: controller,
+  onPlaneTap: (ARHitResult hit) async {
+    final PlacedModel placed = await controller.placeModel(
+      hit,
+      const ModelNode(modelPath: 'models/chair.glb', scale: 0.5),
+      // editable / draggable / rotatable / scalable — all default to true
+    );
+    // later: await controller.removePlacedModel(placed);
+  },
+)
+```
+In `placeModel`, `ModelNode.scale` is the model's **largest dimension in metres**; `x/y/z` and
+rotations are ignored (bottom-centred on the hit, facing the camera). `ARHitResult` has `x/y/z`,
+the quaternion `qx/qy/qz/qw` (+Y = plane normal), `planeType`, `distance`. Errors are
+`PlatformException` codes `NOT_TRACKING`, `UNSUPPORTED_FORMAT` (iOS needs USDZ/Reality),
+`LOAD_FAILED`. `clearScene()` also removes placed models. The `modelPath` rule above still applies:
+GLB/URL on Android, bundled USDZ resource name on iOS.
 
 ### React Native Bridge API
 Package: `@sceneview-sdk/react-native` (npm) — Alpha, Android + iOS only.

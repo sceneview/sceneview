@@ -292,7 +292,7 @@ class SceneViewPlatformView(
                 environment = environment,
             ) {
                 modelNodes.forEachIndexed { index, model ->
-                    val instance = rememberModelInstance(modelLoader, model.path)
+                    val instance = rememberModelInstance(modelLoader, fileLocation = model.path)
                     instance?.let {
                         ModelNode(
                             modelInstance = it,
@@ -570,7 +570,7 @@ class ARSceneViewPlatformView(
 
 
                 modelNodes.forEachIndexed { index, model ->
-                    val instance = rememberModelInstance(modelLoader, model.path)
+                    val instance = rememberModelInstance(modelLoader, fileLocation = model.path)
                     instance?.let {
                         ModelNode(
                             modelInstance = it,
