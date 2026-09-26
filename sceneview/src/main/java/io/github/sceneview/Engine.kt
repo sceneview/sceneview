@@ -27,6 +27,7 @@ import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.model.Model
+import java.util.WeakHashMap
 
 typealias Entity = Int
 typealias EntityInstance = Int
@@ -81,7 +82,7 @@ internal fun Engine.drainFramePipeline(timeoutNanos: Long): Boolean {
     return status == Fence.FenceStatus.CONDITION_SATISFIED
 }
 
-/** How often [destroyWhenBackendIdle] re-checks its fence: one frame at 60 Hz. */
+/** How often a teardown deferred by [whenBackendIdle] re-checks its fence: one frame at 60 Hz. */
 internal const val BACKEND_IDLE_POLL_MS = 16L
 
 /**
@@ -92,14 +93,9 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
  * (`FEngine::shutdown`: "wait for all pending commands to be executed and the thread to exit").
  * When a scene is disposed right after it appeared, those pending commands include its lazy
  * shader compilation, and the join blocks the main thread for as long as that takes — an ANR on
- * an emulator (#3799). Instead, a fence is queued behind the backlog and polled with a zero
- * timeout from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS]; the engine is
- * destroyed, on that same thread (Filament requires it), once the fence has signalled. When the
- * backend is already idle — the usual case — the destroy happens before this function returns,
- * exactly as [safeDestroy] would.
- *
- * Falls back to an immediate [safeDestroy] when the calling thread has no [Looper] or the fence
- * cannot be created.
+ * an emulator (#3799). Instead the engine is destroyed through [whenBackendIdle], on the calling
+ * thread (Filament requires it). When the backend is already idle — the usual case — the destroy
+ * happens before this function returns, exactly as [safeDestroy] would.
  *
  * @param onDestroyed runs right after the engine is destroyed — release whatever must outlive
  * it (its shared EGL context, say) here.
@@ -107,15 +103,9 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
 internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
     val startedAt = SystemClock.uptimeMillis()
     // Destroyed by someone else while the fence was pending: only the EGL side is left to release.
-    whenBackendIdle(onEngineGone = onDestroyed) { deferredPolls ->
+    whenBackendIdle(onEngineGone = onDestroyed) { deferred ->
         safeDestroy()
-        if (deferredPolls > 0) {
-            Log.i(
-                "Sceneview",
-                "Engine destroyed after its backend drained " +
-                    "(${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
-            )
-        }
+        if (deferred) logDeferredTeardown("Engine", startedAt)
         onDestroyed()
     }
 }
@@ -131,99 +121,70 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * ANR on an emulator (#3799). Deferred until the backend is idle, that inner wait has nothing left
  * to drain. When the backend is already idle — the usual case — the renderer is destroyed before
  * this function returns, exactly as [safeDestroyRenderer] would.
- *
- * If the engine is destroyed first, `FEngine::shutdown` reclaims the renderer with everything else
- * it still owns, and nothing more is done here.
  */
 internal fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
     val startedAt = SystemClock.uptimeMillis()
-    whenBackendIdle(onEngineGone = {}) { deferredPolls ->
+    whenBackendIdle { deferred ->
         safeDestroyRenderer(renderer)
-        if (deferredPolls > 0) {
-            Log.i(
-                "Sceneview",
-                "Renderer destroyed after its backend drained " +
-                    "(${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
-            )
-        }
+        if (deferred) logDeferredTeardown("Renderer", startedAt)
     }
 }
+
+internal fun logDeferredTeardown(what: String, startedAt: Long) = Log.i(
+    "Sceneview",
+    "$what destroyed after its backend drained (${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
+)
+
+/**
+ * The deferred teardowns of each live engine, run by [safeDestroy] before the engine goes.
+ * Weak keys: a registry holds no reference to its engine once its teardowns have run.
+ */
+private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
 
 /**
  * Runs [onIdle] on the calling thread once this engine's backend has executed everything already
  * queued, polling a fence from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS] instead
- * of waiting on it. [onIdle] runs before this function returns when the backend is already idle,
- * and also — the old blocking behaviour — when the thread has no [Looper] or the fence cannot be
- * created. [onEngineGone] runs instead when the engine is destroyed while the fence is pending.
+ * of waiting on it (#3799). See [BackendIdleTeardowns] for the contract.
+ *
+ * [onIdle] receives `deferred = false` when it ran before this function returned: the backend was
+ * already idle, or — the old blocking behaviour — the thread has no [Looper] or the fence could not
+ * be created. A deferred [onIdle] is run by [safeDestroy] at the latest, so the engine always
+ * outlives it. [onEngineGone] runs instead of [onIdle] only when the engine is already destroyed,
+ * or is destroyed without [safeDestroy] while the fence is pending; the fence is not touched then.
  */
-private fun Engine.whenBackendIdle(
-    onEngineGone: () -> Unit,
-    onIdle: (deferredPolls: Int) -> Unit,
+internal fun Engine.whenBackendIdle(
+    onEngineGone: () -> Unit = {},
+    onIdle: (deferred: Boolean) -> Unit,
 ) {
+    if (!isValid) {
+        onEngineGone()
+        return
+    }
     val looper = Looper.myLooper()
     val fence = if (looper != null) runCatching { createFence() }.getOrNull() else null
     if (looper == null || fence == null) {
-        onIdle(0)
+        onIdle(false)
         return
     }
     val handler = Handler(looper)
-    awaitBackendIdleWhileAlive(
+    backendIdleTeardowns.getOrPut(this) { BackendIdleTeardowns() }.defer(
         isEngineAlive = { isValid },
-        isFenceBusy = {
+        isBackendBusy = {
             runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }
                 .getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
         },
         schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
-        onIdle = { deferredPolls ->
-            runCatching { destroyFence(fence) }
-            onIdle(deferredPolls)
+        teardown = { deferred ->
+            // Checked again here: whatever path runs a teardown, it never touches a dead engine.
+            if (isValid) {
+                runCatching { destroyFence(fence) }
+                onIdle(deferred)
+            } else {
+                onEngineGone()
+            }
         },
         onEngineGone = onEngineGone,
     )
-}
-
-/**
- * [awaitBackendIdle] on a fence owned by an engine that may be destroyed while it is polled.
- *
- * `FEngine::shutdown` frees every fence the engine still owns, and the Java `Fence` keeps its
- * now-dangling native pointer: waiting on it after that is a native crash, not an exception. So
- * [isEngineAlive] is checked before every poll; once it is `false` the fence is never touched again
- * and [onEngineGone] runs instead of [onIdle].
- */
-internal fun awaitBackendIdleWhileAlive(
-    isEngineAlive: () -> Boolean,
-    isFenceBusy: () -> Boolean,
-    schedule: (delayMs: Long, block: () -> Unit) -> Unit,
-    onIdle: (deferredPolls: Int) -> Unit,
-    onEngineGone: () -> Unit,
-) = awaitBackendIdle(
-    isBackendBusy = { isEngineAlive() && isFenceBusy() },
-    schedule = schedule,
-    onIdle = { deferredPolls -> if (isEngineAlive()) onIdle(deferredPolls) else onEngineGone() },
-)
-
-/**
- * The non-blocking poll behind [destroyWhenBackendIdle], kept free of Android and Filament types
- * so it can be tested on the JVM.
- *
- * Calls [onIdle] synchronously when [isBackendBusy] is already `false`; otherwise asks
- * [schedule] to re-check after [intervalMs], and so on until the backend is idle. [onIdle]
- * receives how many re-checks were scheduled (`0` = it ran synchronously). Never waits itself.
- */
-internal fun awaitBackendIdle(
-    isBackendBusy: () -> Boolean,
-    schedule: (delayMs: Long, block: () -> Unit) -> Unit,
-    onIdle: (deferredPolls: Int) -> Unit,
-    intervalMs: Long = BACKEND_IDLE_POLL_MS,
-    deferredPolls: Int = 0,
-) {
-    if (!isBackendBusy()) {
-        onIdle(deferredPolls)
-        return
-    }
-    schedule(intervalMs) {
-        awaitBackendIdle(isBackendBusy, schedule, onIdle, intervalMs, deferredPolls + 1)
-    }
 }
 
 /**
@@ -245,6 +206,9 @@ fun AssetLoader.safeDestroyModel(model: Model) {
 }
 
 fun Engine.safeDestroy() = runCatching {
+    // Teardowns still waiting for the backend (a renderer, an IBL prefilter context) run first:
+    // the engine must outlive what it owns, and they would read freed memory after it (#3885).
+    runCatching { backendIdleTeardowns.remove(this)?.runPending() }
     // Drain the frame-deferred destroy queue first: once the Engine is gone the queued
     // textures/streams can no longer be destroyed individually (sceneview/sceneview#874).
     // The Engine reclaims everything below anyway, so the grace period no longer applies.
