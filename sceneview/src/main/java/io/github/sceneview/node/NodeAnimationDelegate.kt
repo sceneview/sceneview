@@ -1,6 +1,7 @@
 package io.github.sceneview.node
 
 import dev.romainguy.kotlin.math.Quaternion
+import io.github.sceneview.frameDeltaSeconds
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
@@ -9,7 +10,6 @@ import io.github.sceneview.math.quaternion
 import io.github.sceneview.math.slerp
 import io.github.sceneview.math.toColumnsFloatArray
 import io.github.sceneview.math.toTransform
-import io.github.sceneview.utils.intervalSeconds
 
 /**
  * Handles smooth (interpolated) transform animation for a [Node].
@@ -59,6 +59,15 @@ class NodeAnimationDelegate(
      * @param frameTimeNanos wall-clock time of the current frame in nanoseconds.
      */
     fun onFrame(frameTimeNanos: Long) {
+        // Capped and park-safe (see [frameDeltaSeconds]). `intervalSeconds` handed the first
+        // tick of a node its whole age since time zero and the first tick after an on-demand
+        // park the whole park, so a `smooth = true` move issued after an idle spell converged
+        // in one frame: a snap, on exactly the call that asked not to.
+        val deltaSeconds = frameDeltaSeconds(frameTimeNanos, lastFrameTimeNanos)
+        lastFrameTimeNanos = frameTimeNanos
+        // A repeated timestamp advances nothing, and a zero step would look "converged" to the
+        // test below and snap to the target.
+        if (deltaSeconds <= 0.0) return
         smoothTransform?.let { target ->
             // #2265: read node.transform ONCE per frame (was 3 Filament JNI round-trips —
             // the `target != node.transform` check, the slerp `start`, and the convergence
@@ -83,7 +92,7 @@ class NodeAnimationDelegate(
                     endPosition = targetPosition,
                     endQuaternion = targetQuaternion,
                     endScale = targetScale,
-                    deltaSeconds = frameTimeNanos.intervalSeconds(lastFrameTimeNanos),
+                    deltaSeconds = deltaSeconds,
                     speed = smoothTransformSpeed
                 )
                 val slerpTransform = Transform(slerpPosition, slerpQuaternion, slerpScale)
@@ -98,7 +107,6 @@ class NodeAnimationDelegate(
                 smoothTransform = null
             }
         }
-        lastFrameTimeNanos = frameTimeNanos
     }
 }
 

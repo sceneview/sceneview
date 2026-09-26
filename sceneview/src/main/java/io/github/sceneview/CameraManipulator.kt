@@ -24,10 +24,20 @@ import io.github.sceneview.node.CameraNode
  * ) { ModelNode(modelInstance) }
  * ```
  *
+ * ### Changing the radius or the target
+ *
+ * The manipulator is keyed on [orbitRadius] and [targetPosition]: pass a new value (a radius
+ * derived from a model's measured size, a target that moves once the model has loaded) and a
+ * fresh manipulator frames it. `SceneView` glides the camera from the pose on screen to the new
+ * framing over ~0.6 s instead of cutting. A rebuild starts a new orbit, so the user's current
+ * orbit angle is replaced by the default 3/4 view: derive the radius once from what it depends
+ * on, don't animate it frame by frame.
+ *
  * @param orbitRadius    Camera-to-target distance in metres. Must be `> 0`.
  * @param targetPosition Point in world space the camera orbits around and initially looks at
  *                       (optional; defaults to the origin).
  * @param creator        Factory for the manipulator. Override to set a custom orbit speed, etc.
+ *                       Called again whenever [orbitRadius] or [targetPosition] changes.
  */
 @Composable
 fun rememberCameraManipulator(
@@ -36,4 +46,8 @@ fun rememberCameraManipulator(
     creator: () -> CameraGestureDetector.CameraManipulator = {
         createDefaultCameraManipulator(orbitRadius = orbitRadius, targetPosition = targetPosition)
     }
-) = remember(creator)
+): CameraGestureDetector.CameraManipulator =
+    // Keyed on the framing inputs. The keyless `remember(creator)` this replaces built the
+    // manipulator once and silently ignored every later radius, which pushed callers into
+    // rebuilding it themselves — and every such rebuild used to be a visible camera cut.
+    remember(orbitRadius, targetPosition) { creator() }

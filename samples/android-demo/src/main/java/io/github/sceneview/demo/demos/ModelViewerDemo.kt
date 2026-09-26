@@ -211,6 +211,102 @@ private const val MODEL_COVER_FRAMES = 2
  */
 private const val CAMERA_ENTRANCE_MILLIS = 700
 
+/**
+ * How long the resting framing takes to follow a change of the chrome insets or the viewport
+ * (the identity row measuring itself, the navigation bar settling). One `duration-medium`.
+ */
+private const val FRAMING_SETTLE_MILLIS = 350
+
+/**
+ * Largest step, in seconds, one frame may advance the camera flights by. The frames that first
+ * show a model are the ones its upload drops; a flight timed on the wall clock spends itself in
+ * those gaps and reaches the screen as a cut. Capped, a dropped frame only makes it run longer.
+ */
+private const val MAX_FLIGHT_STEP_SECONDS = 1f / 20f
+
+/**
+ * Animates this value from where it is to `1f` over [durationMillis] of *frames*, eased by
+ * [easing]. Unlike `animateTo(tween(...))`, which reads the wall clock, each frame advances by
+ * at most [MAX_FLIGHT_STEP_SECONDS], so a stall pauses the flight instead of skipping it.
+ */
+private suspend fun Animatable<Float, *>.flyToOne(
+    durationMillis: Int,
+    easing: androidx.compose.animation.core.Easing,
+) {
+    val duration = durationMillis / 1000f
+    val start = value
+    var elapsed = 0f
+    var last = withFrameNanos { it }
+    while (elapsed < duration) {
+        val now = withFrameNanos { it }
+        elapsed += ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_FLIGHT_STEP_SECONDS)
+        last = now
+        val t = easing.transform((elapsed / duration).coerceAtMost(1f))
+        snapTo(start + (1f - start) * t)
+    }
+}
+
+/**
+ * The resting framing the camera is actually aimed with — the live [DemoMath.ViewerFraming],
+ * but eased when it changes under a model that is already on screen (#3404's inset settle).
+ *
+ * The eye and pivot providers used to read the live framing, so the frame the identity row
+ * measured itself moved the destination of a flight in progress, or the resting camera, by the
+ * whole difference at once. A new model (a different `bounds` instance) or a first framing is
+ * not eased: nothing on screen is framed by it yet.
+ */
+private class EasedFraming {
+    private var from: DemoMath.ViewerFraming? = null
+    private var to: DemoMath.ViewerFraming? = null
+    private var content: Any? = null
+
+    /** `true` between [retarget] and the start of the ease: hold the pose on screen. */
+    private var holding = false
+
+    /**
+     * Points the framing at [framing] for [forContent]. Returns `true` when the change must be
+     * eased — the caller then runs the blend from `0` to `1` and calls [release] once at `0`.
+     */
+    fun retarget(framing: DemoMath.ViewerFraming?, forContent: Any?, blend: Float): Boolean {
+        if (framing == to && forContent === content) return false
+        val shown = current(blend)
+        val sameContent = forContent === content
+        content = forContent
+        return if (shown == null || framing == null || !sameContent) {
+            from = null
+            to = framing
+            holding = false
+            false
+        } else {
+            from = shown
+            to = framing
+            holding = true
+            true
+        }
+    }
+
+    /** The ease has started from `0`: stop holding the captured pose. */
+    fun release() {
+        holding = false
+    }
+
+    /** The framing to aim with at [blend] (`0` = where the ease started, `1` = the target). */
+    fun current(blend: Float): DemoMath.ViewerFraming? {
+        val target = to ?: return null
+        val start = from ?: return target
+        if (holding) return start
+        val t = blend.coerceIn(0f, 1f)
+        fun mix(a: Float, b: Float) = a + (b - a) * t
+        fun mix(a: Triple<Float, Float, Float>, b: Triple<Float, Float, Float>) =
+            Triple(mix(a.first, b.first), mix(a.second, b.second), mix(a.third, b.third))
+        return DemoMath.ViewerFraming(
+            distance = mix(start.distance, target.distance),
+            targetOffset = mix(start.targetOffset, target.targetOffset),
+            eyeOffset = mix(start.eyeOffset, target.eyeOffset),
+        )
+    }
+}
+
 private enum class ModelViewerMode(val label: String) {
     Single("Single Model"),
     Multi("Multi-Model"),
@@ -439,6 +535,11 @@ private fun SingleModelSection(
     // swung off-axis and lifted, and flies to the resting framing while the model settles
     // under it. See [EntranceCameraManipulator] for the geometry.
     val entranceProgress = remember { Animatable(0f) }
+    // Which content `entranceProgress` currently belongs to (the `bounds` instance the entrance
+    // effect last claimed it for). A manipulator rebuilt for a new model reads `0f` until the
+    // effect below claims the progress for it: before, it read the PREVIOUS model's `1f` for the
+    // frame(s) until `snapTo(0f)` ran, so the camera showed the resting pose, then jumped wide.
+    val entranceOwner = remember { java.util.concurrent.atomic.AtomicReference<Any?>(null) }
     val modelYaw = rememberHeroYaw(trigger = spinScene && activeModelInstance != null, durationMillis = 20_000, staticYaw = 0f)
 
     // Camera-distance slider state. Wired directly to [DemoSettings.cameraDistance]
@@ -562,26 +663,26 @@ private fun SingleModelSection(
         if (DemoSettings.qaMode) {
             entranceProgress.snapTo(1f)
             fitProgress.snapTo(1f)
+            entranceOwner.set(bounds)
             return@LaunchedEffect
         }
         if (!modelPresented) {
             entranceProgress.snapTo(0f)
             fitProgress.snapTo(0f)
+            entranceOwner.set(bounds)
             return@LaunchedEffect
         }
         entranceProgress.snapTo(0f)
         fitProgress.snapTo(0f)
-        // The tween below runs on the wall clock, and the frame that shows the model is followed
-        // by the ones its upload drops: started there, those frames come out of the flight.
+        entranceOwner.set(bounds)
+        // The frame that shows the model is followed by the ones its upload drops. The flight
+        // below advances by capped frame steps (see [flyToOne]) so those gaps cannot eat it,
+        // and waiting for a steady pace first keeps it from starting inside them.
         io.github.sceneview.demo.awaitSteadyFrames()
         launch { fitProgress.animateTo(1f, SceneViewTokens.Motion.spring()) }
-        entranceProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(
-                durationMillis = CAMERA_ENTRANCE_MILLIS,
-                easing = SceneViewTokens.Ease.expressive,
-            ),
-        )
+        // The flight is read by the camera manipulator from inside the render loop; wake it.
+        renderInvalidator.requestRender()
+        entranceProgress.flyToOne(CAMERA_ENTRANCE_MILLIS, SceneViewTokens.Ease.expressive)
     }
     // Back closes transient chrome before leaving the demo.
     val anySheetOpen = animationBarOpen || modelSheetOpen || environmentSheetOpen
@@ -810,7 +911,30 @@ private fun SingleModelSection(
                     verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
                 )
             }
-            LaunchedEffect(framing) { framing?.let { autoFitRadius = it.distance } }
+            // Published for the "Camera distance" slider. A `SideEffect`, not a
+            // `LaunchedEffect`: the effect ran a frame after the framing it reported, so the
+            // settle drop and the near plane below were sized for the previous model for a frame.
+            SideEffect { framing?.let { if (autoFitRadius != it.distance) autoFitRadius = it.distance } }
+            // Same frame as the framing itself, for the scene below.
+            val fitRadius = framing?.distance ?: autoFitRadius
+            // The framing the camera is aimed with: the live one, eased when it changes under a
+            // model already on screen (see [EasedFraming]).
+            val easedFraming = remember { EasedFraming() }
+            val framingBlend = remember { Animatable(1f) }
+            var framingEaseGeneration by remember { mutableStateOf(0) }
+            SideEffect {
+                if (easedFraming.retarget(framing, bounds, framingBlend.value)) framingEaseGeneration++
+            }
+            LaunchedEffect(framingEaseGeneration) {
+                if (framingEaseGeneration == 0) return@LaunchedEffect
+                framingBlend.snapTo(0f)
+                easedFraming.release()
+                renderInvalidator.requestRender()
+                framingBlend.flyToOne(
+                    FRAMING_SETTLE_MILLIS,
+                    androidx.compose.animation.core.FastOutSlowInEasing,
+                )
+            }
             // Camera orbits; the model stays fixed at its glTF pose. The resting pose is flown
             // to when the model lands (#3406) and then held live.
             //
@@ -824,9 +948,12 @@ private fun SingleModelSection(
             // through providers now, so a settling inset or a zoom change moves the distance and
             // nothing else.
             val liveFraming = androidx.compose.runtime.rememberUpdatedState(framing)
+            // Read by providers the manipulator captured at creation: everything it touches is
+            // remembered or a state read, never this composition's `framing`.
+            val aimFraming = { easedFraming.current(framingBlend.value) ?: liveFraming.value }
             val liveCenter = androidx.compose.runtime.rememberUpdatedState(modelCenter)
             val livePivot = {
-                val f = liveFraming.value
+                val f = aimFraming()
                 val c = liveCenter.value
                 if (f == null) c
                 else Position(c.x, c.y + f.targetOffset.second, c.z + f.targetOffset.third)
@@ -838,15 +965,20 @@ private fun SingleModelSection(
             // user had actually orbited to (#3622). `beginRecenterFlight` now does that job on the
             // SAME instance, from the dock's onClick above, before `recenterGeneration` even changes.
             val cameraManipulator = remember(activeModelInstance) {
+                // The content this manipulator frames; `entranceProgress` only counts for it once
+                // the entrance effect has claimed it (see `entranceOwner`).
+                val ownContent = bounds
                 EntranceCameraManipulator(
                     eye = {
-                        val f = liveFraming.value
+                        val f = aimFraming()
                         val c = liveCenter.value
                         if (f == null) Position(c.x, c.y, c.z + 1.4f)
                         else Position(c.x, c.y + f.eyeOffset.second, c.z + f.eyeOffset.third)
                     },
                     target = livePivot,
-                    progress = { entranceProgress.value },
+                    progress = {
+                        if (entranceOwner.get() === ownContent) entranceProgress.value else 0f
+                    },
                     fitDistance = { liveFraming.value?.distance ?: 1.4f },
                     distanceOverride = { DemoSettings.cameraDistance },
                     // A pinch publishes its distance to the SAME state the slider writes, so the
@@ -861,8 +993,10 @@ private fun SingleModelSection(
             // recentring brings it back. `viewerNearPlane` keeps the default for everything that
             // already worked and only tightens it for a subject smaller than it.
             val cameraNode = rememberCameraNode(engine)
-            LaunchedEffect(autoFitRadius) {
-                cameraNode.near = DemoMath.viewerNearPlane(autoFitRadius)
+            // In the frame the radius changes, not one later (see `fitRadius`).
+            SideEffect {
+                val near = DemoMath.viewerNearPlane(fitRadius)
+                if (cameraNode.near != near) cameraNode.near = near
             }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
@@ -896,7 +1030,7 @@ private fun SingleModelSection(
                         // from slightly below its resting pose.
                         position = Position(
                             modelCenter.x - rx,
-                            -autoFitRadius * 0.06f * (1f - fitProgress.value),
+                            -fitRadius * 0.06f * (1f - fitProgress.value),
                             modelCenter.z - rz,
                         ),
                         rotation = Rotation(y = modelYaw),
