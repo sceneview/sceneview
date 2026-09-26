@@ -66,7 +66,21 @@ class ModelLoader(
 
     val materialProvider = UbershaderProvider(engine)
     val assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
+
+    /**
+     * The gltfio loader that finalises every model's textures, pumped by [updateLoad].
+     *
+     * Read it through this property each time rather than keeping your own reference: when a model
+     * is destroyed while its textures are still decoding, the load is cancelled and this property
+     * moves to a fresh loader (see [destroyModel]). The previous one stays valid until [destroy].
+     */
     var resourceLoader = ResourceLoader(engine, true)
+
+    // Loaders swapped out by an interrupted cancel (see `asyncLoad`), kept alive until `destroy()`:
+    // gltfio's Java `ResourceLoader.destroy()` does not zero its native handle, so any caller still
+    // holding the old reference (an app, a progress read on another thread) would otherwise call
+    // into freed memory.
+    private val retiredResourceLoaders = mutableListOf<ResourceLoader>()
 
     private val models = java.util.Collections.synchronizedList(mutableListOf<Model>())
 //    private val modelInstances = mutableListOf<ModelInstance>()
@@ -85,6 +99,32 @@ class ModelLoader(
     // composition on another dispatcher must not see a stale `true` forever.
     @Volatile
     private var asyncLoadStarted = false
+
+    // The model gltfio's ResourceLoader last began an async load for, i.e. the only one whose
+    // textures can still be decoding (#3868). Every destroy path goes through `destroyModel`, which
+    // cancels that load before freeing the model. Main thread only, like both callbacks.
+    private val asyncLoad = AsyncLoadSlot<Model>(
+        beginLoad = { model ->
+            asyncLoadStarted = true
+            resourceLoader.asyncBeginLoad(model)
+        },
+        cancelLoad = { inFlight ->
+            // `asyncCancelLoad` drops the asset pointer `updateLoad` would otherwise keep
+            // dereferencing, after waiting for the decoder jobs already running (stb cannot
+            // interrupt one), then flushes the engine. When it interrupted a load, the providers
+            // retire the unfinished textures without counting them as finalised: progress could
+            // never reach 1 again on this loader and `isLoading` would hold the render loop awake
+            // forever. A fresh loader replaces it.
+            val interrupted = inFlight != null && resourceLoader.asyncGetLoadProgress() < 1f
+            resourceLoader.asyncCancelLoad()
+            if (interrupted) {
+                resourceLoader.evictResourceData()
+                retiredResourceLoaders += resourceLoader
+                resourceLoader = ResourceLoader(engine, true)
+            }
+            asyncLoadStarted = false
+        },
+    )
 
     /**
      * Whether an asynchronous resource load is in flight — i.e. one was started and Filament has
@@ -185,7 +225,25 @@ class ModelLoader(
     suspend fun loadModel(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): Model? = context.loadFileBuffer(fileLocation)?.let { buffer ->
+    ): Model? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset) { it }
+
+    /**
+     * Shared body of every suspend load: reads and converts the file off the main thread, creates
+     * the asset with [create] on the main thread, fetches its external resources, then begins its
+     * async load and runs [onLoadBegun] in **one** main-thread hop.
+     *
+     * That hop feeds the resources and begins the load together, so an interrupted cancel (which
+     * swaps [resourceLoader], see `asyncLoad`) can never split a model's resources across two
+     * loaders. It also checks the model is still alive first: `clear()` can destroy it while its
+     * resources are fetched, and `asyncBeginLoad` or any JNI call on a freed asset is a native
+     * crash (#3868). The result is `null` when the file, the parse or the model itself is gone.
+     */
+    private suspend fun <R : Any> loadModelThen(
+        fileLocation: String,
+        resourceResolver: (resourceFileName: String) -> String,
+        create: (Buffer) -> Model?,
+        onLoadBegun: (Model) -> R,
+    ): R? = context.loadFileBuffer(fileLocation)?.let { buffer ->
         // Transcoding decodes and re-encodes images: keep it off the main thread.
         val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource() }
         // Registering into `models` happens *inside* the create block, in the same
@@ -195,14 +253,22 @@ class ModelLoader(
         // through the same claim-then-destroy path as every other destroyModel() caller
         // instead of racing it.
         val model = createOrDestroyOnCancel(::destroyModel) {
-            assetLoader.createAsset(source)?.also { models += it }
+            create(source)?.also { models += it }
         } ?: return@let null
         destroyOnCancel(model, ::destroyModel) {
-            loadResourcesSuspended(model) { resourceFileName: String ->
-                context.loadFileBuffer(resourceResolver(resourceFileName))
+            val uris = withContext(Dispatchers.Main) {
+                model.takeIf { it in models }?.resourceUris
+            } ?: return@destroyOnCancel null
+            val resources = uris.mapNotNull { uri ->
+                context.loadFileBuffer(resourceResolver(uri))?.let { uri to it }
+            }
+            withContext(Dispatchers.Main) {
+                if (model !in models) return@withContext null
+                resources.forEach { (uri, data) -> resourceLoader.addResourceData(uri, data) }
+                asyncLoad.begin(model)
+                onLoadBegun(model)
             }
         }
-        model
     }
 
     /**
@@ -293,9 +359,13 @@ class ModelLoader(
     suspend fun loadModelInstance(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): ModelInstance? = loadModel(fileLocation, resourceResolver)?.also {
-        it.releaseSourceData()
-    }?.instance
+    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset) { model ->
+        // On the main thread, before anything else can destroy the model: releasing it after the
+        // caller resumed (on the caller's thread) raced `clear()` into a JNI call on a freed
+        // asset (#3868).
+        model.releaseSourceData()
+        model.instance
+    }
 
     /**
      * Loads a single [ModelInstance] asynchronously from the contents of a GLB or GLTF file.
@@ -310,9 +380,9 @@ class ModelLoader(
             getFolderPath(fileLocation, it)
         },
         onResult: (ModelInstance?) -> Unit
-    ): Job = loadModelAsync(fileLocation, resourceResolver) {
-        it?.releaseSourceData()
-        onResult.invoke(it?.instance)
+    ): Job = coroutineScope.launch {
+        val instance = loadModelInstance(fileLocation, resourceResolver)
+        withContext(Dispatchers.Main) { onResult(instance) }
     }
 
     /**
@@ -424,20 +494,18 @@ class ModelLoader(
         fileLocation: String,
         count: Int,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): List<ModelInstance> = context.loadFileBuffer(fileLocation)?.let { buffer ->
+    ): List<ModelInstance> {
         val instances = arrayOfNulls<ModelInstance>(count)
-        val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource() }
-        // See loadModel(): registration happens inside the create block itself (#3523).
-        val model = createOrDestroyOnCancel(::destroyModel) {
-            assetLoader.createInstancedAsset(source, instances)?.also { models += it }
-        } ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
-        destroyOnCancel(model, ::destroyModel) {
-            loadResourcesSuspended(model) { resourceFileName: String ->
-                context.loadFileBuffer(resourceResolver(resourceFileName))
-            }
-        }
-        instances.filterNotNull()
-    } ?: listOf()
+        return loadModelThen(
+            fileLocation,
+            resourceResolver,
+            create = { source ->
+                assetLoader.createInstancedAsset(source, instances)
+                    ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
+            },
+            onLoadBegun = { instances.filterNotNull() },
+        ) ?: listOf()
+    }
 
     /**
      * Loads a primary [Model] with one or more [ModelInstance]s from the contents of a GLB or
@@ -498,9 +566,14 @@ class ModelLoader(
      * already gone and returns instead of double-freeing the native asset — the segfault
      * `runCatching` could never have caught in the first place. See [safeDestroyModel] for why
      * "at most once" has to be enforced here rather than there.
+     *
+     * Safe at any point of the model's load (#3868): if gltfio is still decoding this model's
+     * textures, that async load is cancelled first, so the per-frame [updateLoad] never writes into
+     * the freed textures. The cancel waits on the main thread for the decodes already running.
+     * Destroying an older model cancels nothing.
      */
     fun destroyModel(model: Model) {
-        claimAndDestroy(models, model) {
+        destroyAfterCancellingLoad(models, model, asyncLoad) {
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
             // Node.destroy() entirely — the sibling Nodes' cached handles need to know a
@@ -517,7 +590,7 @@ class ModelLoader(
     fun clear() {
         runCatching { coroutineScope.cancel() }
 
-        resourceLoader.asyncCancelLoad()
+        asyncLoad.cancel()
         resourceLoader.evictResourceData()
 
         // A cancelled load's own cleanup (destroyOnCancel/createOrDestroyOnCancel, both wired
@@ -535,6 +608,8 @@ class ModelLoader(
         materialProvider.destroyMaterials()
         materialProvider.destroy()
         resourceLoader.destroy()
+        retiredResourceLoaders.forEach { it.destroy() }
+        retiredResourceLoaders.clear()
     }
 
     fun updateLoad() {
@@ -555,29 +630,8 @@ class ModelLoader(
         for (uri in model.resourceUris) {
             resourceResolver(uri)?.let { resourceLoader.addResourceData(uri, it) }
         }
-        asyncLoadStarted = true
-        resourceLoader.asyncBeginLoad(model)
+        asyncLoad.begin(model)
         resourceLoader.evictResourceData()
-    }
-
-    /**
-     * Feeds the binary content of an external resource into the loader's URI cache.
-     */
-    private suspend fun loadResourcesSuspended(
-        model: Model,
-        resourceResolver: (suspend (String) -> Buffer?)
-    ) {
-        for (uri in model.resourceUris) {
-            resourceResolver(uri)?.let {
-                withContext(Dispatchers.Main) {
-                    resourceLoader.addResourceData(uri, it)
-                }
-            }
-        }
-        withContext(Dispatchers.Main) {
-            asyncLoadStarted = true
-            resourceLoader.asyncBeginLoad(model)
-        }
     }
 
     companion object {
@@ -600,6 +654,67 @@ class ModelLoader(
  */
 internal fun <T> claimAndDestroy(registry: MutableList<T>, item: T, destroy: (T) -> Unit) {
     if (registry.remove(item)) destroy(item)
+}
+
+/**
+ * Tracks the one item a gltfio `ResourceLoader` is running an async load for (#3868).
+ *
+ * `asyncBeginLoad` keeps a single raw asset pointer, and it first drains the previous load's
+ * decoder jobs, so only the item passed to the latest [begin] can still have textures decoding.
+ * Destroying that item without cancelling lets the next `asyncUpdateLoad` upload into freed
+ * textures: a native crash. Destroying any older item must *not* cancel, because that would abort
+ * the newer item's decoding and leave it untextured.
+ *
+ * Filament-free so the ordering can be pinned in a JVM test; [ModelLoader] wires [beginLoad] to
+ * `ResourceLoader.asyncBeginLoad` and [cancelLoad] to `ResourceLoader.asyncCancelLoad`. Main
+ * thread only, like every gltfio call.
+ */
+internal class AsyncLoadSlot<T : Any>(
+    private val beginLoad: (T) -> Unit,
+    private val cancelLoad: (inFlight: T?) -> Unit,
+) {
+
+    /** The item whose load was begun last and not cancelled since, or `null`. */
+    var inFlight: T? = null
+        private set
+
+    /**
+     * Records [item] as in flight, then begins its load. The slot is filled first: the native
+     * begin stores the asset pointer before anything else, whatever it then returns.
+     */
+    fun begin(item: T) {
+        inFlight = item
+        beginLoad(item)
+    }
+
+    /** Cancels whatever load is running, then empties the slot. */
+    fun cancel() {
+        cancelLoad(inFlight)
+        inFlight = null
+    }
+
+    /** Cancels the running load only if it belongs to [item]. Returns whether it did. */
+    fun cancelIfInFlight(item: T): Boolean {
+        if (inFlight !== item) return false
+        cancel()
+        return true
+    }
+}
+
+/**
+ * [claimAndDestroy], with [item]'s async load cancelled first when it is still the one in flight:
+ * the order Filament's own `ModelViewer` and [ModelLoader.clear] use, applied to every single
+ * destroy (#3868). The cancel sits inside the claim, so a second destroy of the same item finds it
+ * gone and cancels nothing.
+ */
+internal fun <T : Any> destroyAfterCancellingLoad(
+    registry: MutableList<T>,
+    item: T,
+    asyncLoad: AsyncLoadSlot<T>,
+    destroy: (T) -> Unit,
+) = claimAndDestroy(registry, item) {
+    asyncLoad.cancelIfInFlight(it)
+    destroy(it)
 }
 
 /**
@@ -641,14 +756,14 @@ internal suspend fun <T : Any> createOrDestroyOnCancel(
  * would otherwise leave the half-loaded model in [ModelLoader]'s list until the loader
  * is destroyed, with no caller holding a handle to free it earlier.
  */
-internal suspend fun <T : Any> destroyOnCancel(
+internal suspend fun <T : Any, R> destroyOnCancel(
     created: T,
     destroy: (T) -> Unit,
     dispatcher: CoroutineDispatcher = Dispatchers.Main,
-    block: suspend () -> Unit,
-) {
+    block: suspend () -> R,
+): R {
     try {
-        block()
+        return block()
     } catch (cancellation: CancellationException) {
         withContext(NonCancellable + dispatcher) { destroy(created) }
         throw cancellation
