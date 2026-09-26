@@ -14,7 +14,7 @@ contents of `samples/android-demo/src/main/assets` by
 Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `repo-hygiene` fails if this file and the assets disagree.
 
-Assets bundled: **25**.
+Assets bundled: **26**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -56,6 +56,8 @@ Assets bundled: **25**.
   Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`
 - `augmented_images/qrcode.png` — **[qrcode.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (2 KB)  
   QR-like reference pattern drawn for `ARImageDemo`
+- `materials/hero_terrain.filamat` — **[hero_terrain.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (567 KB)  
+  Compiled from `samples/android-demo/src/main/materials/hero_terrain.mat` (#3948)
 - `materials/studio_glass.filamat` — **[studio_glass.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (536 KB)  
   Compiled from `samples/android-demo/src/main/materials/studio_glass.mat`
 - `materials/studio_pbr.filamat` — **[studio_pbr.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (676 KB)  

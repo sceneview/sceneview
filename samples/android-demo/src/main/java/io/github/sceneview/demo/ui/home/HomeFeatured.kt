@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,17 +29,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -48,13 +46,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.draw.alpha
-import androidx.compose.animation.core.animateFloatAsState
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.previewPainter
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.theme.motionTween
 import io.github.sceneview.demo.ui.pressScale
 
 /**
@@ -74,8 +69,9 @@ sealed interface FeaturedPage {
      * A demo, opened by tapping the page.
      *
      * [heroArt] overrides the demo's grid capture for pages that have bespoke
-     * editorial artwork — the Model Viewer page keeps `preview_hero_model_viewer`,
-     * which is framed for a full-span card rather than for a 5:4 grid cell.
+     * editorial artwork. The Model Viewer page no longer passes one: it is the window
+     * onto the live stage (#3948). `preview_hero_model_viewer` stays bundled unused —
+     * assets are never deleted — framed for a full-span card should a page want it.
      */
     data class Demo(
         val entry: DemoEntry,
@@ -125,6 +121,12 @@ object FeaturedTestTags {
  * The whole pager is one grid item, so the Showcase's vertical scroll is
  * untouched; each page is one merged semantics node, so a screen reader
  * announces a page rather than four fragments.
+ *
+ * The first page is a **window, not a card** (#3948, #3949): the flagship demo's
+ * page draws no field, no still and no shadow — only its scrim, copy and pill — over
+ * the live flight [HomeScreen] keeps composed *under* the grid. The scene is not this
+ * page's child, so neither the grid recycling this item nor the pager recycling the
+ * page can dispose it; it does not flash on the way back because nothing reloads.
  */
 @Composable
 fun HomeFeaturedPager(
@@ -133,18 +135,15 @@ fun HomeFeaturedPager(
     onDemoClick: (String) -> Unit,
     onWhatsNewClick: () -> Unit,
     modifier: Modifier = Modifier,
-    collapseFraction: () -> Float = { 0f },
-    heroRendering: Boolean = true,
+    /**
+     * Hoisted by [HomeScreen] (#3949): this pager lives in a lazy item, and a state
+     * remembered here left with the item — scroll past the band, come back, page one
+     * again. Owned by the screen it keeps the page the user chose.
+     */
+    pagerState: PagerState = rememberPagerState(pageCount = { pages.size }),
 ) {
     if (pages.isEmpty()) return
-    val pagerState = rememberPagerState(pageCount = { pages.size })
-    // The live subject belongs to the page the app's flagship demo owns, and to no
-    // other: a carousel where every page runs its own Filament engine is three engines
-    // on the home screen. Inspection mode (Android Studio `@Preview`, the Roborazzi
-    // home goldens) never composes it — LayoutLib has no Filament `.so` to load, and
-    // a golden has to pin the bundled still, which is exactly what the fallback is.
-    val liveHeroKey = if (LocalInspectionMode.current) null else FeaturedPage.Demo.keyFor(HERO_DEMO_ID)
-    var heroSceneReady by remember { mutableStateOf(false) }
+    val windowKey = FeaturedPage.Demo.keyFor(HERO_DEMO_ID)
     Box(modifier = modifier.fillMaxWidth()) {
         HorizontalPager(
             state = pagerState,
@@ -160,25 +159,13 @@ fun HomeFeaturedPager(
                     title = stringResource(page.entry.titleRes),
                     subtitle = stringResource(page.entry.subtitleRes),
                     actionLabel = stringResource(R.string.home_hero_open),
-                    media = page.heroArt?.let { painterResource(it) }
-                        ?: page.entry.previewPainter(),
-                    // Once the subject is live the bundled still is redundant, so it
-                    // crossfades away under it — the one "loading → content" fade the
-                    // screen has, and the reason the still is still drawn at all.
-                    mediaAlpha = if (page.key == liveHeroKey && heroSceneReady) 0f else 1f,
-                    onClick = { onDemoClick(page.entry.id) },
-                    live = if (page.key != liveHeroKey) {
+                    media = if (page.key == windowKey) {
                         null
                     } else {
-                        {
-                            HomeHeroScene(
-                                collapseFraction = collapseFraction,
-                                rendering = heroRendering,
-                                onVisibilityChange = { heroSceneReady = it },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
+                        page.heroArt?.let { painterResource(it) } ?: page.entry.previewPainter()
                     },
+                    onClick = { onDemoClick(page.entry.id) },
+                    window = page.key == windowKey,
                 )
                 is FeaturedPage.WhatsNew -> FeaturedCard(
                     height = height,
@@ -214,6 +201,12 @@ fun HomeFeaturedPager(
  * entry needs no new artwork. When it is absent the page falls back to the flat
  * `hero-field` stage colour, optionally carrying [glyph] — which is what the
  * What's new page uses, deliberately, so it does not masquerade as a demo.
+ *
+ * A [window] page draws no field, no still, no scrim, no shadow, no outline and no
+ * rounded corners, and does not shrink under the thumb: it is copy over the live stage
+ * behind the grid, and a card that scaled would slide against a scene that does not.
+ * The legibility scrim is the stage's own, painted full-bleed under the whole band
+ * (see `HomeHeroStage`), so no card edge cuts through the landscape.
  */
 @Composable
 private fun FeaturedCard(
@@ -224,57 +217,50 @@ private fun FeaturedCard(
     media: Painter?,
     onClick: () -> Unit,
     glyph: Boolean = false,
-    mediaAlpha: Float = 1f,
-    live: (@Composable BoxScope.() -> Unit)? = null,
+    window: Boolean = false,
 ) {
     val dark = isSystemInDarkTheme()
     val colors = SceneViewTokens.HomeColor
     val home = SceneViewTokens.Home
     val interaction = remember { MutableInteractionSource() }
-    val stillAlpha by animateFloatAsState(
-        targetValue = mediaAlpha,
-        animationSpec = motionTween(SceneViewTokens.Duration.longMillis),
-        label = "featured-still",
-    )
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
             .semantics(mergeDescendants = true) {}
-            .pressScale(interaction)
+            .then(if (window) Modifier else Modifier.pressScale(interaction))
             .clickable(
                 interactionSource = interaction,
                 indication = ripple(),
                 role = Role.Button,
                 onClick = onClick,
             ),
-        shape = RoundedCornerShape(SceneViewTokens.Radius.xl),
-        color = heroField(),
-        shadowElevation = if (dark) 0.dp else SceneViewTokens.Elevation.md,
-        border = if (dark) BorderStroke(home.cardOutlineWidth, outlineSubtle()) else null,
+        shape = if (window) RectangleShape else RoundedCornerShape(SceneViewTokens.Radius.xl),
+        color = if (window) Color.Transparent else heroField(),
+        shadowElevation = if (dark || window) 0.dp else SceneViewTokens.Elevation.md,
+        border = if (dark && !window) BorderStroke(home.cardOutlineWidth, outlineSubtle()) else null,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (media != null && stillAlpha > 0f) {
+            if (media != null) {
                 Image(
                     painter = media,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().alpha(stillAlpha),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
-            // Drawn over the still and under the scrim, so the copy and the pill keep
-            // the exact contrast they have on a page that is only a photograph.
-            live?.invoke(this)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            home.heroScrimStart to SceneViewTokens.SpatialGalleryColor.stageScrimStart,
-                            1f to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+            if (!window) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                home.heroScrimStart to SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                                1f to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+                            ),
                         ),
-                    ),
-            )
+                )
+            }
             if (glyph) {
                 Icon(
                     imageVector = Icons.Filled.AutoAwesome,

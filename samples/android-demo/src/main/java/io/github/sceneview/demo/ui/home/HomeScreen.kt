@@ -2,6 +2,8 @@
 
 package io.github.sceneview.demo.ui.home
 
+import android.app.Activity
+import android.content.ContextWrapper
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
@@ -21,6 +23,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,9 +37,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -57,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -68,22 +76,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -120,13 +137,20 @@ object HomeTestTags {
 
 /**
  * The Showcase tab (design spec §2): one `LazyVerticalGrid`, no nested
- * scroll, no background scene. Full-span header spacer, hero and chip row,
- * then every demo as a [DemoMediaCard] in flat editorial [DemoEntry.order],
- * closed by a [BrowseOnlineModelsCard] that opens the online gallery.
+ * scroll. Full-span header spacer, hero and chip row, then every demo as a
+ * [DemoMediaCard] in flat editorial [DemoEntry.order], closed by a
+ * [BrowseOnlineModelsCard] that opens the online gallery.
  *
- * The header is a pinned overlay drawn over the grid: transparent while the
- * hero is on screen, `surface` at 94 % plus a bottom hairline once the first
- * item has scrolled away. Its search action swaps the wordmark row for a 48 dp
+ * Under the grid, and not part of it, sits the live stage (#3948): the dusk flight of
+ * [HomeHeroScene] over a sky this screen paints, from the top edge of the display to
+ * a little past the featured band. It is composed once per screen and never by a lazy
+ * item, which is the whole fix for #3949: scrolling away and back cannot dispose the
+ * engine, the model or the clock, so the flight is simply where it was. The band's
+ * first page is a transparent window onto it — copy, scrim and pill, no still.
+ *
+ * The header is a pinned overlay drawn over the grid: transparent with white type
+ * while the stage is under it, `surface` at 100 % plus a bottom hairline once the
+ * first item has scrolled away. Its search action swaps the wordmark row for a 48 dp
  * field; the category chips and the query are hoisted to `RootScreen` so they
  * survive tab switches and process death.
  *
@@ -222,11 +246,10 @@ fun HomeScreen(
                     add(
                         FeaturedPage.Demo(
                             entry = entry,
-                            heroArt = if (entry.id == HERO_DEMO_ID) {
-                                R.drawable.preview_hero_model_viewer
-                            } else {
-                                null
-                            },
+                            // The flagship page is a window onto the live stage, not a
+                            // still (#3948). `preview_hero_model_viewer` stays bundled;
+                            // no page draws it.
+                            heroArt = null,
                         ),
                     )
                 }
@@ -263,36 +286,52 @@ fun HomeScreen(
         derivedStateOf { gridState.firstVisibleItemIndex > 0 }
     }
 
-    // How far the featured band has travelled out of the viewport, 0 → 1. Read at
-    // *draw* time by the live hero's `graphicsLayer` (hence a lambda, not a `Float`):
-    // the band collapses without a single extra recomposition per scrolled frame, and
-    // without the grid's own scroll maths ever depending on a height the collapse chose.
-    val heroCollapse: () -> Float = remember(gridState) {
-        {
-            val item = gridState.layoutInfo.visibleItemsInfo
-                .firstOrNull { it.key == HERO_ITEM_KEY }
-            when {
-                item == null -> 1f
-                item.size.height == 0 -> 0f
-                else -> ((-item.offset.y).toFloat() / item.size.height).coerceIn(0f, 1f)
-            }
-        }
+    // The featured pager's page, owned here so a scroll past the band does not reset
+    // it with the item (#3949); the flight is only wanted while its window shows.
+    val featuredPagerState = rememberPagerState(pageCount = { featuredPages.size })
+    val windowPage = remember(featuredPages) {
+        featuredPages.indexOfFirst { it.key == FeaturedPage.Demo.keyFor(HERO_DEMO_ID) }
     }
-    // Frames are for a band that is on screen and holding still. A drag is the one
-    // moment the scroll needs every millisecond of the frame budget, and a hero that
-    // has scrolled past its own height has nothing left to show.
+    val windowShowing = featuredPagerState.currentPage == windowPage ||
+        featuredPagerState.isScrollInProgress
+
+    // The live stage renders while any of the band is in the viewport and its window is
+    // the page on show. Off screen — or behind another page's opaque card — it parks on
+    // its last frame; the drag itself keeps rendering, so the flight scrolls as a scene
+    // and not as a photograph of one.
     val heroOnScreen by remember(gridState) {
         derivedStateOf {
             gridState.layoutInfo.visibleItemsInfo.any { it.key == HERO_ITEM_KEY }
         }
     }
-    val heroRendering = heroOnScreen && !gridState.isScrollInProgress && !searching
+    val heroActive = heroOnScreen && !searching && windowShowing
 
     // The catalogue's one-shot entrance, played on arrival and never again under a thumb.
     val cascade = rememberCascade()
     var cascadeIndex = 0
 
+    val heroHeight = if (expanded) home.heroHeightExpanded else home.heroHeight
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
     Box(modifier = modifier.fillMaxSize()) {
+        // The stage: composed once, under the grid, alive as long as this screen is
+        // (#3948, #3949). It starts above the Scaffold's status-bar inset so the sky
+        // runs to the top edge, covers the header band and the featured band, and
+        // bleeds a little further before fading into the page. Its vertical travel
+        // follows the band's grid item, read at draw time — no recomposition per
+        // scrolled pixel — with the sky and the flight lagging a touch behind for depth.
+        if (!searching) {
+            HomeHeroStage(
+                gridState = gridState,
+                active = heroActive,
+                height = statusBarTop + home.headerHeight + home.heroTopGap + heroHeight +
+                    home.heroStageBleed,
+                topInset = statusBarTop,
+                restTop = home.headerHeight + home.heroTopGap,
+                inspectionMode = inspectionMode,
+            )
+        }
+
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Adaptive(if (expanded) home.gridMinCellExpanded else home.gridMinCell),
@@ -317,11 +356,10 @@ fun HomeScreen(
             if (!searching) item(key = HERO_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
                 HomeFeaturedPager(
                     pages = featuredPages,
-                    height = if (expanded) home.heroHeightExpanded else home.heroHeight,
+                    height = heroHeight,
                     onDemoClick = onDemoClick,
                     onWhatsNewClick = { showWhatsNew = true },
-                    collapseFraction = heroCollapse,
-                    heroRendering = heroRendering,
+                    pagerState = featuredPagerState,
                     modifier = Modifier.testTag(HomeTestTags.HERO),
                 )
             }
@@ -394,6 +432,7 @@ fun HomeScreen(
 
         HomeHeader(
             scrolled = scrolled,
+            overStage = !scrolled && !searching,
             query = query,
             onQueryChange = onQueryChange,
             // The discreet re-proposal: a "since" list dismissed without
@@ -441,11 +480,131 @@ private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Grid key of the featured band. Named because three things now agree on it: the
- * item itself, the collapse fraction that measures its travel, and the render gate
- * that parks Filament once it has left.
+ * Grid key of the featured band. Named because three things agree on it: the item
+ * itself, the stage under the grid that follows its travel, and the render gate that
+ * parks Filament once it has left.
  */
 private const val HERO_ITEM_KEY = "hero"
+
+/**
+ * The layer under the grid that carries the sky and the live flight (#3948).
+ *
+ * Geometry: [height] tall from `-topInset` — the Scaffold pads the status bar and this
+ * undoes it, so the sky reaches the top of the display and the status bar rides on it
+ * ([HomeHeader] flips its icons to light meanwhile). At rest the featured band's grid
+ * item sits at [restTop] below the content's top edge; as the grid scrolls, the stage
+ * follows that item one-for-one, read in `graphicsLayer` at draw time so the scroll
+ * costs no recomposition. Inside, the sky and the flight lag the band by a fraction
+ * ([HERO_PARALLAX]), which reads as depth; the stage clips its bounds so the lag never
+ * leaks below the band, where the grid is transparent over the page. When the item has
+ * left the viewport the layer is fully transparent and [active] is false, so the loop
+ * is parked on its last frame — the frame that shows again, unchanged, on the way back.
+ *
+ * In inspection mode (goldens) the sky is painted and the flight is not: Roborazzi has
+ * no GPU, and a still of a rendered frame would tie the goldens to a driver.
+ */
+@Composable
+private fun HomeHeroStage(
+    gridState: LazyGridState,
+    active: Boolean,
+    height: Dp,
+    topInset: Dp,
+    restTop: Dp,
+    inspectionMode: Boolean,
+) {
+    val home = SceneViewTokens.Home
+    val colors = SceneViewTokens.HomeColor
+    val density = LocalDensity.current
+    val restTopPx = with(density) { restTop.toPx() }
+    val heroTravel: () -> Float? = {
+        gridState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.key == HERO_ITEM_KEY }
+            ?.let { (it.offset.y - restTopPx).coerceAtMost(0f) }
+    }
+    val surface = MaterialTheme.colorScheme.surface
+    val bandTop = topInset + restTop
+    val bandHeight = height - bandTop - home.heroStageBleed
+    val bandFraction = bandHeight.value / (bandHeight + home.heroStageBleed).value
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .offset(y = -topInset)
+            .graphicsLayer {
+                val travel = heroTravel()
+                translationY = travel ?: 0f
+                alpha = if (travel == null) 0f else 1f
+            }
+            .clipToBounds()
+            .clearAndSetSemantics { },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = -(heroTravel() ?: 0f) * HERO_PARALLAX
+                }
+                .background(
+                    Brush.verticalGradient(
+                        0f to colors.heroSkyTop,
+                        home.heroSkyHorizon * 0.45f to colors.heroSkyDusk,
+                        home.heroSkyHorizon to colors.heroSkyHorizon,
+                        home.heroSkyHorizon + 0.1f to colors.heroSkyGround,
+                        1f to colors.heroSkyTop,
+                    ),
+                )
+                // The sun's glow, where the disc sits in the flight: the sky is warmest
+                // around it, as a sky is.
+                .drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            0f to colors.heroSkyHorizon.copy(alpha = 0.7f),
+                            0.45f to colors.heroSkyHorizon.copy(alpha = 0.25f),
+                            1f to Color.Transparent,
+                            center = Offset(size.width * HERO_SUN_X, size.height * home.heroSkyHorizon * 0.82f),
+                            radius = size.width * 0.6f,
+                        ),
+                    )
+                },
+        ) {
+            if (!inspectionMode) {
+                HomeHeroScene(active = active, modifier = Modifier.fillMaxSize())
+            }
+        }
+        // The legibility scrim under the band's copy — the hero's usual gradient, painted
+        // here full-bleed rather than by the page, so no card edge cuts the landscape —
+        // running on into `surface`: the stage ends on the page, not on an edge.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = bandTop)
+                .height(bandHeight + home.heroStageBleed)
+                .background(
+                    Brush.verticalGradient(
+                        home.heroScrimStart * bandFraction to
+                            SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                        bandFraction to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+                        1f to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(home.heroStageBleed + home.gridGutter)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(listOf(surface.copy(alpha = 0f), surface)),
+                ),
+        )
+    }
+}
+
+/** Where the sun sits across the stage, as a fraction of its width — see `DuskFlight`. */
+private const val HERO_SUN_X = 0.31f
+
+/** Fraction of the band's scroll travel the stage's content lags behind. */
+private const val HERO_PARALLAX = 0.35f
 
 /** The demo the first featured page opens. */
 const val HERO_DEMO_ID = "model-viewer"
@@ -463,6 +622,8 @@ private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "materials", "lighting")
 @Composable
 private fun HomeHeader(
     scrolled: Boolean,
+    /** The stage's sky is behind the row: white type, light status-bar icons. */
+    overStage: Boolean,
     query: String,
     onQueryChange: (String) -> Unit,
     showWhatsNew: Boolean,
@@ -477,6 +638,20 @@ private fun HomeHeader(
         if (motionEnabled) tween<Float>(SceneViewTokens.Duration.shortMillis) else snap()
     }
     val keyboard = LocalSoftwareKeyboardController.current
+    // Status-bar icons follow the row's type: light over the sky, the theme's own
+    // otherwise. Same capture-and-restore as DemoScaffold, so leaving the screen —
+    // or scrolling the sky away — puts back exactly what the theme had set.
+    val view = LocalView.current
+    DisposableEffect(view, overStage) {
+        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+            ?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        if (overStage) controller?.isAppearanceLightStatusBars = false
+        onDispose { if (previous != null) controller?.isAppearanceLightStatusBars = previous }
+    }
     val overlay by animateColorAsState(
         targetValue = if (scrolled) {
             MaterialTheme.colorScheme.surface.copy(alpha = SceneViewTokens.HomeColor.headerOverlayAlpha)
@@ -519,6 +694,7 @@ private fun HomeHeader(
                 TitleRow(
                     showWhatsNew = showWhatsNew,
                     whatsNewBadged = whatsNewBadged,
+                    overStage = overStage,
                     onWhatsNewClick = onWhatsNewClick,
                     onSearchClick = { searchOpen = true },
                 )
@@ -538,10 +714,27 @@ private fun HomeHeader(
 private fun TitleRow(
     showWhatsNew: Boolean,
     whatsNewBadged: Boolean,
+    overStage: Boolean,
     onWhatsNewClick: () -> Unit,
     onSearchClick: () -> Unit,
 ) {
     val home = SceneViewTokens.Home
+    // Over the stage the row uses the hero's own fixed whites (DESIGN.md: the hero
+    // stays dark in both themes); on the page it uses the scheme's roles.
+    val titleColor by animateColorAsState(
+        targetValue = if (overStage) SceneViewTokens.HomeColor.heroTitle else MaterialTheme.colorScheme.onSurface,
+        animationSpec = tween(SceneViewTokens.Duration.shortMillis),
+        label = "headerTitle",
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (overStage) {
+            SceneViewTokens.HomeColor.heroSubtitle
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(SceneViewTokens.Duration.shortMillis),
+        label = "headerIcons",
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -558,7 +751,7 @@ private fun TitleRow(
         Text(
             text = stringResource(R.string.app_name),
             style = SceneViewTokens.Type.title,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = titleColor,
         )
         Spacer(Modifier.weight(1f))
         if (showWhatsNew) {
@@ -569,7 +762,7 @@ private fun TitleRow(
                         contentDescription = stringResource(
                             if (whatsNewBadged) R.string.whats_new_since_action else R.string.home_whats_new,
                         ),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = iconTint,
                     )
                 }
                 if (whatsNewBadged) BadgedBox(badge = { Badge() }) { icon() } else icon()
@@ -579,7 +772,7 @@ private fun TitleRow(
             Icon(
                 imageVector = Icons.Filled.Search,
                 contentDescription = stringResource(R.string.home_search),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = iconTint,
             )
         }
     }

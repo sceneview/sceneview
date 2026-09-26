@@ -1,339 +1,489 @@
 package io.github.sceneview.demo.ui.home
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import android.app.ActivityManager
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.filament.Material
+import com.google.android.filament.RenderableManager
+import com.google.android.filament.View
+import dev.romainguy.kotlin.math.normalize
+import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.StartupMarker
-import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.LocalMotionEnabled
-import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.geometries.Geometry
+import io.github.sceneview.math.Color
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Scale
+import io.github.sceneview.math.colorOf
+import io.github.sceneview.node.CameraNode
+import io.github.sceneview.node.MeshNode as MeshNodeImpl
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
+import io.github.sceneview.safeDestroyGeometry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.cos
+import kotlin.math.sin
 
-/** The subject of the live home hero — the app's own Model Viewer subject, already bundled. */
+/** The subject of the flight — the licensed, bundled flagship model, no download on home. */
 const val HOME_HERO_MODEL: String = "models/khronos_damaged_helmet.glb"
 
-/** How long the hero waits for its model before it gives up and stays a still. */
-private const val HERO_LOAD_TIMEOUT_MILLIS = 8_000L
-
-/** Idle turntable speed. A full revolution in 24 s — present, never distracting. */
-private const val HERO_IDLE_DEGREES_PER_SECOND = 15f
-
-/** Elevation of the subject — the 3/4 view `DESIGN.md` frames every preview from. */
-private const val HERO_PITCH_DEGREES = -12f
-
-/** Distance the camera sits at, for a subject scaled to [HERO_SUBJECT_UNITS]. */
-private const val HERO_CAMERA_DISTANCE = 2.6f
-
-/** Size the subject is normalised to, whatever the glTF's intrinsic scale. */
-private const val HERO_SUBJECT_UNITS = 1.55f
+private const val HERO_HDR = "environments/sunset_2k.hdr"
+private const val HERO_TERRAIN_MATERIAL = "materials/hero_terrain.filamat"
 
 /**
- * Yaw of the hero subject: a slow turntable, and nothing else.
+ * The dusk flight behind the home screen (#3948) — and the reason scrolling away and
+ * back no longer reloads it (#3949).
  *
- * It used to take a horizontal drag and a fling too. That made the hero answer the
- * same gesture two ways: the card sits in a pager whose page dots say "swipe for
- * the next card", and a swipe on the card turned the model instead (#3829). The
- * swipe now belongs to the pager alone, as it does on every featured carousel the
- * layout borrows from (Play Store, App Store "Today"); orbiting is what the Model
- * Viewer the card opens is for.
+ * **What it is.** A low-poly valley slides under the camera at dusk: a periodic
+ * flat-shaded heightfield ([HomeHeroTerrain]) lit by one warm sun low on the horizon,
+ * an emissive sun disc that bloom and the lens flare bleed from, height fog in the
+ * horizon's colour, the sunset HDR as image-based light, TAA, and the Damaged Helmet
+ * riding front-right of the camera, turning slowly. The camera flies a lazy S-curve and
+ * banks into it; the device's tilt steers the gaze a few degrees. All of it is
+ * Filament through SceneView — one `MeshNode`, one `SphereNode`, one `ModelNode`.
  *
- * Not Compose state, deliberately. It is written once per rendered frame from
- * `SceneView`'s `onFrame` and read only by the Filament node it drives — publishing
- * it as state would recompose the whole home grid sixty times a second to move one
- * transform the composition never reads.
- */
-@Stable
-internal class HeroTurntable {
-    var yawDegrees: Float = INITIAL_YAW_DEGREES
-        private set
-
-    /**
-     * Advances the turntable by [deltaSeconds] and returns the yaw to draw.
-     *
-     * [idle] is the system's "remove animations" answer. The unprompted turntable is
-     * exactly the kind of perpetual motion that setting exists to stop, so with
-     * [idle] false the subject holds its three-quarter pose.
-     */
-    fun advance(deltaSeconds: Float, idle: Boolean): Float {
-        if (idle) yawDegrees += HERO_IDLE_DEGREES_PER_SECOND * deltaSeconds
-        return yawDegrees
-    }
-
-    private companion object {
-        /** Opening pose — three-quarter, the angle every bundled preview is framed from. */
-        const val INITIAL_YAW_DEGREES = -28f
-    }
-}
-
-/**
- * The live 3D subject behind the home hero (#3620).
+ * **Why it survives the scroll.** [HomeScreen] composes this once, as a layer *under*
+ * the grid, for as long as the screen lives. The grid's hero item is transparent copy
+ * over it. Neither `LazyVerticalGrid` nor the featured `HorizontalPager` can dispose
+ * the engine, the TextureView, the model or the clock, because none of it is theirs.
+ * When the band leaves the viewport the stage's own [Lifecycle] drops to CREATED and
+ * SceneView stops submitting frames — the last one stays in the TextureView, the
+ * [HeroClock] stops — and coming back raises it to RESUMED: the same frame, then the
+ * next one. No still, no loader, no fade.
  *
- * The catalogue's first card is the one place in the app where showing what the SDK
- * *does* costs nothing the user has to ask for: the model is already in the APK, the
- * IBL is the one every model demo shares, and the band is on screen for as long as it
- * takes to read the first row of titles. So it renders, rather than showing a picture
- * of itself.
+ * **Cold start.** Nothing here composes before Compose has presented the app's first
+ * frame (`withFrameNanos` gate). Terrain generation runs on `Dispatchers.Default`; the
+ * only main-thread Filament work after the gate is buffer upload and material creation.
+ * `StartupMarker` `first_model_frame` / `model_textured_frame` are logged from presented
+ * frames, as `tools/measure-demo-cold-start.sh` expects.
  *
- * Four constraints shape everything here, and each is enforced in one place:
+ * **Tiers.** `isLowRamDevice` gets the Performance preset, a quarter of the triangles,
+ * no HDR decode, no bloom, fog or TAA — the same flight, matte. Reduced motion (animator
+ * scale 0, QA mode) holds the opening frame under [FrameRatePolicy.OnDemand].
  *
- *  - **One Filament engine on this screen, released when the screen goes.**
- *    [rememberEngine] owns that: its `DisposableEffect` destroys the engine and the
- *    EGL context when this composable leaves — which is what the "Engine destroyed"
- *    line in logcat is. Nothing else on the home screen creates one, and this
- *    composable is only ever composed once, from the first featured page.
- *  - **The scroll is never paid for.** [SceneView] renders on demand, so a still hero
- *    costs no GPU frames and no CPU wake-up. What keeps it awake here is the turntable
- *    writing a rotation every frame; while the grid is being dragged, or once the band
- *    has scrolled away, [rendering] goes `false`, the turntable stops advancing and the
- *    loop settles and parks by itself. The load needs no special handling — the library
- *    keeps drawing while `modelLoader.isLoading` is `true`, because Filament finalises
- *    texture uploads inside the frame loop and a model that landed during a park would
- *    otherwise render untextured. Not `progress < 1f`: Filament reports `0`, not `1`, for
- *    a loader that was never asked for an async load, so that form would read as "still
- *    loading" for the lifetime of every procedural scene.
- *  - **Quality is sized to the band, not to the phone.** [RenderQuality.Performance]
- *    on a 320 dp strip that is decoration, not the subject of the screen; the
- *    Cinematic preset belongs to the Model Viewer this page opens.
- *  - **It is allowed to fail.** [rememberModelInstance] returns `null` while the
- *    model loads *and* if it never loads; [visible] stays `false` until there is
- *    something to see, so the caller keeps its bundled still underneath and the
- *    worst case is the screen that shipped before this one.
- *
- * @param collapseFraction 0 when the band is at rest, 1 when it has scrolled out.
- *   A lambda, read inside the `graphicsLayer` block at *draw* time: a `Float` parameter
- *   would recompose this composable — and the pager and card around it — on every
- *   frame of every scroll, to move a transform nothing in the composition reads.
- *   Drives the drawn stage only, never layout, so the hero collapses without the
- *   grid's own scroll maths ever depending on a height this composable chose.
- * @param rendering whether the subject should be turning right now (on screen, not being
- *                  flung). It drives the turntable, and the turntable is what holds the
- *                  render-on-demand loop awake.
- * @param onVisibilityChange raised with `true` once a frame with the textured model has
- *   actually reached the screen — not when the model is merely loaded (see [HomeHeroStage]).
+ * @param active The band is at least partly on screen and the screen is not searching.
+ *               False parks the render loop and the clock; the last frame stays.
  */
 @Composable
 internal fun HomeHeroScene(
-    collapseFraction: () -> Float,
-    rendering: Boolean,
-    onVisibilityChange: (Boolean) -> Unit,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    // The 3D stack is composed one frame late, on purpose. Composing it with the rest of the
-    // home screen put the Filament engine, the EGL context, both material providers and the
-    // IBL on the main thread *inside* the app's first frame: deferring it took the median
-    // cold start to first frame from 233 to 146 ms on emulator-5554, release build
-    // (`tools/measure-demo-cold-start.sh`), with the model on screen no later. The band's
-    // first seconds are the bundled still anyway; one frame later that still is already
-    // on screen and the scene builds behind it.
     var firstFrameDrawn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         withFrameNanos { }
         firstFrameDrawn = true
     }
     if (firstFrameDrawn) {
-        HomeHeroStage(collapseFraction, rendering, onVisibilityChange, modifier)
+        HomeHeroStage(active = active, modifier = modifier)
     }
+}
+
+/**
+ * Art direction of the flight — world units and linear light, not UI tokens. The sky
+ * gradient Compose paints behind the transparent surface lives in [HomeScreen]
+ * (`HeroSky`); [fogColor] is its horizon, so the far ridges dissolve into it.
+ */
+private object DuskFlight {
+    /**
+     * Where the sun disc sits — far down the valley, a little left of the corridor, just
+     * above the far ridges, past the fog cut-off so it stays sharp for the flare.
+     */
+    val sunPosition = Position(-10f, 10.5f, -74f)
+    const val SUN_RADIUS = 2.6f
+
+    /**
+     * The key light rakes in from the left and above, not straight out of the disc: lit
+     * from the disc the whole valley would be back-lit into one silhouette. Nobody can
+     * read a 30° discrepancy between a glow on the horizon and the side the facets catch
+     * the light on; everybody reads relief.
+     */
+    val sunDirection: Direction = normalize(Direction(0.55f, -0.35f, 0.76f))
+    val sunColor: Color = colorOf(r = 1f, g = 0.62f, b = 0.38f)
+    const val SUN_INTENSITY_LUX = 95_000f
+
+    /** Linear radiance the disc emits — far above 1.0 so bloom has something to bleed. */
+    val sunEmissive = floatArrayOf(30f, 11f, 3.5f)
+
+    /** Linear sRGB of the horizon: `HeroSky`'s ember stop, 0xFFE2734F. */
+    val fogColor = floatArrayOf(0.75f, 0.17f, 0.075f)
+
+    const val HELMET_UNITS = 0.8f
+
+    /** How far below the valley the terrain starts, rising into place on its first frame. */
+    const val TERRAIN_RISE_UNITS = 2.5f
 }
 
 @Composable
 private fun HomeHeroStage(
-    collapseFraction: () -> Float,
-    rendering: Boolean,
-    onVisibilityChange: (Boolean) -> Unit,
+    active: Boolean,
     modifier: Modifier,
 ) {
+    val context = LocalContext.current
+    val tier = remember(context) {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        HeroTier.forDevice(am.isLowRamDevice)
+    }
+    val motionEnabled = LocalMotionEnabled.current
+    val moving = active && motionEnabled
+    val clock = remember { HeroClock() }
+    val tilt = remember { HeroTilt() }
+    val stageLifecycle = rememberHeroLifecycle(active, clock)
+
     val engine = rememberEngine()
     val view = rememberView(engine)
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val environment = rememberModelDemoEnvironment(environmentLoader)
+    val fallbackEnvironment = rememberEnvironment(environmentLoader, isOpaque = false)
+    // The HDR is decoded and prefiltered off the main thread and lands when it lands; the
+    // flight starts under the plain environment. Skipped entirely on the light tier.
+    val hdrEnvironment = if (tier.cinematic) {
+        rememberHDREnvironment(environmentLoader, HERO_HDR, createSkybox = false)
+    } else {
+        null
+    }
     val cameraNode = rememberCameraNode(engine) {
-        position = Position(z = HERO_CAMERA_DISTANCE)
+        lookAt(heroFlightPose(0.0, tier.terrain.period))
+    }
+    val sun = rememberMainLightNode(engine) {
+        lightDirection = DuskFlight.sunDirection
+        color = DuskFlight.sunColor
+        intensity = DuskFlight.SUN_INTENSITY_LUX
+        // A sun this low would stretch every shadow across the whole strip; the facets
+        // carry the relief on their own.
+        isShadowCaster = false
+    }
+    val renderInvalidator = rememberRenderInvalidator()
+
+    // The terrain: CPU work off the main thread, Filament buffers on it.
+    val terrainVertices by produceState<Pair<List<Geometry.Vertex>, List<Int>>?>(null, tier) {
+        value = withContext(Dispatchers.Default) {
+            val mesh = buildHeroTerrain(tier.terrain)
+            val vertices = ArrayList<Geometry.Vertex>(mesh.vertexCount)
+            for (i in 0 until mesh.vertexCount) {
+                vertices += Geometry.Vertex(
+                    position = Position(
+                        mesh.positions[i * 3],
+                        mesh.positions[i * 3 + 1],
+                        mesh.positions[i * 3 + 2],
+                    ),
+                    normal = Direction(
+                        mesh.normals[i * 3],
+                        mesh.normals[i * 3 + 1],
+                        mesh.normals[i * 3 + 2],
+                    ),
+                    color = Color(
+                        mesh.colors[i * 4],
+                        mesh.colors[i * 4 + 1],
+                        mesh.colors[i * 4 + 2],
+                        mesh.colors[i * 4 + 3],
+                    ),
+                )
+            }
+            vertices to mesh.indices.toList()
+        }
+    }
+    val terrainGeometry = remember(engine, terrainVertices) {
+        terrainVertices?.let { (vertices, indices) ->
+            Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
+                .vertices(vertices)
+                .indices(indices)
+                .build(engine)
+        }
+    }
+    DisposableEffect(engine, terrainGeometry) {
+        onDispose { terrainGeometry?.let { engine.safeDestroyGeometry(it) } }
+    }
+    // One compiled material, two instances: the matte ground and the glowing disc. The
+    // loader owns both and destroys them with the screen.
+    val terrainMaterial by produceState<Material?>(null, materialLoader) {
+        value = materialLoader.loadMaterial(HERO_TERRAIN_MATERIAL)
+    }
+    val terrainInstance = remember(materialLoader, terrainMaterial) {
+        terrainMaterial?.let { material ->
+            materialLoader.createInstance(material).apply {
+                setParameter("color", 1f, 1f, 1f, 1f)
+                setParameter("roughness", 0.92f)
+                setParameter("emissive", 0f, 0f, 0f)
+            }
+        }
+    }
+    val sunInstance = remember(materialLoader, terrainMaterial) {
+        terrainMaterial?.let { material ->
+            materialLoader.createInstance(material).apply {
+                setParameter("color", 1f, 0.55f, 0.25f, 1f)
+                setParameter("roughness", 1f)
+                setParameter(
+                    "emissive",
+                    DuskFlight.sunEmissive[0],
+                    DuskFlight.sunEmissive[1],
+                    DuskFlight.sunEmissive[2],
+                )
+            }
+        }
     }
 
     val modelInstance = rememberModelInstance(modelLoader, HOME_HERO_MODEL)
+    // Nodes the frame loop drives. Plain holders, not state: a per-frame write must not
+    // recompose anything.
+    val terrainNode = remember { arrayOfNulls<MeshNodeImpl>(1) }
+    val helmetNode = remember { arrayOfNulls<ModelNodeImpl>(1) }
+    val helmetBaseScale = remember { floatArrayOf(1f) }
+    val entranceStart = remember { arrayOfNulls<Double>(1) }
+    val terrainStart = remember { arrayOfNulls<Double>(1) }
 
-    // The hero declares itself visible once the textured model has been *presented*, and
-    // never declares itself invisible again — the caller crossfades its still out, and
-    // a still that came back would read as a glitch, not as a fallback.
-    //
-    // Not "once the model exists". The instance lands a few hundred ms into a cold start,
-    // but the GPU then spends 1.7–2.8 s on the helmet's first draw (`Renderer.beginFrame`
-    // refused 88–140 frames in a row on emulator-5554), and crossfading on the instance
-    // showed an empty card for that whole window. Written once, from `onFrame`, which
-    // only fires for frames that reached the surface.
-    var gaveUp by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(HERO_LOAD_TIMEOUT_MILLIS)
-        gaveUp = true
+    // Device tilt steers the gaze while the flight is live; the listener leaves with it.
+    DisposableEffect(context, moving, tier) {
+        val manager = if (moving && tier.cinematic) {
+            context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        } else {
+            null
+        }
+        val gravity = manager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                tilt.feed(gravityX = event.values[0], gravityZ = event.values[2])
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        if (gravity != null) {
+            manager?.registerListener(listener, gravity, SensorManager.SENSOR_DELAY_UI)
+        }
+        onDispose {
+            manager?.unregisterListener(listener)
+            tilt.reset()
+        }
     }
-    var modelOnScreen by remember { mutableStateOf(false) }
-    DisposableEffect(modelOnScreen) {
-        if (modelOnScreen) onVisibilityChange(true)
-        onDispose { }
-    }
-
-    val turntable = remember { HeroTurntable() }
-    val nodeHolder = remember { arrayOfNulls<ModelNodeImpl>(1) }
-    // A plain holder, deliberately not Compose state: `onFrame` writes it on every
-    // rendered frame, and a `mutableStateOf` written there would recompose this
-    // composable 60 times a second to carry a timestamp nothing in the composition
-    // reads — the exact jank this hero is not allowed to add to the scroll.
-    val lastFrameNanos = remember { longArrayOf(0L) }
-
-    // Filament has to keep drawing until the instance is there whatever the scroll is
-    // doing, or the model lands untextured; after that, the caller decides.
-    val loaded = modelInstance != null || gaveUp
-    // Render-on-demand: "I want frames" is not something the caller states any more, it is
-    // something the scene observes. Not advancing the turntable IS the pause.
-    val advancing = !loaded || rendering
-
-    // "Remove animations" is on: the subject is still there, it just stops turning on
-    // its own. Read once per composition, not per frame.
-    val idleTurntable = LocalMotionEnabled.current
-
-    // …but "not advancing IS the pause" only works in one direction (#3718). The turntable
-    // keeps itself awake while it turns — the `rotation` write below is a push source — and
-    // `onFrame` fires only *after* a frame reached the surface, so once the band has parked
-    // there is no callback left to notice that `advancing` went back to `true`. Scrolling the
-    // hero back into view would leave a frozen subject on a screen that looks alive. One
-    // frame is all this needs: its `onFrame` writes a rotation, and that pushes the next.
-    val renderInvalidator = rememberRenderInvalidator()
-    LaunchedEffect(advancing, idleTurntable) {
-        if (advancing) renderInvalidator.requestRender()
+    LaunchedEffect(moving) {
+        clock.pause()
+        if (moving) renderInvalidator.requestRender()
     }
 
-    // The stage shrinks and fades as the band leaves, drawn only: no re-measure, so
-    // the grid's scroll offset can never depend on a height this collapse produced.
-    val stageAlpha by animateFloatAsState(
-        targetValue = if (modelInstance != null) 1f else 0f,
-        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
-        label = "hero-stage",
-    )
-
-    Box(
-        modifier = modifier
-            // The scene is decoration over a card that already names itself; a screen
-            // reader must hear "Model Viewer", not a second, unlabelled 3D view.
-            .clearAndSetSemantics { },
-    ) {
+    Box(modifier.clearAndSetSemantics { }) {
         SceneView(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val collapse = collapseFraction().coerceIn(0f, 1f)
-                    alpha = stageAlpha * (1f - collapse)
-                    val scale = 1f - COLLAPSE_SCALE * collapse
-                    scaleX = scale
-                    scaleY = scale
-                    translationY = -size.height * COLLAPSE_RISE * collapse
-                },
-            // A TextureView, not the default SurfaceView. A SurfaceView is punched
-            // through the window below the whole Compose hierarchy: it cannot be
-            // alpha-blended, cannot be clipped to the card's `radius-xl` corners and
-            // cannot be crossfaded with the still it replaces — all three of which this
-            // band needs. The cost is one extra copy per frame, on a paused-by-default
-            // 320 dp strip.
+            modifier = Modifier.fillMaxSize(),
             surfaceType = SurfaceType.TextureSurface,
-            // Transparent clear, so the subject floats on the card's own `hero-field`
-            // and the bundled still can fade out from under it.
             isOpaque = false,
             engine = engine,
             view = view,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
-            environment = environment,
+            environment = hdrEnvironment ?: fallbackEnvironment,
             cameraNode = cameraNode,
-            // No manipulator and no gesture listener: the scene answers no gesture at
-            // all. A horizontal drag belongs to the featured pager, a vertical one to
-            // the grid, a tap to the card that opens the Model Viewer (#3829).
+            mainLightNode = sun,
+            fillLightNode = null,
             cameraManipulator = null,
             onGestureListener = null,
-            renderQuality = RenderQuality.Performance,
+            autoCenterContent = false,
+            lifecycle = stageLifecycle,
+            renderQuality = if (tier.cinematic) RenderQuality.Default else RenderQuality.Performance,
+            frameRatePolicy = if (moving) {
+                FrameRatePolicy.Continuous(maxFps = HERO_MAX_FPS)
+            } else {
+                FrameRatePolicy.OnDemand(maxFps = HERO_MAX_FPS)
+            },
             renderInvalidator = renderInvalidator,
-            onFrame = { frameTimeNanos ->
-                // Cold-start markers (`tools/measure-demo-cold-start.sh`): the first presented
-                // frame with the subject in the scene, then the first one after its textures
-                // finished uploading — what a user actually calls "the model is there".
-                if (nodeHolder[0] != null) {
+            onFrame = { nanos ->
+                val helmet = helmetNode[0]
+                if (helmet != null) {
                     StartupMarker.mark("first_model_frame")
                     if (!modelLoader.isLoading) {
                         StartupMarker.mark("model_textured_frame")
-                        if (!modelOnScreen) modelOnScreen = true
+                        if (entranceStart[0] == null) entranceStart[0] = clock.seconds
                     }
                 }
-                val previous = lastFrameNanos[0]
-                lastFrameNanos[0] = frameTimeNanos
-                if (previous == 0L) return@SceneView
-                if (!advancing) return@SceneView
-                val deltaSeconds = ((frameTimeNanos - previous) / 1_000_000_000.0).toFloat()
-                    .coerceIn(0f, MAX_FRAME_SECONDS)
-                val yaw = turntable.advance(deltaSeconds, idleTurntable)
-                nodeHolder[0]?.rotation = Rotation(x = HERO_PITCH_DEGREES, y = yaw)
+                if (terrainNode[0] != null && terrainStart[0] == null) terrainStart[0] = clock.seconds
+                val before = clock.seconds
+                val seconds = clock.frame(nanos, moving)
+                tilt.update((seconds - before).toFloat())
+                val pose = heroFlightPose(
+                    seconds = seconds,
+                    period = tier.terrain.period,
+                    tiltX = tilt.x,
+                    tiltY = tilt.y,
+                    entranceStart = entranceStart[0],
+                    terrainStart = terrainStart[0],
+                    motion = motionEnabled,
+                )
+                terrainNode[0]?.position = Position(
+                    y = -DuskFlight.TERRAIN_RISE_UNITS * (1f - pose.terrainRise),
+                    z = pose.terrainOffsetZ,
+                )
+                cameraNode.lookAt(pose)
+                helmet?.apply {
+                    position = Position(pose.helmetX, pose.helmetY, pose.helmetZ)
+                    rotation = Rotation(x = -6f, y = pose.helmetYawDegrees)
+                    scale = Scale(helmetBaseScale[0] * pose.helmetEntrance.coerceAtLeast(0.001f))
+                }
             },
         ) {
+            if (terrainGeometry != null && terrainInstance != null) {
+                MeshNode(
+                    primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+                    vertexBuffer = terrainGeometry.vertexBuffer,
+                    indexBuffer = terrainGeometry.indexBuffer,
+                    boundingBox = terrainGeometry.boundingBox,
+                    materialInstance = terrainInstance,
+                    apply = {
+                        terrainNode[0] = this
+                        isShadowCaster = false
+                        isShadowReceiver = false
+                    },
+                )
+            }
+            if (sunInstance != null) {
+                SphereNode(
+                    radius = DuskFlight.SUN_RADIUS,
+                    stacks = 12,
+                    slices = 24,
+                    materialInstance = sunInstance,
+                    position = DuskFlight.sunPosition,
+                    apply = {
+                        isShadowCaster = false
+                        isShadowReceiver = false
+                    },
+                )
+            }
             modelInstance?.let { instance ->
                 ModelNode(
                     modelInstance = instance,
-                    scaleToUnits = HERO_SUBJECT_UNITS,
-                    rotation = Rotation(x = HERO_PITCH_DEGREES, y = turntable.yawDegrees),
-                    apply = { nodeHolder[0] = this },
+                    autoAnimate = false,
+                    scaleToUnits = DuskFlight.HELMET_UNITS,
+                    centerOrigin = Position(0f),
+                    apply = {
+                        helmetNode[0] = this
+                        helmetBaseScale[0] = scale.x
+                        // Invisible until its first textured frame: the entrance scales it in.
+                        scale = Scale(scale.x * 0.001f)
+                        isShadowCaster = false
+                    },
                 )
             }
         }
-
-        // A touch shield over the viewport. The `SceneView` is an Android `View`, and
-        // the interop layer hands it every touch that lands on it: if it claims the
-        // stream, the pager and the card above it see consumed events and neither
-        // pages nor opens the demo. This sibling sits on top so the hit test stops
-        // here, and it observes without consuming — every event still travels up to
-        // the pager (horizontal swipe), the grid (vertical scroll) and the card (tap).
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) awaitPointerEvent()
-                    }
-                },
-        )
+        // Raw Filament writes on the View, declared after the SceneView so they run after
+        // its own `applyRenderQuality` effect and are never undone by it (#1078). Each
+        // write asks for a frame: a parked loop would otherwise keep the old look.
+        LaunchedEffect(view, tier) {
+            view.fogOptions = view.fogOptions.also { fog ->
+                fog.enabled = tier.cinematic
+                fog.color[0] = DuskFlight.fogColor[0]
+                fog.color[1] = DuskFlight.fogColor[1]
+                fog.color[2] = DuskFlight.fogColor[2]
+                fog.density = 0.045f
+                fog.height = -1f
+                fog.heightFalloff = 0.14f
+                fog.distance = 6f
+                // Ridges dissolve into the horizon; the disc, past this, stays sharp.
+                fog.cutOffDistance = 80f
+                fog.maximumOpacity = 0.9f
+                fog.fogColorFromIbl = false
+                fog.inScatteringStart = 20f
+                fog.inScatteringSize = 14f
+            }
+            if (tier.cinematic) {
+                view.bloomOptions = view.bloomOptions.also { bloom ->
+                    bloom.enabled = true
+                    bloom.strength = 0.3f
+                    bloom.lensFlare = true
+                    bloom.starburst = true
+                    bloom.ghostCount = 3
+                    bloom.ghostThreshold = 12f
+                    bloom.haloThreshold = 12f
+                    bloom.chromaticAberration = 0.004f
+                }
+                view.temporalAntiAliasingOptions = view.temporalAntiAliasingOptions.also { taa ->
+                    taa.enabled = true
+                }
+                view.antiAliasing = View.AntiAliasing.NONE
+            }
+            renderInvalidator.requestRender()
+        }
     }
 }
 
-/** How much of its size the stage gives up by the time the band has fully scrolled out. */
-private const val COLLAPSE_SCALE = 0.35f
+/** 30 presented frames per second — the flight paces like film and the panel idles. */
+private const val HERO_MAX_FPS = 30
 
-/** How far the stage rises into the collapse, as a fraction of its own height. */
-private const val COLLAPSE_RISE = 0.18f
+private fun CameraNode.lookAt(pose: HeroFlightPose) {
+    val roll = Math.toRadians(pose.rollDegrees.toDouble())
+    lookAt(
+        eye = Position(pose.eyeX, pose.eyeY, pose.eyeZ),
+        center = Position(pose.targetX, pose.targetY, pose.targetZ),
+        up = Direction(sin(roll).toFloat(), cos(roll).toFloat(), 0f),
+    )
+}
 
-/** Clamp for a delta across a dropped frame or a resumed app — one turntable step, not a jump. */
-private const val MAX_FRAME_SECONDS = 0.1f
+private class HeroLifecycleOwner : LifecycleOwner {
+    val registry = LifecycleRegistry(this).apply { currentState = Lifecycle.State.CREATED }
+    override val lifecycle: Lifecycle get() = registry
+}
+
+/**
+ * The stage's own lifecycle: RESUMED only while [active] *and* the host is resumed.
+ *
+ * SceneView stops submitting frames below RESUMED and never detaches the surface, so
+ * the last frame stays on screen — which is exactly the state the band must come back
+ * in (#3949). The clock pauses on the way down so the next frame gets no delta.
+ */
+@Composable
+private fun rememberHeroLifecycle(active: Boolean, clock: HeroClock): Lifecycle {
+    val parent = LocalLifecycleOwner.current.lifecycle
+    val owner = remember { HeroLifecycleOwner() }
+    DisposableEffect(parent, owner, active) {
+        fun sync() {
+            val resumed = active && parent.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            if (!resumed) clock.pause()
+            owner.registry.currentState =
+                if (resumed) Lifecycle.State.RESUMED else Lifecycle.State.CREATED
+        }
+        val observer = LifecycleEventObserver { _, _ -> sync() }
+        parent.addObserver(observer)
+        sync()
+        onDispose { parent.removeObserver(observer) }
+    }
+    DisposableEffect(owner) {
+        onDispose { owner.registry.currentState = Lifecycle.State.DESTROYED }
+    }
+    return owner.lifecycle
+}

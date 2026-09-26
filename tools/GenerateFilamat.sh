@@ -10,10 +10,10 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (30 mats → 30 filamats), across THREE pinned toolchains:
+# Inventory (31 mats → 31 filamats), across THREE pinned toolchains:
 #   sceneview/src/main/materials/         (15) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
-#   samples/android-demo/src/main/materials/ (2) → samples/android-demo/src/main/assets/materials/
+#   samples/android-demo/src/main/materials/ (3) → samples/android-demo/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/     [filamentWebsite]
 #   sceneview-web/materials/               (1) → sceneview-web/materials/      [filamentWeb]
 #
@@ -31,8 +31,8 @@
 # fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 30 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 30 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 31 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 31 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -167,6 +167,7 @@ MATS=(
     "sceneview:view_texture_unlit:sceneview/src/main/materials/view_texture_unlit.mat:sceneview/src/main/assets/materials/view_texture_unlit.filamat:-p all -a all"
     "android-demo:studio_pbr:samples/android-demo/src/main/materials/studio_pbr.mat:samples/android-demo/src/main/assets/materials/studio_pbr.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:studio_glass:samples/android-demo/src/main/materials/studio_glass.mat:samples/android-demo/src/main/assets/materials/studio_glass.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:hero_terrain:samples/android-demo/src/main/materials/hero_terrain.mat:samples/android-demo/src/main/assets/materials/hero_terrain.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_depth:arsceneview/src/main/materials/camera_stream_depth.mat:arsceneview/src/main/assets/materials/camera_stream_depth.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_person_occlusion:arsceneview/src/main/materials/camera_stream_person_occlusion.mat:arsceneview/src/main/assets/materials/camera_stream_person_occlusion.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_flat:arsceneview/src/main/materials/camera_stream_flat.mat:arsceneview/src/main/assets/materials/camera_stream_flat.filamat:--optimize-size -p mobile -a opengl -a vulkan"

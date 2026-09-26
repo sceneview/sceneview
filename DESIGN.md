@@ -110,6 +110,10 @@ the surface ramp above, not the M3 tonal ramp.
 | `chip-selected-bg` | #1a1a2e (`on-surface`) | #f3f4f6 | Selected category chip |
 | `chip-selected-text` | #ffffff (`surface`) | #0D1117 | Selected chip label |
 | `hero-title` | #ffffff | #ffffff | Hero headline — the hero is an image card that stays dark in both themes |
+| `hero-sky-top` | #0B0F16 | #0B0F16 | Home stage sky, top stop — the dusk gradient Compose paints behind the transparent live flight (#3948); one gradient in both themes, the hero stays dark |
+| `hero-sky-dusk` | #3B1D46 | #3B1D46 | Home stage sky, mid stop |
+| `hero-sky-horizon` | #E2734F | #E2734F | Home stage sky, horizon stop — also the flight's fog colour, so the far ridges dissolve into it |
+| `hero-sky-ground` | #2A1220 | #2A1220 | Home stage sky, below the horizon, under the terrain |
 | `hero-subtitle` | rgba(255,255,255,0.80) | rgba(255,255,255,0.80) | Hero subtitle, max width 260dp |
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
