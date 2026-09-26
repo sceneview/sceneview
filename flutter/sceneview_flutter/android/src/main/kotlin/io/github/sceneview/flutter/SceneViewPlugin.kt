@@ -355,6 +355,9 @@ class SceneViewPlatformView(
         }
     }
 
+    // Lifecycle, saved-state and view-model owners when the host has none (#3928).
+    private val viewTreeOwners = PlatformViewOwners.installIfHostHasNone(composeView, context)
+
     init {
         channel.setMethodCallHandler(this)
     }
@@ -370,6 +373,7 @@ class SceneViewPlatformView(
         // so that Filament resources (engine, loaders) are released.
         composeView.disposeComposition()
         (composeView.parent as? android.view.ViewGroup)?.removeView(composeView)
+        viewTreeOwners?.destroy()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -597,6 +601,9 @@ class ARSceneViewPlatformView(
         }
     }
 
+    // Lifecycle, saved-state and view-model owners when the host has none (#3928).
+    private val viewTreeOwners = PlatformViewOwners.installIfHostHasNone(composeView, context)
+
     init {
         channel.setMethodCallHandler(this)
     }
@@ -613,6 +620,7 @@ class ARSceneViewPlatformView(
         // so that Filament/ARCore resources are released.
         composeView.disposeComposition()
         (composeView.parent as? android.view.ViewGroup)?.removeView(composeView)
+        viewTreeOwners?.destroy()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
