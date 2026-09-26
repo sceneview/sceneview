@@ -106,6 +106,7 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
+import io.github.sceneview.demo.rememberBackendDrainWait
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.VIEWER_MAX_ZOOM_FACTOR
 import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
@@ -187,17 +188,17 @@ fun ModelViewerDemo(onBack: () -> Unit) {
 }
 
 /**
- * Frames queued with a fully loaded model instance before the cover-releasing `flushAndWait`.
+ * Frames queued with a fully loaded model instance before the cover-releasing backend fence.
  * Not 1: the scene parents DSL nodes through an async `snapshotFlow`, so the first frame after
- * the instance lands can be drawn without the `ModelNode`; the flush must wait on a frame that
+ * the instance lands can be drawn without the `ModelNode`; the fence must follow a frame that
  * includes it.
  *
  * Not 3 either, since #3108: this counter is paid out of frames the scene presents *after* the
  * model is in, and a render-on-demand scene presents a settle tail and then parks — measured at
  * 3 frames in 10 s total on `emulator-5554`, of which fewer still land post-load. A threshold
  * the scene never reaches leaves the "Still loading…" card over a finished model for good. Two
- * is the smallest count that keeps the reason above intact, and the `flushAndWait` on the second
- * is what actually proves the backend drew it.
+ * is the smallest count that keeps the reason above intact, and the fence after the second is
+ * what actually proves the backend drew it.
  */
 private const val MODEL_COVER_FRAMES = 2
 
@@ -482,21 +483,28 @@ private fun SingleModelSection(
     // at 60 Hz while Filament's backend thread is still linking the model's material programs —
     // measured on the emulator: ticks resume at +0.5 s, the helmet is first presented at +3.5 s,
     // black in between. So once the instance exists, the resources report complete and a couple
-    // of frames have queued the node's draw, `Engine.flushAndWait()` blocks until the backend
-    // has actually executed that frame, and only then is the cover released. The cover is a
-    // static image, so the wait is invisible (~100 ms on hardware, the full link time on a
-    // software GL). Latched — a later model swap must not bring the helmet preview back.
+    // of frames have queued the node's draw, a backend fence confirms the backend has actually
+    // executed that frame, and only then is the cover released. The cover is a static image,
+    // so the wait is invisible (~100 ms on hardware, the full link time on a software GL).
+    // The fence is polled, never awaited: an `Engine.flushAndWait()` here held the main thread
+    // for that whole link time and a BACK press behind it raised an ANR (#3799).
+    // Latched — a later model swap must not bring the helmet preview back.
     val modelFramesSeen = remember { mutableStateOf(0) }
     val hasModelRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     hasModelRef.set(activeModelInstance != null)
-    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, engine) {
+    val modelDrain = rememberBackendDrainWait(engine)
+    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, modelDrain) {
         { nanos ->
             firstFrame.onFrame(nanos)
             if (hasModelRef.get() && modelFramesSeen.value < MODEL_COVER_FRAMES &&
                 runCatching { modelLoader.progress >= 1f }.getOrDefault(true)
             ) {
-                if (modelFramesSeen.value == MODEL_COVER_FRAMES - 1) runCatching { engine.flushAndWait() }
-                modelFramesSeen.value++
+                if (modelFramesSeen.value < MODEL_COVER_FRAMES - 1) {
+                    modelFramesSeen.value++
+                } else {
+                    // The last count is paid by the backend, not by a frame. No-op while pending.
+                    modelDrain.start { modelFramesSeen.value = MODEL_COVER_FRAMES }
+                }
             }
         }
     }

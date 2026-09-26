@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: opening a demo and leaving it straight away no longer freezes the app ([#3799](https://github.com/sceneview/sceneview/issues/3799)).** The loading cover waited on the main thread, with no time limit, until the first frames had been drawn. On a slow GPU that took several seconds while shaders compiled, and pressing Back during that time led to an "app not responding" dialog. The cover now checks once per frame whether the frames are drawn and never blocks the UI.
