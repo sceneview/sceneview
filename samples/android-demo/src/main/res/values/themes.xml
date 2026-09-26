@@ -34,4 +34,30 @@
         <item name="colorOnError">@color/md_theme_onError</item>
         <item name="android:windowBackground">@color/md_theme_surface</item>
     </style>
+
+    <!--
+      Launch theme, MainActivity only (#3899). Drawn by the system before the app's first
+      frame, then swapped for `Theme.SceneViewDemo` by `installSplashScreen()`.
+
+      It paints what the platform splash already painted: the launcher icon (its
+      background layer is `md_theme_primary`, so it follows the theme) on
+      `md_theme_surface`, dark system-bar icons in light, light ones in dark. The
+      attributes are spelled out because `Theme.SplashScreen` defaults the icon to the
+      generic Android one and its bar appearance to the device default, not ours.
+      `values-v31/themes.xml` sets the platform icon attribute back to `@null`: see there.
+
+      The theme is not what fixes #3899 — the exit listener in MainActivity is. Without
+      it, the system fades this window out over the app's first frames, and the status
+      bar keeps this window's dark icons over a demo's dark stage the whole time.
+    -->
+    <style name="Base.Theme.SceneViewDemo.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/md_theme_surface</item>
+        <!-- Drawn by core-splashscreen itself below API 31 only. -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.SceneViewDemo</item>
+        <item name="android:windowLightStatusBar">@bool/splash_light_system_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/splash_light_system_bars</item>
+    </style>
+
+    <style name="Theme.SceneViewDemo.Starting" parent="Base.Theme.SceneViewDemo.Starting" />
 </resources>

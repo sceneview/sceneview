@@ -244,6 +244,10 @@ dependencies {
 
     implementation project(":samples:common")
 
+    // androidx SplashScreen (#3899): `installSplashScreen()` in MainActivity and the
+    // `Theme.SceneViewDemo.Starting` launch theme.
+    implementation libs.androidx.core.splashscreen
+
     // Compose (extras beyond what :samples:common provides)
     implementation libs.androidx.compose.material.icons.extended
     // Material 3 Expressive APIs (alpha, newer than BOM's stable release)

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      API 31+: the platform draws the splash. `Theme.SplashScreen` forwards its
+      `windowSplashScreenAnimatedIcon` to the platform attribute, and a launcher icon
+      passed that way is drawn as an *animated* icon, about a fifth larger than the
+      platform's own rendering of the app icon (measured on emulator-5554, #3899).
+      `@null` sends the platform down its default path — the app icon, at the size the
+      splash had before this theme existed.
+    -->
+    <style name="Theme.SceneViewDemo.Starting" parent="Base.Theme.SceneViewDemo.Starting">
+        <item name="android:windowSplashScreenAnimatedIcon">@null</item>
+    </style>
+</resources>
