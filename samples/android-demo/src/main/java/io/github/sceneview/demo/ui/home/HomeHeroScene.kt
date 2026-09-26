@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -19,6 +20,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.demo.StartupMarker
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -133,7 +135,8 @@ internal class HeroTurntable {
  * @param rendering whether the subject should be turning right now (on screen, not being
  *                  flung). It drives the turntable, and the turntable is what holds the
  *                  render-on-demand loop awake.
- * @param onVisibilityChange raised with `true` on the first frame there is a model to draw.
+ * @param onVisibilityChange raised with `true` once a frame with the textured model has
+ *   actually reached the screen — not when the model is merely loaded (see [HomeHeroStage]).
  */
 @Composable
 internal fun HomeHeroScene(
@@ -141,6 +144,30 @@ internal fun HomeHeroScene(
     rendering: Boolean,
     onVisibilityChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+) {
+    // The 3D stack is composed one frame late, on purpose. Composing it with the rest of the
+    // home screen put the Filament engine, the EGL context, both material providers and the
+    // IBL on the main thread *inside* the app's first frame: deferring it took the median
+    // cold start to first frame from 233 to 146 ms on emulator-5554, release build
+    // (`tools/measure-demo-cold-start.sh`), with the model on screen no later. The band's
+    // first seconds are the bundled still anyway; one frame later that still is already
+    // on screen and the scene builds behind it.
+    var firstFrameDrawn by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        firstFrameDrawn = true
+    }
+    if (firstFrameDrawn) {
+        HomeHeroStage(collapseFraction, rendering, onVisibilityChange, modifier)
+    }
+}
+
+@Composable
+private fun HomeHeroStage(
+    collapseFraction: () -> Float,
+    rendering: Boolean,
+    onVisibilityChange: (Boolean) -> Unit,
+    modifier: Modifier,
 ) {
     val engine = rememberEngine()
     val view = rememberView(engine)
@@ -154,16 +181,23 @@ internal fun HomeHeroScene(
 
     val modelInstance = rememberModelInstance(modelLoader, HOME_HERO_MODEL)
 
-    // The hero declares itself visible one composition after the model exists, and
+    // The hero declares itself visible once the textured model has been *presented*, and
     // never declares itself invisible again — the caller crossfades its still out, and
     // a still that came back would read as a glitch, not as a fallback.
+    //
+    // Not "once the model exists". The instance lands a few hundred ms into a cold start,
+    // but the GPU then spends 1.7–2.8 s on the helmet's first draw (`Renderer.beginFrame`
+    // refused 88–140 frames in a row on emulator-5554), and crossfading on the instance
+    // showed an empty card for that whole window. Written once, from `onFrame`, which
+    // only fires for frames that reached the surface.
     var gaveUp by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(HERO_LOAD_TIMEOUT_MILLIS)
         gaveUp = true
     }
-    DisposableEffect(modelInstance != null) {
-        if (modelInstance != null) onVisibilityChange(true)
+    var modelOnScreen by remember { mutableStateOf(false) }
+    DisposableEffect(modelOnScreen) {
+        if (modelOnScreen) onVisibilityChange(true)
         onDispose { }
     }
 
@@ -247,6 +281,16 @@ internal fun HomeHeroScene(
             renderQuality = RenderQuality.Performance,
             renderInvalidator = renderInvalidator,
             onFrame = { frameTimeNanos ->
+                // Cold-start markers (`tools/measure-demo-cold-start.sh`): the first presented
+                // frame with the subject in the scene, then the first one after its textures
+                // finished uploading — what a user actually calls "the model is there".
+                if (nodeHolder[0] != null) {
+                    StartupMarker.mark("first_model_frame")
+                    if (!modelLoader.isLoading) {
+                        StartupMarker.mark("model_textured_frame")
+                        if (!modelOnScreen) modelOnScreen = true
+                    }
+                }
                 val previous = lastFrameNanos[0]
                 lastFrameNanos[0] = frameTimeNanos
                 if (previous == 0L) return@SceneView
