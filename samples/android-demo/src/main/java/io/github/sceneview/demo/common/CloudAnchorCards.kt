@@ -187,9 +187,12 @@ private val METER_HEIGHT = SceneViewTokens.Space.sm
 /**
  * The shared scrim shell every card sits in: same ground, border, radius, lift and max
  * width as the coaching pill, so nothing about a card has to be decided per case.
+ *
+ * Internal rather than private since #3832: the Geospatial status card is the same
+ * `DESIGN.md` AR Overlay Card and must not grow a second copy of this shell.
  */
 @Composable
-private fun DemoBottomOverlayScope.CardShell(
+internal fun DemoBottomOverlayScope.CardShell(
     modifier: Modifier,
     testTag: String,
     content: @Composable ColumnScope.() -> Unit,
@@ -346,16 +349,35 @@ private fun RoomQualityMeter(quality: RoomQuality) {
         RoomQuality.Sufficient -> SceneViewTokens.ArOverlay.accentProgress
         RoomQuality.Good -> SceneViewTokens.ArOverlay.accentSuccess
     }
+    ArOverlayMeter(
+        filled = filled,
+        segments = ROOM_QUALITY_SEGMENTS,
+        accent = accent,
+        description = "Room mapping ${quality.label()}, $filled of $ROOM_QUALITY_SEGMENTS",
+    )
+}
+
+/**
+ * The `DESIGN.md` AR Overlay Card meter: [segments] segments at `radius-xs`, `space-sm`
+ * tall, `space-xs` apart, the first [filled] lit in [accent] and the rest on the
+ * `Button glass` track. Shared by the Cloud Anchor room-mapping meter and the Geospatial
+ * accuracy meter (#3832), so the two read as the same instrument.
+ */
+@Composable
+internal fun ArOverlayMeter(
+    filled: Int,
+    segments: Int,
+    accent: Color,
+    description: String,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .clearAndSetSemantics {
-                contentDescription = "Room mapping ${quality.label()}, " +
-                    "$filled of $ROOM_QUALITY_SEGMENTS"
-            },
+            .clearAndSetSemantics { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
     ) {
-        repeat(ROOM_QUALITY_SEGMENTS) { index ->
+        repeat(segments) { index ->
             Box(
                 modifier = Modifier
                     .weight(1f)
