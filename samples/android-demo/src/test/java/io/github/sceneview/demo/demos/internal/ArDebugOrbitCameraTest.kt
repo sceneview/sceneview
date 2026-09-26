@@ -46,7 +46,8 @@ class ArDebugOrbitCameraTest {
 
         assertEquals(ArDebugFraming.MIN_ELEVATION, pose.elevationDegrees, 1e-4f)
         assertEquals(ArDebugFraming.MAX_DISTANCE, pose.distance, 1e-4f)
-        assertEquals(ArDebugFraming.DEFAULT_POSE.distance, ArDebugFraming.clamp(OrbitPose(distance = Float.NaN)).distance, 1e-4f)
+        val clamped = ArDebugFraming.clamp(OrbitPose(distance = Float.NaN))
+        assertEquals(ArDebugFraming.DEFAULT_POSE.distance, clamped.distance, 1e-4f)
     }
 
     @Test

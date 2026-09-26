@@ -229,6 +229,7 @@ class ArDebugTrace {
      * the voxel map — a point seen again lands in the voxel it already has — and the observation
      * remembers which voxels it saw, which is what "live points" means at any instant.
      */
+    @Suppress("LoopWithTooManyJumpStatements") // low-confidence and non-finite points skip early
     fun addPoints(nanos: Long, positions: FloatArray, confidences: FloatArray? = null) {
         val t = secondsOf(nanos)
         val count = positions.size / 3

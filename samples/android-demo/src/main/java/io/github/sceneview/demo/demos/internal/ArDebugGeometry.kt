@@ -66,7 +66,7 @@ class DebugMesh(initialVertices: Int = 64) {
     /** Axis-aligned bounds of the vertices, `[minX, minY, minZ, maxX, maxY, maxZ]`, or null. */
     fun bounds(): FloatArray? {
         if (vertexCount == 0) return null
-        val b = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
+        val b = FloatArray(6) { if (it < 3) Float.MAX_VALUE else -Float.MAX_VALUE }
         for (i in 0 until vertexCount) {
             for (axis in 0..2) {
                 val v = positions[i * 3 + axis]
@@ -167,6 +167,7 @@ object DebugFrustum {
 }
 
 /** Builds each layer's triangles for one [ArDebugFrame]. */
+@Suppress("TooManyFunctions") // one small builder per layer, kept together on purpose
 object ArDebugGeometry {
 
     // ---------------------------------------------------------------------------------------
@@ -274,7 +275,9 @@ object ArDebugGeometry {
         for (i in 0 until rings - 1) {
             for (s in 0 until sides) {
                 val s2 = (s + 1) % sides
-                mesh.quad(base + i * sides + s, base + i * sides + s2, base + (i + 1) * sides + s2, base + (i + 1) * sides + s)
+                val ring = base + i * sides
+                val nextRing = ring + sides
+                mesh.quad(ring + s, ring + s2, nextRing + s2, nextRing + s)
             }
         }
         // Caps, so the tube does not look hollow when orbited end-on.
@@ -581,7 +584,9 @@ object ArDebugGeometry {
     fun floorHeight(frame: ArDebugFrame): Float {
         val floors = frame.planes.filter { it.kind == DebugPlaneKind.Floor && it.vertexCount >= 3 }
         if (floors.isNotEmpty()) {
-            return floors.minOf { plane -> (0 until plane.vertexCount).map { plane.polygon[it * 3 + 1] }.average().toFloat() }
+            return floors.minOf { plane ->
+                (0 until plane.vertexCount).map { plane.polygon[it * 3 + 1] }.average().toFloat()
+            }
         }
         if (frame.trail.size >= 3) return frame.trail[1] - 1.3f
         return 0f
@@ -592,12 +597,16 @@ object ArDebugGeometry {
      * left out on purpose — a single far outlier would zoom the whole view out.
      */
     fun contentBounds(frame: ArDebugFrame): FloatArray? {
-        val b = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
+        val b = FloatArray(6) { if (it < 3) Float.MAX_VALUE else -Float.MAX_VALUE }
         var any = false
         fun add(x: Float, y: Float, z: Float) {
             any = true
-            if (x < b[0]) b[0] = x; if (y < b[1]) b[1] = y; if (z < b[2]) b[2] = z
-            if (x > b[3]) b[3] = x; if (y > b[4]) b[4] = y; if (z > b[5]) b[5] = z
+            b[0] = minOf(b[0], x)
+            b[1] = minOf(b[1], y)
+            b[2] = minOf(b[2], z)
+            b[3] = maxOf(b[3], x)
+            b[4] = maxOf(b[4], y)
+            b[5] = maxOf(b[5], z)
         }
         for (i in 0 until frame.trail.size / 3) add(frame.trail[i * 3], frame.trail[i * 3 + 1], frame.trail[i * 3 + 2])
         for (plane in frame.planes) for (i in 0 until plane.vertexCount) {

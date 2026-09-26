@@ -180,6 +180,7 @@ internal class ArDebugRecorder {
         }
     }
 
+    @Suppress("LoopWithTooManyJumpStatements") // guard clauses read better than nested ifs here
     private fun recordPlanes(trace: ArDebugTrace, nanos: Long, session: Session) {
         val seen = HashSet<Plane>()
         for (plane in session.getAllTrackables(Plane::class.java)) {
@@ -252,7 +253,10 @@ internal class DebugLayerNode(
     indexBuffer = createIndexBuffer(engine, INITIAL_CAPACITY),
     // The session is room-sized but unbounded; a generous fixed box keeps culling cheap and
     // never clips a layer, where a per-upload AABB would cost a pass over every vertex.
-    boundingBox = com.google.android.filament.Box(0f, 0f, 0f, WORLD_HALF_EXTENT_M, WORLD_HALF_EXTENT_M, WORLD_HALF_EXTENT_M),
+    boundingBox = com.google.android.filament.Box(
+        0f, 0f, 0f,
+        WORLD_HALF_EXTENT_M, WORLD_HALF_EXTENT_M, WORLD_HALF_EXTENT_M,
+    ),
     materialInstance = material,
     builder = {
         priority(priority)
@@ -276,12 +280,15 @@ internal class DebugLayerNode(
         val vertexCount = if (empty) 1 else mesh!!.vertexCount
         val indexCount = if (empty) 3 else mesh!!.indexCount
 
-        val newVertexBuffer = if (vertexCount > vertexCapacity) createVertexBuffer(engine, nextPowerOfTwo(vertexCount)) else null
-        val newIndexBuffer = if (indexCount > indexCapacity) createIndexBuffer(engine, nextPowerOfTwo(indexCount)) else null
+        val newVertexBuffer =
+            if (vertexCount > vertexCapacity) createVertexBuffer(engine, nextPowerOfTwo(vertexCount)) else null
+        val newIndexBuffer =
+            if (indexCount > indexCapacity) createIndexBuffer(engine, nextPowerOfTwo(indexCount)) else null
         val vertexTarget = newVertexBuffer ?: ownedVertexBuffer
         val indexTarget = newIndexBuffer ?: ownedIndexBuffer
         try {
-            val vertexBytes = ByteBuffer.allocateDirect(vertexCount * 3 * Float.SIZE_BYTES).order(ByteOrder.nativeOrder())
+            val vertexBytes = ByteBuffer.allocateDirect(vertexCount * 3 * Float.SIZE_BYTES)
+                .order(ByteOrder.nativeOrder())
             if (empty) vertexBytes.asFloatBuffer().put(floatArrayOf(0f, 0f, 0f))
             else vertexBytes.asFloatBuffer().put(mesh!!.positions, 0, vertexCount * 3)
             vertexTarget.setBufferAt(engine, 0, vertexBytes, 0, vertexCount * 3 * Float.SIZE_BYTES)
@@ -291,7 +298,9 @@ internal class DebugLayerNode(
             else indexBytes.asIntBuffer().put(mesh!!.indices, 0, indexCount)
             indexTarget.setBuffer(engine, indexBytes, 0, indexCount * Int.SIZE_BYTES)
 
-            renderableManager.setGeometryAt(renderableInstance, 0, PrimitiveType.TRIANGLES, vertexTarget, indexTarget, 0, indexCount)
+            renderableManager.setGeometryAt(
+                renderableInstance, 0, PrimitiveType.TRIANGLES, vertexTarget, indexTarget, 0, indexCount,
+            )
         } catch (t: Throwable) {
             newVertexBuffer?.let { engine.safeDestroyVertexBuffer(it) }
             newIndexBuffer?.let { engine.safeDestroyIndexBuffer(it) }
@@ -383,7 +392,10 @@ private fun MaterialLoader.createLayerMaterial(paint: LayerPaint): MaterialInsta
 
 /** The parts rebuilt independently, each when its own inputs change. */
 private enum class Part(val layers: List<DebugLayer>, val group: DebugGroup) {
-    Stage(listOf(DebugLayer.GridMinor, DebugLayer.GridMajor, DebugLayer.AxisX, DebugLayer.AxisY, DebugLayer.AxisZ), DebugGroup.Stage),
+    Stage(
+        listOf(DebugLayer.GridMinor, DebugLayer.GridMajor, DebugLayer.AxisX, DebugLayer.AxisY, DebugLayer.AxisZ),
+        DebugGroup.Stage,
+    ),
     Planes(DebugLayer.entries.filter { it.group == DebugGroup.Planes }, DebugGroup.Planes),
     Map(listOf(DebugLayer.MapPoints), DebugGroup.Points),
     Live(listOf(DebugLayer.LivePoints), DebugGroup.Points),
@@ -404,6 +416,7 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
     private val keys = HashMap<Part, Any?>()
     private val out: (DebugLayer) -> DebugMesh = { meshes.getValue(it) }
 
+    @Suppress("LoopWithTooManyJumpStatements") // hidden and unchanged parts skip early
     fun sync(
         frame: ArDebugFrame,
         style: ArDebugStyle,
@@ -440,7 +453,13 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
     /** Forget every key: the next [sync] rebuilds everything (a new trace). */
     fun invalidate() = keys.clear()
 
-    private fun keyOf(part: Part, frame: ArDebugFrame, style: ArDebugStyle, stageBounds: FloatArray, floorY: Float): Any =
+    private fun keyOf(
+        part: Part,
+        frame: ArDebugFrame,
+        style: ArDebugStyle,
+        stageBounds: FloatArray,
+        floorY: Float,
+    ): Any =
         when (part) {
             Part.Stage -> listOf(stageBounds.toList(), floorY, style)
             Part.Planes -> listOf(frame.planes.map { System.identityHashCode(it) }, style)
@@ -553,7 +572,9 @@ internal fun ArDebugSceneView(
                 }
 
                 val bounds = ArDebugGeometry.contentBounds(frame)
-                val home = ArDebugFraming.home(bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect)
+                val home = ArDebugFraming.home(
+                    bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
+                )
                 if (orbit.following) orbit.home = home
                 if (!orbit.hasFramedContent && bounds != null) {
                     orbit.hasFramedContent = true
@@ -583,7 +604,9 @@ internal fun ArDebugSceneView(
                         val dog = rememberModelInstance(modelLoader, "models/shiba.glb")
                         Node(
                             position = Position(anchor.pose.x, anchor.pose.y, anchor.pose.z),
-                            apply = { quaternion = Quaternion(anchor.pose.qx, anchor.pose.qy, anchor.pose.qz, anchor.pose.qw) },
+                            apply = {
+                                quaternion = Quaternion(anchor.pose.qx, anchor.pose.qy, anchor.pose.qz, anchor.pose.qw)
+                            },
                         ) {
                             dog?.let { ModelNode(modelInstance = it, scaleToUnits = ANCHOR_MODEL_SIZE_M) }
                         }
@@ -718,12 +741,16 @@ internal fun ArDebugLegend(session: ArDebugSession, modifier: Modifier = Modifie
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            LegendChip("Path", ArDebugFormat.distance(stats.pathMetres), DebugView.trailNew, session, DebugGroup.Trail, Modifier.weight(1f))
-            LegendChip("Points", ArDebugFormat.count(stats.mapPoints), DebugView.livePoint, session, DebugGroup.Points, Modifier.weight(1f))
+            val path = ArDebugFormat.distance(stats.pathMetres)
+            LegendChip("Path", path, DebugView.trailNew, session, DebugGroup.Trail, Modifier.weight(1f))
+            val points = ArDebugFormat.count(stats.mapPoints)
+            LegendChip("Points", points, DebugView.livePoint, session, DebugGroup.Points, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            LegendChip("Planes", ArDebugFormat.count(stats.planes), DebugView.floorOutline, session, DebugGroup.Planes, Modifier.weight(1f))
-            LegendChip("Anchors", ArDebugFormat.count(stats.anchors), DebugView.anchor, session, DebugGroup.Anchors, Modifier.weight(1f))
+            val planes = ArDebugFormat.count(stats.planes)
+            LegendChip("Planes", planes, DebugView.floorOutline, session, DebugGroup.Planes, Modifier.weight(1f))
+            val anchors = ArDebugFormat.count(stats.anchors)
+            LegendChip("Anchors", anchors, DebugView.anchor, session, DebugGroup.Anchors, Modifier.weight(1f))
         }
     }
 }
@@ -841,15 +868,20 @@ private fun LiveChip(live: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(shape)
-            .background(if (live) ArOverlay.accentSuccess.copy(alpha = LIVE_FILL_ALPHA) else ArOverlay.meterTrack, shape)
+            .background(
+                if (live) ArOverlay.accentSuccess.copy(alpha = LIVE_FILL_ALPHA) else ArOverlay.meterTrack,
+                shape,
+            )
             .clickable(enabled = !live, role = Role.Button, onClick = onClick)
             .padding(horizontal = Space.sm + Space.xs / 2, vertical = Space.xs + Space.xs / 2)
             .testTag(AR_DEBUG_LIVE_TAG),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(Space.sm).background(if (live) ArOverlay.accentSuccess else ArOverlay.onScrimMuted, CircleShape))
+        val dot = if (live) ArOverlay.accentSuccess else ArOverlay.onScrimMuted
+        Box(Modifier.size(Space.sm).background(dot, CircleShape))
         Spacer(Modifier.width(Space.xs + Space.xs / 2))
-        Text("Live", style = SceneViewTokens.Type.caption.copy(color = if (live) ArOverlay.onScrim else ArOverlay.onScrimMuted))
+        val label = if (live) ArOverlay.onScrim else ArOverlay.onScrimMuted
+        Text("Live", style = SceneViewTokens.Type.caption.copy(color = label))
     }
 }
 

@@ -650,7 +650,12 @@ private const val QA_SCRUB_FRACTION = 0.45f
 private const val AR_DEBUG_FIXTURE = "rerun/sample-session.jsonl"
 
 /** The QA states that feed the 3D view from [AR_DEBUG_FIXTURE] (#3950). */
-private enum class ArDebugQaState(val key: String, val fullScreen: Boolean, val streams: Boolean, val scrubbed: Boolean = false) {
+private enum class ArDebugQaState(
+    val key: String,
+    val fullScreen: Boolean,
+    val streams: Boolean,
+    val scrubbed: Boolean = false,
+) {
     Pip("pip", fullScreen = false, streams = false),
     PipStream("pip-stream", fullScreen = false, streams = true),
     Full("3d", fullScreen = true, streams = false),

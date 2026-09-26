@@ -22,13 +22,15 @@ class ArDebugLogTest {
         assertEquals(1000L, pose.nanos)
 
         val points = parseArDebugEvent(
-            """{"t":2,"type":"point_cloud","entity":"world/points","positions":[[0,0,0],[1,1,1]],"confidences":[0.5,0.9]}"""
+            """{"t":2,"type":"point_cloud","entity":"world/points","positions":[[0,0,0],""" +
+                """[1,1,1]],"confidences":[0.5,0.9]}"""
         ) as ArDebugEvent.Points
         assertEquals(6, points.positions.size)
         assertEquals(2, points.confidences!!.size)
 
         val plane = parseArDebugEvent(
-            """{"t":3,"type":"plane","entity":"world/planes/42","kind":"vertical","polygon":[[0,0,0],[1,0,0],[1,1,0]]}"""
+            """{"t":3,"type":"plane","entity":"world/planes/42","kind":"vertical","polygon":[[0,0,0],""" +
+                """[1,0,0],[1,1,0]]}"""
         ) as ArDebugEvent.Plane
         assertEquals(42, plane.id)
         assertEquals(DebugPlaneKind.Wall, plane.kind)
@@ -77,7 +79,9 @@ class ArDebugLogTest {
 
     @Test
     fun `the player fills the trace as time passes, then starts a fresh one`() {
-        val events = (0..10).map { ArDebugEvent.CameraPose(1_000_000_000L + it * 100_000_000L, DebugPose(it * 0.1f, 0f, 0f)) }
+        val events = (0..10).map {
+            ArDebugEvent.CameraPose(1_000_000_000L + it * 100_000_000L, DebugPose(it * 0.1f, 0f, 0f))
+        }
         val player = ArDebugLogPlayer(events, loopPauseSeconds = 0.5f)
 
         assertTrue(player.trace.isEmpty)

@@ -240,7 +240,8 @@ object ArDebugFraming {
 
     fun clamp(pose: OrbitPose): OrbitPose = pose.copy(
         elevationDegrees = pose.elevationDegrees.coerceIn(MIN_ELEVATION, MAX_ELEVATION),
-        distance = pose.distance.takeIf { it.isFinite() }?.coerceIn(MIN_DISTANCE, MAX_DISTANCE) ?: DEFAULT_POSE.distance,
+        distance = pose.distance.takeIf { it.isFinite() }?.coerceIn(MIN_DISTANCE, MAX_DISTANCE)
+            ?: DEFAULT_POSE.distance,
     )
 
     /**
@@ -281,10 +282,11 @@ object ArDebugFraming {
         val fraction = 1f - exp(-APPROACH_RATE * deltaSeconds)
         val next = CameraRig.lerp(pose, home, fraction)
         // Snap when close, so an idle view reaches a fixed point (render-on-demand can rest).
-        return if (abs(CameraRig.shortestDelta(next.azimuthDegrees, home.azimuthDegrees)) < 0.01f &&
-            abs(next.elevationDegrees - home.elevationDegrees) < 0.01f &&
-            abs(next.distance - home.distance) < 1e-4f &&
-            abs(next.target.x - home.target.x) + abs(next.target.y - home.target.y) + abs(next.target.z - home.target.z) < 1e-4f
-        ) home else next
+        val angleSettled = abs(CameraRig.shortestDelta(next.azimuthDegrees, home.azimuthDegrees)) < 0.01f &&
+            abs(next.elevationDegrees - home.elevationDegrees) < 0.01f
+        val targetOffset = abs(next.target.x - home.target.x) + abs(next.target.y - home.target.y) +
+            abs(next.target.z - home.target.z)
+        val reachSettled = abs(next.distance - home.distance) < 1e-4f && targetOffset < 1e-4f
+        return if (angleSettled && reachSettled) home else next
     }
 }

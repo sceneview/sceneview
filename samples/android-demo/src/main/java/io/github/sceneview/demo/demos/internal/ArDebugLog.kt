@@ -41,6 +41,7 @@ private val lenientJson = Json { ignoreUnknownKeys = true; isLenient = true }
  * lines, which are skipped rather than failing the whole log: a log cut mid-line by a crash must
  * still open.
  */
+@Suppress("ReturnCount") // one early return per malformed-line case
 fun parseArDebugEvent(line: String): ArDebugEvent? {
     val trimmed = line.trim()
     if (trimmed.isEmpty() || trimmed[0] != '{') return null

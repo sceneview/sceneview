@@ -25,7 +25,8 @@ class ArDebugGeometryTest {
     private fun assertWellFormed(mesh: DebugMesh) {
         assertEquals(0, mesh.indexCount % 3)
         for (i in 0 until mesh.indexCount) {
-            assertTrue("index ${mesh.indices[i]} out of ${mesh.vertexCount}", mesh.indices[i] in 0 until mesh.vertexCount)
+            val index = mesh.indices[i]
+            assertTrue("index $index out of ${mesh.vertexCount}", index in 0 until mesh.vertexCount)
         }
         for (i in 0 until mesh.vertexCount * 3) assertTrue(mesh.positions[i].isFinite())
     }
@@ -88,7 +89,10 @@ class ArDebugGeometryTest {
         val (meshes, out) = layers()
         ArDebugGeometry.buildPlanes(listOf(floor, wall), style, out)
 
-        for (layer in listOf(DebugLayer.PlaneFloor, DebugLayer.OutlineFloor, DebugLayer.PlaneWall, DebugLayer.OutlineWall)) {
+        val planeLayers = listOf(
+            DebugLayer.PlaneFloor, DebugLayer.OutlineFloor, DebugLayer.PlaneWall, DebugLayer.OutlineWall,
+        )
+        for (layer in planeLayers) {
             assertFalse("$layer is empty", meshes.getValue(layer).isEmpty)
             assertWellFormed(meshes.getValue(layer))
         }
@@ -135,12 +139,19 @@ class ArDebugGeometryTest {
         assertTrue(b[0] <= -1.3f && b[3] >= 2.1f)
         assertTrue(b[2] <= -3.2f && b[5] >= 1.4f)
         assertEquals(-1.2f, b[1], 0.01f)
-        for (axis in listOf(DebugLayer.AxisX, DebugLayer.AxisY, DebugLayer.AxisZ)) assertFalse(meshes.getValue(axis).isEmpty)
+        for (axis in listOf(DebugLayer.AxisX, DebugLayer.AxisY, DebugLayer.AxisZ)) {
+            assertFalse(meshes.getValue(axis).isEmpty)
+        }
     }
 
     @Test
     fun `the floor is the lowest floor plane, else below the first pose`() {
-        val withFloor = frame(planes = listOf(DebugPlane(1, DebugPlaneKind.Floor, square(-1.4f)), DebugPlane(2, DebugPlaneKind.Floor, square(-0.7f))))
+        val withFloor = frame(
+            planes = listOf(
+                DebugPlane(1, DebugPlaneKind.Floor, square(-1.4f)),
+                DebugPlane(2, DebugPlaneKind.Floor, square(-0.7f)),
+            ),
+        )
         assertEquals(-1.4f, ArDebugGeometry.floorHeight(withFloor), 1e-4f)
 
         val walkOnly = frame(trail = floatArrayOf(0f, 0.2f, 0f))
