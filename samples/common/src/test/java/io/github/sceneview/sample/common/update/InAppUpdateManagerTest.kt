@@ -17,6 +17,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.util.concurrent.Executor
 
 /**
  * Drives [InAppUpdateManager] against Google's `FakeAppUpdateManager` so the
@@ -444,5 +445,99 @@ class InAppUpdateManagerTest {
         // Surviving the idle() pump without throwing is the assertion.
         shadowOf(activity.mainLooper).idle()
         assertTrue(manager.downloadProgress in 0f..1f)
+    }
+
+    // ---- #3939: the Play round-trip leaves the caller's thread; a quiet answer is throttled ----
+
+    /** Holds every submitted round-trip until the test runs it, like a busy background thread. */
+    private class QueueingExecutor : Executor {
+        private val queued = ArrayDeque<Runnable>()
+        override fun execute(command: Runnable) {
+            queued.add(command)
+        }
+        fun runAll() {
+            while (queued.isNotEmpty()) queued.removeFirst().run()
+        }
+    }
+
+    /** Runs each round-trip inline and counts them. */
+    private class CountingExecutor : Executor {
+        var runs = 0
+        override fun execute(command: Runnable) {
+            runs++
+            command.run()
+        }
+    }
+
+    @Test
+    fun `checkForUpdate never touches Play on the calling thread`() {
+        // onResume used to create the Play manager and ask it for appUpdateInfo
+        // inline; both bind to the Play Store and parked the main thread for up
+        // to 1.5 s under load. Now onResume only flips to CHECKING.
+        val executor = QueueingExecutor()
+        var created = 0
+        val offMain = InAppUpdateManager(activity, { created++; fake }, executor, UpdateCheckThrottle())
+        fake.setUpdateAvailable(42)
+
+        offMain.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(0, created)
+        assertEquals(InAppUpdateManager.UpdateState.CHECKING, offMain.updateState)
+
+        // The background thread gets to it; the result lands on the main thread.
+        executor.runAll()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(1, created)
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, offMain.updateState)
+        offMain.destroy()
+    }
+
+    @Test
+    fun `an up-to-date answer skips the round-trip until the interval has passed`() {
+        var now = 0L
+        val processThrottle = UpdateCheckThrottle(minIntervalMillis = 1_000L, clock = { now })
+        val executor = CountingExecutor()
+        val first = InAppUpdateManager(activity, { fake }, executor, processThrottle)
+        first.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.UP_TO_DATE, first.updateState)
+        first.destroy()
+
+        // A recreated activity resumes moments later: no second Play round-trip.
+        val second = InAppUpdateManager(activity, { fake }, executor, processThrottle)
+        second.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(1, executor.runs)
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, second.updateState)
+
+        // Past the interval, a resume asks Play again — and sees a new release.
+        now += 1_000L
+        fake.setUpdateAvailable(42)
+        second.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(2, executor.runs)
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, second.updateState)
+        second.destroy()
+    }
+
+    @Test
+    fun `an answer that shows a flow never throttles the next manager`() {
+        // A rotation while the prompt is up (or a download runs) must still
+        // re-attach on the recreated manager's first resume.
+        val processThrottle = UpdateCheckThrottle(minIntervalMillis = Long.MAX_VALUE, clock = { 0L })
+        val executor = CountingExecutor()
+        fake.setUpdateAvailable(42)
+        val first = InAppUpdateManager(activity, { fake }, executor, processThrottle)
+        first.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, first.updateState)
+        first.destroy()
+
+        val second = InAppUpdateManager(activity, { fake }, executor, processThrottle)
+        second.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(2, executor.runs)
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, second.updateState)
+        second.destroy()
     }
 }
