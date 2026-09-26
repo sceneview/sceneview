@@ -1,3 +1,0 @@
-<!-- category: Fixed -->
-
-- **Android demo: pill contents, dock ends and on-scene action rows are centred ([#3835](https://github.com/sceneview/sceneview/issues/3835)).** `GlassSurface` now centres its content, so a glass pill raised to the 48 dp touch target (the Model Viewer's "Surprise me" / "Finding…" pill) no longer pins its icon and label to the top 36 dp. The dock's "View in AR" accent is a 40 dp disc in a 48 dp touch target, 12 dp from the dock edge on every side, matching the air at the leading end instead of touching the rounded cap. `SceneActionBar` centres its buttons under the centred status pill or card, which fixes "Host · Restart" (Cloud Anchors), "Drop here" (Geospatial Anchors) and every other demo using it.

@@ -1,3 +1,0 @@
-<!-- category: Fixed -->
-
-- **Android demo: the settings sheet no longer hides the scene you are tweaking ([#3827](https://github.com/sceneview/sceneview/issues/3827)).** It is now a non-modal sheet that rests at about a third of the window instead of half or full screen, with no dimming scrim, so the scene above it stays visible and touchable while you drag a slider or tap "Release". Drag up for the rest; a close button replaces tapping outside. The sheet and the Model Viewer's Lighting sheet use a translucent `glass-sheet` fill (`surface-container` at 88 % light / 90 % dark, solved for text contrast over dark, mid and white scenes). The dock fades out while either sheet is open, so it no longer shows through the glass.

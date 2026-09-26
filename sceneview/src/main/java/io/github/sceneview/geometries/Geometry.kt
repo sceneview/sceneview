@@ -362,6 +362,29 @@ fun List<List<Int>>.getOffsets(): List<IntRange> {
 }
 
 /**
+ * The Filament primitive → source-index-range mapping a geometry resize should apply, given the
+ * number of Filament primitives the renderable was actually built with ([builtPrimitiveCount]).
+ *
+ * [io.github.sceneview.components.RenderableComponent.setGeometry]'s single-[Geometry] overload
+ * defaults to `this` (the new geometry's own raw, un-merged [Geometry.primitivesOffsets])
+ * unconditionally — correct for a renderable built 1:1 with them, but wrong for one built by
+ * *merging* every raw primitive into fewer Filament primitive slots, which is what every
+ * procedural shape node's `materialInstance: MaterialInstance?` constructor does (`CubeNode`,
+ * `SphereNode`, `CylinderNode`, `ConeNode`, `TorusNode`, `CapsuleNode`, `PlaneNode`) so a single
+ * [com.google.android.filament.MaterialInstance] covers the whole shape. Falling back to the raw
+ * offsets there walks past the single slot Filament actually has: `setGeometryAt` only ever
+ * reaches primitive `0`, so only the first — and usually smallest — raw primitive lands and the
+ * rest draw nothing (#3855, e.g. a resized `CylinderNode(materialInstance = …)` rendering as a
+ * single triangle instead of the whole cylinder).
+ */
+internal fun List<IntRange>.mergedForPrimitiveCount(builtPrimitiveCount: Int): List<IntRange> =
+    if (builtPrimitiveCount == 1 && size > 1) {
+        listOf(first().first..last().last)
+    } else {
+        this
+    }
+
+/**
  * Specifies the geometry data for a primitive.
  *
  * Filament primitives must have an associated [VertexBuffer] and [IndexBuffer].

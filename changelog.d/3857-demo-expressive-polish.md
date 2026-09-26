@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Demo app: Material 3 Expressive loading, button groups and haptics ([#3857](https://github.com/sceneview/sceneview/pull/3857)).** Scene and model loading shows the morphing `LoadingIndicator`, and gallery downloads show a wavy determinate bar. The Explore sources and the Materials and Lighting modes are connected button groups whose buttons change shape when pressed. Toggles and sliders give light haptic ticks.

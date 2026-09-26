@@ -12,7 +12,6 @@
     <string name="wall_reset">Reset placement</string>
     <string name="wall_scale_down">Scale down</string>
     <string name="wall_scale_up">Scale up</string>
-    <string name="wall_close_preview">Close preview</string>
 
     <!-- Sheet-only accessibility adjustments. -->
     <string name="wall_dpad_left">Move left</string>

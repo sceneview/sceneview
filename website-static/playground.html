@@ -62,12 +62,12 @@
   <!-- Preconnect -->
   <!-- Preload -->
   <link rel="preload" href="js/filament/filament.js" as="script">
-  <link rel="preload" href="js/sceneview.js?v=4.39.0" as="script">
+  <link rel="preload" href="js/sceneview.js?v=4.40.0" as="script">
 
   <!-- Fonts -->
   <!-- SceneView engine -->
   <script src="js/filament/filament.js"></script>
-  <script src="js/sceneview.js?v=4.39.0"></script>
+  <script src="js/sceneview.js?v=4.40.0"></script>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -2126,7 +2126,7 @@
         },
         desktop: {
           file: 'ModelViewerScreen.kt', lang: 'Kotlin',
-          code: '// Compose Desktop: SceneViewer from sceneview-compose.\n// Filament renders through filament-kmp (JDK 22+).\n// Viewer subset only: model, orbit camera, light,\n// environment, tap hit-testing. No AR on desktop.\n//\n// build.gradle.kts:\n// implementation("io.github.sceneview:sceneview-compose:4.39.0")\n\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\n\n@Composable\nfun ModelViewerScreen() {\n    SceneViewer(\n        model = ModelSource.Asset("models/damaged_helmet.glb"),\n        modifier = Modifier.fillMaxSize(),\n    )\n}'
+          code: '// Compose Desktop: SceneViewer from sceneview-compose.\n// Filament renders through filament-kmp (JDK 22+).\n// Viewer subset only: model, orbit camera, light,\n// environment, tap hit-testing. No AR on desktop.\n//\n// build.gradle.kts:\n// implementation("io.github.sceneview:sceneview-compose:4.40.0")\n\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\n\n@Composable\nfun ModelViewerScreen() {\n    SceneViewer(\n        model = ModelSource.Asset("models/damaged_helmet.glb"),\n        modifier = Modifier.fillMaxSize(),\n    )\n}'
         },
         mcp: {
           file: 'prompt.md', lang: 'Markdown',
@@ -3514,8 +3514,8 @@
 
         var prompt = 'Build me a SceneView ' + platLabel + ' app:\n\n' + userDesc + '\n\n';
         prompt += '--- SceneView Quick Reference ---\n';
-        prompt += 'SDK: io.github.sceneview:sceneview:4.39.0 (3D) / arsceneview:4.39.0 (AR)\n';
-        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.39.0")\n';
+        prompt += 'SDK: io.github.sceneview:sceneview:4.40.0 (3D) / arsceneview:4.40.0 (AR)\n';
+        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.40.0")\n';
         prompt += 'Web: npm install sceneview-web@4\n\n';
 
         if (plat === 'android' || plat === 'flutter' || plat === 'reactnative' || plat === 'desktop') {

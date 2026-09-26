@@ -184,21 +184,15 @@ class SceneViewJS {
     }
 
     /**
-     * Set the background clear color (RGBA, 0-1 range).
-     * Use this to sync the 3D canvas background with your page theme.
+     * Set the background color (RGBA, 0-1 range) — the exact color on screen, so the
+     * canvas can match its page: `#EEF0F3` is `setBackgroundColor(0xEE / 255, 0xF0 / 255,
+     * 0xF3 / 255, 1)`. It is not tone-mapped (#3879). `a < 1` lets the page behind the
+     * canvas show through (`a = 0`: transparent canvas); omitted, it is opaque. A skybox,
+     * when set, covers it.
      */
     @JsName("setBackgroundColor")
-    fun setBackgroundColor(r: Double, g: Double, b: Double, a: Double) {
-        val sv = _sceneView ?: return
-        val opts = js("{}")
-        val color = js("[]")
-        color.push(r, g, b, a)
-        opts["clearColor"] = color
-        opts["clear"] = true
-        sv.renderer.setClearOptions(opts)
-        // The clear color is not a camera move, so the on-demand gate cannot
-        // infer it — request a repaint explicitly (#2332).
-        sv.requestRender()
+    fun setBackgroundColor(r: Double, g: Double, b: Double, a: Double = 1.0) {
+        _sceneView?.setBackgroundColor(r, g, b, a)
     }
 
     /**
@@ -418,4 +412,4 @@ class SceneViewJS {
  * Gradle `buildConfig` plugin, so this literal is the single source of truth for the JS surface.
  * Bump it together with every other version location (see CLAUDE.md "Version Location Map").
  */
-const val SCENEVIEW_VERSION = "4.39.0"
+const val SCENEVIEW_VERSION = "4.40.0"

@@ -305,6 +305,16 @@ class SceneView private constructor(
         const val DEFAULT_IBL_URL = "https://sceneview.github.io/assets/environments/neutral_ibl.ktx"
         const val DEFAULT_SKYBOX_URL = "https://sceneview.github.io/assets/environments/neutral_skybox.ktx"
 
+        /** `Renderer.setClearOptions` payload for an already-premultiplied [color]. */
+        private fun backgroundClearOptions(color: DoubleArray): dynamic {
+            val clearColor = js("[]")
+            clearColor.push(color[0], color[1], color[2], color[3])
+            val options = js("{}")
+            options["clearColor"] = clearColor
+            options["clear"] = true
+            return options
+        }
+
         /**
          * Initialize Filament WASM and create a SceneView instance.
          *
@@ -341,7 +351,11 @@ class SceneView private constructor(
                     // Use dynamic call because webpack externals + Kotlin companion objects
                     // don't resolve correctly for Filament's static Engine.create()
                     val filament: dynamic = js("Filament")
-                    val engine: Engine = filament.Engine.create(canvas).unsafeCast<Engine>()
+                    // `alpha: true` (premultiplied, the WebGL default) so a background
+                    // with alpha < 1 lets the page show through the canvas (#3879).
+                    // Filament.js merges this over its own defaults (WebGL2, depth on).
+                    val engine: Engine = filament.Engine.create(canvas, js("({alpha: true})"))
+                        .unsafeCast<Engine>()
                     val renderer = engine.createRenderer()
                     val scene = engine.createScene()
                     val swapChain = engine.createSwapChain()
@@ -396,8 +410,13 @@ class SceneView private constructor(
                     // correct, tested path. See CameraConfig / Android Camera.kt.
                     camera.setExposure(12.0, 1.0 / 200.0, 200.0)
 
-                    // Set clear color to near-black (clean dark background)
-                    renderer.setClearOptions(js("({clearColor: [0.05, 0.05, 0.07, 1.0], clear: true})"))
+                    // Background: the view is TRANSLUCENT, so the scene is tone-mapped
+                    // in its own buffer and composited over the canvas, which the
+                    // renderer clears with the raw clear colour. An OPAQUE view clears
+                    // inside the HDR pass instead, and ACES turned #FFFFFF into beige
+                    // (#3879). See BackgroundColor.
+                    view.setBlendMode(viewBlendModeTranslucent())
+                    renderer.setClearOptions(backgroundClearOptions(BackgroundColor.DEFAULT))
 
                     // --- Quality defaults for PBR rendering ---
                     // Screen-space ambient occlusion (soft contact shadows)
@@ -459,6 +478,19 @@ class SceneView private constructor(
             fov = fovVertical()
         )
         // A new viewport / projection changes every pixel — repaint (#2332).
+        requestRender()
+    }
+
+    /**
+     * Set the background shown wherever the scene draws nothing, as straight sRGB
+     * components `0..1` — the exact colour on screen, never tone-mapped (#3879). An
+     * [a] below `1` lets the page behind the canvas show through; `a = 0` is a fully
+     * transparent canvas. A skybox, when set, covers it.
+     */
+    fun setBackgroundColor(r: Double, g: Double, b: Double, a: Double = 1.0) {
+        renderer.setClearOptions(backgroundClearOptions(BackgroundColor.clearColor(r, g, b, a)))
+        // The clear color is not a camera move, so the on-demand gate cannot
+        // infer it — request a repaint explicitly (#2332).
         requestRender()
     }
 

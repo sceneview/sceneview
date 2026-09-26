@@ -1,3 +1,0 @@
-<!-- category: Docs -->
-
-- **The README, llms.txt, module READMEs and website now lead with the AI-first SDK message ([#3839](https://github.com/sceneview/sceneview/pull/3839)).** The root README says what SceneView is and who it is for, then gives one minimal snippet per platform. Snippets that did not compile or called missing APIs are fixed: the SwiftUI `.contentID` for async loads, the two-argument `onTapOnPlane`, and `SceneView.startAR` on the web. Stale versions, counts, sizes and links across the public surfaces are corrected. The Maven Central `POM_DESCRIPTION` is ASCII-only, so it no longer publishes as mojibake.

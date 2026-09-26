@@ -2549,6 +2549,7 @@ public class io/github/sceneview/node/GeometryNode : io/github/sceneview/node/Re
 	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/geometries/Geometry;Ljava/util/List;Ljava/util/List;ZLkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun destroy ()V
 	public fun getGeometry ()Lio/github/sceneview/geometries/Geometry;
+	public fun setGeometry (Lio/github/sceneview/geometries/Geometry;)V
 	public final fun updateGeometry (Ljava/util/List;Ljava/util/List;)V
 	public static synthetic fun updateGeometry$default (Lio/github/sceneview/node/GeometryNode;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)V
 }

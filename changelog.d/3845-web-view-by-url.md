@@ -1,3 +1,0 @@
-<!-- category: Added -->
-
-- **Website: open any 3D model from a link at `sceneview.github.io/view` ([#3845](https://github.com/sceneview/sceneview/pull/3845)).** `/view?url=<https .glb, .gltf or .3mf>` renders the model in the browser with orbit and auto-framing, then offers AR: Scene Viewer on Android, Quick Look on iOS when `&usdz=` is given, a QR code on desktop, plus "Open in AR Model Viewer" on Android. The file loads straight from its host (which must allow CORS); nothing is uploaded. A `.gltf` with external buffers and textures is packed into one GLB before loading, and the site's `sceneview.js` now frames models on portrait screens and scales its near plane, so small parts are no longer clipped.

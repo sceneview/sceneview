@@ -35,7 +35,7 @@ For browser usage without Kotlin, load the `sceneview-web.js` bundle and use the
 global `sceneview` object it registers on `window`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.39.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.40.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer("scene-canvas", "model.glb").then((viewer) => {
     viewer.setBackgroundColor(0.05, 0.05, 0.08, 1);
@@ -74,7 +74,7 @@ Every factory returns a `Promise<SceneViewer>`.
 | `viewer.setAutoRotate(enabled)` | Toggle auto-rotation |
 | `viewer.setAutoRotateSpeed(speed)` | Auto-rotate angular speed (radians/sec) |
 | `viewer.setZoomLimits(min, max)` | Constrain pinch-zoom range (metres) |
-| `viewer.setBackgroundColor(r, g, b, a)` | Set clear color (components `0..1`) |
+| `viewer.setBackgroundColor(r, g, b, a?)` | Background color, components `0..1`, shown exactly as given (not tone-mapped); `a < 1` lets the page show through. See [Matching the page background](#matching-the-page-background) |
 | `viewer.startRendering()` / `viewer.stopRendering()` | Start/stop the render loop |
 | `viewer.resize(width, height)` | Resize the underlying canvas |
 | `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`) |
@@ -83,6 +83,20 @@ Every factory returns a `Promise<SceneViewer>`.
 The viewer also manages individual nodes (`addModelNode`, `addSplatNode`, `addCubeNode`,
 `addSphereNode`, `addLightNode`, `removeNode`, `hitTest`, `setAutoCenterContent`) —
 see [`sceneview-web.d.ts`](sceneview-web.d.ts) for the full typed surface.
+
+### Matching the page background
+
+`setBackgroundColor` paints the canvas with the exact color you pass: it is applied after
+tone mapping, so `#EEF0F3` in is `#EEF0F3` on screen and an embed blends into its page.
+Divide each hex byte by 255. The default is `#333443`.
+
+```js
+viewer.setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255);  // opaque #EEF0F3
+viewer.setBackgroundColor(0, 0, 0, 0);                           // transparent: the page shows through
+```
+
+With `a < 1` the canvas is see-through and whatever sits behind it (page color, gradient,
+image) shows around the model. A skybox (`setEnvironmentWithSkybox`) covers the background.
 
 ## Features
 
