@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Android demo: the Play update check no longer holds up the first frame.** `onResume` used to create Play's update manager and ask it for update info on the main thread, which binds to the Play Store; under load that parked the main thread for up to 1.5 s before the home screen appeared. The round-trip now runs on a background thread, starts only after the first frame is drawn, and is skipped for 30 minutes after Play answers "nothing to do". The update snackbar behaves as before.
