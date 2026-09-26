@@ -8,8 +8,10 @@ import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 import { isLocalOnlyTool } from "./surfaces.js";
 import { dispatchTool, TOOL_DEFINITIONS } from "./tools/index.js";
 import {
+  AR_OPEN_URL,
   listWidgetResources,
   MCP_APP_MIME_TYPE,
+  OPEN_IN_AR_JS,
   readUiExtension,
   readWidgetResource,
   serveWidgetsTo,
@@ -117,6 +119,99 @@ describe("3D viewer widget HTML", () => {
     expect(WIDGET_3D_VIEWER_HTML).toContain(
       "if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);"
     );
+  });
+});
+
+describe("Open in AR action", () => {
+  // The exact function the widget runs, evaluated from the same source string.
+  const openInArUrl = new Function(`${OPEN_IN_AR_JS}; return openInArUrl;`)() as (
+    modelUrl: unknown,
+    source: string
+  ) => string | null;
+
+  it("links an https model to ar.sceneview.dev/open, URL-encoded and tagged", () => {
+    const model = "https://modelviewer.dev/shared-assets/models/Astronaut.glb";
+    const link = openInArUrl(model, "claude");
+    expect(link).toBe(
+      "https://ar.sceneview.dev/open?url=https%3A%2F%2Fmodelviewer.dev%2Fshared-assets%2Fmodels%2FAstronaut.glb&utm_source=claude"
+    );
+    expect(AR_OPEN_URL).toBe("https://ar.sceneview.dev/open");
+  });
+
+  it("round-trips a model URL that carries its own query and fragment", () => {
+    const model = "https://cdn.example.com/files/chair.glb?token=a&b=c d#frag";
+    const link = new URL(openInArUrl(model, "claude") as string);
+    expect(link.origin + link.pathname).toBe("https://ar.sceneview.dev/open");
+    // The model's own `&b=` must not leak into the /open query as a parameter.
+    expect([...link.searchParams.keys()]).toEqual(["url", "utm_source"]);
+    expect(link.searchParams.get("url")).toBe(model);
+    expect(link.searchParams.get("utm_source")).toBe("claude");
+  });
+
+  it("offers no action for a URL a phone cannot fetch", () => {
+    expect(openInArUrl("http://example.com/chair.glb", "claude")).toBeNull();
+    expect(openInArUrl("data:model/gltf-binary;base64,Z2xURg==", "claude")).toBeNull();
+    expect(openInArUrl("blob:https://example.com/0f4c7c1e-1d2e", "claude")).toBeNull();
+    expect(openInArUrl("/models/chair.glb", "claude")).toBeNull();
+    expect(openInArUrl("not a url", "claude")).toBeNull();
+    expect(openInArUrl("", "claude")).toBeNull();
+    expect(openInArUrl(undefined, "claude")).toBeNull();
+    // Longer than the 1024 characters the /open route accepts.
+    expect(openInArUrl(`https://example.com/${"a".repeat(1020)}.glb`, "claude")).toBeNull();
+  });
+
+  it("ships that function inside the widget and honours ar: false", () => {
+    const html = WIDGET_3D_VIEWER_HTML;
+    expect(html).toContain(OPEN_IN_AR_JS);
+    expect(html).toContain("data.ar === false ? null : openInArUrl(data.modelUrl, linkSource())");
+    // Tagged for the assistant that actually rendered the widget.
+    expect(html).toContain('return window.openai ? "chatgpt" : "claude";');
+    // The action appears whether or not the in-chat preview manages to load.
+    const updateAt = html.indexOf("updateArAction(data);");
+    expect(updateAt).toBeGreaterThan(html.indexOf("function render(data)"));
+    expect(updateAt).toBeLessThan(
+      html.indexOf("whenSceneViewReady(function () { start(data); });")
+    );
+  });
+
+  it("follows the link through the host, with a plain anchor as the last resort", () => {
+    const html = WIDGET_3D_VIEWER_HTML;
+    expect(html).toMatch(
+      /<a id="ar-open" href="https:\/\/ar\.sceneview\.dev\/open" target="_blank" rel="noopener">/
+    );
+    const openai = html.indexOf("openai.openExternal({ href: link })");
+    const bridge = html.indexOf('request("ui/open-link", { url: link }');
+    expect(openai).toBeGreaterThan(-1);
+    expect(bridge).toBeGreaterThan(openai);
+    // The bridge is only used once the host has answered `ui/initialize`.
+    expect(html).toContain("if (hostCapabilities && (");
+  });
+
+  it("draws the desktop QR in the browser with SceneView's own vendored encoder", () => {
+    const html = WIDGET_3D_VIEWER_HTML;
+    const qrSrc = `https://sceneview.github.io/js/qrcode-vendor.js?v=${LATEST_SCENEVIEW_RELEASE}`;
+    expect(html).toContain(`QRCODE_JS_URL = "${qrSrc}"`);
+    // Same origin as every other widget script: the CSP gains no domain.
+    expect(WIDGET_UI_META.csp.resourceDomains.some((d) => qrSrc.startsWith(`${d}/`))).toBe(true);
+    // Lazy and desktop-only: no <script> tag, loaded when the wide query matches.
+    expect(html).not.toContain(`<script src="${qrSrc}"`);
+    expect(html).toContain('"(min-width: 600px) and (hover: hover) and (pointer: fine)"');
+    expect(html).toContain(
+      'if (wide && arLink && !arEl.classList.contains("has-qr")) drawQr(arLink);'
+    );
+    // No QR image service anywhere in the page.
+    expect(html).not.toMatch(/qrserver|chart\.googleapis|quickchart|qrcode\.show/i);
+  });
+});
+
+describe("widget theme", () => {
+  it("follows the host theme and falls back to the OS preference", () => {
+    const html = WIDGET_3D_VIEWER_HTML;
+    expect(html).toContain("@media (prefers-color-scheme: dark)");
+    expect(html).toContain(':root[data-theme="dark"]');
+    expect(html).toContain("applyTheme(init.hostContext && init.hostContext.theme)");
+    expect(html).toContain('msg.method === "ui/notifications/host-context-changed"');
+    expect(html).toContain("applyTheme(window.openai && window.openai.theme)");
   });
 });
 
