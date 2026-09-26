@@ -290,6 +290,74 @@ final class AppStoreUpdaterTests: XCTestCase {
         XCTAssertTrue(secondCheck.isSnoozed,
                       "Re-checking the same version must keep it snoozed")
     }
+
+    // MARK: - Update toast visibility
+
+    func testShowsUpdatePrompt_falseBeforeAnyCheck() {
+        XCTAssertFalse(makeUpdater().showsUpdatePrompt)
+    }
+
+    func testShowsUpdatePrompt_trueWhenANewerVersionIsAvailable() async throws {
+        let body = #"{"results":[{"version":"9.9.9","bundleId":"io.github.sceneview.demo","releaseNotes":null}]}"#
+        StubURLProtocol.responses = [(200, Data(body.utf8))]
+
+        let updater = makeUpdater()
+        await updater.checkForUpdate(force: true)
+
+        XCTAssertTrue(updater.showsUpdatePrompt)
+    }
+
+    func testShowsUpdatePrompt_falseWhenUpToDate() async throws {
+        let body = #"{"results":[{"version":"4.3.4","bundleId":"io.github.sceneview.demo","releaseNotes":null}]}"#
+        StubURLProtocol.responses = [(200, Data(body.utf8))]
+
+        let updater = makeUpdater(currentVersion: "4.3.4")
+        await updater.checkForUpdate(force: true)
+
+        XCTAssertFalse(updater.showsUpdatePrompt)
+    }
+
+    /// Closing the toast hides it at once, and a later launch that sees the same
+    /// version keeps it hidden — the toast never nags for a version already refused.
+    func testShowsUpdatePrompt_falseAfterDismissal_andOnLaterLaunchesForThatVersion() async throws {
+        let defaults = Self.makeDefaults()
+        let body = #"{"results":[{"version":"4.3.1","bundleId":"io.github.sceneview.demo","releaseNotes":null}]}"#
+
+        StubURLProtocol.responses = [(200, Data(body.utf8))]
+        let first = makeUpdater(defaults: defaults, currentVersion: "4.3.0")
+        await first.checkForUpdate(force: true)
+        XCTAssertTrue(first.showsUpdatePrompt)
+        first.snooze()
+        XCTAssertFalse(first.showsUpdatePrompt)
+
+        StubURLProtocol.responses = [(200, Data(body.utf8))]
+        let later = makeUpdater(defaults: defaults, currentVersion: "4.3.0")
+        await later.checkForUpdate(force: true)
+        XCTAssertFalse(later.showsUpdatePrompt)
+    }
+
+    /// The DEBUG `-update_qa available` path: a forced version is reported
+    /// without a network call, so a simulator can show the toast.
+    func testForcedVersion_surfacesTheToastWithoutTheNetwork() async throws {
+        StubURLProtocol.responses = []   // any lookup would fail
+        let updater = AppStoreUpdater(
+            session: makeSession(),
+            defaults: Self.makeDefaults(),
+            now: { Date() },
+            currentVersion: { "4.3.4" },
+            forcedVersion: "99.0.0"
+        )
+
+        await updater.checkForUpdate()
+
+        XCTAssertEqual(updater.state, .updateAvailable(version: "99.0.0", notes: nil))
+        XCTAssertTrue(updater.showsUpdatePrompt)
+    }
+
+    func testLaunchArgForcedVersion_isNilWithoutTheQaArgument() {
+        // The test runner is not launched with `-update_qa available`.
+        XCTAssertNil(AppStoreUpdater.launchArgForcedVersion)
+    }
 }
 
 private extension AppStoreUpdater.UpdateState {

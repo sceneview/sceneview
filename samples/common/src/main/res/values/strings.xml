@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Play in-app update snackbar (UpdateSnackbarEffect). -->
+    <string name="sample_update_available">Update available</string>
+    <string name="sample_update_action">Update</string>
+    <string name="sample_update_ready">Update ready</string>
+    <string name="sample_update_restart">Restart</string>
+</resources>

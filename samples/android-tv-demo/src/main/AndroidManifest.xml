@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Required by the Play Core In-App Updates SDK so the activity can
-         check the Play Store track on resume — see InAppUpdateManager in
-         :samples:common. Without this, AppUpdateManager.appUpdateInfo
-         silently fails with NETWORK_ERROR and the banner never appears. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
     <!-- Declare this is a Leanback (TV) app -->
     <uses-feature
         android:name="android.software.leanback"

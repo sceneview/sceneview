@@ -131,7 +131,7 @@
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
 		C10000000000000000000060 /* AppStoreUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000060 /* AppStoreUpdater.swift */; };
-		C10000000000000000000061 /* UpdateBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000061 /* UpdateBanner.swift */; };
+		C10000000000000000000061 /* UpdateToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000061 /* UpdateToast.swift */; };
 		A10000000000000000002961 /* AssetSourcePill.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002961 /* AssetSourcePill.swift */; };
 		A10000000000000000002967 /* AssetCreditLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002967 /* AssetCreditLine.swift */; };
 		A10000000000000000002963 /* LabeledSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002963 /* LabeledSlider.swift */; };
@@ -306,7 +306,7 @@
 		C20000000000000000000050 /* DemoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoSheet.swift; path = SceneViewDemo/Views/Components/DemoSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000051 /* CreditsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditsSheet.swift; path = SceneViewDemo/Views/CreditsSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000060 /* AppStoreUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdater.swift; path = SceneViewDemo/Services/AppStoreUpdater.swift; sourceTree = SOURCE_ROOT; };
-		C20000000000000000000061 /* UpdateBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UpdateBanner.swift; path = SceneViewDemo/Views/Components/UpdateBanner.swift; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000061 /* UpdateToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UpdateToast.swift; path = SceneViewDemo/Views/Components/UpdateToast.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002961 /* AssetSourcePill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourcePill.swift; path = SceneViewDemo/Views/Components/AssetSourcePill.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002967 /* AssetCreditLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetCreditLine.swift; path = SceneViewDemo/Views/Components/AssetCreditLine.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002963 /* LabeledSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSlider.swift; path = SceneViewDemo/Views/Components/LabeledSlider.swift; sourceTree = SOURCE_ROOT; };
@@ -549,7 +549,7 @@
 				C20000000000000000000F2B /* ARPlacementExperience.swift */,
 				C20000000000000000000F18 /* DemoScaffold.swift */,
 				C20000000000000000000050 /* DemoSheet.swift */,
-				C20000000000000000000061 /* UpdateBanner.swift */,
+				C20000000000000000000061 /* UpdateToast.swift */,
 				A20000000000000000002961 /* AssetSourcePill.swift */,
 				A20000000000000000002967 /* AssetCreditLine.swift */,
 				A20000000000000000002963 /* LabeledSlider.swift */,
@@ -992,7 +992,7 @@
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
 				C10000000000000000000060 /* AppStoreUpdater.swift in Sources */,
-				C10000000000000000000061 /* UpdateBanner.swift in Sources */,
+				C10000000000000000000061 /* UpdateToast.swift in Sources */,
 				A10000000000000000002961 /* AssetSourcePill.swift in Sources */,
 				A10000000000000000002967 /* AssetCreditLine.swift in Sources */,
 				A10000000000000000002963 /* LabeledSlider.swift in Sources */,

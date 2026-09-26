@@ -92,9 +92,10 @@ struct SceneViewDemoApp: App {
     }()
 
     /// App Store update checker — queried on every `.active` ScenePhase
-    /// transition. The published state drives `UpdateBanner` overlaid on
-    /// `ContentView`. See [AppStoreUpdater] for the throttle/snooze rules.
-    @StateObject private var updater = AppStoreUpdater()
+    /// transition. The published state drives the `UpdateToast` that
+    /// `ContentView` puts above the tab bar. See [AppStoreUpdater] for the
+    /// throttle/snooze rules; `-update_qa available` forces it in DEBUG.
+    @StateObject private var updater = AppStoreUpdater(forcedVersion: AppStoreUpdater.launchArgForcedVersion)
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -105,10 +106,6 @@ struct SceneViewDemoApp: App {
                 launchArgDemo: Self.launchArgDemo
             )
                 .environmentObject(updater)
-                .overlay(alignment: .top) {
-                    UpdateBanner()
-                        .environmentObject(updater)
-                }
                 #if os(iOS)
                 .fullScreenCover(item: $openedFile) { document in
                     OpenedFileViewer(url: document.url)
@@ -184,6 +181,7 @@ struct ContentView: View {
                 // tab, with no demo presented over it, may run a scene.
                 ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil)
                     .accessibilityLabel("Showcase")
+                    .updateToast()
             }
 
             #if os(iOS)
@@ -196,7 +194,10 @@ struct ContentView: View {
             Tab("About", systemImage: "info.circle.fill", value: 2) {
                 AboutTab()
                     .accessibilityLabel("About This App")
+                    .updateToast()
             }
+            // Not on the AR View tab: the bottom of an AR screen holds its live
+            // controls — the Android snackbar steps aside there too.
         }
         .tabBarMinimizesOnScrollDown()
         .tint(SceneViewTheme.primary)
