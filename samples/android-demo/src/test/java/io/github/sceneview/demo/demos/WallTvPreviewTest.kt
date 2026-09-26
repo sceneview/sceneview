@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos
 
 import io.github.sceneview.demo.DEMO_FRAMING_FILL
+import io.github.sceneview.demo.common.placement.PLACEMENT_PREVIEW_HDR
+import io.github.sceneview.demo.common.placement.placementPreviewOrbitRadius
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,7 +36,7 @@ class WallTvPreviewTest {
 
     @Test
     fun `the preview frames the TV to fill the square`() {
-        val fill = widthFill(wallTvPreviewOrbitRadius())
+        val fill = widthFill(placementPreviewOrbitRadius(wallTvExtent))
         assertTrue("The TV must fill most of the preview, filled $fill", fill >= 0.75f)
         assertTrue("The TV must not touch the preview's edges, filled $fill", fill <= DEMO_FRAMING_FILL + 0.01f)
     }
@@ -50,6 +52,6 @@ class WallTvPreviewTest {
     fun `the room the TV is shown in ships with the app`() {
         // rememberHDREnvironment returns null for a missing asset, and the preview would then
         // show its loading spinner forever.
-        assertTrue(File("src/main/assets/$WALL_TV_PREVIEW_HDR").isFile)
+        assertTrue(File("src/main/assets/$PLACEMENT_PREVIEW_HDR").isFile)
     }
 }

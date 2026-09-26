@@ -206,9 +206,13 @@ fun AssetLoader.safeDestroyModel(model: Model) {
 }
 
 fun Engine.safeDestroy() = runCatching {
+    if (!isValid) return@runCatching
     // Teardowns still waiting for the backend (a renderer, an IBL prefilter context) run first:
     // the engine must outlive what it owns, and they would read freed memory after it (#3885).
     runCatching { backendIdleTeardowns.remove(this)?.runPending() }
+    // One of those pending teardowns can be this engine's own deferred destroy
+    // (destroyWhenBackendIdle), which has just called safeDestroy() re-entrantly and freed it.
+    if (!isValid) return@runCatching
     // Drain the frame-deferred destroy queue first: once the Engine is gone the queued
     // textures/streams can no longer be destroyed individually (sceneview/sceneview#874).
     // The Engine reclaims everything below anyway, so the grace period no longer applies.

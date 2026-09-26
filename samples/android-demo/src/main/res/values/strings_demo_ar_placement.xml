@@ -50,6 +50,8 @@
     <string name="ar_place_loading_model">Loading model…</string>
     <string name="ar_place_model_failed">Model couldn’t load.</string>
     <string name="ar_place_preview_size">Preview size</string>
+    <!-- Closes every "View in 3D" preview sheet (PlacementPreviewSheet, #3884). -->
+    <string name="ar_place_close_preview">Close preview</string>
 
     <!-- Sheet-only accessibility adjustments of the feature comparison screens. The
          move/rotate/scale labels are shared with the wall placement demo; only the

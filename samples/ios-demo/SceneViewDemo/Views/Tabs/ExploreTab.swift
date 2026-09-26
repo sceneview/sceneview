@@ -1684,46 +1684,24 @@ struct ModelViewerScreen: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(.tint, in: Capsule())
-                        .foregroundStyle(.white)
+                        .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                        .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("View this model in AR")
             }
             #endif
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(SceneEnvironment.allPresets, id: \.name) { env in
-                        Button {
-                            selectedEnvironment = env
-                            #if os(iOS)
-                            SceneViewHaptic.shared.light()
-                            #endif
-                        } label: {
-                            Text(env.name)
-                                .font(.caption2)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    selectedEnvironment.name == env.name
-                                        ? AnyShapeStyle(.blue)
-                                        : AnyShapeStyle(.white.opacity(0.15))
-                                )
-                                .clipShape(Capsule())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-            }
+            EnvironmentChipRow(selection: $selectedEnvironment)
 
             Text("Pinch to zoom \u{00B7} Drag to orbit")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
         }
         .padding()
         .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .viewerChrome()
         .padding()
     }
 
@@ -1850,17 +1828,18 @@ struct GalleryModelViewerScreen: View {
                     VStack(spacing: 14) {
                         ProgressView(value: max(0.05, downloadProgress))
                             .progressViewStyle(.linear)
-                            .tint(.white)
+                            .tint(SceneViewTokens.Glass.onGlass)
                             .frame(width: 220)
                         Text("Loading \(model.name)\u{2026}")
                             .font(.subheadline)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(SceneViewTokens.Glass.onGlass)
                         Text("Streaming from \(model.sourceId.displayName) \u{00B7} rendering in SceneView")
                             .font(.caption)
-                            .foregroundStyle(.white.opacity(0.6))
+                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
                     }
                     .padding(20)
                     .glassBackground(in: RoundedRectangle(cornerRadius: 16))
+                    .viewerChrome()
                 }
 
                 if let errorMessage {
@@ -2108,30 +2087,7 @@ struct GalleryModelViewerScreen: View {
 
     private var controlsOverlay: some View {
         VStack(spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(SceneEnvironment.allPresets, id: \.name) { env in
-                        Button {
-                            selectedEnvironment = env
-                            #if os(iOS)
-                            SceneViewHaptic.shared.light()
-                            #endif
-                        } label: {
-                            Text(env.name)
-                                .font(.caption2)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    selectedEnvironment.name == env.name
-                                        ? AnyShapeStyle(.blue)
-                                        : AnyShapeStyle(.white.opacity(0.15))
-                                )
-                                .clipShape(Capsule())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-            }
+            EnvironmentChipRow(selection: $selectedEnvironment)
 
             HStack(spacing: 10) {
                 if model.faceCount > 0 {
@@ -2142,11 +2098,62 @@ struct GalleryModelViewerScreen: View {
                 }
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(.white.opacity(0.7))
+            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
         }
         .padding()
         .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .viewerChrome()
         .padding()
+    }
+}
+
+// MARK: - Viewer chrome (shared by both viewers above)
+
+/// The environment picker of the two Explore viewers: one chip per
+/// `SceneEnvironment` preset, on the viewer's glass panel.
+///
+/// Labels are `on-glass`; the selected chip is `primary` under `on-primary`,
+/// the one pairing `DESIGN.md` documents for text on the brand fill. Both only
+/// hold on dark glass, so the panel around the row takes ``viewerChrome()``.
+private struct EnvironmentChipRow: View {
+    @Binding var selection: SceneEnvironment
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(SceneEnvironment.allPresets, id: \.name) { env in
+                    let selected = selection.name == env.name
+                    Button {
+                        selection = env
+                        #if os(iOS)
+                        SceneViewHaptic.shared.light()
+                        #endif
+                    } label: {
+                        Text(env.name)
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .foregroundStyle(selected ? SceneViewTokens.HomeColor.onPrimary
+                                                      : SceneViewTokens.Glass.onGlass)
+                            .background(selected ? SceneViewTokens.HomeColor.primary
+                                                 : SceneViewTokens.Glass.surface,
+                                        in: Capsule())
+                    }
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+        }
+    }
+}
+
+private extension View {
+    /// Chrome over a viewer's stage is media, not a themed surface: it stays
+    /// dark in both schemes (`DESIGN.md`, Demo Scaffold), as `DemoScaffold`
+    /// pins its own. Without the pin the iOS 26 glass follows a light system
+    /// theme and turns near-white under the white `on-glass` labels (#3882);
+    /// the pre-26 material stack gets its dark-scheme ceiling back too.
+    func viewerChrome() -> some View {
+        environment(\.colorScheme, .dark)
     }
 }

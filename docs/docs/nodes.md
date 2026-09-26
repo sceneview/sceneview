@@ -168,8 +168,9 @@ val instance = rememberModelInstance(modelLoader, "models/helmet.glb")
 instance?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
 ```
 
-- Returns `null` while loading — **always handle the null case**.
+- Returns `null` while the first load is in progress — **always handle the null case**.
 - Triggers recomposition when ready.
+- When the location changes, the *previous* instance is returned until the new one is ready (`produceState` retains its last value), so a `null`-based loading state does not fire during a switch. Wrap the call in `key(location) { rememberModelInstance(...) }` to observe `null` during the switch ([#3900](https://github.com/sceneview/sceneview/issues/3900)).
 - Automatically disposed when the composable leaves the tree.
 - File path is relative to `src/main/assets/`.
 - For remote URLs, use `rememberModelInstance(modelLoader, url = "https://…")`.
@@ -1093,6 +1094,7 @@ LightNode(
 | `ModelNode(scaleToUnits = 1f, scale = Scale(2f))` | `scale` is silently ignored | Pick one — they are mutually exclusive |
 | Using `MeshNode` for loaded glTF content | No animations, no PBR textures | Use `ModelNode` with `rememberModelInstance` |
 | Not handling `rememberModelInstance` returning `null` | Conditional branches crash at launch | Use `?.let { }` or `if (instance != null)` guards |
+| Showing a loading state on `null` and switching locations | No loading gap — the previous instance is returned until the new one loads ([#3900](https://github.com/sceneview/sceneview/issues/3900)) | Wrap the call in `key(location) { rememberModelInstance(...) }` so `null` is observed during the switch |
 | glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android (since 4.28.0) and the web build both convert embedded WebP textures automatically — the message survives only for WebP kept in separate `.webp` files beside a `.gltf`; re-encode those to PNG/JPEG/KTX2 ([#2305](https://github.com/sceneview/sceneview/issues/2305), [#3085](https://github.com/sceneview/sceneview/issues/3085), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
 | Calling `node.destroy()` manually | Use-after-free, crashes on recomposition | Let the composable own the lifecycle |
 

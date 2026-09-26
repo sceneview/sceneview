@@ -184,21 +184,15 @@ class SceneViewJS {
     }
 
     /**
-     * Set the background clear color (RGBA, 0-1 range).
-     * Use this to sync the 3D canvas background with your page theme.
+     * Set the background color (RGBA, 0-1 range) — the exact color on screen, so the
+     * canvas can match its page: `#EEF0F3` is `setBackgroundColor(0xEE / 255, 0xF0 / 255,
+     * 0xF3 / 255, 1)`. It is not tone-mapped (#3879). `a < 1` lets the page behind the
+     * canvas show through (`a = 0`: transparent canvas); omitted, it is opaque. A skybox,
+     * when set, covers it.
      */
     @JsName("setBackgroundColor")
-    fun setBackgroundColor(r: Double, g: Double, b: Double, a: Double) {
-        val sv = _sceneView ?: return
-        val opts = js("{}")
-        val color = js("[]")
-        color.push(r, g, b, a)
-        opts["clearColor"] = color
-        opts["clear"] = true
-        sv.renderer.setClearOptions(opts)
-        // The clear color is not a camera move, so the on-demand gate cannot
-        // infer it — request a repaint explicitly (#2332).
-        sv.requestRender()
+    fun setBackgroundColor(r: Double, g: Double, b: Double, a: Double = 1.0) {
+        _sceneView?.setBackgroundColor(r, g, b, a)
     }
 
     /**
@@ -209,6 +203,12 @@ class SceneViewJS {
      *   the historical fit, `< 1` frames tighter, `> 1` leaves more air.
      *   Clamped to `0.2…10`. Unlike Android's additive `padding` fraction
      *   (`margin == 1 + padding`).
+     *
+     * The models are centred where they are drawn (after auto-centring), the
+     * margin is kept by the automatic re-framing that follows a load — so
+     * calling this from the `loadModel` promise sticks — and the clip planes
+     * follow the model size, so a 2 cm part and a 40 m building both render
+     * whole (#3880).
      */
     @JsName("fitToModels")
     fun fitToModels(margin: Double = 1.0) {

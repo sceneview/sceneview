@@ -138,6 +138,8 @@ external class View {
     fun setColorGrading(grading: dynamic)
     fun setRenderTarget(target: dynamic)
     fun setPostProcessingEnabled(enabled: Boolean)
+    /** `Filament.View$BlendMode` value — see [viewBlendModeTranslucent]. */
+    fun setBlendMode(mode: dynamic)
 }
 
 // --- Camera ---
