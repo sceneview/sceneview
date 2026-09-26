@@ -1,199 +1,263 @@
-@file:OptIn(
-    androidx.compose.material3.ExperimentalMaterial3Api::class,
-    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
-)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package io.github.sceneview.demo.ui.viewer
 
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.outlined.ViewInAr
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
-import io.github.sceneview.demo.ui.NarrationProgressRing
-import io.github.sceneview.demo.ui.NarrationText
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.home.outlineSubtle
 
-data class BundledViewerModel(val assetPath: String, val displayName: String) {
+/**
+ * A model the viewer ships in its APK.
+ *
+ * @param description one line saying what the model shows, under its name in the picker.
+ * @param frontYaw yaw, in degrees, that turns the asset's front toward the viewer's camera. The
+ *   viewer looks from +Z (the glTF front); an asset authored facing -Z needs 180 or the picker's
+ *   thumbnail and the viewer disagree about which side of the model is shown (#3828).
+ */
+data class BundledViewerModel(
+    val assetPath: String,
+    val displayName: String,
+    @StringRes val description: Int? = null,
+    val frontYaw: Float = 0f,
+) {
     val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.')
 }
 
+/** The two scenes the picker opens, besides a single model. */
+enum class ViewerScene(
+    @StringRes val title: Int,
+    @StringRes val description: Int,
+    @DrawableRes val preview: Int,
+) {
+    Park(
+        title = R.string.demo_multi_model_title,
+        description = R.string.demo_model_picker_park_desc,
+        preview = R.drawable.model_picker_park,
+    ),
+    Gallery(
+        title = R.string.demo_scene_gallery_title,
+        description = R.string.demo_model_picker_gallery_desc,
+        preview = R.drawable.model_picker_gallery,
+    ),
+}
+
+/**
+ * The Models sheet — one picker for the whole viewer, opened from the Models dock item of all
+ * three sections (#3828).
+ *
+ * Two sections, both made of the same card: **Scenes** first, so the two destinations that are not
+ * a single model are seen before anything else (they used to be two text rows under the grid that
+ * nobody scrolled to), then the **single models**. Every card is a picture of what it opens: a
+ * render of the exact bundled GLB (see `tools/demo-previews/README.md`) or a capture of the scene.
+ *
+ * There is no "Surprise me" here any more. The viewer's floating pill is the one entry point — two
+ * copies of the same action, one of them inside a sheet, was the confusion the issue reports.
+ *
+ * @param selectedPath the model on screen, outlined; `null` outside the single-model section.
+ * @param currentScene the scene on screen, outlined; `null` in the single-model section.
+ */
 @Composable
 fun ModelPickerSheet(
-    models: List<BundledViewerModel>, selectedPath: String,
-    surpriseAvailable: Boolean, surpriseLoading: Boolean,
-    // What the roll is doing right now (#3825) — shown under the title while [surpriseLoading],
-    // with a determinate ring once [surpriseProgress] is known.
-    surpriseStatus: String? = null, surpriseProgress: Float? = null,
-    onSelect: (BundledViewerModel) -> Unit, onPark: () -> Unit,
-    onSurprise: () -> Unit, onBrowse: () -> Unit, onDismiss: () -> Unit,
+    models: List<BundledViewerModel>,
+    selectedPath: String?,
+    currentScene: ViewerScene?,
+    onSelect: (BundledViewerModel) -> Unit,
+    onScene: (ViewerScene) -> Unit,
+    onDismiss: () -> Unit,
 ) {
     // Fully expanded from the start (`skipPartiallyExpanded`). The grid is a plain Column of
-    // Rows rather than a LazyVerticalGrid: a lazy grid inside a sheet needs a bounded height,
-    // and the `heightIn(max = …)` cap it had cut the second row's captions while the sheet
-    // itself was already at full height (QA round 3). Six bundled models are three rows — the
-    // whole sheet scrolls on short screens instead of the grid scrolling inside it.
+    // Rows rather than a LazyVerticalGrid: a lazy grid inside a sheet needs a bounded height, and
+    // the `heightIn(max = …)` cap it had cut the last row's captions (QA round 3). The whole sheet
+    // scrolls on short screens instead of a grid scrolling inside it.
     DemoModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl),
     ) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-        Text("Models", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))
-        // Promoted to the top of the sheet, above the grid, in *both* themes (#3585,
-        // Android parity with the iOS fix): third-from-last under six thumbnails and
-        // two text rows, the one action that pulls fresh content was the one action
-        // nobody scrolled to (#3324 reported the same blindness about the old row).
-        // A tinted outlined button is not a list item — `primary-light` fill plus a
-        // `primary` hairline and glyph, the `DESIGN.md` pair for "subtle background"
-        // + "accents", so it reads as an offer rather than another row to skim.
-        if (surpriseAvailable) SurpriseMeButton(
-            loading = surpriseLoading, status = surpriseStatus, progress = surpriseProgress, onClick = onSurprise,
-        )
         Column(
-            modifier = Modifier.fillMaxWidth().padding(SceneViewTokens.Space.md),
-            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = SceneViewTokens.Space.md),
         ) {
-            models.chunked(2).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
-                    row.forEach { model ->
-                        val selected = model.assetPath == selectedPath
-                        Column(
-                            Modifier.weight(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.md))
-                                .then(if (selected) Modifier.border(BorderStroke(SceneViewTokens.Layout.selectedOutlineWidth, MaterialTheme.colorScheme.primary), RoundedCornerShape(SceneViewTokens.Radius.md)) else Modifier)
-                                .clickable { onSelect(model) }.padding(SceneViewTokens.Space.sm)
-                        ) {
-                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.sm)).background(MaterialTheme.colorScheme.surfaceContainerHigh).border(SceneViewTokens.Layout.hairlineWidth, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(SceneViewTokens.Radius.sm)), contentAlignment = Alignment.Center) {
-                                ModelThumbnails.resourceFor(model.assetName)?.let { Image(painterResource(it), null, Modifier.fillMaxSize()) }
-                                    ?: Icon(Icons.Outlined.ViewInAr, null)
-                            }
-                            Text(model.displayName, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = SceneViewTokens.Space.xs))
-                        }
-                    }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+            Text(
+                stringResource(R.string.demo_model_picker_title),
+                style = SceneViewTokens.Type.title,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            PickerSectionHeader(R.string.demo_model_picker_scenes, top = SceneViewTokens.Space.md)
+            CardRow(ViewerScene.entries) { scene ->
+                PickerCard(
+                    title = stringResource(scene.title),
+                    subtitle = stringResource(scene.description),
+                    selected = scene == currentScene,
+                    onClick = { onScene(scene) },
+                ) {
+                    // A capture of the scene itself — its own stage, its own models.
+                    Image(
+                        painter = painterResource(scene.preview),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
+            PickerSectionHeader(R.string.demo_model_picker_models, top = SceneViewTokens.Space.lg)
+            Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+                models.chunked(2).forEach { row ->
+                    CardRow(row) { model ->
+                        PickerCard(
+                            title = model.displayName,
+                            subtitle = model.description?.let { stringResource(it) },
+                            selected = model.assetPath == selectedPath,
+                            onClick = { onSelect(model) },
+                        ) {
+                            // A transparent render of the exact GLB this card opens, on the card's
+                            // own fill — so it sits right in both themes.
+                            ModelThumbnails.resourceFor(model.assetName)?.let {
+                                Image(
+                                    painter = painterResource(it),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } ?: Icon(
+                                Icons.Outlined.ViewInAr,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.align(Alignment.Center),
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.navigationBarsPadding().height(SceneViewTokens.Space.md))
         }
-        ViewerSheetRow("Park scene", "4 models", onPark)
-        ViewerSheetRow("Browse online models…", null, onBrowse)
-        Spacer(Modifier.navigationBarsPadding().height(SceneViewTokens.Space.sm))
-        }
+    }
+}
+
+/** A section label, styled like the home catalogue's section headers (`DESIGN.md`). */
+@Composable
+private fun PickerSectionHeader(@StringRes text: Int, top: Dp) {
+    Text(
+        stringResource(text),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(top = top, bottom = SceneViewTokens.Space.sm),
+    )
+}
+
+/** Two equal columns; a lone last item keeps its column width. */
+@Composable
+private fun <T> CardRow(items: List<T>, card: @Composable (T) -> Unit) {
+    // `IntrinsicSize.Min` + `fillMaxHeight`: a caption that wraps to a second line (large font
+    // scales) grows both cards of the row, so a row never has two card heights.
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+    ) {
+        items.forEach { Box(Modifier.weight(1f).fillMaxHeight()) { card(it) } }
+        repeat(2 - items.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 
 /**
- * The "Surprise me" call to action, at the top of the models sheet.
- *
- * `primary` at [SceneViewTokens.HomeColor.primaryLightAlphaLight] / `…AlphaDark`
- * is the `DESIGN.md` `primary-light` token; the hairline and the glyph are the
- * `primary` role itself. The label stays `on-surface` and the subtitle
- * `on-surface-variant` so the copy is read as copy in both themes — a fully
- * primary-coloured block of text on a primary tint is the low-contrast trap.
- *
- * While a pick is resolving the button is disabled but keeps its colours: the
- * spinner occupies the icon's slot, so nothing moves and nothing greys out.
+ * The home catalogue's card anatomy (5:4 media over a `type-card` title and a `type-caption`
+ * line), on `surface-container-high` — the `DESIGN.md` role for a tile on a container. The card
+ * showing on screen gets the 2dp `primary` outline instead of the hairline.
  */
-@Composable private fun SurpriseMeButton(loading: Boolean, status: String?, progress: Float?, onClick: () -> Unit) {
-    val tint = MaterialTheme.colorScheme.primary.copy(
-        alpha = if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.primaryLightAlphaDark
-        else SceneViewTokens.HomeColor.primaryLightAlphaLight,
-    )
-    OutlinedButton(
-        onClick = onClick,
-        enabled = !loading,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm)
-            .heightIn(min = SceneViewTokens.Layout.touchTarget),
-        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-        border = BorderStroke(SceneViewTokens.Home.cardOutlineWidth, MaterialTheme.colorScheme.primary),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = tint,
-            contentColor = MaterialTheme.colorScheme.primary,
-            disabledContainerColor = tint,
-            disabledContentColor = MaterialTheme.colorScheme.primary,
-        ),
-        contentPadding = PaddingValues(SceneViewTokens.Space.md),
-    ) {
-        Box(
-            Modifier.size(SceneViewTokens.Layout.dockIconSize),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (loading && progress != null) {
-                // Determinate once the byte count is known (#3825).
-                NarrationProgressRing(
-                    progress = progress,
-                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else if (loading) {
-                LoadingIndicator(
-                    Modifier.size(SceneViewTokens.Layout.dockIconSize),
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                Icon(Icons.Filled.Shuffle, null, Modifier.size(SceneViewTokens.Layout.dockIconSize))
-            }
-        }
-        Spacer(Modifier.width(SceneViewTokens.Space.md))
-        Column(Modifier.weight(1f)) {
-            Text(
-                "Surprise me",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            // The subtitle narrates the roll while it runs (#3825) — search, download, decode —
-            // instead of a static "Finding…" that said nothing about what was happening.
-            NarrationText(
-                text = if (loading && status != null) {
-                    status
-                } else {
-                    stringResource(R.string.demo_model_viewer_surprise_subtitle)
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable private fun ViewerSheetRow(
+@Composable
+private fun PickerCard(
     title: String,
     subtitle: String?,
+    selected: Boolean,
     onClick: () -> Unit,
-    loading: Boolean = false,
+    media: @Composable BoxScope.() -> Unit,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !loading, onClick = onClick)
-            .padding(SceneViewTokens.Space.md),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.fillMaxSize(),
+        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = if (selected) {
+            BorderStroke(SceneViewTokens.Layout.selectedOutlineWidth, MaterialTheme.colorScheme.primary)
+        } else {
+            BorderStroke(SceneViewTokens.Layout.hairlineWidth, outlineSubtle())
+        },
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+        Column {
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(SceneViewTokens.Layout.mediaAspect),
+                content = media,
+            )
+            Column(
+                Modifier.fillMaxWidth().padding(
+                    top = SceneViewTokens.Home.cardTextPaddingTop,
+                    start = SceneViewTokens.Home.cardTextPaddingHorizontal,
+                    end = SceneViewTokens.Home.cardTextPaddingHorizontal,
+                    bottom = SceneViewTokens.Home.cardTextPaddingBottom,
+                ),
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+            ) {
+                Text(
+                    title,
+                    style = SceneViewTokens.Type.card,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = SceneViewTokens.Type.caption,
+                        fontWeight = FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
-        if (loading) LoadingIndicator(Modifier.size(SceneViewTokens.Layout.dockIconSize))
     }
 }

@@ -90,6 +90,7 @@ import io.github.sceneview.demo.ui.viewer.BundledViewerModel
 import io.github.sceneview.demo.ui.viewer.AnimationBar
 import io.github.sceneview.demo.ui.viewer.EnvironmentSheet
 import io.github.sceneview.demo.ui.viewer.ModelPickerSheet
+import io.github.sceneview.demo.ui.viewer.ViewerScene
 import io.github.sceneview.demo.ui.viewer.ModelUnitSheet
 import io.github.sceneview.demo.OpenedModelIntent
 import io.github.sceneview.core.threemf.ModelUnitGuess
@@ -180,11 +181,48 @@ fun ModelViewerDemo(onBack: () -> Unit) {
         if (next != mode) DemoSettings.cameraDistance = null
         mode = next
     }
-    when (mode) {
-        ModelViewerMode.Single -> SingleModelSection(onBack, mode, onModeChange)
-        ModelViewerMode.Multi -> MultiModelSection(onBack, mode, onModeChange)
-        ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange)
+    // The model on the single-model stage lives here, above the three sections, so the Models
+    // sheet opened from the Park or the Gallery can open a model directly (#3828) — it used to
+    // offer only the Damaged Helmet there — and coming back from a scene finds the model the
+    // user left rather than the default.
+    var selectedModel by remember { mutableStateOf(BUNDLED_VIEWER_MODELS.first()) }
+    val openModel: (BundledViewerModel) -> Unit = {
+        selectedModel = it
+        onModeChange(ModelViewerMode.Single)
     }
+    when (mode) {
+        ModelViewerMode.Single -> SingleModelSection(onBack, mode, onModeChange, selectedModel) { selectedModel = it }
+        ModelViewerMode.Multi -> MultiModelSection(onBack, mode, onModeChange, openModel)
+        ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange, openModel)
+    }
+}
+
+/**
+ * The models the viewer ships in its APK, in picker order — one list for the Models sheet of all
+ * three sections.
+ *
+ * #3324 — the two untextured low-poly rows (Fox, Shiba) are out: in a full-screen PBR viewer they
+ * are the two models that make the SDK look worse than it is. The three that take their place each
+ * exercise a different material extension (sheen, sheen + specular, iridescence + transmission +
+ * volume). Both GLBs stay bundled — `SampleAssets` fallbacks and `ARGeospatialAnchorsDemo` still
+ * load them.
+ */
+private val BUNDLED_VIEWER_MODELS = listOf(
+    BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet", R.string.demo_model_desc_damaged_helmet),
+    BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa", R.string.demo_model_desc_velvet_sofa),
+    BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair", R.string.demo_model_desc_sheen_chair),
+    BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish", R.string.demo_model_desc_olive_dish),
+    BundledViewerModel("models/khronos_lantern.glb", "Lantern", R.string.demo_model_desc_lantern),
+    BundledViewerModel("models/khronos_toy_car.glb", "Toy Car", R.string.demo_model_desc_toy_car),
+    // The three.js Soldier is authored facing -Z: from the viewer's +Z camera it showed its back,
+    // while its picker card showed a face (#3828).
+    BundledViewerModel("models/threejs_soldier.glb", "Soldier", R.string.demo_model_desc_soldier, frontYaw = 180f),
+)
+
+/** The section a scene card of the Models sheet opens. */
+private fun ViewerScene.mode(): ModelViewerMode = when (this) {
+    ViewerScene.Park -> ModelViewerMode.Multi
+    ViewerScene.Gallery -> ModelViewerMode.Gallery
 }
 
 /**
@@ -264,25 +302,12 @@ private fun SingleModelSection(
     onBack: () -> Unit,
     mode: ModelViewerMode,
     onModeChange: (ModelViewerMode) -> Unit,
+    selectedModel: BundledViewerModel,
+    onSelectModel: (BundledViewerModel) -> Unit,
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val bundledModels = remember { listOf(
-        // #3324 — the two untextured low-poly rows (Fox, Shiba) are out: in a full-screen
-        // PBR viewer they are the two models that make the SDK look worse than it is. The
-        // three that take their place each exercise a different material extension
-        // (sheen, sheen + specular, iridescence + transmission + volume). Both GLBs stay
-        // bundled — `SampleAssets` fallbacks and `ARGeospatialAnchorsDemo` still load them.
-        BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet"),
-        BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa"),
-        BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair"),
-        BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish"),
-        BundledViewerModel("models/khronos_lantern.glb", "Lantern"),
-        BundledViewerModel("models/khronos_toy_car.glb", "Toy Car"),
-        BundledViewerModel("models/threejs_soldier.glb", "Soldier"),
-    ) }
-    var selectedModel by remember { mutableStateOf(bundledModels.first()) }
     var modelSheetOpen by remember { mutableStateOf(false) }
     var environmentSheetOpen by remember { mutableStateOf(false) }
     // Chinese Garden leads, and the flagship viewer opens on it (#3402). The old default —
@@ -339,7 +364,7 @@ private fun SingleModelSection(
     var unitSheetOpen by remember { mutableStateOf(false) }
     var unitAnswered by remember { mutableStateOf(openedModel == null) }
     // The step a "Surprise me" roll is in, or `null` when none is running (#3825). The pill
-    // and the sheet narrate it — search, download, decode, textures — instead of a static
+    // narrates it — search, download, decode, textures — instead of a static
     // "Finding…". Every exit path (success, empty search, failed download, failed decode)
     // lands back on `null`, so the button can never stick in its loading state.
     var surpriseStage by remember { mutableStateOf<SurpriseStage?>(null) }
@@ -592,7 +617,7 @@ private fun SingleModelSection(
     // the default model first, exit only from there. Scoped to the bundled-model swap only —
     // an opened external file (`openedModel`, a one-shot `val` for the "Open with SceneView"
     // handoff) is a different, narrower flow this issue does not report on.
-    val modelSwapped = openedModel == null && selectedModel != bundledModels.first()
+    val modelSwapped = openedModel == null && selectedModel != BUNDLED_VIEWER_MODELS.first()
     BackHandler(enabled = anySheetOpen || unitSheetOpen || modelSwapped) {
         when {
             anySheetOpen || unitSheetOpen -> {
@@ -600,15 +625,14 @@ private fun SingleModelSection(
                 if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
             }
             modelSwapped -> {
-                selectedModel = bundledModels.first()
+                onSelectModel(BUNDLED_VIEWER_MODELS.first())
                 streamedFileUrl = null
             }
         }
     }
 
-    // One roll, two callers (#3585): the promoted row at the top of the Models sheet and
-    // the persistent pill floating over the scene. Closing the sheet on completion is a
-    // no-op for the pill, which is only reachable while the sheet is closed.
+    // The floating pill's roll. Since #3828 it is the only "Surprise me" — the Models sheet's
+    // copy of it is gone — so closing the sheet on completion is a no-op kept for safety.
     val rollSurprise: () -> Unit = {
         if (!surpriseInFlight) {
             surpriseStage = SurpriseStage.Searching
@@ -730,7 +754,8 @@ private fun SingleModelSection(
             // #3585 — "Surprise me" was reachable only from the third row of a sheet the
             // user had to open first, and it is the one action of this viewer that makes
             // people keep tapping. A glass pill floating over the scene re-rolls without
-            // opening anything; the sheet keeps its promoted row for the first discovery.
+            // opening anything. It is the only entry point since #3828: a second copy at the
+            // top of the Models sheet read as two different features.
             // The dock is full (Models, Lighting, Animate, Recenter) and AR owns the
             // accent, so a fifth labelled dock item is not available — DESIGN.md caps the
             // dock at four plus the accent. The pill is theme-independent like every
@@ -888,7 +913,10 @@ private fun SingleModelSection(
                     // that pairing: the pivot no longer cancelled out, so the whole model swam off
                     // its centre as it spun — at a glance this read as the environment orbiting
                     // rather than a clean model-only spin.
-                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, modelYaw)
+                    // A bundled asset authored facing -Z turns to face the camera first (#3828);
+                    // a streamed or opened file is shown as authored.
+                    val yaw = modelYaw + if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, yaw)
                     ModelNode(
                         modelInstance = instance,
                         // No `scaleToUnits` — the model renders at its true glTF size and the
@@ -899,7 +927,7 @@ private fun SingleModelSection(
                             -autoFitRadius * 0.06f * (1f - fitProgress.value),
                             modelCenter.z - rz,
                         ),
-                        rotation = Rotation(y = modelYaw),
+                        rotation = Rotation(y = yaw),
                     )
                 }
             }
@@ -911,13 +939,13 @@ private fun SingleModelSection(
         }
     }
     if (modelSheetOpen) ModelPickerSheet(
-        bundledModels, selectedModel.assetPath, hasSketchfabKey, surpriseInFlight,
-        surpriseStatus = surpriseStage?.let { surpriseStageText(it) },
-        surpriseProgress = (surpriseStage as? SurpriseStage.Fetching)?.fraction,
-        onSelect = { selectedModel = it; streamedFileUrl = null; modelSheetOpen = false },
-        onPark = { modelSheetOpen = false; onModeChange(ModelViewerMode.Multi) },
-        onSurprise = rollSurprise,
-        onBrowse = { modelSheetOpen = false; onModeChange(ModelViewerMode.Gallery) },
+        models = BUNDLED_VIEWER_MODELS,
+        // A streamed or opened model is not one of the cards: outline none rather than the
+        // bundled model it replaced.
+        selectedPath = selectedModel.assetPath.takeIf { streamedFileUrl == null },
+        currentScene = null,
+        onSelect = { onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false },
+        onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
     )
     if (unitSheetOpen && unitSuggestion != null) {
@@ -1165,6 +1193,7 @@ private fun MultiModelSection(
     onBack: () -> Unit,
     mode: ModelViewerMode,
     onModeChange: (ModelViewerMode) -> Unit,
+    onOpenModel: (BundledViewerModel) -> Unit,
 ) {
     var modelSheetOpen by remember { mutableStateOf(false) }
     // #3822 — `mode` (Single/Multi/Gallery) lives in the parent `ModelViewerDemo` composable,
@@ -1450,12 +1479,14 @@ private fun MultiModelSection(
             )
         }
     }
+    // The same sheet as the single-model section's, with every bundled model (#3828 — it used to
+    // offer the Damaged Helmet alone). A card opens that model on the single-model stage.
     if (modelSheetOpen) ModelPickerSheet(
-        models = listOf(BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet")),
-        selectedPath = "", surpriseAvailable = false, surpriseLoading = false,
-        onSelect = { modelSheetOpen = false; onModeChange(ModelViewerMode.Single) },
-        onPark = { modelSheetOpen = false }, onSurprise = {},
-        onBrowse = { modelSheetOpen = false; onModeChange(ModelViewerMode.Gallery) },
+        models = BUNDLED_VIEWER_MODELS,
+        selectedPath = null,
+        currentScene = ViewerScene.Park,
+        onSelect = { modelSheetOpen = false; onOpenModel(it) },
+        onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
     )
 }
@@ -1524,6 +1555,7 @@ private fun GallerySection(
     onBack: () -> Unit,
     mode: ModelViewerMode,
     onModeChange: (ModelViewerMode) -> Unit,
+    onOpenModel: (BundledViewerModel) -> Unit,
 ) {
     val context = LocalContext.current
     val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
@@ -1531,7 +1563,10 @@ private fun GallerySection(
     // #3822 — see the matching handler in `MultiModelSection`: `mode` is not on the Android
     // back stack, so the raw `onBack` from `MainActivity` skipped straight past "Scene
     // Gallery" to the Showcase home. Step back to the single-model view first instead.
-    BackHandler { onModeChange(ModelViewerMode.Single) }
+    var modelSheetOpen by remember { mutableStateOf(false) }
+    BackHandler {
+        if (modelSheetOpen) modelSheetOpen = false else onModeChange(ModelViewerMode.Single)
+    }
 
     // The four curated `gallery` slugs declared in SampleAssets. Stage 2 keeps
     // the chip count low so the offline-fallback footprint stays bounded — Stage
@@ -1626,6 +1661,9 @@ private fun GallerySection(
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
+        // #3828 — the Gallery had no way to the Models sheet: the only exits were back and the
+        // system gesture. Same dock item as the other two sections.
+        dock = listOf(DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true })),
         controls = {
             // Category chips along the top of the controls sheet. We expose
             // them as a horizontally scrolling row so the four labels never
@@ -1733,6 +1771,14 @@ private fun GallerySection(
             }
         }
     }
+    if (modelSheetOpen) ModelPickerSheet(
+        models = BUNDLED_VIEWER_MODELS,
+        selectedPath = null,
+        currentScene = ViewerScene.Gallery,
+        onSelect = { modelSheetOpen = false; onOpenModel(it) },
+        onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
+        onDismiss = { modelSheetOpen = false },
+    )
 }
 
 /** Resolution lifecycle for a streamed gallery slug. See [GallerySection]. */

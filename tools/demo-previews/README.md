@@ -147,21 +147,32 @@ screen, a thumb's width apart, and #3438 was filed because they did not.
 
 ## Model thumbnails
 
-`model-thumbs.json` + `--kind thumb` generates the square 320×320 tiles the model picker
-and the Model Viewer's model sheet show — `model_thumb_<asset-stem>.webp`, the exact key
-`ModelThumbnails.resourceFor()` looks up, so **the id in the JSON is the bundled GLB's
-file stem**. Dark-only: both sheets sit on a scrim in both app themes.
+`model_thumb_<asset-stem>.webp` — the cards of the Model Viewer's Models sheet and of the AR
+placement picker, looked up by `ModelThumbnails.resourceFor()` with the bundled GLB's file
+stem — are **renders of that exact GLB, not generated images**. The image-generated set drew
+models that were not the bundled ones (a green toy soldier for the three.js Soldier, #3828),
+so this kind is no longer produced by `gen.py`.
 
-```bash
-GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/gen.py \
-  tools/demo-previews/model-thumbs.json /tmp/thumbs --kind thumb --only khronos_sheen_chair
-cp /tmp/thumbs/webp/*.webp samples/android-demo/src/main/res/drawable-nodpi/
-```
+How a thumbnail is made (#3828):
 
-Entries use `refUrl` rather than a committed `ref`: the reference is each asset's own
-upstream render (the Khronos `screenshot/screenshot.jpg`), itself a CC-BY work, and
-caching it under `refs/` would add third-party binaries the repo would then owe an
-attribution line for. It is fetched into the out dir instead, which is not tracked.
+1. A throwaway screen in the demo app renders the GLB through the app's own Filament stack:
+   `chinese_garden_2k.hdr` as the only light (IBL at 30,000, no skybox), bloom off, the
+   default Filmic tone mapping, a 50 mm lens looking at the bounding-box centre from 30°
+   of yaw and 18° of pitch (Damaged Helmet 15°/15° so the visor reads; Soldier 30°/12°),
+   far enough for the bounding sphere to fit. The model is turned by its `frontYaw` first,
+   so the thumbnail shows the side the viewer opens on. An animated model (Soldier, Fox) is
+   posed half a second into its first clip rather than on a bind pose.
+2. The same frame is captured twice on the QA emulator, over a solid black and a solid white
+   skybox. The difference of the two gives each pixel's coverage
+   (`alpha = 1 - (white - black) / (white bg - black bg)`), so the subject comes out with
+   clean anti-aliased edges and no background at all.
+3. The matte is trimmed to the subject, fitted at 80 % of a 600×480 (5:4, the card's
+   `mediaAspect`) transparent canvas, centred, and saved as lossy WebP with alpha (q90).
+
+The card paints its own `surface-container-high` fill behind the image, so one file serves
+both themes. The throwaway screen is not committed: re-render by rebuilding it from the steps
+above, and review every thumbnail over both card fills next to the viewer's first frame of
+the same model before it ships.
 
 ## Store AR visuals
 

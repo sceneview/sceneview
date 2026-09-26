@@ -548,7 +548,7 @@ class DemoInteractionTest {
 
         // ── Multi-Model tab — themed "Park" scene + per-model visibility chips ─
         tap("Models")
-        tap("Park scene")
+        tap("Park Scene")
         screenshot("28_models_multi_default")
         // The visibility chips are labelled from the resolved `park` slug's
         // `displayName` (#2933) — "Oak Trees" is slot 1's registry entry, not a
@@ -561,7 +561,7 @@ class DemoInteractionTest {
 
         // ── Gallery tab — chip-picked themed Sketchfab model ──────────────────
         tap("Models")
-        tap("Browse online models…")
+        tap("Scene Gallery")
         screenshot("29_models_gallery_default")
     }
 
