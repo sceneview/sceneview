@@ -9,12 +9,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,10 +31,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
@@ -187,17 +186,27 @@ private fun PickerSectionHeader(@StringRes text: Int, top: Dp) {
     )
 }
 
-/** Two equal columns; a lone last item keeps its column width. */
+/**
+ * Two equal columns of equal height; a lone last item keeps its column width.
+ *
+ * A caption that wraps to a second line grows both cards of the row. The height is asked of each
+ * card at its exact column width, gap included. A `Row` with `IntrinsicSize.Min` measured the
+ * cards as if there were no gap, so a caption that only wraps at the real width was given one
+ * line and ellipsized ("Wooden post, metal lante…", #3828 QA).
+ */
 @Composable
 private fun <T> CardRow(items: List<T>, card: @Composable (T) -> Unit) {
-    // `IntrinsicSize.Min` + `fillMaxHeight`: a caption that wraps to a second line (large font
-    // scales) grows both cards of the row, so a row never has two card heights.
-    Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-    ) {
-        items.forEach { Box(Modifier.weight(1f).fillMaxHeight()) { card(it) } }
-        repeat(2 - items.size) { Spacer(Modifier.weight(1f)) }
+    Layout(
+        content = { items.forEach { card(it) } },
+        modifier = Modifier.fillMaxWidth(),
+    ) { measurables, constraints ->
+        val gap = SceneViewTokens.Space.sm.roundToPx()
+        val width = (constraints.maxWidth - gap) / 2
+        val height = measurables.maxOf { it.maxIntrinsicHeight(width) }
+        val placeables = measurables.map { it.measure(Constraints.fixed(width, height)) }
+        layout(constraints.maxWidth, height) {
+            placeables.forEachIndexed { index, placeable -> placeable.placeRelative(index * (width + gap), 0) }
+        }
     }
 }
 
