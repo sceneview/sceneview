@@ -316,7 +316,10 @@ class SceneView private constructor(
     }
 
     companion object {
-        /** Default IBL URL — same "neutral" environment as SceneView Android. */
+        /**
+         * Default IBL URL — same "neutral" environment as SceneView Android. It is fetched from
+         * sceneview.github.io at runtime, not bundled in the package.
+         */
         const val DEFAULT_IBL_URL = "https://sceneview.github.io/assets/environments/neutral_ibl.ktx"
         const val DEFAULT_SKYBOX_URL = "https://sceneview.github.io/assets/environments/neutral_skybox.ktx"
 
@@ -1797,7 +1800,9 @@ class SceneViewBuilder(private val sceneView: SceneView) {
         if (iblUrl != null) {
             sceneView.loadEnvironment(iblUrl!!, skyboxUrl)
         } else if (useDefaultEnvironment) {
-            // Load the bundled neutral IBL — same as Android SceneView default
+            // Fetch the neutral IBL from sceneview.github.io (DEFAULT_IBL_URL — NOT bundled in
+            // the package), the same environment as the Android default. Call
+            // environment(iblUrl) to self-host it, or noEnvironment() to skip the request.
             sceneView.loadDefaultEnvironment()
         }
 

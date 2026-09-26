@@ -2,15 +2,15 @@
 
 ## Supported Versions
 
-| Version | Support Level          |
-| ------- | ---------------------- |
-| 3.6.x   | Fully supported        |
-| 3.5.x   | Security fixes only    |
-| < 3.5   | Not supported          |
+| Version            | Support Level                                                        |
+| ------------------ | -------------------------------------------------------------------- |
+| 4.x (latest minor) | Fully supported                                                      |
+| 4.x (older minors) | Fixes land in the next 4.x release — upgrade to the latest 4.x minor |
+| < 4.0              | Not supported                                                        |
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in SceneView, please report it responsibly by emailing **security@sceneview.com**. Do not open a public GitHub issue for security vulnerabilities.
+If you discover a security vulnerability in SceneView, please report it privately through GitHub: [Report a vulnerability](https://github.com/sceneview/sceneview/security/advisories/new). Do not open a public GitHub issue for security vulnerabilities.
 
 When reporting, please include:
 
