@@ -7,4 +7,55 @@
 <resources>
     <string name="demo_ar_record_playback_title">AR Recording</string>
     <string name="demo_ar_record_playback_subtitle">Record an AR session and replay it anywhere</string>
+
+    <!-- #3831: two steps in the dock instead of four mode chips in the sheet. -->
+    <string name="ar_rec_step_record">Record</string>
+    <string name="ar_rec_step_recordings">Recordings</string>
+
+    <!-- Shutter and the card over the camera while recording. -->
+    <string name="ar_rec_start_recording">Start recording</string>
+    <string name="ar_rec_stop_recording">Stop recording</string>
+    <string name="ar_rec_recording">Recording</string>
+    <string name="ar_rec_may_not_replay">This part may not replay.</string>
+
+    <!-- The card that replaces the shutter once a take is saved. -->
+    <string name="ar_rec_saved_title">Recording saved</string>
+    <string name="ar_rec_replay">Replay</string>
+    <string name="ar_rec_share">Share</string>
+    <string name="ar_rec_close">Close</string>
+
+    <!-- Replay. -->
+    <string name="ar_rec_starting_replay">Starting replay…</string>
+    <string name="ar_rec_replaying">Replaying</string>
+    <string name="ar_rec_stop">Stop</string>
+    <string name="ar_rec_replay_finished">Replay finished</string>
+    <string name="ar_rec_replay_again">Replay again</string>
+    <string name="ar_rec_all_recordings">All recordings</string>
+    <string name="ar_rec_lost_heading">Where the camera lost its place</string>
+
+    <!-- Gallery. -->
+    <string name="ar_rec_gallery_title">Recordings</string>
+    <string name="ar_rec_gallery_subtitle">Tap one to replay it here, in AR, exactly as it was filmed.</string>
+    <string name="ar_rec_new_badge">New</string>
+    <string name="ar_rec_more_actions">More actions</string>
+    <string name="ar_rec_save_to_downloads">Save to Downloads</string>
+    <string name="ar_rec_delete">Delete</string>
+    <string name="ar_rec_delete_title">Delete this recording?</string>
+    <string name="ar_rec_delete_body">It is removed from this phone. This can\'t be undone.</string>
+    <string name="ar_rec_cancel">Cancel</string>
+    <string name="ar_rec_empty_title">No recordings yet</string>
+    <string name="ar_rec_empty_body">Film a room once, then replay it here as often as you like, without holding the phone up.</string>
+    <string name="ar_rec_saved_to_downloads">Saved to Downloads/SceneView/%1$s</string>
+    <string name="ar_rec_save_failed">Couldn\'t save to Downloads.</string>
+    <string name="ar_rec_share_failed">Couldn\'t share this recording.</string>
+
+    <!-- Settings sheet: what a recording keeps. -->
+    <string name="ar_rec_keeps_title">What a recording keeps</string>
+    <string name="ar_rec_keeps_video_title">Camera video</string>
+    <string name="ar_rec_keeps_video_body">What the camera saw, playable in any video app.</string>
+    <string name="ar_rec_keeps_motion_title">Motion sensors</string>
+    <string name="ar_rec_keeps_motion_body">Accelerometer and gyroscope, so the replay moves exactly as you did.</string>
+    <string name="ar_rec_keeps_placements_title">Your placements</string>
+    <string name="ar_rec_keeps_placements_body">Where you put each fox, in a data track this app adds to the file.</string>
+    <string name="ar_rec_keeps_rebuilt">Rebuilt on replay: the camera path and the surfaces.</string>
 </resources>

@@ -28,7 +28,7 @@ record → export → commit workflow. Short version:
 
 ```bash
 adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-record-playback
-# … record on device, switch to Playback tab, tap Export …
+# … record on device, open Recordings, row menu > Save to Downloads …
 adb pull /sdcard/Download/SceneView/ar-session-<timestamp>.mp4
 mv ar-session-<timestamp>.mp4 samples/android-demo/src/androidTest/assets/ar-recordings/<scenario>.mp4
 git add samples/android-demo/src/androidTest/assets/ar-recordings/<scenario>.mp4

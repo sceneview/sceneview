@@ -7,7 +7,7 @@ Store APK lean (#934).
 
 The `ARRecordPlaybackDemo` extracts each file here on first launch into
 `context.getExternalFilesDir("ar-recordings")/` so it appears in the
-**Playback** tab alongside any sessions the user records on-device.
+**Recordings** step alongside any sessions the user records on-device.
 
 This makes the AR demos **testable on devices without ARCore tracking**
 (emulators, dev machines via the iframe Rerun viewer, CI runners) — replay
@@ -22,7 +22,7 @@ a stable real-world capture instead of needing live camera + IMU.
 ## Adding a new bundled recording
 
 1. Run the demo app on a real ARCore-capable device (Pixel 4+ recommended).
-2. Open **Record & Playback** demo, tap **Start**, capture an AR session.
+2. Open the **AR Recording** demo, tap the red shutter, capture an AR session, tap it again.
 3. Pull the `.mp4` from the device:
    ```bash
    adb -s <SERIAL> pull /sdcard/Android/data/io.github.sceneview.demo/files/ar-recordings/<filename>.mp4

@@ -426,6 +426,13 @@ object SceneViewTokens {
         /** Broken until something changes — dark-scheme `error`. */
         val accentBlocked = Color(0xFFFFB4AB)
 
+        /**
+         * A capture is in progress — `danger`, the camera-app convention for "recording"
+         * (#3831): the live dot of the AR Recording card and the shutter disc. The only red
+         * drawn over the camera, and there it never means an error.
+         */
+        val accentRecord = Color(0xFFEA4335)
+
         /** Widest a coaching pill may grow — a long line stays one readable column. */
         val maxWidth = 480.dp
     }

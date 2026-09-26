@@ -27,7 +27,7 @@ class RerunSaveUxTest {
         assertFalse("save must be disabled with no reachable sidecar", ux.enabled)
         assertTrue(
             "the disabled label must name the reason so the CTA isn't a mystery",
-            ux.label.contains("recording service", ignoreCase = true),
+            ux.label.contains("connect a computer", ignoreCase = true),
         )
     }
 
@@ -43,7 +43,7 @@ class RerunSaveUxTest {
         // `sharing` wins over `isConnected` — no double-tap while a save is in flight.
         val ux = rerunSaveActionUx(sharing = true, isConnected = true)
         assertFalse(ux.enabled)
-        assertEquals("Saving on dev machine…", ux.label)
+        assertEquals("Saving on your computer…", ux.label)
     }
 
     // ── rerunSaveFailureMessage: never leak internal jargon ─────────────────
@@ -57,8 +57,8 @@ class RerunSaveUxTest {
             msg.contains("connect()"),
         )
         assertTrue(
-            "must point the user at the sidecar / adb reverse setup",
-            msg.contains("adb reverse") && msg.contains("sidecar", ignoreCase = true),
+            "must point the user at the recorder script / adb reverse setup",
+            msg.contains("adb reverse") && msg.contains("rerun-bridge.py"),
         )
     }
 

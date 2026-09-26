@@ -1,1702 +1,762 @@
 package io.github.sceneview.demo.demos
 
-import android.content.Context
-import android.content.Intent
-import android.os.Build
+import android.os.SystemClock
 import android.view.MotionEvent
-import android.view.WindowManager
-import androidx.core.content.FileProvider
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.Stable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
+import com.google.ar.core.PlaybackStatus
+import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.recording.ARRecordInterpretation
+import io.github.sceneview.ar.recording.ARRecordInterpreter
 import io.github.sceneview.ar.recording.ARRecorder
+import io.github.sceneview.ar.recording.rememberARPlaybackStatus
+import io.github.sceneview.ar.recording.rememberARRecordInterpreter
 import io.github.sceneview.ar.recording.rememberARRecorder
+import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.ARCameraInitScrim
+import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.qaStateOverridesAllowed
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
-import io.github.sceneview.haptic.rememberHapticFeedback
+import io.github.sceneview.demo.demos.internal.LiveStat
+import io.github.sceneview.demo.demos.internal.NewFrameGate
+import io.github.sceneview.demo.demos.internal.PlacementReplayQueue
+import io.github.sceneview.demo.demos.internal.PlacementTrack
+import io.github.sceneview.demo.demos.internal.PlacementWriteSchedule
+import io.github.sceneview.demo.demos.internal.RecordingQaState
+import io.github.sceneview.demo.demos.internal.RigidPose
+import io.github.sceneview.demo.demos.internal.formatRecordingTitle
+import io.github.sceneview.demo.demos.internal.liveCaptureStats
+import io.github.sceneview.demo.demos.internal.lostReasonLines
+import io.github.sceneview.demo.demos.internal.placementOf
+import io.github.sceneview.demo.demos.internal.placementWorldPose
+import io.github.sceneview.demo.demos.internal.readyToRecordLine
+import io.github.sceneview.demo.demos.internal.recorderErrorLine
+import io.github.sceneview.demo.demos.internal.recordingFileName
+import io.github.sceneview.demo.demos.internal.recordingTitleOf
+import io.github.sceneview.demo.demos.internal.savedTakeSummary
+import io.github.sceneview.demo.demos.internal.takeQualityLine
+import io.github.sceneview.demo.demos.internal.takeQualityOf
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
- * AR record-and-replay demo.
+ * AR Recording — record an AR session, then replay it here as often as you like (#3831).
  *
- * ARCore's `Session.startRecording(RecordingConfig)` captures the **entire** AR session —
- * camera frames, IMU, planes, depth, anchors, light estimation — into an MP4 dataset.
- * `Session.setPlaybackDataset(absolutePath)` then makes the same session replay that MP4 1:1,
- * as if you were physically there. The combination is the most useful debugging primitive
- * ARCore exposes:
+ * ARCore's `Session.startRecording` writes an ordinary MP4: the camera video any player can
+ * show, plus the motion-sensor and camera data ARCore reads back so that
+ * `ARSceneView(playbackDataset = file)` replays the session 1:1 without holding the phone up.
+ * This demo also writes a track of its own into the same file — where you placed each fox —
+ * which is something ARCore offers beyond ARKit, and reads it back on replay to put the foxes
+ * back where they were.
  *
- * - **Record outside, replay at the desk** — no need to retake a physical test for every
- *   tweak.
- * - **Reproduce bugs across devs** — share a recording instead of a verbal description.
- * - **Deterministic AR tests** — ship recordings as fixtures, replay them in CI.
- * - **Pair with the Rerun debug demo** — replay a recording while streaming to Rerun for a
- *   stable, repeatable visual inspection loop.
+ * Two steps in the dock, like a camera app:
  *
- * The demo has four modes wired to a top segmented control:
+ * - **Record** — a live camera with a shutter. While recording, a card shows what is being
+ *   captured, live: time, file size, frames, how far the phone moved, surfaces found and
+ *   placements. Stopping swaps the shutter for the saved take: its first frame, its length,
+ *   how steady it was, and Replay / Share.
+ * - **Recordings** — every take on the phone with a frame from it, its length, size and what
+ *   it holds. Tapping one replays it in place: a progress bar and the replay's own numbers
+ *   while it plays, then a report of how it went.
  *
- * - **LIVE** — plain AR, tap a plane to drop a fox (sanity check the session works).
- * - **RECORD** — same as LIVE, plus a record button. While recording, an elapsed-time pill
- *   is shown. Stopping reveals the saved MP4 in the Recordings card.
- * - **PLAYBACK** — lists the MP4s on disk; tapping one re-mounts the [ARSceneView] with
- *   `playbackDataset = file` so ARCore replays the dataset.
- * - **ANALYSE** — replay a recording *and interpret it*: every replayed frame is fed to an
- *   [io.github.sceneview.ar.recording.ARRecordInterpreter] which folds the dataset into a
- *   quantified [io.github.sceneview.ar.recording.ARRecordInterpretation] — trajectory
- *   length, tracked-frame ratio, dominant [TrackingFailureReason], plane count/area. The
- *   live numbers are overlaid on the replay; when the dataset ends
- *   (`rememberARPlaybackStatus == PlaybackStatus.FINISHED`) a final **report card** sums
- *   up the take. This is the desk-side counterpart to on-device QA — record a hard
- *   tracking stress-case once, then replay + measure it on every iteration.
- *
- * Switching mode forces the [ARSceneView] to be rebuilt via `key(currentMode, …)` because
- * ARCore binds the playback source at session-creation time and cannot be toggled after
- * resume. Recordings live in `context.getExternalFilesDir("ar-recordings")` — app-private
- * external storage, no runtime permission needed.
+ * Replaying needs a fresh ARCore session bound to the file, so the scene is keyed on the step,
+ * the replayed file and a replay generation ("Replay again").
  */
 @Composable
 fun ARRecordPlaybackDemo(onBack: () -> Unit) {
     val context = LocalContext.current
+    val resources = LocalResources.current
+    val scope = rememberCoroutineScope()
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    val library = remember { RecordingLibrary() }
+    val today = remember { LocalDate.now() }
 
-    // Honour `DemoSettings.arPendingPlaybackFile` (set via `--es ar_playback_file <path>` on
-     // the launch intent) so instrumentation tests can drive a deterministic replay without
-     // having to UiAutomator-click through Mode.PLAYBACK and the recording list.
-    val pendingFile = io.github.sceneview.demo.DemoSettings.arPendingPlaybackFile
-        ?.let(::File)?.takeIf { it.exists() }
-    // Default mode is RECORD: it's the action 90% of users came here to take, and the
-    // RECORD overlay's "How this helps" + big record button doubles as a clear hint that
-    // a Playback tab exists for replaying. LIVE is still reachable from the chips for
-    // sanity-checking session quality before a take.
-    var currentMode by remember { mutableStateOf(if (pendingFile != null) Mode.PLAYBACK else Mode.RECORD) }
-    var currentPlaybackFile by remember { mutableStateOf<File?>(pendingFile) }
-    // Last file saved by the recorder this session — drives the green "Recording saved"
-    // callout in RECORD mode + its Replay / Share buttons. Null until the first stop.
-    var lastSavedFile by remember { mutableStateOf<File?>(null) }
-    // Tracking-quality summary of the last completed recording (#1650) — the percentage
-    // of recorded frames where ARCore was actually TRACKING. Surfaced in the post-stop
-    // callout so the user can judge a take at a glance. Null until the first stop.
-    var lastTrackingHealth by remember { mutableStateOf<TrackingHealth?>(null) }
-    LaunchedEffect(Unit) {
-        // Consume so a config change / process recreation doesn't re-trigger.
-        io.github.sceneview.demo.DemoSettings.arPendingPlaybackFile = null
-    }
-    var exportToast by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(exportToast) {
-        if (exportToast != null) {
-            android.widget.Toast.makeText(context, exportToast, android.widget.Toast.LENGTH_LONG).show()
-            exportToast = null
-        }
-    }
+    val qa = RecordingQaState.of(DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() })
 
-    // List of recordings on disk — refreshed when a recording finishes or the user enters
-    // PLAYBACK mode.
+    // `--es ar_playback_file <path>` (DemoSettings.arPendingPlaybackFile) opens straight into
+    // a replay of that file — the entry the instrumentation replay tests and
+    // `ar-replay-qa.sh` use. Consumed once so a recreation does not re-trigger it.
+    val pendingFile = remember {
+        DemoSettings.arPendingPlaybackFile?.let(::File)?.takeIf { it.exists() }
+    }
+    LaunchedEffect(Unit) { DemoSettings.arPendingPlaybackFile = null }
+
+    var step by remember {
+        mutableStateOf(
+            if (pendingFile != null || qa.opensOnRecordings()) RecordingStep.Recordings else RecordingStep.Record
+        )
+    }
+    var replayFile by remember { mutableStateOf(pendingFile) }
+    var replayGeneration by remember { mutableIntStateOf(0) }
+    var lastSaved by remember { mutableStateOf<SavedTake?>(null) }
+    var newestName by remember { mutableStateOf<String?>(null) }
+
     val recordingsDir = remember(context) {
-        context.getExternalFilesDir("ar-recordings")!!.also { it.mkdirs() }
-    }
-    // Extract any bundled recordings shipped in `src/debug/assets/ar-recordings/`
-    // into `recordingsDir` on first launch — gives emulator + ARCore-less
-    // debug-build devices a known-good playback dataset out of the box, so the
-    // AR demos are reproducible without a physical capture session. The bundle
-    // lives in the `debug` sourceSet so the release APK doesn't ship it (#934).
-    // See `samples/android-demo/src/debug/assets/ar-recordings/README.md`.
-    LaunchedEffect(recordingsDir) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val assetMgr = context.assets
-                val bundled = assetMgr.list("ar-recordings")?.filter {
-                    it.endsWith(".mp4", ignoreCase = true)
-                } ?: emptyList()
-                for (name in bundled) {
-                    val target = File(recordingsDir, name)
-                    val expectedBytes = assetMgr.openFd("ar-recordings/$name").use { it.length }
-                    // Skip if already present AND length matches the bundled
-                    // asset — a future release that ships an updated recording
-                    // (e.g. bumped to a newer ARCore SDK) will re-extract.
-                    if (target.exists() && target.length() == expectedBytes) continue
-                    // Write to a `.tmp` first then rename, so a kill / process
-                    // death mid-copy can't leave a half-written file that the
-                    // next `target.exists()` check would silently accept.
-                    val tmp = File(recordingsDir, "$name.tmp")
-                    try {
-                        assetMgr.open("ar-recordings/$name").use { input ->
-                            tmp.outputStream().use { output -> input.copyTo(output) }
-                        }
-                        if (!tmp.renameTo(target)) {
-                            tmp.delete()
-                        }
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        // Re-throw to keep structured concurrency intact — the
-                        // parent LaunchedEffect cancel must propagate (lesson
-                        // from #980). Drop the partial tmp file first.
-                        tmp.delete()
-                        throw e
-                    } catch (_: Throwable) {
-                        tmp.delete()
-                    }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Throwable) {
-                // Bundled extraction is a nice-to-have; missing files just
-                // mean the user sees an empty Playback list and can record
-                // their own session.
-            }
-        }
+        requireNotNull(context.getExternalFilesDir("ar-recordings")).also { it.mkdirs() }
     }
     val recordings = remember { mutableStateListOf<File>() }
     fun refreshRecordings() {
         recordings.clear()
-        recordingsDir.listFiles()
-            ?.filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
-            ?.sortedByDescending { it.lastModified() }
-            ?.let { recordings.addAll(it) }
+        if (qa != RecordingQaState.Empty) recordings.addAll(listRecordings(recordingsDir))
     }
-    LaunchedEffect(currentMode) { refreshRecordings() }
-
-    // Mode-scoped state shared by the scene overlays and the scaffold's `bottomOverlay`
-    // slot (#2779). The shutter, the recorder error pill, the tracking banner and the
-    // ANALYSE HUD are all bottom-anchored, so they belong in the slot — but the
-    // ARSceneView that feeds them stays in the scene, so the state they read has to be
-    // reachable from both lambdas. Keyed exactly like the ARSceneView below, so a mode
-    // switch — or a new playback selection — resets the recorder, the interpretation and
-    // the tracking readouts in lockstep with the fresh ARCore session.
-    val modeState = key(currentMode, currentPlaybackFile?.absolutePath) {
-        val recorder = rememberARRecorder()
-        val interpreter = io.github.sceneview.ar.recording.rememberARRecordInterpreter()
-        remember { RecordPlaybackModeState(recorder, interpreter) }
-    }
-    // ANALYSE mode (#2027): poll the replay's PlaybackStatus off the Session the
-    // ARSceneView published, so the live interpretation overlay can be swapped for the
-    // final report card the moment the dataset ends.
-    val playbackStatus by io.github.sceneview.ar.recording.rememberARPlaybackStatus(
-        if (currentMode == Mode.ANALYSE) modeState.arSession else null
-    )
-    val replayFinished = playbackStatus == com.google.ar.core.PlaybackStatus.FINISHED
-
-    // Stop-and-save bookkeeping, shared by the shutter in the bottom slot and by the
-    // leave-composition safety net inside ModeContent.
-    val onRecordingFinished: (File?, TrackingHealth?) -> Unit = { savedFile, trackingHealth ->
+    // The debug build ships a sample take (#934) so the gallery is never empty on a fresh
+    // install — and so the emulator, which cannot record, has something to show.
+    LaunchedEffect(recordingsDir) {
+        extractBundledRecordings(context, recordingsDir)
         refreshRecordings()
-        // Drive the post-stop callout in the controls panel.
-        if (savedFile != null && savedFile.exists() && savedFile.length() > 0) {
-            lastSavedFile = savedFile
-            lastTrackingHealth = trackingHealth
+    }
+    LaunchedEffect(step, replayFile) { refreshRecordings() }
+
+    // QA "saved": the card that replaces the shutter, on the newest file in the folder.
+    LaunchedEffect(qa, recordings.firstOrNull()) {
+        val newest = recordings.firstOrNull()
+        if (qa == RecordingQaState.Saved && newest != null) {
+            lastSaved = SavedTake(newest, QA_DURATION_MILLIS, placements = 2, trackedFrames = 512, frames = 550)
         }
     }
 
-    // Elapsed recording time, read by the REC pill in the scaffold's `topOverlay` slot and
-    // driven by the recorder the scene owns — so, like the rest of [RecordPlaybackModeState],
-    // it has to live where both lambdas can see it. Keyed on `modeState` so a mode switch or
-    // a new playback selection zeroes it exactly as the re-keyed scene content did.
-    var elapsedSeconds by remember(modeState) { mutableStateOf(0L) }
-    LaunchedEffect(modeState, modeState.recorder.state) {
-        val recorder = modeState.recorder
-        if (recorder.state == ARRecorder.State.RECORDING) {
-            val start = System.currentTimeMillis()
-            while (recorder.state == ARRecorder.State.RECORDING) {
-                elapsedSeconds = (System.currentTimeMillis() - start) / 1000
-                delay(500)
-            }
-        } else {
-            elapsedSeconds = 0
+    val take = key(step, replayFile?.absolutePath, replayGeneration) {
+        val recorder = rememberARRecorder()
+        val interpreter = rememberARRecordInterpreter()
+        remember { TakeState(recorder, interpreter) }
+    }
+    val replaying = replayFile != null
+    val isRecording = take.recorder.state == ARRecorder.State.RECORDING || qa == RecordingQaState.Recording
+    val playbackStatus by rememberARPlaybackStatus(if (replaying) take.arSession else null)
+    val replayFinished = replaying && playbackStatus == PlaybackStatus.FINISHED
+    val replayDurationMillis by produceState(0L, replayFile) {
+        value = replayFile?.let { library.details(it).durationMillis } ?: 0L
+    }
+
+    // Recording clock and file size, polled rather than per frame.
+    var recordingElapsedMillis by remember(take) { mutableLongStateOf(0L) }
+    var recordingSizeBytes by remember(take) { mutableLongStateOf(0L) }
+    var lostForMillis by remember(take) { mutableLongStateOf(0L) }
+    LaunchedEffect(take, take.recorder.state) {
+        if (take.recorder.state != ARRecorder.State.RECORDING) {
+            recordingElapsedMillis = 0L
+            recordingSizeBytes = 0L
+            lostForMillis = 0L
+            return@LaunchedEffect
+        }
+        while (true) {
+            val now = SystemClock.elapsedRealtime()
+            recordingElapsedMillis = now - take.recordingStartedMillis
+            lostForMillis = if (take.isTracking || take.lastTrackedMillis == 0L) 0L else now - take.lastTrackedMillis
+            recordingSizeBytes = withContext(Dispatchers.IO) { take.recordingFile?.length() ?: 0L }
+            delay(RECORDING_POLL_MILLIS)
         }
     }
+
+    fun startRecording() {
+        take.placementTrack = take.recorder.addTrack(PlacementTrack.TRACK_ID, PlacementTrack.MIME_TYPE)
+        take.interpreter.reset()
+        take.writeSchedule.reset()
+        val file = File(recordingsDir, recordingFileName(LocalDateTime.now()))
+        take.recordingFile = file
+        take.recordingStartedMillis = SystemClock.elapsedRealtime()
+        lastSaved = null
+        take.recorder.start(file = file, recordingRotation = recordingSurfaceRotation(context, take.arSession))
+    }
+
+    fun stopRecording() {
+        val file = take.recordingFile
+        val durationMillis = SystemClock.elapsedRealtime() - take.recordingStartedMillis
+        val interpretation = take.interpreter.interpretation
+        take.recorder.stop()
+        take.recordingFile = null
+        if (file != null && file.exists() && file.length() > 0L) {
+            lastSaved = SavedTake(
+                file = file,
+                durationMillis = durationMillis,
+                placements = take.anchors.size,
+                trackedFrames = interpretation.trackedFrameCount,
+                frames = interpretation.frameCount,
+            )
+            newestName = file.name
+        }
+        refreshRecordings()
+    }
+
+    fun openReplay(file: File) {
+        lastSaved = null
+        step = RecordingStep.Recordings
+        replayFile = file
+    }
+
+    fun share(file: File) {
+        if (!shareRecording(context, file)) {
+            Toast.makeText(context, resources.getString(R.string.ar_rec_share_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun saveToDownloads(file: File) {
+        scope.launch {
+            val uri = withContext(Dispatchers.IO) { ARRecorder.exportToDownloads(context, file) }
+            val message = if (uri != null) {
+                resources.getString(R.string.ar_rec_saved_to_downloads, file.name)
+            } else {
+                resources.getString(R.string.ar_rec_save_failed)
+            }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun delete(file: File) {
+        file.delete()
+        library.forget(file)
+        refreshRecordings()
+    }
+
+    // Back from a replay returns to the gallery rather than leaving the demo. Declared before
+    // the scaffold so the settings sheet's own back handler still wins while it is open.
+    BackHandler(enabled = replaying) { replayFile = null }
+
+    val showsCamera = step == RecordingStep.Record || replaying
+    val qaReplayPreview = replayFile == null && step == RecordingStep.Recordings &&
+        (qa == RecordingQaState.Replaying || qa == RecordingQaState.ReplayFinished)
+    val replayTitle = replayFile?.let { formatRecordingTitle(recordingTitleOf(it.name), today) }
+        ?: formatRecordingTitle(recordingTitleOf("bundled-pixel9-sample.mp4"), today)
 
     DemoScaffold(
-        arSessionFailed = modeState.sessionFailed,
-        arOverlaysEnabled = !modeState.sessionUnavailable,
         title = stringResource(R.string.demo_ar_record_playback_title),
         onBack = onBack,
+        // A forced QA state keeps the Record step and its cards capturable: the emulator
+        // never starts AR (#2754).
+        arSessionFailed = showsCamera && take.sessionFailed && qa == null,
+        arOverlaysEnabled = !showsCamera || take.arCoreAvailability == null || qa != null,
+        dock = listOf(
+            DockItem(
+                icon = Icons.Rounded.Videocam,
+                label = stringResource(R.string.ar_rec_step_record),
+                onClick = {
+                    replayFile = null
+                    step = RecordingStep.Record
+                },
+                enabled = !isRecording,
+                selected = step == RecordingStep.Record,
+            ),
+            DockItem(
+                icon = Icons.Rounded.VideoLibrary,
+                label = stringResource(R.string.ar_rec_step_recordings),
+                onClick = {
+                    lastSaved = null
+                    replayFile = null
+                    step = RecordingStep.Recordings
+                },
+                enabled = !isRecording,
+                selected = step == RecordingStep.Recordings,
+            ),
+        ),
         controls = {
-            // ── About card ─────────────────────────────────────────────────
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "How this helps",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Record an AR session once, replay it 1:1 without holding a " +
-                            "phone. Iterate on AR code at your desk against a stable real-world " +
-                            "capture, share recordings between devs to reproduce bugs, or feed " +
-                            "deterministic sessions into your test suite.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Pair with the Rerun Debug demo for a fully visual inspection " +
-                            "loop: replay a recording while streaming to Rerun.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // ── Mode selector ──────────────────────────────────────────────
-            Text("Mode", style = MaterialTheme.typography.labelLarge)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val chipHaptic = rememberHapticFeedback()
-                Mode.values().forEach { mode ->
-                    FilterChip(
-                        selected = currentMode == mode,
-                        onClick = {
-                            if (currentMode != mode) {
-                                // `selection()` is the small-confirm pulse — same
-                                // one Material 3 uses on chip toggles when the
-                                // system honours haptic-on-touch. Explicit here
-                                // so it fires on every device, not only those
-                                // with the OS setting turned on (#956). Skipped
-                                // in qaMode so adb-driven instrumentation tests
-                                // that tap these chips don't get unexpected
-                                // vibration.
-                                if (!io.github.sceneview.demo.DemoSettings.qaMode) {
-                                    chipHaptic.selection()
-                                }
-                                currentMode = mode
-                                // PLAYBACK and ANALYSE both replay the selected file —
-                                // keep it across that pair so toggling between "just
-                                // watch" and "watch + measure" doesn't drop the dataset.
-                                if (!mode.isPlayback) currentPlaybackFile = null
-                            }
-                        },
-                        label = { Text(mode.label) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            when (currentMode) {
-                Mode.LIVE -> {
-                    Text(
-                        text = "Tap a detected plane to drop a model. This is the same as " +
-                            "the Tap-to-Place demo — use it to sanity-check the session " +
-                            "before recording.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Mode.RECORD -> {
-                    Text(
-                        text = "Tap ● Record to capture an AR session — camera frames, IMU, " +
-                            "planes, depth and anchors. Hit ■ Stop and the recording lands in " +
-                            "the Playback tab where you can replay or share it.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    // Strong feedback right after a save — without it, hitting Stop felt like
-                    // nothing happened (the recordings list lives in a different tab).
-                    lastSavedFile?.let { file ->
-                        Spacer(Modifier.height(8.dp))
-                        SavedRecordingCallout(
-                            file = file,
-                            recordingsCount = recordings.size,
-                            trackingHealth = lastTrackingHealth,
-                            onReplay = {
-                                currentPlaybackFile = file
-                                currentMode = Mode.PLAYBACK
-                                lastSavedFile = null
-                            },
-                            onOpenInPlayback = {
-                                currentMode = Mode.PLAYBACK
-                                lastSavedFile = null
-                            },
-                            onShare = { shareRecording(context, file) },
-                            onOpen = { openRecordingAsVideo(context, file) },
-                            onExport = {
-                                ARRecorder.exportToDownloads(context, file)?.let {
-                                    exportToast = "Saved to Downloads/SceneView/${file.name}"
-                                } ?: run { exportToast = "Export failed — see logs" }
-                            },
-                            onDismiss = { lastSavedFile = null }
-                        )
-                    }
-                }
-                Mode.PLAYBACK -> {
-                    Text(
-                        text = "Pick a recording to replay. ARCore re-runs it as if the camera " +
-                            "were live — anchors, planes and tracking all replay deterministically. " +
-                            "Each recording is a standard MP4 carrying ARCore data tracks: " +
-                            "\"Open\" plays it in any video app, \"Export\" copies it to " +
-                            "Downloads/SceneView/ for `adb pull /sdcard/Download/SceneView/…` " +
-                            "or sharing.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    RecordingsList(
-                        recordings = recordings,
-                        selected = currentPlaybackFile,
-                        // Highlight the file just captured this session so it's
-                        // obviously discoverable in the list — the on-device QA
-                        // session reported recordings "disappearing" after a take
-                        // because nothing pointed at the new entry (#1438).
-                        justRecorded = lastSavedFile,
-                        onSelect = { file ->
-                            // Re-key the ARSceneView so ARCore gets a fresh Session bound to
-                            // the new playback dataset.
-                            currentPlaybackFile = file
-                        },
-                        onExport = { file ->
-                            ARRecorder.exportToDownloads(context, file)?.let { uri ->
-                                exportToast = "Exported to Downloads/SceneView/${file.name}"
-                            } ?: run { exportToast = "Export failed — see logs" }
-                        },
-                        onShare = { file -> shareRecording(context, file) },
-                        onOpen = { file -> openRecordingAsVideo(context, file) },
-                        onRefresh = { refreshRecordings() }
-                    )
-                }
-                Mode.ANALYSE -> {
-                    Text(
-                        text = "Pick a recording to replay AND interpret. Every replayed frame " +
-                            "is folded into a quantified report — trajectory length, the " +
-                            "percentage of frames ARCore tracked, the dominant tracking-failure " +
-                            "reason, and how many planes were found. The live numbers overlay " +
-                            "the replay; a final report card appears when the dataset ends. " +
-                            "This is the desk-side counterpart to on-device QA — replay a hard " +
-                            "tracking stress-case and measure it without holding a phone.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    RecordingsList(
-                        recordings = recordings,
-                        selected = currentPlaybackFile,
-                        justRecorded = lastSavedFile,
-                        onSelect = { file -> currentPlaybackFile = file },
-                        onExport = { file ->
-                            ARRecorder.exportToDownloads(context, file)?.let { uri ->
-                                exportToast = "Exported to Downloads/SceneView/${file.name}"
-                            } ?: run { exportToast = "Export failed — see logs" }
-                        },
-                        onShare = { file -> shareRecording(context, file) },
-                        onOpen = { file -> openRecordingAsVideo(context, file) },
-                        onRefresh = { refreshRecordings() }
-                    )
-                }
-            }
-
-            // Developer-only debug toggle — visible when QA mode is on. Lets QA
-            // force-emit each TrackingFailureReason so the actionable-message
-            // overlay can be validated without staging a real failure. See
-            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            RecordingKeepsSection()
+            // QA only: stage each tracking failure without a real one (#1881).
             ForceTrackingFailureMenu()
         },
-        // The two top-anchored tenants live here (#3237): the RECORD timer + tracking
-        // pill, and the "now replaying" banner. They are Column siblings, so a mode that
-        // ever showed both would stack them instead of drawing one over the other, and
-        // the top gutter + system-bar inset are the scaffold's, not each caller's.
         topOverlay = {
-            if (currentMode == Mode.RECORD) {
-                val recorder = modeState.recorder
-                // ForcedTrackingFailure lets QA stage a tracking loss without a real one
-                // (#1881); honour it here so the tracking pill can be validated too.
-                val recordingReason =
-                    ForcedTrackingFailure.override ?: modeState.trackingFailureReason
-                val recordingTracking =
-                    modeState.isTracking && ForcedTrackingFailure.override == null
-                // Elapsed-time pill + live tracking-quality pill, only while recording.
-                AnimatedVisibility(
-                    visible = recorder.state == ARRecorder.State.RECORDING,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Surface(
-                            color = Color.Red.copy(alpha = 0.85f),
-                            contentColor = Color.White,
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Text(
-                                text = "REC  ${formatElapsed(elapsedSeconds)}",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(
-                                    horizontal = 16.dp,
-                                    vertical = 6.dp
-                                )
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        // Tracking-quality pill (#1650): green "AR tracking OK" while
-                        // ARCore is TRACKING, amber/red with the failure reason when it
-                        // isn't — so a capture going bad is visible during the recording,
-                        // not only after.
-                        TrackingQualityPill(
-                            isTracking = recordingTracking,
-                            reason = recordingReason
-                        )
-                    }
-                }
-            }
-
-            val replayingFile = currentPlaybackFile
-            if (currentMode.isPlayback && replayingFile != null && modeState.isTracking) {
-                PlaybackBanner(replayingFile.name)
-            }
-        },
-        // Every bottom-anchored tenant of this demo lives here (#2779): the ANALYSE
-        // HUD, the tracking-guidance banner, the recorder error and the shutter. The
-        // slot is a bottom-aligned Column, so they stack instead of sharing pixels —
-        // which is what the hand-placed versions did: the error pill sat 80 dp up
-        // while the 72 dp shutter ring occupied the 32…104 dp band, so a failed
-        // recording rendered its message *inside* the ring.
-        bottomOverlay = {
-            // Live interpretation numbers while a dataset replays; the end-of-replay
-            // report card is a centred dialog and stays in the scene (#2027). Start-
-            // aligned, as the hand-placed card was — inside the slot that is
-            // ColumnScope.align, which is horizontal and cannot cause an overlap.
-            if (currentMode == Mode.ANALYSE && currentPlaybackFile != null && !replayFinished) {
-                AnalysisLiveOverlay(
-                    interpretation = modeState.interpreter.interpretation,
-                    modifier = Modifier.align(Alignment.Start),
-                )
-            }
-
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason when
-            // a developer has picked one in the debug menu (#1881). Read it here so
-            // flipping the override re-renders the banner immediately.
-            // Suppressed in ANALYSE mode — there the failure breakdown is part of the
-            // interpretation overlay / report card, and a second banner stacked on top
-            // would just clutter the analysis (#2027).
-            if ((!modeState.isTracking || ForcedTrackingFailure.override != null) &&
-                currentMode != Mode.ANALYSE
-            ) {
-                val effectiveReason =
-                    ForcedTrackingFailure.override ?: modeState.trackingFailureReason
-                // Guidance, not an error: the session is alive, the user has to move the
-                // phone / find light / point at texture for it to lock on.
-                DemoStatusBanner(
-                    text = trackingFailureMessage(effectiveReason)
-                        ?: "Point your camera at a surface",
-                    tone = DemoStatusTone.Guidance,
-                )
-            }
-
-            if (currentMode == Mode.RECORD) {
-                val recorder = modeState.recorder
-                // Recorder error, directly above the shutter it refers to.
-                if (recorder.state == ARRecorder.State.ERROR) {
-                    DemoStatusBanner(
-                        text = recorder.errorMessage ?: "Recording failed",
-                        tone = DemoStatusTone.Blocked,
+            when {
+                step == RecordingStep.Record && isRecording -> {
+                    val live = liveCaptureView(take, qa, recordingElapsedMillis, recordingSizeBytes, lostForMillis)
+                    LiveCaptureCard(
+                        elapsedMillis = live.elapsedMillis,
+                        sizeBytes = live.sizeBytes,
+                        stats = live.stats,
+                        guidance = live.guidance,
+                        mayNotReplay = live.mayNotReplay,
                     )
                 }
-                RecordShutter(
-                    isRecording = recorder.state == ARRecorder.State.RECORDING,
-                    // Disable the shutter until ARCore is actually tracking — without
-                    // a tracked frame, recorder.start() returns false and transitions
-                    // to ERROR with the dev-flavoured "call attach(session) first"
-                    // message, which is confusing for casual users (the QR-scanned
-                    // path). Keep the disable logic generous: we allow ERROR-state
-                    // re-tries (user can retry after a transient hiccup) but block
-                    // the very first tap when nothing is tracked yet.
-                    startEnabled = modeState.isTracking ||
-                        recorder.state == ARRecorder.State.ERROR,
-                    onStart = {
-                        val name = "ar-session-${TIMESTAMP_FORMAT.format(Date())}.mp4"
-                        val file = File(recordingsDir, name)
-                        modeState.pendingRecordingFile = file
-                        // Zero the tracking-quality accumulator so the next take's stat
-                        // reflects only this recording (#1650).
-                        modeState.trackingTracker.reset()
-                        recorder.start(
-                            file = file,
-                            recordingRotation = currentDisplayRotation(context)
-                        )
-                    },
-                    onStop = {
-                        val saved = modeState.pendingRecordingFile
-                        val health = modeState.trackingTracker.snapshot()
-                        recorder.stop()
-                        onRecordingFinished(saved, health)
-                    },
+                (replaying && take.cameraReady && !replayFinished) ||
+                    (qaReplayPreview && qa == RecordingQaState.Replaying) -> {
+                    val preview = qa == RecordingQaState.Replaying && !replaying
+                    val interpretation = take.interpreter.interpretation
+                    ReplayCard(
+                        title = replayTitle,
+                        elapsedMillis = if (preview) QA_REPLAY_ELAPSED_MILLIS else take.replayElapsedMillis,
+                        durationMillis = if (preview) QA_DURATION_MILLIS else replayDurationMillis,
+                        stats = if (preview) {
+                            liveCaptureStats(212, 1.1f, 2, 2, placementsLabel = RESTORED_LABEL)
+                        } else {
+                            liveCaptureStats(
+                                interpretation.frameCount,
+                                interpretation.trajectoryLengthMeters,
+                                interpretation.planeCount,
+                                take.restoredCount,
+                                placementsLabel = RESTORED_LABEL,
+                            )
+                        },
+                        onStop = { replayFile = null },
+                    )
+                }
+            }
+        },
+        bottomOverlay = {
+            when {
+                replayFinished || (qaReplayPreview && qa == RecordingQaState.ReplayFinished) -> {
+                    val interpretation = if (replayFinished) take.interpreter.interpretation else QA_REPORT
+                    val restored = if (replayFinished) take.restoredCount else 2
+                    ReplayReportCard(
+                        title = replayTitle,
+                        stats = liveCaptureStats(
+                            interpretation.frameCount,
+                            interpretation.trajectoryLengthMeters,
+                            interpretation.planeCount,
+                            restored,
+                            placementsLabel = RESTORED_LABEL,
+                        ),
+                        quality = takeQualityOf(interpretation.trackedFrameCount, interpretation.frameCount),
+                        qualityLine = takeQualityLine(interpretation.trackedFrameCount, interpretation.frameCount),
+                        lostReasons = lostReasonLines(
+                            interpretation.failureReasonFrameCounts.mapKeys { it.key.name },
+                            interpretation.frameCount,
+                        ),
+                        onReplayAgain = { replayGeneration++ },
+                        onAllRecordings = { replayFile = null },
+                    )
+                }
+                step == RecordingStep.Record -> RecordStepBottom(
+                    take = take,
+                    isRecording = isRecording,
+                    lastSaved = lastSaved,
+                    library = library,
+                    onStart = ::startRecording,
+                    onStop = ::stopRecording,
+                    onReplay = ::openReplay,
+                    onShare = ::share,
+                    onCloseSaved = { lastSaved = null },
                 )
             }
-        }
+        },
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // The ARSceneView is keyed on (currentMode, currentPlaybackFile) so that any
-            // mode switch — and any new playback selection — forces a fresh ARCore Session.
-            // This is required: setPlaybackDataset must run before resume(), which only
-            // happens when a brand-new session is created.
-            key(currentMode, currentPlaybackFile?.absolutePath) {
-                ModeContent(
-                    mode = currentMode,
-                    playbackFile = currentPlaybackFile,
-                    state = modeState,
-                    replayFinished = replayFinished,
+        when {
+            qaReplayPreview -> QaCameraBackdrop(seed = QA_SEED, modifier = Modifier.fillMaxSize())
+            showsCamera -> key(step, replayFile?.absolutePath, replayGeneration) {
+                TakeScene(
+                    take = take,
+                    replayFile = replayFile,
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
-                    onRecordingFinished = onRecordingFinished,
+                    availabilityOverlay = qa == null,
                 )
             }
+            else -> RecordingsGallery(
+                recordings = recordings,
+                library = library,
+                newestName = newestName,
+                onReplay = ::openReplay,
+                onShare = ::share,
+                onSaveToDownloads = ::saveToDownloads,
+                onDelete = ::delete,
+                onRecord = { step = RecordingStep.Record },
+            )
         }
     }
 }
 
-/**
- * State the demo's scene and its `bottomOverlay` slot both need (#2779).
- *
- * The ARSceneView lives in `scene` and the shutter / status banners live in the slot,
- * so the recorder, the replay interpreter and the tracking readouts cannot be owned by
- * either lambda — they are created once per (mode, playback file) in the demo body and
- * handed to both.
- */
-@Stable
-private class RecordPlaybackModeState(
-    val recorder: ARRecorder,
-    val interpreter: io.github.sceneview.ar.recording.ARRecordInterpreter,
-) {
-    /**
-     * Per-recording tracking-quality accumulator (#1650). While the recorder is
-     * RECORDING, every consumed ARCore frame ticks one of its counters depending on
-     * whether the camera was TRACKING. After Stop, the ratio drives the "tracking
-     * healthy X%" stat in the saved-recording callout. Reset on each fresh start().
-     */
-    val trackingTracker = TrackingHealthTracker()
-
-    /** ARCore reported TRACKING on the most recent frame. */
-    var sessionFailed by mutableStateOf(false)
-    var sessionUnavailable by mutableStateOf(false)
-
-    var isTracking by mutableStateOf(false)
-
-    /** Latest ARCore-reported tracking-failure reason, `null` while healthy. */
-    var trackingFailureReason by mutableStateOf<TrackingFailureReason?>(null)
-
-    /**
-     * The file handed to `recorder.start()` — kept so Stop can pass it back to the
-     * outer state, which drives the post-save callout in the controls panel.
-     */
-    var pendingRecordingFile by mutableStateOf<File?>(null)
-
-    /**
-     * The ARCore Session captured from `onSessionUpdated` — needed by
-     * `rememberARPlaybackStatus`, which has no other handle on the session. Published
-     * as Compose state so the status poller re-keys once the session exists.
-     */
-    var arSession by mutableStateOf<Session?>(null)
-}
-
-/**
- * Top-level 4-way segmented control values.
- *
- * [ANALYSE] is a second playback mode: it replays a recording exactly like [PLAYBACK] but
- * additionally feeds every frame to an [io.github.sceneview.ar.recording.ARRecordInterpreter]
- * and overlays the running interpretation + an end-of-replay report card.
- */
-private enum class Mode(val label: String) {
-    LIVE("Live"),
-    RECORD("Record"),
-    PLAYBACK("Playback"),
-    ANALYSE("Analyze");
-
-    /** `true` for the two modes that bind a `playbackDataset` and replay an MP4. */
-    val isPlayback: Boolean get() = this == PLAYBACK || this == ANALYSE
-}
-
-/**
- * Wraps the per-mode [ARSceneView] + its **in-scene** overlays. Pulled out into its own
- * composable so that the outer `key(...)` block remounts everything (including the tap
- * state) on every mode change — the simplest way to guarantee a fresh ARCore Session for
- * each transition.
- *
- * Nothing edge-anchored is here. The shutter, the recorder error, the tracking banner and
- * the ANALYSE HUD live in `DemoScaffold(bottomOverlay = …)` (#2779); the REC timer +
- * tracking-quality pill and the "now replaying" banner live in `topOverlay` (#3237). All
- * of them read the same [RecordPlaybackModeState] this composable writes.
- */
+/** The Record step's bottom band: guidance, then the shutter or the take just saved. */
 @Composable
-private fun ModeContent(
-    mode: Mode,
-    playbackFile: File?,
-    state: RecordPlaybackModeState,
-    replayFinished: Boolean,
-    engine: com.google.android.filament.Engine,
-    modelLoader: io.github.sceneview.loaders.ModelLoader,
-    materialLoader: io.github.sceneview.loaders.MaterialLoader,
-    onRecordingFinished: (File?, TrackingHealth?) -> Unit,
+private fun DemoBottomOverlayScope.RecordStepBottom(
+    take: TakeState,
+    isRecording: Boolean,
+    lastSaved: SavedTake?,
+    library: RecordingLibrary,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onReplay: (File) -> Unit,
+    onShare: (File) -> Unit,
+    onCloseSaved: () -> Unit,
 ) {
-    val recorder = state.recorder
-    val anchors = remember { mutableStateListOf<Anchor>() }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
-    // Wall-clock of the last frame ARCore reported TRACKING — drives the live "tracking
-    // lost for Ns" soft warning so a stalled capture is obvious in real time. 0 = never
-    // tracked yet this composition.
-    var lastTrackingMillis by remember { mutableStateOf(0L) }
-    // Flipped true on the first onSessionUpdated — i.e. once ARCore has opened the
-    // camera (or started replaying the dataset) and delivered a frame. Until then the
-    // ARSceneView surface is bare black, so we cover it with ARCameraInitScrim rather
-    // than leave a viewport that reads as frozen/broken (#1473).
-    var cameraReady by remember { mutableStateOf(false) }
-    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
-    // then, so the init scrim below has to read the verdict or it covers the SDK's own
-    // explanation card forever.
-    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
+    val recorderState = take.recorder.state
+    val failed = recorderState == ARRecorder.State.ERROR || recorderState == ARRecorder.State.IO_ERROR
+    val forced = ForcedTrackingFailure.override
+    val tracking = take.isTracking && forced == null
 
-    // When the recorder transitions out of RECORDING (and back to IDLE), refresh the
-    // recordings list so the new MP4 shows up in PLAYBACK mode.
-    DisposableEffect(recorder) {
-        onDispose {
-            if (recorder.state == ARRecorder.State.RECORDING) {
-                recorder.stop()
-                onRecordingFinished(state.pendingRecordingFile, state.trackingTracker.snapshot())
-            }
+    if (lastSaved != null && !isRecording) {
+        val thumbnail by produceState<ImageBitmap?>(library.cached(lastSaved.file)?.thumbnail, lastSaved.file) {
+            value = library.details(lastSaved.file).thumbnail
         }
-    }
-
-    val fox = rememberModelInstance(modelLoader, "models/khronos_fox.glb")
-
-    // PLAYBACK and ANALYSE both bind the selected MP4 as the replay source.
-    val playbackDataset: File? = if (mode.isPlayback) playbackFile else null
-
-    // Reset the cross-thread frame counter whenever a playback ARSceneView is
-    // (re-)mounted, so a fresh `connectedDebugAndroidTest` run — or a re-tapped
-    // recording — starts the frame index from a known origin (0). Keyed on the
-    // dataset so swapping recordings re-zeroes. See DemoSettings.arPlaybackFrameCount
-    // and ARPlaybackScreenshotTest (#1050).
-    LaunchedEffect(playbackDataset) {
-        if (playbackDataset != null) {
-            io.github.sceneview.demo.DemoSettings.arPlaybackFrameCount = 0
-        }
-    }
-
-    ARSceneView(
-        onSessionFailure = { state.sessionFailed = true },
-        modifier = Modifier.fillMaxSize(),
-        engine = engine,
-        modelLoader = modelLoader,
-        materialLoader = materialLoader,
-        planeRenderer = true,
-        playbackDataset = playbackDataset,
-        sessionConfiguration = { _: Session, config: Config ->
-            config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-            config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-        },
-        onARCoreAvailability = { arCoreAvailability = it; state.sessionUnavailable = it != null },
-        onSessionUpdated = { session: Session, frame: Frame ->
-            cameraReady = true
-            latestFrame = frame
-            val frameTracking = frame.camera.trackingState == TrackingState.TRACKING
-            state.isTracking = frameTracking
-            // Stateless side-channel pattern (#876) — recordFrame publishes the
-            // session per call, mirroring RerunBridge.logFrame. Idempotent.
-            recorder.recordFrame(session)
-            // ANALYSE mode (#2027): fold this replayed frame into the running
-            // ARRecordInterpretation, and publish the Session so rememberARPlaybackStatus
-            // can poll its PlaybackStatus. ingest() is required to run on the render
-            // thread that owns the Frame — onSessionUpdated is exactly that thread.
-            if (mode == Mode.ANALYSE) {
-                state.interpreter.ingest(session, frame)
-                if (state.arSession !== session) state.arSession = session
-            }
-            // Tracking-quality accounting while a capture is in progress (#1650):
-            // count this frame as healthy / unhealthy so the post-stop callout can
-            // report what fraction of the recording ARCore was actually tracking,
-            // and stamp the wall-clock so the live "tracking lost" warning knows how
-            // long tracking has been gone. onSessionUpdated runs on the main thread,
-            // so the plain-counter accumulator needs no synchronisation.
-            if (recorder.state == ARRecorder.State.RECORDING) {
-                state.trackingTracker.tick(frameTracking)
-            }
-            if (frameTracking) lastTrackingMillis = System.currentTimeMillis()
-            // Frame-indexed screenshot regression hook (#1050): bump the
-            // cross-thread counter once per consumed ARCore frame during
-            // playback so ARPlaybackScreenshotTest can capture at deterministic
-            // frame indices instead of wall-clock sleeps. No-op for live mode —
-            // a live session has no reproducible frame timeline to gate on.
-            // Both replay modes have a reproducible frame timeline.
-            if (mode.isPlayback) {
-                io.github.sceneview.demo.DemoSettings.arPlaybackFrameCount++
-            }
-        },
-        onTrackingFailureChanged = { state.trackingFailureReason = it },
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { event: MotionEvent, _ ->
-                val frame = latestFrame ?: return@rememberOnGestureListener
-                if (frame.camera.trackingState != TrackingState.TRACKING) {
-                    return@rememberOnGestureListener
-                }
-                val hit = frame.hitTest(event).firstOrNull { result ->
-                    val trackable = result.trackable
-                    trackable is Plane &&
-                        trackable.isPoseInPolygon(result.hitPose) &&
-                        result.distance <= 5.0f
-                }
-                if (hit != null) anchors.add(hit.createAnchor())
-            }
+        SavedTakeCard(
+            thumbnail = thumbnail,
+            summary = savedTakeSummary(lastSaved.durationMillis, lastSaved.file.length(), lastSaved.placements),
+            quality = takeQualityOf(lastSaved.trackedFrames, lastSaved.frames),
+            qualityLine = takeQualityLine(lastSaved.trackedFrames, lastSaved.frames),
+            onReplay = { onReplay(lastSaved.file) },
+            onShare = { onShare(lastSaved.file) },
+            onClose = onCloseSaved,
         )
-    ) {
-        anchors.forEach { anchor ->
-            AnchorNode(anchor = anchor) {
-                fox?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 0.3f,
-                    )
-                }
+        return
+    }
+
+    if (!isRecording) {
+        when {
+            failed -> DemoStatusBanner(
+                text = recorderErrorLine(storageFailed = recorderState == ARRecorder.State.IO_ERROR),
+                tone = DemoStatusTone.Blocked,
+            )
+            !tracking && take.cameraReady -> {
+                val reason = forced ?: take.trackingFailureReason
+                val message = trackingFailureMessage(reason)
+                DemoStatusBanner(
+                    text = message ?: stringResource(R.string.ar_status_scanning),
+                    tone = if (message != null) DemoStatusTone.Guidance else DemoStatusTone.Progress,
+                )
             }
+            tracking -> DemoStatusBanner(
+                text = readyToRecordLine(take.anchors.size),
+                tone = DemoStatusTone.Guidance,
+            )
         }
     }
-
-    // ── Mode-specific overlays ─────────────────────────────────────────────
-
-    if (mode == Mode.RECORD) {
-        // While recording, surface the live ARCore tracking quality (#1650): a soft
-        // warning once tracking has been lost for more than a few seconds so a doomed
-        // capture — e.g. shooting from inside a moving vehicle — is obvious in real
-        // time instead of being discovered only on playback.
-        val isRecording = recorder.state == ARRecorder.State.RECORDING
-        var trackingLostSeconds by remember { mutableStateOf(0L) }
-        LaunchedEffect(isRecording) {
-            while (isRecording) {
-                trackingLostSeconds = if (state.isTracking || lastTrackingMillis == 0L) {
-                    0L
-                } else {
-                    (System.currentTimeMillis() - lastTrackingMillis) / 1000
-                }
-                delay(500)
-            }
-            trackingLostSeconds = 0L
-        }
-        RecordOverlay(
-            recorder = recorder,
-            trackingLostSeconds = trackingLostSeconds,
-        )
-    }
-
-    // ── ANALYSE mode overlays (#2027) ──────────────────────────────────────
-    // Once the dataset ends (PlaybackStatus.FINISHED) a centred report card sums the
-    // take up. The *live* interpretation numbers are bottom-anchored, so they moved to
-    // the scaffold's `bottomOverlay` slot (#2779).
-    if (mode == Mode.ANALYSE && playbackFile != null && replayFinished) {
-        AnalysisReportCard(interpretation = state.interpreter.interpretation)
-    }
-
-    // Cover the still-black ARSceneView surface until ARCore delivers its first frame —
-    // either the live camera feed, or the first replayed frame in PLAYBACK mode — so the
-    // entry doesn't read as a frozen screen with a dimmed record button (#1473).
-    ARCameraInitScrim(
-        initializing = !cameraReady,
-        arCoreAvailability = arCoreAvailability,
-        label = when (mode) {
-            Mode.PLAYBACK -> "Starting playback…"
-            Mode.ANALYSE -> "Starting analysis…"
-            else -> "Starting camera…"
-        },
+    RecordShutter(
+        isRecording = isRecording,
+        // A take started before the camera has its bearings fails; ERROR allows a retry.
+        startEnabled = tracking || failed,
+        onStart = onStart,
+        onStop = onStop,
     )
 }
 
-/**
- * In-scene RECORD-mode chrome: the centred "tracking lost" warning, which annotates the
- * camera feed it is drawn over and therefore stays in the viewport.
- *
- * Every edge-anchored piece of RECORD chrome lives in a scaffold slot instead: the REC
- * timer + tracking-quality pill in `topOverlay` (#3237), the shutter and the recorder
- * error pill in `bottomOverlay` (#2779) — which is what stopped the error pill (80 dp up)
- * being drawn *inside* the shutter ring (72 dp tall, 32 dp up).
- */
-@Composable
-private fun RecordOverlay(
-    recorder: ARRecorder,
-    trackingLostSeconds: Long,
-) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Soft warning when tracking has been lost for more than a few seconds —
-        // e.g. a capture shot from inside a moving vehicle never tracks (#1650).
-        if (recorder.state == ARRecorder.State.RECORDING &&
-            trackingLostSeconds >= TRACKING_LOST_WARNING_SECONDS
-        ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 24.dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = "AR tracking lost for ${trackingLostSeconds}s — this " +
-                            "recording may be unusable. Point at a well-lit, textured " +
-                            "scene and move slowly.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                    )
-                }
-            }
-        }
+/** What the live card shows — the real take, or the fixed QA "recording" screen. */
+private class LiveCaptureView(
+    val elapsedMillis: Long,
+    val sizeBytes: Long,
+    val stats: List<LiveStat>,
+    val guidance: String?,
+    val mayNotReplay: Boolean,
+)
 
+@Composable
+private fun liveCaptureView(
+    take: TakeState,
+    qa: RecordingQaState?,
+    elapsedMillis: Long,
+    sizeBytes: Long,
+    lostForMillis: Long,
+): LiveCaptureView {
+    if (qa == RecordingQaState.Recording && take.recorder.state != ARRecorder.State.RECORDING) {
+        return LiveCaptureView(
+            elapsedMillis = 42_000,
+            sizeBytes = 38_400_000,
+            stats = liveCaptureStats(1_204, 2.3f, 3, 2),
+            guidance = null,
+            mayNotReplay = false,
+        )
     }
-}
-
-/**
- * Camera-style shutter button — outer white ring + inner colored disc: a round red disc
- * when idle (start), a red rounded square while recording (stop). Sized like a typical
- * mobile camera app's shutter (72 dp outer / 60 dp inner) so it reads as "tap here to
- * capture" without needing a label, and so the tap target meets accessibility minimums
- * (48 dp) with margin.
- *
- * It is the demo's primary control, so it belongs in the scaffold's `bottomOverlay` slot
- * (#2779) — where the recorder's error pill stacks *above* the ring instead of inside it.
- */
-@Composable
-private fun RecordShutter(
-    isRecording: Boolean,
-    startEnabled: Boolean,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-) {
-    // Greyed-out + non-clickable when AR isn't tracking yet — saves the
-    // user from a confusing ERROR state and the disc visually fades
-    // so the affordance "wait, it's not ready" is unambiguous.
-    val isTappable = isRecording || startEnabled
-    // Camera-app feel: a sharp pulse on shutter press so the user can
-    // feel they started/stopped a recording without staring at the UI.
-    // No haptic on a no-op tap (greyed shutter) — that would be
-    // confusing rather than confirming. iOS/Android camera apps both
-    // use a LongPress-strength haptic for shutter; matching it (#956).
-    val shutterHaptic = rememberHapticFeedback()
-    Surface(
-        onClick = {
-            if (!isTappable) return@Surface
-            shutterHaptic.heavy()
-            if (isRecording) onStop() else onStart()
-        },
-        shape = androidx.compose.foundation.shape.CircleShape,
-        color = Color.White.copy(alpha = if (isTappable) 0.18f else 0.08f),
-        contentColor = Color.White,
-        border = androidx.compose.foundation.BorderStroke(
-            width = 3.dp,
-            color = Color.White.copy(alpha = if (isTappable) 1f else 0.4f),
+    val interpretation = take.interpreter.interpretation
+    val forced = ForcedTrackingFailure.override
+    val lost = !take.isTracking || forced != null
+    val guidance = if (lost) {
+        trackingFailureMessage(forced ?: take.trackingFailureReason) ?: stringResource(R.string.ar_status_scanning)
+    } else {
+        null
+    }
+    return LiveCaptureView(
+        elapsedMillis = elapsedMillis,
+        sizeBytes = sizeBytes,
+        stats = liveCaptureStats(
+            interpretation.frameCount,
+            interpretation.trajectoryLengthMeters,
+            interpretation.planeCount,
+            take.anchors.size,
         ),
-        modifier = Modifier.size(72.dp)
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(if (isRecording) 30.dp else 56.dp)
-                    .background(
-                        color = Color.Red.copy(alpha = if (isTappable) 1f else 0.45f),
-                        shape = if (isRecording) RoundedCornerShape(6.dp)
-                                else androidx.compose.foundation.shape.CircleShape
-                    )
-            )
-        }
-    }
+        guidance = guidance,
+        mayNotReplay = lost && (forced != null || lostForMillis >= MAY_NOT_REPLAY_AFTER_MILLIS),
+    )
 }
 
-/**
- * Compact live tracking-quality pill shown under the REC timer while recording (#1650).
- *
- * - **Green** "AR tracking OK" when ARCore reports [TrackingState.TRACKING].
- * - **Amber/red** with the [TrackingFailureReason] (or a generic "tracking lost") when it
- *   does not — so the user sees a degraded capture in real time instead of discovering an
- *   empty playback afterwards.
- */
+/** The live or replayed AR scene: camera, surfaces, and a fox on every placement. */
 @Composable
-private fun TrackingQualityPill(
-    isTracking: Boolean,
-    reason: TrackingFailureReason?
+private fun TakeScene(
+    take: TakeState,
+    replayFile: File?,
+    engine: com.google.android.filament.Engine,
+    modelLoader: io.github.sceneview.loaders.ModelLoader,
+    materialLoader: io.github.sceneview.loaders.MaterialLoader,
+    availabilityOverlay: Boolean,
 ) {
-    val healthy = isTracking
-    val label = if (healthy) {
-        "● AR tracking OK"
-    } else {
-        "▲ ${trackingFailureMessage(reason) ?: "AR tracking lost"}"
-    }
-    Surface(
-        color = if (healthy) {
-            Color(0xFF1B5E20).copy(alpha = 0.9f)
-        } else {
-            MaterialTheme.colorScheme.errorContainer
-        },
-        contentColor = if (healthy) {
-            Color.White
-        } else {
-            MaterialTheme.colorScheme.onErrorContainer
-        },
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
-        )
-    }
-}
+    val replaying = replayFile != null
+    val cameraStream = rememberARCameraStream(materialLoader)
+    // QA camera backdrop (#3308): the emulator delivers no camera frame.
+    val qaBackdrop = rememberQaCameraBackdropActive(take.cameraReady)
 
-/** "Now replaying" banner — rendered in the scaffold's `topOverlay` slot (#3237). */
-@Composable
-private fun PlaybackBanner(filename: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Text(
-            text = "Now replaying: $filename",
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-        )
+    // Frame-indexed replay hook (#1050): ARPlaybackScreenshotTest and ar-replay-qa.sh wait
+    // on DemoSettings.arPlaybackFrameCount, zeroed each time a dataset is mounted.
+    LaunchedEffect(replayFile) {
+        if (replayFile != null) DemoSettings.arPlaybackFrameCount = 0
     }
-}
 
-/**
- * Live interpretation overlay shown over the replayed video in ANALYSE mode (#2027).
- *
- * A translucent card with the four headline metrics from the running
- * [ARRecordInterpretation], updating every frame as [ARRecordInterpreter.ingest] folds in
- * the dataset: tracked-frame %, trajectory length, dominant tracking-failure reason, and
- * plane count. Stays compact so it never hides the camera feed it annotates — the full
- * breakdown lands in [AnalysisReportCard] when the dataset ends.
- *
- * Rendered in the scaffold's `bottomOverlay` slot (#2779); the caller start-aligns it
- * with `Modifier.align(Alignment.Start)` — a horizontal `ColumnScope` alignment that,
- * unlike the `BoxScope.align(BottomStart)` it replaces, cannot overlap a sibling.
- */
-@Composable
-private fun AnalysisLiveOverlay(
-    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.padding(start = 12.dp),
-        color = Color.Black.copy(alpha = 0.62f),
-        contentColor = Color.White,
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(
-                text = "◉ Analyzing replay",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Tracked  ${formatTrackedPercent(interpretation)}  " +
-                    "(${interpretation.trackedFrameCount}/${interpretation.frameCount})",
-                style = MaterialTheme.typography.labelMedium,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "Trajectory  ${"%.2f".format(Locale.US, interpretation.trajectoryLengthMeters)} m",
-                style = MaterialTheme.typography.labelMedium,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "Planes  ${interpretation.planeCount}  " +
-                    "(${interpretation.horizontalPlaneCount}H / ${interpretation.verticalPlaneCount}V)",
-                style = MaterialTheme.typography.labelMedium,
-                fontFamily = FontFamily.Monospace
-            )
-            dominantFailureLabel(interpretation)?.let { failure ->
-                Text(
-                    text = "Worst fault  $failure",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFFFFCDD2)
-                )
-            }
-        }
-    }
-}
-
-/**
- * End-of-replay report card shown in ANALYSE mode once `rememberARPlaybackStatus` reports
- * [com.google.ar.core.PlaybackStatus.FINISHED] (#2027).
- *
- * Sums up the whole replayed dataset from the final [ARRecordInterpretation]: how long it
- * ran, the tracked-frame ratio (with a green/amber verdict), trajectory length + extent,
- * plane count + area, and the full per-[TrackingFailureReason] breakdown. This is the
- * deterministic "did this capture track well?" verdict the issue calls a report card.
- */
-@Composable
-private fun AnalysisReportCard(
-    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation
-) {
     Box(modifier = Modifier.fillMaxSize()) {
-        Card(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .padding(horizontal = 20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Replay analysis complete",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "${interpretation.frameCount} frames • " +
-                        "${"%.1f".format(Locale.US, interpretation.durationSeconds)} s",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(10.dp))
-
-                // Headline tracking verdict — green when most frames tracked, amber/red
-                // when the dataset is a hard tracking case worth flagging.
-                val trackedPercent = (interpretation.trackedFrameRatio * 100).toInt()
-                val healthy = trackedPercent >= TRACKING_HEALTH_GOOD_PERCENT
-                Surface(
-                    color = if (healthy) {
-                        Color(0xFF1B5E20)
-                    } else {
-                        MaterialTheme.colorScheme.errorContainer
-                    },
-                    contentColor = if (healthy) {
-                        Color.White
-                    } else {
-                        MaterialTheme.colorScheme.onErrorContainer
-                    },
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = if (healthy) {
-                            "✓ Tracked $trackedPercent% of frames"
-                        } else {
-                            "▲ Tracked only $trackedPercent% of frames — hard tracking case"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-
-                ReportRow(
-                    "Trajectory length",
-                    "${"%.2f".format(Locale.US, interpretation.trajectoryLengthMeters)} m"
-                )
-                ReportRow(
-                    "Trajectory extent",
-                    "${"%.2f".format(Locale.US, interpretation.trajectoryExtentMeters)} m"
-                )
-                ReportRow(
-                    "Planes found",
-                    "${interpretation.planeCount} " +
-                        "(${interpretation.horizontalPlaneCount}H / ${interpretation.verticalPlaneCount}V)"
-                )
-                ReportRow(
-                    "Plane area",
-                    "${"%.2f".format(Locale.US, interpretation.planeAreaMeters2)} m²"
-                )
-
-                if (interpretation.failureReasonFrameCounts.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Tracking-failure breakdown",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    // Worst-first so the dominant failure reason is read at a glance.
-                    interpretation.failureReasonFrameCounts.entries
-                        .sortedByDescending { it.value }
-                        .forEach { (reason, count) ->
-                            ReportRow(
-                                trackingFailureReasonName(reason),
-                                "$count frames"
-                            )
-                        }
-                } else {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "No tracking-failure frames — the whole dataset tracked.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** One label/value line in the [AnalysisReportCard]. */
-@Composable
-private fun ReportRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.labelMedium,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-/** Tracked-frame ratio of an [ARRecordInterpretation] as a `NN%` string (`—` before any frame). */
-private fun formatTrackedPercent(
-    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation
-): String = if (interpretation.frameCount == 0) {
-    "—"
-} else {
-    "${(interpretation.trackedFrameRatio * 100).toInt()}%"
-}
-
-/**
- * Short label for the [TrackingFailureReason] that lost the most frames in an
- * interpretation, or `null` when nothing failed yet. Drives the "Worst fault" line of the
- * live overlay (#2027).
- */
-private fun dominantFailureLabel(
-    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation
-): String? = interpretation.failureReasonFrameCounts.maxByOrNull { it.value }
-    ?.let { (reason, count) -> "${trackingFailureReasonName(reason)} ($count)" }
-
-/**
- * Concise human-readable name for a [TrackingFailureReason] — a few words, suitable for a
- * metrics row, not the full actionable sentence
- * [io.github.sceneview.demo.common.trackingFailureMessage] returns. Falls back to the enum
- * name so every reason is still labelled.
- */
-private fun trackingFailureReasonName(reason: TrackingFailureReason): String = when (reason) {
-    TrackingFailureReason.BAD_STATE -> "Bad state"
-    TrackingFailureReason.INSUFFICIENT_LIGHT -> "Insufficient light"
-    TrackingFailureReason.EXCESSIVE_MOTION -> "Excessive motion"
-    TrackingFailureReason.INSUFFICIENT_FEATURES -> "Insufficient features"
-    TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-    TrackingFailureReason.NONE -> "None"
-}
-
-@Composable
-private fun RecordingsList(
-    recordings: List<File>,
-    selected: File?,
-    justRecorded: File?,
-    onSelect: (File) -> Unit,
-    onExport: (File) -> Unit,
-    onShare: (File) -> Unit,
-    onOpen: (File) -> Unit,
-    onRefresh: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Recordings (${recordings.size})",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp)
-                )
-                OutlinedButton(onClick = onRefresh) { Text("Refresh") }
-            }
-            Spacer(Modifier.height(8.dp))
-            if (recordings.isEmpty()) {
-                Text(
-                    text = "No recordings yet. Switch to Record mode to capture one.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        if (qaBackdrop) QaCameraBackdrop(seed = QA_SEED)
+        ARSceneView(
+            onSessionFailure = { take.sessionFailed = true },
+            modifier = Modifier.fillMaxSize(),
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            isOpaque = !qaCameraBackdropEnabled(),
+            surfaceType = qaCameraBackdropSurfaceType(),
+            cameraStream = if (qaBackdrop) null else cameraStream,
+            planeRenderer = true,
+            playbackDataset = replayFile,
+            sessionConfiguration = { _: Session, config: Config ->
+                config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+            },
+            arCoreAvailabilityOverlay = if (availabilityOverlay) {
+                { ARCoreAvailabilityOverlay(it) }
             } else {
-                recordings.forEach { file ->
-                    RecordingRow(
-                        file = file,
-                        isSelected = selected?.absolutePath == file.absolutePath,
-                        isJustRecorded = justRecorded?.absolutePath == file.absolutePath,
-                        onClick = { onSelect(file) },
-                        onExport = { onExport(file) },
-                        onShare = { onShare(file) },
-                        onOpen = { onOpen(file) }
-                    )
-                    Spacer(Modifier.height(4.dp))
+                null
+            },
+            onARCoreAvailability = { take.arCoreAvailability = it },
+            onSessionUpdated = { session: Session, frame: Frame -> take.onFrame(session, frame, replaying) },
+            onTrackingFailureChanged = { take.trackingFailureReason = it },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { event: MotionEvent, _ ->
+                    // A replay puts back what was recorded; it does not take new placements.
+                    if (!replaying) take.placeAt(event)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecordingRow(
-    file: File,
-    isSelected: Boolean,
-    isJustRecorded: Boolean,
-    onClick: () -> Unit,
-    onExport: () -> Unit,
-    onShare: () -> Unit,
-    onOpen: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth(),
-        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                       else MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = RoundedCornerShape(8.dp),
-        // A thin accent outline on the file just captured this session so the
-        // eye lands on it immediately — addresses the "recordings disappear
-        // after a take" complaint from on-device QA (#1438).
-        border = if (isJustRecorded) {
-            androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
-        } else null
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.Transparent)
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+            ),
         ) {
-            if (isJustRecorded) {
-                Surface(
-                    color = MaterialTheme.colorScheme.tertiary,
-                    contentColor = MaterialTheme.colorScheme.onTertiary,
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        text = "● Just recorded",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-            }
-            Text(
-                text = file.name,
-                style = MaterialTheme.typography.bodyMedium,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "MP4 + ARCore data • ${formatBytes(file.length())} • " +
-                    formatRelativeAge(file.lastModified()),
-                style = MaterialTheme.typography.labelSmall
-            )
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onShare,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Share") }
-                OutlinedButton(
-                    onClick = onOpen,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Open") }
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onExport,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Export") }
-                Button(
-                    onClick = onClick,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // "Replaying" (9 chars) overflows the 1/3-row button width on
-                    // Pixel 9 and wraps mid-word as "Replayin\ng" (#1205). "Stop"
-                    // is the action the tap will perform when playback is active,
-                    // and reads cleaner than a status word on an action button.
-                    Text(
-                        text = if (isSelected) "Stop" else "Replay",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            take.anchors.forEach { anchor ->
+                // One model instance per fox: a Filament instance can only hang off one node.
+                key(anchor) {
+                    val fox = rememberModelInstance(modelLoader, FOX_ASSET)
+                    AnchorNode(anchor = anchor) {
+                        fox?.let { ModelNode(modelInstance = it, scaleToUnits = FOX_SIZE_METERS) }
+                    }
                 }
             }
         }
+        ARCameraInitScrim(
+            initializing = !take.cameraReady,
+            arCoreAvailability = take.arCoreAvailability,
+            label = stringResource(if (replaying) R.string.ar_rec_starting_replay else R.string.ar_starting_camera),
+        )
     }
 }
 
+private enum class RecordingStep { Record, Recordings }
+
+/** The take just stopped, for the card that replaces the shutter. */
+private data class SavedTake(
+    val file: File,
+    val durationMillis: Long,
+    val placements: Int,
+    val trackedFrames: Int,
+    val frames: Int,
+)
+
 /**
- * Post-stop confirmation card shown in RECORD mode after [ARRecorder.stop].
- *
- * The earlier version only said "saved" + offered Replay/Share, which left two questions
- * from the on-device QA session unanswered (#1438): *where* did the file go, and *what*
- * is it? This version spells out the app-private path, makes clear the file is a normal
- * MP4 that also carries ARCore data tracks (so it opens in any video player), and offers
- * the full set of next steps — Replay, Share, Open as video, and Export to Downloads —
- * plus a shortcut into the Playback list so the recording is obviously discoverable.
+ * Everything one ARCore session of this demo owns — a live camera or one replay. Created per
+ * (step, replayed file, replay generation), in lockstep with the scene's ARSceneView, and
+ * read by both the scene and the overlay slots.
  */
-@Composable
-private fun SavedRecordingCallout(
-    file: File,
-    recordingsCount: Int,
-    trackingHealth: TrackingHealth?,
-    onReplay: () -> Unit,
-    onOpenInPlayback: () -> Unit,
-    onShare: () -> Unit,
-    onOpen: () -> Unit,
-    onExport: () -> Unit,
-    onDismiss: () -> Unit
+@Stable
+private class TakeState(
+    val recorder: ARRecorder,
+    val interpreter: ARRecordInterpreter,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-        )
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "✓ Recording saved",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = "$recordingsCount in Playback",
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = file.name,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "${formatBytes(file.length())} • saved to the app's private storage",
-                style = MaterialTheme.typography.labelSmall
-            )
-            // Tracking-quality summary of this take (#1650): the percentage of recorded
-            // frames where ARCore was actually TRACKING. A low number means the capture
-            // is likely unusable on playback — e.g. shot from a moving vehicle.
-            trackingHealth?.takeIf { it.totalFrames > 0 }?.let { health ->
-                Spacer(Modifier.height(6.dp))
-                val good = health.healthPercent >= TRACKING_HEALTH_GOOD_PERCENT
-                Surface(
-                    color = if (good) {
-                        Color(0xFF1B5E20).copy(alpha = 0.9f)
-                    } else {
-                        MaterialTheme.colorScheme.errorContainer
-                    },
-                    contentColor = if (good) {
-                        Color.White
-                    } else {
-                        MaterialTheme.colorScheme.onErrorContainer
-                    },
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = if (good) {
-                            "✓ Tracking healthy ${health.healthPercent}% of frames"
-                        } else {
-                            "▲ Tracking healthy only ${health.healthPercent}% of frames — " +
-                                "this recording may have little usable AR content"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "This is a standard MP4 carrying ARCore data tracks (camera, IMU, " +
-                    "planes, depth, anchors). \"Open\" plays it like any video; \"Export\" " +
-                    "copies it to Downloads/SceneView/ so Files / Photos and adb pull can " +
-                    "reach it; \"Replay\" re-runs the full AR session in the Playback tab.",
-                style = MaterialTheme.typography.labelSmall
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onShare,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Share") }
-                OutlinedButton(
-                    onClick = onOpen,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Open") }
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onExport,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Export") }
-                Button(
-                    onClick = onReplay,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Replay") }
-            }
-            Spacer(Modifier.height(6.dp))
-            OutlinedButton(
-                onClick = onOpenInPlayback,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Show in Playback list") }
-            Spacer(Modifier.height(2.dp))
-            OutlinedButton(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Record another") }
+    var sessionFailed by mutableStateOf(false)
+    var arCoreAvailability by mutableStateOf<ARCoreAvailability?>(null)
+    var cameraReady by mutableStateOf(false)
+    var isTracking by mutableStateOf(false)
+    var trackingFailureReason by mutableStateOf<TrackingFailureReason?>(null)
+
+    /** Published for `rememberARPlaybackStatus`, which has no other handle on the session. */
+    var arSession by mutableStateOf<Session?>(null)
+
+    val anchors = mutableStateListOf<Anchor>()
+    var restoredCount by mutableIntStateOf(0)
+    var replayElapsedMillis by mutableLongStateOf(0L)
+
+    var lastTrackedMillis = 0L
+    var recordingFile: File? = null
+    var recordingStartedMillis = 0L
+    var placementTrack: ARRecorder.TrackHandle? = null
+    val writeSchedule = PlacementWriteSchedule()
+
+    private var latestFrame: Frame? = null
+    private var firstFrameNanos = 0L
+    private val frameGate = NewFrameGate()
+    private val replayQueue = PlacementReplayQueue()
+
+    /** ARCore copies the packet synchronously, so one direct buffer serves every write. */
+    private val packet: ByteBuffer =
+        ByteBuffer.allocateDirect(PlacementTrack.PACKET_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+
+    /** `onSessionUpdated` — runs on the thread that owns [frame]. */
+    fun onFrame(session: Session, frame: Frame, replaying: Boolean) {
+        cameraReady = true
+        latestFrame = frame
+        val tracking = frame.camera.trackingState == TrackingState.TRACKING
+        isTracking = tracking
+        if (arSession !== session) arSession = session
+        // Stateless side channel (#876): publishes the session to the recorder. Idempotent.
+        recorder.recordFrame(session)
+        if (replaying) DemoSettings.arPlaybackFrameCount++
+        // onSessionUpdated repeats a camera image until the next one arrives: count and read
+        // tracks once per image, not once per display refresh.
+        if (!frameGate.isNew(frame.timestamp)) return
+        if (tracking) lastTrackedMillis = SystemClock.elapsedRealtime()
+        when {
+            replaying -> onReplayFrame(session, frame, tracking)
+            recorder.state == ARRecorder.State.RECORDING -> onRecordingFrame(session, frame, tracking)
         }
     }
-}
 
-private fun shareRecording(context: Context, file: File) {
-    val authority = "${context.packageName}.fileprovider"
-    val uri = try {
-        FileProvider.getUriForFile(context, authority, file)
-    } catch (e: IllegalArgumentException) {
-        // Misconfigured FileProvider — surface to the user rather than crashing.
-        android.widget.Toast.makeText(
-            context,
-            "Couldn't share — FileProvider misconfigured: ${e.message}",
-            android.widget.Toast.LENGTH_LONG
-        ).show()
-        return
+    private fun onReplayFrame(session: Session, frame: Frame, tracking: Boolean) {
+        interpreter.ingest(session, frame)
+        if (firstFrameNanos == 0L) firstFrameNanos = frame.timestamp
+        val elapsed = (frame.timestamp - firstFrameNanos) / NANOS_PER_MILLI
+        replayElapsedMillis = elapsed - elapsed % REPLAY_CLOCK_STEP_MILLIS
+        val packets = try {
+            frame.getUpdatedTrackData(PlacementTrack.TRACK_ID)
+        } catch (_: Exception) {
+            return
+        }
+        if (packets.isEmpty()) return
+        val camera = frame.camera.pose.toRigidPose()
+        packets
+            .mapNotNull { PlacementTrack.decode(it.data) }
+            .filter { replayQueue.shouldRestore(it, tracking) }
+            .forEach { placement ->
+                val anchor = try {
+                    session.createAnchor(placementWorldPose(placement, camera).toArPose())
+                } catch (_: Exception) {
+                    null
+                }
+                if (anchor != null) anchors += anchor
+            }
+        restoredCount = anchors.size
     }
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "video/mp4"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_SUBJECT, "AR session recording — SceneView")
-        putExtra(
-            Intent.EXTRA_TEXT,
-            "ARCore session recording from SceneView. Replay 1:1 with " +
-                "ARSceneView(playbackDataset = file)."
-        )
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(intent, "Share AR recording"))
-}
 
-/**
- * Opens the recording with a regular video viewer. ARCore datasets are valid MP4s — the
- * AR data lives in side tracks the player ignores — so any gallery / video app can play
- * the camera feed back. Gives the user a quick "did I capture the right thing?" check
- * without leaving for the Playback tab. Falls back to a toast if no video app is present.
- */
-private fun openRecordingAsVideo(context: Context, file: File) {
-    val authority = "${context.packageName}.fileprovider"
-    val uri = try {
-        FileProvider.getUriForFile(context, authority, file)
-    } catch (e: IllegalArgumentException) {
-        android.widget.Toast.makeText(
-            context,
-            "Couldn't open — FileProvider misconfigured: ${e.message}",
-            android.widget.Toast.LENGTH_LONG
-        ).show()
-        return
+    /**
+     * Writes every placement into the recording, relative to the camera, about once a second
+     * — anchors placed before the take started included, so a replay that misses one packet
+     * takes the next.
+     */
+    private fun onRecordingFrame(session: Session, frame: Frame, tracking: Boolean) {
+        interpreter.ingest(session, frame)
+        val handle = placementTrack ?: return
+        if (!tracking) return
+        val camera = frame.camera.pose.toRigidPose()
+        anchors.forEachIndexed { index, anchor ->
+            if (anchor.trackingState != TrackingState.TRACKING) return@forEachIndexed
+            if (!writeSchedule.isDue(index, frame.timestamp)) return@forEachIndexed
+            val bytes = PlacementTrack.encode(placementOf(index, camera, anchor.pose.toRigidPose()))
+            packet.clear()
+            packet.put(bytes)
+            packet.flip()
+            if (recorder.recordTrack(handle, frame, packet)) writeSchedule.markWritten(index, frame.timestamp)
+        }
     }
-    val intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, "video/mp4")
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    @Suppress("SwallowedException") // user sees a Toast — no-op logging needed for a demo app
-    try {
-        context.startActivity(Intent.createChooser(intent, "Open AR recording"))
-    } catch (e: android.content.ActivityNotFoundException) {
-        android.widget.Toast.makeText(
-            context,
-            "No video player found — use Share or Export instead",
-            android.widget.Toast.LENGTH_LONG
-        ).show()
+
+    /** Tap-to-place: the nearest surface under the finger within reach. */
+    fun placeAt(event: MotionEvent) {
+        val frame = latestFrame ?: return
+        if (frame.camera.trackingState != TrackingState.TRACKING) return
+        val hit = frame.hitTest(event).firstOrNull { result ->
+            val trackable = result.trackable
+            trackable is Plane && trackable.isPoseInPolygon(result.hitPose) && result.distance <= MAX_PLACE_DISTANCE
+        } ?: return
+        anchors += hit.createAnchor()
     }
 }
 
-/**
- * Returns the current display rotation (`Surface.ROTATION_0` … `Surface.ROTATION_270`) so the
- * MP4 plays back upright when captured in landscape. Uses `Context.getDisplay()` on API 30+
- * and falls back to the deprecated `WindowManager.defaultDisplay` on older APIs.
- */
-private fun currentDisplayRotation(context: Context): Int {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        context.display.rotation
-    } else {
-        @Suppress("DEPRECATION")
-        (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
-    }
+private fun Pose.toRigidPose() = RigidPose(tx(), ty(), tz(), qx(), qy(), qz(), qw())
+
+private fun RigidPose.toArPose() = Pose(floatArrayOf(tx, ty, tz), floatArrayOf(qx, qy, qz, qw))
+
+private fun RecordingQaState?.opensOnRecordings(): Boolean = when (this) {
+    RecordingQaState.Recordings, RecordingQaState.Replaying,
+    RecordingQaState.ReplayFinished, RecordingQaState.Empty -> true
+    else -> false
 }
 
-/**
- * After how many continuous seconds without ARCore tracking the RECORD overlay surfaces
- * the "tracking lost — recording may be unusable" soft warning (#1650). Short enough to
- * catch a doomed capture early, long enough not to flash on a momentary hiccup.
- */
-private const val TRACKING_LOST_WARNING_SECONDS = 4L
+private const val FOX_ASSET = "models/khronos_fox.glb"
+private const val FOX_SIZE_METERS = 0.3f
+private const val MAX_PLACE_DISTANCE = 5.0f
+private const val NANOS_PER_MILLI = 1_000_000L
+private const val REPLAY_CLOCK_STEP_MILLIS = 100L
+private const val RECORDING_POLL_MILLIS = 250L
+private const val MAY_NOT_REPLAY_AFTER_MILLIS = 4_000L
+private const val RESTORED_LABEL = "Restored"
+private const val QA_SEED = "ar-record-playback"
 
-/**
- * Tracking-health percentage at or above which a finished recording's quality stat is
- * shown in green rather than as a warning (#1650).
- */
-private const val TRACKING_HEALTH_GOOD_PERCENT = 70
-
-/**
- * Immutable tracking-quality summary of one finished recording (#1650): how many ARCore
- * frames were consumed while recording and how many of those reported [TrackingState.TRACKING].
- */
-private data class TrackingHealth(val trackedFrames: Int, val totalFrames: Int) {
-    /** Percentage of recorded frames where ARCore was actually tracking (0..100). */
-    val healthPercent: Int
-        get() = if (totalFrames == 0) 0 else (trackedFrames * 100) / totalFrames
-}
-
-/**
- * Mutable per-recording accumulator for [TrackingHealth] (#1650).
- *
- * Ticked once per consumed ARCore frame from `onSessionUpdated` — which runs on the main
- * thread — so plain `Int` counters need no synchronisation. [reset] zeroes it at the start
- * of each take; [snapshot] produces the immutable summary handed to the saved-recording
- * callout on Stop.
- */
-private class TrackingHealthTracker {
-    private var trackedFrames = 0
-    private var totalFrames = 0
-
-    /** Record one consumed frame; [tracking] is whether ARCore reported TRACKING. */
-    fun tick(tracking: Boolean) {
-        totalFrames++
-        if (tracking) trackedFrames++
-    }
-
-    /** Zero the counters — call on each fresh `recorder.start()`. */
-    fun reset() {
-        trackedFrames = 0
-        totalFrames = 0
-    }
-
-    /** Immutable summary of the frames counted since the last [reset]. */
-    fun snapshot(): TrackingHealth = TrackingHealth(trackedFrames, totalFrames)
-}
-
-private val TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
-
-private fun formatElapsed(seconds: Long): String {
-    val mm = seconds / 60
-    val ss = seconds % 60
-    return "%02d:%02d".format(Locale.US, mm, ss)
-}
-
-private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> "%.1f GB".format(Locale.US, bytes / 1_000_000_000.0)
-    bytes >= 1_000_000 -> "%.1f MB".format(Locale.US, bytes / 1_000_000.0)
-    bytes >= 1_000 -> "%.1f kB".format(Locale.US, bytes / 1_000.0)
-    else -> "$bytes B"
-}
-
-private fun formatRelativeAge(epochMillis: Long): String {
-    val seconds = (System.currentTimeMillis() - epochMillis) / 1000
-    return when {
-        seconds < 60 -> "just now"
-        seconds < 3600 -> "${seconds / 60}m ago"
-        seconds < 86400 -> "${seconds / 3600}h ago"
-        else -> "${seconds / 86400}d ago"
-    }
-}
+// Fixed values of the QA screens (`--ez qa_mode true --es qa_state <id>`), so each card can be
+// captured on the emulator, which cannot run AR (#2754).
+private const val QA_DURATION_MILLIS = 18_300L
+private const val QA_REPLAY_ELAPSED_MILLIS = 7_000L
+private val QA_REPORT = ARRecordInterpretation(
+    frameCount = 550,
+    trackedFrameCount = 512,
+    durationSeconds = 18.3,
+    trajectoryLengthMeters = 2.4f,
+    trajectoryExtentMeters = 1.6f,
+    failureReasonFrameCounts = mapOf(
+        TrackingFailureReason.EXCESSIVE_MOTION to 26,
+        TrackingFailureReason.INSUFFICIENT_FEATURES to 12,
+    ),
+    horizontalPlaneCount = 2,
+    verticalPlaneCount = 1,
+    planeAreaMeters2 = 3.2f,
+)

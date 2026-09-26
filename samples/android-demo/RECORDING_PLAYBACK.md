@@ -14,31 +14,35 @@ ARCore's `Session.startRecording(RecordingConfig)` captures the entire AR sessio
 
 ## How to use the demo
 
-The demo has three modes wired to a top segmented control:
+The demo has two steps in the bottom dock, the way a camera app separates shooting from its gallery (#3831):
 
-### LIVE
+### Record
 
-Plain AR. Tap any detected plane to drop a helmet. Use this to confirm the session actually works on this device before recording or replaying.
+Live AR with a shutter. Tap any detected surface to place a fox. Tap the red shutter to start: a live card at the top shows the clock, the file size as it grows, and what is being captured — camera frames, the distance walked, the surfaces found and the foxes placed. If the camera loses its place for more than a few seconds, the card says so and warns that the take may not replay well. Tap the shutter again to stop; a card replaces it with the first frame of the take, its length, size and placements, and **Replay** / **Share** buttons.
 
-### RECORD
+Recordings are stored under `context.getExternalFilesDir("ar-recordings")` — app-private external storage, so no runtime permission is required to write the file — with a timestamped name like `ar-session-20260506-153045.mp4`.
 
-Same as LIVE, plus a record button. Tap **Start** to begin capture; an elapsed-time pill shows in the top status bar while the session is recording. Tap **Stop** to flush the file. The new MP4 appears in the Recordings card with a timestamped name like `ar-20260506-153045.mp4`.
+### Recordings
 
-Recordings are stored under `context.getExternalFilesDir("ar-recordings")` — app-private external storage, so no runtime permission is required to write the file.
+Every MP4 on disk, newest first, each with its first-frame thumbnail, length, size and what it contains (video, motion sensors, placements). Tap one to replay it in place: the `ARSceneView` re-mounts with `playbackDataset = file`, a card shows the replay's progress and what has been rebuilt so far, and the foxes come back where they were placed. At the end, a report sums the take up — frames, distance, surfaces, how often the camera held its place and, when it did not, why. The row menu shares the file, saves it to Downloads, or deletes it.
 
-### PLAYBACK
+Each take, live or replayed, mounts its own `ARSceneView` via `key(step, replayFile, generation)` because ARCore binds the playback source at session-creation time and cannot be toggled after resume.
 
-Lists every MP4 already on disk. Tap one and the `ARSceneView` re-mounts with `playbackDataset = file`. From that moment on, the camera preview is a replay of the recorded session. Hit-tests, plane detection, depth, anchors — everything fires on the same frames as the original capture.
+### What a recording keeps
 
-Switching modes forces the `ARSceneView` to be rebuilt via `key(currentMode, …)` because ARCore binds the playback source at session-creation time and cannot be toggled after resume.
+- **Camera video** — what the camera saw, playable in any video app.
+- **Motion sensors** — the accelerometer and gyroscope tracks ARCore writes, so the replay moves exactly as you did.
+- **Placements** — a custom data track (`application/vnd.sceneview.placement`) the demo adds with `ARRecorder.addTrack` and writes with `recordTrack`. Each placement is stored relative to the camera of its frame, so the replay can rebuild it in the replayed session's own world.
+
+The camera path and the surfaces are not stored: ARCore rebuilds them on replay from the video and the sensors.
 
 ## Surprises and caveats
 
 - **Camera permission is still requested during playback.** ARCore opens the camera even when replaying a dataset. Users see no live preview, but the permission gate fires regardless. The demo's normal permission flow handles it.
-- **Recording does not work on the emulator.** ARCore Recording requires a real camera + IMU. Replay works fine on the emulator — capture once on a phone, then iterate at the desk against the saved MP4.
+- **Neither recording nor replay runs on the arm64 emulator.** It has no camera HAL and there is no ARCore build for it (#2754). Record and replay on a phone; the emulator can only show the Recordings list and the QA previews of each card (`--ez qa_mode true --es qa_state recording|saved|recordings|replaying|replay-finished|empty`).
 - **Same-device-class playback is most reliable.** A recording made on a phone replays cleanly on the same phone or a similar one. Heavily different sensor sets (e.g. phone → tablet) may degrade tracking quality.
 - **MP4 file size is non-trivial.** Tens of MB per minute depending on resolution. The app-private `ar-recordings` directory has no quota beyond the user's free space, but don't ship recordings inside the APK.
-- **Recording while in playback mode is rejected.** `ARRecorder.start()` returns `false` and surfaces an error message if the session is currently bound to a playback dataset. Switch to LIVE or RECORD mode first.
+- **Recording while in playback mode is rejected.** `ARRecorder.start()` returns `false` and surfaces an error message if the session is currently bound to a playback dataset. The demo only offers the shutter in the Record step, on a live camera.
 
 ## Pair with Rerun
 
@@ -46,10 +50,10 @@ The same MP4 can be replayed with the [Rerun bridge](src/main/java/io/github/sce
 
 ## Sharing a recording
 
-The demo does not expose a share sheet — recordings live in app-private storage. To send an MP4 to a teammate or attach it to a bug report:
+**Share** on the saved-take card, or in a recording's row menu, hands the MP4 to the system share sheet through the app's `FileProvider`; **Save to Downloads** copies it to the public Downloads folder. From a computer, the file is also one `adb pull` away:
 
 ```bash
-adb pull /sdcard/Android/data/io.github.sceneview.demo/files/ar-recordings/ar-20260506-153045.mp4
+adb pull /sdcard/Android/data/io.github.sceneview.demo/files/ar-recordings/ar-session-20260506-153045.mp4
 ```
 
 Drop the file into any messaging tool, GitHub issue, or shared drive. The receiver places it under their own `ar-recordings` directory (or any path you hand to `playbackDataset`) and replays it.
