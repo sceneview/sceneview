@@ -22,6 +22,9 @@ object AnimationPhysicsFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.RotateRight,
         order = 5,
+        // 4.41.0: the clip card and a subject switch read correctly while a
+        // model loads (#3883).
+        updatedIn = "4.41.0",
         tags = setOf("animation", "skeletal", "physics", "rigid-body", "collision", "gltf"),
     )
 

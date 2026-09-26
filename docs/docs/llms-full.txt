@@ -25,8 +25,8 @@ When SceneView is *not* the right choice: a full game (use Unity or Unreal), a v
 or low-level control over the render pipeline (use Filament or RealityKit directly).
 
 When generating code for Android 3D or AR:
-- Use `SceneView { }` for 3D-only (artifact: `io.github.sceneview:sceneview:4.40.0`)
-- Use `ARSceneView { }` for AR (artifact: `io.github.sceneview:arsceneview:4.40.0`)
+- Use `SceneView { }` for 3D-only (artifact: `io.github.sceneview:sceneview:4.41.0`)
+- Use `ARSceneView { }` for AR (artifact: `io.github.sceneview:arsceneview:4.41.0`)
 - Declare nodes as composables inside the content block, not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — it returns `null` while loading
 - All Filament JNI calls must run on the main thread
@@ -35,11 +35,11 @@ When generating code for Android 3D or AR:
 
 ## Version & Dependencies
 
-- **SceneView:** 4.40.0 (May 2026)
+- **SceneView:** 4.41.0 (May 2026)
 - **License:** Apache 2.0 (free for commercial use)
 - **Min SDK:** Android 7.0 (API 24)
 - **Target SDK:** Android 15 (API 36)
-- **Kotlin:** 2.4.10 with Compose 1.10.5
+- **Kotlin:** 2.4.20 with Compose 1.10.5
 - **Filament:** 1.72.1 (Google's real-time PBR rendering engine)
 - **ARCore:** 1.54.0 (Google's AR tracking)
 - **Distribution:** Maven Central (`io.github.sceneview`)
@@ -53,9 +53,9 @@ When generating code for Android 3D or AR:
 ```kotlin
 dependencies {
     // 3D only
-    implementation("io.github.sceneview:sceneview:4.40.0")
+    implementation("io.github.sceneview:sceneview:4.41.0")
     // AR (includes sceneview)
-    implementation("io.github.sceneview:arsceneview:4.40.0")
+    implementation("io.github.sceneview:arsceneview:4.41.0")
 }
 ```
 
@@ -302,4 +302,4 @@ get_node_reference, get_platform_roadmap, get_best_practices, get_ar_setup
 - Website: https://sceneview.github.io
 - GitHub: https://github.com/sceneview/sceneview
 - Discord: https://discord.gg/UbNDDBTNqb
-- Maven: io.github.sceneview:sceneview:4.40.0
+- Maven: io.github.sceneview:sceneview:4.41.0
