@@ -45,13 +45,13 @@ samples/
 
 | Concept | Android | iOS | Desktop | Web |
 |---|---|---|---|---|
-| Scene container | `SceneView { }` composable | `SceneView { }` SwiftUI | `SceneView { }` Compose Desktop | `<SceneView>` Kotlin/JS |
+| Scene container | `SceneView { }` composable | `SceneView { }` SwiftUI | `SceneViewer(…)` Compose Desktop (`sceneview-compose`) | `<SceneView>` Kotlin/JS |
 | AR container | `ARSceneView { }` | `ARSceneView { }` | N/A | WebXR |
-| Renderer | Google Filament | RealityKit | Software wireframe (Filament JNI planned) | Filament WASM |
+| Renderer | Google Filament | RealityKit | Filament via filament-kmp (offscreen → Skia, JDK 22+) | Filament WASM |
 | AR framework | ARCore | ARKit | N/A | WebXR |
 | Model format | glTF/GLB | USDZ + glTF (GLTFKit2) | glTF/GLB | glTF/GLB |
-| Camera | Filament Camera | RealityKit PerspectiveCamera | Manual projection (placeholder) | Filament Camera |
-| Materials | Filament PBR | RealityKit PBR | Wireframe only (placeholder) | Filament PBR |
+| Camera | Filament Camera | RealityKit PerspectiveCamera | `rememberCameraState` orbit camera | Filament Camera |
+| Materials | Filament PBR | RealityKit PBR | glTF PBR (Filament) | Filament PBR |
 
 ## Recipe → Platform code pattern
 
