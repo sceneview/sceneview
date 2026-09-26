@@ -22,10 +22,17 @@ on:
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 
-# Cancel in-progress runs for the same branch/PR
+# Cancel only a genuinely superseded PR run, never a push to `main` — same
+# rule ci.yml adopted (#3873). The old `group: ios-ci-${{ github.ref }}` with
+# `cancel-in-progress: true` keyed pushes to `main` on the branch ref, so two
+# merges landing close together cancelled each other's run outright (11
+# cancelled main runs found by audit). PRs are keyed on their NUMBER so a new
+# commit still cancels the stale run; pushes to `main` keep their immutable
+# commit sha and never cancel in progress. `workflow_dispatch` falls back to
+# `github.ref`.
 concurrency:
-  group: ios-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ios-ci-${{ github.event_name == 'push' && github.sha || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
