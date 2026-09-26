@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **MCP: the `view_3d_model` viewer offers "Open in AR on your phone" (#3918).** For an https model, the inline viewer shows a button that opens the model in AR Model Viewer through `https://ar.sceneview.dev/open?url=…`: the app when it is installed, the store page otherwise. On a desktop-sized window it also shows a QR code of that link to scan with a phone. The code is drawn in the browser, and no QR service sees the link. The viewer now follows the host's light or dark theme.
