@@ -371,7 +371,7 @@ jobs:
   publish-mcp:
     name: Publish MCP to npm
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15 # 5 min of it is the npm registry check
     needs: [breaking-change-guard]
     permissions:
       contents: read
