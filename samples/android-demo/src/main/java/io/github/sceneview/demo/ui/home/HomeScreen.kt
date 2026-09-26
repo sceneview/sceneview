@@ -727,7 +727,11 @@ private fun TitleRow(
         label = "headerTitle",
     )
     val iconTint by animateColorAsState(
-        targetValue = if (overStage) SceneViewTokens.HomeColor.heroSubtitle else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (overStage) {
+            SceneViewTokens.HomeColor.heroSubtitle
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
         animationSpec = tween(SceneViewTokens.Duration.shortMillis),
         label = "headerIcons",
     )

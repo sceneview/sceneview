@@ -110,12 +110,12 @@ class HomeHeroFlightTest {
     fun `tilt settles to zero at any resting posture and follows a change of lean`() {
         val tilt = HeroTilt()
         // Held at a steady 30° lean for ten seconds: the slow filter learns it.
-        tilt.feed(gravityX = 4.9f, gravityY = 8.5f, gravityZ = 0f)
+        tilt.feed(gravityX = 4.9f, gravityZ = 0f)
         repeat(600) { tilt.update(1f / 60f) }
         assertEquals(0f, tilt.x, 0.02f)
         assertEquals(0f, tilt.y, 0.02f)
         // A quick lean the other way deflects, then decays back as it becomes the posture.
-        tilt.feed(gravityX = -1f, gravityY = 9.7f, gravityZ = 0f)
+        tilt.feed(gravityX = -1f, gravityZ = 0f)
         repeat(12) { tilt.update(1f / 60f) }
         assertTrue("deflects right, x=${tilt.x}", tilt.x > 0.3f)
         repeat(1800) { tilt.update(1f / 60f) }

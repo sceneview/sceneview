@@ -199,8 +199,11 @@ internal class HeroTilt(
     var y: Float = 0f
         private set
 
-    /** Gravity vector from `Sensor.TYPE_GRAVITY`, any thread; only the latest is kept. */
-    fun feed(gravityX: Float, gravityY: Float, gravityZ: Float) {
+    /**
+     * Gravity vector from `Sensor.TYPE_GRAVITY`, any thread; only the latest is kept. The
+     * component along the phone's long axis (Y) carries no lean, so it is not needed.
+     */
+    fun feed(gravityX: Float, gravityZ: Float) {
         // In portrait, gravity along +X means the phone leans left, along +Z it lies flat.
         rawX = (-gravityX / EARTH_GRAVITY).coerceIn(-1f, 1f)
         rawY = (gravityZ / EARTH_GRAVITY).coerceIn(-1f, 1f)

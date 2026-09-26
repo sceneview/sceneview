@@ -281,7 +281,7 @@ private fun HomeHeroStage(
         val gravity = manager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
-                tilt.feed(event.values[0], event.values[1], event.values[2])
+                tilt.feed(gravityX = event.values[0], gravityZ = event.values[2])
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
