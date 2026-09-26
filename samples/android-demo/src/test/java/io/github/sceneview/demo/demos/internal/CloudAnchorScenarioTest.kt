@@ -45,7 +45,7 @@ class CloudAnchorScenarioTest {
         assertEquals(CloudAnchorStep.Host, state.step)
         assertFalse(state.anchorPlaced)
         assertEquals(CloudAnchorCard.None, state.card())
-        assertEquals("Tap a surface to place the anchor.", state.status().text)
+        assertEquals("Move slowly to find a surface.", state.status().text)
     }
 
     @Test
@@ -67,7 +67,7 @@ class CloudAnchorScenarioTest {
         val state = CloudAnchorScenario.Hosting.state()
         assertEquals(CloudAnchorTask.Running, state.host)
         assertFalse(state.allows(CloudAnchorAction.Host))
-        assertEquals("Hosting the anchor…", state.status().text)
+        assertEquals("Uploading the room scan to Google Cloud…", state.status().text)
     }
 
     @Test

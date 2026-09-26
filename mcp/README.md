@@ -4,8 +4,8 @@
 
 [![npm version](https://img.shields.io/npm/v/sceneview-mcp?color=6c35aa)](https://www.npmjs.com/package/sceneview-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/sceneview-mcp?color=blue)](https://www.npmjs.com/package/sceneview-mcp)
-[![Tests](https://img.shields.io/badge/tests-2001%20passing-brightgreen)](#quality)
-[![MCP](https://img.shields.io/badge/MCP-v1.12-blue)](https://modelcontextprotocol.io/)
+[![Tests](https://img.shields.io/badge/tests-2015%20passing-brightgreen)](#quality)
+[![MCP SDK](https://img.shields.io/badge/MCP%20SDK-v1.29-blue)](https://modelcontextprotocol.io/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-listed-blueviolet)](https://registry.modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-brightgreen)](https://nodejs.org/)
@@ -215,7 +215,7 @@ Some hosts cannot spawn a local process: they need MCP's **Streamable HTTP** tra
 
 ```bash
 npx sceneview-mcp --http
-# [sceneview-mcp] v4.x — HTTP (free tools only)
+# [sceneview-mcp] v4.x — HTTP (remote tool surface)
 # [sceneview-mcp] MCP endpoint: http://127.0.0.1:3333/mcp
 ```
 
@@ -247,7 +247,7 @@ Point the ChatGPT connector / OpenAI `mcp` tool at `https://<your-host>/mcp`.
 
 **Already hosted.** You do not have to run it yourself to get a public URL: the same code is
 deployed at `https://mcp.sceneview.dev/mcp` (`GET /health` answers `{"status":"ok"}`), which is
-what the [Claude connector](#use-as-a-claude-connector) above points at. Self-host when you want
+what the [remote connector](#use-as-a-remote-connector) above points at. Self-host when you want
 your own keys, your own rate limits, or `analyze_project` against a local checkout.
 
 ---
@@ -432,7 +432,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 - Have no knowledge of SceneView's iOS/Swift API at all
 
 **With** this MCP server, AI assistants:
-- Always use the current SceneView 4.0.x API surface
+- Always use the current SceneView 4.x API surface
 - Generate correct **Compose-native** 3D/AR code for Android
 - Generate correct **SwiftUI-native** code for iOS/macOS/visionOS
 - Know about all 48+ node types and their exact parameters
@@ -443,7 +443,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 
 ## Quality
 
-The MCP server is tested with **2,001 unit tests** across 86 test suites covering:
+The MCP server is tested with **2,015 unit tests** across 91 test files covering:
 
 - Every tool response (correct output, error handling, edge cases)
 - All 38 code samples (compilable structure, correct imports, no deprecated APIs)
@@ -453,11 +453,11 @@ The MCP server is tested with **2,001 unit tests** across 86 test suites coverin
 - The Streamable HTTP surface end to end (initialize, free-only tools/list, widget resource, health, OpenAI challenge)
 
 ```
- Test Files  86 passed (86)
-      Tests  2001 passed (2001)
+ Test Files  91 passed (91)
+      Tests  2015 passed (2015)
 ```
 
-All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK).
+All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK). Anonymous telemetry also makes a network call unless `SCENEVIEW_TELEMETRY=0` (see [below](#anonymous-telemetry)).
 
 ---
 
@@ -481,7 +481,7 @@ Install Node.js from [nodejs.org](https://nodejs.org/) (LTS recommended). npm an
 
 ### Firewall or proxy issues
 
-The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), and Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called). Everything else works offline.
+The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called), and the anonymous telemetry endpoint (off with `SCENEVIEW_TELEMETRY=0`). Everything else works offline.
 
 ```json
 {
@@ -517,7 +517,7 @@ Enabled by default (MCP client name/version and tool names — no personal data,
 cd mcp
 npm install
 npm run prepare  # Copy llms.txt + build TypeScript
-npm test         # 2007 tests
+npm test         # vitest suite
 npm run lint     # Biome (repo-root biome.json) — lint + format + import assists
 npm run lint:fix # same, applying the safe fixes
 npm run dev      # Start with tsx (hot reload)
@@ -553,7 +553,7 @@ mcp/
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new tools or rules
-4. Run `npm test` — all 2001+ tests must pass
+4. Run `npm test` — all tests must pass
 5. Submit a pull request
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full guide.

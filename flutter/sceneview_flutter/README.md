@@ -38,7 +38,7 @@ In your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_sceneview: ^4.24.0
+  flutter_sceneview: ^4.39.0
 ```
 
 This tracks the latest version **published to pub.dev**, which lags the SDK's
@@ -101,15 +101,13 @@ target 'Runner' do
 end
 ```
 
-The `:podspec =>` form is deliberate, and the obvious `:git => …, :tag => 'vX.Y.Z'`
-alternative does **not** work yet. CocoaPods resolves `:git` by looking for
-`SceneViewSwift.podspec` at the root of the checked-out tag, and the podspec was
-added after `v4.26.0` was cut — so a tagged coordinate fails with exactly the
-`Unable to find a specification` error this section exists to prevent, until the
-first release that carries the file. `:podspec =>` reads the spec from `main`
-while the *sources* still come from the tag the spec pins (`:tag => "v#{s.version}"`),
-so the build stays reproducible. Once a release ships with the podspec at the
-root, `:git => …, :tag => 'vX.Y.Z'` becomes the better pin.
+`:podspec =>` reads the spec from `main` while the *sources* still come from the
+tag the spec pins (`:tag => "v#{s.version}"`), so the build stays reproducible.
+The `:git => …, :tag => 'vX.Y.Z'` alternative works from **`v4.28.0`** onwards:
+CocoaPods resolves `:git` by looking for `SceneViewSwift.podspec` at the root of
+the checked-out tag, and `v4.27.0` and earlier do not carry it — a tag that old
+fails with exactly the `Unable to find a specification` error this section
+exists to prevent.
 
 Working from a checkout of the SDK monorepo instead — point at the **repo root**,
 which is where `SceneViewSwift.podspec` lives:
@@ -195,10 +193,9 @@ ARSceneView(
 > ⚠️ **Bridge coverage.** This plugin exposes a subset of the native SceneView
 > SDK. `addGeometry` / `addLight` render natively on Android only; plane events
 > and the HDR environment are forwarded on Android but not yet on iOS. Node taps
-> reach `onTap` for `SceneView` (3D) on **Android**, carrying the model file's
-> base name without extension; the iOS 3D path is wired end to end but no tap
-> has ever been observed to arrive — see "`onTap` does not fire on iOS" below,
-> where it is measured. For `ARSceneView` taps stay Android-only,
+> reach `onTap` for `SceneView` (3D) on Android and iOS, carrying the model
+> file's base name without extension — see "`onTap` on iOS — fixed (#3045)"
+> below. For `ARSceneView` taps stay Android-only,
 > since SceneViewSwift's `ARSceneView` exposes no entity hit-test hook
 > ([#2051](https://github.com/sceneview/sceneview/issues/2051)).
 > Camera positioning, `ViewNode` / `ImageNode` / `VideoNode` / `TextNode`,
@@ -270,7 +267,7 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
 
 ## Limitations
 
-- Geometry and light nodes are not yet rendered natively (API exists for forward compatibility)
+- Geometry and light nodes are not yet rendered on iOS (API exists for forward compatibility; Android renders them)
 - AR tap-to-place is not yet implemented
 - `onTap` is delivered for `SceneView` (3D) on both Android and iOS (fixed in
   #3045 — see below). `ARSceneView` taps are Android-only
@@ -333,7 +330,7 @@ check.
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/sceneview/sceneview/blob/main/.github/CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/sceneview/sceneview/blob/main/CONTRIBUTING.md).
 
 ## License
 

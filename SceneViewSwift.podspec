@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'SceneViewSwift'
-  s.version          = '4.38.0'
+  s.version          = '4.40.0'
   s.summary          = '3D and AR as declarative SwiftUI — RealityKit renderer.'
   s.description      = <<-DESC
   SceneView for Apple platforms: `SceneView` and `ARSceneView` SwiftUI views
@@ -8,7 +8,7 @@ Pod::Spec.new do |s|
                        DESC
   s.homepage         = 'https://github.com/sceneview/sceneview'
   s.license          = { :type => 'Apache-2.0', :file => 'LICENSE' }
-  s.author           = { 'SceneView' => 'contact@sceneview.github.io' }
+  s.author           = 'SceneView contributors'
   s.source           = {
     :git => 'https://github.com/sceneview/sceneview.git',
     :tag => "v#{s.version}"

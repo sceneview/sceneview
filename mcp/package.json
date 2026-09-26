@@ -75,12 +75,12 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.0.0",
-    "@types/node": "^26.0.1",
+    "@biomejs/biome": "^2.5.14",
+    "@types/node": "^26.6.2",
     "tsx": "^4.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0",
-    "wrangler": "^4.130.0"
+    "vitest": "^5.0.1",
+    "wrangler": "^4.136.2"
   },
   "overrides": {
     "picomatch": ">=4.0.4",

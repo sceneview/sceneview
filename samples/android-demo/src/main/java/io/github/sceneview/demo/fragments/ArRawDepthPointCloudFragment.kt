@@ -14,9 +14,9 @@ object ArRawDepthPointCloudFragment : DemoFragment {
         id = "ar-raw-depth-point-cloud",
         titleRes = R.string.demo_ar_raw_depth_cloud_title,
         subtitleRes = R.string.demo_ar_raw_depth_cloud_subtitle,
-        category = DemoCategory.AR_UNDERSTANDING,
+        category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.ScatterPlot,
-        order = 33,
+        order = 36,
         tags = setOf("ar", "depth", "raw-depth", "point-cloud", "confidence"),
     )
 

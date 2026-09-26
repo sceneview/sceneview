@@ -36,6 +36,41 @@ private final class VideoLoopObserver: @unchecked Sendable {
     }
 }
 
+/// Logs `AVPlayerItem` playback failures instead of leaving a silently black
+/// video plane: a wrong codec, an unreadable file or a dead remote URL all end
+/// up as `AVPlayerItem.status == .failed`, which nothing used to observe.
+private final class VideoStatusObserver: @unchecked Sendable {
+    private var observation: NSKeyValueObservation?
+
+    init?(player: AVPlayer) {
+        guard let item = player.currentItem else { return nil }
+        observation = item.observe(\.status, options: [.new, .initial]) { item, _ in
+            guard item.status == .failed else { return }
+            let reason = item.error?.localizedDescription ?? "unknown error"
+            print("[SceneViewSwift] VideoNode playback failed: \(reason)")
+        }
+    }
+
+    deinit {
+        observation?.invalidate()
+    }
+}
+
+/// Errors thrown by ``VideoNode/load(resource:width:height:loop:)``.
+public enum VideoNodeError: Error, LocalizedError, Sendable {
+    /// No video file matched the requested resource name, in the main bundle or
+    /// on disk.
+    case resourceNotFound(name: String, triedExtensions: [String])
+
+    public var errorDescription: String? {
+        switch self {
+        case let .resourceNotFound(name, extensions):
+            return "No video resource named \"\(name)\" was found "
+                + "(tried extensions: \(extensions.joined(separator: ", ")))."
+        }
+    }
+}
+
 public struct VideoNode: @unchecked Sendable {
     /// The underlying RealityKit entity.
     public let entity: Entity
@@ -45,6 +80,12 @@ public struct VideoNode: @unchecked Sendable {
 
     /// Retains the loop observer so the notification is removed when the node is released.
     private let loopObserver: VideoLoopObserver?
+
+    /// Retains the playback-status observer so a failed item is reported.
+    private let statusObserver: VideoStatusObserver?
+
+    /// Extensions tried, in order, when a resource name carries none.
+    public static let videoFileExtensions = ["mp4", "mov", "m4v"]
 
     /// World-space position.
     public var position: SIMD3<Float> {
@@ -80,19 +121,77 @@ public struct VideoNode: @unchecked Sendable {
         height: Float = 0.9,
         loop: Bool = false
     ) -> VideoNode {
-        let components = name.split(separator: ".")
-        let baseName = String(components.dropLast().joined(separator: "."))
-        let ext = components.last.map(String.init) ?? "mp4"
+        do {
+            return try load(resource: name, width: width, height: height, loop: loop)
+        } catch {
+            // Never point an AVPlayer at a URL that does not exist: that used to
+            // produce a node whose controls reported success while nothing ever
+            // played. Say why, and hand back a node with an empty player.
+            print("[SceneViewSwift] VideoNode.load(\"\(name)\") failed: "
+                + "\(error.localizedDescription)")
+            return create(player: AVPlayer(), width: width, height: height, loop: loop)
+        }
+    }
 
-        let url: URL
-        if let bundleURL = Bundle.main.url(forResource: baseName, withExtension: ext) {
-            url = bundleURL
-        } else {
-            // Try as a direct path
-            url = URL(fileURLWithPath: name)
+    /// Creates a video node from a bundle resource name, throwing when no such
+    /// video exists.
+    ///
+    /// A name with no extension (`"sample"`) is tried against each of
+    /// ``videoFileExtensions`` in turn — `"sample"` used to be parsed as an
+    /// empty base name with the extension `sample`, which matched nothing.
+    ///
+    /// - Parameters:
+    ///   - name: Bundle resource name, with or without extension
+    ///     (`"videos/intro.mp4"`, `"sample"`), or a path on disk.
+    ///   - width: Plane width in meters. Default 1.6 (16:9 at 0.9m height).
+    ///   - height: Plane height in meters. Default 0.9.
+    ///   - loop: Whether the video loops. Default false.
+    /// - Returns: A `VideoNode` ready for playback. Call `play()` to start.
+    /// - Throws: ``VideoNodeError/resourceNotFound(name:triedExtensions:)``.
+    public static func load(
+        resource name: String,
+        width: Float = 1.6,
+        height: Float = 0.9,
+        loop: Bool = false
+    ) throws -> VideoNode {
+        let url = try resolveVideoURL(named: name)
+        return load(contentsOf: url, width: width, height: height, loop: loop)
+    }
+
+    /// Resolves a resource name to an existing video file: bundle first, then a
+    /// path on disk, trying ``videoFileExtensions`` when the name carries none.
+    static func resolveVideoURL(named name: String) throws -> URL {
+        let providedExtension = (name as NSString).pathExtension
+        let baseName = providedExtension.isEmpty
+            ? name
+            : String(name.dropLast(providedExtension.count + 1))
+        let extensions = providedExtension.isEmpty
+            ? videoFileExtensions
+            : [providedExtension]
+
+        for ext in extensions {
+            if let bundleURL = Bundle.main.url(forResource: baseName, withExtension: ext) {
+                return bundleURL
+            }
         }
 
-        return load(contentsOf: url, width: width, height: height, loop: loop)
+        // The name as given, first and whatever its extension: a path on disk is
+        // a documented input, and a file can genuinely have no extension. Only
+        // if that misses do we try the appended variants for an extensionless
+        // name.
+        let fileManager = FileManager.default
+        let directURL = URL(fileURLWithPath: name)
+        if fileManager.fileExists(atPath: directURL.path) {
+            return directURL
+        }
+        if providedExtension.isEmpty {
+            for ext in extensions {
+                let candidate = directURL.appendingPathExtension(ext)
+                if fileManager.fileExists(atPath: candidate.path) { return candidate }
+            }
+        }
+
+        throw VideoNodeError.resourceNotFound(name: name, triedExtensions: extensions)
     }
 
     /// Creates a video node from a URL.
@@ -153,7 +252,12 @@ public struct VideoNode: @unchecked Sendable {
             loopObserver = nil
         }
 
-        return VideoNode(entity: videoEntity, player: player, loopObserver: loopObserver)
+        return VideoNode(
+            entity: videoEntity,
+            player: player,
+            loopObserver: loopObserver,
+            statusObserver: VideoStatusObserver(player: player)
+        )
     }
 
     // MARK: - Playback controls

@@ -1,12 +1,11 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,16 +16,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -38,7 +40,6 @@ import io.github.sceneview.physics.DoublePendulum
 import io.github.sceneview.physics.DoublePendulumLink
 import io.github.sceneview.physics.DoublePendulumState
 import io.github.sceneview.physics.HALF_PI
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
@@ -117,50 +118,50 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // Warm studio HDR for IBL — a softer, gallery-lit backdrop that sets this
-    // staging apart from a neutral grey studio.
+    // Warm studio HDR for IBL, a neutral grey backdrop behind it (#3826): with no skybox the
+    // framed band between the title row and the Release pill rendered as a black box, and the
+    // HDR's own skybox puts a pixelated ceiling softbox behind the arms.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
         "environments/studio_warm_2k.hdr",
         createSkybox = false,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    val lightEnvironment = hdrEnvironment ?: fallbackEnvironment
+    val activeEnvironment = remember(lightEnvironment, stageSkybox) {
+        lightEnvironment.copy(skybox = stageSkybox)
+    }
 
     // --- Camera auto-framing ---------------------------------------------
     // The tip can reach anywhere within (length1 + length2) of the pivot, so
-    // the swing envelope is a disc of that radius. Target the disc centre and
-    // back off proportionally to its radius so the whole swing always fits.
+    // the swing envelope is a disc of that radius centred on the hinge. The
+    // camera looks at the hinge from straight in front and backs off until that
+    // disc fills the viewport the scene actually gets (the band above the
+    // Release pill), so the hinge sits dead centre and no swing leaves frame.
     val reach = length1 + length2
-    val envelopeCenter = Position(pivot.x, pivot.y, pivot.z)
-    val cameraDistance = io.github.sceneview.demo.rememberFitOrbitRadius(
-        reach * 2f,
-        reach * 2f,
-        0.1f,
-        fill = 0.85f,
-        azimuthInvariant = false,
-    )
-
-    val cameraNode = rememberCameraNode(engine) {
-        position = Position(envelopeCenter.x, envelopeCenter.y, envelopeCenter.z + cameraDistance)
-        lookAt(envelopeCenter)
-    }
-    // Keep the camera reframed when the arm-length sliders change the envelope.
-    LaunchedEffect(reach) {
-        cameraNode.position =
-            Position(envelopeCenter.x, envelopeCenter.y, envelopeCenter.z + cameraDistance)
-        cameraNode.lookAt(envelopeCenter)
-    }
-
+    val envelopeCenter = pivot
+    val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_double_pendulum_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        // Release is the one thing to do here, so it lives on the scene; the
+        // sheet keeps the parameters, which apply live as they are dragged.
+        bottomOverlayReservesScene = true,
+        bottomOverlay = {
+            GlassActionPill(
+                icon = Icons.Outlined.RestartAlt,
+                label = stringResource(R.string.demo_double_pendulum_release),
+                onClick = { generation++ },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        },
         controls = {
             LabeledSlider(
-                label = "Lead arm",
+                label = stringResource(R.string.demo_double_pendulum_lead_arm),
                 value = length1,
                 onValueChange = { length1 = it },
                 valueRange = 0.3f..0.65f,
@@ -168,7 +169,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
             )
 
             LabeledSlider(
-                label = "Trailing arm",
+                label = stringResource(R.string.demo_double_pendulum_trailing_arm),
                 value = length2,
                 onValueChange = { length2 = it },
                 valueRange = 0.2f..0.5f,
@@ -176,158 +177,174 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
             )
 
             LabeledSlider(
-                label = "Gravity",
+                label = stringResource(R.string.demo_double_pendulum_gravity),
                 value = gravity,
                 onValueChange = { gravity = it },
                 valueRange = 1.6f..20f,
                 valueText = "${"%.1f".format(Locale.US, gravity)} m/s²",
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = { generation++ }) {
-                    Text("Release")
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Text(
-                "A chaotic two-link pendulum: tiny changes diverge wildly. The " +
-                    "equations of motion run in sceneview-core (shared KMP) — the " +
-                    "same simulation drives the iOS demo. The camera auto-frames " +
-                    "the full reachable swing.",
+                stringResource(R.string.demo_double_pendulum_explainer),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
     ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
-            engine = engine,
-            materialLoader = materialLoader,
-            environmentLoader = environmentLoader,
-            environment = activeEnvironment,
-            cameraNode = cameraNode,
-            cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = cameraNode.worldPosition,
-                targetPosition = envelopeCenter,
-            ),
-        ) {
-            // Off-axis key light — warm-leaning, rakes across the bobs so the
-            // glossy spheres catch a moving highlight as they swing.
-            LightNode(
-                type = LightManager.Type.DIRECTIONAL,
-                direction = Direction(-0.45f, -0.55f, -0.7f),
-                apply = { intensity(9_500f) },
-            )
-            // Cool rim light from behind-right separates the arms from the
-            // warm backdrop and adds depth to the staging.
-            LightNode(
-                type = LightManager.Type.DIRECTIONAL,
-                direction = Direction(0.6f, 0.25f, 0.5f),
-                apply = { intensity(3_200f) },
-            )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val aspect = if (maxWidth.value > 0f && maxHeight.value > 0f) {
+                maxWidth.value / maxHeight.value
+            } else {
+                0.5f
+            }
+            val cameraDistance = remember(reach, aspect) {
+                io.github.sceneview.demo.fitOrbitRadius(
+                    extentX = reach * 2f,
+                    extentY = reach * 2f,
+                    extentZ = 0.1f,
+                    aspect = aspect,
+                    fill = PENDULUM_FRAME_FILL,
+                    azimuthInvariant = false,
+                )
+            }
+            // Rebuilt when the envelope or the viewport changes, so a slider
+            // drag reframes live instead of leaving the swing cropped.
+            val cameraManipulator = remember(cameraDistance) {
+                CameraGestureDetector.DefaultCameraManipulator(
+                    eyePosition = Position(envelopeCenter.x, envelopeCenter.y, envelopeCenter.z + cameraDistance),
+                    targetPosition = envelopeCenter,
+                )
+            }
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                materialLoader = materialLoader,
+                environmentLoader = environmentLoader,
+                environment = activeEnvironment,
+                cameraNode = cameraNode,
+                // The rig is authored around the hinge; re-centring on the moving
+                // arms' bounds is what pushed the pendulum off-centre at open.
+                autoCenterContent = false,
+                cameraManipulator = cameraManipulator,
+            ) {
+                // Off-axis key light — warm-leaning, rakes across the bobs so the
+                // glossy spheres catch a moving highlight as they swing.
+                LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
+                    direction = Direction(-0.45f, -0.55f, -0.7f),
+                    apply = { intensity(9_500f) },
+                )
+                // Cool rim light from behind-right separates the arms from the
+                // warm backdrop and adds depth to the staging.
+                LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
+                    direction = Direction(0.6f, 0.25f, 0.5f),
+                    apply = { intensity(3_200f) },
+                )
 
-            // --- SceneView brand-token palette --------------------------
-            // Lead arm + bob: primary blue (#005bc1). Trailing arm + bob:
-            // brand-gradient violet (#6446cd). Hinge: brushed neutral.
-            val leadArmMaterial = rememberMaterialInstance(
-                materialLoader,
-                Color(0xFF005BC1),
-                metallic = 0.55f,
-                roughness = 0.35f,
-            )
-            val leadBobMaterial = rememberMaterialInstance(
-                materialLoader,
-                Color(0xFF3D7BD6),
-                metallic = 0.7f,
-                roughness = 0.18f,
-            )
-            val trailArmMaterial = rememberMaterialInstance(
-                materialLoader,
-                Color(0xFF6446CD),
-                metallic = 0.55f,
-                roughness = 0.35f,
-            )
-            val trailBobMaterial = rememberMaterialInstance(
-                materialLoader,
-                Color(0xFF8A6FE0),
-                metallic = 0.7f,
-                roughness = 0.18f,
-            )
-            val hingeMaterial = rememberMaterialInstance(
-                materialLoader,
-                Color(0xFFB8C0CC),
-                metallic = 0.9f,
-                roughness = 0.3f,
-            )
+                // --- SceneView brand-token palette --------------------------
+                // Lead arm + bob: primary blue (#005bc1). Trailing arm + bob:
+                // brand-gradient violet (#6446cd). Hinge: brushed neutral.
+                val leadArmMaterial = rememberMaterialInstance(
+                    materialLoader,
+                    Color(0xFF005BC1),
+                    metallic = 0.55f,
+                    roughness = 0.35f,
+                )
+                val leadBobMaterial = rememberMaterialInstance(
+                    materialLoader,
+                    Color(0xFF3D7BD6),
+                    metallic = 0.7f,
+                    roughness = 0.18f,
+                )
+                val trailArmMaterial = rememberMaterialInstance(
+                    materialLoader,
+                    Color(0xFF6446CD),
+                    metallic = 0.55f,
+                    roughness = 0.35f,
+                )
+                val trailBobMaterial = rememberMaterialInstance(
+                    materialLoader,
+                    Color(0xFF8A6FE0),
+                    metallic = 0.7f,
+                    roughness = 0.18f,
+                )
+                val hingeMaterial = rememberMaterialInstance(
+                    materialLoader,
+                    Color(0xFFB8C0CC),
+                    metallic = 0.9f,
+                    roughness = 0.3f,
+                )
 
-            // Each arm is a thin unit-tall box; the frame loop below rewrites
-            // its transform. Initial Y-size of 1 m means a Y-scale equal to the
-            // arm length renders the correct rendered length.
-            var leadArmRef by remember { mutableStateOf<CubeNodeImpl?>(null) }
-            var trailArmRef by remember { mutableStateOf<CubeNodeImpl?>(null) }
-            // Glossy bobs mark the point masses — drawn where the physics model
-            // actually concentrates mass: at each link's tip.
-            var jointBobRef by remember { mutableStateOf<SphereNodeImpl?>(null) }
-            var tipBobRef by remember { mutableStateOf<SphereNodeImpl?>(null) }
+                // Each arm is a thin unit-tall box; the frame loop below rewrites
+                // its transform. Initial Y-size of 1 m means a Y-scale equal to the
+                // arm length renders the correct rendered length.
+                var leadArmRef by remember { mutableStateOf<CubeNodeImpl?>(null) }
+                var trailArmRef by remember { mutableStateOf<CubeNodeImpl?>(null) }
+                // Glossy bobs mark the point masses — drawn where the physics model
+                // actually concentrates mass: at each link's tip.
+                var jointBobRef by remember { mutableStateOf<SphereNodeImpl?>(null) }
+                var tipBobRef by remember { mutableStateOf<SphereNodeImpl?>(null) }
 
-            CubeNode(
-                size = Size(x = 0.032f, y = 1f, z = 0.032f),
-                materialInstance = leadArmMaterial,
-                apply = { leadArmRef = this },
-            )
-            CubeNode(
-                size = Size(x = 0.046f, y = 1f, z = 0.046f),
-                materialInstance = trailArmMaterial,
-                apply = { trailArmRef = this },
-            )
-            // Joint bob — the lead link's point mass (also the trailing hinge).
-            SphereNode(
-                radius = 0.062f,
-                materialInstance = leadBobMaterial,
-                apply = { jointBobRef = this },
-            )
-            // Tip bob — the trailing link's point mass; heavier, so larger.
-            SphereNode(
-                radius = 0.085f,
-                materialInstance = trailBobMaterial,
-                apply = { tipBobRef = this },
-            )
-            // Fixed hinge marker at the pivot — a small brushed sphere.
-            SphereNode(
-                radius = 0.05f,
-                materialInstance = hingeMaterial,
-                position = pivot,
-            )
+                CubeNode(
+                    size = Size(x = 0.032f, y = 1f, z = 0.032f),
+                    materialInstance = leadArmMaterial,
+                    apply = { leadArmRef = this },
+                )
+                CubeNode(
+                    size = Size(x = 0.046f, y = 1f, z = 0.046f),
+                    materialInstance = trailArmMaterial,
+                    apply = { trailArmRef = this },
+                )
+                // Joint bob — the lead link's point mass (also the trailing hinge).
+                SphereNode(
+                    radius = 0.062f,
+                    materialInstance = leadBobMaterial,
+                    apply = { jointBobRef = this },
+                )
+                // Tip bob — the trailing link's point mass; heavier, so larger.
+                SphereNode(
+                    radius = 0.085f,
+                    materialInstance = trailBobMaterial,
+                    apply = { tipBobRef = this },
+                )
+                // Fixed hinge marker at the pivot — a small brushed sphere.
+                SphereNode(
+                    radius = 0.05f,
+                    materialInstance = hingeMaterial,
+                    position = pivot,
+                )
 
-            // Per-frame physics loop. Keyed on the node refs + generation so a
-            // Release (or slider change re-seeding `state`) restarts it.
-            LaunchedEffect(leadArmRef, trailArmRef, jointBobRef, tipBobRef, generation) {
-                val arm1 = leadArmRef ?: return@LaunchedEffect
-                val arm2 = trailArmRef ?: return@LaunchedEffect
-                val bobJoint = jointBobRef ?: return@LaunchedEffect
-                val bobTip = tipBobRef ?: return@LaunchedEffect
-                var lastNanos = withFrameNanos { it }
-                while (true) {
-                    val now = withFrameNanos { it }
-                    val dt = ((now - lastNanos) / 1_000_000_000.0).toFloat()
-                    lastNanos = now
+                // Per-frame physics loop. Keyed on the node refs + generation so a
+                // Release (or slider change re-seeding `state`) restarts it.
+                LaunchedEffect(leadArmRef, trailArmRef, jointBobRef, tipBobRef, generation) {
+                    val arm1 = leadArmRef ?: return@LaunchedEffect
+                    val arm2 = trailArmRef ?: return@LaunchedEffect
+                    val bobJoint = jointBobRef ?: return@LaunchedEffect
+                    val bobTip = tipBobRef ?: return@LaunchedEffect
+                    var lastNanos = withFrameNanos { it }
+                    while (true) {
+                        val now = withFrameNanos { it }
+                        val dt = ((now - lastNanos) / 1_000_000_000.0).toFloat()
+                        lastNanos = now
 
-                    state = DoublePendulum.step(state, dt)
+                        state = DoublePendulum.step(state, dt)
 
-                    applyArmTransform(arm1, state.pivot, state.joint)
-                    applyArmTransform(arm2, state.joint, state.tip)
-                    bobJoint.position = state.joint
-                    bobTip.position = state.tip
+                        applyArmTransform(arm1, state.pivot, state.joint)
+                        applyArmTransform(arm2, state.joint, state.tip)
+                        bobJoint.position = state.joint
+                        bobTip.position = state.tip
+                    }
                 }
             }
         }
     }
 }
+
+/** Share of the viewport the swing envelope's bounding square fills; the disc inside it sits clear. */
+private const val PENDULUM_FRAME_FILL = 0.96f
 
 /**
  * Position, orient and stretch a unit-tall arm box so its two ends sit at

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo
 
 import androidx.compose.animation.core.LinearEasing
@@ -14,7 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,12 +27,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.acos
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -43,7 +49,10 @@ import kotlin.math.sqrt
  * SceneView — the scrim is semi-transparent so the first rendered frame shows through.
  */
 @Composable
-fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
+fun LoadingScrim(
+    loading: Boolean,
+    label: String = stringResource(R.string.demo_loading_generic),
+) {
     if (!loading) return
     Box(
         modifier = Modifier
@@ -59,12 +68,10 @@ fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.90f))
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(44.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 4.dp,
-            )
-            Text(
+            // M3 Expressive morphing-shape indicator: it reads as "a scene is coming",
+            // where a bare ring reads as "the network is slow".
+            LoadingIndicator(color = MaterialTheme.colorScheme.primary)
+            io.github.sceneview.demo.ui.NarrationText(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -185,13 +192,18 @@ fun ErrorScrim(
  * painted a parasitic band across the fallback screen. See [arCameraInitScrimVisibility].
  * The happy path (first frame in ~1–3 s) flips [initializing] false long before the
  * timeout, so this only ever fires on a genuinely stuck start.
+ *
+ * [onNarratingChange] reports whether the spinner card is on screen. A demo with its own
+ * status pill uses it to keep one loader per screen (#3825): silent while this card
+ * narrates the camera start, and taking over once the card has stepped aside.
  */
 @Composable
 fun ARCameraInitScrim(
     initializing: Boolean,
     arCoreAvailability: ARCoreAvailability?,
-    label: String = "Starting camera…",
+    label: String = stringResource(R.string.ar_starting_camera),
     timeoutMillis: Long = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS,
+    onNarratingChange: ((Boolean) -> Unit)? = null,
 ) {
     // Defensive fallback: force-dismiss even if the first camera frame never reports.
     var timedOut by androidx.compose.runtime.remember(initializing) {
@@ -216,6 +228,12 @@ fun ARCameraInitScrim(
         qaBackdropEnabled = io.github.sceneview.demo.common.qaCameraBackdropEnabled(),
         arCoreUnavailable = arCoreAvailability != null,
     )
+    // Tells a demo whether this scrim's card is the one narrating the camera start, so its own
+    // status pill can stay silent instead of saying the same thing underneath (#3825).
+    if (onNarratingChange != null) {
+        val narrating = visibility == ArCameraInitScrimVisibility.BackdropAndSpinner
+        androidx.compose.runtime.LaunchedEffect(narrating) { onNarratingChange(narrating) }
+    }
     if (visibility == ArCameraInitScrimVisibility.Hidden) return
     Box(
         modifier = Modifier
@@ -232,12 +250,8 @@ fun ARCameraInitScrim(
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
                 .padding(horizontal = 28.dp, vertical = 22.dp),
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(44.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 4.dp,
-            )
-            Text(
+            LoadingIndicator(color = MaterialTheme.colorScheme.primary)
+            io.github.sceneview.demo.ui.NarrationText(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -408,9 +422,14 @@ fun rememberArPlaybackDataset(): File? {
  * ### The signal
  *
  * [READY_PRESENTED_FRAMES] presented frames, **at any interval**, and then one
- * [Engine.flushAndWait] — which blocks until the backend has actually executed the
+ * backend drain: a fence that signals only once the backend has actually executed the
  * queued work rather than merely accepted it. That is the driver truth the streak
  * was trying to infer from timing, asked directly.
+ *
+ * The drain is polled ([BackendDrainWait]), never awaited. This used to be an
+ * `Engine.flushAndWait()` on the main thread, and on a software GL it blocked there for
+ * the whole material-link time. A BACK press during that stall hit the 5 s input-dispatch
+ * limit and raised an ANR (#3799).
  *
  * Two frames rather than one because Filament applies backpressure: a *second*
  * accepted submission is itself the evidence that the first was drained. Neither
@@ -425,25 +444,36 @@ fun rememberArPlaybackDataset(): File? {
  */
 class FirstFrameState internal constructor(
     private val renderedState: androidx.compose.runtime.MutableState<Boolean>,
-    private val engine: com.google.android.filament.Engine? = null,
-) {
+    private val backendDrain: BackendDrainWait? = null,
+) : androidx.compose.runtime.RememberObserver {
     /** How many frames the scene has presented so far, capped once [rendered] latches. */
     private var presentedFrames: Int = 0
 
     val rendered: androidx.compose.runtime.State<Boolean> get() = renderedState
 
     val onFrame: (frameTimeNanos: Long) -> Unit = {
-        if (!renderedState.value) {
+        if (!renderedState.value && presentedFrames < READY_PRESENTED_FRAMES) {
             presentedFrames++
-            if (presentedFrames >= READY_PRESENTED_FRAMES) {
-                // Blocks until the backend has executed what those frames queued. On a
-                // software GL this is the whole material-link time; on hardware it is ~100 ms.
-                // The cover is a static image, so the wait is invisible — and it is the only
-                // thing here that speaks to the driver rather than about it.
-                runCatching { engine?.flushAndWait() }
-                renderedState.value = true
-            }
         }
+        if (!renderedState.value && presentedFrames >= READY_PRESENTED_FRAMES) {
+            // Latches once the backend has executed what those frames queued: on a software
+            // GL that is the whole material-link time, on hardware ~100 ms. The cover is a
+            // static image, so the wait is invisible — and it is the only thing here that
+            // speaks to the driver rather than about it. Polled, never awaited (#3799);
+            // repeated calls while the fence is out are no-ops.
+            val drain = backendDrain
+            if (drain == null) renderedState.value = true else drain.start { renderedState.value = true }
+        }
+    }
+
+    override fun onRemembered() = Unit
+
+    override fun onForgotten() {
+        backendDrain?.cancel()
+    }
+
+    override fun onAbandoned() {
+        backendDrain?.cancel()
     }
 }
 
@@ -490,7 +520,9 @@ fun rememberFirstFrameState(
     val rendered = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    return androidx.compose.runtime.remember(engine) { FirstFrameState(rendered, engine) }
+    return androidx.compose.runtime.remember(engine) {
+        FirstFrameState(rendered, engine?.let(::filamentBackendDrainWait))
+    }
 }
 
 /**
@@ -748,6 +780,15 @@ class HeroOrbitCameraManipulator(
     private val resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
     /** How long [HeroOrbitResume.ReturnToAuthoredPath] takes to ease back, in milliseconds. */
     private val resumeBlendMillis: Long = DEFAULT_RESUME_BLEND_MILLIS,
+    /**
+     * Floor of the polar-angle clamp [userControlTransform] applies to a user drag, passed
+     * straight through to [clampOrbitEyePitch]. The library default (just off the top pole)
+     * is right for a scene with nothing to hide near it; a demo with a floor plane close to
+     * [target] (#3794) tightens this instead.
+     */
+    private val minPolarDegrees: Float = DEFAULT_MIN_ORBIT_POLAR_DEGREES,
+    /** Ceiling of the same clamp — see [minPolarDegrees]. */
+    private val maxPolarDegrees: Float = DEFAULT_MAX_ORBIT_POLAR_DEGREES,
     /** Monotonic clock, in nanoseconds. The JVM tests drive it by hand. */
     private val nanoTime: () -> Long = System::nanoTime,
     /**
@@ -975,7 +1016,7 @@ class HeroOrbitCameraManipulator(
         // that is no longer always the authored target.
         val transform = fb.getTransform()
         val eye = transform.position
-        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot)
+        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot, minPolarDegrees, maxPolarDegrees)
         if (clampedEye == eye) return transform
         val mat = dev.romainguy.kotlin.math.lookAt(
             eye = clampedEye,
@@ -1090,6 +1131,13 @@ fun rememberHeroOrbitCameraManipulator(
     resumeAfterMillis: Long = 3_000L,
     resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
     contentShown: Boolean = true,
+    /**
+     * User-drag pitch clamp, forwarded to [HeroOrbitCameraManipulator]. The defaults only keep
+     * the eye off the orbit poles; a demo whose floor sits close to [target] (#3794) passes a
+     * tighter [maxPolarDegrees] so an upward drag cannot carry the camera under it.
+     */
+    minPolarDegrees: Float = DEFAULT_MIN_ORBIT_POLAR_DEGREES,
+    maxPolarDegrees: Float = DEFAULT_MAX_ORBIT_POLAR_DEGREES,
 ): io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
     val continuity = rememberContinuousCameraManipulator(pivot = target)
     // The turntable outlives the manipulator: a new framing rebuilds the latter, and the yaw —
@@ -1102,7 +1150,9 @@ fun rememberHeroOrbitCameraManipulator(
     // keeps it a recomposition input; it is also a remember{} key so the manipulator is
     // rebuilt with the new orbit distance if the zoom changes (e.g. a warm-start onNewIntent).
     val effectiveRadius = DemoSettings.cameraDistance ?: radius
-    val orbit = androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis, resume) {
+    val orbit = androidx.compose.runtime.remember(
+        effectiveRadius, yHeight, target, resumeAfterMillis, resume, minPolarDegrees, maxPolarDegrees,
+    ) {
         HeroOrbitCameraManipulator(
             yawProvider = { if (DemoSettings.qaMode) staticYaw else spin.yawDegrees },
             radius = effectiveRadius,
@@ -1118,6 +1168,8 @@ fun rememberHeroOrbitCameraManipulator(
                     0f
                 }
             },
+            minPolarDegrees = minPolarDegrees,
+            maxPolarDegrees = maxPolarDegrees,
         )
     }
     return continuity.driving(orbit, contentShown = contentShown)
@@ -1307,6 +1359,80 @@ internal fun clampOrbitEyePitch(
         y = target.y + newDy,
         z = target.z + hz * newHorizontal,
     )
+}
+
+/**
+ * Absolute yaw distance, in degrees, between an orbit eye and [referenceYawDegrees] around
+ * [target] — the same convention [HeroOrbitCameraManipulator]'s authored path uses (`x =
+ * sin(yaw) * radius`, `z = cos(yaw) * radius`, both relative to [target]). Returns `0` when the
+ * eye sits directly above/below [target] (no azimuth to measure) or when any component is
+ * non-finite. The counterpart read (not a clamp) to [clampOrbitEyePitch] — see
+ * [orbitLabelFadeAlpha] for why #3802 wants a measurement here instead of a bound.
+ *
+ * @param eye                  orbit eye world position to measure.
+ * @param target               orbit target the eye looks at / pivots around.
+ * @param referenceYawDegrees  yaw, in degrees, the deviation is measured from (the authored /
+ *                             front-on framing — usually `0`).
+ */
+internal fun orbitYawDeviationDegrees(
+    eye: Position,
+    target: Position,
+    referenceYawDegrees: Float,
+): Float {
+    val dx = eye.x - target.x
+    val dz = eye.z - target.z
+    if (!dx.isFinite() || !dz.isFinite()) return 0f
+
+    val horizontal = sqrt(dx * dx + dz * dz)
+    if (horizontal <= 1e-6f) return 0f
+
+    val yawDegrees = Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
+    // Delta from the reference, wrapped into [-180, 180) so a reference near +/-180 does not
+    // read a false, near-360-degree deviation.
+    var delta = (yawDegrees - referenceYawDegrees) % 360f
+    if (delta < -180f) delta += 360f
+    if (delta >= 180f) delta -= 360f
+    return abs(delta)
+}
+
+/** Yaw deviation, in degrees, below which [orbitLabelFadeAlpha] returns full opacity. */
+internal const val DEFAULT_LABEL_FADE_START_DEGREES: Float = 25f
+
+/** Yaw deviation, in degrees, at and beyond which [orbitLabelFadeAlpha] returns zero. */
+internal const val DEFAULT_LABEL_FADE_END_DEGREES: Float = 45f
+
+/**
+ * Opacity for a caption anchored to a subject on a flat orbit wall, as a function of
+ * [deviationDegrees] — [orbitYawDeviationDegrees] between the camera and the wall's front-on
+ * framing (#3802).
+ *
+ * A flat wall of captioned subjects (Materials' 3×3 sphere grid, Contact Shadow Preview's box
+ * pair) is captioned for a roughly head-on view: drag the camera towards broadside and
+ * perspective foreshortening collapses the gap between neighbours' screen-space positions
+ * faster than a fixed-width or fixed-position caption accounts for, so adjacent labels overlap
+ * and merge into unreadable text (Materials) or merge into one ("NShadow", Contact Shadow
+ * Preview). The orbit itself has to stay completely free — these demos are calibrated against
+ * Sketchfab/Polycam, where nothing ever stops the drag, and Materials exists specifically to
+ * turn a reflection around — so the fix reads the angle instead of bounding it: full opacity
+ * for [fullyVisibleDegrees] either side of front-on, easing smoothly to fully transparent by
+ * [fullyHiddenDegrees], and back the moment the drag returns.
+ *
+ * @param deviationDegrees    yaw distance from the front-on framing, in degrees; see
+ *                            [orbitYawDeviationDegrees].
+ * @param fullyVisibleDegrees deviation up to which the caption is fully opaque.
+ * @param fullyHiddenDegrees  deviation at and beyond which the caption is fully transparent.
+ */
+internal fun orbitLabelFadeAlpha(
+    deviationDegrees: Float,
+    fullyVisibleDegrees: Float = DEFAULT_LABEL_FADE_START_DEGREES,
+    fullyHiddenDegrees: Float = DEFAULT_LABEL_FADE_END_DEGREES,
+): Float {
+    if (deviationDegrees <= fullyVisibleDegrees) return 1f
+    if (deviationDegrees >= fullyHiddenDegrees) return 0f
+    val t = (deviationDegrees - fullyVisibleDegrees) / (fullyHiddenDegrees - fullyVisibleDegrees)
+    // Smoothstep: eases in/out at both ends instead of fading at a constant, visibly linear rate.
+    val eased = t * t * (3f - 2f * t)
+    return 1f - eased
 }
 
 /**

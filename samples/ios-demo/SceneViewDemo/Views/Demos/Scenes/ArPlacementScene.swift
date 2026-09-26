@@ -1,12 +1,12 @@
 // @sceneId     ar-placement
-// @title       Tap to Place
-// @subtitle    Tap a detected plane to place a model
+// @title       AR Placement
+// @subtitle    One object on the first usable surface
 // @category    ar
 // @available   true
 // @icon        arkit
 // @iosOnly     true
 // @order       6
-// @tags        ar,plane,tap-to-place,anchor,gltf,model
+// @tags        ar,plane,automatic-placement,anchor,gltf,model
 import SwiftUI
 
 enum ArPlacementScene: DemoScene {

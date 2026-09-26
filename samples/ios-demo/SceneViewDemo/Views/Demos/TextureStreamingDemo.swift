@@ -49,99 +49,52 @@ struct TextureStreamingDemo: View {
     // MARK: — Body
 
     var body: some View {
-        ZStack {
-            SceneView { root in
-                let entity = makeSphereEntity(preset: Self.presets[selectedIndex])
-                entity.name = "sphere"
-                root.addChild(entity)
-                // Re-apply once the reference is published: a preset picked
-                // between scene setup and this hop would otherwise be dropped
-                // by `applySelectedPreset()`'s nil guard. Mirrors
-                // `MultiModelDemo`, which calls `syncVisibility()` from the
-                // same hop.
-                Task { @MainActor in
-                    self.sphereEntity = entity
-                    self.applySelectedPreset()
-                }
-            }
-            // Route through the wrapper's IBL path for iOS-catalog consistency
-            // and Android parity — NOT to fix an unlit render. The sphere used
-            // to live in a raw `RealityView` overlay stacked on an empty
-            // `SceneView`; that raw path already lit the presets via RealityKit's
-            // default environment lighting (verified on the simulator 2026-07-23
-            // — gold / silver / copper read as distinct metals). But
-            // `.environment()` is defined on `SceneView`, so the raw path could
-            // never adopt the catalog's studio HDRI. Android hosts these material
-            // variants in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
-            // here is the same studio environment, aligning this demo with the
-            // rest of the iOS catalog (ModelViewerDemo / MaterialsDemo, #2114) and
-            // with Android. Follow-up to the L1.1 IBL sweep (#2805).
-            .environment(.studio)
-            .ignoresSafeArea()
-
-            // Controls overlay at the bottom.
-            VStack {
-                Spacer()
-                controlsOverlay
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .padding()
+        SceneView { root in
+            let entity = makeSphereEntity(preset: Self.presets[selectedIndex])
+            entity.name = "sphere"
+            root.addChild(entity)
+            // Re-apply once the reference is published: a preset picked
+            // between scene setup and this hop would otherwise be dropped
+            // by `applySelectedPreset()`'s nil guard. Mirrors
+            // `MultiModelDemo`, which calls `syncVisibility()` from the
+            // same hop.
+            Task { @MainActor in
+                self.sphereEntity = entity
+                self.applySelectedPreset()
             }
         }
+        // Route through the wrapper's IBL path for iOS-catalog consistency
+        // and Android parity — NOT to fix an unlit render. The sphere used
+        // to live in a raw `RealityView` overlay stacked on an empty
+        // `SceneView`; that raw path already lit the presets via RealityKit's
+        // default environment lighting (verified on the simulator 2026-07-23
+        // — gold / silver / copper read as distinct metals). But
+        // `.environment()` is defined on `SceneView`, so the raw path could
+        // never adopt the catalog's studio HDRI. Android hosts these material
+        // variants in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
+        // here is the same studio environment, aligning this demo with the
+        // rest of the iOS catalog (ModelViewerDemo / MaterialsDemo, #2114) and
+        // with Android. Follow-up to the L1.1 IBL sweep (#2805).
+        .environment(.studio)
         .onChange(of: selectedIndex) { _, _ in applySelectedPreset() }
-        .navigationTitle("Texture Streaming")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        // The presets are the scaffold's option strip; the readout under it
+        // is the one line the demo teaches (metallic / roughness swapped on a
+        // live entity). Same chrome as every other stage demo (#3766 P2 §3, §6).
+        .demoChrome(
+            accessory: {
+                VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
+                    DemoOptionStrip(Array(Self.presets.indices), selection: $selectedIndex) {
+                        Self.presets[$0].label
+                    }
+                    DemoHint(readout)
+                }
+            }
+        )
     }
 
-    // MARK: — Controls
-
-    @ViewBuilder
-    private var controlsOverlay: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Material")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Self.presets.indices, id: \.self) { index in
-                        let preset = Self.presets[index]
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedIndex = index
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color(preset.baseColor))
-                                    .frame(width: 12, height: 12)
-                                Text(preset.label)
-                                    .font(.subheadline)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(selectedIndex == index ? .accentColor : .secondary)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(selectedIndex == index ? Color.accentColor : Color.clear, lineWidth: 2)
-                        )
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-
-            let preset = Self.presets[selectedIndex]
-            Text(String(format: "Metallic: %.2f   Roughness: %.2f", preset.metallic, preset.roughness))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-        }
+    private var readout: String {
+        let preset = Self.presets[selectedIndex]
+        return String(format: "Metallic %.2f · Roughness %.2f", preset.metallic, preset.roughness)
     }
 
     // MARK: — Helpers

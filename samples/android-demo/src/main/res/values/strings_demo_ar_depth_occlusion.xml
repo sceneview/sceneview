@@ -7,4 +7,10 @@
 <resources>
     <string name="demo_ar_depth_occlusion_title">Depth Occlusion</string>
     <string name="demo_ar_depth_occlusion_subtitle">Real-world depth hides virtual objects</string>
+    <string name="ar_depth_comparison">Real objects in front of the helmet hide it when occlusion is on.</string>
+    <string name="ar_depth_requirement">Requires ARCore Depth API.</string>
+    <string name="ar_comparison_unavailable">This feature isn’t available on this device.</string>
+    <string name="ar_comparison_failed">Couldn’t change the effect. Try again.</string>
+    <string name="ar_occlusion_turn_off">Turn occlusion off</string>
+    <string name="ar_occlusion_turn_on">Turn occlusion on</string>
 </resources>

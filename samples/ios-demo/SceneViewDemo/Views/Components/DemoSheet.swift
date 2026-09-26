@@ -18,18 +18,23 @@ import SceneViewSwift
 ///     }
 /// ```
 ///
-/// New demos should build on ``DemoScaffold`` directly: it also takes the
-/// `accessory` slot (option strip, hint) that a modifier cannot express well.
-public struct DemoChromeModifier<Controls: View>: ViewModifier {
+/// The `accessory` (option strip, hint, legend) and `status` (asset-source
+/// pill) slots are the scaffold's, so a finished scene gets the same bottom
+/// cluster and identity row as a scene built on ``DemoScaffold`` directly.
+public struct DemoChromeModifier<Accessory: View, Status: View, Controls: View>: ViewModifier {
     let title: String?
     let dock: [DockItem]
     let accent: DockItem?
     let onReset: (() -> Void)?
+    let chromeMode: DemoChromeMode
+    let accessory: () -> Accessory
+    let status: () -> Status
     let controls: () -> Controls
 
     public func body(content: Content) -> some View {
         DemoScaffold(title, dock: dock, accent: accent, onReset: onReset,
-                     stage: { content }, controls: controls)
+                     chromeMode: chromeMode, stage: { content }, accessory: accessory,
+                     status: status, controls: controls)
     }
 }
 
@@ -43,6 +48,50 @@ extension EnvironmentValues {
     var demoTitle: String? {
         get { self[DemoTitleKey.self] }
         set { self[DemoTitleKey.self] = newValue }
+    }
+}
+
+// MARK: - AR stage without a camera
+
+/// What an AR demo shows when there is no camera to draw on: the simulator.
+///
+/// Theme-independent, exactly like the AR chrome that floats over it. Before
+/// this, each demo hand-rolled the same stack with `.secondary` text on
+/// `systemGroupedBackground` — light grey on near-white, which the audit
+/// captures caught as unreadable in light mode, and which put an ordinary app
+/// surface under chrome designed for a camera frame. The ground is the same
+/// deep gradient the AR tab already used.
+struct ARUnavailableStage: View {
+    /// SF Symbol naming the capability the demo would have shown.
+    let icon: String
+    /// One sentence: what a real device would do here.
+    let message: String
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.10, blue: 0.18),
+                    Color(red: 0.18, green: 0.18, blue: 0.28),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            VStack(spacing: SceneViewTokens.Space.md) {
+                Image(systemName: icon)
+                    .font(.system(size: 60))
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                    .accessibilityHidden(true)
+                Text("AR requires a physical device")
+                    .font(.headline)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, SceneViewTokens.Space.xl)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -61,7 +110,7 @@ struct GlassCircle<Content: View>: View {
     var body: some View {
         content()
             .frame(width: SceneViewTokens.Glass.iconButtonSize, height: SceneViewTokens.Glass.iconButtonSize)
-            .glassBackground(in: Circle())
+            .glassBackground(in: Circle(), interactive: true)
             .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
             .contentShape(Circle())
     }
@@ -73,8 +122,13 @@ struct GlassIconButton: View {
     let label: String
     let action: () -> Void
 
+    @State private var taps = 0
+
     var body: some View {
-        Button(action: action) {
+        Button {
+            taps += 1
+            action()
+        } label: {
             GlassCircle {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .semibold))
@@ -82,6 +136,7 @@ struct GlassIconButton: View {
             }
         }
         .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+        .sensoryFeedback(.impact(weight: .light), trigger: taps)
         .accessibilityLabel(label)
     }
 }
@@ -102,26 +157,40 @@ struct GlassPill<Content: View>: View {
 public extension View {
     /// Wraps the scene in ``DemoScaffold``: back button, identity pill and the
     /// floating dock whose Settings item opens `controls` in a detent sheet.
-    func demoChrome<Controls: View>(
+    func demoChrome<Accessory: View, Status: View, Controls: View>(
         title: String? = nil,
         dock: [DockItem] = [],
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() },
+        @ViewBuilder status: @escaping () -> Status = { EmptyView() },
         @ViewBuilder controls: @escaping () -> Controls
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
+                                    chromeMode: chromeMode, accessory: accessory, status: status,
                                     controls: controls))
     }
 
     /// ``DemoScaffold`` with no controls of the demo's own — the sheet still
     /// carries Reset, Send feedback and QA mode.
-    func demoChrome(
+    ///
+    /// Disfavoured so that `.demoChrome(accessory: { … }) { controls }` keeps
+    /// binding its trailing closure to `controls` above: with both overloads
+    /// viable, the ranking otherwise preferred this one (no default used) and
+    /// the sheet content landed in the identity row's `status` slot.
+    @_disfavoredOverload
+    func demoChrome<Accessory: View, Status: View>(
         title: String? = nil,
         dock: [DockItem] = [],
         accent: DockItem? = nil,
-        onReset: (() -> Void)? = nil
+        onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() },
+        @ViewBuilder status: @escaping () -> Status = { EmptyView() }
     ) -> some View {
         modifier(DemoChromeModifier(title: title, dock: dock, accent: accent, onReset: onReset,
+                                    chromeMode: chromeMode, accessory: accessory, status: status,
                                     controls: { EmptyView() }))
     }
 }

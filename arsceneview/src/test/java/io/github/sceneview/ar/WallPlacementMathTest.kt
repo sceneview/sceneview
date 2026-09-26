@@ -1,6 +1,8 @@
 package io.github.sceneview.ar
 
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
+import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.normalize
 import dev.romainguy.kotlin.math.rotation
 import io.github.sceneview.math.Direction
@@ -20,6 +22,139 @@ import kotlin.math.sqrt
  * functions directly, verifying rotations by reading the `dev.romainguy.kotlin.math` matrix columns.
  */
 class WallPlacementMathTest {
+
+    @Test
+    fun `direct wall placement preserves hit height and faces either camera side`() {
+        val point = Position(0.4f, 1.7f, -2f)
+        for (raw in listOf(Direction(0f, 0f, 1f), Direction(0f, 0f, -1f),
+            normalize(Direction(1f, 0.08f, 1f)))) {
+            for (side in listOf(-1f, 1f)) {
+                val viewer = raw * side
+                val pose = directWallPose(point, raw, viewer)
+                assertEquals(point, pose.position) // No floor height or mount-height input.
+                assertVecEquals(viewer, pose.rotation * Direction(0f, 0f, 1f))
+                val up = pose.rotation * Direction(0f, 1f, 0f)
+                assertTrue(up.y > 0.99f)
+                assertEquals(0f, dev.romainguy.kotlin.math.dot(up, viewer), eps)
+            }
+        }
+    }
+
+    @Test
+    fun `grab offset uses contact plane even when finger is beyond detected boundary`() {
+        val contact = Position(0f, 1f, -2f)
+        val offset = wallGrabOffset(contact, Direction(0f, 0f, 1f), Position(0f, 1f, 0f),
+            normalize(Direction(0.5f, 0.25f, -2f)))!!
+        assertVecEquals(Position(-0.5f, -0.25f, 0f), offset)
+        assertNull(wallGrabOffset(contact, Direction(0f, 0f, 1f), Position(0f), Direction(1f, 0f, 0f)))
+        assertNull(wallGrabOffset(contact, Direction(0f, 0f, 1f), Position(0f), Direction(0f, 0f, 1f)))
+    }
+
+    @Test
+    fun `wall contact survives combined twist scale and transfer to another wall`() {
+        for (normal in listOf(Direction(0f, 0f, 1f), Direction(-1f, 0f, 0f),
+            normalize(Direction(1f, 0.1f, -1f)))) {
+            assertWallContactSurvivesTwist(Position(1f, 1.6f, -2f), normal)
+        }
+    }
+
+    /** Every twist/scale combination keeps the bottom-back origin and both back corners on the wall. */
+    private fun assertWallContactSurvivesTwist(point: Position, normal: Direction) {
+        val wall = directWallPose(point, normal, normal)
+        val delta = wallTangentOffset(Position(0.2f, -0.1f, 0.3f), normal)
+        assertEquals(0f, dot(delta, normal), eps)
+        val origin = point + delta
+        for ((orientation, scale) in twistedOrientations(wall.rotation)) {
+            for (corner in BACK_CORNERS) {
+                val back = origin + orientation * (corner * scale)
+                assertEquals(0f, dot(back - point, normal), eps)
+                val front = origin + orientation * ((corner + Position(0f, 0f, 0.012f)) * scale)
+                assertTrue(dot(front - point, normal) > 0f)
+            }
+            assertVecEquals(origin, origin + orientation * Position(0f))
+        }
+    }
+
+    /** The authored rotation twisted around its own facing axis, paired with a uniform scale. */
+    private fun twistedOrientations(base: Quaternion): List<Pair<Quaternion, Float>> =
+        listOf(-135f, 0f, 35f, 180f).flatMap { angle ->
+            val twisted = base * Quaternion.fromAxisAngle(Direction(0f, 0f, 1f), angle)
+            listOf(0.25f, 1f, 4f).map { scale -> twisted to scale }
+        }
+
+    @Test
+    fun `wall-only candidate consumes one request and recovers without scanning again`() {
+        val state = AutoPlacementState()
+        state.requestPlacement()
+        val usableWall = UsableSurfacePolicy.accept(PlacementSurface.WALL,
+            isUpwardHorizontalPlane = false, isVerticalPlane = true,
+            isTrackableTracking = true, isPoseInPolygon = true, distanceMeters = 1f)
+        assertTrue(usableWall)
+        assertEquals(FrameEffect.NONE, state.onFrame(FrameInput(0, true, usableWall)) { false })
+        assertFalse(state.hasPlacement) // Failed anchor creation is never a successful placement.
+        assertEquals(FrameEffect.PLACE, state.onFrame(FrameInput(1, true, usableWall)))
+        repeat(30) { state.onFrame(FrameInput(2L + it, true, true, true)) }
+        assertEquals(1, state.placementsCreated)
+        assertEquals(FrameEffect.NONE, state.onBackgroundTap())
+        state.beginAdjustment()
+        state.onFrame(FrameInput(40, false, false, false))
+        assertEquals(PlacementPhase.TRACKING_LOST, state.phase)
+        assertFalse(state.isAdjusting)
+        state.onFrame(FrameInput(41, true, true, false))
+        assertEquals(PlacementPhase.RECOVERING, state.phase)
+        assertFalse(state.wantsSurface)
+        state.onFrame(FrameInput(10_041, true, true, false))
+        assertEquals(PlacementPhase.RECOVERY_FAILED, state.phase)
+        state.onFrame(FrameInput(10_042, true, true, true))
+        assertEquals(PlacementPhase.PLACED, state.phase)
+        assertEquals(1, state.placementsCreated)
+    }
+
+    @Test
+    fun `vertical policy rejects floors invalid geometry paused planes and out of range`() {
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, true, false, true, true, 1f))
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.SURFACE, false, true, true, true, 1f))
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, false, true, 1f))
+        assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, true, false, 1f))
+        for (distance in listOf(0.249f, 3.001f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            assertFalse(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, true, true, distance))
+        }
+        for (distance in listOf(0.25f, 3f)) {
+            assertTrue(UsableSurfacePolicy.accept(PlacementSurface.WALL, false, true, true, true, distance))
+        }
+    }
+
+    @Test
+    fun `accessibility transforms require selection and tracking and clamp size`() {
+        val state = AutoPlacementState()
+        var moves = 0
+        var rotation = 0f
+        var scale = 1f
+        state.moveAction = { _, _ -> moves++; true }
+        state.rotateAction = { rotation += it }
+        state.scaleAction = { scale = it }
+        assertFalse(state.moveBy(1f, 0f))
+        state.requestPlacement()
+        state.onFrame(FrameInput(1, true, true))
+        assertTrue(state.moveBy(0.02f, 0f))
+        state.rotateBy(2f)
+        state.scaleTo(8f)
+        assertEquals(4f, scale, eps)
+        state.scaleTo(0f)
+        assertEquals(0.25f, scale, eps)
+        state.scaleTo(Float.NaN)
+        assertEquals(0.25f, scale, eps)
+        state.deselectPlacement()
+        assertFalse(state.moveBy(1f, 0f))
+        state.selectPlacement()
+        state.onFrame(FrameInput(2, false, false, false))
+        assertFalse(state.moveBy(1f, 0f))
+        state.rotateBy(20f)
+        state.scaleTo(2f)
+        assertEquals(1, moves)
+        assertEquals(2f, rotation, eps)
+        assertEquals(0.25f, scale, eps)
+    }
 
     private val eps = 1e-5f
 
@@ -221,5 +356,12 @@ class WallPlacementMathTest {
         assertEquals("x", expected.x, actual.x, eps)
         assertEquals("y", expected.y, actual.y, eps)
         assertEquals("z", expected.z, actual.z, eps)
+    }
+
+    private companion object {
+        /** The two bottom-back corners of the authored 0.30 m wide, 0.176 m tall reference box. */
+        val BACK_CORNERS = listOf(-0.15f, 0.15f).flatMap { x ->
+            listOf(0f, 0.176f).map { y -> Position(x, y, 0f) }
+        }
     }
 }

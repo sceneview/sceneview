@@ -7,4 +7,8 @@
 <resources>
     <string name="demo_ar_image_stabilization_title">Image Stabilization</string>
     <string name="demo_ar_image_stabilization_subtitle">Electronic stabilization of the AR feed</string>
+    <string name="ar_eis_comparison">Toggle stabilization to compare camera motion around the anchored helmet.</string>
+    <string name="ar_eis_requirement">Requires ARCore Electronic Image Stabilization.</string>
+    <string name="ar_eis_turn_off">Turn stabilization off</string>
+    <string name="ar_eis_turn_on">Turn stabilization on</string>
 </resources>

@@ -1209,6 +1209,8 @@ fun SceneView(
  * `SubcomposeLayout` slot such as Material3's `Scaffold`, the common case) may detach *after* the
  * `Model` is destroyed. Either order is safe — `Node.destroy()` only touches entity ids and
  * `destroyModel` tolerates already-freed assets — so the renderables are never left dangling.
+ * A key change right after the load returns, while the textures are still decoding, is safe too:
+ * `destroyModel` cancels that model's pending texture load before freeing it.
  * Only a model that finished loading is disposed here: a load cancelled by a key change after
  * `ModelLoader` registered the `Model` but before it was produced stays resident until the
  * loader is cleared. The [ModelLoader]
@@ -1368,7 +1370,9 @@ fun rememberMediaPlayer(
  *
  * The engine is the root Filament object. It owns all other Filament resources and must outlive
  * them. Both the engine and its EGL context are destroyed automatically when the composition
- * leaves the tree.
+ * leaves the tree — right away when its backend is idle, otherwise as soon as the backend has
+ * drained the work already queued (a new scene's shader compiles, say), without blocking the main
+ * thread on that drain.
  *
  * Only one engine per process is typically needed. Pass it explicitly to all `remember*` helpers
  * if you want to share Filament resources across multiple `SceneView` composables.
@@ -1386,8 +1390,12 @@ fun rememberEngine(
     val engine = remember(eglContext) { engineCreator(eglContext) }
     DisposableEffect(eglContext, engine) {
         onDispose {
-            engine.safeDestroy()
-            eglContext.destroy()
+            // Not `safeDestroy()` inline: Engine.destroy() joins the backend thread after it has
+            // run every queued command, and a scene disposed right after it appeared still has
+            // its shader compiles queued — seconds on the main thread, an ANR (#3799). Destroy
+            // once the backend is idle instead, polled from the main looper; the usual idle case
+            // still destroys before onDispose returns.
+            engine.destroyWhenBackendIdle { eglContext.destroy() }
         }
     }
     return engine
@@ -1501,7 +1509,9 @@ fun rememberARView(engine: Engine, creator: () -> View = { createARView(engine) 
  * Creates and remembers a Filament [Renderer].
  *
  * A `Renderer` represents an operating system window and drives the frame pipeline —
- * `beginFrame`, `render`, `endFrame`. One per window is recommended. Destroyed on disposal.
+ * `beginFrame`, `render`, `endFrame`. One per window is recommended. Destroyed on disposal —
+ * right away when the backend is idle, otherwise as soon as it has drained the work already
+ * queued, without blocking the main thread on that drain.
  *
  * You rarely need to call this directly — `SceneView { }` creates one by default.
  *
@@ -1515,7 +1525,10 @@ fun rememberRenderer(
 ) = remember(engine, creator).also { renderer ->
     DisposableEffect(renderer) {
         onDispose {
-            engine.safeDestroyRenderer(renderer)
+            // Not `safeDestroyRenderer()` inline: Filament's renderer teardown waits for every
+            // queued backend command, and an activity destroyed right after a scene appeared still
+            // has its shader programs linking — seconds on the main thread, an ANR (#3799).
+            engine.destroyRendererWhenBackendIdle(renderer)
         }
     }
 }
@@ -1597,7 +1610,10 @@ fun rememberEnvironmentLoader(
 ) = remember(engine, context, creator).also { environmentLoader ->
     DisposableEffect(environmentLoader) {
         onDispose {
-            environmentLoader.destroy()
+            // Not `destroy()` inline: the IBL prefilter's context destroys its own Renderer, whose
+            // teardown waits for every queued backend command — an ANR when the scene is left
+            // right after it appeared (#3885). The engine outlives the deferred release.
+            environmentLoader.destroyWhenBackendIdle()
         }
     }
 }

@@ -136,6 +136,44 @@ class DemoScaffoldTopBandTest {
     }
 
     @Test
+    fun topOverlay_startsBelowTheIdentityRow_onTheFirstFrame() {
+        // #3801: the reserve is the row's *measured* height, and a measurement only
+        // lands after the layout pass that produced it — one frame late. A demo whose
+        // main thread then blocks on a model load (Animation & Physics, several
+        // seconds on the emulator) keeps that first frame on screen, and on it the
+        // clip card sat at the very top, under the back button and the title pill.
+        // With the clock held, no second frame can come to the rescue: whatever is
+        // asserted here is what that stalled first frame shows.
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            SceneViewDemoTheme(darkTheme = false) {
+                DemoScaffold(
+                    title = "Top",
+                    onBack = {},
+                    topOverlay = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(24.dp)
+                                .testTag(PROBE_PLAIN),
+                        )
+                    },
+                ) {}
+            }
+        }
+        val plain = composeRule.onNodeWithTag(PROBE_PLAIN).getUnclippedBoundsInRoot()
+        val row = composeRule.onNodeWithTag(DemoScaffoldTestTags.IDENTITY_ROW)
+            .getUnclippedBoundsInRoot()
+
+        assertTrue(
+            "on the first frame the top overlay starts at ${plain.top} but the identity " +
+                "row runs to ${row.bottom} — they overlap by ${row.bottom - plain.top}. " +
+                "The reserve must not wait for the row's measurement to land.",
+            plain.top >= row.bottom,
+        )
+    }
+
+    @Test
     fun identityPill_keepsTheFullTitle_andCarriesTheAssetSource() {
         // The asset-source chip became the suffix of the identity pill. The pill
         // keeps `ASSET_SOURCE_CHIP` and must hold the *full* title in the tree

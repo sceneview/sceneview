@@ -43,13 +43,13 @@ SceneViewSwift is distributed as a **Swift Package**.
 https://github.com/sceneview/sceneview.git
 ```
 
-3. Set the version rule to **Up to Next Major** from `4.0.0`.
+3. Set the version rule to **Up to Next Major** from `4.39.0`.
 4. Click **Add Package** and add `SceneViewSwift` to your app target.
 
 !!! tip
     You can also add the dependency manually in your `Package.swift`:
     ```swift
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.38.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.40.0")
     ```
 
 ---

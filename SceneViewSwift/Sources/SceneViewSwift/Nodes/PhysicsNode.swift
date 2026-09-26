@@ -106,19 +106,25 @@ public struct PhysicsNode: Sendable {
 
     // MARK: - Force application
 
-    /// Applies an impulse to the entity (instantaneous force).
+    /// Applies an impulse to the entity (instantaneous change of momentum).
     ///
     /// Only works on dynamic bodies.
     ///
+    /// Uses RealityKit's `applyLinearImpulse(_:relativeTo:)`, which delivers the
+    /// requested N·s in one go. The previous implementation called `addForce`,
+    /// a force in newtons applied over the next simulation step — the resulting
+    /// velocity change therefore scaled with frame duration, so the same call
+    /// threw an object further on a slow frame than on a fast one.
+    ///
     /// - Parameters:
     ///   - entity: The physics-enabled entity.
-    ///   - impulse: Force vector in Newton-seconds.
+    ///   - impulse: Impulse vector in Newton-seconds, in world space.
     public static func applyImpulse(
         to entity: Entity,
         impulse: SIMD3<Float>
     ) {
         guard let modelEntity = entity as? ModelEntity else { return }
-        modelEntity.addForce(impulse, relativeTo: nil)
+        modelEntity.applyLinearImpulse(impulse, relativeTo: nil)
     }
 
     /// Sets the linear velocity of a dynamic or kinematic entity.

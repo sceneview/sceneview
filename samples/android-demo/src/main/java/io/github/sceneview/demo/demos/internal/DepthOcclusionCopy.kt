@@ -53,7 +53,7 @@ internal object DepthOcclusionCopy {
      * - Not tracking: `null`. The scaffold's tracking / scanning banner is louder and
      *   says something more urgent ("move the device", "add light"); stacking a second
      *   sentence on it is noise.
-     * - Tracking, nothing placed: say the one gesture that starts the demo.
+     * - Tracking, nothing placed: show the shared automatic-placement coaching.
      * - Placed: say the one gesture that *reveals* the effect, and say what each state
      *   should look like when they do it. This is the before/after, in words.
      */
@@ -63,7 +63,7 @@ internal object DepthOcclusionCopy {
         occlusionOn: Boolean,
     ): String? = when {
         !isTracking -> null
-        !hasPlacedModel -> "Tap a flat surface to place the helmet"
+        !hasPlacedModel -> "Move slowly to find a surface."
         occlusionOn -> "Pass your hand in front of the helmet — it gets cut away"
         else -> "Pass your hand in front — nothing is cut away. Turn occlusion on to compare"
     }

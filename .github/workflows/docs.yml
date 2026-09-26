@@ -20,8 +20,15 @@ on:
   # website + docs (#1311, #1321). The repo runs a continuous
   # high-merge-rate cycle — a Pages rebuild only adds value when
   # documentation or website content actually changes.
-  #   - `**/*.md` covers CHANGELOG.md / MIGRATION.md / CONTRIBUTING.md
-  #     (synced into the MkDocs site) plus marketing/codelabs/*.md.
+  #   - The list is exactly what the build job below reads: the MkDocs tree,
+  #     the static landing page, the two root files synced into the docs
+  #     (CHANGELOG.md, CONTRIBUTING.md), llms.txt, the web-demo static site
+  #     copied to /web-demo/, and the pinned Python deps.
+  #   - It used to be `**/*.md`, which matched the `changelog.d/` fragment
+  #     every PR carries — so nearly every merge redeployed an unchanged site
+  #     (107 of 125 merges over 2026-09-12..26; 50 with this list).
+  #     `samples/web-demo/site/**` was never listed and only reached the live
+  #     /web-demo/ route through that accident; it is listed now.
   #   - the workflow file itself is listed so changes to the deploy
   #     logic re-run it.
   push:
@@ -30,7 +37,11 @@ on:
       - 'docs/**'
       - 'website-static/**'
       - 'llms.txt'
-      - '**/*.md'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
+      - 'marketing/codelabs/**'
+      - 'samples/web-demo/site/**'
+      - '.github/workflows/requirements/docs*.txt'
       - '.github/workflows/docs.yml'
   release:
     types: [published]

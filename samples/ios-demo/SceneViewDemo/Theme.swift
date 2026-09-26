@@ -89,6 +89,22 @@ enum SceneViewTokens {
     /// Model-viewer stage, deliberately identical in light and dark themes (`#0B0F16`).
     enum Stage {
         static let background = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+
+        /// Fills for primitives that must stay apart on the stage — Android's
+        /// `SceneViewColors.Ramp4`: `primary` light #005BC1, `gradient-hero` end
+        /// #6446CD, `primary` dark #A4C1FF, `tertiary` dark #D2A8FF. Fixed in both
+        /// themes, like the stage they sit on.
+        static let shapeRamp: [UIColor] = [
+            UIColor(red: 0x00 / 255, green: 0x5B / 255, blue: 0xC1 / 255, alpha: 1),
+            UIColor(red: 0x64 / 255, green: 0x46 / 255, blue: 0xCD / 255, alpha: 1),
+            UIColor(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255, alpha: 1),
+            UIColor(red: 0xD2 / 255, green: 0xA8 / 255, blue: 0xFF / 255, alpha: 1),
+        ]
+
+        /// A picked primitive — `DESIGN.md` `info` #EA580C, the "informational
+        /// highlight" status colour. Warm and outside `shapeRamp`, so a pick
+        /// reads at a glance against the blue and violet fills.
+        static let shapePicked = UIColor(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255, alpha: 1)
     }
 
     /// `DESIGN.md` — Spatial Gallery overlay colours.
@@ -262,6 +278,22 @@ enum SceneViewTokens {
         )
         /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
         static let onPrimary = chipSelectedText
+        /// M3 `secondary-container` — #D9E3F8 / #3D4758, Android's
+        /// `md_theme_*_secondaryContainer`. The About support card, the only
+        /// tinted surface of that screen (`DESIGN.md` "Demo App About").
+        static let secondaryContainer = Color(
+            light: Color(red: 0xD9 / 255, green: 0xE3 / 255, blue: 0xF8 / 255),
+            dark: Color(red: 0x3D / 255, green: 0x47 / 255, blue: 0x58 / 255)
+        )
+        /// M3 `on-secondary-container` — #121C2B / #D9E3F8: 13.3:1 light and
+        /// 7.3:1 dark on `secondaryContainer`.
+        static let onSecondaryContainer = Color(
+            light: Color(red: 0x12 / 255, green: 0x1C / 255, blue: 0x2B / 255),
+            dark: Color(red: 0xD9 / 255, green: 0xE3 / 255, blue: 0xF8 / 255)
+        )
+        /// DESIGN.md Status, `danger` — #EA4335 in both themes. A glyph colour
+        /// (3.5:1 on `chip-bg` light, 3.8:1 dark), never body text.
+        static let danger = Color(red: 0xEA / 255, green: 0x43 / 255, blue: 0x35 / 255)
         /// DESIGN.md Borders, `outline` — #D6DAE0 / #2A3346.
         /// The Cards row specifies this 1 pt contour for elevated surfaces.
         static let outline = Color(
@@ -349,6 +381,15 @@ enum SceneViewTokens {
         static let heroScrimStart: CGFloat = 0.5
     }
 
+    /// `DESIGN.md` — Demo App About (`about-*`), the iOS twin of Android's
+    /// `SceneViewTokens.About`.
+    enum About {
+        /// `about-mark` — the launcher icon at identity size, clipped to
+        /// `radius-xl`. The same picture in light and dark: it is the
+        /// product's identity, not a themed surface.
+        static let markSize: CGFloat = 80
+    }
+
     /// `DESIGN.md` — Motion: the `ease-expressive` curve, the three durations,
     /// and the two patterns the catalogue uses (scroll reveal, staggered entry).
     ///
@@ -432,6 +473,12 @@ enum SceneViewTokens {
         static let selectedOutlineWidth: CGFloat = 2
         /// `media-aspect` — 5:4 home card media.
         static let mediaAspect: CGFloat = 1.25
+        /// Width of the leading-edge strip that listens for the demo host's
+        /// swipe-to-dismiss. Narrow on purpose: the rest of the screen belongs
+        /// to the scene's own orbit / pan gestures.
+        static let edgeSwipeWidth: CGFloat = 20
+        /// How far that edge drag must travel before it dismisses.
+        static let edgeSwipeDismiss: CGFloat = 64
     }
 
     /// `DESIGN.md` — "Demo Scaffold (iOS)": where the chrome sits, in points.
@@ -468,6 +515,38 @@ enum SceneViewTokens {
         static func dockBottom(safeArea: CGFloat) -> CGFloat {
             max(margin, safeArea + 8)
         }
+    }
+
+    /// Chrome tokens for a screen whose stage is the **camera feed**
+    /// (`DESIGN.md` "AR Coaching Overlay" / "AR Overlay Card").
+    ///
+    /// The scrim bands of ``Chrome`` exist because a 3D stage can be any
+    /// brightness. A camera feed is not a stage: darkening 160 pt of sky and
+    /// 220 pt of floor is darkening the thing the user came to look at. Over
+    /// the feed the ground belongs to each control instead — near-opaque,
+    /// exactly the size of what it carries.
+    enum ARChrome {
+        /// `ar-scrim` — theme-independent ground; only the opacity flips,
+        /// because light mode is used outdoors more often.
+        static func scrim(_ scheme: ColorScheme) -> Color {
+            Color.black.opacity(scheme == .dark ? 0.88 : 0.94)
+        }
+        /// `ar-scrim-border` — the hairline that separates the control from a
+        /// busy frame.
+        static func border(_ scheme: ColorScheme) -> Color {
+            Color.white.opacity(scheme == .dark ? 0.10 : 0.16)
+        }
+        static let borderWidth: CGFloat = 1
+        /// `on-ar-scrim` — white in both themes; the ground is the camera.
+        static let onScrim = Color.white
+        /// `on-ar-scrim-dim` — secondary text on the scrim.
+        static let onScrimDim = Color.white.opacity(0.72)
+        /// Status accents read on the scrim — the **dark-scheme** values in
+        /// both themes (`DESIGN.md` "AR Coaching Overlay": Blocked #FFB4AB,
+        /// Guidance `warning`, Positive `success`).
+        static let danger = Color(red: 0xFF / 255, green: 0xB4 / 255, blue: 0xAB / 255)
+        static let warning = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
+        static let success = Color(red: 0x16 / 255, green: 0xA3 / 255, blue: 0x4A / 255)
     }
 }
 
@@ -573,13 +652,32 @@ extension View {
     ///
     /// Use this anywhere chrome sits over media. Themed surfaces inside a page
     /// take `HomeColor.surfaceContainer` instead.
-    func glassBackground<S: InsettableShape>(in shape: S) -> some View {
-        modifier(GlassBackground(shape: shape))
+    ///
+    /// On iOS 26 / macOS 26 and later the stack above is replaced by the
+    /// system's own Liquid Glass (`glassEffect(.regular)`), which samples,
+    /// tints and edges itself against whatever is behind it — the floor,
+    /// ceiling and border were a hand-built approximation of exactly that.
+    /// Pass `interactive: true` on a control (a button, the dock, an option
+    /// strip) so the glass answers the touch; a read-only pill stays still.
+    /// `id` names the shape inside a ``GlassEffectContainer`` so it morphs
+    /// with its neighbours instead of cross-fading (the dock cluster).
+    func glassBackground<S: InsettableShape>(in shape: S, interactive: Bool = false,
+                                             id: String? = nil) -> some View {
+        modifier(GlassBackground(shape: shape, interactive: interactive, id: id, native: true))
     }
 
     /// Edge-to-edge variant for bars that have no corner radius of their own.
     func glassBackground() -> some View {
         self.glassBackground(in: Rectangle())
+    }
+
+    /// The material stack of ``glassBackground(in:interactive:id:)`` on every
+    /// OS version — for cards that sit *in* a page (About, Credits, a recent
+    /// search row) rather than float over media. Apple keeps Liquid Glass to
+    /// the floating navigation layer; a content card made of it competes with
+    /// the chrome it sits under.
+    func materialGlassBackground<S: InsettableShape>(in shape: S) -> some View {
+        modifier(GlassBackground(shape: shape, interactive: false, id: nil, native: false))
     }
 
     /// Apply SceneView card styling
@@ -605,9 +703,63 @@ extension View {
 /// on the colour scheme.
 private struct GlassBackground<S: InsettableShape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.arChromeGround) private var arGround
+    @Environment(\.chromeGlassNamespace) private var glassNamespace
     let shape: S
+    let interactive: Bool
+    let id: String?
+    let native: Bool
 
     func body(content: Content) -> some View {
+        if let arGround {
+            // Over a camera feed the control carries its own near-opaque
+            // ground instead of standing on a screen-wide scrim band. Blur is
+            // deliberately absent: `.ultraThinMaterial` samples the live feed,
+            // which is exactly the content the label has to beat.
+            content
+                .background(arGround, in: shape)
+                .overlay(
+                    shape.strokeBorder(
+                        SceneViewTokens.ARChrome.border(colorScheme),
+                        lineWidth: SceneViewTokens.ARChrome.borderWidth
+                    )
+                )
+        } else if native, #available(iOS 26, macOS 26, visionOS 26, *) {
+            nativeGlass(content)
+        } else {
+            glass(content)
+        }
+    }
+
+    /// iOS 26+: the system Liquid Glass. `DESIGN.md` — "iOS 26+: native
+    /// glassEffect; below: the material stack".
+    ///
+    /// The 1 pt `glass-border` stays. Over the near-black stage the system
+    /// glass alone measured 1.08:1 fill and 1.34:1 edge against the ground
+    /// (2026-09-26, iPhone 17 Pro Max, iOS 26.3) — the dock was a row of
+    /// floating labels. With the border the edge is 4.0:1 (the material stack
+    /// below 26: 3.1:1). It is drawn
+    /// inside the glass so the interactive press stretches it with the shape.
+    @available(iOS 26, macOS 26, visionOS 26, *)
+    @ViewBuilder
+    private func nativeGlass(_ content: Content) -> some View {
+        let glassed = content
+            .overlay(
+                shape.strokeBorder(
+                    SceneViewTokens.Glass.border,
+                    lineWidth: SceneViewTokens.Glass.borderWidth
+                )
+            )
+            .glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        if let id, let glassNamespace {
+            glassed.glassEffectID(id, in: glassNamespace)
+        } else {
+            glassed
+        }
+    }
+
+    @ViewBuilder
+    private func glass(_ content: Content) -> some View {
         content
             // Nearest the content first: ceiling, material, floor.
             .background(colorScheme == .dark ? SceneViewTokens.Glass.ceiling : .clear, in: shape)
@@ -619,5 +771,61 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
                     lineWidth: SceneViewTokens.Glass.borderWidth
                 )
             )
+    }
+}
+
+/// The ground every glass control uses when the stage is a camera feed, or
+/// `nil` on an ordinary 3D stage. Set once by ``DemoScaffold`` in AR mode.
+private struct ARChromeGroundKey: EnvironmentKey {
+    static let defaultValue: Color? = nil
+}
+
+/// The namespace glass shapes in one ``GlassEffectContainer`` morph within —
+/// set by ``DemoScaffold`` on its bottom cluster (accessory + dock).
+private struct ChromeGlassNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    var arChromeGround: Color? {
+        get { self[ARChromeGroundKey.self] }
+        set { self[ARChromeGroundKey.self] = newValue }
+    }
+
+    var chromeGlassNamespace: Namespace.ID? {
+        get { self[ChromeGlassNamespaceKey.self] }
+        set { self[ChromeGlassNamespaceKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The background of a sheet that rests on a partial detent over the 3D
+    /// stage. iOS 26+: none of our own — the system draws its Liquid Glass
+    /// sheet, so the scene the controls act on stays visible behind them,
+    /// and turns it opaque by itself at the `.large` detent. Below 26:
+    /// `style`, the themed surface the sheet has always had (`DESIGN.md`,
+    /// Demo Scaffold — "iOS 26+: native glass on partial detents").
+    @ViewBuilder
+    func partialSheetBackground<S: ShapeStyle>(_ style: S) -> some View {
+        #if os(iOS)
+        if #available(iOS 26, *) {
+            self
+        } else {
+            self.presentationBackground(style)
+        }
+        #else
+        self.presentationBackground(style)
+        #endif
+    }
+
+    /// Groups the glass shapes below it so they sample one backdrop and morph
+    /// into each other (iOS 26+); a plain pass-through before that.
+    @ViewBuilder
+    func glassEffectGroup(spacing: CGFloat? = nil) -> some View {
+        if #available(iOS 26, macOS 26, visionOS 26, *) {
+            GlassEffectContainer(spacing: spacing) { self }
+        } else {
+            self
+        }
     }
 }

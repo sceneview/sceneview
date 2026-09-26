@@ -10,6 +10,7 @@ import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.geometries.Geometry
+import io.github.sceneview.geometries.setGeometry
 import io.github.sceneview.math.toVector3Box
 import io.github.sceneview.renderableGeneration
 import io.github.sceneview.safeDestroyMaterialInstance
@@ -174,6 +175,28 @@ open class RenderableNode(
         // funnel every geometry change goes through — `GeometryNode.updateGeometry`, and with it
         // every `SphereNode(radius = …)` / `CubeNode(size = …)` / `PathNode(points = …)` the
         // `SceneScope` DSL re-applies when its declared geometry changes.
+        requestRender()
+    }
+
+    /**
+     * [setGeometry] variant that maps [geometry] to an explicit primitive layout instead of its
+     * own [Geometry.primitivesOffsets] — for a node whose Filament renderable was built with a
+     * different (typically merged, single-primitive) layout than the geometry naturally has. See
+     * [GeometryNode]'s merged-primitive constructors and #3855: without this, a resize always
+     * re-derived the *new* geometry's raw offsets, which reach past the primitive slots such a
+     * node was actually built with and leave everything but the first slot undrawn.
+     *
+     * Refreshes the collider exactly like the single-argument overload (#3194).
+     *
+     * `internal`: only [GeometryNode]'s merged-primitive constructors need this, all within this
+     * module — keeping it internal avoids growing the public API surface for #3855.
+     */
+    internal fun setGeometry(geometry: Geometry, offsets: List<IntRange>) {
+        renderableManager.setGeometry(renderableInstance, geometry, offsets)
+        onComponentChanged()
+        if (!hasCustomCollisionShape) {
+            updateCollisionShape()
+        }
         requestRender()
     }
 

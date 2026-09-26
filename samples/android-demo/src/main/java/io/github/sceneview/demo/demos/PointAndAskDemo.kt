@@ -105,6 +105,7 @@ import io.github.sceneview.demo.ai.rememberAskEngine
 import io.github.sceneview.demo.ai.toAvailability
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.placement.PivotedModelNode
 import io.github.sceneview.demo.common.putVoiceSilenceExtras
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
@@ -998,12 +999,19 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             )
                             val textured = rememberTexturesSettled(ready = instance != null)
                             instance?.let {
-                                ModelNode(
+                                // Editable + an asset correction is exactly the #3735
+                                // pattern, so it goes through the shared pivot hierarchy
+                                // rather than putting the correction on the node the twist
+                                // turns. Latent here only because every asset in `PROPS`
+                                // happens to need no correction today — which is the kind
+                                // of "fixed there, still broken here" the issue is about.
+                                PivotedModelNode(
                                     modelInstance = it,
+                                    assetRotation = DemoMath.placementRotationFor(
+                                        placed.prop.asset,
+                                    ),
                                     scaleToUnits = placed.prop.scaleUnits,
-                                    rotation = DemoMath.placementRotationFor(placed.prop.asset),
                                     isVisible = textured,
-                                    isEditable = true,
                                 )
                             }
                         }

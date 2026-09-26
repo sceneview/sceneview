@@ -106,6 +106,7 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
+import io.github.sceneview.demo.rememberBackendDrainWait
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.VIEWER_MAX_ZOOM_FACTOR
 import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
@@ -187,17 +188,17 @@ fun ModelViewerDemo(onBack: () -> Unit) {
 }
 
 /**
- * Frames queued with a fully loaded model instance before the cover-releasing `flushAndWait`.
+ * Frames queued with a fully loaded model instance before the cover-releasing backend fence.
  * Not 1: the scene parents DSL nodes through an async `snapshotFlow`, so the first frame after
- * the instance lands can be drawn without the `ModelNode`; the flush must wait on a frame that
+ * the instance lands can be drawn without the `ModelNode`; the fence must follow a frame that
  * includes it.
  *
  * Not 3 either, since #3108: this counter is paid out of frames the scene presents *after* the
  * model is in, and a render-on-demand scene presents a settle tail and then parks — measured at
  * 3 frames in 10 s total on `emulator-5554`, of which fewer still land post-load. A threshold
  * the scene never reaches leaves the "Still loading…" card over a finished model for good. Two
- * is the smallest count that keeps the reason above intact, and the `flushAndWait` on the second
- * is what actually proves the backend drew it.
+ * is the smallest count that keeps the reason above intact, and the fence after the second is
+ * what actually proves the backend drew it.
  */
 private const val MODEL_COVER_FRAMES = 2
 
@@ -337,10 +338,12 @@ private fun SingleModelSection(
     var loadedUnit by remember { mutableStateOf(ThreeMfUnit.Default) }
     var unitSheetOpen by remember { mutableStateOf(false) }
     var unitAnswered by remember { mutableStateOf(openedModel == null) }
-    // Last-tapped state — when it's `true` the FAB shows a spinner. The
-    // surprise-coroutine flips it back to `false` regardless of success so
-    // the button doesn't get stuck in the loading state.
-    var surpriseInFlight by remember { mutableStateOf(false) }
+    // The step a "Surprise me" roll is in, or `null` when none is running (#3825). The pill
+    // and the sheet narrate it — search, download, decode, textures — instead of a static
+    // "Finding…". Every exit path (success, empty search, failed download, failed decode)
+    // lands back on `null`, so the button can never stick in its loading state.
+    var surpriseStage by remember { mutableStateOf<SurpriseStage?>(null) }
+    val surpriseInFlight = surpriseStage != null
 
     // `DemoSettings.cameraDistance` is process-global — Geometry, Camera & Gestures and the Park
     // section all read it. Until #3426 only the slider could write it, which is a deliberate act;
@@ -365,7 +368,6 @@ private fun SingleModelSection(
     }
     val scope = rememberCoroutineScope()
     val service = remember(context) { SketchfabService.getInstance(context) }
-    val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
     val hasSketchfabKey = remember { SketchfabConfig.apiKey != null }
 
     // The streamed model is loaded via the URL overload. This MUST be called
@@ -457,8 +459,7 @@ private fun SingleModelSection(
     // NOT an [AssetSourceProbe] site, deliberately — do not "finish" #2989 by routing
     // this one through it too. "Surprise me" is true random content with no registry
     // entry, so `pickRandomDownloadableModel` bypasses the resolver and calls
-    // `SketchfabService.downloadModel` directly (it takes a `SketchfabAssetResolver`
-    // only to satisfy its signature — the parameter is `@Suppress("UNUSED_PARAMETER")`).
+    // `SketchfabService.downloadModel` directly.
     // With no registry entry there is no bundled fallback to stage: a failure yields
     // `null`, `streamedFileUrl` stays null, the chip hides and the bundled hero simply
     // stays on screen. So this chip can never render a stand-in under a "Streamed"
@@ -482,21 +483,28 @@ private fun SingleModelSection(
     // at 60 Hz while Filament's backend thread is still linking the model's material programs —
     // measured on the emulator: ticks resume at +0.5 s, the helmet is first presented at +3.5 s,
     // black in between. So once the instance exists, the resources report complete and a couple
-    // of frames have queued the node's draw, `Engine.flushAndWait()` blocks until the backend
-    // has actually executed that frame, and only then is the cover released. The cover is a
-    // static image, so the wait is invisible (~100 ms on hardware, the full link time on a
-    // software GL). Latched — a later model swap must not bring the helmet preview back.
+    // of frames have queued the node's draw, a backend fence confirms the backend has actually
+    // executed that frame, and only then is the cover released. The cover is a static image,
+    // so the wait is invisible (~100 ms on hardware, the full link time on a software GL).
+    // The fence is polled, never awaited: an `Engine.flushAndWait()` here held the main thread
+    // for that whole link time and a BACK press behind it raised an ANR (#3799).
+    // Latched — a later model swap must not bring the helmet preview back.
     val modelFramesSeen = remember { mutableStateOf(0) }
     val hasModelRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     hasModelRef.set(activeModelInstance != null)
-    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, engine) {
+    val modelDrain = rememberBackendDrainWait(engine)
+    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, modelDrain) {
         { nanos ->
             firstFrame.onFrame(nanos)
             if (hasModelRef.get() && modelFramesSeen.value < MODEL_COVER_FRAMES &&
                 runCatching { modelLoader.progress >= 1f }.getOrDefault(true)
             ) {
-                if (modelFramesSeen.value == MODEL_COVER_FRAMES - 1) runCatching { engine.flushAndWait() }
-                modelFramesSeen.value++
+                if (modelFramesSeen.value < MODEL_COVER_FRAMES - 1) {
+                    modelFramesSeen.value++
+                } else {
+                    // The last count is paid by the backend, not by a frame. No-op while pending.
+                    modelDrain.start { modelFramesSeen.value = MODEL_COVER_FRAMES }
+                }
             }
         }
     }
@@ -577,9 +585,25 @@ private fun SingleModelSection(
     }
     // Back closes transient chrome before leaving the demo.
     val anySheetOpen = animationBarOpen || modelSheetOpen || environmentSheetOpen
-    BackHandler(enabled = anySheetOpen || unitSheetOpen) {
-        animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
-        if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
+    // #3822 — swapping to a bundled model (e.g. "Soldier") from the Models sheet is not a
+    // navigation the back stack knows about either: it is the same screen with different
+    // content. Without this, back from a swapped-in model skipped straight past the demo's
+    // own default (the Damaged Helmet) to the Showcase home. One level at a time: revert to
+    // the default model first, exit only from there. Scoped to the bundled-model swap only —
+    // an opened external file (`openedModel`, a one-shot `val` for the "Open with SceneView"
+    // handoff) is a different, narrower flow this issue does not report on.
+    val modelSwapped = openedModel == null && selectedModel != bundledModels.first()
+    BackHandler(enabled = anySheetOpen || unitSheetOpen || modelSwapped) {
+        when {
+            anySheetOpen || unitSheetOpen -> {
+                animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
+                if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
+            }
+            modelSwapped -> {
+                selectedModel = bundledModels.first()
+                streamedFileUrl = null
+            }
+        }
     }
 
     // One roll, two callers (#3585): the promoted row at the top of the Models sheet and
@@ -587,14 +611,41 @@ private fun SingleModelSection(
     // no-op for the pill, which is only reachable while the sheet is closed.
     val rollSurprise: () -> Unit = {
         if (!surpriseInFlight) {
-            surpriseInFlight = true
+            surpriseStage = SurpriseStage.Searching
             scope.launch {
-                streamedFileUrl = runCatching { pickRandomDownloadableModel(service, resolver) }.getOrNull()
-                surpriseInFlight = false
+                val url = runCatching {
+                    pickRandomDownloadableModel(service) { surpriseStage = it }
+                }.getOrNull()
                 modelSheetOpen = false
+                // The same file twice (a cached pick) keeps the instance already on screen:
+                // there is nothing left to decode, so the roll is over.
+                surpriseStage = if (url == null || url == streamedFileUrl) null else SurpriseStage.Decoding
+                if (url != null) streamedFileUrl = url
             }
         }
         Unit
+    }
+    // The two steps after the download happen in the loader, not in the roll coroutine: the
+    // GLB is parsed into a `ModelInstance` (`rememberModelInstance`), then gltfio decodes and
+    // uploads its textures (`ModelLoader.isLoading`). The narration follows those signals.
+    LaunchedEffect(streamedModelInstance, surpriseStage) {
+        when (surpriseStage) {
+            SurpriseStage.Decoding -> if (streamedModelInstance != null) {
+                surpriseStage = SurpriseStage.Textures
+            } else {
+                // A file gltfio cannot parse yields `null` forever — stop narrating a decode
+                // that has already failed and leave the previous model on screen.
+                delay(SURPRISE_STEP_TIMEOUT_MS)
+                surpriseStage = null
+            }
+            SurpriseStage.Textures -> {
+                kotlinx.coroutines.withTimeoutOrNull(SURPRISE_STEP_TIMEOUT_MS) {
+                    while (modelLoader.isLoading) delay(SURPRISE_POLL_MS)
+                }
+                surpriseStage = null
+            }
+            else -> Unit
+        }
     }
 
     DemoScaffold(
@@ -620,13 +671,25 @@ private fun SingleModelSection(
             // slider could not reach it at all). It is now the same bounds-relative window the
             // pinch is clamped to, so both controls span the subject rather than a guessed metre
             // range.
+            // #3821 — `value` used to clamp into the valid window while `valueText` read the
+            // raw, unclamped distance: whenever a re-frame shifted the window, the thumb
+            // snapped to a bound but the label kept showing the stale unclamped number, so
+            // the two visibly disagreed. Both now read the same clamped value.
+            val clampedSliderDistance = (sliderDistance ?: autoFitRadius)
+                .coerceIn(autoFitRadius * VIEWER_MIN_ZOOM_FACTOR, autoFitRadius * VIEWER_MAX_ZOOM_FACTOR)
             LabeledSlider(
                 label = "Camera distance",
-                value = (sliderDistance ?: autoFitRadius)
-                    .coerceIn(autoFitRadius * VIEWER_MIN_ZOOM_FACTOR, autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
-                onValueChange = { DemoSettings.cameraDistance = it },
+                value = clampedSliderDistance,
+                onValueChange = {
+                    DemoSettings.cameraDistance = it
+                    // Like the IBL intensity fix above (#3718), this write reaches the camera
+                    // manipulator through a plain state read, not a gesture the `OnDemand`
+                    // render loop's own bookkeeping can see — without this the model's on-screen
+                    // size only caught up once some unrelated touch invalidated a frame.
+                    renderInvalidator.requestRender()
+                },
                 valueRange = (autoFitRadius * VIEWER_MIN_ZOOM_FACTOR)..(autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
-                valueText = "%.2f m".format(Locale.US, sliderDistance ?: autoFitRadius),
+                valueText = "%.2f m".format(Locale.US, clampedSliderDistance),
             )
             Row(Modifier.fillMaxWidth().toggleable(spinScene) { spinScene = it }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Spin scene")
@@ -653,6 +716,11 @@ private fun SingleModelSection(
                 // framed home pose while keeping a 4x zoom is not "recentred".
                 DemoSettings.cameraDistance = null
                 recenterGeneration++
+                // #3821 — the flight is read through `EntranceCameraManipulator.getTransform()`
+                // off `entranceProgress` and `fallback`, neither of which the `OnDemand` render
+                // loop's bookkeeping tracks on its own (same class of bug as #3718). Without this
+                // the tap had no visible effect until some unrelated gesture forced a frame.
+                renderInvalidator.requestRender()
             })),
         // The animation bar is always composed when the model has clips, so it can slide
         // in and out with the standard M3 enter/exit instead of appearing and vanishing
@@ -671,12 +739,11 @@ private fun SingleModelSection(
             if (hasSketchfabKey) {
                 GlassActionPill(
                     icon = Icons.Filled.Shuffle,
-                    label = stringResource(
-                        if (surpriseInFlight) R.string.demo_model_viewer_surprise_loading
-                        else R.string.demo_model_viewer_surprise
-                    ),
+                    label = surpriseStage?.let { surpriseStageText(it) }
+                        ?: stringResource(R.string.demo_model_viewer_surprise),
                     onClick = rollSurprise,
                     loading = surpriseInFlight,
+                    progress = (surpriseStage as? SurpriseStage.Fetching)?.fraction,
                     contentDescription = stringResource(R.string.demo_model_viewer_surprise_hint),
                 )
             }
@@ -724,6 +791,8 @@ private fun SingleModelSection(
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),
         chromeToggleOnTap = true,
+        // The Lighting sheet is glass (#3827): the dock would show through it.
+        dockHidden = environmentSheetOpen,
     ) {
         // The scene fills the viewport edge to edge; the chrome floats over it. Framing
         // therefore needs the band the chrome leaves visible: the identity row at the top
@@ -811,7 +880,15 @@ private fun SingleModelSection(
                 activeModelInstance?.let { instance ->
                     // "Spin scene" turns the model about its bounding-box centre, not the glTF
                     // origin: counter-translate the pivot so the centre stays put under the camera.
-                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, -modelYaw)
+                    // #3821 — `rotateAroundCentre` and `Rotation(y = …)` share the same sign
+                    // convention (both clockwise in (x, z) viewed from +Y down, see
+                    // `DemoMath.rotateAroundCentre`'s KDoc). Holding a local point C fixed under a
+                    // node rotation of `modelYaw` needs `position = C - Rotate(modelYaw)·C`, i.e.
+                    // the SAME signed angle passed to both calls. Passing `-modelYaw` here mismatched
+                    // that pairing: the pivot no longer cancelled out, so the whole model swam off
+                    // its centre as it spun — at a glance this read as the environment orbiting
+                    // rather than a clean model-only spin.
+                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, modelYaw)
                     ModelNode(
                         modelInstance = instance,
                         // No `scaleToUnits` — the model renders at its true glTF size and the
@@ -835,6 +912,8 @@ private fun SingleModelSection(
     }
     if (modelSheetOpen) ModelPickerSheet(
         bundledModels, selectedModel.assetPath, hasSketchfabKey, surpriseInFlight,
+        surpriseStatus = surpriseStage?.let { surpriseStageText(it) },
+        surpriseProgress = (surpriseStage as? SurpriseStage.Fetching)?.fraction,
         onSelect = { selectedModel = it; streamedFileUrl = null; modelSheetOpen = false },
         onPark = { modelSheetOpen = false; onModeChange(ModelViewerMode.Multi) },
         onSurprise = rollSurprise,
@@ -914,21 +993,97 @@ private fun rememberStreamedModelInstance(
 }
 
 /**
+ * The step a "Surprise me" roll is in (#3825). Each value is a stage the code is really
+ * in — a network call, a byte stream, a parse, a texture upload — never a timed script.
+ */
+private sealed interface SurpriseStage {
+    /** `SketchfabService.search` is in flight. */
+    data object Searching : SurpriseStage
+
+    /**
+     * `SketchfabService.downloadModel` is in flight for [name]: a download, or a cache read
+     * when [cached]. [totalBytes] is `-1` until the CDN reports a `Content-Length`.
+     */
+    data class Fetching(
+        val name: String,
+        val cached: Boolean,
+        val bytesRead: Long = 0L,
+        val totalBytes: Long = -1L,
+    ) : SurpriseStage {
+        /** Download progress in `0..1`, or `null` while the size is unknown. */
+        val fraction: Float? get() = if (!cached && totalBytes > 0L) bytesRead.toFloat() / totalBytes else null
+    }
+
+    /** The GLB is on disk and being parsed into a `ModelInstance`. */
+    data object Decoding : SurpriseStage
+
+    /** The instance exists; gltfio is still decoding and uploading its textures. */
+    data object Textures : SurpriseStage
+}
+
+/** The narration line for [stage]. */
+@Composable
+private fun surpriseStageText(stage: SurpriseStage): String = when (stage) {
+    SurpriseStage.Searching -> stringResource(R.string.demo_model_viewer_surprise_searching)
+    is SurpriseStage.Fetching -> {
+        val name = stage.name.shortModelName()
+        when {
+            stage.cached -> stringResource(R.string.demo_model_viewer_surprise_cached, name)
+            stage.totalBytes > 0L -> stringResource(
+                R.string.demo_model_viewer_surprise_downloading_sized,
+                name,
+                android.text.format.Formatter.formatShortFileSize(LocalContext.current, stage.totalBytes),
+            )
+            else -> stringResource(R.string.demo_model_viewer_surprise_downloading, name)
+        }
+    }
+    SurpriseStage.Decoding -> stringResource(R.string.demo_model_viewer_surprise_decoding)
+    SurpriseStage.Textures -> stringResource(R.string.demo_model_viewer_surprise_textures)
+}
+
+/**
+ * A Sketchfab title short enough to leave room for the rest of the sentence on one line.
+ *
+ * Cut at a word boundary and before an unclosed parenthesis, with no ellipsis of its own:
+ * the narration line already ends in one, and "Winter Girl (free dow…" followed by the
+ * animated dots read as a double ellipsis on the emulator.
+ */
+private fun String.shortModelName(): String {
+    val name = trim()
+    if (name.length <= SURPRISE_NAME_MAX_CHARS) return name
+    val cut = name.take(SURPRISE_NAME_MAX_CHARS).let { it.substringBeforeLast(' ', it) }
+    val openParen = cut.lastIndexOf('(')
+    val balanced = if (openParen > 0 && cut.indexOf(')', openParen) < 0) cut.take(openParen) else cut
+    return balanced.trimEnd().ifEmpty { name.take(SURPRISE_NAME_MAX_CHARS) }
+}
+
+private const val SURPRISE_NAME_MAX_CHARS = 22
+
+/** How long a post-download step may run before the roll gives up narrating it. */
+private const val SURPRISE_STEP_TIMEOUT_MS = 30_000L
+
+private const val SURPRISE_POLL_MS = 100L
+
+/**
  * Surprise-me coroutine. Hits the Sketchfab search API for downloadable PBR
  * content, picks a random hit, streams it through [SketchfabService.downloadModel]
  * → on-disk cache → `file://` URL. Failure modes (no results / rate limit /
  * non-PBR download) all return `null` and the FAB caller leaves the helmet on
  * screen, so the demo never sits on a black viewport.
+ *
+ * [onStage] is told each step as it starts, and the download's byte count as it
+ * streams (from `Dispatchers.IO` — snapshot state is safe to write from there).
  */
 private suspend fun pickRandomDownloadableModel(
     service: SketchfabService,
-    @Suppress("UNUSED_PARAMETER") resolver: SketchfabAssetResolver,
+    onStage: (SurpriseStage) -> Unit,
 ): String? {
     // Search a broad PBR-friendly query so the picks read well under the demo
     // lighting. Falls back to "modern" if "pbr" returns 0 hits for some reason.
     val candidates = listOf("pbr", "modern", "scan")
     @Suppress("LoopWithTooManyJumpStatements") // continue-guards replace nested ifs for readability
     for (query in candidates) {
+        onStage(SurpriseStage.Searching)
         val results = runCatching {
             service.search(query = query, downloadable = true, limit = 24)
         }.getOrNull() ?: continue
@@ -938,8 +1093,13 @@ private suspend fun pickRandomDownloadableModel(
         val viable = results.filter { it.downloadable && it.faceCount in 1..200_000 }
         if (viable.isEmpty()) continue
         val pick = viable.random()
-        val cached = runCatching { service.downloadModel(pick.uid) }.getOrNull()
-            ?: continue
+        val fromCache = service.isCached(pick.uid)
+        onStage(SurpriseStage.Fetching(pick.name, cached = fromCache))
+        val cached = runCatching {
+            service.downloadModel(pick.uid) { read, total ->
+                onStage(SurpriseStage.Fetching(pick.name, cached = false, bytesRead = read, totalBytes = total))
+            }
+        }.getOrNull() ?: continue
         return cached.toURI().toString()
     }
     return null
@@ -1007,6 +1167,14 @@ private fun MultiModelSection(
     onModeChange: (ModelViewerMode) -> Unit,
 ) {
     var modelSheetOpen by remember { mutableStateOf(false) }
+    // #3822 — `mode` (Single/Multi/Gallery) lives in the parent `ModelViewerDemo` composable,
+    // not on the Android back stack, so without this the raw `onBack` handed down from
+    // `MainActivity` skipped straight past "Park scene" to the Showcase home on one press.
+    // Close the sheet first if it is open, otherwise step back to the single-model view —
+    // one level at a time, like every other back gesture in the app.
+    BackHandler {
+        if (modelSheetOpen) modelSheetOpen = false else onModeChange(ModelViewerMode.Single)
+    }
     // One flag per SLOT, not per species — index i pairs with PARK_SLOTS[i] and
     // slugs[i]. A SnapshotStateList keeps the four flags in one stable `remember`
     // slot, so toggling a chip recomposes the scene content without re-running the
@@ -1267,7 +1435,19 @@ private fun MultiModelSection(
                     }
                 }
             }
-            LoadingScrim(loading = !allLoaded, label = "Loading ${PARK_SLOTS.size} models…")
+            // Narrates the two real phases (#3825): the resolver fetching each slot's file
+            // (network, cache or bundled stand-in), then gltfio parsing it. The counts are
+            // read off the same lists the scene renders from.
+            val filesReady = files.count { it != null }
+            val modelsReady = instances.count { it != null }
+            LoadingScrim(
+                loading = !allLoaded,
+                label = if (filesReady < PARK_SLOTS.size) {
+                    stringResource(R.string.demo_multi_model_loading_fetching, filesReady, PARK_SLOTS.size)
+                } else {
+                    stringResource(R.string.demo_multi_model_loading_decoding, modelsReady, PARK_SLOTS.size)
+                },
+            )
         }
     }
     if (modelSheetOpen) ModelPickerSheet(
@@ -1347,6 +1527,11 @@ private fun GallerySection(
 ) {
     val context = LocalContext.current
     val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
+
+    // #3822 — see the matching handler in `MultiModelSection`: `mode` is not on the Android
+    // back stack, so the raw `onBack` from `MainActivity` skipped straight past "Scene
+    // Gallery" to the Showcase home. Step back to the single-model view first instead.
+    BackHandler { onModeChange(ModelViewerMode.Single) }
 
     // The four curated `gallery` slugs declared in SampleAssets. Stage 2 keeps
     // the chip count low so the offline-fallback footprint stays bounded — Stage
@@ -1534,9 +1719,16 @@ private fun GallerySection(
                     retryLabel = stringResource(R.string.demo_scene_gallery_retry),
                 )
             } else {
+                // Names the model and the step (#3825): the resolver fetching the file, then
+                // gltfio parsing it — the two states this section can actually tell apart.
+                val name = selectedSlug?.displayName.orEmpty()
                 LoadingScrim(
                     loading = modelInstance == null,
-                    label = stringResource(R.string.demo_scene_gallery_loading),
+                    label = when {
+                        name.isEmpty() -> stringResource(R.string.demo_scene_gallery_loading)
+                        resolvedFile == null -> stringResource(R.string.demo_scene_gallery_loading_fetching, name)
+                        else -> stringResource(R.string.demo_scene_gallery_loading_decoding, name)
+                    },
                 )
             }
         }

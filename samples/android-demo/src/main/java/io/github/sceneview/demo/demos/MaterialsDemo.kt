@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -40,9 +41,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.activity.compose.BackHandler
@@ -85,7 +83,10 @@ import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
 import io.github.sceneview.demo.HeroOrbitResume
 import io.github.sceneview.demo.OrbitSpin
+import io.github.sceneview.demo.orbitLabelFadeAlpha
+import io.github.sceneview.demo.orbitYawDeviationDegrees
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
@@ -197,17 +198,12 @@ private fun ModeSelector(
     current: MaterialsMode,
     onModeChange: (MaterialsMode) -> Unit,
 ) {
-    val modes = MaterialsMode.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, m ->
-            SegmentedButton(
-                selected = m == current,
-                onClick = { onModeChange(m) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(stringResource(m.labelRes)) },
-            )
-        }
-    }
+    ConnectedChoiceRow(
+        options = MaterialsMode.entries,
+        selected = current,
+        onSelect = onModeChange,
+        label = { stringResource(it.labelRes) },
+    )
     Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 }
 
@@ -937,13 +933,39 @@ private fun StudioSection(
                     val focused = !inspecting && focusIndex == index
                     Text(
                         caption,
-                        modifier = Modifier.offset {
-                            @Suppress("UNUSED_EXPRESSION")
-                            labelFrame
-                            val point = view.worldToScreen(anchor)
-                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                        }.width(captionWidth)
+                        modifier = Modifier
+                            // #3802: the wall is flat and captioned for a roughly head-on
+                            // view; the orbit itself stays completely free (this demo exists
+                            // to turn a reflection around), so instead of bounding the drag,
+                            // neighbouring captions fade out as the camera turns away from
+                            // front-on — they would otherwise converge on screen under
+                            // perspective and overlap. Inspect mode has one subject (or a
+                            // fixed Compare pair) with no neighbour to collide with, so its
+                            // captions stay at full opacity.
+                            .graphicsLayer {
+                                @Suppress("UNUSED_EXPRESSION")
+                                labelFrame
+                                alpha = if (inspecting) {
+                                    1f
+                                } else {
+                                    orbitLabelFadeAlpha(
+                                        orbitYawDeviationDegrees(
+                                            eye = galleryManipulator.getTransform().position,
+                                            // Matches `galleryManipulator`'s own `target`
+                                            // below — the wall pivots around the origin.
+                                            target = Position(0f, 0f, 0f),
+                                            referenceYawDegrees = 0f,
+                                        ),
+                                    )
+                                }
+                            }
+                            .offset {
+                                @Suppress("UNUSED_EXPRESSION")
+                                labelFrame
+                                val point = view.worldToScreen(anchor)
+                                IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
+                                    ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
+                            }.width(captionWidth)
                             .padding(horizontal = SceneViewTokens.Space.xs)
                             .background(
                                 if (focused) {

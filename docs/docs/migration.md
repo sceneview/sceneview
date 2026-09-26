@@ -279,7 +279,7 @@ the billing event lands on your Google Cloud project even after the user has
 navigated away from the screen that started it. For apps that surface a "Place
 anchor" CTA inside a navigable hierarchy (Compose / Fragment / Activity stack)
 this is a measurable cost on cancelled user flows — see
-[Google's ARCore Cloud Anchors pricing](https://developers.google.com/ar/develop/cloud-anchors-faq#pricing).
+[Google's ARCore Cloud Anchors documentation](https://developers.google.com/ar/develop/cloud-anchors).
 Cancellation does **not** invoke the `onCompleted` callback (matches ARCore
 semantics), so observers stay clean.
 
@@ -535,24 +535,24 @@ Update your Gradle / SPM / pubspec / package.json references:
 
 ```kotlin
 // Before
-implementation("io.github.sceneview:sceneview:4.38.0")
-implementation("io.github.sceneview:arsceneview:4.38.0")
+implementation("io.github.sceneview:sceneview:4.40.0")
+implementation("io.github.sceneview:arsceneview:4.40.0")
 
 // After (4.0.0)
-implementation("io.github.sceneview:sceneview:4.38.0")
-implementation("io.github.sceneview:arsceneview:4.38.0")
+implementation("io.github.sceneview:sceneview:4.40.0")
+implementation("io.github.sceneview:arsceneview:4.40.0")
 ```
 
-**Release candidate caveat:** Maven Central does **not** currently ship `4.0.0`. Either build from source (`./gradlew :sceneview:publishToMavenLocal`) or wait for `v4.0.0` stable.
+`4.0.0` and every later 4.x release are on Maven Central — use the current version shown above.
 
-### 4. `sceneview-mcp` gained a `@next` dist-tag
+### 4. `sceneview-mcp` moved to the 4.x line
 
-If you use the [`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) npm package in your MCP client, the `@latest` tag is still on `3.6.4` (unchanged, intentionally). The `@next` tag is on `4.0.0`, which includes the Rerun integration docs and v4 lite-proxy routing to the hosted gateway. Opt in with:
+During the 4.0.0 release candidate, the 4.x line of the [`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) npm package shipped under the `@next` tag while `@latest` stayed on `3.6.4`. That is over: `@latest` is now on the 4.x line (with the Rerun integration docs), so the plain package name is all you need:
 
 ```json
 "sceneview": {
   "command": "npx",
-  "args": ["-y", "sceneview-mcp@next"]
+  "args": ["-y", "sceneview-mcp"]
 }
 ```
 
@@ -738,8 +738,8 @@ implementation("io.github.sceneview:sceneview:2.3.0")
 implementation("io.github.sceneview:arsceneview:2.3.0")
 
 // After
-implementation("io.github.sceneview:sceneview:4.38.0")
-implementation("io.github.sceneview:arsceneview:4.38.0")
+implementation("io.github.sceneview:sceneview:4.40.0")
+implementation("io.github.sceneview:arsceneview:4.40.0")
 ```
 
 ---

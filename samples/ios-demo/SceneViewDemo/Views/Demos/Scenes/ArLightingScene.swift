@@ -1,6 +1,6 @@
 // @sceneId     ar-lighting
 // @title       AR Lighting
-// @subtitle    Compare .mainLight / .fillLight modifier presets
+// @subtitle    Key and fill light presets on one model
 // @category    ar
 // @available   true
 // @icon        lightbulb.max.fill

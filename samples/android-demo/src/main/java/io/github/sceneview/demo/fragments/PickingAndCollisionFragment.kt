@@ -19,9 +19,9 @@ object PickingAndCollisionFragment : DemoFragment {
         id = "picking-collision",
         titleRes = R.string.demo_picking_collision_title,
         subtitleRes = R.string.demo_picking_collision_subtitle,
-        category = DemoCategory.INTERACTION,
+        category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.CenterFocusStrong,
-        order = 14,
+        order = 4,
         tags = setOf("picking", "hit-test", "collision", "ray", "viewnode", "overlay"),
     )
 

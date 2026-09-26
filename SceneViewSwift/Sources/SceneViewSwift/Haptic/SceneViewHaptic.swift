@@ -42,6 +42,19 @@ import CoreHaptics
 /// `CHHapticEngine`. If Core Haptics is not available on the device
 /// (e.g. older iPad models), those two APIs gracefully fall back to the
 /// preset generators — they never throw.
+///
+/// ### Semantic AR events
+///
+/// ``play(_:)`` plays an ``ARHapticEvent`` (placement, 100 % snap, tracking lost…) with the
+/// generator the platform guidance recommends for it. ``AutoPlacementScene`` never vibrates on
+/// its own: add `.arHapticFeedback(controller)` to opt in.
+///
+/// ### When iOS stays silent
+///
+/// The system mutes every generator while the app records audio — an `ARSession` whose
+/// configuration sets `providesAudioData = true`, or an active microphone capture — and when
+/// the user turns off *System Haptics*. Haptics are a complement: never carry information
+/// that has no visual equivalent.
 @MainActor
 public final class SceneViewHaptic: ObservableObject {
 
@@ -54,6 +67,8 @@ public final class SceneViewHaptic: ObservableObject {
     private let impactLight = UIImpactFeedbackGenerator(style: .light)
     private let impactMedium = UIImpactFeedbackGenerator(style: .medium)
     private let impactHeavy = UIImpactFeedbackGenerator(style: .heavy)
+    private let impactSoft = UIImpactFeedbackGenerator(style: .soft)
+    private let impactRigid = UIImpactFeedbackGenerator(style: .rigid)
     private let selectionGenerator = UISelectionFeedbackGenerator()
     private let notificationGenerator = UINotificationFeedbackGenerator()
 
@@ -104,6 +119,56 @@ public final class SceneViewHaptic: ObservableObject {
     /// Selection tick — drag tick, picker scroll.
     public func selection() {
         selectionGenerator.selectionChanged()
+    }
+
+    // MARK: - Semantic AR events
+
+    /// The UIKit feedback an ``ARHapticEvent`` plays. Internal so tests pin the table.
+    enum Feedback: Equatable {
+        case impact(UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat)
+        case notification(UINotificationFeedbackGenerator.FeedbackType)
+        case selection
+    }
+
+    static func feedback(for event: ARHapticEvent) -> Feedback {
+        switch event {
+        case .placed: return .impact(.soft, intensity: 0.8)
+        case .selected: return .selection
+        case .scaleSnapped: return .impact(.rigid, intensity: 0.7)
+        case .limitReached, .invalidMove: return .impact(.rigid, intensity: 0.5)
+        case .trackingLost, .helpNeeded: return .notification(.warning)
+        case .recovered: return .notification(.success)
+        }
+    }
+
+    /// Play a semantic AR event. Same events and meaning as Android's
+    /// `SceneViewHaptic.play(ARHapticEvent)`.
+    public func play(_ event: ARHapticEvent) {
+        switch Self.feedback(for: event) {
+        case let .impact(style, intensity): generator(for: style).impactOccurred(intensity: intensity)
+        case let .notification(type): notificationGenerator.notificationOccurred(type)
+        case .selection: selectionGenerator.selectionChanged()
+        }
+    }
+
+    /// Wake the Taptic Engine ahead of an event that is about to happen, so it plays without
+    /// latency. Cheap; call it when the event becomes likely (a pinch begins, a scan starts).
+    public func prepare(for event: ARHapticEvent) {
+        switch Self.feedback(for: event) {
+        case let .impact(style, _): generator(for: style).prepare()
+        case .notification: notificationGenerator.prepare()
+        case .selection: selectionGenerator.prepare()
+        }
+    }
+
+    private func generator(for style: UIImpactFeedbackGenerator.FeedbackStyle) -> UIImpactFeedbackGenerator {
+        switch style {
+        case .soft: return impactSoft
+        case .rigid: return impactRigid
+        case .heavy: return impactHeavy
+        case .light: return impactLight
+        default: return impactMedium
+        }
     }
 
     // MARK: - Low-level Core Haptics escape hatches

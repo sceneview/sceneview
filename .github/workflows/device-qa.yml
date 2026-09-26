@@ -21,7 +21,8 @@ name: Device QA
 # Device-QA boots emulators and a browser — it is expensive. It is therefore
 # NOT a per-PR required check. It runs only when:
 #   - a harness script, Maestro flow, or demo app actually changes (push to
-#     main, path-gated), OR
+#     main, path-gated — and per leg: the `changes` job runs the web leg only
+#     for a web path and the android/ar legs only for an Android path), OR
 #   - manually via workflow_dispatch (vet a feature branch / pre-tag), OR
 #   - reused via workflow_call (nightly-ci.yml safety net).
 #
@@ -141,9 +142,78 @@ permissions:
   contents: read
 
 jobs:
+  # ── Per-leg path gate (push only) ─────────────────────────────────────────
+  # The `paths:` trigger above is the union of the web and Android halves, and
+  # without this gate either half dragged the other along. Measured over
+  # 2026-09-12..26: 62 pushes to `main` triggered this workflow, 11 of them
+  # touched a web path, yet all 62 ran the 25-min web leg (~1,260 runner-
+  # minutes for nothing) — and 6 of its 7 reds on push landed on commits that
+  # touched no web path, painting `main` red for a Playwright flake the commit
+  # could not have caused.
+  #
+  # Same pattern as render-tests.yml's `changes` job. Skipped on
+  # workflow_dispatch and on the nightly `workflow_call`, where every leg
+  # runs. Fail-open: if this job does not conclude `success`, every leg runs,
+  # so a broken filter can cost minutes but never skip a leg silently.
+  changes:
+    name: Detect changed paths
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          filter: blob:none
+          sparse-checkout: .github
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          base: ${{ github.event.before != '0000000000000000000000000000000000000000' && github.event.before || 'main' }}
+          filters: |
+            shared: &shared
+              - '.github/workflows/device-qa.yml'
+              - '.claude/scripts/device-qa.sh'
+              - '.claude/scripts/lib/**'
+            android:
+              - *shared
+              - '.claude/scripts/qa-android-demos.sh'
+              - '.claude/scripts/ar-replay-qa.sh'
+              - '.claude/scripts/setup-ar-emulator.sh'
+              - '.claude/scripts/sideload-arcore.sh'
+              - '.maestro/**'
+              - 'samples/android-demo/**'
+            web:
+              - *shared
+              - 'samples/web-demo/**'
+      - name: Assert every path filter produced a real verdict
+        env:
+          VERDICTS: |
+            android=${{ steps.filter.outputs.android }}
+            web=${{ steps.filter.outputs.web }}
+        run: |
+          set -euo pipefail
+          bad=0
+          while IFS='=' read -r name value; do
+            [ -z "$name" ] && continue
+            case "$value" in
+              true|false) echo "  $name = $value" ;;
+              *) echo "::error::Path filter '$name' produced '$value' instead of true/false."; bad=1 ;;
+            esac
+          done <<< "$VERDICTS"
+          [ "$bad" -eq 0 ]
+
   # ── Web leg — Playwright (cheap, always feasible on ubuntu) ───────────────
   web:
     name: Device QA — web (Playwright)
+    needs: changes
+    # Only when a web path changed (see `changes`); always on dispatch and on
+    # the nightly, where `changes` is skipped.
+    if: >-
+      ${{ !cancelled() && (needs.changes.result != 'success'
+      || needs.changes.outputs.web == 'true') }}
     runs-on: ubuntu-latest
     # 35 min: green push runs measure 18–24 min wall-clock — 25 min left
     # ~1 min of headroom and the nightly timed out (#2775, night of
@@ -180,6 +250,12 @@ jobs:
   # nothing for the emulator jobs to install — the failure must be visible.
   build-android-apk:
     name: Device QA — build android-demo APK
+    needs: changes
+    # Only when an Android-side path changed (see `changes`). The `android`
+    # and `ar` legs need this job, so they are skipped with it.
+    if: >-
+      ${{ !cancelled() && (needs.changes.result != 'success'
+      || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -215,6 +291,10 @@ jobs:
     name: Device QA — android (Maestro)
     runs-on: ubuntu-latest
     needs: build-android-apk
+    # Explicit, not the implicit `success()`: that one also requires every
+    # ANCESTOR to have succeeded, and `changes` is skipped on dispatch and on
+    # the nightly — the implicit check would skip this leg exactly there.
+    if: ${{ !cancelled() && needs.build-android-apk.result == 'success' }}
     # 35 min: with the APK prebuilt the heavy work is emulator boot + the
     # Maestro flow. The PER-FLOW `timeout` inside maestro.sh still aborts a
     # genuine hang fast (Maestro 15 min) — see #1560/#3141. This job runs
@@ -332,6 +412,8 @@ jobs:
     name: Device QA — ar (ARCore replay)
     runs-on: ubuntu-latest
     needs: build-android-apk
+    # Explicit for the same reason as the `android` leg above.
+    if: ${{ !cancelled() && needs.build-android-apk.result == 'success' }}
     timeout-minutes: 45
     continue-on-error: true
     steps:

@@ -1,493 +1,57 @@
 #if os(iOS)
 import SwiftUI
-import RealityKit
 import ARKit
 import AVFoundation
 import SceneViewSwift
 
-/// AR tab — place 3D models in your real-world space.
-///
-/// Liquid Glass overlay design (iOS 26+, per the SceneView design system — see DESIGN.md):
-/// - Full-bleed AR camera underneath
-/// - Top-center: floating glass status pill ("Tap to place" / "N placed")
-/// - Top-right: glass exit button to dismiss the tab
-/// - Bottom: floating glass action bar with FAB "Pick model", Reset, Screenshot
+/// The tab launches the same placement experience as the catalogue and viewers.
 struct ARTab: View {
-    /// Anchors placed by tapping a detected plane. The count shown in the
-    /// status pill is *derived* from this collection (`placedCount`) so the
-    /// two can never drift — previously a bare `placedCount: Int` could fall
-    /// out of sync with the real ARKit anchor set (issue #1253 item 4,
-    /// matching the `placedAnchors` pattern already used by `ARPlacementDemo`).
-    @State private var placedAnchors: [AnchorEntity] = []
-    @State private var selectedModelIndex = 0
-    @State private var errorMessage: String?
-    @State private var showError = false
-    @State private var showModelPicker = false
-    @State private var arViewID = UUID()
-    /// Captured from `ARSceneView.onSessionStarted` so `shareARScreenshot` can
-    /// call `ARView.snapshot(saveToHDR:completion:)` — the Metal-aware path that
-    /// correctly captures 3D content. `UIView.drawHierarchy` misses the Metal
-    /// layer and produces a transparent / black hole where the AR content should
-    /// be (issue #983).
-    #if !targetEnvironment(simulator)
-    @State private var capturedARView: RealityKit.ARView?
-    #endif
-
-    /// Live count of placed models, derived from `placedAnchors` so it stays
-    /// authoritative — never a separately-mutated `Int`.
-    private var placedCount: Int { placedAnchors.count }
-    /// Mirrors Android's `sessionStarted` gate on `ArViewTabContent` — the
-    /// AR tab opens to a static launcher screen (icon + tagline + "Start
-    /// AR Camera" CTA) instead of jumping straight to the live ARKit
-    /// session. Flips to `true` on CTA tap and back to `false` from the
-    /// top-trailing Close button. `@State` (not `@SceneStorage`) because
-    /// `@SceneStorage` survives cold launches via UISceneSession state
-    /// restoration — the opposite of the intended UX. Android's
-    /// `rememberSaveable` survives process death only inside the same
-    /// composition; on iOS the ARTab view stays in the TabView's tree as
-    /// long as the scene is alive, so plain `@State` already matches that
-    /// scope.
     @State private var sessionStarted = false
-
-    /// AR demo presented from the launcher's discovery grid (issue #1253
-    /// item 1). The launcher mirrors Android's `ArLauncherScreen`, which is
-    /// both an entry gate *and* a discovery surface — a 2×3 grid of headline
-    /// AR demos. Tapping a card opens the demo full-screen above the AR tab.
     @State private var presentedDemo: FeaturedARDemo?
 
-    /// Whether the current device has the ARKit world-tracking config we
-    /// need (front-facing AR planes + camera passthrough). Computed once
-    /// at view init; iPhones older than the A9 era return `false`. Mirrors
-    /// Android's `ArCoreApk.checkAvailability()` gating on the launcher CTA.
     private var arSupported: Bool {
-        #if !targetEnvironment(simulator)
-        ARWorldTrackingConfiguration.isSupported
-        #else
+        #if targetEnvironment(simulator)
         false
+        #else
+        ARWorldTrackingConfiguration.isSupported
         #endif
-    }
-
-    /// Increment to force-rebuild the ARSceneView, clearing every placed anchor.
-    /// We rebuild because there's no public `removeAllAnchors` on the wrapper.
-    private func resetScene() {
-        arViewID = UUID()
-        placedAnchors.removeAll()
-        #if !targetEnvironment(simulator)
-        capturedARView = nil
-        #endif
-        SceneViewHaptic.shared.medium()
-    }
-
-    /// Used by the top-right Close button AND a future system-back gesture
-    /// (none on iOS today). Tearing down the `liveARView` via the outer
-    /// `if/else` already destroys the ARSceneView, so we don't bump
-    /// `arViewID` here (it would be dead — that's `resetScene()`'s job
-    /// for in-session resets). We DO close any open sheets / alerts so
-    /// the user lands on a clean launcher instead of an orphan modal.
-    private func exitArSession() {
-        placedAnchors.removeAll()
-        showModelPicker = false
-        showError = false
-        sessionStarted = false
-        #if !targetEnvironment(simulator)
-        capturedARView = nil
-        #endif
-        SceneViewHaptic.shared.light()
-    }
-
-    // `animated_dragon.usdz` (8.6 MB) was dropped in #1152 Stage 3 (IPA
-    // slim-down). The "creature" role is covered by Butterfly + Phoenix.
-    private let arModels: [(name: String, icon: String, asset: String, scale: Float)] = [
-        ("Game Boy", "gamecontroller.fill", "game_boy_classic", 0.15),
-        ("Red Car", "car.fill", "red_car", 0.2),
-        ("Butterfly", "leaf.fill", "animated_butterfly", 0.15),
-        ("Piano", "pianokeys", "retro_piano", 0.12),
-        ("Nike Jordan", "shoe.fill", "nike_air_jordan", 0.15),
-        ("Phoenix", "bird.fill", "phoenix_bird", 0.15),
-        ("Fantasy Book", "book.fill", "fantasy_book", 0.12),
-        ("PS5 Controller", "gamecontroller.fill", "ps5_dualsense", 0.15),
-        ("Tree Scene", "tree.fill", "tree_scene", 0.1),
-    ]
-
-    private var selectedModel: (name: String, icon: String, asset: String, scale: Float) {
-        arModels[selectedModelIndex]
     }
 
     var body: some View {
-        Group {
-            if sessionStarted {
-                liveARView
-            } else {
-                ARLauncherScreen(
-                    arSupported: arSupported,
-                    onStartArSession: {
-                        sessionStarted = true
-                        SceneViewHaptic.shared.light()
-                    },
-                    onDemoTap: { demo in
-                        presentedDemo = demo
-                        SceneViewHaptic.shared.light()
-                    }
-                )
+        // A NavigationStack owns the title, as on the About tab: the large
+        // title collapses into the inline bar over the system scroll-edge
+        // backdrop, so nothing scrolls under the status bar or the Dynamic
+        // Island (#3791). The title used to be a plain `Text` inside the
+        // launcher's scroll view, with no safe-area chrome above it.
+        NavigationStack {
+            ARLauncherScreen(
+                arSupported: arSupported,
+                onStartArSession: { sessionStarted = true },
+                onDemoTap: { presentedDemo = $0 }
+            )
+            .navigationTitle("AR Experiences")
+        }
+        .fullScreenCover(isPresented: $sessionStarted) {
+            NavigationStack {
+                ARExperienceContainer(onBack: { sessionStarted = false }) {
+                    ARPlacementExperience()
+                }
             }
-        }
-        .alert("AR Error", isPresented: $showError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "An unknown error occurred.")
-        }
-        .sheet(isPresented: $showModelPicker) {
-            modelPickerSheet
-                .presentationDetents([.medium, .large])
-                .presentationBackground(.regularMaterial)
-                .presentationCornerRadius(28)
-                .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $presentedDemo) { demo in
             NavigationStack {
-                demo.destination
-                    .navigationTitle(demo.title)
-                    .navigationBarTitleInline()
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { presentedDemo = nil }
-                        }
-                    }
-            }
-        }
-    }
-
-    /// Live AR session UI — what the previous body rendered unconditionally.
-    /// Gated behind `sessionStarted` so the user has to explicitly enter the
-    /// camera session (Polycam / Reality Composer launcher pattern).
-    private var liveARView: some View {
-        ZStack {
-            #if !targetEnvironment(simulator)
-            arSceneView
-                .ignoresSafeArea()
-                .id(arViewID)
-            #else
-            simulatorPlaceholder
-                .ignoresSafeArea()
-            #endif
-
-            // Top status pill — centered horizontally, glass.
-            VStack {
-                statusPill
-                    .padding(.top, 8)
-                Spacer()
-            }
-
-            // Top-trailing Close button — exit affordance from the live AR
-            // session. Mirrors Android's top-end Close button on
-            // ArViewTab.kt (which flips `sessionStarted = false` to return
-            // to the launcher screen). Required for issue #1211 item 3.
-            // Re-uses `glassIconButton` so the size + style matches the
-            // bottom action bar (44×44, Apple HIG tap-target minimum).
-            // Extra `.padding(.top, 16)` clears the iPhone 15+/16 Pro
-            // Dynamic Island so the glass circle doesn't sit under it.
-            VStack {
-                HStack {
-                    Spacer()
-                    glassIconButton(systemImage: "xmark", label: "Exit AR camera", action: exitArSession)
-                        .padding(.top, 16)
-                        .padding(.trailing, 12)
-                }
-                Spacer()
-            }
-
-            // Bottom floating glass action bar.
-            VStack {
-                Spacer()
-                bottomActionBar
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-            }
-        }
-    }
-
-    // MARK: - AR Scene
-
-    #if !targetEnvironment(simulator)
-    private var arSceneView: some View {
-        ARSceneView(
-            planeDetection: .both,
-            showPlaneOverlay: true,
-            showCoachingOverlay: true,
-            onTapOnPlane: { position, arView in
-                let selected = arModels[selectedModelIndex]
-
-                Task {
-                    do {
-                        let modelNode = try await ModelNode.load(selected.asset)
-                        _ = modelNode.scaleToUnits(selected.scale)
-
-                        let anchor = AnchorNode.world(position: position)
-                        anchor.add(modelNode.entity)
-                        arView.scene.addAnchor(anchor.entity)
-
-                        // Track the anchor itself — the status-pill count is
-                        // derived from `placedAnchors`, never mutated directly.
-                        placedAnchors.append(anchor.entity)
-                        SceneViewHaptic.shared.medium()
-                    } catch {
-                        errorMessage = error.localizedDescription
-                        showError = true
-                        SceneViewHaptic.shared.error()
+                ARExperienceContainer(
+                    requirement: .forScene(id: demo.id),
+                    onBack: { presentedDemo = nil }
+                ) { demo.destination }
+                .navigationTitle(demo.title)
+                .navigationBarTitleInline()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { presentedDemo = nil }
                     }
                 }
             }
-        )
-        // Capture the underlying ARView so shareARScreenshot can call
-        // ARView.snapshot(saveToHDR:completion:) — the Metal-aware path.
-        .onSessionStarted { arView in
-            capturedARView = arView
-        }
-    }
-    #endif
-
-    // MARK: - Simulator placeholder
-
-    private var simulatorPlaceholder: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.10, blue: 0.18),
-                    Color(red: 0.18, green: 0.18, blue: 0.28),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-            VStack(spacing: 16) {
-                Image(systemName: "arkit")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .accessibilityHidden(true)
-                Text("AR requires a physical device")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text("Run on iPhone or iPad to place 3D models in your space.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-        }
-    }
-
-    // MARK: - Glass status pill (top center)
-
-    private var statusPill: some View {
-        HStack(spacing: 8) {
-            Image(systemName: placedCount == 0 ? "hand.tap.fill" : "checkmark.circle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(placedCount == 0 ? .yellow : .green)
-
-            Text(statusText)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.primary)
-                // The status string now carries the model name (e.g.
-                // "3 placed · tap to add PS5 Controller") — cap it to one
-                // line + allow a slight shrink so the pill never wraps or
-                // overflows the screen on an iPhone SE / large Dynamic Type.
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .glassBackground(in: Capsule())
-        .overlay(
-            Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
-        .accessibilityLabel(statusText)
-    }
-
-    private var statusText: String {
-        if placedCount == 0 {
-            return "Tap a surface to place \(selectedModel.name)"
-        } else {
-            // Keep the selected model name after the first placement —
-            // previously the pill dropped to "N placed · tap to add" and
-            // the user lost track of what the next tap would drop.
-            return "\(placedCount) placed \u{00B7} tap to add \(selectedModel.name)"
-        }
-    }
-
-    // MARK: - Bottom action bar
-
-    private var bottomActionBar: some View {
-        HStack(spacing: 10) {
-            // FAB "Pick model" — primary, takes most of the space.
-            Button {
-                showModelPicker = true
-                SceneViewHaptic.shared.light()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: selectedModel.icon)
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Model")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(selectedModel.name)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 4)
-                    Image(systemName: "chevron.up")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity)
-                .foregroundStyle(.primary)
-            }
-            .buttonStyle(.plain)
-            .glassBackground(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-            )
-            .accessibilityLabel("Pick model. Currently \(selectedModel.name)")
-
-            // Reset button (glass icon).
-            glassIconButton(systemImage: "arrow.counterclockwise", label: "Reset scene") {
-                resetScene()
-            }
-
-            // Screenshot button (glass icon).
-            glassIconButton(systemImage: "square.and.arrow.up", label: "Share AR screenshot") {
-                shareARScreenshot()
-                SceneViewHaptic.shared.light()
-            }
-        }
-        .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
-    }
-
-    private func glassIconButton(systemImage: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .foregroundStyle(.primary)
-        }
-        .buttonStyle(.plain)
-        .glassBackground(in: Circle())
-        .overlay(Circle().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
-        .accessibilityLabel(label)
-    }
-
-    // MARK: - Model picker sheet
-
-    private var modelPickerSheet: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 110), spacing: 12)],
-                    spacing: 12
-                ) {
-                    ForEach(Array(arModels.enumerated()), id: \.offset) { index, model in
-                        Button {
-                            selectedModelIndex = index
-                            SceneViewHaptic.shared.selection()
-                            showModelPicker = false
-                        } label: {
-                            VStack(spacing: 8) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [Color.blue.opacity(0.28), Color.purple.opacity(0.15)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                    Image(systemName: model.icon)
-                                        .font(.system(size: 32, weight: .semibold))
-                                        .foregroundStyle(.tint)
-                                }
-                                .frame(height: 90)
-
-                                Text(model.name)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                            }
-                            .padding(8)
-                            .glassBackground(
-                                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .strokeBorder(
-                                        index == selectedModelIndex
-                                            ? Color.blue
-                                            : Color.primary.opacity(0.08),
-                                        lineWidth: index == selectedModelIndex ? 2 : 0.5
-                                    )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Pick \(model.name)")
-                        .accessibilityAddTraits(index == selectedModelIndex ? .isSelected : [])
-                    }
-                }
-                .padding(16)
-            }
-            .navigationTitle("Pick a model")
-            .navigationBarTitleInline()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { showModelPicker = false }
-                }
-            }
-        }
-    }
-
-    // MARK: - Share
-
-    @MainActor
-    private func shareARScreenshot() {
-        #if !targetEnvironment(simulator)
-        // Use ARView.snapshot — the Metal-aware path that correctly captures
-        // both the AR camera background and 3D content. UIView.drawHierarchy
-        // skips the Metal layer and produces a black / transparent hole where
-        // the 3D content lives (issue #983).
-        guard let arView = capturedARView else {
-            // Session not yet started — nothing to capture.
-            return
-        }
-        arView.snapshot(saveToHDR: false) { [self] image in
-            guard let image else { return }
-            DispatchQueue.main.async {
-                self.presentShareSheet(image: image)
-            }
-        }
-        #else
-        // Simulator: ARView is unavailable — show an informational message.
-        errorMessage = "AR screenshots require a physical device."
-        showError = true
-        #endif
-    }
-
-    /// Presents `UIActivityViewController` for a captured image.
-    @MainActor
-    private func presentShareSheet(image: UIImage) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else { return }
-
-        let activityVC = UIActivityViewController(
-            activityItems: [image, "Check out what I placed in my space with SceneView!"],
-            applicationActivities: nil
-        )
-
-        if let presenter = window.rootViewController {
-            if let popover = activityVC.popoverPresentationController {
-                popover.sourceView = presenter.view
-                popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: 40, width: 0, height: 0)
-            }
-            presenter.present(activityVC, animated: true)
         }
     }
 }
@@ -532,28 +96,21 @@ struct FeaturedARDemo: Identifiable {
     /// demo types share one collection.
     let destination: AnyView
 
-    /// The six headline AR demos shown on the launcher grid. Picked to mirror
+    /// The headline AR demos shown on the launcher grid. Picked to mirror
     /// Android's launcher card set as closely as the iOS port allows — all of
     /// these have a real, shipping iOS destination.
     static let all: [FeaturedARDemo] = [
         FeaturedARDemo(
             id: "ar-placement",
-            title: "Tap to Place",
-            subtitle: "Tap a detected plane to place a model",
+            title: "AR Placement",
+            subtitle: "One object on the first usable surface",
             icon: "arkit",
             destination: AnyView(ARPlacementDemo())
         ),
         FeaturedARDemo(
-            id: "ar-instant-placement",
-            title: "Instant Placement",
-            subtitle: "Place models before plane detection converges",
-            icon: "bolt.fill",
-            destination: AnyView(ARInstantPlacementDemo())
-        ),
-        FeaturedARDemo(
             id: "ar-lighting",
             title: "AR Lighting",
-            subtitle: "Compare main / fill light modifier presets",
+            subtitle: "Key and fill light presets on one model",
             icon: "lightbulb.max.fill",
             destination: AnyView(ARLightingDemo())
         ),
@@ -680,58 +237,68 @@ private struct ARLauncherScreen: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Hero icon — same gradient + corner radius idiom as the Android
-                // launcher's 56dp box.
-                ZStack {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.accentColor.opacity(0.85),
-                                    .blue.opacity(0.55),
-                                    .purple.opacity(0.45),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                // Compact hero — the icon beside the tagline, as on Android's
+                // `ArLauncherScreen`. The title is the navigation title.
+                HStack(spacing: SceneViewTokens.Space.md) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        SceneViewTheme.primary.opacity(0.85),
+                                        SceneViewTheme.tertiary.opacity(0.70),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .frame(width: 96, height: 96)
-                    Image(systemName: "arkit")
-                        .font(.system(size: 44, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .accessibilityHidden(true)
-                }
-                .padding(.top, 32)
+                            .frame(width: 56, height: 56)
+                        Image(systemName: "arkit")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityHidden(true)
 
-                VStack(spacing: 8) {
-                    Text("AR Experiences")
-                        .font(.title.weight(.bold))
-                        // Bump VoiceOver focus order so the title gets read
-                        // first then the CTA — without this the screen reader
-                        // walks the Spacer / hero / etc before reaching the
-                        // action.
-                        .accessibilitySortPriority(2)
                     Text("Place 3D models in your space, scan faces, anchor to terrain.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, SceneViewTokens.Space.sm)
 
-                Button(action: onCtaTap) {
+                if state == .unsupported {
+                    // Nothing to tap, so no button: a status line, as on
+                    // Android's `ArLauncherScreen`. It used to be the primary
+                    // capsule disabled at 50 % opacity — white on a washed-out
+                    // blue, the one message explaining why AR is off, nearly
+                    // invisible in light mode (#3790). `on-surface` on
+                    // `surface-container-high` is 15.3:1 light / 13.5:1 dark.
                     Label(ctaTitle, systemImage: ctaIcon)
                         .font(.headline)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                        .labelStyle(StatusLabelStyle())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(.tint, in: Capsule())
-                        .foregroundStyle(.white)
+                        .padding(.horizontal, SceneViewTokens.Space.md)
+                        .background(SceneViewTokens.HomeColor.chipBackground, in: Capsule())
+                        .padding(.horizontal, 24)
+                        .accessibilityElement(children: .combine)
+                        .accessibilitySortPriority(1)
+                } else {
+                    Button(action: onCtaTap) {
+                        Label(ctaTitle, systemImage: ctaIcon)
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 24)
+                    .accessibilityLabel(ctaTitle)
+                    .accessibilitySortPriority(1)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 24)
-                .disabled(state == .unsupported)
-                .opacity(state == .unsupported ? 0.5 : 1.0)
-                .accessibilityLabel(ctaTitle)
-                .accessibilitySortPriority(1)
 
                 Text(caption)
                     .font(.caption)
@@ -749,6 +316,7 @@ private struct ARLauncherScreen: View {
             .frame(maxWidth: .infinity)
             .padding(.bottom, 24)
         }
+        .background(SceneViewTokens.HomeColor.surface)
         .onChange(of: scenePhase) { _, phase in
             // Re-sync the CTA when the app returns to the foreground — the
             // user may have flipped the camera switch in Settings.
@@ -785,6 +353,19 @@ private struct ARLauncherScreen: View {
                 }
             }
             .padding(.horizontal, 24)
+        }
+    }
+}
+
+/// Status line label: the glyph in `danger` (3.5:1 light / 3.8:1 dark on
+/// `surface-container-high`, above the 3:1 a graphic needs), the text in
+/// whatever foreground the caller set.
+private struct StatusLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: SceneViewTokens.Space.sm) {
+            configuration.icon
+                .foregroundStyle(SceneViewTokens.HomeColor.danger)
+            configuration.title
         }
     }
 }
@@ -832,7 +413,7 @@ private struct ARDemoCard: View {
         }
         .frame(maxWidth: .infinity)
         .frame(minHeight: 150, alignment: .top)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)

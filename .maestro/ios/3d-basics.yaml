@@ -22,7 +22,7 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: geometry
       DEMO_NAME: Geometry Primitives
-      ASSERT_TEXT: "5 built-in geometry types with PBR materials"
+      ASSERT_TEXT: "Five primitives, one call each — drag to orbit"
 - runFlow:
     file: flows/demo-settings.yaml
     env:

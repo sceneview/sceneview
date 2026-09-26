@@ -6,11 +6,11 @@
 // stale hardcoded constants. See #941.
 
 export const PACKAGE_VERSION = "4.1.0" as const;
-export const LATEST_SCENEVIEW_RELEASE = "4.38.0" as const;
+export const LATEST_SCENEVIEW_RELEASE = "4.40.0" as const;
 // The pub.dev coordinate for `flutter_sceneview`, read from the plugin's
 // README. Deliberately NOT LATEST_SCENEVIEW_RELEASE: pub.dev lags the SDK,
 // and a caret range against an unpublished version cannot be resolved.
-export const LATEST_FLUTTER_PUB_RELEASE = "4.24.0" as const;
+export const LATEST_FLUTTER_PUB_RELEASE = "4.39.0" as const;
 // Web Filament runtimes, from ../gradle/libs.versions.toml (#3173).
 // FILAMENT_WEB_NPM_VERSION is the npm `filament` pin (CDN artifacts, Kotlin/JS);
 // FILAMENT_WEBSITE_VERSION is the runtime vendored for sceneview.js.

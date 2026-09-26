@@ -21,7 +21,6 @@
 		3DC54357982F78B8C2E02FC8 /* ArCloudAnchorsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8550BB2028D4FF4056AEBB75 /* ArCloudAnchorsScene.swift */; };
 		88B30D69A8295299DB46B027 /* ArDepthOcclusionScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF95C7E0A3E7A2D62A427A8 /* ArDepthOcclusionScene.swift */; };
 		0556583EF5AF44854433ED30 /* ArImageTrackingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9894E9E0B48C546F7045302 /* ArImageTrackingScene.swift */; };
-		AB01222A63039941E8E2398B /* ArInstantPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEEA6C6F0910C858DADF4F25 /* ArInstantPlacementScene.swift */; };
 		5E207E2F7A55D2D96DBD1814 /* ArLightingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD64719EA56EB8B83AAC04D4 /* ArLightingScene.swift */; };
 		E3564B14080F27209FF35DC5 /* ArOrbitalScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600043FF3AFFE79411B7DD8A /* ArOrbitalScene.swift */; };
 		50708BAB945D780C4BB6300A /* ArPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127E970FECE22BF0FC5D8867 /* ArPlacementScene.swift */; };
@@ -34,7 +33,6 @@
 		4174B93766B7BD3B8D98783F /* CustomMeshScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C735A08AAE451562DEFBAF5 /* CustomMeshScene.swift */; };
 		BD016517EAC148510B51E258 /* DoublePendulumScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3AB5B3BF75EEDAC30A88D74 /* DoublePendulumScene.swift */; };
 		CDDC40367454570BA7AF147F /* DynamicSkyScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1E32030EDEC9FCFD1E4FB0 /* DynamicSkyScene.swift */; };
-		FED589255E75D35A9DACBA0A /* FogScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A2252AA18DB87570FD8BEB /* FogScene.swift */; };
 		A8F7A49A69BCF88DD6C97314 /* GeometryScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290876CFB45E70811AA137B6 /* GeometryScene.swift */; };
 		0FE3731854F188786E79ED57 /* GestureEditingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B57E9A1481A8D84910B567A /* GestureEditingScene.swift */; };
 		4B652988C6421C693CCF45A4 /* ImageScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF935D57FC86051DD436E4D9 /* ImageScene.swift */; };
@@ -80,7 +78,6 @@
 		C10000000000000000000013 /* ImagePlaneDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000013 /* ImagePlaneDemo.swift */; };
 		C10000000000000000000014 /* LightTypesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000014 /* LightTypesDemo.swift */; };
 		C10000000000000000000015 /* DynamicSkyDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000015 /* DynamicSkyDemo.swift */; };
-		C10000000000000000000016 /* FogDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000016 /* FogDemo.swift */; };
 		C10000000000000000000017 /* PhysicsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000017 /* PhysicsDemo.swift */; };
 		C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000062 /* DoublePendulumDemo.swift */; };
 		C10000000000000000000018 /* CameraControlsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000018 /* CameraControlsDemo.swift */; };
@@ -98,7 +95,6 @@
 		C10000000000000000000034 /* ModelViewerDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000034 /* ModelViewerDemo.swift */; };
 		C10000000000000000000035 /* MultiModelDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000035 /* MultiModelDemo.swift */; };
 		C10000000000000000000036 /* ARPlacementDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000036 /* ARPlacementDemo.swift */; };
-		C10000000000000000000037 /* ARInstantPlacementDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000037 /* ARInstantPlacementDemo.swift */; };
 		C10000000000000000000038 /* SpatialAudioDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000038 /* SpatialAudioDemo.swift */; };
 		C10000000000000000000039 /* EnvironmentDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000039 /* EnvironmentDemo.swift */; };
 		595BE7B36EE44F0893381277 /* EnvironmentScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B8B5CCC5464FAB8141C76F /* EnvironmentScene.swift */; };
@@ -130,6 +126,8 @@
 		E500000000000000000000D3 /* sample.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000D3 /* sample.mp4 */; };
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000F18 /* DemoScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F18 /* DemoScaffold.swift */; };
+		C10000000000000000000F2A /* ARExperienceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F2A /* ARExperienceContainer.swift */; };
+		C10000000000000000000F2B /* ARPlacementExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F2B /* ARPlacementExperience.swift */; };
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
 		C10000000000000000000060 /* AppStoreUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000060 /* AppStoreUpdater.swift */; };
@@ -183,13 +181,13 @@
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
+		F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F000000000000000000000A0 /* ARExperienceModelTests.swift */; };
 		A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002962 /* AssetSourceProbeTests.swift */; };
 		A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002968 /* BundledAssetCreditsTests.swift */; };
 		F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */; };
 		491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */; };
 		FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */; };
 		1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */; };
-		6A052B88F0FEA671530C17BC /* PlacementSceneScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F43BF6C7AE57D84A840CE79 /* PlacementSceneScene.swift */; };
 		F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SceneViewDemoUITests.swift */; };
 /* End PBXBuildFile section */
 
@@ -245,6 +243,7 @@
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
+		F000000000000000000000A0 /* ARExperienceModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARExperienceModelTests.swift; path = SceneViewDemoTests/ARExperienceModelTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002962 /* AssetSourceProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourceProbeTests.swift; path = SceneViewDemoTests/AssetSourceProbeTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002968 /* BundledAssetCreditsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetCreditsTests.swift; path = SceneViewDemoTests/BundledAssetCreditsTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetPrimBudgetTests.swift; path = SceneViewDemoTests/BundledAssetPrimBudgetTests.swift; sourceTree = SOURCE_ROOT; };
@@ -261,7 +260,6 @@
 		C20000000000000000000013 /* ImagePlaneDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePlaneDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000014 /* LightTypesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTypesDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000015 /* DynamicSkyDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicSkyDemo.swift; sourceTree = "<group>"; };
-		C20000000000000000000016 /* FogDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FogDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000017 /* PhysicsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicsDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000062 /* DoublePendulumDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoublePendulumDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000018 /* CameraControlsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControlsDemo.swift; sourceTree = "<group>"; };
@@ -279,7 +277,6 @@
 		C20000000000000000000034 /* ModelViewerDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelViewerDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000035 /* MultiModelDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiModelDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000036 /* ARPlacementDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARPlacementDemo.swift; sourceTree = "<group>"; };
-		C20000000000000000000037 /* ARInstantPlacementDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARInstantPlacementDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000038 /* SpatialAudioDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialAudioDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000039 /* EnvironmentDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000E0 /* TextureStreamingDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextureStreamingDemo.swift; sourceTree = "<group>"; };
@@ -304,6 +301,8 @@
 		F60000000000000000000002 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		C20000000000000000000030 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
 		C20000000000000000000F18 /* DemoScaffold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScaffold.swift; path = SceneViewDemo/Views/Components/DemoScaffold.swift; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000F2A /* ARExperienceContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARExperienceContainer.swift; path = SceneViewDemo/Views/Components/ARExperienceContainer.swift; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000F2B /* ARPlacementExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARPlacementExperience.swift; path = SceneViewDemo/Views/Components/ARPlacementExperience.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000050 /* DemoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoSheet.swift; path = SceneViewDemo/Views/Components/DemoSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000051 /* CreditsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditsSheet.swift; path = SceneViewDemo/Views/CreditsSheet.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000060 /* AppStoreUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdater.swift; path = SceneViewDemo/Services/AppStoreUpdater.swift; sourceTree = SOURCE_ROOT; };
@@ -359,7 +358,6 @@
 		8550BB2028D4FF4056AEBB75 /* ArCloudAnchorsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArCloudAnchorsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArCloudAnchorsScene.swift; sourceTree = SOURCE_ROOT; };
 		CEF95C7E0A3E7A2D62A427A8 /* ArDepthOcclusionScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthOcclusionScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthOcclusionScene.swift; sourceTree = SOURCE_ROOT; };
 		F9894E9E0B48C546F7045302 /* ArImageTrackingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArImageTrackingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArImageTrackingScene.swift; sourceTree = SOURCE_ROOT; };
-		DEEA6C6F0910C858DADF4F25 /* ArInstantPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArInstantPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArInstantPlacementScene.swift; sourceTree = SOURCE_ROOT; };
 		FD64719EA56EB8B83AAC04D4 /* ArLightingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArLightingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArLightingScene.swift; sourceTree = SOURCE_ROOT; };
 		600043FF3AFFE79411B7DD8A /* ArOrbitalScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArOrbitalScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArOrbitalScene.swift; sourceTree = SOURCE_ROOT; };
 		127E970FECE22BF0FC5D8867 /* ArPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPlacementScene.swift; sourceTree = SOURCE_ROOT; };
@@ -373,7 +371,6 @@
 		F3AB5B3BF75EEDAC30A88D74 /* DoublePendulumScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DoublePendulumScene.swift; path = SceneViewDemo/Views/Demos/Scenes/DoublePendulumScene.swift; sourceTree = SOURCE_ROOT; };
 		0A1E32030EDEC9FCFD1E4FB0 /* DynamicSkyScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DynamicSkyScene.swift; path = SceneViewDemo/Views/Demos/Scenes/DynamicSkyScene.swift; sourceTree = SOURCE_ROOT; };
 		A3B8B5CCC5464FAB8141C76F /* EnvironmentScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EnvironmentScene.swift; path = SceneViewDemo/Views/Demos/Scenes/EnvironmentScene.swift; sourceTree = SOURCE_ROOT; };
-		E7A2252AA18DB87570FD8BEB /* FogScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FogScene.swift; path = SceneViewDemo/Views/Demos/Scenes/FogScene.swift; sourceTree = SOURCE_ROOT; };
 		290876CFB45E70811AA137B6 /* GeometryScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GeometryScene.swift; path = SceneViewDemo/Views/Demos/Scenes/GeometryScene.swift; sourceTree = SOURCE_ROOT; };
 		2B57E9A1481A8D84910B567A /* GestureEditingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GestureEditingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/GestureEditingScene.swift; sourceTree = SOURCE_ROOT; };
 		BF935D57FC86051DD436E4D9 /* ImageScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ImageScene.swift; sourceTree = SOURCE_ROOT; };
@@ -401,7 +398,6 @@
 		082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlacementReticlePreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PlacementReticlePreviewScene.swift; sourceTree = SOURCE_ROOT; };
 		E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WallPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/WallPlacementScene.swift; sourceTree = SOURCE_ROOT; };
 		06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthColliderScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthColliderScene.swift; sourceTree = SOURCE_ROOT; };
-		7F43BF6C7AE57D84A840CE79 /* PlacementSceneScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlacementSceneScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PlacementSceneScene.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -485,6 +481,7 @@
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
+				F000000000000000000000A0 /* ARExperienceModelTests.swift */,
 				A20000000000000000002962 /* AssetSourceProbeTests.swift */,
 				A20000000000000000002968 /* BundledAssetCreditsTests.swift */,
 				F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */,
@@ -548,6 +545,8 @@
 		C40000000000000000000050 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				C20000000000000000000F2A /* ARExperienceContainer.swift */,
+				C20000000000000000000F2B /* ARPlacementExperience.swift */,
 				C20000000000000000000F18 /* DemoScaffold.swift */,
 				C20000000000000000000050 /* DemoSheet.swift */,
 				C20000000000000000000061 /* UpdateBanner.swift */,
@@ -581,7 +580,6 @@
 				C20000000000000000000013 /* ImagePlaneDemo.swift */,
 				C20000000000000000000014 /* LightTypesDemo.swift */,
 				C20000000000000000000015 /* DynamicSkyDemo.swift */,
-				C20000000000000000000016 /* FogDemo.swift */,
 				C20000000000000000000017 /* PhysicsDemo.swift */,
 				C20000000000000000000062 /* DoublePendulumDemo.swift */,
 				C20000000000000000000018 /* CameraControlsDemo.swift */,
@@ -596,7 +594,6 @@
 				C20000000000000000000034 /* ModelViewerDemo.swift */,
 				C20000000000000000000035 /* MultiModelDemo.swift */,
 				C20000000000000000000036 /* ARPlacementDemo.swift */,
-				C20000000000000000000037 /* ARInstantPlacementDemo.swift */,
 				C20000000000000000000038 /* SpatialAudioDemo.swift */,
 				C20000000000000000000039 /* EnvironmentDemo.swift */,
 				C200000000000000000000F0 /* ARImageTrackingDemo.swift */,
@@ -940,7 +937,6 @@
 				C10000000000000000000013 /* ImagePlaneDemo.swift in Sources */,
 				C10000000000000000000014 /* LightTypesDemo.swift in Sources */,
 				C10000000000000000000015 /* DynamicSkyDemo.swift in Sources */,
-				C10000000000000000000016 /* FogDemo.swift in Sources */,
 				C10000000000000000000017 /* PhysicsDemo.swift in Sources */,
 				C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */,
 				C10000000000000000000018 /* CameraControlsDemo.swift in Sources */,
@@ -971,7 +967,6 @@
 				C10000000000000000000034 /* ModelViewerDemo.swift in Sources */,
 				C10000000000000000000035 /* MultiModelDemo.swift in Sources */,
 				C10000000000000000000036 /* ARPlacementDemo.swift in Sources */,
-				C10000000000000000000037 /* ARInstantPlacementDemo.swift in Sources */,
 				C10000000000000000000038 /* SpatialAudioDemo.swift in Sources */,
 				C10000000000000000000039 /* EnvironmentDemo.swift in Sources */,
 				C100000000000000000000F0 /* ARImageTrackingDemo.swift in Sources */,
@@ -991,6 +986,8 @@
 				C100000000000000000000D5 /* DebugOverlayDemo.swift in Sources */,
 				C100000000000000000000D6 /* DebugOverlayScene.swift in Sources */,
 				ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */,
+				C10000000000000000000F2A /* ARExperienceContainer.swift in Sources */,
+				C10000000000000000000F2B /* ARPlacementExperience.swift in Sources */,
 				C10000000000000000000F18 /* DemoScaffold.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
@@ -1005,7 +1002,6 @@
 				3DC54357982F78B8C2E02FC8 /* ArCloudAnchorsScene.swift in Sources */,
 				88B30D69A8295299DB46B027 /* ArDepthOcclusionScene.swift in Sources */,
 				0556583EF5AF44854433ED30 /* ArImageTrackingScene.swift in Sources */,
-				AB01222A63039941E8E2398B /* ArInstantPlacementScene.swift in Sources */,
 				5E207E2F7A55D2D96DBD1814 /* ArLightingScene.swift in Sources */,
 				E3564B14080F27209FF35DC5 /* ArOrbitalScene.swift in Sources */,
 				50708BAB945D780C4BB6300A /* ArPlacementScene.swift in Sources */,
@@ -1025,7 +1021,6 @@
 				BD016517EAC148510B51E258 /* DoublePendulumScene.swift in Sources */,
 				CDDC40367454570BA7AF147F /* DynamicSkyScene.swift in Sources */,
 				595BE7B36EE44F0893381277 /* EnvironmentScene.swift in Sources */,
-				FED589255E75D35A9DACBA0A /* FogScene.swift in Sources */,
 				A8F7A49A69BCF88DD6C97314 /* GeometryScene.swift in Sources */,
 				0FE3731854F188786E79ED57 /* GestureEditingScene.swift in Sources */,
 				4B652988C6421C693CCF45A4 /* ImageScene.swift in Sources */,
@@ -1046,7 +1041,6 @@
 				491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */,
 				FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */,
 				1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */,
-				6A052B88F0FEA671530C17BC /* PlacementSceneScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1063,6 +1057,7 @@
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
+				F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */,
 				A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */,
 				A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */,
 				F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */,
@@ -1223,7 +1218,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.38.0;
+				MARKETING_VERSION = 4.40.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;
@@ -1258,7 +1253,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.38.0;
+				MARKETING_VERSION = 4.40.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;

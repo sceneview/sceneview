@@ -135,13 +135,8 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
     /// category whose demos can put several *different* slugs on screen at the
     /// same time.
     ///
-    /// `ARPlacementDemo` and `ARInstantPlacementDemo` both accumulate into a
-    /// `placedAnchors` array: every tap adds an anchor and nothing removes the
-    /// earlier ones until "Clear all placed models". So a user can arm one chip,
-    /// tap, arm another, tap — and in keyless mode two differently-labelled
-    /// objects render as the same bundled asset, side by side in one frame.
-    /// That is #2940's defect (a fallback reading as the real asset) with the
-    /// contradiction visible without even leaving the screen.
+    /// Catalogue slugs must retain distinct bundled assets even though the canonical
+    /// AR placement experience now displays one selected model at a time.
     ///
     /// The prim-budget test above cannot catch this: it de-duplicates paths
     /// into a `Set` precisely to avoid parsing the same asset twice, so

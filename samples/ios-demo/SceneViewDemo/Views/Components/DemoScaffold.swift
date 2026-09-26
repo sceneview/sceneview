@@ -12,7 +12,9 @@ import SceneViewSwift
 /// - the floating dock, 8 pt above the home-indicator safe area (16 pt from the
 ///   edge on a Home-button iPhone) — a demo never pads its own bottom;
 /// - one 16 pt horizontal margin for every block;
-/// - the scrim bands that keep white chrome legible over any scene;
+/// - the scrim bands that keep white chrome legible over any scene — except in
+///   ``DemoChromeMode/ar``, where the stage is a camera feed and each control
+///   carries its own `ar-scrim` ground instead;
 /// - the settings sheet (detents, themed surface, keyboard, Reset / feedback / QA);
 /// - Dynamic Type (chrome capped at XXL, the sheet scales freely), VoiceOver
 ///   order (back → title → scene → accessory → dock) and Reduce Motion.
@@ -36,21 +38,47 @@ import SceneViewSwift
 /// `motion-fade`, the top row drops and the bottom cluster rises on
 /// `motion-spring`, an option change slides the selection on `motion-spring`.
 /// Under Reduce Motion nothing translates or scales — the fades stay.
-public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
+/// What the scaffold's stage actually is, and therefore how the chrome grounds
+/// itself.
+public enum DemoChromeMode {
+    /// A 3D scene the app renders. The scrim bands apply: the scene can be any
+    /// brightness, and white chrome has to read over all of them.
+    case stage
+    /// A live camera feed. No bands — darkening 160 pt of sky and 220 pt of
+    /// floor dims the one thing the user pointed the phone at, and it does so
+    /// permanently, on every AR screen. Controls get an `ar-scrim` ground the
+    /// size of themselves instead.
+    case ar
+}
+
+public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls: View>: View {
     private let title: String?
     private let dock: [DockItem]
     private let accent: DockItem?
     private let onReset: (() -> Void)?
     private let hasControls: Bool
+    private let chromeMode: DemoChromeMode
     private let stage: Stage
     private let accessory: Accessory
+    /// Trailing end of the identity row — a small state pill (asset source,
+    /// tracking state). It sits in the row so it clears the status bar and the
+    /// Dynamic Island exactly as the title does, instead of each demo overlaying
+    /// it at the top edge of the stage.
+    private let status: Status
     private let controls: Controls
 
     @State private var controlsPresented = false
     @State private var entered = false
+    @State private var accentTaps = 0
+    /// Shapes of the bottom cluster (accessory + dock) morph within this
+    /// namespace on iOS 26+ instead of cross-fading.
+    @Namespace private var glassSpace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.demoTitle) private var presenterTitle
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Read here, outside the chrome's pinned dark scheme, so the AR ground
+    /// resolves against the user's real appearance as `DESIGN.md` specifies.
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     public init(
@@ -58,8 +86,10 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         dock: [DockItem] = [],
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
+        chromeMode: DemoChromeMode = .stage,
         @ViewBuilder stage: () -> Stage,
         @ViewBuilder accessory: () -> Accessory = { EmptyView() },
+        @ViewBuilder status: () -> Status = { EmptyView() },
         @ViewBuilder controls: () -> Controls = { EmptyView() }
     ) {
         self.title = title
@@ -67,8 +97,10 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         self.accent = accent
         self.onReset = onReset
         self.hasControls = Controls.self != EmptyView.self
+        self.chromeMode = chromeMode
         self.stage = stage()
         self.accessory = accessory()
+        self.status = status()
         self.controls = controls()
     }
 
@@ -83,7 +115,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
                     .opacity(entered ? 1 : 0)
                     .accessibilitySortPriority(2)
 
-                scrims
+                if chromeMode == .stage {
+                    scrims
+                }
 
                 chrome(bottomInset: Metrics.dockBottom(safeArea: proxy.safeAreaInsets.bottom)
                        - proxy.safeAreaInsets.bottom)
@@ -145,12 +179,16 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
 
             Spacer(minLength: 0)
 
+            // One glass group: the accessory and the dock sample the same
+            // backdrop and morph into each other when the accessory changes.
             VStack(spacing: Metrics.clusterGap) {
                 accessory
                     .padding(.horizontal, Metrics.margin)
                 dockView
                     .padding(.horizontal, Metrics.margin)
             }
+            .glassEffectGroup()
+            .environment(\.chromeGlassNamespace, glassSpace)
             .offset(y: travels ? Metrics.enterBottom : 0)
             .accessibilitySortPriority(1)
         }
@@ -161,6 +199,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
         // Chrome over media is theme-independent: pin the material and every
         // asset colour to their dark variant so light mode cannot wash it out.
         .environment(\.colorScheme, .dark)
+        .environment(\.arChromeGround,
+                     chromeMode == .ar ? SceneViewTokens.ARChrome.scrim(colorScheme) : nil)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
@@ -175,9 +215,6 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
     private var identityRow: some View {
         HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
             GlassIconButton(icon: "chevron.left", label: "Close demo") {
-                #if os(iOS)
-                SceneViewHaptic.shared.light()
-                #endif
                 dismiss()
             }
             .accessibilityIdentifier("demo-close")
@@ -204,6 +241,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
             }
 
             Spacer(minLength: 0)
+
+            status
+                .padding(.trailing, Self.touchSlop)
         }
         .padding(.horizontal, Metrics.margin - Self.touchSlop)
     }
@@ -220,7 +260,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
             dockRow(items, captions: false)
         }
         .frame(minHeight: SceneViewTokens.Layout.dockHeight)
-        .glassBackground(in: Capsule())
+        .glassBackground(in: Capsule(), interactive: true, id: "dock")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("demo-dock")
     }
@@ -235,9 +275,6 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
             DockButton(
                 item: DockItem(icon: "slider.horizontal.3", label: "Demo settings", caption: "Settings",
                                selected: controlsPresented) {
-                    #if os(iOS)
-                    SceneViewHaptic.shared.selection()
-                    #endif
                     controlsPresented = true
                 },
                 showsCaption: captions
@@ -245,17 +282,12 @@ public struct DemoScaffold<Stage: View, Accessory: View, Controls: View>: View {
             .accessibilityIdentifier("demo-settings-fab")
 
             if let accent {
-                Button(action: accent.action) {
-                    Image(systemName: accent.icon)
-                        .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .medium))
-                        .foregroundStyle(SceneViewTokens.Stage.background)
-                        .frame(width: SceneViewTokens.Layout.touchTarget,
-                               height: SceneViewTokens.Layout.touchTarget)
-                        .background(SceneViewTokens.HomeColor.primary.opacity(accent.enabled ? 1 : 0.38),
-                                    in: Circle())
+                AccentButton(item: accent) {
+                    accentTaps += 1
+                    accent.action()
                 }
-                .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
-                .disabled(!accent.enabled)
+                // The dock's one primary action: a firmer tap than a selection.
+                .sensoryFeedback(.impact(weight: .medium), trigger: accentTaps)
                 .accessibilityLabel(accent.label)
                 .accessibilityIdentifier("demo-dock-accent")
             }
@@ -291,12 +323,64 @@ public struct DockItem: Identifiable {
     }
 }
 
+/// The dock's primary action — `dock-accent`, a primary-tinted disc.
+///
+/// iOS 26+: the system's prominent glass (`.glassProminent`) tinted from the
+/// `primary` token, so it reads as the same material as the dock it sits in.
+/// Below 26, and when disabled on any version: the filled disc it has always
+/// been — a disabled `.glassProminent` drops its tint and turned into a dark
+/// grey disc under a dark icon that the dock swallowed.
+private struct AccentButton: View {
+    let item: DockItem
+    let action: () -> Void
+
+    var body: some View {
+        if #available(iOS 26, macOS 26, visionOS 26, *), item.enabled {
+            Button(action: action) {
+                // The style pads its label on every side; this label size
+                // lands the disc on the same 48 pt as the fallback below.
+                icon
+                    .frame(width: Self.glassLabelSize, height: Self.glassLabelSize)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(SceneViewTokens.HomeColor.primary)
+            .disabled(!item.enabled)
+            .frame(width: SceneViewTokens.Layout.touchTarget,
+                   height: SceneViewTokens.Layout.touchTarget)
+        } else {
+            Button(action: action) {
+                icon
+                    .frame(width: SceneViewTokens.Layout.touchTarget,
+                           height: SceneViewTokens.Layout.touchTarget)
+                    .background(SceneViewTokens.HomeColor.primary.opacity(item.enabled ? 1 : 0.38),
+                                in: Circle())
+            }
+            .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+            .disabled(!item.enabled)
+        }
+    }
+
+    private static let glassLabelSize: CGFloat = 32
+
+    private var icon: some View {
+        Image(systemName: item.icon)
+            .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .medium))
+            .foregroundStyle(SceneViewTokens.Stage.background)
+    }
+}
+
 private struct DockButton: View {
     let item: DockItem
     let showsCaption: Bool
 
+    @State private var taps = 0
+
     var body: some View {
-        Button(action: item.action) {
+        Button {
+            taps += 1
+            item.action()
+        } label: {
             VStack(spacing: 2) {
                 Image(systemName: item.icon)
                     .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .medium))
@@ -320,6 +404,9 @@ private struct DockButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+        // Every dock item — a toggle (Animate, Lighting) or a destination
+        // (Models, Settings) — is picking one thing among the dock's few.
+        .sensoryFeedback(.selection, trigger: taps)
         .disabled(!item.enabled)
         .accessibilityLabel(item.label)
         .accessibilityAddTraits(item.selected ? .isSelected : [])
@@ -353,8 +440,9 @@ public struct DemoOptionStrip<Option: Hashable>: View {
             row
             ScrollView(.horizontal, showsIndicators: false) { row }
         }
-        .glassBackground(in: Capsule())
+        .glassBackground(in: Capsule(), interactive: true, id: "options")
         .clipShape(Capsule())
+        .sensoryFeedback(.selection, trigger: selection)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("demo-options")
     }
@@ -364,9 +452,6 @@ public struct DemoOptionStrip<Option: Hashable>: View {
             ForEach(options, id: \.self) { option in
                 let selected = option == selection
                 Button {
-                    #if os(iOS)
-                    SceneViewHaptic.shared.selection()
-                    #endif
                     withAnimation(reduceMotion ? nil : SceneViewTokens.Spring.animation) {
                         selection = option
                     }
@@ -412,7 +497,8 @@ public struct DemoHint: View {
             .padding(.vertical, SceneViewTokens.Space.sm)
             .frame(minHeight: SceneViewTokens.Glass.pillHeight)
             .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Glass.pillHeight / 2,
-                                                  style: .continuous))
+                                                  style: .continuous),
+                             id: "hint")
     }
 }
 
@@ -421,9 +507,12 @@ public struct DemoHint: View {
 /// The one settings surface: the demo's own controls, then — behind a hairline
 /// — Reset, Send feedback and QA mode (`DESIGN.md`: there is no overflow menu).
 ///
-/// Themed, not glass: a sheet is a surface, so it takes `surface-container`
-/// and the app's light/dark colours rather than a bare material, which over
-/// the dark stage resolved to nearly the black behind it.
+/// Below iOS 26 it is themed, not glass: a sheet is a surface, so it takes
+/// `surface-container` and the app's light/dark colours rather than a bare
+/// material, which over the dark stage resolved to nearly the black behind it.
+/// On iOS 26+ the partial detents are the system's Liquid Glass sheet — a real
+/// glass, not that bare material — so the scene stays visible under the
+/// controls (`partialSheetBackground`).
 struct DemoControlsSheet<Controls: View>: View {
     let title: String?
     let hasControls: Bool
@@ -441,6 +530,7 @@ struct DemoControlsSheet<Controls: View>: View {
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
     @State private var peek: CGFloat = 0
     @State private var detent: PresentationDetent = Self.fallback
+    @State private var resets = 0
 
     private typealias Palette = SceneViewTokens.HomeColor
     private static var fallback: PresentationDetent { .fraction(0.25) }
@@ -482,7 +572,7 @@ struct DemoControlsSheet<Controls: View>: View {
         #if os(iOS)
         .presentationBackgroundInteraction(.enabled)
         .presentationContentInteraction(.scrolls)
-        .presentationBackground(Palette.surfaceContainer)
+        .partialSheetBackground(Palette.surfaceContainer)
         .presentationCornerRadius(SceneViewTokens.Radius.xl)
         #endif
     }
@@ -498,8 +588,13 @@ struct DemoControlsSheet<Controls: View>: View {
     private var sharedRows: some View {
         VStack(spacing: 0) {
             if let onReset {
-                row(icon: "arrow.counterclockwise", title: "Reset", action: onReset)
-                    .accessibilityIdentifier("demo-reset")
+                row(icon: "arrow.counterclockwise", title: "Reset") {
+                    resets += 1
+                    onReset()
+                }
+                // A confirmation, not a selection: the scene is back to where it started.
+                .sensoryFeedback(.success, trigger: resets)
+                .accessibilityIdentifier("demo-reset")
             }
             row(icon: "exclamationmark.bubble", title: "Send feedback") {
                 if let url = URL(string: "https://github.com/SceneView/sceneview/issues/new/choose") {

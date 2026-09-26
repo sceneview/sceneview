@@ -1968,6 +1968,20 @@ public final class io/github/sceneview/gesture/ScaleGestureDetector$SimpleOnScal
 	public static fun onScaleEnd (Lio/github/sceneview/gesture/ScaleGestureDetector$SimpleOnScaleListener;Lio/github/sceneview/gesture/ScaleGestureDetector;Landroid/view/MotionEvent;)V
 }
 
+public final class io/github/sceneview/haptic/ARHapticEvent : java/lang/Enum {
+	public static final field HelpNeeded Lio/github/sceneview/haptic/ARHapticEvent;
+	public static final field InvalidMove Lio/github/sceneview/haptic/ARHapticEvent;
+	public static final field LimitReached Lio/github/sceneview/haptic/ARHapticEvent;
+	public static final field Placed Lio/github/sceneview/haptic/ARHapticEvent;
+	public static final field Recovered Lio/github/sceneview/haptic/ARHapticEvent;
+	public static final field ScaleSnapped Lio/github/sceneview/haptic/ARHapticEvent;
+	public static final field Selected Lio/github/sceneview/haptic/ARHapticEvent;
+	public static final field TrackingLost Lio/github/sceneview/haptic/ARHapticEvent;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/haptic/ARHapticEvent;
+	public static fun values ()[Lio/github/sceneview/haptic/ARHapticEvent;
+}
+
 public final class io/github/sceneview/haptic/HapticEvent {
 	public static final field $stable I
 	public fun <init> (FFII)V
@@ -2015,6 +2029,8 @@ public abstract interface class io/github/sceneview/haptic/SceneViewHaptic {
 
 public final class io/github/sceneview/haptic/SceneViewHapticKt {
 	public static final fun SceneViewHaptic (Landroid/content/Context;)Lio/github/sceneview/haptic/SceneViewHaptic;
+	public static final fun SceneViewHaptic (Landroid/view/View;)Lio/github/sceneview/haptic/SceneViewHaptic;
+	public static final fun play (Lio/github/sceneview/haptic/SceneViewHaptic;Lio/github/sceneview/haptic/ARHapticEvent;)V
 	public static final fun rememberHapticFeedback (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/haptic/SceneViewHaptic;
 }
 
@@ -2533,6 +2549,7 @@ public class io/github/sceneview/node/GeometryNode : io/github/sceneview/node/Re
 	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/geometries/Geometry;Ljava/util/List;Ljava/util/List;ZLkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun destroy ()V
 	public fun getGeometry ()Lio/github/sceneview/geometries/Geometry;
+	public fun setGeometry (Lio/github/sceneview/geometries/Geometry;)V
 	public final fun updateGeometry (Ljava/util/List;Ljava/util/List;)V
 	public static synthetic fun updateGeometry$default (Lio/github/sceneview/node/GeometryNode;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)V
 }

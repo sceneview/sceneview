@@ -44,22 +44,6 @@ struct ARLightingDemo: View {
             }
         }
 
-        // `LightNode.directional(...)` is `@MainActor` (touches a RealityKit
-        // `Entity`), so the slot helpers that allocate it must be too. The
-        // call sites below are inside SwiftUI `body` / button actions that
-        // are already MainActor-isolated.
-        @MainActor
-        var mainSlot: LightSlot {
-            switch self {
-            case .default, .keyOnly: return .systemDefault
-            case .dimKey:
-                // Custom dimmer main light — half the default 10 000 lux. The
-                // factory does not bake in a direction so the ARSceneView
-                // default-orientation logic still applies (straight down).
-                return .custom(LightNode.directional(intensity: 5_000))
-            }
-        }
-
         var fillSlot: LightSlot {
             switch self {
             case .default, .dimKey: return .systemDefault
@@ -68,6 +52,28 @@ struct ARLightingDemo: View {
         }
     }
 
+    /// One light, built once and kept for the lifetime of the screen.
+    /// `LightSlot.custom` compares its payload by `Entity` identity, so a node
+    /// built fresh on every access would re-provision the slot on every update
+    /// pass — the light would be torn down and rebuilt continuously.
+    @MainActor
+    private final class DimKeyLight {
+        private var stored: LightNode?
+
+        var node: LightNode {
+            if let stored { return stored }
+            // Half the default 10 000 lux, and explicitly aimed: the factory
+            // bakes in no direction, so an unoriented key light points along
+            // the entity's identity axis rather than at the subject.
+            let light = LightNode.directional(intensity: 5_000)
+            light.position = SIMD3<Float>(0.5, 1.0, 0.5)
+            let oriented = light.lookAt(.zero)
+            stored = oriented
+            return oriented
+        }
+    }
+
+    @State private var dimKeyLight = DimKeyLight()
     @State private var mode: LightingMode = .default
     @State private var modelLoaded = false
     @State private var loadFailed = false
@@ -93,18 +99,26 @@ struct ARLightingDemo: View {
 
     // MARK: - AR Scene
 
+    /// The main-light slot for a preset. Lives on the view, not the enum, so
+    /// the custom preset can hand back the one stable light instance.
+    private func mainSlot(for mode: LightingMode) -> LightSlot {
+        switch mode {
+        case .default, .keyOnly: return .systemDefault
+        case .dimKey: return .custom(dimKeyLight.node)
+        }
+    }
+
     #if !targetEnvironment(simulator)
     private var arSceneView: some View {
-        // Re-creating the view when `mode` changes makes the SwiftUI diff pick
-        // up the new modifier values. Reactive light swapping inside a single
-        // ARSceneView is tracked as a follow-up — for the demo this clean
-        // re-init is fine (model reloads in a fraction of a second).
+        // No `.id(mode)` here: rekeying tore down the whole AR session — losing
+        // tracking, the anchor and the loaded model — every time the user tried
+        // a preset. `ARSceneView` updates its light slots in place.
         ARSceneView(
             planeDetection: .horizontal,
             showPlaneOverlay: false,
             showCoachingOverlay: true
         )
-        .mainLight(mode.mainSlot)
+        .mainLight(mainSlot(for: mode))
         .fillLight(mode.fillSlot)
         .onSessionStarted { arView in
             // Anchor at the camera pose when tracking begins, ~1 m in front
@@ -129,7 +143,6 @@ struct ARLightingDemo: View {
                 }
             }
         }
-        .id(mode)  // force re-init when the lighting mode flips
     }
     #endif
 
@@ -189,20 +202,7 @@ struct ARLightingDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "lightbulb.max.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("AR requires a physical device")
-                .font(.headline)
-            Text("Run on iPhone or iPad to compare the three lighting modes.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        ARUnavailableStage(icon: "lightbulb.max.fill", message: "Run on iPhone or iPad to compare the three lighting modes.")
     }
 }
 #endif

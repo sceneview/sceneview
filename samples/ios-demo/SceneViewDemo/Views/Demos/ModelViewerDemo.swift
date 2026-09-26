@@ -371,11 +371,13 @@ struct ModelViewerDemo: View {
         #if os(iOS)
         .fullScreenCover(isPresented: $showAR) {
             NavigationStack {
-                ARPlacementDemo(initialModel: selectedModel.assetName)
-                    .navigationTitle("Tap to Place")
+                ARExperienceContainer(onViewIn3D: { showAR = false }) {
+                    ARPlacementDemo(initialModel: selectedModel.assetName)
+                }
+                    .navigationTitle("AR Placement")
                     .navigationBarTitleInline()
             }
-            .environment(\.demoTitle, "Tap to Place")
+            .environment(\.demoTitle, "AR Placement")
         }
         #endif
         .task {

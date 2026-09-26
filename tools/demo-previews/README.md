@@ -29,12 +29,37 @@ does not load (#3438).
 The last two are rendered from the demos' own generator code rather than captured, so the
 card shows the exact curve the app computes rather than an invented knot or loop.
 
-`damaged_helmet.webp` is the reference for every helmet card. All ten of them —
-`model-viewer`, `two-d-in-three-d`, `lighting`, `lighting-lab`, `fog` (iOS-only since #3464,
-see below), `camera-gestures`, `materials`, `debug-overlay`, `video-recording`,
-`secondary-camera` — load the same GLB, so they must show the same helmet. The original stylised `hero.webp` render — a helmet the GLB
-does not look like — fed eight of these cards until #3454 and the store listings until #3461;
-it is deleted, so nothing can be generated from it again.
+`damaged_helmet.webp` is the reference for the helmet cards that are still generated:
+`model-viewer`, `two-d-in-three-d` and `fog` (iOS-only since #3464, see below). The original stylised `hero.webp` render — a helmet the GLB does not look like — fed
+eight of these cards until #3454 and the store listings until #3461; it is deleted, so
+nothing can be generated from it again.
+
+### Cards cropped from real captures (#3836)
+
+Ten near-identical helmet cards made the Showcase read as one demo repeated. Each demo whose
+own result is not the helmet now shows that result instead, cropped 5:4 from a real capture —
+its render golden in `samples/android-demo/src/androidTest/assets/render-goldens/` (a real capture on
+the pinned CI profile) and resized to 800×640. The demo stage does not follow the app theme,
+so light and dark are the same pixels. The Android cards are no longer generated for these
+ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still are):
+
+| Card | Golden | Crop (centre x, centre y, width, in golden pixels) |
+|---|---|---|
+| `materials` | `materials_default.png` | 540, 1102, 1080 — the nine-sphere grid |
+| `debug-overlay` | `debugoverlay_default.png` | 540, 800, 1400, black-padded — the stats HUD over its sphere |
+| `camera-gestures` | `cameragestures_default.png` | 575, 1065, 1000 — the whole stage |
+| `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
+| `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
+| `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
+
+Black padding is used only where the stage background is pure black, so the fill cannot be
+told apart from the frame.
+
+`video-recording` has no render golden, so its card is an emulator capture (Pixel_7a,
+1080×2400) taken 3 s into a recording: the helmet in the recorded frame over the
+"Recording the moving scene to MP4…" banner. Window: y 817–1846, the full 1080 px width plus
+103 px on each side filled by stretching the screen's own edge column — pure black beside the
+render, a horizontally uniform grey beside the banner — to reach 5:4.
 
 ## iOS imagesets
 
@@ -76,6 +101,32 @@ The other iOS imagesets (`preview_lighting`, `preview_camera_controls`, the AR c
 not produced by this pipeline and are not in the table; regenerate one only once its prompt is
 recorded here, so the recorded prompt is always the one that produced the committed image
 (#3474).
+
+### iOS cards cropped from simulator captures (#3786)
+
+Fourteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
+Their cards are real captures of the demo, not generated: the keyless Debug build on the
+iPhone 17 Pro Max simulator (iOS 26.3, 1320×2868), opened through `sceneview://demo/<id>`
+with QA mode on so the orbit is frozen, cropped 5:4 around the subject and resized to
+800×640 (JPEG q85). The demo stage does not follow the app theme, so each imageset holds one
+universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture pixels.
+
+| Imageset | Capture | Crop |
+|---|---|---|
+| `preview_scene_gallery` | `scene-gallery`, "PBR Low-Poly Fox" chip (the bundled fox) | 660, 1500, 1100 |
+| `preview_environment` | `environment`, default HDR | 840, 1386, 850 |
+| `preview_movable_light` | `movable-light` | 662, 1505, 1000 |
+| `preview_billboard` | `billboard` | 652, 1449, 1240 |
+| `preview_image` | `image` | 655, 1399, 1280 |
+| `preview_texture_streaming` | `texture-streaming`, Gold preset | 673, 1478, 1000 |
+| `preview_gesture_editing` | `gesture-editing` | 660, 1110, 1200 |
+| `preview_occlusion_material` | `occlusion-material` | 660, 1307, 960 |
+| `preview_physics` | `physics`, bundled cubes at rest | 680, 1480, 600 |
+| `preview_reflection_probes` | `reflection-probes` | 652, 1412, 1000 |
+| `preview_shape` | `shape`, Star | 639, 1400, 1100 |
+| `preview_multi_model` | `multi-model`, keyless stand-ins (what the App Store build shows) | 650, 1458, 1300 |
+| `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
+| `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
 
 ## Home hero banner
 

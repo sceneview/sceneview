@@ -7,14 +7,13 @@ import Foundation
 // `GalleryModel`s. This mirrors the Android `ModelSource` abstraction merged in
 // #2685 (Fixes #2645); keep the two in sync.
 //
-// **iOS subset boundary (honest degradation).** RealityKit's `Entity(contentsOf:)`
-// loads only `.usdz` / `.reality`, so the in-app SceneView render only works for
-// sources that serve USDZ (Sketchfab). The Creative-Commons sources (Icosa,
-// Poly Haven) are glTF-native, so on Apple platforms they are fully browsable +
-// searchable but their in-app 3D render is honestly deferred ("coming soon")
-// rather than faked or crashed. `ModelSource.rendersInApp` encodes that boundary
-// — it is the one property that has no Android analogue, because Filament renders
-// glTF natively there. See #2700.
+// **iOS subset boundary.** RealityKit's `Entity(contentsOf:)` loads USD
+// (`.usdz`, `.usdc`, `.usda`) and `.reality`, never glTF. Sketchfab serves USDZ and
+// Poly Haven publishes a USD export next to its glTF, so both render in SceneView
+// (#3789). Icosa is glTF-only and stays hidden on iOS until SceneViewSwift can load
+// glTF (#3655). `ModelSource.rendersInApp` encodes that boundary. It is the one
+// property with no Android analogue, because Filament renders glTF natively there.
+// See #2700.
 
 /// One curated feed of a [ModelSource], in browse-layout display order.
 ///
@@ -178,8 +177,9 @@ protocol ModelSource: Sendable {
     var id: ModelSourceId { get }
 
     /// `true` when the source can be used in the current build. Sketchfab needs
-    /// an API key; the CC0 / CC-BY sources are always available. Unavailable
-    /// sources are hidden from the picker.
+    /// an API key, Icosa needs a glTF loader iOS does not have yet (#3655), and
+    /// Poly Haven is always available. Unavailable sources are hidden from the
+    /// picker.
     var isAvailable: Bool { get }
 
     /// Feeds this source exposes, in display order.
@@ -192,10 +192,11 @@ protocol ModelSource: Sendable {
     /// `true` when a model from this source can be rendered *in-app* through
     /// SceneView (RealityKit) on Apple platforms.
     ///
-    /// This is the iOS subset boundary: RealityKit loads only USDZ, so Sketchfab
-    /// (which serves USDZ) renders, while the glTF-native CC sources are browse +
-    /// search only and surface an honest "3D preview coming soon" state in the
-    /// viewer. There is no Android analogue — Filament renders glTF natively.
+    /// This is the iOS subset boundary: RealityKit loads USD, never glTF, so
+    /// Sketchfab (USDZ) and Poly Haven (its USD export) render, and a glTF-only
+    /// source is hidden through `isAvailable` rather than listed with entries
+    /// that cannot open (#3789). There is no Android analogue — Filament renders
+    /// glTF natively.
     var rendersInApp: Bool { get }
 
     /// Load one curated `kind` feed.
@@ -207,9 +208,9 @@ protocol ModelSource: Sendable {
     /// Stream `model`'s preferred format to the on-disk cache and return the
     /// local file URL, ready to hand to `ModelNode.load(contentsOf:)`.
     ///
-    /// Only meaningful when `rendersInApp` is `true`; the CC sources throw
+    /// Only meaningful when `rendersInApp` is `true`; a glTF-only source throws
     /// `GallerySourceError.renderNotSupported` because RealityKit cannot load
-    /// their glTF output.
+    /// its output.
     func download(model: GalleryModel, progress: (@Sendable (Double) -> Void)?) async throws -> URL
 }
 
@@ -225,8 +226,8 @@ enum GallerySourceError: Error, LocalizedError {
     case responseTooLarge(cap: Int)
     case decodeFailed
     case noRenderableFormat
-    /// Thrown by the glTF-native CC sources: RealityKit cannot render their
-    /// output on Apple platforms, so the in-app render is honestly deferred.
+    /// Thrown by a glTF-only source: RealityKit cannot render its output on
+    /// Apple platforms. Such a source is hidden, so the viewer never offers it.
     case renderNotSupported(sourceName: String)
 
     var errorDescription: String? {
@@ -240,7 +241,7 @@ enum GallerySourceError: Error, LocalizedError {
         case .noRenderableFormat:
             return "No renderable format available for this model."
         case .renderNotSupported(let sourceName):
-            return "3D preview for \(sourceName) models is coming soon on iOS."
+            return "\(sourceName) models can't open in 3D on iOS yet."
         }
     }
 }

@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// About tab — Liquid Glass card layout (iOS 26+, per the SceneView design system — see DESIGN.md).
+/// About tab — per the SceneView design system (`DESIGN.md` "Demo App About").
 ///
-/// Hero logo + version pill, then a series of `.regularMaterial` glass cards
-/// (Open Source, Docs, GitHub, 3D Playground, Credits), a tinted "Star on GitHub"
-/// CTA, and a footer with attribution.
+/// The identity block (launcher icon, name, version, tagline) flat on the page,
+/// the support card — the screen's one emphasised surface — then a series of
+/// `.regularMaterial` row cards (Open Source, Docs, GitHub, 3D Playground,
+/// Credits), and a footer with attribution.
 struct AboutTab: View {
     private static let version: String = {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -19,9 +20,9 @@ struct AboutTab: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 20) {
-                    heroCard
+                    identity
+                    supportCard
                     aboutCards
-                    starCTA
                     footer
                 }
                 // One gutter and one bottom inset for the three tabs: the same
@@ -40,55 +41,48 @@ struct AboutTab: View {
         }
     }
 
-    // MARK: - Hero
+    // MARK: - Identity
 
-    private var heroCard: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                LinearGradient(
-                    colors: [Color.blue.opacity(0.35), Color.purple.opacity(0.25)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                Image(systemName: "cube.fill")
-                    .font(.system(size: 56, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .blue.opacity(0.4), radius: 12)
-            }
-            .frame(width: 110, height: 110)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .accessibilityHidden(true)
+    /// The mark, the name, the installed version, one sentence — the iOS twin
+    /// of Android's `AboutIdentity` (#3564, #3808).
+    ///
+    /// Deliberately **not** a card (`DESIGN.md` "Demo App About"): a slab here
+    /// is a second emphasised surface competing with the support card right
+    /// under it. On the page's `surface` the block reads as a masthead instead.
+    private var identity: some View {
+        VStack(spacing: SceneViewTokens.Space.sm) {
+            // `about-mark`: the launcher icon itself, not an SF Symbol on a
+            // gradient tile. Theme-independent — the same picture in light and
+            // dark, with its own contrast built in.
+            Image("about_mark")
+                .resizable()
+                .interpolation(.high)
+                .frame(width: SceneViewTokens.About.markSize,
+                       height: SceneViewTokens.About.markSize)
+                .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl,
+                                            style: .continuous))
+                .accessibilityHidden(true)
 
             Text("SceneView")
-                .font(.largeTitle.weight(.bold))
+                .font(SceneViewTokens.TypeScale.title)
+                .tracking(SceneViewTokens.TypeScale.titleTracking)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                .accessibilityAddTraits(.isHeader)
 
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
-                Text("v\(Self.version)")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .glassBackground(in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+            // Version as text, not a material pill: a pill is one more surface
+            // in a block that must sit flat on the page.
+            Text("Version \(Self.version)")
+                .font(.footnote)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
 
             Text("3D & AR for Jetpack Compose, SwiftUI, and the Web.\nDeclarative, AI-friendly, open source.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 8)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-        .padding(.horizontal, 16)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-        )
+        .padding(.top, SceneViewTokens.Space.sm)
     }
 
     // MARK: - About cards
@@ -142,23 +136,58 @@ struct AboutTab: View {
         }
     }
 
-    // MARK: - Star CTA
+    // MARK: - Support
 
-    private var starCTA: some View {
-        Link(destination: URL(string: "https://github.com/sceneview/sceneview")!) {
-            HStack(spacing: 10) {
-                Image(systemName: "star.fill")
-                    .font(.title3)
-                Text("Star on GitHub")
+    /// The one emphasised surface of the screen (`DESIGN.md` "Demo App About"):
+    /// `secondary-container` at `radius-lg`, above the fold, Open Collective as
+    /// the primary action and GitHub Sponsors as the secondary one — never a
+    /// third link, no amounts, no tiers. The iOS twin of Android's
+    /// `AboutSupportCard` (#3676). It replaces the primary-filled "Star on
+    /// GitHub" capsule, which was a second emphasised surface and duplicated
+    /// the GitHub row below.
+    private var supportCard: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            HStack(spacing: SceneViewTokens.Space.sm) {
+                Image(systemName: "heart")
+                    .font(.body.weight(.semibold))
+                    .accessibilityHidden(true)
+                Text("Support SceneView")
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
-            // White on the dark-scheme primary (#A4C1FF) measured 1.8:1.
-            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+            Text("An independent open-source project. Your support pays for the time that keeps it maintained.")
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: SceneViewTokens.Space.sm) {
+                Link(destination: URL(string: "https://opencollective.com/sceneview")!) {
+                    Text("Donate on Open Collective")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                        .padding(.horizontal, SceneViewTokens.Space.sm)
+                        .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
+                        .background(SceneViewTokens.HomeColor.primary,
+                                    in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md,
+                                                         style: .continuous))
+                }
+                .accessibilityLabel("Donate on Open Collective. Opens opencollective.com")
+                Link(destination: URL(string: "https://github.com/sponsors/sceneview")!) {
+                    Text("GitHub Sponsors")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSecondaryContainer)
+                        .padding(.horizontal, SceneViewTokens.Space.sm)
+                        .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+                }
+                .accessibilityLabel("GitHub Sponsors. Opens github.com")
+            }
         }
-        .accessibilityLabel("Star SceneView on GitHub")
+        .foregroundStyle(SceneViewTokens.HomeColor.onSecondaryContainer)
+        .padding(SceneViewTokens.Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SceneViewTokens.HomeColor.secondaryContainer,
+                    in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
     }
 
     // MARK: - Footer
@@ -248,7 +277,7 @@ private struct AboutCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)

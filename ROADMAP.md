@@ -6,7 +6,7 @@
 > release. The source of truth is `gradle.properties` → `VERSION_NAME` — read
 > that, not this file, if they ever disagree.
 
-## Current: v4.38.0 stable (May 2026)
+## Current: v4.40.0 stable (September 2026)
 
 **AI-first SDK** — 9 platforms, MCP server on npm, Claude Code plugin marketplace, Rerun.io debug integration.
 
@@ -15,17 +15,17 @@
 | Android SDK (Filament + Compose) | **Stable** |
 | iOS / macOS / visionOS (RealityKit + SwiftUI) | Alpha |
 | Web (Filament.js + WebXR) | Alpha |
-| Desktop (Compose Desktop) | Placeholder (no Filament JNI) |
+| Desktop (Compose Desktop) | Alpha — `SceneViewer` renders through Filament via filament-kmp (JDK 22+) |
 | Android TV | Alpha |
-| Flutter bridge | Alpha |
-| React Native bridge | Alpha |
+| Flutter bridge | Alpha ([`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev) |
+| React Native bridge | Alpha ([`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm) |
 | MCP on npm | **Live** ([`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) — independent version track) |
 | Claude Code plugin marketplace | **Live** ([`sceneview/claude-marketplace`](https://github.com/sceneview/claude-marketplace)) |
 | Telemetry Worker | **Live** |
 | Rerun.io debug integration | **Shipped** (Android + iOS + Python) |
 | Play Store demo app | Deployed |
 | App Store demo app | **Live** (`id6761329763`) |
-| GitHub Release | **v4.38.0 stable** |
+| GitHub Release | **v4.40.0 stable** |
 
 ### Completed since v4.0
 
@@ -44,6 +44,7 @@
 - [x] Cross-platform demo unification — one showcase app per platform
 - [x] Fragment-based changelog system (`changelog.d/`)
 - [x] Autonomous cross-platform device-QA harness (Maestro Android/iOS + Playwright web + AR replay)
+- [x] Desktop renders with Filament — `SceneViewer` via filament-kmp, replacing the placeholder (v4.33, #2540)
 
 ---
 
@@ -51,7 +52,6 @@
 
 ### Platform maturity
 
-- [ ] Filament JNI for Desktop (hardware 3D, replace placeholder)
 - [ ] Android XR module (Jetpack XR SceneCore)
 - [ ] sceneview-core WASM target (when kotlin-math supports wasmJs)
 - [ ] Promote iOS / Web / Flutter / React Native from Alpha toward Stable
@@ -64,7 +64,6 @@
 
 ### Growth
 
-- [ ] First external paying customer
 - [ ] Rerun.io official partnership / listing
 - [ ] Community announcements (Reddit, HN, LinkedIn)
 

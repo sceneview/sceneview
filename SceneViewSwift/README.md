@@ -21,7 +21,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.38.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.40.0")
 ]
 ```
 
@@ -42,6 +42,9 @@ struct ModelViewer: View {
                 content.addChild(model.entity)
             }
         }
+        // The content closure runs once unless its identity changes:
+        // re-run it when the async load lands, or the scene stays empty.
+        .contentID(model != nil)
         .environment(.studio)
         .cameraControls(.orbit)
         .autoRotate()
@@ -65,12 +68,11 @@ struct ARPlacement: View {
     var body: some View {
         ARSceneView(
             planeDetection: .horizontal,
-            onTapOnPlane: { position in
-                if let model {
-                    let clone = model.entity.clone(recursive: true)
-                    clone.position = position
-                    // Add to AR scene
-                }
+            onTapOnPlane: { position, arView in
+                guard let model else { return }
+                let anchor = AnchorNode.world(position: position)
+                anchor.add(model.entity.clone(recursive: true))
+                arView.scene.addAnchor(anchor.entity)
             }
         )
         .task {
@@ -147,15 +149,17 @@ let title = TextNode(text: "SceneView", fontSize: 0.08, depth: 0.02)
 | `FogNode` | Atmospheric fog (linear, exponential, height-based) |
 | `ReflectionProbeNode` | Local cubemap reflections for realistic surfaces |
 | `SpatialAudioNode` | Positional 3D audio source attached to the scene graph |
-| `ViewNode` | Placeholder plane for a SwiftUI view (content not rendered yet) |
+| `ViewNode` | Deprecated placeholder plane for a SwiftUI view — the content is not rendered yet ([#1035](https://github.com/sceneview/sceneview/issues/1035)) |
 | `AnchorNode` | AR world/plane anchor |
 | `AugmentedImageNode` | Detect real-world images and place 3D content (iOS only) |
+| `CloudAnchorNode` | Host and resolve ARCore Cloud Anchors (iOS only) |
+| `SceneReconstructionNode` | LiDAR scene-reconstruction mesh as collidable geometry (iOS only) |
 
 ### Configuration
 
 | Type | Description |
 |---|---|
-| `SceneEnvironment` | 6 HDR presets: studio, outdoor, sunset, night, warm, autumn |
+| `SceneEnvironment` | 7 HDR presets: studio, outdoor, sunset, night, warm, autumn, nightSky |
 | `CameraControls` | Orbit camera with inertia and auto-rotation |
 | `GeometryMaterial` | PBR material: `.simple`, `.pbr`, `.unlit` |
 | `ModelFormat` | Supported formats + content-based sniffing |
@@ -246,11 +250,11 @@ let node = try await ModelNode(asset)           // then display it
 ## Example App
 
 See [`Examples/SceneViewDemo/`](Examples/SceneViewDemo/) for a full 4-tab demo:
-- **Explore** -- 3D viewer with orbit camera and 6 HDR environments
+- **Explore** -- 3D viewer with orbit camera and 7 HDR environments
 - **Shapes** -- All primitive shapes with live previews and code snippets
 - **AR** -- Tap-to-place objects on real surfaces
 - **About** -- SDK information and feature list
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE) for details.
+Apache 2.0. See [LICENSE](../LICENSE) for details.

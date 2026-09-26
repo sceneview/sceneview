@@ -3,9 +3,11 @@
 `ar-measure` in the demo app · [`ARMeasureDemo.kt`](src/main/java/io/github/sceneview/demo/demos/ARMeasureDemo.kt)
 · deep link `sceneview://demo/ar-measure`
 
-Tap two points on the real world; read the distance between them in centimetres, on a label
-anchored in 3D at the midpoint of the segment. Keep tapping to build a chain, close the loop
+Aim the center target at each point and press **Add point**; read the distance between them in centimetres, on a label
+anchored in 3D at the midpoint of the segment. Keep adding points to build a chain, close the loop
 to get a perimeter, and read the bounding box of every point placed so far.
+
+**Add point** commits the displayed candidate without a second raycast. Tapping the camera never adds a point; Undo, Close loop and Clear remain in Settings.
 
 ## Why this demo exists
 
@@ -29,7 +31,7 @@ which was closed by the stale bot in 2024 and re-asked by a second user in July 
 
 **Short version: this is a layout tool, not a caliper.**
 
-ARCore produces the 3D point under your finger in one of two ways:
+ARCore produces the 3D point at the visible center target in one of two ways:
 
 - **On a phone with no depth sensor** (most Android phones), depth is *inferred* from motion
   stereo — the device compares camera frames as you move and solves for depth. Google
@@ -74,7 +76,7 @@ the whole point:
 
 1. Pick a reference object whose true dimension you can measure with a tape or caliper to
    ±1 mm. A door frame width, a table edge, a printed calibration bar. Record the true value.
-2. Move the phone around the object for ~10 s before the first tap, so ARCore has parallax
+2. Move the phone around the object for ~10 s before the first point, so ARCore has parallax
    to work with. Wait until the plane renderer shows a stable plane on the surface.
 3. Take **five** independent measurements of the same span: clear between each one, and
    re-approach from a slightly different angle. One reading tells you nothing about the
@@ -90,12 +92,12 @@ the whole point:
 
 ### Hit-test strategy
 
-Each tap is resolved in a fixed preference order, which is an *accuracy* order:
+Each center-target candidate is resolved in a fixed preference order, which is an *accuracy* order:
 
-1. **A detected plane**, when the tap lands inside the plane polygon. ARCore has fitted this
+1. **A detected plane**, when the center target lands inside the plane polygon. ARCore has fitted this
    surface over many frames, so it is the most stable target available. The
    `isPoseInPolygon` check matters: ARCore will happily report a hit on the *infinite
-   extension* of a plane, so without it a tap past the edge of a table places a point in
+   extension* of a plane, so without it a candidate past the edge of a table places a point in
    mid-air and reports a confidently wrong distance.
 2. **A `DepthPoint`** returned by the same hit test — geometry ARCore has depth for but has
    not grown a plane over.
@@ -147,7 +149,7 @@ mutation: dropping the `z` term from the distance formula fails 4 of the 18 test
 ## Exporting a session to Rerun (not wired up)
 
 For offline inspection of *why* a measurement came out the way it did — where the camera
-actually went, which planes existed at tap time, how dense the point cloud was around each
+actually went, which planes existed when the point was added, how dense the point cloud was around each
 anchor — SceneView already ships a [Rerun](https://rerun.io) bridge:
 `io.github.sceneview.ar.rerun.RerunBridge`, exercised by the `ar-rerun` demo. There is no
 official Rerun SDK for Kotlin; the bridge streams JSON lines over TCP to a Python sidecar,
@@ -169,7 +171,7 @@ setup.
 
 ## Related
 
-- `ar-placement` — tap-to-place a model on a plane (the hit-test brick this demo builds on)
+- `ar-placement` — automatically place a model on the first usable surface
 - `ar-depth-collider` — the depth mesh, rendered
 - `ar-raw-depth-point-cloud` — what the depth sensor actually returns
 - [`AR_TESTING.md`](AR_TESTING.md) — running the AR demos on device and on the AR emulator

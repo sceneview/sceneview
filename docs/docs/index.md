@@ -1,6 +1,6 @@
 ---
 title: SceneView — 3D & AR SDK for Android, iOS, Web, and more
-description: "The #1 open-source 3D & AR SDK. Build immersive 3D and AR experiences with Jetpack Compose, SwiftUI, and Filament.js. 9 platforms supported."
+description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences with Jetpack Compose, SwiftUI, and Filament.js. 9 platforms supported."
 ---
 
 <div class="sv-hero" markdown>
@@ -17,6 +17,7 @@ description: "The #1 open-source 3D & AR SDK. Build immersive 3D and AR experien
 <span class="sv-platform-chip">macOS</span>
 <span class="sv-platform-chip">visionOS</span>
 <span class="sv-platform-chip">Web</span>
+<span class="sv-platform-chip">Desktop</span>
 <span class="sv-platform-chip">TV</span>
 <span class="sv-platform-chip">Flutter</span>
 <span class="sv-platform-chip">React Native</span>
@@ -30,7 +31,7 @@ description: "The #1 open-source 3D & AR SDK. Build immersive 3D and AR experien
 <div class="sv-stats" markdown>
 
 <div class="sv-stat">
-<span class="sv-stat-number">1.9K+</span>
+<span class="sv-stat-number">1.3K+</span>
 <span class="sv-stat-label">GitHub Stars</span>
 </div>
 
@@ -40,12 +41,12 @@ description: "The #1 open-source 3D & AR SDK. Build immersive 3D and AR experien
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">46+</span>
+<span class="sv-stat-number">48+</span>
 <span class="sv-stat-label">Node Types</span>
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">v4.38.0</span>
+<span class="sv-stat-number">v4.40.0</span>
 <span class="sv-stat-label">Latest Release</span>
 </div>
 
@@ -61,7 +62,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Kotlin (Android)"
 
     ```kotlin
-    // build.gradle: implementation("io.github.sceneview:sceneview:4.38.0")
+    // build.gradle: implementation("io.github.sceneview:sceneview:4.40.0")
 
     SceneView(modifier = Modifier.fillMaxSize()) {
         val model = rememberModelInstance(modelLoader, "models/helmet.glb")
@@ -83,7 +84,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Swift (iOS / macOS / visionOS)"
 
     ```swift
-    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.38.0")
+    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.40.0")
 
     SceneView { root in
         let model = try? await ModelNode.load("helmet.usdz")
@@ -112,7 +113,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 
 ### Model Viewer
 
-Load glTF/GLB (Android, Web), USDZ (Apple) and `.3mf` — the format AI print flows emit — with PBR materials, HDR environment lighting, and automatic animations. Built-in orbit camera with gesture controls. See [Model Formats](formats.md).
+Load glTF/GLB (Android, Web), USDZ (Apple), plus OBJ, STL, PLY and 3MF on Android, with PBR materials, HDR environment lighting, and automatic animations. Built-in orbit camera with gesture controls. See [Model Formats](formats.md).
 
 </div>
 
@@ -190,7 +191,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:sceneview:4.38.0")
+        implementation("io.github.sceneview:sceneview:4.40.0")
     }
     ```
 
@@ -199,7 +200,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:arsceneview:4.38.0")
+        implementation("io.github.sceneview:arsceneview:4.40.0")
     }
     ```
 
@@ -207,7 +208,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.38.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.40.0")
     ```
 
 === "Web"
@@ -339,7 +340,7 @@ Android uses Filament (high-performance C++ via JNI). Apple platforms use Realit
 
 ## Samples & Showcase
 
-The demo apps ship with 14+ interactive samples covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
+The demo apps ship with 48 interactive demos on Android and 45 on Apple platforms, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
 
 [:octicons-arrow-right-24: Android Samples](samples.md){ .md-button }
 [:octicons-arrow-right-24: Apple Samples](samples-ios.md){ .md-button }

@@ -178,7 +178,7 @@ struct ShowcaseTab: View {
                 )
                 #if os(iOS)
                 .presentationDetents([.medium, .large])
-                .presentationBackground(.regularMaterial)
+                .partialSheetBackground(.regularMaterial)
                 .presentationCornerRadius(SceneViewTokens.Radius.xl)
                 .presentationDragIndicator(.visible)
                 #endif
@@ -226,14 +226,38 @@ struct ShowcaseTab: View {
 /// Full-screen host of one demo. A `.fullScreenCover` has no drag-to-dismiss
 /// handle, so it needs an explicit Close affordance (#1580); `.demoChrome`
 /// hides this bar and draws its own glass back button instead.
+///
+/// **One host, whatever opened the demo.** The catalogue builds it from a
+/// `DemoItem`; a deep link (`sceneview://demo/<id>`) builds it from the id's
+/// resolved destination through `DemoDeepLinkRegistry.cover(for:onClose:)`.
+/// Before that, a deep link presented the destination bare, so a demo with no
+/// chrome of its own — every hand-rolled AR screen — opened with no way out
+/// but force-quitting the app.
+///
+/// The leading-edge swipe is this host's own: `.fullScreenCover` has no
+/// interactive dismissal on either path, and an AR demo fills the screen with
+/// a camera feed that a user will try to swipe away. It is confined to a
+/// narrow strip at the leading edge so it cannot compete with the orbit / pan
+/// gestures the stage itself installs.
 struct DemoCover: View {
-    let scene: DemoItem
+    let title: String
+    let destination: AnyView
     let onClose: () -> Void
+
+    init(scene: DemoItem, onClose: @escaping () -> Void) {
+        self.init(title: scene.title, destination: scene.destination, onClose: onClose)
+    }
+
+    init(title: String, destination: AnyView, onClose: @escaping () -> Void) {
+        self.title = title
+        self.destination = destination
+        self.onClose = onClose
+    }
 
     var body: some View {
         NavigationStack {
-            scene.destination
-                .navigationTitle(scene.title)
+            destination
+                .navigationTitle(title)
                 .navigationBarTitleInline()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -250,8 +274,33 @@ struct DemoCover: View {
                     }
                 }
         }
-        .environment(\.demoTitle, scene.title)
+        .environment(\.demoTitle, title)
+        #if os(iOS)
+        .overlay(alignment: .leading) { edgeDismissStrip }
+        #endif
     }
+
+    #if os(iOS)
+    private var edgeDismissStrip: some View {
+        Color.clear
+            .frame(width: SceneViewTokens.Layout.edgeSwipeWidth)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: SceneViewTokens.Layout.edgeSwipeWidth)
+                    .onEnded { value in
+                        // A deliberate rightward drag, not an incidental one:
+                        // past the threshold and more horizontal than vertical.
+                        guard value.translation.width >= SceneViewTokens.Layout.edgeSwipeDismiss,
+                              abs(value.translation.height) < value.translation.width else { return }
+                        SceneViewHaptic.shared.light()
+                        onClose()
+                    }
+            )
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
+    }
+    #endif
 }
 
 // MARK: - Header

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo.ui
 
 import androidx.compose.foundation.layout.heightIn
@@ -16,8 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -107,6 +110,11 @@ fun GlassSurface(
             .overMediaEdge(shape)
             .clip(shape)
             .background(SceneViewTokens.Glass.surface),
+        // Centred, not the Box default of top-start (#3835). A caller that raises the
+        // surface's minimum size — `GlassActionPill` lifts a 36 dp pill to the 48 dp
+        // touch target — got its content pinned to the top 36 dp, 12 dp off the
+        // pill's vertical centre. A wrap-content surface is unaffected.
+        contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalContentColor provides SceneViewTokens.Glass.onGlass) {
             content()
@@ -206,6 +214,7 @@ fun GlassActionPill(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
+    progress: Float? = null,
     contentDescription: String = label,
 ) {
     val accessibleName = contentDescription
@@ -236,11 +245,21 @@ fun GlassActionPill(
             modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
             contentAlignment = Alignment.Center,
         ) {
-            if (loading) {
-                CircularProgressIndicator(
+            if (loading && progress != null) {
+                // Determinate once the byte count is known (#3825): a ring that fills says
+                // how long is left, which the morphing indicator cannot.
+                NarrationProgressRing(
+                    progress = progress,
                     modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
                     color = SceneViewTokens.Glass.onGlass,
-                    strokeWidth = SceneViewTokens.Glass.borderWidth * 2,
+                    // The track is the `over-media-edge` ring: the same white that outlines every
+                    // element over media, so the unfilled arc reads without a new colour.
+                    trackColor = SceneViewTokens.Glass.edgeRing,
+                )
+            } else if (loading) {
+                LoadingIndicator(
+                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    color = SceneViewTokens.Glass.onGlass,
                 )
             } else {
                 Icon(
@@ -252,7 +271,8 @@ fun GlassActionPill(
             }
         }
         Spacer(Modifier.size(SceneViewTokens.Space.sm))
-        Text(
+        // While loading, the label is the narration of the step in flight (#3825).
+        NarrationText(
             text = label,
             style = MaterialTheme.typography.labelLarge,
             color = SceneViewTokens.Glass.onGlass,

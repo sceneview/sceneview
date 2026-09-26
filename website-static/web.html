@@ -21,7 +21,7 @@
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
   <title>SceneView Web — One Line 3D for the Web</title>
-  <meta name="description" content="SceneView Web: the lightest way to add 3D to any website. One script tag, one function call, powered by Filament.js WASM. 25KB vs Three.js 600KB.">
+  <meta name="description" content="SceneView Web: the lightest way to add 3D to any website. One script tag, one function call, powered by Filament.js WASM. ~70 KB gzipped.">
   <meta name="keywords" content="SceneView Web, 3D web, JavaScript 3D, Filament.js, WASM 3D, glTF viewer, GLB viewer, lightweight 3D, model viewer, web 3D library">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
@@ -30,7 +30,7 @@
   <link rel="canonical" href="https://sceneview.github.io/web.html">
 
   <meta property="og:title" content="SceneView Web — One Line 3D for the Web">
-  <meta property="og:description" content="The lightest way to add 3D to any website. One script tag, one function call. 25KB library powered by Filament.js WASM.">
+  <meta property="og:description" content="The lightest way to add 3D to any website. One script tag, one function call. ~70 KB gzipped library powered by Filament.js WASM.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://sceneview.github.io/web.html">
   <meta property="og:site_name" content="SceneView">
@@ -38,7 +38,7 @@
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="SceneView Web — One Line 3D for the Web">
-  <meta name="twitter:description" content="The lightest way to add 3D to any website. One script tag, one function call. 25KB library powered by Filament.js WASM.">
+  <meta name="twitter:description" content="The lightest way to add 3D to any website. One script tag, one function call. ~70 KB gzipped library powered by Filament.js WASM.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
 
   <meta property="og:image" content="https://sceneview.github.io/og-image.png">
@@ -48,13 +48,13 @@
 
   <link rel="preload" href="styles.css" as="style">
   <link rel="preload" href="js/filament/filament.js" as="script">
-  <link rel="preload" href="js/sceneview.js?v=4.38.0" as="script">
+  <link rel="preload" href="js/sceneview.js?v=4.40.0" as="script">
 
   <!-- Filament.js v1.72.1 WASM engine (required by SceneView Web) — version pinned by
        gradle/libs.versions.toml `filamentWebsite` + js/filament/RUNTIME.json (#2783) -->
   <script src="js/filament/filament.js"></script>
   <!-- SceneView Web library -->
-  <script src="js/sceneview.js?v=4.38.0"></script>
+  <script src="js/sceneview.js?v=4.40.0"></script>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -786,7 +786,7 @@
     "url": "https://sceneview.github.io/web.html",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Web",
-    "softwareVersion": "4.38.0",
+    "softwareVersion": "4.40.0",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": {
@@ -934,7 +934,7 @@
         <tbody>
           <tr>
             <td>Library size</td>
-            <td class="web-compare__highlight">~25 KB</td>
+            <td class="web-compare__highlight">~210 KB (~70 KB gzipped)</td>
             <td class="web-compare__dim">~600 KB</td>
             <td class="web-compare__dim">~200 KB</td>
           </tr>
@@ -1043,10 +1043,10 @@
           <div class="web-feature-card__icon web-feature-card__icon--secondary">
             <span class="material-symbols-outlined">speed</span>
           </div>
-          <h3 class="web-feature-card__title">~25 KB lightweight</h3>
+          <h3 class="web-feature-card__title">~70 KB gzipped</h3>
           <p class="web-feature-card__text">
-            The sceneview.js wrapper is only ~25 KB. Filament WASM loads on demand.
-            24x smaller than Three.js for basic model viewing.
+            The sceneview-web.js bundle is ~210 KB minified, ~70 KB gzipped.
+            Filament WASM loads on demand.
           </p>
         </div>
 
@@ -1318,6 +1318,7 @@
           <ul class="footer__col-list">
             <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
             <li><a href="/showcase.html">Showcase</a></li>
+            <li><a href="/view.html">3D Viewer</a></li>
           </ul>
         </div>
         <div class="footer__col">
@@ -1333,6 +1334,7 @@
             <li><a href="/privacy.html">Privacy</a></li>
             <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
             <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/assets/CREDITS.md" target="_blank" rel="noopener">3D asset credits</a></li>
           </ul>
         </div>
       </div>

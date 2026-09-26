@@ -14,10 +14,11 @@
 # Retired Android ids are DROPPED from this ledger rather than kept with a
 # marker: the left-hand column is "Android's canonical id set", and an id that
 # is no longer canonical has no row to be in. `ar-instant-placement` left this
-# way (#3405 — folded into `ar-placement`, where it is a placement *mode*; the
-# deep link still resolves through `DeepLinkRouter.DEMO_ID_ALIASES`). iOS still
-# ships its own `ar-instant-placement` screen; aligning it with the Android fold
-# is tracked separately.
+# way (#3405 — folded into `ar-placement`; the Android deep link still resolves
+# through `DeepLinkRouter.DEMO_ID_ALIASES`). Slice 5 also removes the redundant
+# iOS automatic-placement entries: `ar-placement` is its sole placement route.
+# `placement-scene` keeps its row — Android still registers that SDK-wrapper
+# demo — but its iOS status drops to `android-only` with the duplicate scene.
 #
 # `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
 #   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
@@ -62,6 +63,10 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
+# Current slice-5 ledger (2026-09-22): 48 rows, 29 working / 0 stub / 19 android-only.
+# The duplicate iOS one-call placement row was removed by explicit product decision;
+# Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
+# Historical recounts below retain their measurement dates.
 # Every tally in this file lives HERE and in the per-section banners below.
 # Do NOT append a new "and now it is X/Y" paragraph when a port lands: that is
 # exactly how this header came to carry four mutually contradictory counts at
@@ -216,15 +221,46 @@
 # Reconciling the two id sets against these rows is a MANUAL pass. Do it, and
 # update this file (status + reason), in the SAME PR that changes either
 # platform's registry — that's the only thing keeping it honest.
+#
+# ─── iOS-ONLY IDS — the surplus the rows cannot hold (recorded 2026-09-22) ──
+# The left-hand column is Android's canonical set, so an iOS scene id with no
+# Android row has nowhere to live below. These seven resolve on iOS and fall
+# through on Android; each is either a real screen or a documented removal.
+# `check-demo-id-parity.sh` does not read this block — it is for the human
+# doing the manual pass above.
+#   ar-lighting                 working — compares the `.mainLight` /
+#                               `.fillLight` modifier presets, `@iosOnly true`.
+#   fog                         REMOVED on iOS — see the `ar-fog` row: RealityKit
+#                               has no depth fog and the translucent-volume
+#                               look-alike was deleted, not kept. The id stays
+#                               in `DemoDeepLinkRegistry.removedIds` so the
+#                               deep link lands on the removal notice.
+#   multi-model                 working — #2239 regroup key kept as its own
+#                               Samples card (streams several models at once).
+#   occlusion-material          working — #2239 regroup key kept as its own
+#                               card; the occluder cuts the sphere since #3766.
+#   placement-reticle-preview   working — non-AR developer preview of the
+#                               placement reticle; retired on Android by #3275.
+#   scene-gallery               working — #2239 regroup key kept as its own
+#                               card (streamed scene picker).
+#   texture-streaming           working — #2239 regroup key kept as its own
+#                               card; the screen is the "Material presets"
+#                               demo (nothing streams, the title says so).
 
 demos:
-  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS detects a body and follows the
+      body anchor's pose, but reads no per-joint data — ARKit's 91-joint
+      `ARSkeleton3D` is not surfaced through a SceneView node type. The
+      catalogue names it "Body anchor tracking" for that reason. Android
+      renders the skeleton.
   - id: ar-cloud-anchor
     androidStatus: Working
     iosStatus: working
@@ -242,21 +278,49 @@ demos:
   - id: ar-depth-occlusion
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Same bundled Damaged Helmet and 0.3 m preview on both platforms, placed
+      once by the shared controller. Toggles retain the session and transform.
+      Android uses ARCore Depth API pixels; iOS uses LiDAR reconstructed mesh
+      occlusion. The masks and edge quality are not identical. Unsupported
+      devices are blocked before comparison controls appear.
   - id: ar-face
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS tracks the face ANCHOR via
+      TrueDepth and pins accessories to its pose. RealityKit exposes no
+      morphable face mesh through its standard API, so there is no mesh
+      deformation as on Android's ARCore face-mesh shader — the catalogue names
+      it "Face anchor accessories" rather than "Augmented Faces".
   - id: ar-image
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS detects and tracks the bundled
+      reference image and follows its anchor. Runtime image-database editing
+      (adding a user-supplied image at runtime) is not wired up.
   - id: ar-orbital
     androidStatus: Working
     iosStatus: working
   - id: ar-people-occlusion
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Same automatically placed bundled helmet, with renderer-only toggles.
+      Android requires Scene Semantics plus Depth API and its person classifier
+      is outdoor-trained; iOS requires personSegmentationWithDepth. These are
+      different segmentation providers, not a claim of identical masks.
   - id: ar-placement
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      The single iOS placement entry, also used by the AR tab: the `Automatic
+      Placement` and `One-Call AR` duplicate iOS scenes were removed in slice 5.
+      Capability caveat on a `working` row: the subject is placed automatically
+      on the first usable surface, bottom-aligned with grounding shadows. The
+      raycast is fixed to `.estimatedPlane` — `ARSceneView` exposes no alignment
+      policy — so there is no "wait for a converged plane" mode as on Android.
   - id: ar-plane-node
     androidStatus: Working
     iosStatus: working
@@ -269,6 +333,12 @@ demos:
   - id: ar-record-playback
     androidStatus: Working
     iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS records the SCREEN via
+      ReplayKit, not the ARKit session, so there is no session playback as on
+      Android — and ReplayKit offers no cancellation, so a capture is stopped
+      explicitly rather than cancelled. Saving to Photos moves the file out of
+      the app's container.
   - id: ar-rerun
     androidStatus: Working
     iosStatus: working
@@ -315,9 +385,6 @@ demos:
   - id: picking-collision
     androidStatus: Working
     iosStatus: working
-  - id: placement-scene
-    androidStatus: Working
-    iosStatus: working
   - id: spatial-audio
     androidStatus: Working
     iosStatus: working
@@ -335,11 +402,19 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (18) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
   # these ids no longer get is a Samples card that leads nowhere.
+  - id: placement-scene
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android keeps its one-call `PlacementScene` SDK-wrapper demo. Its iOS
+      duplicate was removed in slice 5: it showed the same automatic placement
+      as `ar-placement`, so the catalogue carried two cards for one screen.
+      The deep link answers with the honest `DeepLinkPlaceholder` on iOS.
   - id: ar-collaborative
     androidStatus: Working
     iosStatus: android-only
@@ -363,9 +438,10 @@ demos:
     androidStatus: Working
     iosStatus: android-only
     reason: >-
-      No iOS screen — the AR-specific fog demo (#1717) is not ported; distinct
-      from the non-AR `fog` id, which IS working on iOS. Its coming-soon Scene
-      stub was deleted in #3231.
+      Removed on iOS: RealityKit has no depth-based fog. The AR fog demo
+      (#1717) is not ported, and the non-AR `fog` screen — which faked the
+      effect with a translucent volume — was removed rather than kept as a
+      look-alike. Its coming-soon Scene stub was deleted in #3231.
   - id: ar-geospatial-anchors
     androidStatus: KnownIssue
     iosStatus: android-only

@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.38.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.40.0")
 ```
 
 ```swift
@@ -129,7 +129,99 @@ SceneView { root in
 
 ---
 
-## ARSceneView (AR — iOS only)
+## Automatic placement (recommended — iOS)
+
+`AutoPlacementScene` and `ARPlacementController` place one selected object on the first
+usable tracked plane without a tap, plane fill, or reticle. They accept horizontal
+upward-facing surfaces (including tables, never ceilings), or vertical walls, within
+0.25–3 m. Selection tries the visible viewport center first, then visible detected-plane
+centers ranked by center proximity; every candidate must lie inside its plane polygon.
+
+```swift
+import SwiftUI
+import SceneViewSwift
+
+struct AutomaticPlacement: View {
+    @StateObject private var placement = ARPlacementController(alignment: .horizontal)
+
+    var body: some View {
+        AutoPlacementScene(controller: placement, onSessionEvent: { event, arView in
+            // Capability errors, tracking changes, first frame and interruption events.
+        })
+        .task {
+            let ticket = placement.selectModel()
+            do {
+                let model = try await ModelNode.load("khronos_toy_car")
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                _ = model.withGroundingShadow() // explicit for asynchronously loaded content
+                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+            } catch {
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                // Present a model-load error and retry; never substitute another asset.
+            }
+        }
+    }
+}
+```
+
+- Use `.vertical` for direct wall placement; no floor prerequisite. `result` exposes
+  `surfaceIdentifier`, `anchorIdentifier`, and the oriented `worldTransform`.
+- `previewSize: 0.3` means **Preview size**, a 0.3 m longest dimension. Pass `nil` for
+  **Actual size** when the asset's authored units are trustworthy. Complete nested bounds
+  are grounded; asynchronous models receive collision shapes for selection and gestures.
+- `phase`: `.initializing`, `.scanning`, `.noSurface`, `.placed`, `.adjusting`,
+  `.trackingLost`, `.recovering`, `.recoveryFailed`, `.cameraError`. These correspond
+  directly to Kotlin's `PlacementPhase`. Search and recovery deadlines are ten seconds.
+- `requestPlacement()` arms one request only when empty; `resetPlacement()` removes
+  the owned anchor while retaining the asset and camera; `keepScanning()` starts a new
+  search interval. `dismiss()` invalidates outstanding tickets and releases resources.
+  Teardown invokes dismissal automatically. A controller owns one placement.
+- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:previewSize:)`
+  rejects stale tickets and invalid bounds, keeps the old entity until a successful
+  replacement, and automatically requests placement when empty.
+- Nested meshes are selectable. Drag preserves the grab offset on valid geometry;
+  twist and pinch share the grounded pivot. `selection`, `invalidMovement` and `scale`
+  are observable. `move(by:)`, `rotate(by:)`, and `scale(to:)` provide accessible
+  alternatives; scale is limited to 25–400%. Tracking loss cancels gestures and hides
+  content until the existing anchor recovers. Empty-space taps deselect only.
+- The host owns permission UI, asset errors, labels, recovery actions and haptics.
+  No renderer mutation belongs in a detached/background task.
+
+Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
+APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
+`WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
+examples; there is no automatic fallback to estimated-plane taps.
+
+
+### Direct wall placement
+
+Create `ARPlacementController(alignment: .vertical)` and use the same
+`AutoPlacementScene`. Only vertical planes participate; no floor classification,
+seam, mount-height calculation or tap is needed. The first usable wall consumes one
+request only after its plane-associated anchor resolves. New detections cannot move
+an existing placement. An unresolved anchor waits up to three seconds while its surface
+remains usable; failure reports neither placement nor a success haptic.
+
+Author **+Y up, +Z front**. `setModel` uses the complete visual hierarchy to put its
+back (`min.z`) and bottom (`min.y`) at the contact pivot. The contact transform faces
++Z toward the camera side for either detected normal sign, with gravity-up projected
+into the wall. Drag projects the grab offset onto valid wall geometry; twist rotates
+about local +Z, and uniform pinch leaves the back in contact. Tracking loss cancels
+gestures, fades content out and recovers the existing anchor without another placement.
+
+`move(by: [x, y])` moves right/up in metres on walls, `rotate(by:)` uses radians about
+the surface normal, and `scale(to:)` uses a 25–400% base-size multiplier. These are the
+controls-sheet accessibility alternatives to gestures, alongside **Reset placement**.
+The wall demo uses the shared placement shell and a procedural TV with the same two
+boxes, physical material parameters and 0.3 m **Preview size** as Android.
+
+**Wall shading parity:** neither wall demo draws a procedural shadow blob. RealityKit's
+grounding shadow is downward-only and is applied automatically only to horizontal
+placement; it is not wall contact shading. Android's wall-demo shadow receivers are
+disabled to match this scope. Native renderer lighting may differ. Both demos use an
+opacity-only 300 ms reveal/hide; neither scales the object in from zero.
+
+## ARSceneView (low-level / manual placement — iOS only)
 
 ```swift
 ARSceneView(
@@ -148,6 +240,39 @@ ARSceneView(
 .mainLight(.systemDefault)             // v4.3.0+ — see LightSlot (default 10 000-lux directional + shadow)
 .fillLight(.systemDefault)             // v4.3.0+ — Android-parity 3 000-lux fill on by default
 ```
+
+### Session configuration and lifecycle (v4.39.0+)
+
+One value describes what the session runs; the view re-runs ARKit only when that value
+changes between renders, and re-applies it after an interruption:
+
+```swift
+ARSceneView(
+    configuration: ARSessionConfiguration(
+        mode: .worldTracking,              // or .faceTracking (TrueDepth)
+        planeDetection: .horizontal,
+        sceneReconstruction: .none,        // .mesh / .meshWithClassification need LiDAR — off by default
+        frameSemantics: []                 // e.g. [.personSegmentationWithDepth]
+    ),
+    onTapOnPlane: { position, arView in }
+)
+.onSessionEvent { event, arView in }        // .started(config), .firstFrame, .trackingStateChanged, .interrupted, .interruptionEnded, .failed(error)
+.onSessionStateChange { state, arView in }  // .starting → .running (first camera frame) → .interrupted / .failed
+.onTrackingStateChange { status, arView in } // .notAvailable, .limited(reason), .normal
+.onSessionError { error, arView in }        // ARSceneViewError.unsupported(requirement) — no session was run
+```
+
+- `ARSessionConfiguration().unmetRequirement()` tells you **before** mounting the view what
+  the device lacks (`.worldTracking`, `.faceTracking`, `.lidar`, `.frameSemantics`). An
+  unsupported configuration runs no session and reports `.unsupported` — never a
+  degraded fallback.
+- `.firstFrame` / `.running` mean the camera is on screen. Model loading is your own
+  signal; do not fold it into the session state.
+- A host that wants the events without wiring every view sets
+  `.arSessionObserver(observer)` in the environment (`ARSceneSessionObserver`).
+- `cameraExposure` is a post-process brightness on the rendered frame (camera feed and
+  virtual content together), not a capture exposure. Leave it `nil` on a plain camera
+  path; the view installs nothing and never touches a post-process you own.
 
 Environment texturing defaults to `.automatic` — RealityKit's equivalent of ARCore's
 `ENVIRONMENTAL_HDR` (which became the Android default in v4.3.0, `#1063`). PBR reflections
@@ -232,12 +357,12 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.position()`, `.centered()`, `.withText()` |
 | `ImageNode` | `ImageNode.load("img.png")` | `async throws`, `width:`, `height:`, `.position()` |
 | `BillboardNode` | `BillboardNode(child:)` / `BillboardNode.text(_:fontSize:color:)` | always faces camera |
-| `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()` |
+| `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()`; extensionless names try mp4/mov/m4v, `VideoNode.load(resource:)` throws instead of failing silently |
 | `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
-| `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | atmospheric fog |
+| `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | **deprecated (v4.39.0+)** — not fog: one translucent sphere, no distance attenuation, and it is included in automatic content framing |
 | `ReflectionProbeNode` | `ReflectionProbeNode(position:radius:)` | zone-based IBL |
 
 ---
@@ -519,8 +644,10 @@ via deep-link as well as the Samples tab.
 | Animation (5-model carousel) | `animation` | `AnimationDemo.swift` | Ported (cinematic camera shots + IBL slider are Android-only) |
 | Model Viewer (Surprise me) | `model-viewer` | `ModelViewerDemo.swift` | Ported |
 | Multi-Model Park | `multi-model` | `MultiModelDemo.swift` | Ported |
-| AR Plane Placement | `ar-placement` | `ARPlacementDemo.swift` | Ported (no per-model editing yet) |
-| AR Instant Placement | (Samples tab) | `ARInstantPlacementDemo.swift` | Ported (approximates via `.estimatedPlane` raycasts) |
+| AR Placement | `ar-placement` | `ARPlacementDemo.swift` | Single automatic-placement entry; 0.3 m preview, surface-constrained drag, pinch and twist |
+| Depth Occlusion | `ar-depth-occlusion` | `ARDepthOcclusionDemo.swift` | Shared automatic placement of the bundled helmet; LiDAR mesh rendering toggle retains pose and scale |
+| People Occlusion | `ar-people-occlusion` | `ARPeopleOcclusionDemo.swift` | Same subject and placement flow; person-segmentation rendering toggle retains pose and scale |
+| AR Recording | `ar-record-playback` | `ARRecorderDemo.swift` | Shared automatic placement; explicit Record/Stop; screen video only, without deterministic AR-session playback |
 | Physics (streamed bodies) | `physics` | `PhysicsDemo.swift` | Ported (bundled cubes + 4 streamed crash-test meshes; capped at 20 active bodies for RealityKit) |
 
 The pre-1194 placeholder shape — `model-viewer` / `multi-model` routing
@@ -541,7 +668,7 @@ silent stub.
 | Symbol | Why iOS can't | Working alternative |
 |---|---|---|
 | `CameraNode.depthOfField(...)` | `PerspectiveCameraComponent` has no DOF | Custom Metal post-process required (out of scope) |
-| `CameraNode.exposure(_:)` | No `exposureCompensation` on `PerspectiveCameraComponent` (verified Xcode 26.x compile failure in #1019) | `ARSceneView(cameraExposure:)` for AR; `SceneView.renderQuality(_:)` to tune IBL for 3D |
+| `CameraNode.exposure(_:)` | No `exposureCompensation` on `PerspectiveCameraComponent` (verified Xcode 26.x compile failure in #1019) | `ARSceneView(cameraExposure:)` for AR — rendered-frame brightness, not capture exposure; `SceneView.renderQuality(_:)` to tune IBL for 3D |
 | `LightNode.shadowColor(_:)` | `DirectionalLightComponent.Shadow` has no `color` property | Use `castsShadow(_:)` + `shadowMaximumDistance(_:)` |
 | `FogNode.heightBased(...)` / `FogNode.heightFalloff` | `UnlitMaterial` cannot vary opacity by world height; no per-view fog API in RealityKit (#1380) | `FogNode.exponential(density:color:)` |
 
@@ -593,7 +720,7 @@ Use as you would on Android; expect minor visual differences.
 
 | Symbol | Android renderer | iOS approximation |
 |---|---|---|
-| `FogNode.linear / .exponential` | Filament fog modes | Translucent-sphere shader (visual approximation; same factory API). `FogNode.heightBased` is deprecated on iOS — see #1380. |
+| `FogNode.linear / .exponential` | Filament fog modes | **Deprecated on iOS (v4.39.0+)**: the translucent-sphere approximation is not fog — no distance attenuation, and the sphere is framed as content. Still compiles through 4.x. |
 | `ReflectionProbeNode.box(...) / .sphere(...)` | Volumetric Filament probe | Unbounded `ImageBasedLightReceiverComponent` (volume scope is best-effort) |
 | `CustomMaterial.subsurface(...)` | Filament SSS | PBR `metallic` + `roughness` tuning |
 

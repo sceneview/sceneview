@@ -23,9 +23,6 @@ import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +58,7 @@ import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
@@ -485,6 +483,8 @@ fun LightingDemo(onBack: () -> Unit) {
                     yHeight = LightingStage.orbitHeight(orbitRadius),
                     durationMillis = LightingStage.ORBIT_DURATION_MILLIS,
                     staticYaw = LightingStage.STATIC_YAW,
+                    // Keeps an upward drag from carrying the camera under the floor (#3794).
+                    maxPolarDegrees = LightingStage.maxOrbitPolarDegrees(orbitRadius),
                 ),
             ) {
                 // ── The stage: identical on both lighting screens ────────────────────────────
@@ -616,17 +616,12 @@ private enum class LightingRig(
 
 @Composable
 private fun RigSelector(current: LightingRig, onRigChange: (LightingRig) -> Unit) {
-    val rigs = LightingRig.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        rigs.forEachIndexed { index, rig ->
-            SegmentedButton(
-                selected = rig == current,
-                onClick = { onRigChange(rig) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = rigs.size),
-                label = { Text(stringResource(rig.labelRes)) },
-            )
-        }
-    }
+    ConnectedChoiceRow(
+        options = LightingRig.entries,
+        selected = current,
+        onSelect = onRigChange,
+        label = { stringResource(it.labelRes) },
+    )
     Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 }
 

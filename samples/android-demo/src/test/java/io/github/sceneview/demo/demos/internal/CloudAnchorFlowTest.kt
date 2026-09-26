@@ -28,6 +28,26 @@ class CloudAnchorFlowTest {
 
     private val tracking = CloudAnchorFlowState(tracking = true)
 
+    @Test
+    fun `automatic local placement never starts a Cloud operation`() {
+        val placed = tracking.copy(anchorPlaced = true, roomQuality = RoomQuality.Good)
+        assertEquals(CloudAnchorTask.Idle, placed.host)
+        assertEquals(CloudAnchorTask.Idle, placed.resolve)
+        assertTrue(placed.allows(CloudAnchorAction.Host))
+        assertFalse(placed.allows(CloudAnchorAction.PlaceAnchor))
+        assertEquals("Host", placed.actionBar().first().label)
+    }
+
+    @Test
+    fun `tracking loss disables hosting while retaining the placement`() {
+        val placed = tracking.copy(anchorPlaced = true, roomQuality = RoomQuality.Good)
+        val paused = placed.copy(tracking = false)
+        assertTrue(paused.anchorPlaced)
+        assertFalse(paused.allows(CloudAnchorAction.Host))
+        assertFalse(paused.allows(CloudAnchorAction.PlaceAnchor))
+        assertTrue(paused.copy(tracking = true).allows(CloudAnchorAction.Host))
+    }
+
     // ── Defaults ────────────────────────────────────────────────────────────
 
     @Test
@@ -131,7 +151,7 @@ class CloudAnchorFlowTest {
                 .status().text,
         )
         assertEquals(
-            "Hosting the anchor…",
+            "Uploading the room scan to Google Cloud…",
             CloudAnchorFlowState(trackingHint = hint, host = CloudAnchorTask.Running).status().text,
         )
     }
@@ -140,7 +160,7 @@ class CloudAnchorFlowTest {
     fun `Host is dead until an anchor is placed`() {
         assertFalse(tracking.allows(CloudAnchorAction.Host))
         assertEquals(
-            "Tap a surface to place the anchor.",
+            "Move slowly to find a surface.",
             tracking.status().text,
         )
     }
@@ -191,7 +211,7 @@ class CloudAnchorFlowTest {
             roomQuality = RoomQuality.Good,
             host = CloudAnchorTask.Running,
         )
-        assertEquals("Hosting the anchor…", hosting.status().text)
+        assertEquals("Uploading the room scan to Google Cloud…", hosting.status().text)
         assertEquals(DemoStatusTone.Progress, hosting.status().tone)
     }
 
@@ -336,7 +356,7 @@ class CloudAnchorFlowTest {
             codeInput = "ua-abcdef0123456789",
             resolve = CloudAnchorTask.Running,
         )
-        assertEquals("Resolving the code…", running.status().text)
+        assertEquals("Downloading the anchor and matching this room…", running.status().text)
         assertEquals(DemoStatusTone.Progress, running.status().tone)
         assertFalse(running.allows(CloudAnchorAction.Resolve))
         assertFalse(running.allows(CloudAnchorAction.PasteCode))
@@ -493,7 +513,7 @@ class CloudAnchorFlowTest {
         assertEquals("Move the phone slowly to start tracking.", state.status().text)
 
         state = state.copy(tracking = true)
-        assertEquals("Tap a surface to place the anchor.", state.status().text)
+        assertEquals("Move slowly to find a surface.", state.status().text)
         assertTrue(state.allows(CloudAnchorAction.PlaceAnchor))
 
         state = state.copy(anchorPlaced = true)
@@ -504,7 +524,7 @@ class CloudAnchorFlowTest {
         assertTrue(state.allows(CloudAnchorAction.Host))
 
         state = state.copy(host = CloudAnchorTask.Running)
-        assertEquals("Hosting the anchor…", state.status().text)
+        assertEquals("Uploading the room scan to Google Cloud…", state.status().text)
 
         state = state.copy(host = CloudAnchorTask.Succeeded("ua-abc123def456"))
         assertEquals("Hosted. Share the code to open it elsewhere.", state.status().text)
@@ -521,9 +541,53 @@ class CloudAnchorFlowTest {
         assertTrue(state.allows(CloudAnchorAction.Resolve))
 
         state = state.copy(resolve = CloudAnchorTask.Running)
-        assertEquals("Resolving the code…", state.status().text)
+        assertEquals("Downloading the anchor and matching this room…", state.status().text)
 
         state = state.copy(resolve = CloudAnchorTask.Succeeded("ua-abc123def456"))
         assertEquals("Resolved. Look around to find the anchor.", state.status().text)
+    }
+
+    // ── Mapping quality only moves forward (#3834) ────────────────────────────
+
+    @Test
+    fun `a better reading replaces the current quality`() {
+        assertEquals(RoomQuality.Sufficient, RoomQuality.Insufficient.advancedBy(RoomQuality.Sufficient))
+        assertEquals(RoomQuality.Good, RoomQuality.Sufficient.advancedBy(RoomQuality.Good))
+        assertEquals(RoomQuality.Good, RoomQuality.Insufficient.advancedBy(RoomQuality.Good))
+    }
+
+    @Test
+    fun `a worse reading never lowers the displayed quality`() {
+        assertEquals(RoomQuality.Good, RoomQuality.Good.advancedBy(RoomQuality.Insufficient))
+        assertEquals(RoomQuality.Good, RoomQuality.Good.advancedBy(RoomQuality.Sufficient))
+        assertEquals(RoomQuality.Sufficient, RoomQuality.Sufficient.advancedBy(RoomQuality.Insufficient))
+    }
+
+    @Test
+    fun `an equal reading is a no-op`() {
+        RoomQuality.entries.forEach { quality ->
+            assertEquals(quality, quality.advancedBy(quality))
+        }
+    }
+
+    @Test
+    fun `a sequence of noisy raw readings settles on the best one seen`() {
+        val readings = listOf(
+            RoomQuality.Insufficient,
+            RoomQuality.Sufficient,
+            RoomQuality.Insufficient, // the #3834 regression: a dip right after a gain
+            RoomQuality.Good,
+            RoomQuality.Sufficient, // another dip, after reaching the top
+            RoomQuality.Insufficient,
+        )
+        var quality = RoomQuality.Insufficient
+        val observed = readings.map { reading ->
+            quality = quality.advancedBy(reading)
+            quality
+        }
+        // Never decreases, step to step.
+        observed.zipWithNext().forEach { (before, after) -> assertTrue(after.ordinal >= before.ordinal) }
+        // And it reached, then held, the best reading the session ever produced.
+        assertEquals(RoomQuality.Good, observed.last())
     }
 }

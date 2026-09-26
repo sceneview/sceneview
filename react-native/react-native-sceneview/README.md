@@ -31,8 +31,9 @@ React Native bindings for [SceneView](https://sceneview.github.io) — 3D and AR
 npm install @sceneview-sdk/react-native
 ```
 
-The `publish-rn` job publishes this bridge on every `vX.Y.Z` tag, so `latest`
-on npm tracks the current SceneView release (#924, #962).
+The `publish-rn` job is meant to publish this bridge on every `vX.Y.Z` tag
+(#924, #962), but the npm `latest` can lag the SceneView release — the npm
+badge above shows the version actually published.
 
 There is no GitHub-install fallback: this is a monorepo with no root
 `package.json`, so `npm install github:sceneview/sceneview` cannot resolve the
@@ -61,6 +62,9 @@ your `Podfile`:
 pod 'SceneViewSwift',
     :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 
+# Released consumers — pinned to a tag (v4.28.0 or newer)
+pod 'SceneViewSwift', :git => 'https://github.com/sceneview/sceneview.git', :tag => 'v4.39.0'
+
 # In-repo consumers — resolve from a local checkout
 pod 'SceneViewSwift', :path => '<repo-root>'
 ```
@@ -68,14 +72,11 @@ pod 'SceneViewSwift', :path => '<repo-root>'
 `samples/react-native-demo/ios/Podfile` takes the `:path` route, exactly as
 `samples/flutter-demo/ios/Podfile` does.
 
-> **`main`, not a tag — for now.** A tagged coordinate would be the
-> reproducible one, but `SceneViewSwift.podspec` lives at the repo *root* and
-> landed after `v4.26.0` was cut, so no tag that currently exists carries it:
-> `pod install` against `.../v4.27.0/SceneViewSwift.podspec` is a 404, verified
-> with `git cat-file -e v4.27.0:SceneViewSwift.podspec`. The Flutter plugin
-> documents `main` for the same reason. Both move to
-> `:git => …, :tag => 'vX.Y.Z'` the first time a release is cut with that file
-> in it.
+> **Tags before `v4.28.0` cannot be pinned.** `SceneViewSwift.podspec` lives
+> at the repo *root* and first shipped in `v4.28.0`: `pod install` against
+> `.../v4.27.0/SceneViewSwift.podspec` is a 404 (`git cat-file -e
+> v4.27.0:SceneViewSwift.podspec` fails). The `:podspec =>` line reads the spec
+> from `main` while the sources still come from the tag that spec pins.
 
 > **Always supply the coordinate.** The `SceneViewSwift` name is unclaimed on
 > the CocoaPods trunk, so a `Podfile` that omits the line does not fail closed
@@ -260,14 +261,9 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   > `SceneViewerHostView.reportTap`, and this module's `onTapEntity` block — and
   > every stage fired.
   >
-  > This does **not** clear the sibling bridge: Flutter's 3D `onTap` still never
-  > fires on iOS ([#3045](https://github.com/sceneview/sceneview/issues/3045)).
-  > The same run measured both hosts back to back against the *same*
-  > SceneViewSwift build and the same entity graph (11 entities, 1 collision
-  > shape, 9 input targets in each): 6 taps on the model under Flutter resolved
-  > no entity at all, while the plain, untargeted gesture arrived every time. So
-  > #3045 is a property of Flutter's platform-view touch delivery, not of
-  > RealityKit's entity-targeted hit test — which is what its write-up claims.
+  > The sibling Flutter bridge had its own iOS 3D `onTap` gap, since fixed
+  > ([#3045](https://github.com/sceneview/sceneview/issues/3045)): a Flutter
+  > platform-view gesture policy plus a manual raycast in `SceneView`.
 
   On
   `ARSceneView` *what a hit reports* differs: **Android** hit-tests the AR
@@ -294,7 +290,7 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/sceneview/sceneview/blob/main/.github/CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/sceneview/sceneview/blob/main/CONTRIBUTING.md).
 
 ### Local checks
 

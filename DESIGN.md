@@ -136,7 +136,7 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Value | Usage |
 |---|---|---|
-| `about-mark` | 80dp, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero`), never a Material glyph |
+| `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero` on Android, the `about_mark` image set cut from `AppIcon` on iOS), never a Material glyph or an SF Symbol |
 | `about-row-icon` | 20dp | Leading glyph of an action row |
 | `about-row-affordance` | 16dp open-in-new / 20dp chevron | Trailing glyph — leaves the app, or stays in it. Two sizes because the chevron is the thinner drawing: matched boxes read as two icon sets. |
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
@@ -344,8 +344,11 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 
 ### App Motion (Android demo)
 
-One spring and one fade for the chrome; one shared-axis spec for screen changes and
-one fly-in for a 3D subject's arrival. Nothing else animates.
+One spring and one fade for the chrome; one shared-axis spec for screen changes, one
+fly-in for a 3D subject's arrival, and one breathing ellipsis for a step in flight. In AR,
+the coaching glyph and a placed object's entrance (the `motion-coach-*` and
+`motion-placement-*` tokens below — shipped by the SDK, so every AR app gets them).
+Nothing else animates.
 
 | Token | Value | Usage |
 |---|---|---|
@@ -353,6 +356,14 @@ one fly-in for a 3D subject's arrival. Nothing else animates.
 | `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus, loading-cover crossfade |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
+| `motion-coach-sweep` | 1600ms per sweep, sine, ±18dp travel and ±10° roll | The phone of the AR coaching glyph sweeping over the surface it is looking for. Half speed while tracking is limited |
+| `motion-coach-resolve` | `tween(450ms, ease-expressive)` | The "surface found" beat — the target fills with `primary` and a cube lands on it, held 150ms, then the glyph leaves |
+| `motion-placement-entrance` | `tween(260ms)`, scale 0.55 → 1, cubic ease-out | A placed AR object growing into place about its contact point. Reversed over 300ms (`motion-fade`) when tracking is lost — opaque glTF materials cannot fade, so they shrink |
+| `motion-narration` | `1200ms` linear loop, opacity only (0.25 → 1) | The trailing ellipsis of a loading line (`NarrationText`): the light runs across the three dots. The line names the step the code is really in — "Searching Sketchfab…", "Downloading *name* (3.2 MB)…", "Decoding the model…" — never a timed script. One loader per screen — the M3 Expressive `LoadingIndicator`, or a `CircularWavyProgressIndicator` ring once the byte count is known. Static `…` under reduced motion |
+
+**Reduced motion.** When the system animator scale is 0 (Android) or Reduce Motion is on
+(iOS), the coaching glyph is drawn as its settled frame — no sweep, no spin — and only the
+fades remain, as on the web (`prefers-reduced-motion`).
 
 ---
 
@@ -455,6 +466,28 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   after a scene tap has hidden the dock.
 - **There is no overflow menu.** Reset, Send feedback and QA mode live in the
   settings sheet the dock's Controls item opens — one settings surface, not two.
+- **A sheet you tweak the scene through is glass, low and non-modal (#3827).** The
+  settings sheet exists to be watched through: drag a slider, look at what it did.
+  - `sheet-peek`: it rests at **36 % of the window** (or hugs its controls when they
+    are shorter), so the upper two thirds — where every demo frames its hero — stay
+    visible. Dragging up reveals the rest, stopping `space-2xl` under the status bar.
+    A `ModalBottomSheet` cannot do this: its partial detent is fixed at half the
+    screen. The settings sheet is a standard sheet (`BottomSheetScaffold`).
+  - **No scrim**, and the scene above the sheet stays touchable — iOS
+    `presentationBackgroundInteraction(.enabled)`. The sheet carries its own close
+    button, since there is nothing to tap outside it.
+  - `glass-sheet`: `surface-container` at **88 % (light) / 90 % (dark)**, no tonal
+    tint, no shadow. Android has no blur, so the opacity is solved for text over the
+    three grounds a demo can put behind it (stage, mid-grey scene, white AR wall):
+    `on-surface` ≥ 9.5:1 and `on-surface-variant` ≥ 4.5:1 in both themes. Dark is
+    more opaque because its worst ground is the white wall. Light started at 78 %,
+    which passed on contrast, but a lit model read through the chips as a second
+    sharp image; 88 % leaves the scene as a silhouette.
+  - **The dock fades out while a glass sheet is open.** Seen through the glass it
+    read as a row of live buttons that were not there.
+  - The Model Viewer's Lighting sheet uses the same glass fill and no scrim.
+    Browsing sheets (model picker, credits, what's new) stay opaque and modal — you
+    read those, you do not watch something change behind them.
 
 ### Floating Dock (Android demo)
 
@@ -466,6 +499,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | `dock-icon` | 22dp |
 | `dock-caption` | `type-caption`, 2dp under the icon, one line, never truncated |
 | `dock-items` | at most 4 items + 1 optional accent (primary-tinted) item |
+| `dock-accent` | 40dp filled disc, 48dp touch target, 12dp from the dock edge on every side |
 
 The dock replaces FABs and top app bars in demo screens; its Controls item opens the
 settings sheet. Show/hide uses `motion-spring`; tap on the scene toggles the chrome
@@ -477,9 +511,16 @@ with `motion-fade`.
   one word (`Models`, `Lighting`, `Animate`, `Recenter`, `Settings`); if an action
   needs more than one word to be understood, the wrong action is in the dock. Icon and
   caption share a colour, so a selected toggle reads as one unit.
-- **The accent is the exception.** It is a 48dp filled, primary-tinted button and stays
-  icon-only — a caption would not fit `dock-height`, and its treatment already sets it
-  apart from the labelled items the way a FAB is set apart from a navigation bar.
+- **The accent is the exception.** It is a filled, primary-tinted disc (`dock-accent`,
+  40dp visual in a 48dp touch target) and stays icon-only — a caption would not fit
+  `dock-height`, and its treatment already sets it apart from the labelled items the way
+  a FAB is set apart from a navigation bar. At 40dp it sits 12dp from the dock edge on
+  every side, the same air the first labelled item has at the leading end; a 48dp disc
+  ended 8dp from the rounded cap and read as touching it (#3835).
+- **Everything in a pill is centred on the pill.** A glass surface that is raised to the
+  48dp touch target centres its 36dp content; it never pins it to the top.
+- **Actions under a centred toast or card are centred on it** — never start-aligned
+  under centred text (`SceneActionBar`).
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
 
@@ -513,6 +554,14 @@ indicator; every value follows the safe area, none is a constant offset from the
 | Settings sheet, last control → sheet edge | 24pt + the bottom safe area (68pt visual on iPhone 17) |
 | Shared rows (Reset · Send feedback · QA mode) | below the fold, `safe-area + 8pt` past the resting edge; scroll or expand to reach them |
 
+- **iOS 26+: native `glassEffect`; below: the material stack.** On iOS 26 and later every
+  chrome surface over the stage (back button, identity pill, dock, option strip, hint) is
+  the system's Liquid Glass — `.regular`, `.interactive()` on controls — and the dock
+  cluster is one `GlassEffectContainer`, so the accessory and the dock morph into each
+  other. The dock accent is `.glassProminent` tinted `primary`. Below 26 the floor /
+  material / ceiling / border stack below still applies. Content cards inside a page
+  (About, Credits) keep the stack on every version, and AR chrome keeps its `ar-scrim`
+  ground. Android keeps its own glass fill — an accepted divergence.
 - **A material is not a colour — it needs a floor and a ceiling.** `.ultraThinMaterial`
   is a blur of what is behind it. Over dark media it resolves to nearly black (hence
   the 8 % floor); over a bright studio backdrop the dark-scheme material resolves to
@@ -520,9 +569,15 @@ indicator; every value follows the safe area, none is a constant offset from the
   dark-scheme counterpart of the floor, and with the 24 % border the better of
   fill-vs-ground and border-vs-ground never drops under **1.43:1** on dark, mid and
   bright grounds (border 3.12:1 on the dark stage).
-- **The sheet is a themed surface, not glass.** `surface-container`, the app's
-  light/dark colours, `outline-subtle` hairline. The stage and its chrome are media and
-  stay dark in both schemes; the sheet is the only part of a demo that follows the theme.
+- **The sheet follows the theme — iOS 26+: native glass on the partial detents; below:
+  a themed surface.** On iOS 26 and later the sheet takes no background of its own, so
+  the resting detent is the system's glass sheet and the scene stays visible behind the
+  controls; the system turns it opaque at `.large`. Below 26 it is `surface-container`,
+  the app's light/dark colours, `outline-subtle` hairline. (Android's settings sheet is
+  `glass-sheet` since #3827 — the translucency iOS gets from its sheet material,
+  Android has to get from opacity; see the Android scaffold section.) The stage and its
+  chrome are media and stay dark in both schemes; the sheet is the only part of a demo
+  that follows the theme.
 - **Motion.** Stage fades in (`motion-fade`, 300 ms); chrome rises 12pt (top) / 24pt
   (bottom) on `motion-spring` — measured 333 ms; an option change moves the selection
   capsule on the same spring. Under Reduce Motion the travel is dropped and the opacity
@@ -606,6 +661,33 @@ The one instruction surface shown over a live camera feed (`DemoStatusBanner` on
 - Accents are the **dark-scheme** values in both themes: they are read on `ar-scrim`.
 - Motion: enters with fade + 8px rise (`duration-medium`, `ease-expressive`), leaves
   with fade + fall (`duration-short`). Nothing to say → nothing on screen.
+
+### AR Coaching Glyph
+
+The animated onboarding shown **centred** over the camera while an AR session starts,
+searches or loses tracking — Apple's `ARCoachingOverlayView` on iOS, its visual twin
+`ARCoachingOverlay` in `arsceneview` on Android. It shows the gesture instead of
+describing it.
+
+- Ground: a 96dp `ar-scrim` disc with the `ar-scrim-border` hairline and `shadow-lg`; an
+  optional one-word caption pill underneath in the same ground (`on-ar-scrim`,
+  `type-caption`), 8dp gap. The full sentence is the accessible name, announced politely.
+- One glyph per cue, strokes in `on-ar-scrim`, accents in the dark-scheme `primary` and
+  `warning`, like the pill:
+
+| Cue | Glyph | Caption |
+|---|---|---|
+| Initializing (after 500ms) | Phone with an orbiting `primary` dot | — |
+| Scan (floor) | Phone sweeping over a dashed diamond (`motion-coach-sweep`) | Scan |
+| Scan (wall) | Phone sweeping in front of a dashed upright rectangle | Scan |
+| Surface found | Target fills with `primary`, a cube lands on it (`motion-coach-resolve`) | — |
+| Tracking limited | The scan glyph at 60%, half speed, a `warning` pause badge | Paused |
+| Relocalizing | The scan glyph with a rotating `warning` circular arrow | Look back |
+
+- **Hide the chrome while it shows** (Apple HIG): status pills and hints step aside while
+  the glyph is up and come back when it leaves. Action cards never do — the glyph is
+  silent whenever a card explains the state.
+- Copy never says "ARKit", "ARCore", "tracking" or "plane": *Scan*, *Paused*, *Look back*.
 
 ### AR Overlay Card
 

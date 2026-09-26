@@ -41,13 +41,16 @@ Upload these files from this directory:
 ### Actions (Optional)
 Import `openapi-schema.json` to enable live code validation and 3D preview generation via the SceneView API.
 
+> **Not deployable today:** the schema's server, `https://api.sceneview.dev/v1`, does not
+> resolve (no DNS record, checked 2026-09-25). Skip this step until that API is live.
+
 ## How to Publish
 
 1. Go to https://chatgpt.com/gpts/editor
 2. Create new GPT
 3. Paste the contents of `system-prompt.md` as the Instructions
 4. Upload all 4 knowledge files
-5. Optionally import `openapi-schema.json` as an Action
+5. Optionally import `openapi-schema.json` as an Action (see the note above — its server is not live)
 6. Set conversation starters from above
 7. Upload logo from `../branding/exports/`
 8. Publish to GPT Store

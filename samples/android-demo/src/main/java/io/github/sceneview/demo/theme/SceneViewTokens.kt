@@ -181,6 +181,40 @@ object SceneViewTokens {
          * height measured from the screen edge. The chrome sits inside the flat part.
          */
         const val scrimPlateau = 0.55f
+
+        /**
+         * `glass-sheet`, light — `surface-container` at 88 %, with no scrim behind it (#3827).
+         *
+         * A settings sheet exists to be watched through: you drag a slider and look at what
+         * it did to the scene. An opaque sheet over a dimming scrim hid exactly that. There
+         * is still no blur (a `SurfaceView` cannot be sampled), so the fill alone carries
+         * legibility. Composited over the three grounds a demo can put behind it — the
+         * `#0B0F16` stage, a mid-grey scene, a white AR wall — `on-surface` never drops
+         * under 13:1 and `on-surface-variant` never under 7.4:1 (stage is the worst ground
+         * in light). 78 % already passed on contrast (5.8:1), but on the emulator a lit
+         * model read through the chips as a second, sharp image under the labels; 88 %
+         * keeps the scene as a silhouette and the controls as the only thing in focus.
+         */
+        const val sheetAlphaLight = 0.88f
+
+        /**
+         * `glass-sheet`, dark — `surface-container` at 90 %.
+         *
+         * The worst ground flips in dark: a dark sheet over a *white* scene.
+         * At 78 % `on-surface-variant` fell to 3.0:1 there; 90 % holds 4.5:1, and
+         * `on-surface` 9.5:1. Over the dark stage the extra opacity costs nothing visible —
+         * the translucency that matters is over bright content, and it is still there.
+         */
+        const val sheetAlphaDark = 0.90f
+
+        /**
+         * `sheet-peek` — the resting detent of the demo settings sheet, as a fraction of
+         * the window height (#3827). About a third: the header and the first controls are
+         * in reach, and the upper two thirds — where every demo frames its hero — stay
+         * visible and live. Dragging up reveals the rest; a sheet whose controls are
+         * shorter than this hugs them instead.
+         */
+        const val sheetPeekFraction = 0.36f
     }
 
     /**
@@ -380,6 +414,15 @@ object SceneViewTokens {
         /** Waiting on the user to move the phone — `warning`. */
         val accentGuidance = Color(0xFFF59E0B)
 
+        /**
+         * A step just finished and needs no more of the user's effort — `success`
+         * ([#3834](https://github.com/sceneview/sceneview/issues/3834)). Distinct from
+         * [accentProgress]: "Well mapped" is not merely further along than "Good enough",
+         * it is the state that unblocks Host, and it read as identical to every other
+         * lavender bar until this was added.
+         */
+        val accentSuccess = Color(0xFF16A34A)
+
         /** Broken until something changes — dark-scheme `error`. */
         val accentBlocked = Color(0xFFFFB4AB)
 
@@ -471,6 +514,14 @@ object SceneViewTokens {
         val dockHeight = 64.dp
         /** Dock items are [touchTarget] square; their icons are this size. */
         val dockIconSize = 22.dp
+        /**
+         * `dock-accent` — visual diameter of the dock's filled accent disc. Its touch
+         * target stays [touchTarget]. 40 dp inside the 64 dp dock leaves **12 dp on
+         * every side** — the same air as the first labelled item has from the leading
+         * end (8 dp toolbar padding + the item's 4 dp inset). At 48 dp the disc sat
+         * 8 dp from the rounded end and read as touching it (#3835).
+         */
+        val dockAccentSize = 40.dp
         val viewerEnvironmentTile = 72.dp
         val viewerAnimationButton = 48.dp
         val selectedOutlineWidth = 2.dp

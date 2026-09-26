@@ -26,21 +26,25 @@ struct OcclusionMaterialDemo: View {
     /// `MultiModelDemo`.
     @State private var occluderEntity: ModelEntity?
 
+    private var occluderCaption: String {
+        showOccluder
+            ? "Semi-transparent slab — this is where the occluder is"
+            : "OcclusionMaterial — invisible, cuts the sphere"
+    }
+
     var body: some View {
-        ZStack {
-            sceneView
-            VStack {
-                Spacer()
-                controlsOverlay
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .padding()
+        sceneView
+            .onChange(of: showOccluder) { _, _ in applyOccluderMaterial() }
+            .demoChrome(
+                dock: [
+                    DockItem(icon: showOccluder ? "eye.slash" : "eye",
+                             label: showOccluder ? "Hide occluder" : "Show occluder",
+                             selected: showOccluder) { showOccluder.toggle() }
+                ],
+                accessory: { DemoHint(occluderCaption) }
+            ) {
+                controlsSheet
             }
-        }
-        .onChange(of: showOccluder) { _, _ in applyOccluderMaterial() }
-        .navigationTitle("Occlusion Material")
-        #if os(iOS)
-        .navigationBarTitleInline()
-        #endif
     }
 
     // MARK: — Scene
@@ -64,8 +68,10 @@ struct OcclusionMaterialDemo: View {
                 materials: [Self.occluderMaterial(revealed: showOccluder)]
             )
             planeEntity.name = "occluder"
-            // Position the occluder plane in front of the sphere's lower half.
-            planeEntity.position = [0, -0.05, -0.58]
+            // In front of the sphere's lower half: the sphere's near surface
+            // is at z = -0.45 (centre -0.7, radius 0.25), so a plane at -0.58
+            // sat *inside* the sphere and never clipped anything (P2 audit).
+            planeEntity.position = [0, -0.05, -0.40]
 
             root.addChild(sphereEntity)
             root.addChild(planeEntity)
@@ -87,9 +93,19 @@ struct OcclusionMaterialDemo: View {
         // hosts this in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
         // is the same studio environment, aligning with the iOS catalog
         // (ModelViewerDemo, #2114) and with Android. Follow-up to #2805.
-        .environment(.studio)
-        .ignoresSafeArea()
+        .environment(Self.stageEnvironment)
     }
+
+    /// Studio lighting with the skybox off. An `OcclusionMaterial` hides
+    /// whatever is behind it — with a photographic skybox that is a hole
+    /// punched into the room, which read as two black slabs (P2 audit).
+    /// Against the scaffold's dark stage the cut is invisible, as the copy
+    /// promises, and only the missing part of the sphere shows.
+    private static let stageEnvironment: SceneEnvironment = {
+        var environment = SceneEnvironment.studio
+        environment.showSkybox = false
+        return environment
+    }()
 
     // MARK: — Materials
 
@@ -119,22 +135,11 @@ struct OcclusionMaterialDemo: View {
     // MARK: — Controls
 
     @ViewBuilder
-    private var controlsOverlay: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Show occluder plane")
-                    .font(.subheadline)
-                Text(showOccluder
-                    ? "Semi-transparent slab — see where it is"
-                    : "OcclusionMaterial — invisible, cuts the sphere")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: $showOccluder)
-                .labelsHidden()
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+    private var controlsSheet: some View {
+        Toggle("Show occluder plane", isOn: $showOccluder)
+            .font(.subheadline)
+        Text("An OcclusionMaterial writes depth and no colour: whatever sits behind it is hidden, the material itself is never seen. Reveal the plane to see the geometry doing the cutting.")
+            .font(.caption)
+            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
     }
 }
