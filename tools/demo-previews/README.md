@@ -30,16 +30,15 @@ The last two are rendered from the demos' own generator code rather than capture
 card shows the exact curve the app computes rather than an invented knot or loop.
 
 `damaged_helmet.webp` is the reference for the helmet cards that are still generated:
-`model-viewer`, `two-d-in-three-d`, `video-recording` and `fog` (iOS-only since #3464, see
-below). The original stylised `hero.webp` render — a helmet the GLB does not look like — fed
+`model-viewer`, `two-d-in-three-d` and `fog` (iOS-only since #3464, see below). The original stylised `hero.webp` render — a helmet the GLB does not look like — fed
 eight of these cards until #3454 and the store listings until #3461; it is deleted, so
 nothing can be generated from it again.
 
 ### Cards cropped from real captures (#3836)
 
 Ten near-identical helmet cards made the Showcase read as one demo repeated. Each demo whose
-own result is not the helmet now shows that result instead, cropped 5:4 from its render
-golden in `samples/android-demo/src/androidTest/assets/render-goldens/` (a real capture on
+own result is not the helmet now shows that result instead, cropped 5:4 from a real capture —
+its render golden in `samples/android-demo/src/androidTest/assets/render-goldens/` (a real capture on
 the pinned CI profile) and resized to 800×640. The demo stage does not follow the app theme,
 so light and dark are the same pixels. The Android cards are no longer generated for these
 ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still are):
@@ -55,6 +54,12 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
 told apart from the frame.
+
+`video-recording` has no render golden, so its card is an emulator capture (Pixel_7a,
+1080×2400) taken 3 s into a recording: the helmet in the recorded frame over the
+"Recording the moving scene to MP4…" banner. Window: y 817–1846, the full 1080 px width plus
+103 px on each side filled by stretching the screen's own edge column — pure black beside the
+render, a horizontally uniform grey beside the banner — to reach 5:4.
 
 ## iOS imagesets
 
