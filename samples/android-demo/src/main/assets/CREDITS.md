@@ -64,6 +64,8 @@ Assets bundled: **26**.
   Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`
 - `mediapipe/pose_landmarker_lite.task` — **[MediaPipe Pose Landmarker (lite)](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)** by Google LLC — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (5.8 MB)  
   On-device pose model bundle used by `ARBodyTrackerDemo`
+- `rerun/sample-session.jsonl` — **[sample-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (176 KB)  
+  Synthetic room walk in the Rerun bridge wire format — QA fixture of `ARRerunDemo`'s in-app 3D view (#3950)
 - `splats/raccoon_family.spz` — **[Raccoon family (SPZ sample capture)](https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz)** by Niantic Labs — MIT (3.3 MB)  
   Real phone capture shipped with the SPZ format; cropped to the subject (932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`
 - `textures/sceneview_logo.png` — **[sceneview_logo.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (45 KB)  

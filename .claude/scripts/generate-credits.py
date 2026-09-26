@@ -216,6 +216,13 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Generated with ffmpeg — 10 s / 1280×720 / H.264 brand animation for `TwoDInThreeDDemo`",
     },
+    "sample-session.jsonl": {
+        "name": "sample-session.jsonl",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Synthetic room walk in the Rerun bridge wire format — QA fixture of `ARRerunDemo`'s in-app 3D view (#3950)",
+    },
     # Compiled in-repo from `samples/android-demo/src/main/materials/*.mat` by matc (#3538).
     "studio_glass.filamat": {
         "name": "studio_glass.filamat",
