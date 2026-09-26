@@ -136,7 +136,7 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Value | Usage |
 |---|---|---|
-| `about-mark` | 80dp, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero`), never a Material glyph |
+| `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero` on Android, the `about_mark` image set cut from `AppIcon` on iOS), never a Material glyph or an SF Symbol |
 | `about-row-icon` | 20dp | Leading glyph of an action row |
 | `about-row-affordance` | 16dp open-in-new / 20dp chevron | Trailing glyph — leaves the app, or stays in it. Two sizes because the chevron is the thinner drawing: matched boxes read as two icon sets. |
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
