@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **iOS CI now builds SceneViewSwift and the iOS sample demo with Xcode 27 as a non-blocking canary ([#3856](https://github.com/sceneview/sceneview/pull/3856)).** Two new `ios.yml` jobs run on GitHub's `xcode-27` preview image: one runs the package's iOS build, visionOS build and unit tests, the other builds and tests the SwiftUI demo app and compiles its device-only AR code. Xcode 27 and iOS 27 SDK breakage now shows up before any release build moves. Release builds still use Xcode 26.

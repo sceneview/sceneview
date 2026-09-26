@@ -1,3 +1,0 @@
-<!-- category: Fixed -->
-
-- **Android demo: Model Viewer's Recenter, camera-distance slider and "Spin scene" all work correctly ([#3821](https://github.com/sceneview/sceneview/issues/3821)).** Recenter and the slider wrote to camera state the `OnDemand` render loop cannot see on its own — the same class of bug as #3718 — so nothing redrew until an unrelated gesture forced a frame; both now call `RenderInvalidator.requestRender()`. The slider's displayed value used to read the raw, unclamped distance while the thumb clamped into the valid window, so the two could visibly disagree; both now read the same clamped value. "Spin scene" counter-translated the model's pivot with the wrong sign, so the model visibly swam off-centre as it spun instead of turning cleanly in place.

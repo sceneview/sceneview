@@ -1,3 +1,0 @@
-<!-- category: Fixed -->
-
-- **Android demo: back steps out of Model Viewer one level at a time ([#3822](https://github.com/sceneview/sceneview/issues/3822)).** Pressing back from "Park scene" (Multi-Model Scene), a swapped-in bundled model such as "Soldier", or "Scene Gallery" used to land directly on the Showcase home instead of the previous view. Model Viewer's Single/Multi/Gallery mode — and, within Single mode, whichever bundled model is currently shown — lives in local Compose state, not on the Android back stack, so the raw exit callback handed down from the nav graph skipped past it. Back now closes any open sheet, then returns to the single-model view (reverting to the default model if a different one was picked), and only exits the demo from there.
