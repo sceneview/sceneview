@@ -70,15 +70,21 @@ import io.github.sceneview.demo.theme.SceneViewTokens
  * `LazyColumn`'s `contentPadding`) — a scrolling list wants the inset added to its
  * scrollable padding rather than clamping the sheet's own height, so this wrapper does not
  * impose one shape on every sheet's content; it only owns the window chrome.
+ *
+ * [sheetGesturesEnabled] and [dragHandle] are material3's own. A sheet whose content owns
+ * its drags (a 3D stage you orbit) turns the sheet's drag off and drops the handle, which
+ * would otherwise promise a drag that no longer exists — see `PlacementPreviewSheet`.
  */
 @Composable
 fun DemoModalBottomSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     sheetState: SheetState = rememberModalBottomSheetState(),
+    sheetGesturesEnabled: Boolean = true,
     shape: Shape = BottomSheetDefaults.ExpandedShape,
     containerColor: Color = BottomSheetDefaults.ContainerColor,
     scrimColor: Color = BottomSheetDefaults.ScrimColor,
+    dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -98,9 +104,11 @@ fun DemoModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         shape = shape,
         containerColor = containerColor,
         scrimColor = scrimColor,
+        dragHandle = dragHandle,
         properties = ModalBottomSheetProperties(
             securePolicy = SecureFlagPolicy.Inherit,
             isAppearanceLightStatusBars = hostStatusBarsLight,

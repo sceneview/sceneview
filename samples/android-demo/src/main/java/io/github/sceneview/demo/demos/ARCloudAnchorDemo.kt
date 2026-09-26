@@ -4,11 +4,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -38,14 +33,17 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailabilityOverlay
+import com.google.android.filament.Engine
 import io.github.sceneview.ar.ARCoreAvailability
-import io.github.sceneview.SceneView
 import io.github.sceneview.ar.PlacementPhase
+import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
-import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.common.placement.PlacementActionCard
 import io.github.sceneview.demo.common.placement.PlacementCard
+import io.github.sceneview.demo.common.placement.PlacementPreviewSheet
+import io.github.sceneview.demo.common.placement.extentScaledTo
 import io.github.sceneview.ar.AutoPlacementResult
 import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementModel
@@ -61,7 +59,6 @@ import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.CloudAnchorFlowCard
 import io.github.sceneview.demo.common.CloudServiceStatus
-import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.CloudServiceStatusBanner
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.ForceCloudAnchorScenarioMenu
@@ -611,18 +608,29 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         }
     }
     if (show3D) {
-        DemoModalBottomSheet(onDismissRequest = { show3D = false }) {
-            // #3716: the container now reaches the true bottom edge — clear the
-            // navigation bar explicitly instead of relying on the system inset.
-            Column(Modifier.navigationBarsPadding()) {
-                Text(stringResource(R.string.ar_place_preview_size), Modifier.padding(SceneViewTokens.Space.md))
-                val preview = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
-                SceneView(Modifier.fillMaxWidth().aspectRatio(1f), engine = engine,
-                    modelLoader = modelLoader, materialLoader = materialLoader) {
-                    preview?.let { ModelNode(it, scaleToUnits = ANCHOR_MODEL_SIZE_METRES) }
-                }
-            }
-        }
+        LanternPreviewSheet(engine, modelLoader, materialLoader, onDismiss = { show3D = false })
+    }
+}
+
+/** "View in 3D" for the cloud anchor demo: the lantern in the shared studio preview (#3884). */
+@Composable
+internal fun LanternPreviewSheet(
+    engine: Engine,
+    modelLoader: ModelLoader,
+    materialLoader: MaterialLoader,
+    onDismiss: () -> Unit,
+) {
+    // Separate instance: one Filament entity must never belong to two scenes.
+    val preview = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
+    PlacementPreviewSheet(
+        title = stringResource(R.string.ar_place_preview_size),
+        subjectExtent = remember(preview) { preview?.extentScaledTo(ANCHOR_MODEL_SIZE_METRES) },
+        engine = engine,
+        modelLoader = modelLoader,
+        materialLoader = materialLoader,
+        onDismiss = onDismiss,
+    ) {
+        preview?.let { ModelNode(it, scaleToUnits = ANCHOR_MODEL_SIZE_METRES) }
     }
 }
 
