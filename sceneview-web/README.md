@@ -77,7 +77,7 @@ Every factory returns a `Promise<SceneViewer>`.
 | `viewer.setBackgroundColor(r, g, b, a?)` | Background color, components `0..1`, shown exactly as given (not tone-mapped); `a < 1` lets the page show through. See [Matching the page background](#matching-the-page-background) |
 | `viewer.startRendering()` / `viewer.stopRendering()` | Start/stop the render loop |
 | `viewer.resize(width, height)` | Resize the underlying canvas |
-| `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`) |
+| `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`). The model ends up centred, the margin survives the automatic re-framing after a load, and the clip planes follow the model size (a 2 cm part renders whole) |
 | `viewer.dispose()` | Release Filament resources |
 
 The viewer also manages individual nodes (`addModelNode`, `addSplatNode`, `addCubeNode`,
