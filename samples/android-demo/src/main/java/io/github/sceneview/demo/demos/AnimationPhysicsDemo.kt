@@ -448,8 +448,14 @@ private fun AnimationSection(
         for (index in 0 until node.animationCount) node.stopAnimation(index)
         if (node.animationCount > 0 && selectedAnim !in animationNames.indices) selectedAnim = 0
     }
+    // No node yet means the subject is still loading, which is not the same thing as a subject
+    // that has no clip: the card used to read "No animation clip available" for the whole load
+    // (#3801). Until the node lands, the card names the slot and says it is loading.
+    val clipsLoading = node == null
     val clipName = animationNames.getOrNull(selectedAnim)
-        ?: stringResource(R.string.demo_animation_physics_no_clip)
+        ?: stringResource(
+            if (clipsLoading) R.string.demo_animation_physics_clip else R.string.demo_animation_physics_no_clip,
+        )
 
     // Framing (#3820) — measured from the subject, never assumed. The node is grounded
     // (`centerOrigin = (0, -1, 0)`: feet on y = 0, centred on the vertical axis) and scaled so its
@@ -872,22 +878,30 @@ private fun AnimationSection(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    stringResource(R.string.demo_animation_physics_clip_status,
-                        stringResource(
-                            if (isPlaying && !DemoSettings.qaMode) {
-                                R.string.demo_animation_physics_playing
-                            } else {
-                                R.string.demo_animation_physics_paused
-                            },
-                        ),
-                        clipTime, duration),
+                    if (clipsLoading) {
+                        stringResource(R.string.demo_animation_physics_clip_loading)
+                    } else {
+                        stringResource(R.string.demo_animation_physics_clip_status,
+                            stringResource(
+                                if (isPlaying && !DemoSettings.qaMode) {
+                                    R.string.demo_animation_physics_playing
+                                } else {
+                                    R.string.demo_animation_physics_paused
+                                },
+                            ),
+                            clipTime, duration)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                LinearProgressIndicator(
-                    progress = { if (duration > 0f) (clipTime / duration).coerceIn(0f, 1f) else 0f },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (clipsLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    LinearProgressIndicator(
+                        progress = { if (duration > 0f) (clipTime / duration).coerceIn(0f, 1f) else 0f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (animationNames.size > 1) Text(
                     stringResource(R.string.demo_animation_physics_blend_status, clipName,
                         animationNames[blendIndex], (blendWeight * 100).toInt()),
