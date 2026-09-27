@@ -881,7 +881,14 @@ if [[ -n "$serial" ]]; then
   else
     log "ARCore NOT installed on $serial"
     if ! $CHECK_ONLY; then
-      install_arcore "$serial" && log "ARCore installed OK on $serial"
+      # An `if`, not `install_arcore && log`: the left side of an AND-list is
+      # exempt from errexit, so a failed install used to vanish here and the
+      # seed block below saved an ARCore-less `qa-clean` snapshot (#2749).
+      if install_arcore "$serial"; then
+        log "ARCore installed OK on $serial"
+      else
+        log "⚠ ARCore install FAILED on $serial — AR demos will not start on it"
+      fi
     fi
   fi
   # Honest arm64 limitation notice (#2754): the device APK installed above runs, but
@@ -908,6 +915,17 @@ if $SEED_SNAPSHOT; then
   # Flag conflicts (--check / --no-boot) were already rejected up front.
   if [[ -z "${serial:-}" ]]; then
     log "--seed-snapshot: no emulator to snapshot — boot failed earlier"
+    exit 1
+  fi
+  # Never bake a golden snapshot without ARCore (#2749): every later run would
+  # restore it and skip the install. Re-read the package list here instead of
+  # trusting step 6 — it only warns, and the emulator can die in between. The
+  # list is captured first so `grep -q` closing the pipe early can never turn
+  # into a pipefail false negative.
+  seed_packages="$("$ADB_BIN" -s "$serial" shell pm list packages 2>/dev/null || true)"
+  if ! grep -Eq '^package:com\.google\.ar\.core[[:space:]]*$' <<<"$seed_packages"; then
+    log "--seed-snapshot: com.google.ar.core is NOT installed on $serial — refusing to save '$GOLDEN_SNAPSHOT'."
+    log "  see the ARCore install log above; emulator left running, fix the install and retry."
     exit 1
   fi
   if save_golden_snapshot "$serial"; then
