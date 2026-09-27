@@ -1569,6 +1569,11 @@ private fun BottomCard(
             .fillMaxWidth()
             .let { if (testTag != null) it.testTag(testTag) else it },
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        // Explicit, not derived: `contentColorFor` only maps exact scheme colours, and the
+        // translucent surface above is not one — so the card used to inherit whatever
+        // content colour the overlay slot carried, near-black on a dark card in dark theme
+        // (#3988).
+        contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 6.dp,
         shape = MaterialTheme.shapes.large,
     ) {

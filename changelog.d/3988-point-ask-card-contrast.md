@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: the Point & Ask cards are readable in dark theme again ([#3988](https://github.com/sceneview/sceneview/issues/3988)).** The "Gemini Nano isn't available" card, the failure card and the answer card drew near-black text on a dark card: their translucent surface is not an exact scheme colour, so Material could not pick a content colour for it. The card now sets `onSurface` explicitly.
