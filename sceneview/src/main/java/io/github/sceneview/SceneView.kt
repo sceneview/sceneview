@@ -1262,7 +1262,9 @@ fun SceneView(
  * [ModelLoader.destroyModel] yourself.
  *
  * @param modelLoader       The [ModelLoader] to use.
- * @param assetFileLocation Path to the GLB/glTF file relative to the `assets` folder.
+ * @param assetFileLocation Path to the GLB/glTF file relative to the `assets` folder. A location
+ *                          with a scheme (`https://…`, `file://…`, `content://…`) is loaded
+ *                          from there instead, exactly as the `fileLocation` overload does.
  * @return                  `null` while the first load is in progress; the loaded
  *                         [ModelInstance] once ready. When [assetFileLocation] changes,
  *                         the previous value is kept until the new one is ready —
@@ -1277,6 +1279,14 @@ fun rememberModelInstance(
     modelLoader: ModelLoader,
     assetFileLocation: String
 ): ModelInstance? {
+    // A positional `rememberModelInstance(modelLoader, "https://…")` resolves to THIS overload —
+    // Kotlin prefers the candidate with no defaulted parameter — and it only reads `assets/`, so
+    // the URL form llms.txt documents silently rendered nothing. Anything with a scheme is a
+    // location, not an asset path: hand it to the URL-capable overload (which sends scheme-less
+    // paths back here, so the two never loop).
+    if (android.net.Uri.parse(assetFileLocation).scheme != null) {
+        return rememberModelInstance(modelLoader, fileLocation = assetFileLocation)
+    }
     val context = LocalContext.current
     val instance = produceState<ModelInstance?>(
         initialValue = null,

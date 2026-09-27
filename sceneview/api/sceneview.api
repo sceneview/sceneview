@@ -93,6 +93,12 @@ public final class io/github/sceneview/CinematicCameraProfile$Companion {
 	public final fun getSlowCinematic ()Lio/github/sceneview/CinematicCameraProfile;
 }
 
+public final class io/github/sceneview/CinematicHeroKt {
+	public static final fun CinematicHero-Uww-Ezs (Landroidx/compose/foundation/ScrollState;FLandroidx/compose/ui/Modifier;Landroidx/compose/ui/graphics/Brush;Lio/github/sceneview/CinematicCameraProfile;FFLkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun CinematicHero-Uww-Ezs (Landroidx/compose/foundation/lazy/LazyListState;FLandroidx/compose/ui/Modifier;Landroidx/compose/ui/graphics/Brush;Lio/github/sceneview/CinematicCameraProfile;FFLkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun CinematicHero-Uww-Ezs (Landroidx/compose/foundation/lazy/grid/LazyGridState;FLandroidx/compose/ui/Modifier;Landroidx/compose/ui/graphics/Brush;Lio/github/sceneview/CinematicCameraProfile;FFLkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+}
+
 public final class io/github/sceneview/DefaultCameraNode : io/github/sceneview/node/CameraNode {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/DefaultCameraNode$Companion;

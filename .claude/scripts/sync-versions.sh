@@ -430,7 +430,7 @@ done
 
 # ─── 5. Docs site (MkDocs) ──────────────────────────────────────────────
 echo -e "${CYAN}--- Docs Site ---${NC}"
-for docfile in docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt docs/docs/cheatsheet.md docs/docs/platforms.md docs/docs/migration.md docs/docs/android-xr.md; do
+for docfile in docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt docs/docs/cheatsheet.md docs/docs/platforms.md docs/docs/migration.md docs/docs/android-xr.md docs/prompts/cinematic-hero.md; do
     F="$REPO_ROOT/$docfile"
     if [ -f "$F" ]; then
         V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
@@ -1401,7 +1401,7 @@ if changed:
         # $SOURCE_VERSION (a plain semver, never used as a pattern).
         OLD_V_RE="${OLD_V//./\\.}"
         # Fix docs that contain Maven artifact version refs
-        for docfile in llms.txt README.md CLAUDE.md docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt docs/docs/cheatsheet.md docs/docs/platforms.md docs/docs/migration.md docs/docs/android-xr.md; do
+        for docfile in llms.txt README.md CLAUDE.md docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt docs/docs/cheatsheet.md docs/docs/platforms.md docs/docs/migration.md docs/docs/android-xr.md docs/prompts/cinematic-hero.md; do
             F="$REPO_ROOT/$docfile"
             if [ -f "$F" ] && grep -q "io\.github\.sceneview:.*$OLD_V_RE" "$F" 2>/dev/null; then
                 _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V_RE/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
