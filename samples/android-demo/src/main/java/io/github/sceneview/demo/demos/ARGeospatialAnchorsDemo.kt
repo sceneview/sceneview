@@ -1,6 +1,25 @@
 package io.github.sceneview.demo.demos
 
 import android.Manifest
+import android.app.Activity
+import android.content.ContextWrapper
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontWeight
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import io.github.sceneview.demo.ui.overMediaEdge
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
@@ -27,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -181,16 +201,36 @@ fun ARGeospatialAnchorsDemo(onBack: () -> Unit) {
 /**
  * Camera and precise location, asked together once. Returns `true` when both are granted;
  * until then it draws the permission screen itself.
+ *
+ * The screen is an AR overlay card on the dark stage (#3990): it used to be a bare line of
+ * text on the window background — white in both themes — with no button, so answering
+ * "Don't allow" was a dead end whose only exit was Back. It now always offers the one
+ * action that can still work: ask again while Android will show the dialog, open the app's
+ * settings once it will not. Grants are re-read on resume, so coming back from Settings
+ * starts the session without a restart.
  */
 @Composable
 private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
     val context = LocalContext.current
+    val activity = remember(context) {
+        generateSequence(context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+    }
     fun granted(permission: String) =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
     var cameraGranted by remember { mutableStateOf(granted(Manifest.permission.CAMERA)) }
     var locationGranted by remember { mutableStateOf(granted(Manifest.permission.ACCESS_FINE_LOCATION)) }
     var asked by remember { mutableStateOf(false) }
+    // Bumped on every dialog answer and every resume: a second "Don't allow" changes no
+    // grant, so without it the Allow/Open settings choice below would never be re-read.
+    var permissionEpoch by remember { mutableIntStateOf(0) }
+
+    fun missingPermissions() = buildList {
+        if (!cameraGranted) add(Manifest.permission.CAMERA)
+        if (!locationGranted) add(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -198,38 +238,135 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
         cameraGranted = result[Manifest.permission.CAMERA] ?: cameraGranted
         locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] ?: locationGranted
         asked = true
+        permissionEpoch++
     }
     LaunchedEffect(Unit) {
-        val missing = buildList {
-            if (!cameraGranted) add(Manifest.permission.CAMERA)
-            if (!locationGranted) add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
+        val missing = missingPermissions()
         if (missing.isNotEmpty()) launcher.launch(missing.toTypedArray())
+    }
+    // Back from the app's settings page: pick up what the user switched on there.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                cameraGranted = granted(Manifest.permission.CAMERA)
+                locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION)
+                permissionEpoch++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     if (cameraGranted && locationGranted) return true
 
+    // After a denial Android shows the dialog again only while it still wants a rationale;
+    // once it does not (a second "Don't allow"), the launcher returns at once, and the
+    // app's settings page is the only way forward.
+    val canAskAgain = remember(permissionEpoch, cameraGranted, locationGranted) {
+        missingPermissions().any { permission ->
+            activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+        }
+    }
+    val title = when {
+        !asked -> stringResource(R.string.demo_ar_geospatial_permissions_requesting)
+        !cameraGranted -> stringResource(R.string.demo_ar_geospatial_permission_camera_title)
+        else -> stringResource(R.string.demo_ar_geospatial_permission_location_title)
+    }
+    val detail = when {
+        !asked -> null
+        !cameraGranted -> stringResource(R.string.demo_ar_geospatial_permission_camera_detail)
+        else -> stringResource(R.string.demo_ar_geospatial_permission_location_detail)
+    }
+
     DemoScaffold(title = stringResource(R.string.demo_ar_geospatial_anchors_title), onBack = onBack) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = when {
-                    !asked -> "Requesting permissions…"
-                    !cameraGranted -> "Allow camera access to use AR."
-                    else -> "Allow precise location: Geospatial anchors are placed by " +
-                        "latitude and longitude."
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SceneViewTokens.Stage.background)
+                .padding(SceneViewTokens.Space.lg),
+            contentAlignment = Alignment.Center,
+        ) {
+            GeospatialPermissionCard(
+                title = title,
+                detail = detail,
+                action = when {
+                    !asked -> null
+                    canAskAgain -> stringResource(R.string.demo_ar_geospatial_permission_allow)
+                    else -> stringResource(R.string.demo_ar_geospatial_permission_open_settings)
                 },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .padding(horizontal = SceneViewTokens.Space.xl)
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceContainer,
-                        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-                    )
-                    .padding(horizontal = SceneViewTokens.Space.lg, vertical = SceneViewTokens.Space.md),
+                onAction = {
+                    if (canAskAgain) {
+                        launcher.launch(missingPermissions().toTypedArray())
+                    } else {
+                        context.startActivity(
+                            Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.fromParts("package", context.packageName, null),
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                },
             )
         }
     }
     return false
+}
+
+/**
+ * The permission explanation, drawn as an AR overlay card (`DESIGN.md`): the stage behind
+ * it is the camera's place, so it keeps the `ar-scrim` ground and white text in both themes.
+ */
+@Composable
+private fun GeospatialPermissionCard(
+    title: String,
+    detail: String?,
+    action: String?,
+    onAction: () -> Unit,
+) {
+    val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    Column(
+        modifier = Modifier
+            .widthIn(max = SceneViewTokens.ArOverlay.maxWidth)
+            .fillMaxWidth()
+            .background(
+                color = if (dark) SceneViewTokens.ArOverlay.scrimDark else SceneViewTokens.ArOverlay.scrimLight,
+                shape = shape,
+            )
+            .overMediaEdge(shape)
+            .padding(SceneViewTokens.Space.md),
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            color = SceneViewTokens.ArOverlay.onScrim,
+        )
+        if (detail != null) {
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SceneViewTokens.ArOverlay.onScrimMuted,
+            )
+        }
+        if (action != null) {
+            Button(
+                onClick = onAction,
+                shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(top = SceneViewTokens.Space.sm)
+                    .heightIn(min = SceneViewTokens.Layout.touchTarget),
+            ) {
+                Text(action, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
 }
 
 /** Earth's camera pose, rounded so an unchanged reading does not recompose the screen. */
