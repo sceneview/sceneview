@@ -679,6 +679,9 @@ fun DemoScaffold(
             if (!arSessionFailed && arOverlaysEnabled && hasBottomBandContent) {
                 DemoBottomOverlay(
                     reservedBottom = dockClearance,
+                    // Same rule as the dock (#3827): a floating pill seen through a glass
+                    // sheet reads as a live button inside it (#3985).
+                    faded = settingsExpanded || dockHidden,
                     onBandHeightChanged = { bottomOverlayBandPx = it },
                     status = peekHeader,
                     content = bottomOverlay,
@@ -1321,19 +1324,30 @@ class DemoBottomOverlayScope internal constructor(
  *
  * [status] — the demo's short live status (`peekHeader`) — is the first child
  * of the Column, as a glass pill, so it stacks with the demo's own overlays.
+ *
+ * [faded] fades the band out while a glass sheet is open, as the dock does (#3985). Only
+ * its alpha moves: the band stays composed and measured, so the viewport reserve it
+ * reports does not jump while the sheet is up, and the demo's overlay state survives.
  */
 @Composable
 private fun BoxScope.DemoBottomOverlay(
     reservedBottom: Dp,
+    faded: Boolean,
     onBandHeightChanged: (Int) -> Unit,
     status: String?,
     content: (@Composable DemoBottomOverlayScope.() -> Unit)?,
 ) {
+    val bandAlpha by animateFloatAsState(
+        targetValue = if (faded) 0f else 1f,
+        animationSpec = SceneViewTokens.Motion.fade(),
+        label = "bottom-overlay-under-sheet",
+    )
     Column(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
             .onSizeChanged { onBandHeightChanged(it.height) }
+            .graphicsLayer { alpha = bandAlpha }
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
