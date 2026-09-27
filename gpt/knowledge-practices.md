@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.42.0)
+  Source of truth: /llms.txt  (SceneView 4.43.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.42.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.43.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -236,6 +236,8 @@ Stream an ARCore or ARKit session to the [Rerun](https://rerun.io) viewer for sc
 
 - **Live (default)** — sidecar spawns the Rerun viewer, you debug interactively.
 - **Save & share** — sidecar writes a `.rrd` file. Drop it onto https://sceneview.github.io/rerun/ to view in-place, or re-host (R2, GitHub release, gist) and open `https://sceneview.github.io/rerun/?url=<encoded>` to share with remote teammates. Lets you attach a fully-replayable session to a bug report.
+
+The Android demo's Rerun Debug screen also draws the session **on the phone, with no computer**: a second `SceneView` on the same `Engine` (`SurfaceType.TextureSurface`, `isOpaque = true`, a custom `CameraGestureDetector.CameraManipulator`) shows the camera trail, the live frustum, the feature-point map, the planes and the anchors from a free orbit camera, with a timeline to scrub the session. It is demo code, not SDK API — `samples/android-demo/.../demos/ArDebugView.kt` is the pattern to copy for a second 3D view over an `ARSceneView`.
 
 ### Architecture
 
