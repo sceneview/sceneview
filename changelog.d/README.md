@@ -43,6 +43,12 @@ entry is filed under `Changed`. Use `Performance` for pure perf wins (no behavio
 change, no bug fix) — that's the distinction between this bucket and `Fixed` or
 `Changed`.
 
+**The Android demo app's "What's new" sheet shows only entries written for its
+users** (#3992): a headline that opens with `Demo app:` (or `Android demo`,
+`Demo (Android)`, `Demo —`, `The demo app …`). Use that prefix for a change a
+demo user can see, in plain words; leave it off for SDK, iOS, tooling and
+QA-only notes. The app strips the prefix when it renders the line.
+
 You may include more than one bullet in a single fragment if the PR genuinely
 ships several related changes, but keep it to one PR's worth of notes.
 

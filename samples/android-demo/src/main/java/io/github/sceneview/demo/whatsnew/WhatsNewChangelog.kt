@@ -25,7 +25,8 @@ import android.content.res.AssetManager
  *
  * Only user-visible categories surface (`Added`, `Fixed`, `Changed`,
  * `Performance`, `Removed`); `Tests` and `Docs` are engineering bookkeeping
- * and are skipped. The `## Unreleased` placeholder is skipped too — at build
+ * and are skipped. On top of that, the app only shows the entries written for
+ * **its** users — see [demoAppHeadline] (#3992). The `## Unreleased` placeholder is skipped too — at build
  * time it is empty by construction (fragments live in `changelog.d/` until
  * release), and half-collated legacy bullets must never show as "shipped".
  */
@@ -137,7 +138,14 @@ fun loadWhatsNew(
     maxReleases: Int = WHATS_NEW_MAX_RELEASES,
 ): List<WhatsNewRelease> = runCatching {
     assets.open(WHATS_NEW_ASSET).bufferedReader().use { it.readText() }
-}.map { parseWhatsNew(it, maxReleases) }.getOrDefault(emptyList())
+}.map { markdown ->
+    // Read further back than [maxReleases]: once scoped to the demo app, a release
+    // that only touched the SDK, iOS or the website has nothing left to show.
+    parseChangelogSections(markdown, WHATS_NEW_MAX_SINCE_RELEASES)
+        .forDemoApp()
+        .filter { it.entries.isNotEmpty() }
+        .toReleases(maxReleases)
+}.getOrDefault(emptyList())
 
 /**
  * Reads the bundled changelog asset and parses it into sections, unreleased
@@ -149,7 +157,7 @@ fun loadWhatsNewSections(
     maxReleases: Int = WHATS_NEW_MAX_SINCE_RELEASES,
 ): List<WhatsNewSection> = runCatching {
     assets.open(WHATS_NEW_ASSET).bufferedReader().use { it.readText() }
-}.map { parseChangelogSections(it, maxReleases) }.getOrDefault(emptyList())
+}.map { parseChangelogSections(it, maxReleases).forDemoApp() }.getOrDefault(emptyList())
 
 /**
  * Parses [markdown] (the collated `CHANGELOG.md`) into at most [maxReleases]
@@ -160,19 +168,21 @@ fun loadWhatsNewSections(
 fun parseWhatsNew(
     markdown: String,
     maxReleases: Int = WHATS_NEW_MAX_RELEASES,
-): List<WhatsNewRelease> = parseChangelogSections(markdown, maxReleases)
-    .filterNot { it.isUnreleased }
-    .take(maxReleases)
-    .map { section ->
-        WhatsNewRelease(
-            version = section.version.orEmpty(),
-            date = section.date,
-            title = section.title,
-            highlights = section.entries.map {
-                WhatsNewHighlight(it.category, it.plainText, it.issueNumber)
-            },
-        )
-    }
+): List<WhatsNewRelease> = parseChangelogSections(markdown, maxReleases).toReleases(maxReleases)
+
+private fun List<WhatsNewSection>.toReleases(maxReleases: Int): List<WhatsNewRelease> =
+    filterNot { it.isUnreleased }
+        .take(maxReleases)
+        .map { section ->
+            WhatsNewRelease(
+                version = section.version.orEmpty(),
+                date = section.date,
+                title = section.title,
+                highlights = section.entries.map {
+                    WhatsNewHighlight(it.category, it.plainText, it.issueNumber)
+                },
+            )
+        }
 
 /**
  * Parses [markdown] into its `##` sections, newest first, keeping the
@@ -309,6 +319,9 @@ private fun parseEntry(line: String, category: WhatsNewCategory): WhatsNewEntry?
             close <= 2 -> raw
             raw.getOrNull(close + 2) == ':' ->
                 raw.substring(2, close) + ": " + firstSentence(raw.substring(close + 3).trim())
+            // Same prefix, colon inside the bold: `**Demo — Materials:** leaving Inspect…`.
+            raw[close - 1] == ':' ->
+                raw.substring(2, close - 1) + ": " + firstSentence(raw.substring(close + 2).trim())
             else -> raw.substring(2, close)
         }
     } else {
@@ -327,6 +340,59 @@ private fun parseEntry(line: String, category: WhatsNewCategory): WhatsNewEntry?
 
     return text.takeIf { it.isNotEmpty() }
         ?.let { WhatsNewEntry(whatsNewEntryId(it), category, it, issueNumber) }
+}
+
+/**
+ * Leading scope label of an entry written for the Android demo app's users: "Demo app",
+ * "Demo apps", "Android demo", "Android demo app", "Demo (Android)", "Demo —", each
+ * optionally after "The". Case-insensitive. `iOS demo` and `TV demo` are other apps, and
+ * "Demo cold start: …" is not a scope — the label must be one of these words, whole.
+ */
+private val DEMO_APP_SCOPE = Regex(
+    """^(?:the\s+)?(?:android\s+demo(?:\s+app)?|demo\s+apps?|demo\s+\(android\)|demo(?=\s+—))(?![\w(])""",
+    RegexOption.IGNORE_CASE,
+)
+
+/** What follows a scope used as a label — `Demo app: X`, `Android demo, X`, `Demo — X`. */
+private val SCOPE_LABEL_SEPARATOR = Regex("""^\s*[:,—]\s*""")
+
+/**
+ * The headline this app shows for a changelog entry, or `null` when the entry is not
+ * written for its users (#3992).
+ *
+ * `CHANGELOG.md` is the whole project's: SDK, iOS, Flutter, web, MCP, CI and release
+ * tooling share it with the demo app, and a store user was shown lines such as
+ * "Release: the npm publish check now waits…" or "Demo cold start: the ~88 refused frames
+ * … are the emulator". The rule reuses the convention fragment authors already follow
+ * for demo-facing work — the headline opens with the app's scope ([DEMO_APP_SCOPE]) —
+ * rather than a new opt-in marker, which every release tool would have to learn.
+ *
+ * When the scope is a label (`Demo app: Rerun Debug draws…`) it is stripped — inside the
+ * app it is redundant — and the rest capitalised. When it is the subject of the sentence
+ * (`The demo app opens on a live dusk flight`) the headline is kept whole.
+ */
+internal fun demoAppHeadline(headline: String): String? {
+    val scope = DEMO_APP_SCOPE.find(headline) ?: return null
+    val rest = headline.substring(scope.range.last + 1)
+    val separator = SCOPE_LABEL_SEPARATOR.find(rest) ?: return headline
+    return rest.substring(separator.range.last + 1)
+        .trim()
+        .replaceFirstChar { it.titlecase() }
+        .takeIf { it.isNotEmpty() }
+}
+
+/**
+ * This list scoped to the demo app's users: entries [demoAppHeadline] rejects are
+ * dropped, the rest relabelled. Each kept entry keeps its [WhatsNewEntry.id] — the hash
+ * of its full changelog text — so what an install had already acknowledged stays
+ * acknowledged across this change.
+ */
+fun List<WhatsNewSection>.forDemoApp(): List<WhatsNewSection> = map { section ->
+    section.copy(
+        entries = section.entries.mapNotNull { entry ->
+            demoAppHeadline(entry.text)?.let { entry.copy(text = it) }
+        },
+    )
 }
 
 /**
