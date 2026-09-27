@@ -28,6 +28,7 @@ import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import io.github.sceneview.demo.common.ProvideStatusBarIcons
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -182,7 +183,11 @@ class MainActivity : ComponentActivity() {
         DemoSettings.initialTab = resolveInitialTab(intent)
         setContent {
             SceneViewDemoTheme {
-                SceneViewDemoApp(activity = this)
+                // The only writer of the status-bar icon appearance: screens request light
+                // icons, this applies the result (#3984).
+                ProvideStatusBarIcons {
+                    SceneViewDemoApp(activity = this)
+                }
             }
         }
     }
