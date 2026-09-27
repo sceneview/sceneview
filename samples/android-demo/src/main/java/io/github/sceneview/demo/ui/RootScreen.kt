@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -48,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -201,6 +203,16 @@ fun RootScreen(
     // it is withdrawn during a live AR session, where the bottom of the screen holds the AR
     // controls, and comes back when the session ends.
     Scaffold(
+        // A live AR session is immersive: the status bar is hidden, but the display cutout
+        // stays in the default content insets, so the scaffold padded the session down by
+        // 136 px and the window background showed through as a band across the top — white
+        // in light theme (#3991). The session's own DemoScaffold applies `safeDrawing` to its
+        // chrome, so the camera can run edge to edge.
+        contentWindowInsets = if (arSessionActive) {
+            WindowInsets(0, 0, 0, 0)
+        } else {
+            ScaffoldDefaults.contentWindowInsets
+        },
         snackbarHost = {
             if (updatePrompt != null) {
                 UpdatePromptHost(
