@@ -241,10 +241,15 @@ final class SceneViewDemoUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(browse.waitForExistence(timeout: 10), "Browse online models card not found")
-        browse.tap()
-
+        // Let the last swipe's momentum settle, or the tap lands mid-scroll and
+        // is swallowed; retry once for the same reason.
+        Thread.sleep(forTimeInterval: 1.5)
         let search = app.textFields["explore-search-field"]
-        XCTAssertTrue(search.waitForExistence(timeout: 15), "Explore never opened")
+        for _ in 0..<2 where !search.exists {
+            browse.tap()
+            _ = search.waitForExistence(timeout: 8)
+        }
+        XCTAssertTrue(search.waitForExistence(timeout: 7), "Explore never opened")
         Thread.sleep(forTimeInterval: 2)
         snapshot(app, "4015-01-explore-top")
 
