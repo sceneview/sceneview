@@ -12,7 +12,15 @@
 #   * a HUMAN merges the release PR (a human merge IS a real push event, and it
 #     may land after release-fast's waiting job has already timed out);
 #   * `workflow_dispatch` — a manual recovery handle when a release did land
-#     untagged for any other reason.
+#     untagged for any other reason. The usual one (#3750): release-fast's `tag`
+#     job went red while the PR waited, then the PR auto-merged. That merge is
+#     GITHUB_TOKEN work, so the `push` trigger below never fires for it, and by
+#     the time someone dispatches this, main has usually moved on — HEAD is no
+#     longer the release commit and the script would exit 0 with "not a release
+#     commit". So pass the merge commit explicitly:
+#       gh workflow run tag-release.yml -f commit=<release PR merge commit sha>
+#     (`gh pr view release/vX.Y.Z --json mergeCommit -q .mergeCommit.oid`).
+#     Left empty, the dispatch tags HEAD of the dispatched ref, as before.
 #
 # The decision logic lives in `.claude/scripts/tag-release.sh`, shared with
 # release-fast so the two callers cannot drift. It is idempotent: it fires ONLY
@@ -24,6 +32,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      commit:
+        description: "Release merge commit SHA on main (empty = HEAD of the dispatched ref)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -40,7 +53,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The input reaches the shell through an env var only, and must be a bare
+      # hex SHA already on main: tagging a commit from another branch would
+      # publish a release that never went through main's required checks.
       - name: Detect release commit and tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .claude/scripts/tag-release.sh
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          if [ -z "$COMMIT" ]; then
+            bash .claude/scripts/tag-release.sh
+            exit 0
+          fi
+          echo "$COMMIT" | grep -qE '^[0-9a-f]{7,40}$' \
+            || { echo "::error::commit must be a hex SHA, got '$COMMIT'"; exit 1; }
+          git merge-base --is-ancestor "$COMMIT" origin/main \
+            || { echo "::error::$COMMIT is not on origin/main — refusing to tag"; exit 1; }
+          bash .claude/scripts/tag-release.sh "$COMMIT"
