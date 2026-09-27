@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: AR View runs edge to edge after Start AR Camera ([#3991](https://github.com/sceneview/sceneview/issues/3991)).** The session hides the status bar, but the tab host still padded it down by the display cutout, so a band of window background ran across the top of the camera: white in light theme, near-black in dark. The host now drops its insets during a live session, and the AR screen's own controls keep clear of the cutout.

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: a selected dock toggle is legible over bright scenes ([#3727](https://github.com/sceneview/sceneview/issues/3727)).** A selected item used to tint its icon and caption pale blue on the dock's glass, which over the near-white Contact Shadow studio fell to about 3:1. It now sits on a filled `dock-selected` pill (the dark-scheme primary, with a dark foreground) that reads at 7.3:1 on any scene, in every demo. The Contact Shadow dock caption "Shadows" is now a string resource.

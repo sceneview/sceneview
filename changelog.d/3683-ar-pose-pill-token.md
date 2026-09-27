@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: the AR Pose coordinate readout uses the glass chrome tokens ([#3683](https://github.com/sceneview/sceneview/issues/3683)).** The pill over the camera feed hardcoded `Color(0xCC161B22)` with a comment naming a `SurfaceDim` token that has since moved twice. It now takes `SceneViewTokens.Glass` — the `chrome-scrim` fill, `on-glass` text and the `over-media-edge` boundary — like the rest of the over-media chrome.

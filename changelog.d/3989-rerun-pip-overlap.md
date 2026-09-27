@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: Rerun Debug no longer stacks its preview tile on the "Couldn't start AR" card ([#3989](https://github.com/sceneview/sceneview/issues/3989)).** When AR cannot start, the 3D preview tile covered the right half of the card's title and the "No computer connected" card sat above it. While that card explains the failure, it is now the only card on screen; the tile and the connection card come back as soon as a session starts.

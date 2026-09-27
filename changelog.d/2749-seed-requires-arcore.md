@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **`setup-ar-emulator.sh --seed-snapshot` refuses to save a snapshot without ARCore ([#2749](https://github.com/sceneview/sceneview/issues/2749)).** A failed ARCore install was swallowed by an `install_arcore && log` AND-list, which errexit ignores, so the seed saved an ARCore-less `qa-clean` snapshot and exited 0. The seed now re-reads the package list and exits 1 when `com.google.ar.core` is missing, and a failed install is logged as a warning on every run.

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: floating controls fade out under an open sheet, like the dock ([#3985](https://github.com/sceneview/sceneview/issues/3985)).** Model Viewer's "Surprise me" pill stayed visible through the Lighting and Settings sheets, right on their sliders, where it read as a live button inside the sheet. Every demo's bottom overlay now fades with the dock while a glass sheet is open and comes back when it closes.
