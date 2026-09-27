@@ -82,6 +82,7 @@ dependencies {
     implementation("io.github.sceneview:arsceneview:4.43.0") // AR (includes sceneview)
 }
 ```
+The app module needs `compileSdk = 37` (SceneView's AndroidX dependencies require it); `minSdk` stays 24.
 
 ### AndroidManifest.xml (AR apps)
 ```xml
@@ -3563,6 +3564,7 @@ The `fileLocation` overload auto-detects URLs (http/https) and routes through Fu
 ```kotlin
 val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
 ```
+A positional string resolves to the `assetFileLocation` overload; any location with a scheme (`https://`, `file://`, `content://`) is forwarded to `fileLocation`, so this call loads the URL either way. A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`.
 
 ### ModelLoader (imperative)
 ```kotlin
@@ -5045,6 +5047,30 @@ setSpatialAudioListenerPose(cameraPos, cameraForward, cameraUp)  // call as the 
 ---
 
 ## Recipes — "I want to..."
+
+### Cinematic scroll-driven 3D hero at the top of a screen
+
+`CinematicHero` sits **under** the list, never inside it; the list's first item is a transparent spacer of the same height, which the hero follows. The camera turns slowly, then swings, rises and pushes in as the list scrolls, with parallax and a faded bottom edge. Overloads take a `LazyListState`, a `LazyGridState` (spacer spans the row: `item(span = { GridItemSpan(maxLineSpan) })`) or a `ScrollState`.
+
+```kotlin
+val listState = rememberLazyListState()
+Box(Modifier.fillMaxSize()) {
+    CinematicHero(
+        listState = listState,
+        height = 420.dp,
+        backdrop = Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)),
+    ) {
+        rememberModelInstance(modelLoader, "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb")
+            ?.let { ModelNode(modelInstance = it, scaleToUnits = 1f, centerOrigin = Position(0f, 0f, 0f)) }
+    }
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        item { Spacer(Modifier.height(420.dp)) } // first item, same height as the hero
+        items(cards) { MyCard(it) }
+    }
+}
+```
+
+Parameters: `backdrop: Brush? = null`, `profile: CinematicCameraProfile = Default`, `contentRadius = 0.5f` (matches `scaleToUnits = 1f`), `parallax = 0.4f`. No gestures on the 3D (the list keeps every touch); it stops drawing off screen and does not turn by itself with system animations off. Copy-paste prompt for an AI assistant: `docs/prompts/cinematic-hero.md`.
 
 ### Record the scene to MP4 (in-app, no MediaProjection)
 
