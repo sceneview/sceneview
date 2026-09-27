@@ -540,15 +540,28 @@ private fun StudioSection(
                 // Compare draws from a fixed camera node, so nothing has moved since the
                 // hand-over; the hero orbit adds its own travel on top of it.
                 if (!compare) {
-                    handoverYaw.floatValue += heroSpin.yawDegrees
                     // …and the user may have moved it further still (#3692). A drag within the
                     // last few seconds leaves the hero camera on the user's framing, or easing
                     // home from it; `handoverYaw` alone would have the flight out open on the
                     // authored pose, a cut. The framing rides the Gallery camera instead and is
                     // eased away across the flight, like the one the flight in takes off it.
-                    heroManipulator.takeUserFraming()?.let { user ->
+                    // Measured *before* the spin is folded into `handoverYaw`: the hero's
+                    // authored yaw is `handoverYaw + heroSpin`, and read after the fold it
+                    // would count the spin twice — the Gallery opened that far round the wall.
+                    val user = heroManipulator.peekUserFraming()
+                    handoverYaw.floatValue += heroSpin.yawDegrees
+                    val offset = user?.scaledPivot(focusRadius / heroOrbitRadius)
+                    if (offset != null && focusZoom.value > 0f) {
+                        // Faded by the flight itself, not on a clock of its own: the flight
+                        // turns the Gallery yaw from `handoverYaw` to the sweep, and an offset
+                        // easing on another curve on top of it swung the camera past the wall
+                        // and back. At the dolly's weight the yaw runs straight from the user's
+                        // azimuth to the sweep.
+                        galleryManipulator.carryUserFraming(offset) { focusZoom.value }
+                    } else if (offset != null) {
+                        // Inspect opened without a flight (a deep link): nothing to ride on.
                         galleryManipulator.carryUserFraming(
-                            offset = user.scaledPivot(focusRadius / heroOrbitRadius),
+                            offset = offset,
                             blendMillis = FOCUS_FLIGHT_MILLIS.toLong(),
                         )
                     }
@@ -634,6 +647,10 @@ private fun StudioSection(
     // balls out of frame. Keying on `inspecting` and `compare` puts the pair back on the axis
     // the moment the hand-over happens.
     LaunchedEffect(heroRadius, inspecting, compare) {
+        // Never on the way out. The Gallery manipulator takes the camera back there, and
+        // SceneView glides it from the pose on screen: a pose written here became that glide's
+        // start, and the flight out swept in from beside the wall (#3692).
+        if (!inspecting) return@LaunchedEffect
         // On the hand-over yaw, not on the +Z axis (#3624): the pair is symmetric about the
         // origin from any azimuth, and starting anywhere else would undo the flight's last
         // frame with a cut.
