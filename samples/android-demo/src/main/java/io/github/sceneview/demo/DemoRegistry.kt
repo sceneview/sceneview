@@ -67,8 +67,9 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *                    layout: sections run in [DEMO_CATEGORIES] order and a
  *                    category's demos are contiguous inside it, so the grid
  *                    can draw one header per section by watching for the
- *                    boundary. Within a section, foundational demos lead and
- *                    coming-soon / known-issue demos close it.
+ *                    boundary. Within a section, the flagship and most recently
+ *                    reworked demos lead, older demos follow, and coming-soon /
+ *                    known-issue demos close it.
  *                    `collate-demos.sh` sorts on it and
  *                    [io.github.sceneview.demo.DemoRegistryIntegrityTest]
  *                    asserts uniqueness *and* contiguity.
@@ -139,13 +140,21 @@ object DemoCategory {
     const val DEV_TOOLS = "Developer Tools"
 }
 
-/** Ordered list of category keys — controls the home filter-chip and section order. */
+/**
+ * Ordered list of category keys — controls the home filter-chip and section order.
+ *
+ * Ordered by priority, not by subsystem: the sections whose lead demos are the
+ * flagship and most recently reworked samples come first, so a scrolling thumb
+ * meets them before the older catalogue. Developer Tools sits third because it
+ * leads with `ar-rerun` and `ar-record-playback`; Understand the World, mostly
+ * demos from before 4.35 plus the coming-soon ones, closes the grid.
+ */
 val DEMO_CATEGORIES = listOf(
     DemoCategory.VIEW_3D,
-    DemoCategory.CREATE,
     DemoCategory.PLACE_AR,
-    DemoCategory.UNDERSTAND,
     DemoCategory.DEV_TOOLS,
+    DemoCategory.CREATE,
+    DemoCategory.UNDERSTAND,
 )
 
 /**

@@ -21,7 +21,7 @@ object AnimationPhysicsFragment : DemoFragment {
         subtitleRes = R.string.demo_animation_physics_subtitle,
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.RotateRight,
-        order = 5,
+        order = 3,
         // 4.41.0: the clip card and a subject switch read correctly while a
         // model loads (#3883).
         updatedIn = "4.41.0",

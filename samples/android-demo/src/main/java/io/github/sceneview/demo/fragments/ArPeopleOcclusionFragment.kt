@@ -16,7 +16,7 @@ object ArPeopleOcclusionFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_people_occlusion_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Accessibility,
-        order = 33,
+        order = 37,
         tags = setOf("ar", "occlusion", "people", "segmentation", "depth"),
     )
 

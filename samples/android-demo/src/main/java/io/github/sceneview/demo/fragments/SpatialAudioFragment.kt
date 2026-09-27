@@ -16,7 +16,7 @@ object SpatialAudioFragment : DemoFragment {
         subtitleRes = R.string.demo_spatial_audio_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.VolumeUp,
-        order = 15,
+        order = 30,
         tags = setOf("audio", "sound", "spatial", "3d-audio", "orbit"),
     )
 

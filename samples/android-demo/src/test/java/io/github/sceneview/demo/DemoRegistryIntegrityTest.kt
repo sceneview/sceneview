@@ -6,6 +6,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
+import io.github.sceneview.demo.ui.home.FEATURED_SECTION_IDS
+import io.github.sceneview.demo.ui.home.HERO_DEMO_ID
 
 /**
  * Pure-JVM integrity tests for the demo registry ([ALL_DEMOS]).
@@ -195,6 +197,26 @@ class DemoRegistryIntegrityTest {
             "CHIP_CATEGORIES must cover exactly DEMO_CATEGORIES, in the same order",
             DEMO_CATEGORIES,
             CHIP_CATEGORY_KEYS,
+        )
+    }
+
+    @Test
+    fun `the featured shelf lists registered demos, once each, Rerun near the top`() {
+        // The shelf under the hero is the home's priority list. A renamed id would
+        // drop a card silently (the shelf skips what it cannot resolve), a repeat
+        // would collide on its grid key, and the hero repeated here wastes a slot.
+        val ids = ALL_DEMOS.map { it.id }.toSet()
+        val unknown = FEATURED_SECTION_IDS.filterNot { it in ids }
+        assertTrue("Featured shelf lists unregistered ids: $unknown", unknown.isEmpty())
+        assertEquals(
+            "Featured shelf lists a demo twice",
+            FEATURED_SECTION_IDS.size,
+            FEATURED_SECTION_IDS.toSet().size,
+        )
+        assertFalse("The hero demo must not repeat in the shelf", HERO_DEMO_ID in FEATURED_SECTION_IDS)
+        assertTrue(
+            "ar-rerun must be first or second on the Featured shelf",
+            FEATURED_SECTION_IDS.indexOf("ar-rerun") in 0..1,
         )
     }
 

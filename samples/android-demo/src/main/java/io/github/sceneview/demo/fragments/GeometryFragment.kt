@@ -16,7 +16,7 @@ object GeometryFragment : DemoFragment {
         subtitleRes = R.string.demo_geometry_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Category,
-        order = 7,
+        order = 26,
         tags = setOf("geometry", "cube", "sphere", "cylinder", "plane", "primitive"),
     )
 

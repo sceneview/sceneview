@@ -16,7 +16,7 @@ object PointAndAskFragment : DemoFragment {
         subtitleRes = R.string.demo_point_and_ask_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Psychology,
-        order = 41,
+        order = 45,
         tags = setOf("ar", "ai", "gemini", "on-device", "llm", "vision"),
     )
 

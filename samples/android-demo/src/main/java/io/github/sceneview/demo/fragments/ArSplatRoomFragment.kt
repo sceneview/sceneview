@@ -19,7 +19,7 @@ object ArSplatRoomFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_splat_room_subtitle,
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Landscape,
-        order = 18,
+        order = 7,
         tags = setOf("ar", "splat", "gaussian", "scan", "spz", "real-scale", "placement"),
         sinceVersion = "4.45.0",
     )
