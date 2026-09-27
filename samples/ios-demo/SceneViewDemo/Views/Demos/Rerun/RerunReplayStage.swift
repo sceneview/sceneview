@@ -148,8 +148,6 @@ final class RerunStageRenderer {
                                                          fieldOfViewOrientation: .vertical))
         buildEntities(session)
         content.add(root)
-        // A top-level entity of the content, like SceneViewSwift's own camera: nested under
-        // `root`, RealityView kept its default camera and the room was never framed.
         content.add(camera)
         subscription = content.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated { self?.update(Float(event.deltaTime)) }
@@ -450,7 +448,10 @@ final class RerunStageRenderer {
         let largest = max(bounds.extents.x, bounds.extents.y, bounds.extents.z)
         guard largest > 0 else { return }
         let fit = Self.anchorModelSize / largest
-        model.scale = SIMD3(repeating: fit)
+        // Multiplied, not assigned: the bounds already include the model's own root scale
+        // (the bundled Shiba's root is 0.01, a centimetre stage), and overwriting it made a
+        // 30 m dog that swallowed the camera.
+        model.scale *= fit
         model.position = SIMD3(-bounds.center.x * fit, -bounds.min.y * fit, -bounds.center.z * fit)
         let holder = Entity()
         holder.addChild(model)
