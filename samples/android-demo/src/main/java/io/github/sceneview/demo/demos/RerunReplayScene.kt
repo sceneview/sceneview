@@ -52,6 +52,11 @@ internal class RerunReplayMedia(
     val thumbnails: Map<String, Bitmap>,
     /** The media archive's bytes, which [decodeFrame] cuts full-size frames from. */
     private val archive: ByteArray,
+    /**
+     * A room scan still recording (Record mode): the trace and the thumbnails keep growing, so
+     * the view frames what is there now and keeps a photo slot for every keyframe it may reach.
+     */
+    val growing: Boolean = false,
 ) {
     /** The thumbnail of the camera image in force at [time], `null` before the first one. */
     fun thumbnailAt(time: Float): Bitmap? {
@@ -162,7 +167,10 @@ internal class ReplayLayers(
     /** One photo quad per keyframe the whole session reaches, plus the live camera's. */
     private val photoSlots: List<PhotoSlot> = run {
         // Keyframes only accumulate along the path, so the last frame has the most — plus a spare.
-        val count = media.trace.frameAt(media.trace.duration).keyframes.size + 2
+        // A scan still recording can reach the cap.
+        val trace = media.trace
+        val keyframes = if (media.growing) ArDebugTrace.MAX_KEYFRAMES else trace.frameAt(trace.duration).keyframes.size
+        val count = keyframes + 2
         val placeholder = planeTextures.values.firstOrNull() ?: atlas
         List(count) {
             val material = material(placeholder)

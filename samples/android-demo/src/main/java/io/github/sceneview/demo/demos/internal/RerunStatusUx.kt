@@ -13,11 +13,12 @@ import java.util.Locale
 const val RERUN_INTRO: String =
     "Sends what the camera sees to Rerun on your computer, so you can scrub through it frame by frame."
 
-/** Atop the sheet, over the bundled replay: what the replay is, and what Live AR adds. */
+/** Atop the sheet, over the bundled replay: what the replay is, and what Record adds. */
 const val RERUN_REPLAY_INTRO: String =
     "A real room, filmed with a phone and rebuilt in 3D: the camera's path and photos, the floor " +
         "and table, the room's points and two models placed on them. The path and points were " +
-        "reconstructed from the video. Live AR records your own session, straight from ARCore."
+        "reconstructed from the video. Record scans your own room live into the same 3D view, and the " +
+        "scan stays on your phone."
 
 /** The status line over the camera: a dot, a [title] and a quieter [detail] line. */
 data class RerunStatusUx(
@@ -39,9 +40,10 @@ fun rerunStatusUx(isConnected: Boolean, eventsSent: Long, eventsPerSecond: Float
             live = true,
         )
     } else {
+        // Without a computer the screen is a room scanner: it says what Record does.
         RerunStatusUx(
-            title = "No computer connected",
-            detail = RERUN_INTRO,
+            title = ScanCopy.IDLE_TITLE,
+            detail = ScanCopy.IDLE_DETAIL,
             live = false,
         )
     }

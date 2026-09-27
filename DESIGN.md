@@ -760,6 +760,12 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   fingers pan, pinch zooms); double-tap or Recenter hands it back.
 - **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
   `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
+- **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the
+  scan's figures (points, surfaces, photos) are `type-display` white on the dark scrim, the
+  clock is `type-title`, and the only red is `danger` (the dot and the shutter). The 3D
+  card under them is the same view the replay opens on, growing as the phone moves, framed
+  to the scan with no intro. While recording the dock is empty: nothing may leave a scan
+  half-taken. The privacy line ("Everything stays on your phone.") ends the idle copy.
 
 ### Tabs
 - Padding: 10px 20px

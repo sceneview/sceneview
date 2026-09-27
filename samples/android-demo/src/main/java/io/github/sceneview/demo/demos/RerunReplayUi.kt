@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.Dp
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
+import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.filmstripFrames
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
@@ -266,6 +267,7 @@ internal fun RerunFilmstripCard(
     session: ArDebugSession,
     caption: String,
     modifier: Modifier = Modifier,
+    title: String = ScanCopy.SAMPLE_TITLE,
 ) {
     val duration = media.trace.duration
     OverlayCard(testTag = RERUN_FILMSTRIP_TAG, modifier = modifier) {
@@ -283,7 +285,7 @@ internal fun RerunFilmstripCard(
             }
             Spacer(Modifier.width(Space.xs))
             Column(Modifier.weight(1f)) {
-                Text("Recorded AR session", style = OnScrimTitle, maxLines = 1)
+                Text(title, style = OnScrimTitle, maxLines = 1)
                 Text(caption, style = OnScrimCaption, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.width(Space.sm))

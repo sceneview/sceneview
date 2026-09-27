@@ -21,11 +21,12 @@ class RerunStatusUxTest {
     }
 
     @Test
-    fun `without a computer the status says what the demo does, calmly`() {
+    fun `without a computer the status says what Record does, calmly`() {
         val ux = rerunStatusUx(isConnected = false, eventsSent = 0, eventsPerSecond = 0f)
         assertFalse(ux.live)
-        assertEquals("No computer connected", ux.title)
-        assertEquals(RERUN_INTRO, ux.detail)
+        assertEquals(ScanCopy.IDLE_TITLE, ux.title)
+        assertEquals(ScanCopy.IDLE_DETAIL, ux.detail)
+        assertTrue(ux.detail.endsWith(ScanCopy.PRIVACY))
         assertPlain(ux.title)
         assertPlain(ux.detail)
     }

@@ -163,6 +163,18 @@ class DemoSmokeTest {
         screenshot("s06_ar_rerun")
     }
 
+    // Record mode: the replay's dock opens the live room scan. The emulator cannot track
+    // (#2754), so this only proves the switch into the camera screen survives without a
+    // crash; the scan itself is checked on a Pixel from the PR's needs-device list.
+    @Test
+    fun a06b_arRerun_recordSmokeOpen() {
+        openDemoTolerant("ar-rerun", "Rerun AR Replay")
+        device.wait(Until.findObject(By.desc("Scan your own room")), timeout)?.click()
+        Thread.sleep(5000)
+        screenshot("s06b_ar_rerun_record")
+        check(device.currentPackageName == pkg) { "The demo left the foreground after opening Record" }
+    }
+
     // #3463 — `ar-streetscape` is now the second mode of the Scene Geometry card. The
     // leg deliberately keeps driving the RETIRED id: that is what proves the alias and
     // its ALIAS_INITIAL_TAB entry still land on the Streetscape mode. The title on
