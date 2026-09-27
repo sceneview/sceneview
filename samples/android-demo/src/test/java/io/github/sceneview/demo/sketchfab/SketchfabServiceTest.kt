@@ -233,6 +233,40 @@ class SketchfabServiceTest {
         }
     }
 
+    /**
+     * The AR Placement picker's streamed rows show their own Sketchfab picture (#3987): one
+     * `GET models/{uid}`, and the smallest render that is still wide enough for a tile.
+     */
+    @Test
+    fun `model fetches one uid and thumbnailUrl picks the smallest wide-enough render`() {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse.Builder().code(200).body(
+                    """
+                    {"uid":"mug1","name":"Coffee Mug","viewerUrl":"https://sketchfab.com/m/mug1",
+                     "thumbnails":{"images":[
+                       {"url":"https://cdn/1920.jpg","width":1920,"height":1080},
+                       {"url":"https://cdn/100.jpg","width":100,"height":56},
+                       {"url":"https://cdn/256.jpg","width":256,"height":144},
+                       {"url":"https://cdn/640.jpg","width":640,"height":360}
+                     ]}}
+                    """.trimIndent(),
+                ).build(),
+            )
+            val modelService = SketchfabService(
+                ApplicationProvider.getApplicationContext(),
+                baseUrl = server.url("/v3/").toString(),
+                apiKeyProvider = { "test-token" },
+            )
+            val model = runBlocking { modelService.model("mug1") }
+            assertEquals("/v3/models/mug1", server.takeRequest().url.encodedPath)
+            assertEquals("https://cdn/256.jpg", model.thumbnailUrl(minWidth = 256))
+            // Nothing wide enough: the largest render rather than none.
+            assertEquals("https://cdn/1920.jpg", model.thumbnailUrl(minWidth = 4096))
+        }
+    }
+
     /** Non-transient client errors must fail fast — retrying a 404 is noise. */
     @Test
     fun `non-transient status is not retried`() {

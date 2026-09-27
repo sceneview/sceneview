@@ -71,6 +71,7 @@ import io.github.sceneview.ar.PlacementSurface
 import io.github.sceneview.ar.arcore.subsumedBy
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.ARCoachingOverlay
+import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoBottomOverlayScope
@@ -402,14 +403,17 @@ fun BoxScope.TapToPlaceStatusOverlays(
         TrackingFailureReason.INSUFFICIENT_LIGHT
     // The SDK's animated coaching (phone sweep, "surface found", paused / look back). While
     // it is up the pill steps aside, the cards never do (the overlay is silent on them).
+    // Silent while the SDK's "Couldn't start AR" card is up: both are centred, and the glyph
+    // used to sit on that card's copy and its Try again button (#3986).
     val guidance = rememberArGuidanceState(state.controller)
-    ARCoachingOverlay(guidance)
+    val coachingCue = if (state.arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE
+    ARCoachingOverlay(cue = coachingCue, surface = guidance.surface)
     val coaching = placementCoaching(
         phase = state.phase,
         gestureHintVisible = gestureHintVisible,
         dragOffSurface = state.dragOffSurface,
         lowLight = lowLight,
-        coachingActive = guidance.isCoaching,
+        coachingActive = coachingCue != ArGuidanceCue.NONE,
     )
     val card = placementCard(state.phase)
 

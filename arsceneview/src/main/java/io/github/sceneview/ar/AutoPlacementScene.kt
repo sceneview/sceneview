@@ -172,6 +172,10 @@ fun AutoPlacementScene(
     // [rememberUpdatedState] is what makes `detach()` actually run when the host navigates away
     // after a placement, including when the content composes no AnchorNode of its own.
     val currentPlacement by rememberUpdatedState(placement)
+    // The coaching glyph is centred, exactly where ARSceneView draws its "Couldn't start AR"
+    // card — and it kept sweeping over that card's copy and its Try again button (#3986).
+    // DESIGN.md: the glyph is silent whenever a card explains the state.
+    var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     DisposableEffect(state) {
         onDispose {
             currentPlacement?.anchor?.detach()
@@ -195,7 +199,10 @@ fun AutoPlacementScene(
             onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
                 if (node == null) state.deselectPlacement() else state.selectPlacement()
             }),
-            onARCoreAvailability = onARCoreAvailability,
+            onARCoreAvailability = {
+                availability = it
+                onARCoreAvailability?.invoke(it)
+            },
             onTrackingFailureChanged = onTrackingFailureChanged,
             onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
             onSessionUpdated = { session, frame ->
@@ -224,7 +231,13 @@ fun AutoPlacementScene(
                 planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
             }
         }
-        if (coaching) ARCoachingOverlay(rememberArGuidanceState(state, surface))
+        if (coaching) {
+            val guidance = rememberArGuidanceState(state, surface)
+            ARCoachingOverlay(
+                cue = if (availability == null) guidance.cue else ArGuidanceCue.NONE,
+                surface = guidance.surface,
+            )
+        }
     }
 }
 

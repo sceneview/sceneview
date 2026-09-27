@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: What's new lists only changes you can see in the app ([#3992](https://github.com/sceneview/sceneview/issues/3992)).** The sheet used to show every line of the project changelog, including SDK, iOS, release-tooling and QA notes. It now shows only the entries written for demo users (the ones that open with "Demo app:"), without that prefix. The newest block is titled "New in this update" instead of "Included in this preview build".

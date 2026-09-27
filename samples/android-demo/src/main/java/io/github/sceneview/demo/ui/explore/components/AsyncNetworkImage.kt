@@ -58,6 +58,9 @@ import kotlin.coroutines.coroutineContext
  *   - The shared OkHttp client now has connect/read/call timeouts so a single
  *     stalled CDN connection can't pin an IO thread (and a carousel slot)
  *     forever — that was the "very slow" symptom.
+ *
+ * @param fallback Drawn instead of the silent placeholder when there is no [url] or the
+ *   fetch failed — e.g. the AR Placement picker's generic glyph (#3987). Empty by default.
  */
 @Composable
 fun AsyncNetworkImage(
@@ -65,6 +68,7 @@ fun AsyncNetworkImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    fallback: @Composable () -> Unit = {},
 ) {
     var bitmap by remember(url) { mutableStateOf<Bitmap?>(BitmapCache[url.orEmpty()]) }
     var loading by remember(url) { mutableStateOf(bitmap == null && !url.isNullOrBlank()) }
@@ -125,8 +129,10 @@ fun AsyncNetworkImage(
                 modifier = Modifier.size(28.dp),
                 strokeWidth = 2.5.dp,
             )
+        } else {
+            // Empty url or failed fetch (`failed`): the caller's fallback, silent by default.
+            fallback()
         }
-        // else: silent placeholder — empty url or failed fetch (`failed`).
     }
 }
 

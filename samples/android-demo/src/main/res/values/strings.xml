@@ -178,7 +178,7 @@
         <item quantity="other">%1$d improvements since version %2$s</item>
     </plurals>
     <string name="whats_new_since_subtitle_unknown">Discover the latest improvements</string>
-    <string name="whats_new_since_unreleased">Included in this preview build</string>
+    <string name="whats_new_since_unreleased">New in this update</string>
     <string name="whats_new_since_mark_seen">Got it</string>
     <string name="whats_new_since_mark_seen_hint">You can revisit these updates from the home screen.</string>
     <string name="whats_new_since_open_demo">Open %s</string>

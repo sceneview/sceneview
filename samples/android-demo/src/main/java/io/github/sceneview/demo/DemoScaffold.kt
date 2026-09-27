@@ -2,9 +2,7 @@
 
 package io.github.sceneview.demo
 
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -77,7 +75,6 @@ import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -102,7 +99,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -112,8 +108,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 import io.github.sceneview.demo.common.DemoSheetDefaults
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.GlassIconButton
@@ -310,20 +306,11 @@ fun DemoScaffold(
     // The top scrim (#3328) puts a 60 %-black ground under the status bar, so in light
     // mode the system icons — clock, wifi, battery — turn dark-on-dark and disappear.
     // They used to read because they sat on whatever the scene rendered. Force the
-    // light (white) icon set while the scrim is up, and restore whatever the theme had
-    // when the chrome hides or the demo is left; capturing the previous value rather
-    // than deducing it keeps this correct in both themes and under edge-to-edge.
-    val view = LocalView.current
-    DisposableEffect(view, chromeVisible) {
-        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
-            .filterIsInstance<Activity>()
-            .firstOrNull()
-            ?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        val previous = controller?.isAppearanceLightStatusBars
-        if (chromeVisible) controller?.isAppearanceLightStatusBars = false
-        onDispose { if (previous != null) controller?.isAppearanceLightStatusBars = previous }
-    }
+    // light (white) icon set while the scrim is up; the theme's own set comes back when
+    // the chrome hides or the demo is left. A request, not a write: the Showcase and the
+    // demo are both composed during the navigation, and the old save-and-restore pairs
+    // raced there and left dark icons on the dark stage (#3984).
+    RequestLightStatusBarIcons(active = chromeVisible)
 
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -537,6 +524,17 @@ fun DemoScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // An inset scene leaves bands above and below the viewport. Unpainted,
+                // they showed the window background — light grey under the scrims, in
+                // both themes — and the demo read as a letterboxed screenshot (#3983).
+                // Painted with the stage colour, the chrome sits on one continuous stage.
+                .then(
+                    if (bottomOverlayReservesScene) {
+                        Modifier.background(SceneViewTokens.Stage.background)
+                    } else {
+                        Modifier
+                    }
+                )
                 .onSizeChanged { rootHeightPx = it.height },
         ) {
             // The viewport names its own state (#3444): "Scene loading" while the cover
@@ -582,7 +580,10 @@ fun DemoScaffold(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.surface),
+                                    // The viewport is still the stage when AR failed: the
+                                    // glass chrome and scrims sit on it. `surface` painted it
+                                    // white in light theme, banded by the scrims (#3990).
+                                    .background(SceneViewTokens.Stage.background),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 io.github.sceneview.demo.common.DemoStatusCard(
@@ -679,6 +680,9 @@ fun DemoScaffold(
             if (!arSessionFailed && arOverlaysEnabled && hasBottomBandContent) {
                 DemoBottomOverlay(
                     reservedBottom = dockClearance,
+                    // Same rule as the dock (#3827): a floating pill seen through a glass
+                    // sheet reads as a live button inside it (#3985).
+                    faded = settingsExpanded || dockHidden,
                     onBandHeightChanged = { bottomOverlayBandPx = it },
                     status = peekHeader,
                     content = bottomOverlay,
@@ -1321,19 +1325,30 @@ class DemoBottomOverlayScope internal constructor(
  *
  * [status] — the demo's short live status (`peekHeader`) — is the first child
  * of the Column, as a glass pill, so it stacks with the demo's own overlays.
+ *
+ * [faded] fades the band out while a glass sheet is open, as the dock does (#3985). Only
+ * its alpha moves: the band stays composed and measured, so the viewport reserve it
+ * reports does not jump while the sheet is up, and the demo's overlay state survives.
  */
 @Composable
 private fun BoxScope.DemoBottomOverlay(
     reservedBottom: Dp,
+    faded: Boolean,
     onBandHeightChanged: (Int) -> Unit,
     status: String?,
     content: (@Composable DemoBottomOverlayScope.() -> Unit)?,
 ) {
+    val bandAlpha by animateFloatAsState(
+        targetValue = if (faded) 0f else 1f,
+        animationSpec = SceneViewTokens.Motion.fade(),
+        label = "bottom-overlay-under-sheet",
+    )
     Column(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
             .onSizeChanged { onBandHeightChanged(it.height) }
+            .graphicsLayer { alpha = bandAlpha }
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
