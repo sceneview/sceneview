@@ -1,5 +1,6 @@
 package io.github.sceneview.core.splat
 
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -74,7 +75,10 @@ class SpzV4Test {
         for (spot in SPZ_V4_SPOTS) {
             val i = spot.index
             for (a in 0 until 3) {
-                assertEquals(spot.position[a], cloud.positions[i * 3 + a], 1e-5f, "pos[$i][$a]")
+                // The references carry 7 significant digits (make-spz-v4-fixture.py, `.7g`),
+                // so the tolerance is relative: splat 0 sits at x = -126.17554.
+                val posTolerance = 1e-5f + abs(spot.position[a]) * 1e-6f
+                assertEquals(spot.position[a], cloud.positions[i * 3 + a], posTolerance, "pos[$i][$a]")
                 assertEquals(spot.scale[a], cloud.scales[i * 3 + a], spot.scale[a] * 1e-5f, "scale[$i][$a]")
                 val dc = (spot.colorBytes[a] / 255f - 0.5f) / 0.15f
                 assertEquals(SplatMath.dcToLinearColor(dc), cloud.colors[i * 3 + a], 1e-6f, "color[$i][$a]")
