@@ -265,7 +265,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         onReset = resetAll,
         dock = listOf(io.github.sceneview.demo.DockItem(
             icon = Icons.Filled.Contrast,
-            label = "Shadows",
+            label = stringResource(R.string.contact_shadow_dock_shadows),
             selected = shadowsEnabled,
             onClick = { shadowsEnabled = !shadowsEnabled },
         )),

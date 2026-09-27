@@ -432,6 +432,15 @@ object SceneViewTokens {
         /** Transient work in progress — spinner accent. `primary` (dark value). */
         val accentProgress = Color(0xFFA4C1FF)
 
+        /**
+         * Foreground on a control *filled* with [accentProgress] — the dark-scheme
+         * `onPrimary`, in both themes (#3726): the dock's accent disc, the Physics "Drop"
+         * button. 7.3:1 on [accentProgress]. A filled over-media control that reached for
+         * `colorScheme.primary` / `onPrimary` instead changed tint with the system theme
+         * while the chrome around it stayed fixed.
+         */
+        val onAccentProgress = Color(0xFF002F64)
+
         /** Waiting on the user to move the phone — `warning`. */
         val accentGuidance = Color(0xFFF59E0B)
 

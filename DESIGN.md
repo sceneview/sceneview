@@ -504,6 +504,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | `dock-caption` | `type-caption`, 2dp under the icon, one line, never truncated |
 | `dock-items` | at most 4 items + 1 optional accent (primary-tinted) item |
 | `dock-accent` | 40dp filled disc, 48dp touch target, 12dp from the dock edge on every side |
+| `dock-selected` | A selected toggle item sits on a `radius-md` pill filled `#A4C1FF`, icon + caption `#002F64` (dark-scheme `primary` / `onPrimary`, both themes) — 7.3:1 on any scene |
 
 The dock replaces FABs and top app bars in demo screens; its Controls item opens the
 settings sheet. Show/hide uses `motion-spring`; tap on the scene toggles the chrome
