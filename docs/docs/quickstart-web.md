@@ -140,9 +140,10 @@ parsed by the shared KMP `sceneview-core` parsers — the same code path Android
 uses. Kotlin/JS additionally exposes `SceneView.addSplatNode(splatCloud)` for an
 already-parsed `io.github.sceneview.core.splat.SplatCloud`.
 
-Current scope matches Android P1: **isotropic** billboards (each gaussian renders
-as the circumscribed disc of its largest axis) and SH degree-0 colour.
-Anisotropic screen-space ellipses are planned under the same epic.
+Current web scope: **isotropic** billboards (each gaussian renders as the
+circumscribed disc of its largest axis) and SH degree-0 colour. Android already
+renders oriented ellipses; the web port is tracked in
+[#4046](https://github.com/sceneview/sceneview/issues/4046).
 
 ## Environment Lighting
 

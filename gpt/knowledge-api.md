@@ -842,8 +842,9 @@ SceneView(
 }
 ```
 
-Current scope (P1): isotropic billboards (max-axis scale — anisotropic screen-space ellipses are
-planned) and SH degree 0 color. Without a `cameraPositionProvider` the compositing order stays
+Each splat renders as an oriented ellipse: its rotation and 3-axis scale are projected to a
+screen-space 2D covariance, as in the reference 3DGS renderer. Color is SH degree 0 only, and it
+displays as stored (the material cancels the View's tone mapping). Without a `cameraPositionProvider` the compositing order stays
 as loaded (expect popping when orbiting). Build a `SplatCloud` from arrays, or parse a file with
 the KMP `SplatParser.fromPly(bytes)` / `.fromSpz(bytes)` / `.parse(bytes)` (auto-detect) in
 `io.github.sceneview.core.splat`.
@@ -851,7 +852,7 @@ the KMP `SplatParser.fromPly(bytes)` / `.fromSpz(bytes)` / `.parse(bytes)` (auto
 **Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
 Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
 `SceneView.addSplatNode(url, onLoaded = …)` or `addSplatNode(splatCloud)` for an already-parsed
-cloud. Same isotropic-P1 scope; the painter's sort re-runs on camera motion automatically (the web
+cloud. The web still draws isotropic billboards (anisotropic port: #4046); the painter's sort re-runs on camera motion automatically (the web
 node feeds it the live camera position). iOS is tracked separately under #2646.
 
 ### VideoNode — video on 3D plane
@@ -3518,6 +3519,7 @@ The `fileLocation` overload auto-detects URLs (http/https) and routes through Fu
 ```kotlin
 val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
 ```
+A positional string resolves to the `assetFileLocation` overload; any location with a scheme (`https://`, `file://`, `content://`) is forwarded to `fileLocation`, so this call loads the URL either way. A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`.
 
 ### ModelLoader (imperative)
 ```kotlin

@@ -13,6 +13,34 @@
 
 ## Recipes — "I want to..."
 
+### Cinematic scroll-driven 3D hero at the top of a screen
+
+`CinematicHero` sits **under** the list, never inside it; the list's first item is a transparent spacer of the same height, which the hero follows. The camera turns slowly, then swings, rises and pushes in as the list scrolls, with parallax and a faded bottom edge. Overloads take a `LazyListState`, a `LazyGridState` (spacer spans the row: `item(span = { GridItemSpan(maxLineSpan) })`) or a `ScrollState`.
+
+```kotlin
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.Brush
+
+val listState = rememberLazyListState()
+Box(Modifier.fillMaxSize()) {
+    CinematicHero(
+        listState = listState,
+        height = 420.dp,
+        backdrop = Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)),
+    ) {
+        rememberModelInstance(modelLoader, "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb")
+            ?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
+    }
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        item { Spacer(Modifier.height(420.dp)) } // first item, same height as the hero
+        items(20) { index -> Card(Modifier.fillMaxWidth().padding(16.dp)) { Text("Card $index") } } // your content
+    }
+}
+```
+
+Parameters: `backdrop: Brush? = null`, `profile: CinematicCameraProfile = Default`, `contentRadius = 0.75f` (frames any model with `scaleToUnits = 1f`; content is auto-centred), `parallax = 0.4f`. No gestures on the 3D (the list keeps every touch); it stops drawing off screen and does not turn by itself with system animations off. Copy-paste prompt for an AI assistant: `docs/prompts/cinematic-hero.md`.
+
 ### Record the scene to MP4 (in-app, no MediaProjection)
 
 ```kotlin

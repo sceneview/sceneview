@@ -173,8 +173,8 @@ sv.addSplatNode('models/splats/capture.ply').then((splat) => {
 });
 ```
 
-Current scope (P2): isotropic billboards (max-axis scale — anisotropic
-screen-space ellipses are planned) and SH degree-0 colour, matching Android P1.
+Current web scope: isotropic billboards (max-axis scale) and SH degree-0 colour.
+Android already renders oriented ellipses; the web port is tracked in #4046.
 
 ## The minimal correct example — Kotlin/JS DSL
 

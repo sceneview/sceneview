@@ -485,22 +485,62 @@ class MaterialLoader(
      * Creates a [MaterialInstance] of the **Gaussian Splatting material** (`splat.filamat`) —
      * one per instanced draw batch of an [io.github.sceneview.node.SplatNode] (#2646).
      *
-     * The material draws hardware-instanced camera-facing quads whose per-splat centre /
-     * half-extent / colour / opacity are fetched **in the vertex shader** from the two square
-     * `RGBA16F` data textures, indexed by `getInstanceIndex() + instanceOffset`. See
+     * The material draws one hardware-instanced quad per splat, shaped in the vertex shader as
+     * the gaussian's projected screen-space ellipse. Instance `i` reads its splat index from
+     * [orderTexture] at slot `i + instanceOffset`, then that splat's centre, colour, opacity,
+     * rotation and per-axis scale from the three data textures. See
      * [io.github.sceneview.splat.SplatBuffers] for the exact texel layout contract.
      *
-     * Both textures are sampled with `NEAREST` filtering and `CLAMP_TO_EDGE` wrapping: texels
-     * are addressed exactly at their centres, and any interpolation would blend adjacent
-     * splats' attributes into garbage.
+     * Every texture is sampled with `NEAREST` filtering and `CLAMP_TO_EDGE` wrapping: texels are
+     * fetched by integer coordinate, and any interpolation would blend adjacent splats'
+     * attributes into garbage.
      *
-     * @param positionScaleTexture per-splat `xyz = centre (model space), w = billboard half-extent`.
-     * @param colorOpacityTexture  per-splat `rgb = linear colour, a = straight opacity`.
-     * @param textureSize          side of the two square data textures (the shader's `texWidth`).
-     * @param instanceOffset       global splat index of this batch's instance 0 — batches above
-     *                             the 65535 instances/draw cap share the textures and shift
-     *                             their indexing by this offset.
+     * @param positionScaleTexture `RGBA16F`, per splat: `xyz = centre (model space), w = 3σ of the largest axis`.
+     * @param colorOpacityTexture  `RGBA16F`, per splat: `rgb = colour, a = straight opacity`.
+     * @param rotationScaleTexture `RGBA32UI`, per splat: rotation quaternion + per-axis scale as half floats.
+     * @param orderTexture         `R32UI`, per draw slot: the splat index drawn there (back-to-front).
+     * @param textureSize          side of the four square textures (the shader's `texWidth`).
+     * @param instanceOffset       draw slot of this batch's instance 0 — batches above the 65535
+     *                             instances/draw cap share the textures and shift their
+     *                             indexing by this offset.
      */
+    @MainThread
+    fun createSplatInstance(
+        positionScaleTexture: Texture,
+        colorOpacityTexture: Texture,
+        rotationScaleTexture: Texture,
+        orderTexture: Texture,
+        textureSize: Int,
+        instanceOffset: Int = 0
+    ): MaterialInstance = createInstance(splatMaterial).apply {
+        val dataSampler = TextureSampler(
+            TextureSampler.MinFilter.NEAREST,
+            TextureSampler.MagFilter.NEAREST,
+            TextureSampler.WrapMode.CLAMP_TO_EDGE
+        )
+        setTexture("splatPositionScale", positionScaleTexture, dataSampler)
+        setTexture("splatColorOpacity", colorOpacityTexture, dataSampler)
+        setTexture("splatRotationScale", rotationScaleTexture, dataSampler)
+        setTexture("splatOrder", orderTexture, dataSampler)
+        setParameter("texWidth", textureSize)
+        setParameter("instanceOffset", instanceOffset)
+    }
+
+    /**
+     * The pre-anisotropic signature, kept for binary compatibility. Since the splat material
+     * shapes each gaussian from its rotation and per-axis scale, and reads the draw order from
+     * its own texture, an instance created here is missing two of its four textures and will
+     * not render correctly. [io.github.sceneview.node.SplatNode] is the supported way to draw
+     * splats; low-level callers should move to the overload taking all four textures.
+     */
+    @Deprecated(
+        message = "The splat material now also needs a rotation/scale texture and a draw-order " +
+            "texture. Use SplatNode, or the createSplatInstance overload that takes all four.",
+        replaceWith = ReplaceWith(
+            "createSplatInstance(positionScaleTexture, colorOpacityTexture, rotationScaleTexture, " +
+                "orderTexture, textureSize, instanceOffset)"
+        )
+    )
     @MainThread
     fun createSplatInstance(
         positionScaleTexture: Texture,

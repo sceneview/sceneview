@@ -1840,8 +1840,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     // ── SplatNode ─────────────────────────────────────────────────────────────────────────────────
 
     /**
-     * A 3D Gaussian Splatting renderer node — draws a [SplatCloud] as camera-facing gaussian
-     * discs with view-dependent back-to-front compositing (#2646).
+     * A 3D Gaussian Splatting renderer node — draws a [SplatCloud] as oriented gaussian
+     * ellipses (each splat's rotation and per-axis scale projected to the screen) with
+     * view-dependent back-to-front compositing (#2646).
      *
      * ```kotlin
      * var cameraPosition by remember { mutableStateOf(Position()) }

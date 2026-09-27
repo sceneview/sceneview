@@ -4,6 +4,7 @@ import io.github.sceneview.core.splat.SplatCloud
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.nio.IntBuffer
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -19,18 +20,21 @@ import kotlin.math.sqrt
  *
  * ### Texel layout contract (mirrors `splat.mat`)
  *
- * Per-splat attributes are packed into two square `texWidth x texWidth` RGBA float textures
- * (uploaded as `RGBA16F`). The splat drawn by instance `i` of a batch with base offset `o`
- * reads texel `idx = o + i` at pixel `(idx % texWidth, idx / texWidth)`:
+ * Per-splat attributes live in three square `texWidth x texWidth` data textures, uploaded
+ * **once**, in the [SplatCloud]'s own order: splat `s` is texel `(s % texWidth, s / texWidth)`.
+ * A fourth texture, `splatOrder`, maps each draw slot to a splat index; it carries the
+ * painter's sort and is the only one re-uploaded when the camera moves (4 bytes per splat).
+ * The instance `i` of a batch with base offset `o` draws slot `o + i`.
  *
- * | Texture              | r, g, b                        | a                                  |
- * |----------------------|--------------------------------|------------------------------------|
- * | `splatPositionScale` | splat centre `xyz` (model space) | billboard half-extent = [HALF_EXTENT_SIGMA]·max(scaleX, scaleY, scaleZ) |
- * | `splatColorOpacity`  | linear SH0 colour              | opacity `0..1` (straight, NOT premultiplied — the fragment premultiplies after the gaussian falloff) |
+ * | Texture              | Format    | Content |
+ * |----------------------|-----------|---------|
+ * | `splatOrder`         | `R32UI`   | splat index drawn at this slot (back-to-front) |
+ * | `splatPositionScale` | `RGBA16F` | centre `xyz` (model space), `a` = [HALF_EXTENT_SIGMA]·max(scaleX, scaleY, scaleZ) |
+ * | `splatColorOpacity`  | `RGBA16F` | SH0 colour `rgb`, opacity `0..1` in `a` (straight — the fragment premultiplies) |
+ * | `splatRotationScale` | `RGBA32UI`| two IEEE half floats per channel, low half first: `(qx,qy) (qz,qw) (sx,sy) (sz,0)` |
  *
- * Texels are written in **draw order**: `order[i]` is the index into the [SplatCloud] arrays of
- * the splat stored at texel `i`. Re-sorting therefore re-packs + re-uploads the textures and the
- * shader's indexing never changes.
+ * The three data textures accept any `order` (texel `i` holds splat `order[i]`) — pass the
+ * identity to get the static layout above.
  */
 object SplatBuffers {
 
@@ -43,10 +47,10 @@ object SplatBuffers {
     const val MAX_INSTANCES_PER_BATCH = 65535
 
     /**
-     * Billboard half-extent in gaussian standard deviations. The quad edge (`|corner| = 1`)
-     * sits at 3σ, matching the fragment falloff `exp(-0.5 * dot(uv, uv) * k)` with
-     * `k = HALF_EXTENT_SIGMA²  = 9` in `splat.mat` — beyond 3σ a gaussian contributes < 1.1%,
-     * so nothing visible is clipped. Keep the two constants in sync.
+     * Furthest reach of a splat quad in gaussian standard deviations: `splat.mat` never draws
+     * past 3σ along either ellipse axis (beyond it a gaussian contributes < 1.1%), and shrinks
+     * the quad further for faint splats. The culling box uses this radius on the largest axis,
+     * so it always contains every quad. Keep in sync with the `min(3.0, …)` in `splat.mat`.
      */
     const val HALF_EXTENT_SIGMA = 3f
 
@@ -100,11 +104,10 @@ object SplatBuffers {
 
     /**
      * Packs the `splatPositionScale` texture: texel `i` = centre `xyz` of splat [order]`[i]`
-     * plus its isotropic billboard half-extent in `a` (see the texel layout contract above).
-     *
-     * P1 scope: the half-extent is **isotropic** — [HALF_EXTENT_SIGMA] times the *largest* of
-     * the three per-axis standard deviations, so anisotropic gaussians render as their
-     * circumscribed disc (correct 2D-covariance ellipses are P2, #2646).
+     * plus its bounding half-extent in `a` (see the texel layout contract above):
+     * [HALF_EXTENT_SIGMA] times the *largest* of the three per-axis standard deviations. The
+     * shader shapes each splat from `splatRotationScale` ([packRotationScale]); `a` is the
+     * conservative radius the culling box ([boundingBox]) is built from.
      *
      * Unused tail texels (`i >= count`) stay zero: a zero half-extent collapses the quad to a
      * degenerate point which rasterizes nothing, so garbage texels can never paint.
@@ -155,6 +158,103 @@ object SplatBuffers {
         }
         return buffer
     }
+
+    /**
+     * Packs the `splatRotationScale` texture (`RGBA32UI`): texel `i` holds splat [order]`[i]`'s
+     * unit rotation quaternion and three per-axis standard deviations as IEEE half floats, two
+     * per 32-bit channel with the first value in the low 16 bits — the layout GLSL's
+     * `unpackHalf2x16` reads: `(qx,qy) (qz,qw) (sx,sy) (sz,0)`.
+     *
+     * This is what turns each splat from a round disc into its real oriented ellipse. Unused
+     * tail texels stay zero (a zero scale rasterizes nothing).
+     *
+     * @return a direct, native-ordered buffer of `textureSize² * 4` ints, positioned at 0.
+     */
+    fun packRotationScale(cloud: SplatCloud, order: IntArray, textureSize: Int): IntBuffer {
+        require(order.size == cloud.count) {
+            "order must have one entry per splat: expected ${cloud.count}, was ${order.size}"
+        }
+        require(textureSize * textureSize >= cloud.count) {
+            "textureSize $textureSize (${textureSize * textureSize} texels) < count ${cloud.count}"
+        }
+        val buffer = allocateUintTexels(textureSize, FLOATS_PER_TEXEL)
+        for (i in 0 until cloud.count) {
+            val s = order[i]
+            val q = s * 4
+            val k = s * 3
+            val base = i * FLOATS_PER_TEXEL
+            buffer.put(base, packHalf2x16(cloud.rotations[q], cloud.rotations[q + 1]))
+            buffer.put(base + 1, packHalf2x16(cloud.rotations[q + 2], cloud.rotations[q + 3]))
+            buffer.put(base + 2, packHalf2x16(cloud.scales[k], cloud.scales[k + 1]))
+            buffer.put(base + 3, packHalf2x16(cloud.scales[k + 2], 0f))
+        }
+        return buffer
+    }
+
+    /**
+     * Packs the `splatOrder` texture (`R32UI`): slot `i` holds [order]`[i]`, the index of the
+     * splat drawn there. This is the whole per-sort upload — 4 bytes per splat, versus
+     * re-packing every attribute in draw order.
+     *
+     * @return a direct, native-ordered buffer of `textureSize²` ints, positioned at 0.
+     */
+    fun packOrder(order: IntArray, textureSize: Int): IntBuffer {
+        require(textureSize * textureSize >= order.size) {
+            "textureSize $textureSize (${textureSize * textureSize} texels) < count ${order.size}"
+        }
+        val buffer = allocateUintTexels(textureSize, 1)
+        buffer.put(order)
+        buffer.rewind()
+        return buffer
+    }
+
+    /**
+     * Two floats as IEEE-754 half floats in one 32-bit word, [low] in bits 0–15 and [high] in
+     * bits 16–31 — the inverse of GLSL `unpackHalf2x16`.
+     */
+    fun packHalf2x16(low: Float, high: Float): Int =
+        (floatToHalf(high) shl 16) or floatToHalf(low)
+
+    /**
+     * Rounds [value] to the nearest IEEE-754 binary16 and returns its 16 bits (in the low half
+     * of the int). Overflow saturates to ±infinity, NaN stays NaN, and values under the
+     * smallest subnormal flush to a signed zero — `android.util.Half` behaviour, reimplemented
+     * so the packing stays plain-JVM testable.
+     */
+    fun floatToHalf(value: Float): Int {
+        val bits = java.lang.Float.floatToRawIntBits(value)
+        val sign = (bits ushr 16) and 0x8000
+        val exponent = (bits ushr 23) and 0xFF
+        val mantissa = bits and 0x7FFFFF
+        if (exponent == 0xFF) {
+            // Infinity or NaN (keep a quiet-NaN payload bit so it stays a NaN).
+            return sign or 0x7C00 or (if (mantissa != 0) 0x200 else 0)
+        }
+        val halfExponent = exponent - 127 + 15
+        if (halfExponent >= 0x1F) return sign or 0x7C00 // overflow → infinity
+        if (halfExponent <= 0) {
+            // Subnormal half (or zero): shift the implicit-1 mantissa into place, round to nearest even.
+            if (halfExponent < -10) return sign
+            val m = mantissa or 0x800000
+            val shift = 14 - halfExponent
+            var half = m ushr shift
+            val remainder = m and ((1 shl shift) - 1)
+            val halfway = 1 shl (shift - 1)
+            if (remainder > halfway || (remainder == halfway && (half and 1) == 1)) half++
+            return sign or half
+        }
+        // Normal half: round the 23-bit mantissa to 10 bits, nearest even; a carry bumps the exponent.
+        var half = (halfExponent shl 10) or (mantissa ushr 13)
+        val remainder = mantissa and 0x1FFF
+        if (remainder > 0x1000 || (remainder == 0x1000 && (half and 1) == 1)) half++
+        return sign or half
+    }
+
+    /** Allocates a direct, native-ordered int buffer for one `texWidth²` unsigned-int texture. */
+    private fun allocateUintTexels(textureSize: Int, channels: Int): IntBuffer =
+        ByteBuffer.allocateDirect(textureSize * textureSize * channels * Int.SIZE_BYTES)
+            .order(ByteOrder.nativeOrder())
+            .asIntBuffer()
 
     /**
      * Painter's sort: returns the splat indices ordered **back-to-front** (farthest first)
