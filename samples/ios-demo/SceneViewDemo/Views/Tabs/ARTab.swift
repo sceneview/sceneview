@@ -134,7 +134,7 @@ struct FeaturedARDemo: Identifiable {
         FeaturedARDemo(
             id: "ar-rerun",
             title: "Rerun AR Replay",
-            subtitle: "Watch a real AR session rebuild itself in 3D",
+            subtitle: "Record your room, replay it in 3D, export it",
             icon: "point.3.connected.trianglepath.dotted",
             destination: AnyView(RerunShowcaseDemo())
         ),
