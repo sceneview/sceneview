@@ -1256,37 +1256,68 @@ class ARSceneScope internal constructor(
     /**
      * A composable wrapper for an already-resolved [TerrainAnchorNode][TerrainAnchorNodeImpl].
      *
-     * **Resolution stays imperative.** ARCore's `TerrainAnchorNode.resolve(...)` is async and
-     * may take seconds (it calls Google Cloud's VPS service). Wrap that call in a
-     * `LaunchedEffect` keyed on the (lat, lng, altitude) triple, then pass the resolved
-     * instance to this composable so it lives inside the scene tree like any other node:
+     * **Resolution stays imperative.** `TerrainAnchorNode.resolve(engine, session, …)`
+     * (the class in `io.github.sceneview.ar.node`) is async and may take seconds: it calls
+     * Google Cloud's Geospatial service, and **every call is a billed request**. Start it
+     * once — never once per frame — keep the returned future, cancel it when the screen
+     * leaves, then pass the resolved instance to this composable so it lives inside the
+     * scene tree like any other node:
      *
      * ```kotlin
-     * val anchorNodes = remember { mutableStateListOf<TerrainAnchorNode>() }
+     * val engine = rememberEngine()
+     * val modelLoader = rememberModelLoader(engine)
+     * val signpost = rememberModelInstance(modelLoader, "models/signpost.glb")
+     * val mainHandler = remember { Handler(Looper.getMainLooper()) }
+     * var anchorNode by remember { mutableStateOf<TerrainAnchorNode?>(null) }
+     * // The request state is remembered: it is what stops a second resolve() from starting.
+     * var request by remember { mutableStateOf<ResolveAnchorOnTerrainFuture?>(null) }
+     * var screenActive by remember { mutableStateOf(true) }
+     *
+     * DisposableEffect(Unit) {
+     *     onDispose {
+     *         screenActive = false
+     *         request?.cancel() // a pending resolve stops billing
+     *     }
+     * }
      *
      * ARSceneView(
+     *     engine = engine,
+     *     modelLoader = modelLoader,
      *     sessionConfiguration = { _, config -> config.geospatialMode = Config.GeospatialMode.ENABLED },
      *     onSessionUpdated = { session, _ ->
-     *         val earth = session.earth ?: return@ARSceneView
-     *         if (earth.trackingState == TrackingState.TRACKING && anchorNodes.isEmpty()) {
-     *             TerrainAnchorNode.resolve(
+     *         val earth = session.earth
+     *         if (request == null && earth != null && earth.trackingState == TrackingState.TRACKING) {
+     *             request = TerrainAnchorNode.resolve(
      *                 engine = engine,
-     *                 earth = earth,
+     *                 session = session,
      *                 latitude = 48.8584, longitude = 2.2945, altitudeAboveTerrain = 1.5,
+     *                 // Identity = the model faces north (fine for a signpost). To face the
+     *                 // user, pass earth.getGeospatialPose(pose).eastUpSouthQuaternion.
      *                 eusQuaternion = Quaternion(),
-     *             ) { state, anchorNode ->
-     *                 if (state == Anchor.TerrainAnchorState.SUCCESS && anchorNode != null) {
-     *                     anchorNodes += anchorNode
+     *             ) { state, resolved ->
+     *                 // Not guaranteed to run on the main thread: hop before touching state.
+     *                 mainHandler.post {
+     *                     if (screenActive && state == Anchor.TerrainAnchorState.SUCCESS && resolved != null) {
+     *                         anchorNode = resolved
+     *                     } else {
+     *                         resolved?.destroy() // resolved after the screen was left: never add it
+     *                     }
      *                 }
      *             }
      *         }
-     *     }
+     *     },
      * ) {
-     *     anchorNodes.forEach { TerrainAnchorNode(node = it) {
-     *         ModelNode(modelInstance = signpost, scaleToUnits = 0.5f)
-     *     } }
+     *     anchorNode?.let { anchor ->
+     *         TerrainAnchorNode(node = anchor) {
+     *             signpost?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
+     *         }
+     *     }
      * }
      * ```
+     *
+     * Once composed, the node is owned by this composable: it is destroyed — and its anchor
+     * detached — when it leaves composition. To resolve again (new coordinates, a "Clear"
+     * button), cancel `request`, set it and `anchorNode` back to `null`.
      *
      * Requires `Config.GeospatialMode.ENABLED`, ARCore Cloud API key, ACCESS_FINE_LOCATION,
      * internet, and outdoor VPS coverage. 100-anchor cap (Terrain + Rooftop combined).
@@ -1310,11 +1341,38 @@ class ARSceneScope internal constructor(
     /**
      * A composable wrapper for an already-resolved [RooftopAnchorNode][RooftopAnchorNodeImpl].
      *
-     * Same usage pattern as [TerrainAnchorNode] — call `RooftopAnchorNode.resolve(...)`
-     * imperatively (async, returns a `Future`), then pass the resolved instance here so it
-     * participates in the scene tree. The altitude argument is interpreted relative to the
-     * rooftop of the building at the given lat/lng, falling back to terrain altitude when
-     * no building is detected.
+     * Same usage pattern as [TerrainAnchorNode] — read its sample first: resolve **once**
+     * (every call is a billed request), keep the future in remembered state, cancel it on
+     * dispose, hop to the main thread in the callback, and destroy a node that resolves after
+     * the screen was left. Only the call differs:
+     *
+     * ```kotlin
+     * var request by remember { mutableStateOf<ResolveAnchorOnRooftopFuture?>(null) }
+     * // …inside onSessionUpdated, guarded by `request == null` and Earth TRACKING:
+     * request = RooftopAnchorNode.resolve(
+     *     engine = engine,
+     *     session = session,
+     *     latitude = 48.8584, longitude = 2.2945, altitudeAboveRooftop = 1.0,
+     *     eusQuaternion = Quaternion(),
+     * ) { state, resolved ->
+     *     mainHandler.post {
+     *         if (screenActive && state == Anchor.RooftopAnchorState.SUCCESS && resolved != null) {
+     *             anchorNode = resolved
+     *         } else {
+     *             resolved?.destroy()
+     *         }
+     *     }
+     * }
+     * // …inside the ARSceneView content:
+     * anchorNode?.let { anchor ->
+     *     RooftopAnchorNode(node = anchor) {
+     *         signpost?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
+     *     }
+     * }
+     * ```
+     *
+     * The altitude argument is interpreted relative to the rooftop of the building at the
+     * given lat/lng, falling back to terrain altitude when no building is detected.
      *
      * Requires `Config.GeospatialMode.ENABLED`, ARCore Cloud API key, ACCESS_FINE_LOCATION,
      * internet, and outdoor VPS coverage. 100-anchor cap (Terrain + Rooftop combined).

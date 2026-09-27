@@ -3044,45 +3044,67 @@ Requires `Config.GeospatialMode.ENABLED`, the ARCore Cloud API key + `ACCESS_FIN
 
 ### TerrainAnchorNode — Geospatial anchor pinned to ground at lat/lng
 
-**Imperative API only — async resolve via `Earth`.** Pin a node to Google's outdoor terrain at any GPS coordinate. No plane detection required — works wherever VPS / Street View has coverage.
+**Async resolve, then a composable.** Pin a node to Google's outdoor terrain at any GPS coordinate. No plane detection required — works wherever VPS / Street View has coverage. `TerrainAnchorNode.resolve(engine, session, …)` calls Google Cloud and **every call is a billed request**: start it once (never once per frame from `onSessionUpdated`), keep the returned future in remembered state, cancel it on dispose, and destroy a node that resolves after the screen was left.
 
 ```kotlin
+import android.os.Handler
+import android.os.Looper
 import io.github.sceneview.ar.node.TerrainAnchorNode
 
-val anchorNodes = remember { mutableStateListOf<TerrainAnchorNode>() }
-// Inside `onSessionUpdated = { session, frame -> ... }` once Earth is TRACKING:
-if (session.earth?.trackingState == TrackingState.TRACKING) {
-    val future: ResolveAnchorOnTerrainFuture? = TerrainAnchorNode.resolve(
-        engine = engine,
-        session = session,                 // resolve internally reads session.earth
-        latitude = 48.8584,                // Eiffel Tower
-        longitude = 2.2945,
-        altitudeAboveTerrain = 1.5,        // metres above terrain (0 = on the ground)
-        eusQuaternion = Quaternion()       // east-up-south rotation
-    ) { state: TerrainAnchorState, anchorNode: TerrainAnchorNode? ->
-        if (state == TerrainAnchorState.SUCCESS && anchorNode != null) {
-            // anchorNode IS-A AnchorNode — pin children via the standard composable:
-            anchorNodes.add(anchorNode)
+// engine = rememberEngine(), modelLoader = rememberModelLoader(engine), as everywhere above.
+val signpost = rememberModelInstance(modelLoader, "models/signpost.glb")
+val mainHandler = remember { Handler(Looper.getMainLooper()) }
+var anchorNode by remember { mutableStateOf<TerrainAnchorNode?>(null) }
+// The request state is remembered: it is what stops a second resolve() from starting.
+var request by remember { mutableStateOf<ResolveAnchorOnTerrainFuture?>(null) }
+var screenActive by remember { mutableStateOf(true) }
+
+DisposableEffect(Unit) {
+    onDispose {
+        screenActive = false
+        request?.cancel() // a pending resolve stops billing (#1768)
+    }
+}
+
+ARSceneView(
+    engine = engine,
+    modelLoader = modelLoader,
+    sessionConfiguration = { _, config -> config.geospatialMode = Config.GeospatialMode.ENABLED },
+    onSessionUpdated = { session, _ ->
+        val earth = session.earth
+        if (request == null && earth != null && earth.trackingState == TrackingState.TRACKING) {
+            request = TerrainAnchorNode.resolve(
+                engine = engine,
+                session = session,            // resolve reads session.earth itself
+                latitude = 48.8584,           // Eiffel Tower
+                longitude = 2.2945,
+                altitudeAboveTerrain = 1.5,   // metres above terrain (0 = on the ground)
+                // East-up-south rotation. Identity = the model faces north (fine for a
+                // signpost). To face the user: earth.getGeospatialPose(pose).eastUpSouthQuaternion.
+                eusQuaternion = Quaternion(),
+            ) { state, resolved ->
+                // Not guaranteed to run on the main thread: hop before touching state.
+                mainHandler.post {
+                    if (screenActive && state == TerrainAnchorState.SUCCESS && resolved != null) {
+                        anchorNode = resolved
+                    } else {
+                        resolved?.destroy() // resolved after the screen was left: never add it
+                    }
+                }
+            }
+        }
+    },
+) {
+    anchorNode?.let { anchor ->
+        // The composable owns the node from here: destroyed (anchor detached) on dispose.
+        TerrainAnchorNode(node = anchor) {
+            signpost?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
         }
     }
-    // Cancel the pending resolve on dispose to avoid running the network
-    // round-trip (and accruing Google Cloud billing) after the user has
-    // navigated away (#1768). Matches the CloudAnchorNode pattern.
-    DisposableEffect(future) { onDispose { future?.cancel() } }
 }
 ```
 
-Then declare it inside the scene tree using the standard `AnchorNode` composable (since `TerrainAnchorNode extends AnchorNode`):
-
-```kotlin
-ARSceneView(...) {
-    anchorNodes.forEach { node ->
-        AnchorNode(anchor = node.anchor) {
-            ModelNode(modelInstance = signpost, scaleToUnits = 0.5f)
-        }
-    }
-}
-```
+To resolve again (new coordinates, a "Clear" button): cancel `request`, then set `request` and `anchorNode` back to `null`.
 
 Requires:
 - `Config.GeospatialMode.ENABLED`
@@ -3091,27 +3113,62 @@ Requires:
 - Internet connection (resolve calls Google Cloud)
 - Outdoor environment with VPS / Street View coverage
 
-100-anchor cap per session (Terrain + Rooftop combined). Demo: `samples/android-demo/.../ARTerrainAnchorDemo.kt`.
+100-anchor cap per session (Terrain + Rooftop combined). Demo: `samples/android-demo/.../ARGeospatialAnchorsDemo.kt` (Terrain and Rooftop, with a request generation so a late callback after "Clear" destroys its node).
 
 ### RooftopAnchorNode — Geospatial anchor pinned to a building rooftop
 
-Same async-resolve API as `TerrainAnchorNode`, but the altitude is interpreted relative to the rooftop of the building at the given lat/lng (or the terrain if no building is detected).
+Same pattern as `TerrainAnchorNode` above — resolve once, remembered future, cancel on dispose, main-thread hop, destroy a late node — but the altitude is interpreted relative to the rooftop of the building at the given lat/lng (or the terrain if no building is detected). Only the call and the types differ:
 
 ```kotlin
-val future: ResolveAnchorOnRooftopFuture? = RooftopAnchorNode.resolve(
+import android.os.Handler
+import android.os.Looper
+import io.github.sceneview.ar.node.RooftopAnchorNode
+
+val mainHandler = remember { Handler(Looper.getMainLooper()) }
+var anchorNode by remember { mutableStateOf<RooftopAnchorNode?>(null) }
+var request by remember { mutableStateOf<ResolveAnchorOnRooftopFuture?>(null) }
+var screenActive by remember { mutableStateOf(true) }
+DisposableEffect(Unit) {
+    onDispose {
+        screenActive = false
+        request?.cancel()
+    }
+}
+
+ARSceneView(
     engine = engine,
-    session = session,              // resolve internally reads session.earth
-    latitude = 48.8738,             // Arc de Triomphe
-    longitude = 2.2950,
-    altitudeAboveRooftop = 0.0,
-    eusQuaternion = Quaternion()
-) { state: RooftopAnchorState, anchorNode: RooftopAnchorNode? -> /* ... */ }
-// Cancel on dispose to drop the network round-trip + Google Cloud billing
-// after the user navigates away (#1768).
-DisposableEffect(future) { onDispose { future?.cancel() } }
+    sessionConfiguration = { _, config -> config.geospatialMode = Config.GeospatialMode.ENABLED },
+    onSessionUpdated = { session, _ ->
+        val earth = session.earth
+        if (request == null && earth != null && earth.trackingState == TrackingState.TRACKING) {
+            request = RooftopAnchorNode.resolve(
+                engine = engine,
+                session = session,
+                latitude = 48.8738,           // Arc de Triomphe
+                longitude = 2.2950,
+                altitudeAboveRooftop = 0.0,
+                eusQuaternion = Quaternion(),
+            ) { state, resolved ->
+                mainHandler.post {
+                    if (screenActive && state == RooftopAnchorState.SUCCESS && resolved != null) {
+                        anchorNode = resolved
+                    } else {
+                        resolved?.destroy()
+                    }
+                }
+            }
+        }
+    },
+) {
+    anchorNode?.let { anchor ->
+        RooftopAnchorNode(node = anchor) {
+            ModelNode(modelInstance = modelInstance, scaleToUnits = 1f)
+        }
+    }
+}
 ```
 
-Same requirements as `TerrainAnchorNode`. Demo: `samples/android-demo/.../ARRooftopAnchorDemo.kt`.
+Same requirements as `TerrainAnchorNode`. Demo: `samples/android-demo/.../ARGeospatialAnchorsDemo.kt`.
 
 ### StreetscapeGeometryNode — building / terrain mesh (filtered)
 
