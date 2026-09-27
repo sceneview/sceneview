@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS: changing `SceneEnvironment.intensity` at runtime now relights the scene ([#4010](https://github.com/sceneview/sceneview/issues/4010)).** `SceneView` only re-applied the image-based light when the environment's name or skybox flag changed, so an intensity-only change, like the Model Viewer's IBL slider, had no visible effect. The installed IBL is now rescaled in place, without reloading the HDR or blanking the skybox.
