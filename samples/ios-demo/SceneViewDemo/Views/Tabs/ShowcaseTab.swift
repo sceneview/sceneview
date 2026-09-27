@@ -48,6 +48,14 @@ struct ShowcaseTab: View {
     /// a rebuilt card is simply already revealed.
     @State private var catalogueRevealed = false
 
+    /// The featured pager's page, owned here so the hero's stage stops while
+    /// another page is showing and the band keeps its page across a scroll.
+    @State private var featuredPage = 0
+
+    /// Where the zoom transition expands from: a featured page's id, or `nil`
+    /// for the demo's own card (or the hero, which shares that id).
+    @State private var zoomSource: String?
+
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
 
@@ -87,13 +95,34 @@ struct ShowcaseTab: View {
                     // While a query is active the hero steps aside so the results
                     // sit right under the header (Android parity).
                     if !searching {
-                        HomeHero(height: expanded ? SceneViewTokens.Home.heroHeightExpanded
-                                                  : SceneViewTokens.Home.heroHeight,
-                                 live: heroLive) {
-                            open(sceneId: Self.heroDemoId)
+                        // The hero leads a pager of featured demos (Android's
+                        // `HomeFeaturedPager`); its live stage runs only while
+                        // its page is the one showing.
+                        HomeFeaturedPager(pages: featured, height: heroHeight, page: $featuredPage) { demo in
+                            zoomSource = Self.featuredSourceId(demo.sceneId)
+                            open(demo)
+                        } hero: {
+                            HomeHero(height: heroHeight, live: heroLive && featuredPage == 0) {
+                                zoomSource = nil
+                                open(sceneId: Self.heroDemoId)
+                            }
+                            #if os(iOS)
+                            .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
+                            #endif
                         }
                         #if os(iOS)
-                        .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
+                        .background {
+                            // One zoom source for the featured pages: the band's
+                            // frame, so a featured demo expands from the band the
+                            // thumb hit rather than from its grid twin below.
+                            ZStack {
+                                ForEach(featured, id: \.sceneId) { demo in
+                                    Color.clear
+                                        .matchedTransitionSource(id: Self.featuredSourceId(demo.sceneId),
+                                                                 in: cardNamespace)
+                                }
+                            }
+                        }
                         #endif
                         .staggeredReveal(position: 0, revealed: catalogueRevealed)
                     }
@@ -125,7 +154,10 @@ struct ShowcaseTab: View {
 
                     LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
                         ForEach(Array(visible.enumerated()), id: \.element.sceneId) { index, demo in
-                            DemoMediaCard(demo: demo) { open(demo) }
+                            DemoMediaCard(demo: demo) {
+                                zoomSource = nil
+                                open(demo)
+                            }
                                 #if os(iOS)
                                 .matchedTransitionSource(id: demo.sceneId, in: cardNamespace)
                                 #endif
@@ -193,7 +225,7 @@ struct ShowcaseTab: View {
                     // the `DemoMediaCard` — or the `HomeHero` when the demo is
                     // opened from it, which is why both carry a
                     // `matchedTransitionSource` keyed on `sceneId`.
-                    .navigationTransition(.zoom(sourceID: scene.sceneId, in: cardNamespace))
+                    .navigationTransition(.zoom(sourceID: zoomSource ?? scene.sceneId, in: cardNamespace))
                     // The zoom transition brings the system's interactive
                     // dismissal with it: a pinch-in or a downward drag anywhere
                     // on the cover shrinks it back toward its card. On a 3D
@@ -215,6 +247,21 @@ struct ShowcaseTab: View {
 
     /// The demo the hero opens.
     static let heroDemoId = "model-viewer"
+
+    /// The featured pager's pages after the hero — Android's `FEATURED_DEMO_IDS`
+    /// minus its leading hero id.
+    static let featuredDemoIds = ["ar-rerun", "materials", "lighting"]
+
+    /// Zoom-transition id of a featured page, distinct from its grid card's.
+    static func featuredSourceId(_ sceneId: String) -> String { "featured-" + sceneId }
+
+    private var featured: [DemoItem] {
+        Self.featuredDemoIds.compactMap { id in scenes.first { $0.sceneId == id } }
+    }
+
+    private var heroHeight: CGFloat {
+        expanded ? SceneViewTokens.Home.heroHeightExpanded : SceneViewTokens.Home.heroHeight
+    }
 
     private func open(sceneId: String) {
         guard let scene = scenes.first(where: { $0.sceneId == sceneId }) else { return }

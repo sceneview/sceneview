@@ -1,18 +1,18 @@
 // @sceneId     ar-rerun
-// @title       Rerun Debug
-// @subtitle    Stream camera pose and planes to the Rerun viewer
+// @title       Rerun AR Replay
+// @subtitle    Watch a real AR session rebuild itself in 3D
 // @category    ar
 // @available   true
-// @icon        antenna.radiowaves.left.and.right
+// @icon        point.3.connected.trianglepath.dotted
 // @iosOnly     true
 // @order       49
-// @tags        ar,rerun,streaming,pose,plane,debug
+// @tags        ar,rerun,replay,record,export,point cloud,plane,pose,usdz,glb,ply
 import SwiftUI
 
 enum ArRerunScene: DemoScene {
     @MainActor static var destination: AnyView {
         #if os(iOS)
-        return AnyView(RerunDebugDemo())
+        return AnyView(RerunShowcaseDemo())
         #else
         return AnyView(EmptyView())
         #endif

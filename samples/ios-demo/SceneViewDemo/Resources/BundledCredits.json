@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 41,
+  "total": 42,
   "sections": [
     {
       "title": "3D models",
@@ -287,6 +287,16 @@
           "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/1965-ac-shelby-cobra-427-wwwvecarzcom-3e9c994c428b44f087d64e738428886c",
           "size": 5121065,
+          "note": ""
+        },
+        {
+          "file": "Models/shiba.usdz",
+          "name": "Shiba",
+          "author": "zixisun51",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c",
+          "size": 385610,
           "note": ""
         },
         {

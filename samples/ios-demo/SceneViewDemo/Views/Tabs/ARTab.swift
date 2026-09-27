@@ -133,10 +133,10 @@ struct FeaturedARDemo: Identifiable {
         ),
         FeaturedARDemo(
             id: "ar-rerun",
-            title: "Rerun Debug",
-            subtitle: "Stream camera pose and planes to the Rerun viewer",
-            icon: "antenna.radiowaves.left.and.right",
-            destination: AnyView(RerunDebugDemo())
+            title: "Rerun AR Replay",
+            subtitle: "Watch a real AR session rebuild itself in 3D",
+            icon: "point.3.connected.trianglepath.dotted",
+            destination: AnyView(RerunShowcaseDemo())
         ),
     ]
 }

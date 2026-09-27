@@ -7,6 +7,32 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B7E400000000000000000001 /* RerunTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000001 /* RerunTrace.swift */; };
+		B7E400000000000000000002 /* RerunFraming.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000002 /* RerunFraming.swift */; };
+		B7E400000000000000000003 /* RerunGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000003 /* RerunGeometry.swift */; };
+		B7E400000000000000000004 /* RerunReplaySession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000004 /* RerunReplaySession.swift */; };
+		B7E400000000000000000005 /* RerunReplayStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000005 /* RerunReplayStage.swift */; };
+		B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000006 /* RerunReplayChrome.swift */; };
+		B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000007 /* RerunShowcaseDemo.swift */; };
+		B7E400000000000000000008 /* RerunExportScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000008 /* RerunExportScene.swift */; };
+		B7E400000000000000000009 /* RerunExportAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000009 /* RerunExportAdapter.swift */; };
+		B7E40000000000000000000A /* RerunPLYWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000A /* RerunPLYWriter.swift */; };
+		B7E40000000000000000000B /* RerunGLBWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000B /* RerunGLBWriter.swift */; };
+		B7E40000000000000000000C /* RerunUSDZWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000C /* RerunUSDZWriter.swift */; };
+		B7E40000000000000000000D /* RerunRRDWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000D /* RerunRRDWriter.swift */; };
+		B7E40000000000000000000E /* RerunRRDArrow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000E /* RerunRRDArrow.swift */; };
+		B7E40000000000000000000F /* RerunRRDProtobuf.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000F /* RerunRRDProtobuf.swift */; };
+		B7E400000000000000000010 /* RerunCaptureRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000010 /* RerunCaptureRecorder.swift */; };
+		B7E400000000000000000011 /* RerunLiveCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000011 /* RerunLiveCaptureView.swift */; };
+		B7E400000000000000000012 /* HomeFeatured.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000012 /* HomeFeatured.swift */; };
+		B7E400000000000000000013 /* RerunTraceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000013 /* RerunTraceTests.swift */; };
+		B7E400000000000000000014 /* RerunPLYGLBWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000014 /* RerunPLYGLBWriterTests.swift */; };
+		B7E400000000000000000015 /* RerunUSDZWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000015 /* RerunUSDZWriterTests.swift */; };
+		B7E400000000000000000016 /* RerunRRDWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000016 /* RerunRRDWriterTests.swift */; };
+		B7E400000000000000000017 /* RerunCaptureRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */; };
+		B7E400000000000000000018 /* shiba.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000018 /* shiba.usdz */; };
+		B7E400000000000000000019 /* shiba.glb in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000019 /* shiba.glb */; };
+		B7E40000000000000000001A /* showcase in Resources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000001A /* showcase */; };
 		2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */; };
 		B10000000000000000003585 /* ViewerAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000003584 /* ViewerAssetTests.swift */; };
 		D13CADF7F6A0750FD91AE404 /* ShowcaseTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1805CCAE3BB264332107B4B /* ShowcaseTab.swift */; };
@@ -209,6 +235,32 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B7E500000000000000000001 /* RerunTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunTrace.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunTrace.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000002 /* RerunFraming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunFraming.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunFraming.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000003 /* RerunGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunGeometry.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunGeometry.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000004 /* RerunReplaySession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplaySession.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplaySession.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000005 /* RerunReplayStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayStage.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000006 /* RerunReplayChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayChrome.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayChrome.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000007 /* RerunShowcaseDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunShowcaseDemo.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000008 /* RerunExportScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunExportScene.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunExportScene.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000009 /* RerunExportAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunExportAdapter.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunExportAdapter.swift; sourceTree = SOURCE_ROOT; };
+		B7E50000000000000000000A /* RerunPLYWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunPLYWriter.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunPLYWriter.swift; sourceTree = SOURCE_ROOT; };
+		B7E50000000000000000000B /* RerunGLBWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunGLBWriter.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunGLBWriter.swift; sourceTree = SOURCE_ROOT; };
+		B7E50000000000000000000C /* RerunUSDZWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunUSDZWriter.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunUSDZWriter.swift; sourceTree = SOURCE_ROOT; };
+		B7E50000000000000000000D /* RerunRRDWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDWriter.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRRDWriter.swift; sourceTree = SOURCE_ROOT; };
+		B7E50000000000000000000E /* RerunRRDArrow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDArrow.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRRDArrow.swift; sourceTree = SOURCE_ROOT; };
+		B7E50000000000000000000F /* RerunRRDProtobuf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDProtobuf.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRRDProtobuf.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000010 /* RerunCaptureRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunCaptureRecorder.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunCaptureRecorder.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000011 /* RerunLiveCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunLiveCaptureView.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000012 /* HomeFeatured.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFeatured.swift; path = SceneViewDemo/Views/Home/HomeFeatured.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000013 /* RerunTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunTraceTests.swift; path = SceneViewDemoTests/RerunTraceTests.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000014 /* RerunPLYGLBWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunPLYGLBWriterTests.swift; path = SceneViewDemoTests/RerunPLYGLBWriterTests.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000015 /* RerunUSDZWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunUSDZWriterTests.swift; path = SceneViewDemoTests/RerunUSDZWriterTests.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000016 /* RerunRRDWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDWriterTests.swift; path = SceneViewDemoTests/RerunRRDWriterTests.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunCaptureRecorderTests.swift; path = SceneViewDemoTests/RerunCaptureRecorderTests.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000018 /* shiba.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = shiba.usdz; sourceTree = "<group>"; };
+		B7E500000000000000000019 /* shiba.glb */ = {isa = PBXFileReference; lastKnownFileType = file; name = shiba.glb; path = ../android-demo/src/main/assets/models/shiba.glb; sourceTree = SOURCE_ROOT; };
+		B7E50000000000000000001A /* showcase */ = {isa = PBXFileReference; lastKnownFileType = folder; name = showcase; path = ../android-demo/src/main/assets/rerun/showcase; sourceTree = SOURCE_ROOT; };
 		9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilterTests.swift; path = SceneViewDemoTests/HomeFilterTests.swift; sourceTree = SOURCE_ROOT; };
 		B10000000000000000003584 /* ViewerAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerAssetTests.swift; path = SceneViewDemoTests/ViewerAssetTests.swift; sourceTree = SOURCE_ROOT; };
 		F1805CCAE3BB264332107B4B /* ShowcaseTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShowcaseTab.swift; path = SceneViewDemo/Views/Tabs/ShowcaseTab.swift; sourceTree = SOURCE_ROOT; };
@@ -425,6 +477,32 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		B7E600000000000000000001 /* Rerun */ = {
+			isa = PBXGroup;
+			children = (
+				B7E500000000000000000001 /* RerunTrace.swift */,
+				B7E500000000000000000002 /* RerunFraming.swift */,
+				B7E500000000000000000003 /* RerunGeometry.swift */,
+				B7E500000000000000000004 /* RerunReplaySession.swift */,
+				B7E500000000000000000005 /* RerunReplayStage.swift */,
+				B7E500000000000000000006 /* RerunReplayChrome.swift */,
+				B7E500000000000000000007 /* RerunShowcaseDemo.swift */,
+				B7E500000000000000000008 /* RerunExportScene.swift */,
+				B7E500000000000000000009 /* RerunExportAdapter.swift */,
+				B7E50000000000000000000A /* RerunPLYWriter.swift */,
+				B7E50000000000000000000B /* RerunGLBWriter.swift */,
+				B7E50000000000000000000C /* RerunUSDZWriter.swift */,
+				B7E50000000000000000000D /* RerunRRDWriter.swift */,
+				B7E50000000000000000000E /* RerunRRDArrow.swift */,
+				B7E50000000000000000000F /* RerunRRDProtobuf.swift */,
+				B7E500000000000000000010 /* RerunCaptureRecorder.swift */,
+				B7E500000000000000000011 /* RerunLiveCaptureView.swift */,
+				B7E500000000000000000019 /* shiba.glb */,
+				B7E50000000000000000001A /* showcase */,
+			);
+			name = Rerun;
+			sourceTree = "<group>";
+		};
 		BFA8890C5DF4E6540624FF00 /* Viewer */ = {
 			isa = PBXGroup;
 			children = (
@@ -437,6 +515,8 @@
 		FBB3A11ACA2CF4520567DD1F /* Home */ = {
 			isa = PBXGroup;
 			children = (
+				B7E500000000000000000012 /* HomeFeatured.swift */,
+				B7E600000000000000000001 /* Rerun */,
 				DE31566D2309ACB52F2541CF /* HomeFilter.swift */,
 				A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */,
 				A251CDB4D89CD0202517E852 /* HomeHero.swift */,
@@ -472,6 +552,11 @@
 		F00000000000000000000010 /* SceneViewDemoTests */ = {
 			isa = PBXGroup;
 			children = (
+				B7E500000000000000000013 /* RerunTraceTests.swift */,
+				B7E500000000000000000014 /* RerunPLYGLBWriterTests.swift */,
+				B7E500000000000000000015 /* RerunUSDZWriterTests.swift */,
+				B7E500000000000000000016 /* RerunRRDWriterTests.swift */,
+				B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */,
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
@@ -657,6 +742,7 @@
 				19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */,
 				E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */,
 				18D000109AEAF964E5DDC143 /* khronos_fox.usdz */,
+				B7E500000000000000000018 /* shiba.usdz */,
 				2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */,
 			);
 			path = Models;
@@ -813,6 +899,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7E400000000000000000018 /* shiba.usdz in Resources */,
+				B7E400000000000000000019 /* shiba.glb in Resources */,
+				B7E40000000000000000001A /* showcase in Resources */,
 				A10000010000000000000002 /* Assets.xcassets in Resources */,
 				F50000000000000000000001 /* bell.wav in Resources */,
 				E500000000000000000000F3 /* qrcode.png in Resources */,
@@ -916,6 +1005,24 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7E400000000000000000001 /* RerunTrace.swift in Sources */,
+				B7E400000000000000000002 /* RerunFraming.swift in Sources */,
+				B7E400000000000000000003 /* RerunGeometry.swift in Sources */,
+				B7E400000000000000000004 /* RerunReplaySession.swift in Sources */,
+				B7E400000000000000000005 /* RerunReplayStage.swift in Sources */,
+				B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */,
+				B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */,
+				B7E400000000000000000008 /* RerunExportScene.swift in Sources */,
+				B7E400000000000000000009 /* RerunExportAdapter.swift in Sources */,
+				B7E40000000000000000000A /* RerunPLYWriter.swift in Sources */,
+				B7E40000000000000000000B /* RerunGLBWriter.swift in Sources */,
+				B7E40000000000000000000C /* RerunUSDZWriter.swift in Sources */,
+				B7E40000000000000000000D /* RerunRRDWriter.swift in Sources */,
+				B7E40000000000000000000E /* RerunRRDArrow.swift in Sources */,
+				B7E40000000000000000000F /* RerunRRDProtobuf.swift in Sources */,
+				B7E400000000000000000010 /* RerunCaptureRecorder.swift in Sources */,
+				B7E400000000000000000011 /* RerunLiveCaptureView.swift in Sources */,
+				B7E400000000000000000012 /* HomeFeatured.swift in Sources */,
 				D13CADF7F6A0750FD91AE404 /* ShowcaseTab.swift in Sources */,
 				FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */,
 				FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */,
@@ -1048,6 +1155,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7E400000000000000000013 /* RerunTraceTests.swift in Sources */,
+				B7E400000000000000000014 /* RerunPLYGLBWriterTests.swift in Sources */,
+				B7E400000000000000000015 /* RerunUSDZWriterTests.swift in Sources */,
+				B7E400000000000000000016 /* RerunRRDWriterTests.swift in Sources */,
+				B7E400000000000000000017 /* RerunCaptureRecorderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,
