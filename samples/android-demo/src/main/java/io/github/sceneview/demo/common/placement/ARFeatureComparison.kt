@@ -273,7 +273,11 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                         onInvalidMove = { invalidMove = it })
                 } }
             }
-            ARCoachingOverlay(guidance)
+            // Silent while a card explains that AR could not start (#3986).
+            ARCoachingOverlay(
+                cue = if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
+                surface = guidance.surface,
+            )
             ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
             if (startupTimedOut && availability == null) {
                 PlacementActionCard(PlacementCard.CAMERA_ERROR, null, {}, ::reset, onRestart)
