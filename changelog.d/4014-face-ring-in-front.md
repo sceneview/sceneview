@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: Face anchor accessories now shows its ring around the face ([#4014](https://github.com/sceneview/sceneview/issues/4014)).** The spheres were placed 5 cm behind the face anchor, inside the head, and were small and mirror-metallic, so they read as nothing against a dim room. The ring now frames the face in the plane of the nose, with larger matte spheres, and the caption says whether a face is tracked.
