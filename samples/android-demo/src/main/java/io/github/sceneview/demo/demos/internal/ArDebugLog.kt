@@ -18,17 +18,27 @@ import kotlinx.serialization.json.longOrNull
 /** One parsed wire-format event, stamped with the log's own `t` in nanoseconds. */
 sealed class ArDebugEvent(val nanos: Long) {
     class CameraPose(nanos: Long, val pose: DebugPose) : ArDebugEvent(nanos)
-    class Points(nanos: Long, val positions: FloatArray, val confidences: FloatArray?) : ArDebugEvent(nanos)
+    class Points(
+        nanos: Long,
+        val positions: FloatArray,
+        val confidences: FloatArray?,
+        /** Per-point colour, `0xFFRRGGBB`, when the log carries one (a replay's photo colours). */
+        val colors: IntArray? = null,
+    ) : ArDebugEvent(nanos)
     class Plane(nanos: Long, val id: Int, val kind: DebugPlaneKind, val polygon: FloatArray) : ArDebugEvent(nanos)
     class Anchor(nanos: Long, val id: Int, val pose: DebugPose) : ArDebugEvent(nanos)
+
+    /** The camera image at this instant, as a path relative to the log (`frames/012.webp`). */
+    class Image(nanos: Long, val path: String) : ArDebugEvent(nanos)
 
     /** Applies this event to [trace]. */
     fun applyTo(trace: ArDebugTrace) {
         when (this) {
             is CameraPose -> trace.addPose(nanos, pose)
-            is Points -> trace.addPoints(nanos, positions, confidences)
+            is Points -> trace.addPoints(nanos, positions, confidences, colors)
             is Plane -> trace.addPlane(nanos, id, kind, polygon)
             is Anchor -> trace.addAnchor(nanos, id, pose)
+            is Image -> trace.addImage(nanos, path)
         }
     }
 }
@@ -58,15 +68,27 @@ fun parseArDebugEvent(line: String): ArDebugEvent? {
                 ?.mapNotNull { (it as? JsonPrimitive)?.floatOrNull }
                 ?.toFloatArray()
                 ?.takeIf { it.size == positions.size / 3 }
-            ArDebugEvent.Points(nanos, positions, confidences)
+            val colors = (obj["colors"] as? JsonArray)
+                ?.mapNotNull { rgb -> floats(rgb)?.takeIf { it.size == 3 }?.let(::packRgb) }
+                ?.toIntArray()
+                ?.takeIf { it.size == positions.size / 3 }
+            ArDebugEvent.Points(nanos, positions, confidences, colors)
         }
         "plane" -> {
             val polygon = flatten(obj["polygon"]) ?: FloatArray(0)
             val kind = DebugPlaneKind.ofWire((obj["kind"] as? JsonPrimitive)?.content)
             ArDebugEvent.Plane(nanos, entityId(entity) ?: 0, kind, polygon)
         }
+        "image" -> (obj["path"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+            ?.let { ArDebugEvent.Image(nanos, it) }
         else -> null
     }
+}
+
+/** `[r, g, b]` in 0..255 → `0xFFRRGGBB`, each channel clamped. */
+internal fun packRgb(rgb: FloatArray): Int {
+    fun channel(v: Float) = v.toInt().coerceIn(0, 255)
+    return (0xFF shl 24) or (channel(rgb[0]) shl 16) or (channel(rgb[1]) shl 8) or channel(rgb[2])
 }
 
 /** Parses a whole log, in order. */

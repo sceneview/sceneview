@@ -14,7 +14,7 @@ contents of `samples/android-demo/src/main/assets` by
 Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `repo-hygiene` fails if this file and the assets disagree.
 
-Assets bundled: **26**.
+Assets bundled: **30**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -66,6 +66,12 @@ Assets bundled: **26**.
   On-device pose model bundle used by `ARBodyTrackerDemo`
 - `rerun/sample-session.jsonl` — **[sample-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (176 KB)  
   Synthetic room walk in the Rerun bridge wire format — QA fixture of `ARRerunDemo`'s in-app 3D view (#3950)
+- `rerun/showcase/showcase-manifest.json` — **[showcase-manifest.json](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (11 KB)  
+  Lens, plane textures and media index of `ARRerunDemo`'s replay
+- `rerun/showcase/showcase-media.bin` — **[showcase-media.bin](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (866 KB)  
+  Camera frames and plane photos (WebP) of the same Pixel 9 recording, packed for `ARRerunDemo`
+- `rerun/showcase/showcase-session.jsonl` — **[showcase-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (1.4 MB)  
+  Replay of a room recorded on a Pixel 9, camera path and points reconstructed with COLMAP — `ARRerunDemo`
 - `splats/raccoon_family.spz` — **[Raccoon family (SPZ sample capture)](https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz)** by Niantic Labs — MIT (3.3 MB)  
   Real phone capture shipped with the SPZ format; cropped to the subject (932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`
 - `textures/sceneview_logo.png` — **[sceneview_logo.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (45 KB)  

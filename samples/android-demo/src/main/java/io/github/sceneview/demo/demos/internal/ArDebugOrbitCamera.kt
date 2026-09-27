@@ -33,6 +33,12 @@ class ArDebugOrbitCamera(
     initialPose: OrbitPose = ArDebugFraming.DEFAULT_POSE,
     /** Slow turntable drift while following. Off in QA, so captures are deterministic. */
     var drift: Boolean = true,
+    /**
+     * How far above the view's centre the pivot is drawn, as a fraction of the view's height.
+     * A full-screen stage with a HUD on top and a filmstrip below has its clear band above the
+     * middle: lifting the picture there keeps the room out from under the filmstrip.
+     */
+    val lift: Float = 0f,
 ) : CameraGestureDetector.CameraManipulator {
 
     /** Current pose. Plain field, not Compose state: it changes every frame. */
@@ -73,6 +79,55 @@ class ArDebugOrbitCamera(
     /** Seconds of following, which ramps the drift in instead of starting it at full speed. */
     private var followSeconds = 0f
 
+    /** Where the entrance crane ([playIntro]) started, `null` when none is playing. */
+    private var introFrom: OrbitPose? = null
+    private var introSeconds = 0f
+
+    /**
+     * Holds the crane on its first pose until [releaseIntro]: a scene still hidden behind its
+     * loading cover (the GPU warming its shaders) must not spend the entrance where nobody sees it.
+     */
+    private var introHeld = false
+
+    /** `true` while the entrance crane plays. */
+    val introPlaying: Boolean get() = introFrom != null
+
+    /**
+     * The map framing: straight down on the room at [ArDebugFraming.MAP_ELEVATION], no drift, so
+     * the floor plan reads like a plan. Switching hands the camera back to the automatic framing.
+     */
+    var overhead: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            recenter()
+        }
+
+    /** The elevation the view frames [home] at: the three-quarter view, or the map's. */
+    val homeElevation: Float
+        get() = if (overhead) ArDebugFraming.MAP_ELEVATION else ArDebugFraming.HOME_ELEVATION
+
+    /**
+     * Plays the entrance: the camera jumps to [from] and cranes onto [home] over
+     * [ReplayIntro.DURATION_S] — following [home] as it goes, so a view that reframes mid-flight
+     * still lands. The first touch cuts it short, like any following. With [held], it waits on its
+     * first pose until [releaseIntro].
+     */
+    fun playIntro(from: OrbitPose, held: Boolean = false) {
+        introHeld = held
+        following = true
+        azimuthVelocity = 0f
+        elevationVelocity = 0f
+        followSeconds = 0f
+        introSeconds = 0f
+        introFrom = ArDebugFraming.clamp(from).also { pose = it }
+    }
+
+    /** Starts a crane [playIntro] held: the scene is on screen now. */
+    fun releaseIntro() {
+        introHeld = false
+    }
+
     /** Hands the camera back to the automatic framing — the double-tap and the Recenter button. */
     fun recenter() {
         following = true
@@ -91,9 +146,19 @@ class ArDebugOrbitCamera(
         viewportHeight = height.coerceAtLeast(1)
     }
 
-    override fun getTransform(): Transform = Transform(
-        lookAt(eye = CameraRig.eye(pose), target = pose.target, up = Float3(0f, 1f, 0f))
-    )
+    override fun getTransform(): Transform {
+        val eye = CameraRig.eye(pose)
+        val metresPerPixel = CameraRig.worldPerPixel(pose.distance, verticalFovDegrees, viewportHeight)
+        // A pedestal move along the camera's own up axis: the picture slides, the orbit does not.
+        val drop = if (lift == 0f || metresPerPixel <= 0f) {
+            Float3()
+        } else {
+            val forward = normalize(pose.target - eye)
+            val up = cross(normalize(cross(forward, Float3(0f, 1f, 0f))), forward)
+            up * (lift * viewportHeight * metresPerPixel)
+        }
+        return Transform(lookAt(eye = eye - drop, target = pose.target - drop, up = Float3(0f, 1f, 0f)))
+    }
 
     override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
         takeOver()
@@ -160,8 +225,16 @@ class ArDebugOrbitCamera(
         if (grabbing) return
 
         if (following) {
+            val from = introFrom
+            if (from != null) {
+                if (!introHeld) introSeconds += dt
+                val progress = introSeconds / ReplayIntro.DURATION_S
+                pose = ArDebugFraming.clamp(ReplayIntro.pose(from, home, progress))
+                if (progress >= 1f) introFrom = null
+                return
+            }
             followSeconds += dt
-            if (drift) {
+            if (drift && !overhead) {
                 // Ramp in over two seconds so recentering does not lurch into a spin.
                 val ramp = (followSeconds / 2f).coerceAtMost(1f)
                 home = home.copy(azimuthDegrees = home.azimuthDegrees + DRIFT_DEGREES_PER_SECOND * ramp * dt)
@@ -184,6 +257,7 @@ class ArDebugOrbitCamera(
 
     private fun takeOver() {
         following = false
+        introFrom = null
         azimuthVelocity = 0f
         elevationVelocity = 0f
         // Keep following mode's heading continuous: the home angle becomes the current one, so a
@@ -220,12 +294,21 @@ object ArDebugFraming {
     const val HOME_ELEVATION = 32f
     const val HOME_AZIMUTH = 35f
 
+    /** The map's near-vertical view: a floor plan, with just enough tilt to keep depth. */
+    const val MAP_ELEVATION = 84f
+
     /**
      * The fitting distance of the content's bounding sphere, as a multiple of it. Under 1: a room
      * is a flat box, and the sphere around it is much rounder than what the lens actually sees —
      * at 1.15 the room filled barely half of a phone's width.
      */
     const val HOME_MARGIN = 0.92f
+
+    /**
+     * The tighter margin of a bundled recording: its bounds are known up front and hold no
+     * growth to leave room for, so the room fills the stage between the HUD and the filmstrip.
+     */
+    const val REPLAY_MARGIN = 0.66f
 
     /** A room-sized framing for an empty session. */
     val DEFAULT_POSE = OrbitPose(
@@ -250,8 +333,17 @@ object ArDebugFraming {
      * [aspect] (width / height). The whole bounding sphere fits the **narrower** field of view,
      * so a tall phone and a small PiP both see everything.
      */
-    fun home(bounds: FloatArray?, azimuthDegrees: Float, verticalFovDegrees: Double, aspect: Float): OrbitPose {
-        if (bounds == null) return DEFAULT_POSE.copy(azimuthDegrees = azimuthDegrees)
+    fun home(
+        bounds: FloatArray?,
+        azimuthDegrees: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        elevationDegrees: Float = HOME_ELEVATION,
+        margin: Float = HOME_MARGIN,
+    ): OrbitPose {
+        if (bounds == null) {
+            return DEFAULT_POSE.copy(azimuthDegrees = azimuthDegrees, elevationDegrees = elevationDegrees)
+        }
         val cx = (bounds[0] + bounds[3]) / 2f
         val cy = (bounds[1] + bounds[4]) / 2f
         val cz = (bounds[2] + bounds[5]) / 2f
@@ -263,12 +355,12 @@ object ArDebugFraming {
         val halfVertical = Math.toRadians(verticalFovDegrees / 2.0)
         val halfHorizontal = kotlin.math.atan(kotlin.math.tan(halfVertical) * aspect.coerceIn(0.2f, 5f))
         val halfFov = minOf(halfVertical, halfHorizontal)
-        val distance = (radius / sin(halfFov)).toFloat() * HOME_MARGIN
+        val distance = (radius / sin(halfFov)).toFloat() * margin
         return clamp(
             OrbitPose(
                 target = Position(cx, cy, cz),
                 azimuthDegrees = azimuthDegrees,
-                elevationDegrees = HOME_ELEVATION,
+                elevationDegrees = elevationDegrees,
                 distance = distance,
             )
         )

@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.util.Locale
@@ -38,8 +39,23 @@ class ArDebugSession(initial: ArDebugTrace = ArDebugTrace()) {
     var visibleGroups: Set<DebugGroup> by mutableStateOf(DebugGroup.entries.toSet())
         private set
 
+    /** The 3D view's frame rate, for the HUD; measured by the view. */
+    var fps: Int by mutableIntStateOf(0)
+
+    /** Counts the view's frames for [fps]. Plain object: it ticks every frame. */
+    val fpsMeter = FpsMeter()
+
     /** Counts for the chrome, refreshed a few times a second by the view — not every frame. */
     var stats: ArDebugStats by mutableStateOf(ArDebugStats.Empty)
+
+    /**
+     * A recorded session with no live head to catch up to (the bundled replay): reaching the end
+     * holds the last frame for [LOOP_HOLD_S], then plays again from the start, instead of going
+     * live.
+     */
+    var loops: Boolean = false
+
+    private var holdSeconds = 0f
 
     /** The time the view draws. */
     val time: Float get() = if (live) trace.duration else cursor.coerceAtMost(trace.duration)
@@ -55,12 +71,21 @@ class ArDebugSession(initial: ArDebugTrace = ArDebugTrace()) {
     fun scrubTo(seconds: Float) {
         live = false
         playing = false
+        holdSeconds = 0f
         cursor = seconds.coerceIn(0f, trace.duration)
     }
 
     fun goLive() {
         live = true
         playing = false
+    }
+
+    /** Plays the session from its first frame — how the bundled replay opens. */
+    fun playFromStart() {
+        live = false
+        cursor = 0f
+        holdSeconds = 0f
+        playing = true
     }
 
     /**
@@ -78,15 +103,35 @@ class ArDebugSession(initial: ArDebugTrace = ArDebugTrace()) {
         }
     }
 
-    /** Advances a playing replay by [deltaSeconds]; reaching the head of the session goes live. */
+    /**
+     * Advances a playing replay by [deltaSeconds]. Reaching the head of the session goes live —
+     * or, when it [loops], holds the last frame a moment and starts over.
+     */
     fun tick(deltaSeconds: Float) {
         if (live || !playing) return
-        val next = cursor + deltaSeconds.coerceIn(0f, 0.25f)
-        if (next >= trace.duration) goLive() else cursor = next
+        val step = deltaSeconds.coerceIn(0f, 0.25f)
+        val end = trace.duration
+        if (loops && cursor >= end) {
+            holdSeconds += step
+            if (holdSeconds >= LOOP_HOLD_S) {
+                holdSeconds = 0f
+                cursor = 0f
+            }
+            return
+        }
+        val next = cursor + step
+        when {
+            next < end -> cursor = next
+            loops -> cursor = end
+            else -> goLive()
+        }
     }
 
     companion object {
         private const val END_EPSILON_S = 0.05f
+
+        /** How long a looping replay rests on its last frame before starting over. */
+        const val LOOP_HOLD_S = 2.5f
     }
 }
 
@@ -145,4 +190,11 @@ object ArDebugFormat {
 
     /** `3812` → `3,812`. */
     fun count(value: Int): String = String.format(Locale.US, "%,d", value)
+
+    /** For a narrow figure: `812` → `812`, `4_812` → `4.8k`, `12_400` → `12k`. */
+    fun compactCount(value: Int): String = when {
+        value < 1_000 -> value.coerceAtLeast(0).toString()
+        value < 10_000 -> String.format(Locale.US, "%.1fk", (value / 100) / 10f)
+        else -> "${value / 1_000}k"
+    }
 }

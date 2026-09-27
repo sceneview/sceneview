@@ -51,6 +51,22 @@ class DebugMesh(initialVertices: Int = 64) {
 
     fun vertex(v: Vec3): Int = vertex(v.x, v.y, v.z)
 
+    /**
+     * Texture coordinates, two per vertex, for the textured layers (photos, the colour atlas).
+     * Only meaningful when every vertex of the mesh went through the five-argument [vertex].
+     */
+    var uvs = FloatArray(initialVertices * 2)
+        private set
+
+    /** A vertex with texture coordinates ([u], [v]); `v = 0` is the image's top row. */
+    fun vertex(x: Float, y: Float, z: Float, u: Float, v: Float): Int {
+        val i = vertex(x, y, z)
+        if ((i + 1) * 2 > uvs.size) uvs = uvs.copyOf(max(uvs.size * 2, (i + 1) * 2))
+        uvs[i * 2] = u
+        uvs[i * 2 + 1] = v
+        return i
+    }
+
     fun triangle(a: Int, b: Int, c: Int) {
         if (indexCount + 3 > indices.size) indices = indices.copyOf(max(indices.size * 2, 48))
         indices[indexCount++] = a
@@ -321,9 +337,15 @@ object ArDebugGeometry {
     }
 
     /** A camera frustum at [pose]: four side edges and the image-plane rectangle. */
-    fun addFrustumEdges(mesh: DebugMesh, pose: DebugPose, depth: Float, edge: Float) {
+    fun addFrustumEdges(
+        mesh: DebugMesh,
+        pose: DebugPose,
+        depth: Float,
+        edge: Float,
+        lens: ReplayLens = ReplayLens.Default,
+    ) {
         val apex = pose.position
-        val corners = frustumCorners(pose, depth)
+        val corners = frustumCorners(pose, depth, lens)
         for (i in 0 until 4) {
             addSegment(mesh, apex, corners[i], edge)
             addSegment(mesh, corners[i], corners[(i + 1) % 4], edge)
@@ -335,15 +357,15 @@ object ArDebugGeometry {
     }
 
     /** The image plane of the frustum at [pose], as two triangles. */
-    fun addFrustumFace(mesh: DebugMesh, pose: DebugPose, depth: Float) {
-        val c = frustumCorners(pose, depth)
+    fun addFrustumFace(mesh: DebugMesh, pose: DebugPose, depth: Float, lens: ReplayLens = ReplayLens.Default) {
+        val c = frustumCorners(pose, depth, lens)
         mesh.quad(mesh.vertex(c[0]), mesh.vertex(c[1]), mesh.vertex(c[2]), mesh.vertex(c[3]))
     }
 
     /** Corners of the image plane at [depth]: top-left, top-right, bottom-right, bottom-left. */
-    fun frustumCorners(pose: DebugPose, depth: Float): List<Vec3> {
-        val hw = DebugFrustum.HALF_WIDTH_PER_DEPTH * depth
-        val hh = DebugFrustum.HALF_HEIGHT_PER_DEPTH * depth
+    fun frustumCorners(pose: DebugPose, depth: Float, lens: ReplayLens = ReplayLens.Default): List<Vec3> {
+        val hw = lens.halfWidthPerDepth * depth
+        val hh = lens.halfHeightPerDepth * depth
         return listOf(
             pose.transform(-hw, hh, -depth),
             pose.transform(hw, hh, -depth),
@@ -483,13 +505,26 @@ object ArDebugGeometry {
         }
     }
 
-    fun buildCamera(frame: ArDebugFrame, style: ArDebugStyle, out: (DebugLayer) -> DebugMesh) {
+    /**
+     * The keyframe frustums and the live one. The replay passes its real [lens] and deeper
+     * frustums, which carry the camera's photos, and drops the tinted [DebugLayer.FrustumFace]
+     * ([face]) the photo replaces.
+     */
+    fun buildCamera(
+        frame: ArDebugFrame,
+        style: ArDebugStyle,
+        out: (DebugLayer) -> DebugMesh,
+        lens: ReplayLens = ReplayLens.Default,
+        depth: Float = DebugFrustum.DEPTH,
+        keyframeDepth: Float = DebugFrustum.KEYFRAME_DEPTH,
+        face: Boolean = true,
+    ) {
         for (pose in frame.keyframes) {
-            addFrustumEdges(out(DebugLayer.Keyframes), pose, DebugFrustum.KEYFRAME_DEPTH, style.keyframeEdge)
+            addFrustumEdges(out(DebugLayer.Keyframes), pose, keyframeDepth, style.keyframeEdge, lens)
         }
         val camera = frame.camera ?: return
-        addFrustumEdges(out(DebugLayer.Frustum), camera, DebugFrustum.DEPTH, style.frustumEdge)
-        addFrustumFace(out(DebugLayer.FrustumFace), camera, DebugFrustum.DEPTH)
+        addFrustumEdges(out(DebugLayer.Frustum), camera, depth, style.frustumEdge, lens)
+        if (face) addFrustumFace(out(DebugLayer.FrustumFace), camera, depth, lens)
     }
 
     fun buildMapPoints(points: FloatArray, style: ArDebugStyle, mesh: DebugMesh) {
@@ -514,9 +549,15 @@ object ArDebugGeometry {
         else -> DebugLayer.OutlineOther
     }
 
-    fun buildPlanes(planes: List<DebugPlane>, style: ArDebugStyle, out: (DebugLayer) -> DebugMesh) {
+    /** Fills and outlines; a plane [textured] elsewhere (the replay's photo) keeps its outline only. */
+    fun buildPlanes(
+        planes: List<DebugPlane>,
+        style: ArDebugStyle,
+        out: (DebugLayer) -> DebugMesh,
+        textured: (Int) -> Boolean = { false },
+    ) {
         for (plane in planes) {
-            addFan(out(fillLayerOf(plane.kind)), plane.polygon)
+            if (!textured(plane.id)) addFan(out(fillLayerOf(plane.kind)), plane.polygon)
             addOutline(out(outlineLayerOf(plane.kind)), plane.polygon, style.outlineHalfWidth)
         }
     }

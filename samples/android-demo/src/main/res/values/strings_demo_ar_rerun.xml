@@ -5,6 +5,6 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_rerun_title">Rerun Debug</string>
-    <string name="demo_ar_rerun_subtitle">Stream pose and planes to the Rerun viewer</string>
+    <string name="demo_ar_rerun_title">Rerun AR Replay</string>
+    <string name="demo_ar_rerun_subtitle">Watch a real AR session rebuild itself in 3D</string>
 </resources>
