@@ -18,6 +18,7 @@ object ArRerunFragment : DemoFragment {
         icon = Icons.Filled.BugReport,
         order = 48,
         tags = setOf("ar", "rerun", "streaming", "pose", "plane", "debug"),
+        updatedIn = "4.43.0",
     )
 
     @Composable
