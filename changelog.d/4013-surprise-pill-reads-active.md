@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: the idle "Surprise me" pill in Model Viewer no longer looks disabled ([#4013](https://github.com/sceneview/sceneview/issues/4013)).** The pill, with the streamed-model name, the error banner and the animation bar, was drawn as part of the 3D stage, under the dark scrim that keeps the chrome legible, so its white label came out grey next to the white dock. The band now rides the demo chrome's accessory slot above the dock, on the same glass, and the label dims only while a roll is loading.
