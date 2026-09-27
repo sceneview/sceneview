@@ -2,6 +2,66 @@
 
 ## Unreleased
 
+## v4.45.0 — 2026-09-27
+
+### Added
+
+- **`CinematicHero`: a scroll-driven 3D hero for the top of a Compose screen ([#4007](https://github.com/sceneview/sceneview/pull/4007)).** Put it under a `LazyColumn`, `LazyVerticalGrid` or scrolling `Column` whose first item is a spacer of the same height. The model turns slowly on a cinematic orbit. As the list scrolls, the camera swings round, rises and moves closer, the stage lags behind the page and fades into it. The list keeps every touch, the hero stops drawing off screen, and it does not turn by itself when system animations are off. `docs/prompts/cinematic-hero.md` is a short prompt that has an AI assistant add it to an existing home screen.
+- **Splats:** `rememberSplatCloud("splats/scan.spz")` loads a `.spz` or `.ply` file off the main
+  thread and returns `null` while it loads. The location can be an asset path, an absolute path,
+  or a `file://`, `content://` or `http(s)://` URI. `SplatNode` now sorts its splats for the
+  scene camera on its own, in `SceneView` and `ARSceneView`, so orbiting no longer pops without
+  a `cameraPositionProvider`. The provider still works, to sort for another viewpoint (#4023).
+- **Demo:** new *Your Scan, in Your Room* AR demo (`ar-splat-room`). The raccoon phone capture
+  from *Real-World Scan* stands on the first floor or table ARCore finds, at its real size, with
+  its captured ground on the real floor. Drag, twist and pinch work as in *AR Placement*, and
+  *Back to real size* undoes a pinch. It is a `SplatNode` inside `AutoPlacementScene` (#4023).
+- **Splats:** `SplatParser` now reads SPZ version 4, the current Niantic format, which stores each
+  attribute in its own ZSTD stream. The ZSTD decoder is pure Kotlin, so the same `.spz` loads on
+  Android, iOS and the web. Versions 2 and 3 still load as before (#4023).
+
+### Changed
+
+- **SplatNode (Android):** each gaussian now draws as an oriented ellipse, built from its rotation
+  and 3-axis scale (screen-space 2D covariance). Before, it was a round blob sized by its largest
+  axis, so scans looked hazy. Colours now show as they were captured, where the View's tone mapping
+  used to wash them out. On a re-sort only a 4-byte-per-splat order texture is re-uploaded. The
+  4-texture `MaterialLoader.createSplatInstance` overload is new; the 2-texture one is deprecated
+  (#4023). The web port is tracked in #4046.
+- **Demo apps: the home-screen label is "SceneView" again on Android and iOS.** The consumer viewer app is now called 3D AR Model Viewer ("3D AR Viewer" on the home screen), so the two labels no longer clash. The store names stay "SceneView Demo — SDK samples". The "Open in AR" link from the MCP viewer and `view.html` names the app it opens, 3D AR Model Viewer.
+
+### Fixed
+
+- **Demo — Materials:** leaving Inspect for the Gallery no longer sweeps the camera in from beside
+  the wall. The Compare re-frame no longer writes its pose on the way out, the user's framing is
+  read with its real yaw, and it fades with the flight instead of on a clock that started before
+  the first Gallery frame (#3692).
+- **Demo app: the Physics "Drop" button and the dock's accent disc no longer change colour with the system theme ([#3726](https://github.com/sceneview/sceneview/issues/3726)).** Both sit in the glass chrome drawn over the scene, which is theme-independent by design; they now use the fixed over-media accent (`ArOverlay.accentProgress` with a new `onAccentProgress` foreground, 7.3:1) instead of `MaterialTheme.colorScheme.primary`, so they look the same in light and dark like the dock, pills and scrims around them. The Settings-sheet buttons keep following the app theme.
+- **Release pipeline: a release PR stuck behind "Approve and run" no longer burns 170 minutes in silence ([#3750](https://github.com/sceneview/sceneview/issues/3750)).** The release PR's `pull_request` runs are created awaiting approval, so every release since 4.38.0 needed a human to unblock it. `release-fast.yml`'s tag job now approves the runs of the bump commit it pushed, and when it cannot, it fails within minutes with the exact unblock and resume commands in the run summary. `tag-release.yml` takes an optional `commit` input, so a release PR that merged after the wait gave up can still be tagged once main has moved on.
+- **`rememberModelInstance(modelLoader, "https://…")` now loads the URL ([#4007](https://github.com/sceneview/sceneview/pull/4007)).** Called with a positional string, it resolved to the assets-only overload and silently rendered nothing, although that is the call the docs show for remote models. A location with a scheme (`https://`, `file://`, `content://`) is now loaded from there.
+- **iOS demo: pinching to zoom out no longer closes the demo ([#4008](https://github.com/sceneview/sceneview/issues/4008)).** Demos open from the Showcase with a zoom transition, and that transition's system pinch-to-dismiss took the stage's zoom-out pinch, shrinking the whole demo back toward its card. The system gesture is now off on the demo cover; demos close from their back button or the leading-edge swipe, and the zoom animation still plays on open and close.
+- **iOS: orbit zoom-in stops outside the model, and a pinch is no longer overridden while the framing settles ([#4009](https://github.com/sceneview/sceneview/issues/4009)).** The auto-framing floor was half the content's bounding-sphere radius, so pinching in drove the camera inside most models (the Damaged Helmet's visor, a sofa's cushion). The floor now clears that sphere by 10 %, so it scales with the model and never enters it. The framing pass also stopped re-fitting the radius every frame of its 2.5 s settle window once the user has pinched or orbited, which made an early pinch do nothing and then jump; only a materially larger union (another streamed model landing) takes the camera back.
+- **iOS: changing `SceneEnvironment.intensity` at runtime now relights the scene ([#4010](https://github.com/sceneview/sceneview/issues/4010)).** `SceneView` only re-applied the image-based light when the environment's name or skybox flag changed, so an intensity-only change, like the Model Viewer's IBL slider, had no visible effect. The installed IBL is now rescaled in place, without reloading the HDR or blanking the skybox.
+- **iOS demo — Surprise me no longer lands broken models** (#4012). Candidates now come from Sketchfab's Staff Picks and most-liked feeds first, and every download is checked before it goes on stage: a model that reads as a small subject in a cloud of scattered fragments (a broken USDZ conversion) is skipped silently and the next candidate is tried, up to four per roll. The model already on stage is never rolled again.
+- **iOS demo: the idle "Surprise me" pill in Model Viewer no longer looks disabled ([#4013](https://github.com/sceneview/sceneview/issues/4013)).** The pill, with the streamed-model name, the error banner and the animation bar, was drawn as part of the 3D stage, under the dark scrim that keeps the chrome legible, so its white label came out grey next to the white dock. The band now rides the demo chrome's accessory slot above the dock, on the same glass, and the label dims only while a roll is loading.
+- **iOS demo: Face anchor accessories now shows its ring around the face ([#4014](https://github.com/sceneview/sceneview/issues/4014)).** The spheres were placed 5 cm behind the face anchor, inside the head, and were small and mirror-metallic, so they read as nothing against a dim room. The ring now frames the face in the plane of the nose, with larger matte spheres, and the caption says whether a face is tracked.
+- **Demo — release builds:** R8 no longer strips what ML Kit and MediaPipe load by reflection.
+  ML Kit Object Labels no longer crashes on open (#4025), AR Body Tracker's pose model loads
+  again (#4027), and Point & Ask reaches the real Gemini Nano status check instead of failing
+  before it (#4028). If a detector still cannot start, the demo says so and the AR scene keeps
+  running.
+- **Demo — Point & Ask:** when Gemini Nano is unavailable the question field is hidden, the card
+  explains why, and the only action offered is AICore's Google Play listing, shown only when
+  AICore is installed — no more "Open system settings" dead end (#4028).
+- **AR — session teardown:** `ARSceneView` now pauses a still-resumed ARCore session before
+  closing it, so a playback (or live) session is always torn down in the order ARCore expects.
+- **Demo — AR Recording replay:** the replay closes every placement `TrackData` right after
+  decoding it instead of leaving it to the finalizer, which could release native track data
+  after Back had already closed the playback session (#4026).
+- **Demo — Model Viewer:** the Lighting sheet's title, labels and unselected environment names
+  are readable again in the dark theme. Every glass bottom sheet now resolves its text colour
+  from the opaque version of its fill (`on-surface`) instead of falling back to black (#4029).
+
 ## v4.44.0 — 2026-09-27
 
 ### Fixed

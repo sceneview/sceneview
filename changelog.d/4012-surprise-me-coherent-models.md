@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS demo — Surprise me no longer lands broken models** (#4012). Candidates now come from Sketchfab's Staff Picks and most-liked feeds first, and every download is checked before it goes on stage: a model that reads as a small subject in a cloud of scattered fragments (a broken USDZ conversion) is skipped silently and the next candidate is tried, up to four per roll. The model already on stage is never rolled again.

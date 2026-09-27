@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **`rememberModelInstance(modelLoader, "https://…")` now loads the URL ([#4007](https://github.com/sceneview/sceneview/pull/4007)).** Called with a positional string, it resolved to the assets-only overload and silently rendered nothing, although that is the call the docs show for remote models. A location with a scheme (`https://`, `file://`, `content://`) is now loaded from there.
