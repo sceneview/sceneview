@@ -28,6 +28,8 @@ import io.github.sceneview.material.setTexture
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 
@@ -75,15 +77,24 @@ internal suspend fun loadRerunReplay(context: Context): RerunReplayMedia = withC
     val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
     val archive = assets.open(RerunReplayAssets.MEDIA).use { it.readBytes() }
     val shell = RerunReplayMedia(trace, manifest, emptyMap(), emptyMap(), archive)
-    val planes = manifest.textures.mapNotNull { texture ->
-        shell.decode(texture.path)?.let { texture.planeId to it }
-    }.toMap()
-    val thumbnailOptions = BitmapFactory.Options().apply { inSampleSize = THUMBNAIL_SAMPLE_SIZE }
-    val thumbnails = (0 until trace.imageCount).mapNotNull { i ->
-        val path = trace.imagePath(i)
-        shell.decode(path, thumbnailOptions)?.let { path to it }
-    }.toMap()
-    RerunReplayMedia(trace, manifest, planes, thumbnails, archive)
+    // Decoded side by side: the cover stays up until they are, so their time is the wait.
+    val planes = manifest.textures.map { texture ->
+        async(Dispatchers.Default) { shell.decode(texture.path)?.let { texture.planeId to it } }
+    }
+    val thumbnails = (0 until trace.imageCount).map { i ->
+        async(Dispatchers.Default) {
+            val path = trace.imagePath(i)
+            val options = BitmapFactory.Options().apply { inSampleSize = THUMBNAIL_SAMPLE_SIZE }
+            shell.decode(path, options)?.let { path to it }
+        }
+    }
+    RerunReplayMedia(
+        trace = trace,
+        manifest = manifest,
+        planeBitmaps = planes.awaitAll().filterNotNull().toMap(),
+        thumbnails = thumbnails.awaitAll().filterNotNull().toMap(),
+        archive = archive,
+    )
 }
 
 /** A camera frame at full size, for the camera view. Off the main thread. */
@@ -91,8 +102,8 @@ internal suspend fun decodeFrame(media: RerunReplayMedia, path: String): Bitmap?
     runCatching { media.decode(path) }.getOrNull()
 }
 
-/** 480×640 frames at a quarter: 120×160, ~77 KB each — the 184 of them fit in 14 MB. */
-private const val THUMBNAIL_SAMPLE_SIZE = 4
+/** 240×320 frames at a half: 120×160, ~77 KB each — the 184 of them fit in 14 MB. */
+private const val THUMBNAIL_SAMPLE_SIZE = 2
 
 /**
  * The replay's textured layers, kept in step with an [ArDebugFrame] like `ArDebugLayers`: each

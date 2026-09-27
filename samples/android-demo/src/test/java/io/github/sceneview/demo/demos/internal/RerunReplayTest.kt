@@ -177,6 +177,25 @@ class RerunReplayTest {
     }
 
     @Test
+    fun `a held entrance waits on its first pose until released`() {
+        val camera = ArDebugOrbitCamera(drift = false)
+        camera.setViewport(1080, 2400)
+        camera.home = OrbitPose(azimuthDegrees = 40f, elevationDegrees = 28f, distance = 3f)
+        val start = ReplayIntro.startFor(camera.home)
+        camera.playIntro(start, held = true)
+
+        // Seconds behind the loading cover: the shot has not moved.
+        repeat(3 * 60) { camera.update(1f / 60f) }
+        assertTrue(camera.introPlaying)
+        assertEquals(start.distance, camera.pose.distance, 1e-4f)
+
+        camera.releaseIntro()
+        repeat(((ReplayIntro.DURATION_S + 0.5f) * 60).toInt()) { camera.update(1f / 60f) }
+        assertFalse(camera.introPlaying)
+        assertEquals(3f, camera.pose.distance, 1e-2f)
+    }
+
+    @Test
     fun `a touch cuts the entrance short`() {
         val camera = ArDebugOrbitCamera(drift = false)
         camera.home = OrbitPose(distance = 3f)

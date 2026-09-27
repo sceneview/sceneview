@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -166,8 +167,14 @@ fun ARRerunDemo(onBack: () -> Unit) {
         val replay = media ?: return@LaunchedEffect
         if (replaySession.trace === replay.trace) return@LaunchedEffect
         replaySession.trace = replay.trace
-        val pause = qaReplay?.pauseAt
-        if (pause != null) replaySession.scrubTo(replay.trace.duration * pause) else replaySession.playFromStart()
+        // Held on its first frame until the stage is on screen: playback starts with the reveal.
+        replaySession.scrubTo(replay.trace.duration * (qaReplay?.pauseAt ?: 0f))
+    }
+    // The replay opens when its first frames are on screen, not when its files are read: the
+    // cover, the chrome and the playback all wait for the stage, so nothing shows up empty.
+    var revealed by remember { mutableStateOf(false) }
+    LaunchedEffect(revealed) {
+        if (revealed && qaReplay?.pauseAt == null) replaySession.playFromStart()
     }
     LaunchedEffect(mode) { replayOrbit.overhead = mode == RerunMode.Map }
 
@@ -189,6 +196,8 @@ fun ARRerunDemo(onBack: () -> Unit) {
             media = media,
             session = replaySession,
             orbit = replayOrbit,
+            revealed = revealed,
+            onRevealed = { revealed = true },
             pipOrbit = replayPipOrbit,
             engine = engine,
             modelLoader = modelLoader,
@@ -211,6 +220,8 @@ private fun RerunReplayScreen(
     mode: RerunMode,
     onMode: (RerunMode) -> Unit,
     media: RerunReplayMedia?,
+    revealed: Boolean,
+    onRevealed: () -> Unit,
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
     pipOrbit: ArDebugOrbitCamera,
@@ -219,10 +230,19 @@ private fun RerunReplayScreen(
     materialLoader: MaterialLoader,
 ) {
     val thumbnails = remember(media) { media?.thumbnails?.mapValues { it.value.asImageBitmap() }.orEmpty() }
+    // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
+    val ready = media != null && (revealed || mode == RerunMode.Camera)
+    LaunchedEffect(ready) { if (ready) onRevealed() }
+    val readyState = rememberUpdatedState(ready)
+    val hudIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS)
+    val cardIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS * 2)
+    val filmstripIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS * 2)
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
         controls = { RerunSheet() },
+        firstFrameRendered = readyState,
+        loadingLabel = RERUN_REPLAY_LOADING,
         topOverlay = {
             if (media != null) {
                 RerunReplayHud(
@@ -230,11 +250,13 @@ private fun RerunReplayScreen(
                     modifier = Modifier
                         .padding(horizontal = Space.md)
                         .widthIn(max = ArOverlay.maxWidth)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .reveal(hudIn, rise = -Space.md),
                 )
                 val corner = Modifier
                     .align(Alignment.End)
                     .padding(end = Space.md)
+                    .reveal(cardIn, rise = -Space.md)
                 if (mode == RerunMode.Camera) {
                     ArDebugPip(
                         session = session,
@@ -263,6 +285,7 @@ private fun RerunReplayScreen(
                     media = media,
                     thumbnails = thumbnails,
                     session = session,
+                    modifier = Modifier.reveal(filmstripIn, rise = Space.lg),
                     caption = when (mode) {
                         RerunMode.Map -> "Top-down map of the room"
                         RerunMode.Camera -> "What the camera saw"
@@ -302,7 +325,7 @@ private fun RerunReplayScreen(
         ),
     ) {
         when {
-            media == null -> RerunReplayLoading(Modifier.fillMaxSize())
+            media == null -> Unit // the scaffold's cover says it is loading
             mode == RerunMode.Camera -> RerunCameraView(media, thumbnails, session, Modifier.fillMaxSize())
             else -> ArDebugSceneView(
                 session = session,
@@ -312,6 +335,7 @@ private fun RerunReplayScreen(
                 materialLoader = materialLoader,
                 modifier = Modifier.fillMaxSize(),
                 replay = media,
+                onShown = onRevealed,
             )
         }
     }

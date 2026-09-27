@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos
 
 import android.os.Build
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -103,7 +107,9 @@ internal fun RerunReplayHud(session: ArDebugSession, modifier: Modifier = Modifi
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = "${ArDebugFormat.clock(stats.time)} · ${session.fps} fps",
+                // No "0 fps" while the view's first frames are still being measured.
+                text = listOfNotNull(ArDebugFormat.clock(stats.time), session.fps.takeIf { it > 0 }?.let { "$it fps" })
+                    .joinToString(" · "),
                 style = HudCaption,
                 maxLines = 1,
             )
@@ -259,9 +265,10 @@ internal fun RerunFilmstripCard(
     thumbnails: Map<String, ImageBitmap>,
     session: ArDebugSession,
     caption: String,
+    modifier: Modifier = Modifier,
 ) {
     val duration = media.trace.duration
-    OverlayCard(testTag = RERUN_FILMSTRIP_TAG) {
+    OverlayCard(testTag = RERUN_FILMSTRIP_TAG, modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val playing = session.playing && !session.live
             IconButton(
@@ -364,12 +371,33 @@ private fun Filmstrip(
     }
 }
 
-/** Shown while the bundled session decodes: the stage, and one quiet line. */
+/** What the stage's cover says while the bundled session decodes and the 3D view warms up. */
+internal const val RERUN_REPLAY_LOADING = "Loading the recorded session…"
+
+// The chrome follows the stage in, one beat apart: status first, then the corner card and the filmstrip.
+internal const val REVEAL_STAGGER_MS = 100
+
+/**
+ * How far one piece of the replay's chrome has arrived: 0 until the stage is [revealed], then 1
+ * over the medium duration, [delayMillis] late — the HUD, the corner card and the filmstrip land
+ * one after the other while the camera cranes in, instead of sitting over an empty stage.
+ */
 @Composable
-internal fun RerunReplayLoading(modifier: Modifier = Modifier) {
-    Box(modifier.background(SceneViewTokens.Stage.background), contentAlignment = Alignment.Center) {
-        Text("Loading the recorded session…", style = OnScrimBody)
-    }
+internal fun rememberReveal(revealed: Boolean, delayMillis: Int): State<Float> = animateFloatAsState(
+    targetValue = if (revealed) 1f else 0f,
+    animationSpec = tween(
+        durationMillis = SceneViewTokens.Duration.mediumMillis,
+        delayMillis = delayMillis,
+        easing = SceneViewTokens.Ease.expressive,
+    ),
+    label = "rerun-reveal",
+)
+
+/** Fades in with [progress] and rises the last [rise] into place (negative: drops into place). */
+internal fun Modifier.reveal(progress: State<Float>, rise: Dp): Modifier = graphicsLayer {
+    val p = progress.value
+    alpha = p
+    translationY = (1f - p) * rise.toPx()
 }
 
 private val HudCaption @Composable get() =

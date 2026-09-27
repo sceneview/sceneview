@@ -83,6 +83,12 @@ class ArDebugOrbitCamera(
     private var introFrom: OrbitPose? = null
     private var introSeconds = 0f
 
+    /**
+     * Holds the crane on its first pose until [releaseIntro]: a scene still hidden behind its
+     * loading cover (the GPU warming its shaders) must not spend the entrance where nobody sees it.
+     */
+    private var introHeld = false
+
     /** `true` while the entrance crane plays. */
     val introPlaying: Boolean get() = introFrom != null
 
@@ -104,15 +110,22 @@ class ArDebugOrbitCamera(
     /**
      * Plays the entrance: the camera jumps to [from] and cranes onto [home] over
      * [ReplayIntro.DURATION_S] — following [home] as it goes, so a view that reframes mid-flight
-     * still lands. The first touch cuts it short, like any following.
+     * still lands. The first touch cuts it short, like any following. With [held], it waits on its
+     * first pose until [releaseIntro].
      */
-    fun playIntro(from: OrbitPose) {
+    fun playIntro(from: OrbitPose, held: Boolean = false) {
+        introHeld = held
         following = true
         azimuthVelocity = 0f
         elevationVelocity = 0f
         followSeconds = 0f
         introSeconds = 0f
         introFrom = ArDebugFraming.clamp(from).also { pose = it }
+    }
+
+    /** Starts a crane [playIntro] held: the scene is on screen now. */
+    fun releaseIntro() {
+        introHeld = false
     }
 
     /** Hands the camera back to the automatic framing — the double-tap and the Recenter button. */
@@ -214,7 +227,7 @@ class ArDebugOrbitCamera(
         if (following) {
             val from = introFrom
             if (from != null) {
-                introSeconds += dt
+                if (!introHeld) introSeconds += dt
                 val progress = introSeconds / ReplayIntro.DURATION_S
                 pose = ArDebugFraming.clamp(ReplayIntro.pose(from, home, progress))
                 if (progress >= 1f) introFrom = null

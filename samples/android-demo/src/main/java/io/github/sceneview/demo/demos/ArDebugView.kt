@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -515,6 +516,9 @@ private fun stageBoundsOf(frame: ArDebugFrame): FloatArray {
  *
  * [compact] is the picture-in-picture: a lower frame rate, and no touch (the card over it takes
  * the tap that opens the full view).
+ *
+ * [onShown] fires once, when the session's content has been on screen for a few rendered frames
+ * — textures uploaded, nothing half-drawn — so a caller can hold its cover and chrome until then.
  */
 @Composable
 internal fun ArDebugSceneView(
@@ -526,8 +530,10 @@ internal fun ArDebugSceneView(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     replay: RerunReplayMedia? = null,
+    onShown: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val shown by rememberUpdatedState(onShown)
 
     // Created before the SceneView so they are released after it (Compose forgets in reverse).
     val materials = remember(materialLoader) {
@@ -629,7 +635,7 @@ internal fun ArDebugSceneView(
                 if (!orbit.hasFramedContent && bounds != null) {
                     orbit.hasFramedContent = true
                     val intro = replay != null && orbit.drift
-                    if (intro) orbit.playIntro(ReplayIntro.startFor(home)) else orbit.snapTo(home)
+                    if (intro) orbit.playIntro(ReplayIntro.startFor(home), held = true) else orbit.snapTo(home)
                 }
 
                 val style = ArDebugStyle.forOrbit(orbit.pose.distance, orbit.verticalFovDegrees, orbit.viewportHeight)
@@ -652,6 +658,16 @@ internal fun ArDebugSceneView(
                 if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
                     clock.statsAtNanos = frameTimeNanos
                     session.stats = ArDebugStats.of(frame, trace.duration)
+                }
+                // onFrame only fires for a frame that reached the surface (#3444): counting them is
+                // counting what the user has actually seen.
+                if (bounds != null && !clock.shown) {
+                    clock.contentFrames++
+                    if (clock.contentFrames >= SHOWN_AFTER_FRAMES) {
+                        clock.shown = true
+                        orbit.releaseIntro()
+                        shown?.invoke()
+                    }
                 }
             },
         ) {
@@ -693,6 +709,8 @@ private class FrameClock {
     var statsAtNanos = 0L
     var wholeFrame: ArDebugFrame? = null
     var wholeFor: ArDebugTrace? = null
+    var contentFrames = 0
+    var shown = false
 
     fun tick(nanos: Long): Float {
         val dt = if (lastNanos == 0L) 0f else ((nanos - lastNanos) / 1e9f)
@@ -729,6 +747,9 @@ private const val FRAME_INTERVAL_NS = 50_000_000L // rebuild the frame at most a
 private const val STATS_INTERVAL_NS = 250_000_000L
 private const val BLOOM_STRENGTH = 0.28f
 private const val ANCHOR_MODEL_SIZE_M = 0.3f
+
+/** Rendered frames of content before [ArDebugSceneView]'s onShown: the textures are up by then. */
+private const val SHOWN_AFTER_FRAMES = 3
 
 // ─── Chrome ──────────────────────────────────────────────────────────────────────────────────
 
