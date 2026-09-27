@@ -617,7 +617,8 @@ private fun SingleModelSection(
     val hasModelRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     hasModelRef.set(activeModelInstance != null)
     val modelDrain = rememberBackendDrainWait(engine)
-    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, modelDrain) {
+    val renderInvalidator = rememberRenderInvalidator()
+    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, modelDrain, renderInvalidator) {
         { nanos ->
             firstFrame.onFrame(nanos)
             if (hasModelRef.get() && modelFramesSeen.value < MODEL_COVER_FRAMES &&
@@ -625,6 +626,12 @@ private fun SingleModelSection(
             ) {
                 if (modelFramesSeen.value < MODEL_COVER_FRAMES - 1) {
                     modelFramesSeen.value++
+                    // The count is owed a frame the scene may never present on its own (#3982):
+                    // the load finishing is the last change, and on a slow GPU the one frame
+                    // presented after it closes the settle window and parks the loop, leaving
+                    // "Still loading…" over the finished model until the user orbits. Ask for
+                    // the next one; `onFrame` alone cannot keep the loop awake.
+                    renderInvalidator.requestRender()
                 } else {
                     // The last count is paid by the backend, not by a frame. No-op while pending.
                     modelDrain.start { modelFramesSeen.value = MODEL_COVER_FRAMES }
@@ -650,7 +657,6 @@ private fun SingleModelSection(
     }
     val viewerEnvironment = loadedEnvironment ?: fallbackEnvironment
     if (loadedEnvironment != null) firstEnvironmentLoaded = true
-    val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(viewerEnvironment, iblIntensity) {
         viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
         // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it

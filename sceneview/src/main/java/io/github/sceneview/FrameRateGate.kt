@@ -28,6 +28,20 @@ import java.util.WeakHashMap
 const val SETTLE_DURATION_NANOS: Long = 500_000_000L
 
 /**
+ * Presented frames the settle window owes after the last change, however long they take.
+ *
+ * [SETTLE_DURATION_NANOS] alone is a run of frames only while frames are faster than it. On a GPU
+ * still linking a model's materials each frame takes over a second (1.5 s on `emulator-5554`), so
+ * the very first frame presented after a change already lands past the deadline and closes the
+ * window. The scene then parks on that one frame, which is exactly the "first frame after a change"
+ * the window exists not to stop on. A readiness signal that needs a second frame (a loading cover)
+ * never gets it, and the scene stays frozen on whatever that frame drew until a touch wakes it
+ * (#3982). Two frames is the floor: Filament refuses a new frame while the backend is behind, so an
+ * accepted second frame is evidence that the first was executed.
+ */
+internal const val SETTLE_MIN_PRESENTED_FRAMES: Int = 2
+
+/**
  * Decides, once per frame, whether the GPU submit happens — the Android port of the web SDK's
  * `RenderGate` (`sceneview-web/src/jsMain/kotlin/io/github/sceneview/web/RenderGate.kt`).
  *
@@ -70,6 +84,9 @@ class FrameRateGate @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) construct
      */
     private var owesSettle: Boolean = true
 
+    /** Frames presented since the window was last re-armed. See [SETTLE_MIN_PRESENTED_FRAMES]. */
+    private var presentedSinceArm: Int = 0
+
     /** `true` while an invalidation is waiting to be consumed by the next [shouldRender]. */
     val isDirty: Boolean get() = dirtyState.value
 
@@ -100,19 +117,25 @@ class FrameRateGate @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) construct
         if (dirtyState.value || active) {
             settleUntilNanos = frameTimeNanos + settleDurationNanos
             owesSettle = true
+            presentedSinceArm = 0
             if (dirtyState.value) dirtyState.value = false
         }
         return owesSettle
     }
 
     /**
-     * Closes the settle window once [frameTimeNanos] has reached its deadline. Called only when a
+     * Closes the settle window once [frameTimeNanos] has reached its deadline and at least
+     * [SETTLE_MIN_PRESENTED_FRAMES] frames were presented since the last change. Called only when a
      * frame really reached the surface: it is presented frames that carry Filament's upload and
      * prefiltering work, so a window closed on ticks that drew nothing would not have waited for
      * anything.
      */
     fun didRender(frameTimeNanos: Long) {
-        if (owesSettle && frameTimeNanos >= settleUntilNanos) owesSettle = false
+        if (!owesSettle) return
+        if (presentedSinceArm < SETTLE_MIN_PRESENTED_FRAMES) presentedSinceArm++
+        if (frameTimeNanos >= settleUntilNanos && presentedSinceArm >= SETTLE_MIN_PRESENTED_FRAMES) {
+            owesSettle = false
+        }
     }
 }
 
