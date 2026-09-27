@@ -919,19 +919,52 @@ class HeroOrbitCameraManipulator(
      */
     private fun handBack() {
         if (fallback == null) return
-        val shown = userControlTransform()
-        val eye = shown.position
-        // A camera looks down its own -Z.
-        val back = shown.z
-        val depth = sqrt(
-            (eye.x - fallbackPivot.x) * (eye.x - fallbackPivot.x) +
-                (eye.y - fallbackPivot.y) * (eye.y - fallbackPivot.y) +
-                (eye.z - fallbackPivot.z) * (eye.z - fallbackPivot.z),
-        )
-        val pivot = lookPoint(eye, Position(-back.x, -back.y, -back.z), depth)
-        carried.hold(orbitFramingOffset(orbitFramingOf(eye, pivot), authoredFraming()))
-        fallback = null
-        grabEndTimeNanos = 0L
+        carried.hold(takeUserFraming() ?: return)
+    }
+
+    /**
+     * Gives up the framing the user left on this camera and returns it, as an offset from the
+     * authored framing **of this instant** — `null` when the camera is already on its authored
+     * path. The manipulator itself is back on that path afterwards.
+     *
+     * For a demo that swaps one manipulator out for another (Materials' Inspect → Gallery): the
+     * offset is handed to the next one with [carryUserFraming], so the swap shows the pose the
+     * user left rather than cutting to the authored one first (#3692). Covers every state the
+     * user's framing can be in — still under the finger, inside the resume countdown, or half-way
+     * through an ease home — and returns what is on screen in each. [handBack] is this same move
+     * with the offset kept on the camera it came from.
+     */
+    internal fun takeUserFraming(): OrbitFramingOffset? {
+        val shown = if (fallback != null) {
+            val transform = userControlTransform()
+            val eye = transform.position
+            // A camera looks down its own -Z.
+            val back = transform.z
+            val depth = sqrt(
+                (eye.x - fallbackPivot.x) * (eye.x - fallbackPivot.x) +
+                    (eye.y - fallbackPivot.y) * (eye.y - fallbackPivot.y) +
+                    (eye.z - fallbackPivot.z) * (eye.z - fallbackPivot.z),
+            )
+            orbitFramingOf(eye, lookPoint(eye, Position(-back.x, -back.y, -back.z), depth))
+        } else {
+            carried.over(::authoredFraming)
+        }
+        val offset = shown?.let { orbitFramingOffset(it, authoredFraming()) }
+        dropUserFraming()
+        return offset
+    }
+
+    /**
+     * Carries [offset] — typically what [takeUserFraming] took off another manipulator — on top
+     * of this camera's authored framing, and eases it away over [blendMillis]. Whatever this
+     * manipulator held of its own is dropped: the camera on screen is the one being handed over.
+     * `0` or less carries nothing, which is QA mode's cut.
+     */
+    internal fun carryUserFraming(offset: OrbitFramingOffset, blendMillis: Long) {
+        dropUserFraming()
+        if (blendMillis <= 0L) return
+        carried.hold(offset)
+        carried.easeBack(blendMillis)
     }
 
     /** Back on the bare authored path, this frame. Only ever used where nobody can see the cut. */
