@@ -107,17 +107,27 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     // when the composable leaves so the native TFLite runtime is released and we don't
     // accumulate detectors across navigation cycles (CommonObjectDetector holds ~10 MB
     // of TFLite buffers — fine for one, leaks visibly if we orphan them).
+    //
+    // Guarded (#4025): creating the client is the first ML Kit call of the demo, made during
+    // the first composition. An uncaught throw there — a missing class in a shrunk build, a
+    // native init failure — took the whole app down before any AR frame was drawn. `null`
+    // now means "no detector on this device": the banner says so and the AR scene keeps
+    // running, the same contract the Body Tracker's MediaPipe init has.
     val detector = remember {
-        ObjectDetection.getClient(
-            ObjectDetectorOptions.Builder()
-                .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
-                .enableMultipleObjects()
-                .enableClassification()
-                .build()
-        )
+        runCatching {
+            ObjectDetection.getClient(
+                ObjectDetectorOptions.Builder()
+                    .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
+                    .enableMultipleObjects()
+                    .enableClassification()
+                    .build()
+            )
+        }.onFailure {
+            android.util.Log.e(ML_LOG_TAG, "ML Kit object detector init failed", it)
+        }.getOrNull()
     }
     DisposableEffect(detector) {
-        onDispose { detector.close() }
+        onDispose { detector?.let { runCatching { it.close() } } }
     }
 
     // Latest frame snapshot — recorded by onSessionUpdated and consumed by the detector
@@ -185,6 +195,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     // the reason resolves to no specific message.
     val trackingMessage = trackingFailureMessage(trackingFailureReason)
     val statusText = when {
+        detector == null -> stringResource(R.string.demo_ar_ml_status_unavailable)
         trackingMessage != null -> trackingMessage
         detections.isNotEmpty() ->
             context.resources.getQuantityString(
@@ -279,6 +290,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     }
 
                     if (!isTracking) return@ARSceneView
+                    val activeDetector = detector ?: return@ARSceneView
 
                     // Throttle the detector dispatch — at 60 Hz the per-frame TFLite call
                     // would dominate the main thread.
@@ -332,7 +344,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                         val imageW = cameraImage.width
                         val imageH = cameraImage.height
 
-                        detector.process(input)
+                        activeDetector.process(input)
                             .addOnSuccessListener { results ->
                                 try {
                                     // Stash for `onSessionUpdated` to turn into anchors against
@@ -619,3 +631,6 @@ private fun createLabelBitmap(text: String, confidencePercent: Int = -1): Bitmap
     }
     return bitmap
 }
+
+/** Logcat tag for the demo's ML Kit failures (#4025). */
+private const val ML_LOG_TAG = "ARMLObjectLabel"

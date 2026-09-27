@@ -69,11 +69,14 @@ class GeminiNanoAskEngine : AskEngine {
     }
 
     override suspend fun status(): AskEngineStatus = try {
-        when (model.checkStatus()) {
+        when (val status = model.checkStatus()) {
             FeatureStatus.AVAILABLE -> AskEngineStatus.Ready
             FeatureStatus.DOWNLOADABLE -> AskEngineStatus.Downloadable
             FeatureStatus.DOWNLOADING -> AskEngineStatus.Downloading()
-            else -> AskEngineStatus.Unavailable
+            else -> {
+                android.util.Log.i(ASK_ENGINE_LOG_TAG, "Gemini Nano feature status: $status")
+                AskEngineStatus.Unavailable
+            }
         }
     } catch (e: Throwable) {
         // AICore missing/broken surfaces as runtime exceptions on some devices, and a
@@ -82,6 +85,10 @@ class GeminiNanoAskEngine : AskEngine {
         // an Error uncaught would keep the demo's status `null` forever — a blank bottom
         // edge instead of the "unavailable" banner (#3188).
         if (e is kotlinx.coroutines.CancellationException) throw e
+        // Logged, because the two causes look identical on screen and are not the same bug:
+        // a device without AICore is expected, a shrunk build that lost ML Kit classes is a
+        // release defect (#4028).
+        android.util.Log.w(ASK_ENGINE_LOG_TAG, "Gemini Nano status check failed", e)
         AskEngineStatus.Unavailable
     }
 
@@ -178,3 +185,6 @@ fun rememberAskEngine(): AskEngine {
     }
     return engine
 }
+
+/** Logcat tag for the engine's availability failures (#4028). */
+private const val ASK_ENGINE_LOG_TAG = "AskEngine"

@@ -59,6 +59,9 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+        <!-- Point & Ask tells "no AICore on this device" from "AICore present but Gemini Nano
+             unavailable" and only offers the AICore Play listing in the second case (#4028). -->
+        <package android:name="com.google.android.aicore" />
     </queries>
 
     <application
