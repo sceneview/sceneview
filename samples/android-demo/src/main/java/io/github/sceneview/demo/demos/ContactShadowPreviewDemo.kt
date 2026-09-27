@@ -23,9 +23,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +46,8 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.driving
+import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.orbitLabelFadeAlpha
 import io.github.sceneview.demo.orbitYawDeviationDegrees
@@ -55,7 +59,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ContactShadowContext
-import io.github.sceneview.rememberCameraManipulator
+import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
@@ -140,13 +144,13 @@ import java.util.Locale
  */
 @Composable
 fun ContactShadowPreviewDemo(onBack: () -> Unit) {
-    var shadowsEnabled by remember { mutableStateOf(true) }
-    var motionEnabled by remember { mutableStateOf(true) }
-    // Multiplier on each pool's per-context opacity (1.0 = the context's own value). The
-    // v1 slider was a shared absolute value initialised from the Wall preset, which silently
-    // weakened the floor pool (0.38 < 0.55) before the user touched anything.
-    var intensityFactor by remember { mutableFloatStateOf(1f) }
-    var wallContext by remember { mutableStateOf(ContactShadowContext.Wall) }
+    // Everything "Reset demo" touches lives in one holder, so the reset is a unit-tested
+    // function rather than a lambda of assignments no test can reach (#3728).
+    val demoState = remember { ContactShadowDemoState() }
+    var shadowsEnabled by demoState::shadowsEnabled
+    var motionEnabled by demoState::motionEnabled
+    var intensityFactor by demoState::intensityFactor
+    var wallContext by demoState::wallContext
 
     // Whether a shadow is actually DRAWN — the toggle being on is not enough, because the
     // intensity slider reaches 0 and makes the pool fully transparent. THE single source for
@@ -166,7 +170,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
 
     // Accumulated hop-loop time. Written only from the frame loop / reset callbacks —
     // never during composition.
-    var bounceElapsedNanos by remember { mutableLongStateOf(0L) }
+    var bounceElapsedNanos by demoState::bounceElapsedNanos
 
     // Drive the hop clock off the Choreographer. Lifecycle-aware so the loop stops burning
     // frames when the app is backgrounded (#936); delta accumulation means the phase resumes
@@ -235,13 +239,17 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
 
     val firstFrame = rememberFirstFrameState(engine)
 
-    val resetAll = {
-        shadowsEnabled = true
-        motionEnabled = true
-        intensityFactor = 1f
-        wallContext = ContactShadowContext.Wall
-        bounceElapsedNanos = 0L
+    val resetAll: () -> Unit = demoState::reset
+
+    // The orbit is rebuilt at its authored home on every reset (#3728) — a Filament
+    // manipulator carries the whole camera pose and has no "go home" call — and the
+    // continuity layer eases from wherever the user left the camera to that new home
+    // instead of cutting (the Model Viewer's recenter pattern). QA mode keeps it a cut.
+    val homeOrbit = remember(demoState.cameraHomeGeneration) {
+        createDefaultCameraManipulator(eyePosition = CAMERA_EYE, targetPosition = CAMERA_TARGET)
     }
+    val cameraManipulator = rememberContinuousCameraManipulator(pivot = CAMERA_TARGET)
+        .driving(homeOrbit)
 
     DemoScaffold(
         title = stringResource(R.string.demo_contact_shadow_preview_title),
@@ -287,18 +295,15 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             // Keep the hand-built room where it was authored — auto-centring would reframe the
             // scene and break the deterministic camera below.
             autoCenterContent = false,
-            cameraManipulator = rememberCameraManipulator(
-                // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
-                // pair in the lower half and the wall TV in the upper half. Seen high and far
-                // (the v1 framing), a floor pool degenerates into a sliver and can never read.
-                //
-                // Orbit is completely free — no yaw clamp (#3802 reworked: an earlier revision
-                // bounded the reachable yaw, which read as a bug, a camera that "bumps" into an
-                // invisible wall). The "Shadow" / "No shadow" labels fade out instead — see the
-                // `TextNode.isVisible` assignment below.
-                orbitHomePosition = CAMERA_EYE,
-                targetPosition = CAMERA_TARGET,
-            ),
+            // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
+            // pair in the lower half and the wall TV in the upper half. Seen high and far
+            // (the v1 framing), a floor pool degenerates into a sliver and can never read.
+            //
+            // Orbit is completely free — no yaw clamp (#3802 reworked: an earlier revision
+            // bounded the reachable yaw, which read as a bug, a camera that "bumps" into an
+            // invisible wall). The "Shadow" / "No shadow" labels fade out instead — see the
+            // `TextNode.isVisible` assignment below.
+            cameraManipulator = cameraManipulator,
         ) {
             // Read the hop clock HERE, inside the content lambda, not in the demo body: this
             // lambda is its own recomposition scope, so the per-frame state change re-executes
@@ -643,7 +648,51 @@ private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
 private const val SHADOW_QUAD_METERS = 0.8f
 
 /** Camera eye — see the comment at its `rememberCameraManipulator` call site. */
-private val CAMERA_EYE = Position(x = 0.0f, y = 1.35f, z = 3.3f)
+/**
+ * What "Reset demo" in the Contact Shadow Preview restores (#3728), held outside the composable
+ * so the reset can be tested without a GPU.
+ *
+ * [reset] brings the scene back to its entry state — shadows on, intensity 1×, the Wall preset,
+ * the hop clock at ground contact — and sends the camera home by bumping [cameraHomeGeneration],
+ * which the orbit manipulator is keyed on. It deliberately leaves [motionEnabled] alone: "Bounce
+ * motion" is a viewing preference, not demo state, and turning it back on without a word was the
+ * other half of the bug.
+ */
+@Stable
+internal class ContactShadowDemoState {
+    var shadowsEnabled by mutableStateOf(true)
+
+    /** The "Bounce motion" toggle. Survives [reset]. */
+    var motionEnabled by mutableStateOf(true)
+
+    /**
+     * Multiplier on each pool's per-context opacity (1.0 = the context's own value). The v1
+     * slider was a shared absolute value initialised from the Wall preset, which silently
+     * weakened the floor pool (0.38 < 0.55) before the user touched anything.
+     */
+    var intensityFactor by mutableFloatStateOf(1f)
+    var wallContext by mutableStateOf(ContactShadowContext.Wall)
+
+    /**
+     * Accumulated hop-loop time. Written only from the frame loop / reset callbacks — never
+     * during composition.
+     */
+    var bounceElapsedNanos by mutableLongStateOf(0L)
+
+    /** Bumped by [reset]; the orbit manipulator is rebuilt at its home pose on each change. */
+    var cameraHomeGeneration by mutableIntStateOf(0)
+        private set
+
+    fun reset() {
+        shadowsEnabled = true
+        intensityFactor = 1f
+        wallContext = ContactShadowContext.Wall
+        bounceElapsedNanos = 0L
+        cameraHomeGeneration++
+    }
+}
+
+private val CAMERA_EYE =Position(x = 0.0f, y = 1.35f, z = 3.3f)
 
 /**
  * Camera orbit target — see the comment at its `rememberCameraManipulator` call site. Also the
