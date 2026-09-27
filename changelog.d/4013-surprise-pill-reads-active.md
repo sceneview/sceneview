@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: the idle "Surprise me" pill in Model Viewer no longer looks disabled ([#4013](https://github.com/sceneview/sceneview/issues/4013)).** The pill floated outside the demo chrome, so in light mode it took a light glass that turned its white label grey, while the dock right under it stayed white. The floating band is now pinned to the same dark glass as the dock, the label is on-glass white when idle, and it dims only while a roll is loading.
