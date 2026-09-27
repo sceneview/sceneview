@@ -339,6 +339,26 @@ public struct CameraControls: Sendable {
         return Swift.min(Swift.max(fitted, minRadius), maxRadius)
     }
 
+    /// Zoom limits the built-in auto-framing assigns for content of the given
+    /// size (#4009).
+    ///
+    /// The floor keeps the camera outside the sphere that circumscribes the
+    /// content's bounding box, plus 10 % so the near plane does not clip the
+    /// surface either. Every point of the geometry lies inside that sphere, so
+    /// pinching in can never put the camera inside the model, whatever its
+    /// shape or the orbit angle. The previous floor, half the sphere radius,
+    /// sat inside most models (the Damaged Helmet's visor, a sofa's cushion).
+    /// The ceiling leaves room to pull back to about 20 times the sphere.
+    ///
+    /// Both limits come from the current content only, never merged with a
+    /// previous subject's (#3596). `nil` for empty or non-finite extents.
+    static func zoomLimits(forContentExtents extents: SIMD3<Float>) -> (min: Float, max: Float)? {
+        let sphereRadius = simd_length(extents * 0.5)
+        guard sphereRadius.isFinite, sphereRadius > 0 else { return nil }
+        let minRadius = Swift.max(sphereRadius * 1.1, 0.05)
+        return (minRadius, Swift.max(sphereRadius * 20, minRadius * 4))
+    }
+
     // MARK: - Computed Camera Position
 
     /// Computes the camera position from current orbit parameters.
