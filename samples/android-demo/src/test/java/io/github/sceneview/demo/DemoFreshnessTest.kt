@@ -223,12 +223,30 @@ class DemoFreshnessTest {
     }
 
     @Test
-    fun `the registry marks something, and not most of the grid`() {
-        // Both failure modes of a hand-maintained marker in one assertion: a
-        // release that forgot to declare anything, and a release that declared
-        // everything. The upper bound is a third of the catalogue.
+    fun `a release where no demo moved marks nothing and falls back to the build version`() {
+        // The state #3927 made legal: every declaration is out of the window.
+        val registry = listOf(
+            demo(id = "a", updatedIn = "4.39.0"),
+            demo(id = "b", sinceVersion = "4.20.0"),
+            demo(id = "c"),
+        )
+        assertTrue(freshDemos(registry, buildVersion = "4.43.0").isEmpty())
+        assertTrue(registry.all { it.freshness("4.43.0") == DemoFreshness.None })
+        assertEquals("4.43", freshnessHeadlineVersion(registry, buildVersion = "4.43.0"))
+    }
+
+    @Test
+    fun `the registry never marks most of the grid`() {
+        // The failure mode of a hand-maintained marker CI can catch: a release
+        // that declared everything. The upper bound is a third of the catalogue.
+        //
+        // An empty set is legal on purpose (#3927). A minor release in which no
+        // demo changed visibly has nothing to badge; the Showcase then draws no
+        // chip and the What's-new sheet drops its "to try" section. The former
+        // lower bound ("the registry marks something") turned such a bump PR red
+        // inside the release run, after the QA gate, and was only ever fixed by
+        // hand-adding an `updatedIn` nobody had earned.
         val marked = freshDemos(ALL_DEMOS, BuildConfig.VERSION_NAME)
-        assertTrue("no demo carries a freshness marker", marked.isNotEmpty())
         assertTrue(
             "${marked.size} of ${ALL_DEMOS.size} demos are marked — the badge means nothing",
             marked.size * 3 <= ALL_DEMOS.size,
