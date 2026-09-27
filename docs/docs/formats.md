@@ -6,9 +6,15 @@ the bytes, not from the file name** — a file shared into your app with no exte
 
 | Format | Extensions | Where it works | Notes |
 |---|---|---|---|
-| **glTF / GLB** | `.gltf`, `.glb` | Android · Web · Desktop · TV · Flutter · React Native | The native format across the SDK. Skeletal and morph animations, PBR materials, Draco and WebP textures. |
-| **USDZ / Reality** | `.usdz`, `.reality` | Apple (iOS · macOS · visionOS) | Loaded by RealityKit through `SceneViewSwift`. |
-| **3MF** | `.3mf` | Android | Converted to GLB in memory. The parser lives in `sceneview-core` (Kotlin Multiplatform). |
+| **glTF / GLB** | `.gltf`, `.glb` | Android · Web · Desktop · TV · Flutter and React Native on Android | The native format of the Filament platforms. Skeletal and morph animations, PBR materials, Draco and WebP textures. **Not on Apple**: RealityKit reads no glTF, so `SceneViewSwift`'s `ModelFormat` leaves `.gltf` / `.glb` out on purpose — convert with `tools/convert-usdz.sh`. |
+| **USDZ / Reality / USD** | `.usdz`, `.reality`, `.usd`, `.usda`, `.usdc` | Apple (iOS · macOS · visionOS), and Flutter / React Native on iOS | Loaded by RealityKit through `SceneViewSwift`, already in metres. |
+| **STL** | `.stl` (binary + ASCII) | Android · Apple | Android converts to GLB in memory; Apple reads it through ModelIO. No unit in the file: millimetres assumed. |
+| **OBJ** | `.obj` (+ `.mtl`) | Android · Apple | Android converts to GLB with material colours; Apple reads it through ModelIO with its sidecar `.mtl`. |
+| **PLY** | `.ply` (binary + ASCII) | Android · Apple | Android converts to GLB; both keep vertex colours. |
+| **3MF** | `.3mf` | Android · Apple | Android converts to GLB in memory (parser in `sceneview-core`, Kotlin Multiplatform); Apple parses it in `SceneViewSwift`. Declared units are honoured on both. |
+
+On Apple, `ModelFormat.sniff(contentsOf:)` decides the format from the bytes first and the
+extension second, and `MeshAsset.load(contentsOf:)` opens the STL / OBJ / PLY / 3MF files.
 
 ---
 

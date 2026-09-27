@@ -413,15 +413,16 @@ SceneView(
 
 | Format | Android | Apple | Web |
 |---|---|---|---|
-| glTF / GLB | ✅ | ✅ | ✅ |
-| USDZ / Reality | — | ✅ RealityKit | — |
-| STL (binary + ASCII) | ✅ converted to GLB in memory | — | — |
-| OBJ + MTL | ✅ converted to GLB, material colours | — | — |
-| PLY (binary + ASCII) | ✅ converted to GLB, vertex colours | — | — |
-| 3MF | ✅ converted to GLB, declared units honoured | — | — |
+| glTF / GLB | ✅ | — convert to USDZ (`tools/convert-usdz.sh`) | ✅ |
+| USDZ / Reality / USD | — | ✅ RealityKit | — |
+| STL (binary + ASCII) | ✅ converted to GLB in memory | ✅ ModelIO, millimetres by default | — |
+| OBJ + MTL | ✅ converted to GLB, material colours | ✅ ModelIO | — |
+| PLY (binary + ASCII) | ✅ converted to GLB, vertex colours | ✅ ModelIO, vertex colours | — |
+| 3MF | ✅ converted to GLB, declared units honoured | ✅ SceneViewSwift parser, declared units honoured | — |
 
 There is no per-format API on Android: `rememberModelInstance(modelLoader, path)` accepts all of
-them. The format is decided by the file's bytes, not its extension, so a file shared into your
+them. On Apple, RealityKit reads no glTF, so `.gltf` / `.glb` are deliberately not in
+`ModelFormat`; USD/Reality load through RealityKit and the mesh formats through `MeshAsset`. The format is decided by the file's bytes, not its extension, so a file shared into your
 app as `application/octet-stream` with no name still opens. The converters are dependency-free
 Kotlin in `sceneview-core`. Tracked next:
 [one `ModelFormat` entry point](https://github.com/sceneview/sceneview/issues/3489) and
