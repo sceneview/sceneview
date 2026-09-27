@@ -861,7 +861,7 @@ premultiplied-alpha blending. Clouds above 65535 splats are split into multiple 
 ```kotlin
 @Composable fun SplatNode(
     splatCloud: SplatCloud,          // io.github.sceneview.core.splat.SplatCloud (must be non-empty)
-    cameraPositionProvider: (() -> Position)? = null,  // enables the back-to-front painter's sort
+    cameraPositionProvider: (() -> Position)? = null,  // null = sort for the scene camera (default)
     splatCount: Int = splatCloud.count,  // render only the first N texels — LOD / reveal hook
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
@@ -870,27 +870,26 @@ premultiplied-alpha blending. Clouds above 65535 splats are split into multiple 
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 
+// Loads a .spz (v2–v4) or .ply off the main thread. null while loading or if it can't be read.
+// fileLocation: asset path ("splats/scan.spz"), absolute path, or file:// content:// http(s):// URI
+@Composable fun rememberSplatCloud(fileLocation: String): SplatCloud?
+// Builds a cloud from your own arrays; creator runs again when a key changes.
 @Composable fun rememberSplatCloud(vararg keys: Any?, creator: () -> SplatCloud): SplatCloud
 ```
 
 Usage:
 ```kotlin
-var cameraPosition by remember { mutableStateOf(Position()) }
-SceneView(
-    cameraNode = cameraNode,
-    onFrame = { cameraPosition = cameraNode.worldPosition }
-) {
-    SplatNode(
-        splatCloud = cloud,                            // e.g. from rememberSplatCloud { ... }
-        cameraPositionProvider = { cameraPosition }    // re-sorts off the main thread on camera motion
-    )
+val cloud = rememberSplatCloud("splats/scan.spz")   // SplatCloud? — null while loading
+SceneView {
+    cloud?.let { SplatNode(splatCloud = it) }        // re-sorts off the main thread as the camera moves
 }
 ```
 
 Each splat renders as an oriented ellipse: its rotation and 3-axis scale are projected to a
 screen-space 2D covariance, as in the reference 3DGS renderer. Color is SH degree 0 only, and it
-displays as stored (the material cancels the View's tone mapping). Without a `cameraPositionProvider` the compositing order stays
-as loaded (expect popping when orbiting). Build a `SplatCloud` from arrays, or parse a file with
+displays as stored (the material cancels the View's tone mapping). The back-to-front sort follows
+the scene camera by itself, in `SceneView` and `ARSceneView` alike; pass `cameraPositionProvider`
+only to sort for another viewpoint. Build a `SplatCloud` from arrays, or parse a file with
 the KMP `SplatParser.fromPly(bytes)` / `.fromSpz(bytes)` / `.parse(bytes)` (auto-detect) in
 `io.github.sceneview.core.splat`. `.spz` versions 2 and 3 (gzip) and 4 (ZSTD streams, the
 current Niantic format) are all read, in pure Kotlin on every target.

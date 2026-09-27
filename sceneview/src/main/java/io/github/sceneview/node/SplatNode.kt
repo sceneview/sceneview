@@ -58,13 +58,13 @@ import kotlin.math.max
  *   the round disc of their largest axis. Colours are pre-distorted by the exact inverse of
  *   the View's Filmic tone mapper and sRGB output, so a capture displays with the colours it
  *   was trained on.
- * - **View-dependent sort** — when a [cameraPositionProvider] is set, the node re-sorts
- *   back-to-front on a background thread whenever the camera has moved beyond a small
- *   threshold (relative to the cloud radius), then re-uploads the draw-order texture (4 bytes
- *   per splat — the attribute textures never change) on the main thread. Between re-sorts the
- *   order is stale by at most the camera delta, so slow orbits
- *   stay visually correct; without a provider the order stays as loaded (view-independent —
- *   expect popping when orbiting to the far side).
+ * - **View-dependent sort** — the node re-sorts back-to-front on a background thread whenever
+ *   the camera has moved beyond a small threshold (relative to the cloud radius), then
+ *   re-uploads the draw-order texture (4 bytes per splat — the attribute textures never
+ *   change) on the main thread. Between re-sorts the order is stale by at most the camera
+ *   delta, so slow orbits stay visually correct. The camera is the one of the scene the node is
+ *   in (`SceneView` or `ARSceneView`), read every frame; pass a [cameraPositionProvider] only
+ *   to sort for a different viewpoint.
  * - **Draw batching** — Filament caps hardware instancing at 65535 instances per renderable
  *   ([SplatBuffers.MAX_INSTANCES_PER_BATCH]). Larger clouds are split into multiple renderable
  *   batches under this single node, all sharing the same textures via each batch's
@@ -81,13 +81,9 @@ import kotlin.math.max
  * `ModelLoader.loadModelAsync`'s contract).
  *
  * ```kotlin
- * SceneView(
- *     onFrame = { cameraPosition = cameraNode.worldPosition }
- * ) {
- *     SplatNode(
- *         splatCloud = cloud,
- *         cameraPositionProvider = { cameraPosition }
- *     )
+ * val cloud = rememberSplatCloud("splats/scan.spz") // null while loading
+ * SceneView {
+ *     cloud?.let { SplatNode(splatCloud = it) } // sorts against the scene camera
  * }
  * ```
  *
@@ -96,10 +92,11 @@ import kotlin.math.max
  * @param splatCloud     The gaussians to render (must be non-empty). The arrays are read
  *                       (never written) by this node — also from the background sort thread,
  *                       so callers must not mutate them while the node is alive.
- * @param cameraPositionProvider Invoked on the frame loop to obtain the current camera
- *                       **world** position for the painter's sort (the node maps it into its
- *                       own model space, so transformed/parented nodes sort correctly).
- *                       `null` disables view-dependent sorting.
+ * @param cameraPositionProvider Optional override, invoked on the frame loop, of the
+ *                       **world** position the painter's sort orders splats for (the node maps
+ *                       it into its own model space, so transformed/parented nodes sort
+ *                       correctly). `null` (the default) sorts for the camera of the scene the
+ *                       node is attached to; a detached node keeps its current order.
  *
  * @see SplatBuffers
  * @see io.github.sceneview.loaders.MaterialLoader.createSplatInstance
@@ -166,6 +163,7 @@ open class SplatNode(
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var sortJob: Job? = null
     private var lastSortCameraPosition: Position? = null
+    private val cameraPositionScratch = FloatArray(3)
     private var isSplatDestroyed = false
 
     /**
@@ -322,11 +320,10 @@ open class SplatNode(
      * retries on the next one.
      */
     private fun maybeResort() {
-        val provider = cameraPositionProvider ?: return
         if (isSplatDestroyed || sortJob?.isActive == true) return
         // Map the camera world position into this node's model space so parented/transformed
         // nodes sort correctly (the splat positions are model-space).
-        val cameraWorld = provider()
+        val cameraWorld = sortCameraWorldPosition() ?: return
         val local = inverse(worldTransform) * Float4(cameraWorld, 1f)
         val cameraLocal = Position(local.x, local.y, local.z)
         val last = lastSortCameraPosition
@@ -350,6 +347,19 @@ open class SplatNode(
                 if (!isSplatDestroyed) uploadOrder(packedOrder)
             }
         }
+    }
+
+    /**
+     * The world position the painter's sort orders splats for: [cameraPositionProvider] when set,
+     * else the camera of the view this node is rendered in. The scene hands every node it adds
+     * (children included) its [collisionSystem], whose view is the one on screen — also in AR,
+     * where that camera follows the device.
+     */
+    private fun sortCameraWorldPosition(): Position? {
+        cameraPositionProvider?.let { return it() }
+        val camera = collisionSystem?.view?.camera ?: return null
+        val p = camera.getPosition(cameraPositionScratch)
+        return Position(p[0], p[1], p[2])
     }
 
     private fun buildDataTexture(format: Texture.InternalFormat): Texture = Texture.Builder()

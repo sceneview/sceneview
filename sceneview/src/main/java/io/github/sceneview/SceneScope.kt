@@ -1845,22 +1845,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * view-dependent back-to-front compositing (#2646).
      *
      * ```kotlin
-     * var cameraPosition by remember { mutableStateOf(Position()) }
-     * SceneView(
-     *     cameraNode = cameraNode,
-     *     onFrame = { cameraPosition = cameraNode.worldPosition }
-     * ) {
-     *     SplatNode(
-     *         splatCloud = cloud,
-     *         cameraPositionProvider = { cameraPosition }
-     *     )
+     * val cloud = rememberSplatCloud("splats/scan.spz") // .spz or .ply; null while loading
+     * SceneView {
+     *     cloud?.let { SplatNode(splatCloud = it) }
      * }
      * ```
      *
+     * The painter's sort follows the scene's camera on its own, in `SceneView` and `ARSceneView`.
+     *
      * @param splatCloud             The gaussians to render (must be non-empty). Changing the
      *                               instance recreates the node.
-     * @param cameraPositionProvider Per-frame camera **world** position for the painter's sort;
-     *                               `null` keeps the as-loaded order (view-independent).
+     * @param cameraPositionProvider Optional per-frame **world** position to sort for instead of
+     *                               the scene camera. `null` (the default) uses the scene camera.
      * @param splatCount             Number of splats rendered, coerced to `0..splatCloud.count`.
      *                               Defaults to the full cloud; lower it for LOD / reveal effects.
      * @param position               World-space position.

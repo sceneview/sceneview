@@ -461,6 +461,7 @@ public class io/github/sceneview/SceneScope {
 }
 
 public final class io/github/sceneview/SplatKt {
+	public static final fun rememberSplatCloud (Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/core/splat/SplatCloud;
 	public static final fun rememberSplatCloud ([Ljava/lang/Object;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/core/splat/SplatCloud;
 }
 
