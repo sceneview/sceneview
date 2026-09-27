@@ -478,6 +478,11 @@ open class Node protected constructor(
      * invalidation cost to every — hot — [quaternion] write for no hot-loop benefit. The only
      * internal callers are one-shot (animator setup, debug inspection). See #2328 (N2).
      *
+     * **Euler convention:** degrees, ZYX order — the getter is `quaternion.toEulerAngles()` and the
+     * setter `Quaternion.fromEuler(value)`, so it reads back what was written. This is **not** the
+     * convention of the [worldRotation] getter, even on a node with no parent (#3745): compare
+     * orientations through [quaternion] / [worldQuaternion], not through Euler angles.
+     *
      * @see transform
      */
     open var rotation: Rotation
@@ -496,6 +501,18 @@ open class Node protected constructor(
      * basis itself and so never had the scale defect fixed in [worldQuaternion] (#3738). The
      * setter goes through [worldQuaternion] and therefore inherits the shear, mirror and
      * collapse caveats documented there.
+     *
+     * **Euler convention (#3745):** the getter and the setter do not use the same one.
+     * - The getter is kotlin-math's `Mat4.rotation`: degrees, **YXZ order with the Y (yaw) sign
+     *   negated**. A root node with `rotation = Rotation(y = 30f)` reads `worldRotation` as
+     *   `Rotation(y = -30f)`; a compound rotation reads as different numbers altogether. A pure X or
+     *   pure Z rotation reads the same as [rotation].
+     * - The setter is `worldQuaternion = Quaternion.fromEuler(value)`: degrees, ZYX, like [rotation].
+     *
+     * So `node.worldRotation = node.worldRotation` turns a node that has any yaw. Kept as is because
+     * major version 4 is frozen; `NodeRotationConventionTest` pins it. Read and write world
+     * orientation through [worldQuaternion], or pass the value through
+     * `Quaternion.fromEuler(Rotation(x, -y, z), RotationsOrder.YXZ)` to rebuild the orientation.
      *
      * @see worldTransform
      */
