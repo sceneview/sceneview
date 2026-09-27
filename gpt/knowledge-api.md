@@ -847,7 +847,8 @@ screen-space 2D covariance, as in the reference 3DGS renderer. Color is SH degre
 displays as stored (the material cancels the View's tone mapping). Without a `cameraPositionProvider` the compositing order stays
 as loaded (expect popping when orbiting). Build a `SplatCloud` from arrays, or parse a file with
 the KMP `SplatParser.fromPly(bytes)` / `.fromSpz(bytes)` / `.parse(bytes)` (auto-detect) in
-`io.github.sceneview.core.splat`.
+`io.github.sceneview.core.splat`. `.spz` versions 2 and 3 (gzip) and 4 (ZSTD streams, the
+current Niantic format) are all read, in pure Kotlin on every target.
 
 **Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
 Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
@@ -5915,6 +5916,9 @@ public struct SceneEnvironment: Sendable {
 own radiance untouched, `0.5` halves it. RealityKit's underlying
 `ImageBasedLightComponent` takes a power-of-two *exponent*; `SceneEnvironment`
 converts for you, so never pre-apply a `log2` to **this** property (#2897).
+It is live: changing only `intensity` on the environment you pass to
+`.environment(_:)` (a slider, say) rescales the IBL in place on the next update,
+without reloading the HDR or blanking the skybox (#4010).
 
 > ⚠️ **Do not carry an Android IBL value across.** Android's `Environment` has no
 > intensity member; its IBL level is Filament's `IndirectLight.intensity` in
@@ -6003,6 +6007,12 @@ public struct CameraControls: Sendable {
     public var pinchFovSpeed: Float = 0.05
 }
 ```
+
+With auto-framing on (the default), `SceneView` overwrites `minRadius` / `maxRadius`
+from the content's bounds: the floor is 1.1 × the bounding-sphere radius, so a pinch
+never puts the camera inside the model, and the ceiling is 20 ×. Once the user pinches
+or orbits, the framing pass stops re-fitting the camera unless the content grows by
+more than 25 % (another streamed model); `.recenterCamera(_:)` hands it back (#4009).
 
 ---
 

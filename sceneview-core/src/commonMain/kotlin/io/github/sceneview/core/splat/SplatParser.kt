@@ -20,7 +20,8 @@ internal fun splatError(message: String, cause: Throwable? = null): Nothing =
  *
  * Two formats are supported in this P1 layer (see issue #2646):
  * - **PLY** — the INRIA 3DGS reference output (`binary_little_endian`), the universal trainer format.
- * - **SPZ** — Niantic's gzip-compressed interchange format (~10× smaller than PLY), versions 2 and 3.
+ * - **SPZ** — Niantic's compressed interchange format (~10× smaller than PLY): the gzip container
+ *   (versions 2 and 3) and the ZSTD "NGSP" container (version 4).
  *
  * All entry points return a fully-decoded [SplatCloud] with activations already applied; see that
  * class for the exact per-attribute semantics.
@@ -39,10 +40,10 @@ object SplatParser {
     fun fromPly(bytes: ByteArray): SplatCloud = wrap("PLY") { PlyParser.parse(bytes) }
 
     /**
-     * Parse a Niantic **SPZ** file (gzip-compressed). Supports the widely-deployed gzip formats:
-     * version 2 (`first-three` quaternion encoding) and version 3 (`smallest-three`). The version-4
-     * NGSP/ZSTD container and the never-released version-1 float16 layout are rejected with a clear
-     * [SplatParseException].
+     * Parse a Niantic **SPZ** file. Supports the gzip container — version 2 (`first-three`
+     * quaternion encoding) and version 3 (`smallest-three`) — and the version-4 NGSP container
+     * (per-attribute ZSTD streams, the reference library's current default). The never-released
+     * version-1 float16 layout is rejected with a clear [SplatParseException].
      *
      * @throws SplatParseException on a non-SPZ input, an unsupported version, or truncation.
      */
@@ -52,7 +53,7 @@ object SplatParser {
      * Parse a splat file of unknown type, sniffing the format from its leading bytes:
      * - `"ply\n"` / `"ply\r\n"` → [fromPly]
      * - gzip magic `0x1F 0x8B` → [fromSpz]
-     * - NGSP magic `"NGSP"` (uncompressed) → routed to [fromSpz] to surface the "v4 unsupported" error
+     * - NGSP magic `"NGSP"` (SPZ version 4) → [fromSpz]
      *
      * @throws SplatParseException if the format is not recognized, or parsing fails.
      */
@@ -61,7 +62,7 @@ object SplatParser {
         looksLikeGzip(bytes) -> fromSpz(bytes)
         looksLikeNgsp(bytes) -> fromSpz(bytes)
         else -> splatError(
-            "Unrecognized splat format: not PLY (\"ply\") and not gzip SPZ (magic 0x1F8B)"
+            "Unrecognized splat format: not PLY (\"ply\") and not SPZ (gzip magic 0x1F8B or \"NGSP\")"
         )
     }
 

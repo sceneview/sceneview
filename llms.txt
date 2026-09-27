@@ -892,7 +892,8 @@ screen-space 2D covariance, as in the reference 3DGS renderer. Color is SH degre
 displays as stored (the material cancels the View's tone mapping). Without a `cameraPositionProvider` the compositing order stays
 as loaded (expect popping when orbiting). Build a `SplatCloud` from arrays, or parse a file with
 the KMP `SplatParser.fromPly(bytes)` / `.fromSpz(bytes)` / `.parse(bytes)` (auto-detect) in
-`io.github.sceneview.core.splat`.
+`io.github.sceneview.core.splat`. `.spz` versions 2 and 3 (gzip) and 4 (ZSTD streams, the
+current Niantic format) are all read, in pure Kotlin on every target.
 
 **Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
 Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
