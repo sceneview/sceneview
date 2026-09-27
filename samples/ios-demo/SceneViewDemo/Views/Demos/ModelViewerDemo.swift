@@ -162,6 +162,8 @@ struct ModelViewerDemo: View {
     @State private var surpriseInFlight = false
     @State private var surpriseError: String?
     @State private var streamedDisplayName: String?
+    /// Sketchfab uid of the streamed model on stage, so a roll never repeats it.
+    @State private var streamedUid: String?
 
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
@@ -478,6 +480,7 @@ struct ModelViewerDemo: View {
     private func loadBundled(_ model: BundledViewerModel) async {
         loadError = nil
         streamedDisplayName = nil
+        streamedUid = nil
         do {
             let node = try await ModelNode.load(model.assetName)
             install(node)
@@ -540,36 +543,67 @@ struct ModelViewerDemo: View {
 
     // MARK: - Surprise me
 
-    /// Picks a random downloadable CC-BY model via ``SketchfabService.search``
-    /// and loads the downloaded USDZ from its local cache URL.
+    /// Loads a random CC-BY model that renders as one coherent object.
+    ///
+    /// Candidates come from Sketchfab's curated feeds (Staff Picks and the
+    /// most-liked downloadable models) before the free-text search. Sketchfab
+    /// converts every upload to USDZ itself, and some conversions come out
+    /// broken: "PBR Firefighter Helmet" landed as a tiny helmet in a cloud of
+    /// scattered red shards (#4012). Each download is checked with
+    /// ``SurpriseModelCheck`` before it goes on stage; a candidate that fails
+    /// to download, load or pass the check is skipped silently and the next
+    /// one is tried, up to ``surpriseAttempts``.
     @MainActor
     private func rollSurpriseModel() async {
         surpriseInFlight = true
         surpriseError = nil
         defer { surpriseInFlight = false }
 
+        let candidates: [SketchfabModel]
         do {
-            let queries = ["pbr", "modern", "scan"]
-            var picked: (uid: String, name: String)?
-            for query in queries {
-                let results = try await SketchfabService.shared.search(query: query, downloadable: true, limit: 24)
-                let viable = results.filter { $0.downloadable && (1..<200_000).contains($0.faceCount) }
-                if let hit = viable.randomElement() {
-                    picked = (hit.uid, hit.name)
-                    break
-                }
-            }
-            guard let pick = picked else {
-                surfaceTransientError("No surprise model available right now — try again.")
-                return
-            }
-            let downloaded = try await SketchfabService.shared.downloadModel(uid: pick.uid)
-            let node = try await ModelNode.load(contentsOf: downloaded)
-            install(node)
-            streamedDisplayName = pick.name
+            candidates = try await surpriseCandidates()
         } catch {
             surfaceTransientError("Couldn't roll a model: \(error.localizedDescription)")
+            return
         }
+        for pick in candidates.prefix(Self.surpriseAttempts) {
+            guard
+                let downloaded = try? await SketchfabService.shared.downloadModel(uid: pick.uid),
+                let node = try? await ModelNode.load(contentsOf: downloaded),
+                SurpriseModelCheck.isCoherent(node.entity)
+            else { continue }
+            install(node)
+            streamedUid = pick.uid
+            streamedDisplayName = pick.name
+            return
+        }
+        surfaceTransientError("No surprise model available right now — try again.")
+    }
+
+    /// How many candidates one roll may download before giving up.
+    private static let surpriseAttempts = 4
+
+    /// Shuffled viable candidates: curated feeds first, the search as fallback.
+    /// The model on stage is never re-rolled.
+    @MainActor
+    private func surpriseCandidates() async throws -> [SketchfabModel] {
+        func viable(_ models: [SketchfabModel]) -> [SketchfabModel] {
+            models.filter {
+                $0.downloadable && (1..<200_000).contains($0.faceCount) && $0.uid != streamedUid
+            }
+        }
+        let service = SketchfabService.shared
+        var curated: [SketchfabModel] = []
+        if let picks = try? await service.staffPicks(limit: 24) { curated += picks }
+        if let liked = try? await service.featured(limit: 24) { curated += liked }
+        var seen = Set<String>()
+        let pool = viable(curated).filter { seen.insert($0.uid).inserted }
+        if !pool.isEmpty { return pool.shuffled() }
+        for query in ["pbr", "modern", "scan"] {
+            let hits = viable(try await service.search(query: query, downloadable: true, limit: 24))
+            if !hits.isEmpty { return hits.shuffled() }
+        }
+        return []
     }
 
     @MainActor
@@ -581,5 +615,84 @@ struct ModelViewerDemo: View {
                 surpriseError = nil
             }
         }
+    }
+}
+
+/// Tells a coherent model from a broken USDZ conversion before it goes on
+/// stage (#4012).
+///
+/// The broken shape seen in the wild is a small subject inside a cloud of
+/// scattered fragments: many parts, none of them large, most of them touching
+/// nothing. A model is accepted when its largest part spans at least 30 % of
+/// the whole, or when most of its parts touch another part (a building made of
+/// planks, a figure made of pieces). A lone mesh always passes.
+enum SurpriseModelCheck {
+
+    /// Largest-part share of the union diagonal that is enough on its own.
+    static let dominantPartShare: Float = 0.3
+    /// Share of isolated parts above which a model reads as scattered.
+    static let maxIsolatedShare: Float = 0.5
+    /// Parts compared pairwise at most, to bound the O(n²) contact pass.
+    static let maxPartsCompared = 400
+
+    @MainActor
+    static func isCoherent(_ root: Entity) -> Bool {
+        isCoherent(parts: partBounds(of: root))
+    }
+
+    /// World-space (root-relative) bounds of every mesh part under `root`.
+    @MainActor
+    static func partBounds(of root: Entity) -> [BoundingBox] {
+        var boxes: [BoundingBox] = []
+        var stack: [Entity] = [root]
+        while let entity = stack.popLast() {
+            stack.append(contentsOf: entity.children)
+            guard let model = entity.components[ModelComponent.self] else { continue }
+            let local = model.mesh.bounds
+            let transform = entity.transformMatrix(relativeTo: root)
+            var box = BoundingBox()
+            var first = true
+            for x in [local.min.x, local.max.x] {
+                for y in [local.min.y, local.max.y] {
+                    for z in [local.min.z, local.max.z] {
+                        let p = transform * SIMD4<Float>(x, y, z, 1)
+                        let point = SIMD3<Float>(p.x, p.y, p.z)
+                        if first {
+                            box = BoundingBox(min: point, max: point)
+                            first = false
+                        } else {
+                            box = box.union(point)
+                        }
+                    }
+                }
+            }
+            boxes.append(box)
+        }
+        return boxes
+    }
+
+    static func isCoherent(parts: [BoundingBox]) -> Bool {
+        guard let first = parts.first else { return false }
+        let union = parts.dropFirst().reduce(first) { $0.union($1) }
+        let diagonal = simd_length(union.extents)
+        guard diagonal.isFinite, diagonal > 0 else { return false }
+        let largest = parts.map { simd_length($0.extents) }.max() ?? 0
+        if largest >= dominantPartShare * diagonal { return true }
+
+        let compared = Array(parts.prefix(maxPartsCompared))
+        let slack = SIMD3<Float>(repeating: diagonal * 0.02)
+        let grown = compared.map { BoundingBox(min: $0.min - slack, max: $0.max + slack) }
+        var isolated = 0
+        for i in grown.indices {
+            let touches = grown.indices.contains { j in
+                j != i && overlaps(grown[i], grown[j])
+            }
+            if !touches { isolated += 1 }
+        }
+        return Float(isolated) / Float(grown.count) <= maxIsolatedShare
+    }
+
+    private static func overlaps(_ a: BoundingBox, _ b: BoundingBox) -> Bool {
+        all(a.min .<= b.max) && all(b.min .<= a.max)
     }
 }
