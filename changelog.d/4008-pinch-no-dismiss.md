@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: pinching to zoom out no longer closes the demo ([#4008](https://github.com/sceneview/sceneview/issues/4008)).** Demos open from the Showcase with a zoom transition, and that transition's system pinch-to-dismiss took the stage's zoom-out pinch, shrinking the whole demo back toward its card. The system gesture is now off on the demo cover; demos close from their back button or the leading-edge swipe, and the zoom animation still plays on open and close.
