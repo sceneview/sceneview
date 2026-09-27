@@ -195,6 +195,8 @@ fun ARRerunDemo(onBack: () -> Unit) {
     // What the replay shows: the sample, or one of your scans — the same view either way.
     var showingScan by remember { mutableStateOf(false) }
     var scanMedia by remember { mutableStateOf<RerunReplayMedia?>(null) }
+    // The replay is titled after the session it shows, as the card that opened it is.
+    var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
     var opening by remember { mutableStateOf<Job?>(null) }
     // Bumped on every open, so reopening the same replay frames and plays it afresh.
     var openCount by remember { mutableIntStateOf(0) }
@@ -235,16 +237,18 @@ fun ARRerunDemo(onBack: () -> Unit) {
         openCount++
         screen = RerunScreen.Replay
     }
-    val openScan = { media: RerunReplayMedia ->
+    val openScan = { media: RerunReplayMedia, title: String ->
         scanMedia = media
+        scanTitle = title
         showingScan = true
         mode = RerunMode.Scene
         openCount++
         screen = RerunScreen.Replay
     }
-    val openStored = { id: String ->
+    val openStored = { id: String, title: String ->
         // The replay's cover says "Opening your scan…" while its files are read.
         scanMedia = null
+        scanTitle = title
         showingScan = true
         mode = RerunMode.Scene
         screen = RerunScreen.Replay
@@ -256,7 +260,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
                 notice = ScanCopy.OPEN_FAILED
                 screen = RerunScreen.Landing
             } else {
-                openScan(opened)
+                openScan(opened, title)
             }
         }
     }
@@ -270,7 +274,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
             openingFile = false
             sessionsVersion++
             result
-                .onSuccess { openStored(it.id) }
+                .onSuccess { openStored(it.id, it.title) }
                 .onFailure { failure ->
                     notice = (failure as? RerunImportFailure)?.let { ScanCopy.importFailure(it, it.message.orEmpty()) }
                         ?: ScanCopy.OPEN_FAILED
@@ -306,7 +310,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
                 onOpenFile = { pickFile.launch(arrayOf("*/*")) },
                 onOpen = {
                     notice = null
-                    openStored(it.id)
+                    openStored(it.id, it.info.title)
                 },
                 onShare = { session ->
                     scope.launch {
@@ -324,9 +328,9 @@ fun ARRerunDemo(onBack: () -> Unit) {
         )
         RerunScreen.Live -> RerunLiveScreen(
             onBack = toLanding,
-            onScanned = { scan ->
+            onScanned = { scan, title ->
                 sessionsVersion++
-                openScan(scan)
+                openScan(scan, title)
             },
             store = store,
             sample = sample,
@@ -342,6 +346,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
             onMode = { mode = it },
             media = media,
             isScan = showingScan,
+            scanTitle = scanTitle,
             session = replaySession,
             orbit = replayOrbit,
             revealed = revealed,
@@ -388,6 +393,7 @@ private fun RerunReplayScreen(
     onMode: (RerunMode) -> Unit,
     media: RerunReplayMedia?,
     isScan: Boolean,
+    scanTitle: String,
     revealed: Boolean,
     onRevealed: () -> Unit,
     session: ArDebugSession,
@@ -421,12 +427,17 @@ private fun RerunReplayScreen(
                         .fillMaxWidth()
                         .reveal(hudIn, rise = -Space.md),
                 )
+                // Space.sm on top of the scaffold's Space.sm stack gap: the card sits Space.md under
+                // the HUD, the spacing the HUD keeps from the header and the screen's edges.
                 val corner = Modifier
                     .align(Alignment.End)
-                    .padding(end = Space.md)
+                    .padding(top = Space.sm, end = Space.md)
                     .reveal(cardIn, rise = -Space.md)
-                if (mode == RerunMode.Camera) {
-                    ArDebugPip(
+                when (mode) {
+                    // The map is a floor plan and needs the whole width: the camera card would sit
+                    // on the room's far corner. The dock's Camera button stays one tap away.
+                    RerunMode.Map -> Unit
+                    RerunMode.Camera -> ArDebugPip(
                         session = session,
                         orbit = pipOrbit,
                         engine = engine,
@@ -436,8 +447,7 @@ private fun RerunReplayScreen(
                         modifier = corner,
                         replay = media,
                     )
-                } else {
-                    RerunCameraCard(
+                    RerunMode.Scene -> RerunCameraCard(
                         media = media,
                         thumbnails = thumbnails,
                         session = session,
@@ -454,7 +464,7 @@ private fun RerunReplayScreen(
                     thumbnails = thumbnails,
                     session = session,
                     modifier = Modifier.reveal(filmstripIn, rise = Space.lg),
-                    title = if (isScan) ScanCopy.REPLAY_TITLE else ScanCopy.SAMPLE_TITLE,
+                    title = if (isScan) scanTitle else ScanCopy.SAMPLE_TITLE,
                     caption = when (mode) {
                         RerunMode.Map -> "Top-down map of the room"
                         RerunMode.Camera -> "What the camera saw"
@@ -535,7 +545,7 @@ private fun RerunSheet() {
 @Suppress("LongParameterList", "LongMethod") // the live AR screen, moved as-is behind the replay
 private fun RerunLiveScreen(
     onBack: () -> Unit,
-    onScanned: (RerunReplayMedia) -> Unit,
+    onScanned: (RerunReplayMedia, String) -> Unit,
     store: RerunSessionStore,
     sample: RerunReplayMedia?,
     engine: Engine,
@@ -712,6 +722,7 @@ private fun RerunLiveScreen(
         finishing = true
         scope.launch {
             val now = System.currentTimeMillis()
+            val title = recordingTitle(now)
             val built = when {
                 qaTrace != null && sample != null -> qaSessionOf(qaTrace, sample)
                 capture != null -> capture.finish()
@@ -720,7 +731,7 @@ private fun RerunLiveScreen(
             val opened = built?.let { pack ->
                 val saved = withContext(Dispatchers.IO) {
                     runCatching {
-                        store.save(pack, recordingTitle(now), RerunSessionSource.Recorded, now)
+                        store.save(pack, title, RerunSessionSource.Recorded, now)
                     }.isSuccess
                 }
                 if (!saved) Toast.makeText(context, ScanCopy.SAVE_FAILED, Toast.LENGTH_LONG).show()
@@ -731,7 +742,7 @@ private fun RerunLiveScreen(
                 scan = null
             }
             finishing = false
-            if (opened != null) onScanned(opened)
+            if (opened != null) onScanned(opened, title)
         }
     }
 

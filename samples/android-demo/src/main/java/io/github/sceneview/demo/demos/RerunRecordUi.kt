@@ -109,7 +109,9 @@ internal fun ScanStage(
     materialLoader: MaterialLoader,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    // The scaffold stacks top overlays Space.sm apart; one more brings the card to the Space.md
+    // the HUD keeps from the header and the screen's edges.
+    Box(modifier = Modifier.fillMaxWidth().padding(top = Space.sm), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
                 .padding(horizontal = Space.md)

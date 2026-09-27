@@ -13,12 +13,11 @@ import java.util.Locale
 const val RERUN_INTRO: String =
     "Sends what the camera sees to Rerun on your computer, so you can scrub through it frame by frame."
 
-/** Atop the sheet, over the bundled replay: what the replay is, and what Record adds. */
+/** Atop the sheet, on every screen of the demo: what it records, and where that stays. */
 const val RERUN_REPLAY_INTRO: String =
-    "A real room, filmed with a phone and rebuilt in 3D: the camera's path and photos, the floor " +
-        "and table, the room's points and two models placed on them. The path and points were " +
-        "reconstructed from the video. \"Record your room\" scans your own room live into the same 3D view; " +
-        "your scans stay on this phone, under Your sessions."
+    "\"Record your room\" keeps the camera's path, its photos, the surfaces and the points, then " +
+        "replays the room in 3D. \"Watch a sample session\" plays a real room recorded the same way. " +
+        "Your sessions stay on this phone until you share or delete them."
 
 /** The status line over the camera: a dot, a [title] and a quieter [detail] line. */
 data class RerunStatusUx(

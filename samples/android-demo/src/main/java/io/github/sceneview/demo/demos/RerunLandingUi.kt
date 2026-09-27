@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.demos.internal.ScanCopy
+import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Glass
@@ -95,9 +96,17 @@ internal class RerunLandingActions(
     val onDismissNotice: () -> Unit,
 )
 
-/** The landing's scrolling page, clear of the demo's header above and its settings button below. */
+/**
+ * The landing's scrolling page, clear of the demo's header above and its settings button below.
+ * The page is pinned dark, so its menu and its dialog are too: a light popup over it would flash.
+ */
 @Composable
 internal fun RerunLanding(state: RerunLandingState, actions: RerunLandingActions) {
+    SceneViewDemoTheme(darkTheme = true) { LandingPage(state, actions) }
+}
+
+@Composable
+private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -142,6 +151,10 @@ internal fun RerunLanding(state: RerunLandingState, actions: RerunLandingActions
                         modifier = Modifier.testTag(OPEN_FILE_TAG),
                     )
                 }
+                // What happened to the file just opened: under the button that opened it, not
+                // inside the list of sessions.
+                state.notice?.let { NoticeCard(it, onDismiss = actions.onDismissNotice) }
+                if (state.openingFile) OpeningCard()
                 SessionsSection(state, actions)
             }
         }
@@ -215,18 +228,20 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
     var confirming by remember { mutableStateOf<LandingSession?>(null) }
     val sessions = state.sessions
     Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-        Row(verticalAlignment = Alignment.Bottom) {
+        Row {
             Text(
                 text = ScanCopy.SESSIONS_TITLE,
                 style = Type.card.copy(color = Glass.onGlass),
-                modifier = Modifier.weight(1f).semantics { heading() },
+                modifier = Modifier.weight(1f).alignByBaseline().semantics { heading() },
             )
             if (!sessions.isNullOrEmpty()) {
-                Text(text = ScanCopy.ON_THIS_PHONE, style = Type.caption.copy(color = Glass.onGlassMuted))
+                Text(
+                    text = ScanCopy.ON_THIS_PHONE,
+                    style = Type.caption.copy(color = Glass.onGlassMuted),
+                    modifier = Modifier.alignByBaseline(),
+                )
             }
         }
-        state.notice?.let { NoticeCard(it, onDismiss = actions.onDismissNotice) }
-        if (state.openingFile) OpeningCard()
         when {
             sessions == null -> Unit
             sessions.isEmpty() -> EmptySessions()

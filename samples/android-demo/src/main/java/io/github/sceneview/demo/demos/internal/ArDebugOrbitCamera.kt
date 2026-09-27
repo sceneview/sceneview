@@ -307,8 +307,10 @@ object ArDebugFraming {
     /**
      * The tighter margin of a bundled recording: its bounds are known up front and hold no
      * growth to leave room for, so the room fills the stage between the HUD and the filmstrip.
+     * 0.66 ran a recorded room to 8 px of the screen's right edge on a Pixel 7a: 0.72 keeps it
+     * inside the 16 dp the chrome keeps from the edges.
      */
-    const val REPLAY_MARGIN = 0.66f
+    const val REPLAY_MARGIN = 0.72f
 
     /** A room-sized framing for an empty session. */
     val DEFAULT_POSE = OrbitPose(

@@ -262,6 +262,11 @@
             <!--
                 Share sheet: "Share → SceneView" from ChatGPT, Files or Drive. Same
                 type list as the VIEW filter above; the URI arrives as EXTRA_STREAM.
+                A `.svscan` shared from a messenger arrives here too, typed octet-stream or
+                zip: MainActivity sniffs its name and first bytes and hands it to the Rerun
+                demo. (The Files app's "Open with" gives a `.svscan` no name to match and a
+                bare octet-stream type, which no filter here claims on purpose; the Rerun
+                demo's "Open file" reads it instead.)
             -->
             <intent-filter android:label="@string/open_model_filter_label">
                 <action android:name="android.intent.action.SEND" />
@@ -278,6 +283,7 @@
                 <data android:mimeType="model/obj" />
                 <data android:mimeType="application/x-ply" />
                 <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
         </activity>
 
