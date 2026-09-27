@@ -519,6 +519,8 @@ struct RerunCaptureRecorder: Sendable {
     private var lastPointsTime: TimeInterval = -.infinity
     private var pointsLogged = 0
     private var voxels = Set<Int64>()
+    /// The first point that filled each voxel, for the live view to draw the cloud growing.
+    private(set) var voxelPoints: [SIMD3<Float>] = []
     private var lastPlanesTime: TimeInterval = -.infinity
     private var planeIds: [UUID: Int] = [:]
     private var livePlanes: [UUID: RerunCapturePlane] = [:]
@@ -533,6 +535,14 @@ struct RerunCaptureRecorder: Sendable {
 
     /// Whether anything worth replaying was recorded: at least one camera pose.
     var hasContent: Bool { !poses.isEmpty }
+
+    /// The recorded camera path so far, oldest first — what the live view draws as the trail.
+    var pathPositions: [SIMD3<Float>] { poses.map(\.position) }
+
+    /// The planes tracked now, in their stable id order.
+    var currentPlanes: [RerunCapturePlane] {
+        livePlanes.values.sorted { (planeIds[$0.identifier] ?? 0) < (planeIds[$1.identifier] ?? 0) }
+    }
 
     // MARK: Frames
 
@@ -650,7 +660,7 @@ struct RerunCaptureRecorder: Sendable {
         guard !positions.isEmpty else { return }
         pointsLogged += positions.count
         for p in positions where voxels.count < configuration.maxVoxels {
-            voxels.insert(Self.voxelKey(p, size: configuration.pointVoxel))
+            if voxels.insert(Self.voxelKey(p, size: configuration.pointVoxel)).inserted { voxelPoints.append(p) }
         }
         stats.points = voxels.count
         appendEvent(t: t, RerunCaptureJSON.pointCloud(t: t, positions: positions, colors: colors))

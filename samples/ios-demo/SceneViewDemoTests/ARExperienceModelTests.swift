@@ -24,6 +24,27 @@ final class ARExperienceModelTests: XCTestCase {
         )
     }
 
+    // MARK: - Replay first
+
+    /// The Rerun replay opens on a recorded room on every device, the Simulator included, and
+    /// asks for no camera on entry — its Live AR tab starts the camera when the user asks.
+    func testRerunReplayOpensWithoutACameraGate() {
+        XCTAssertEqual(ARExperienceRequirement.forScene(id: "ar-rerun"), .replay)
+        #if os(iOS)
+        XCTAssertTrue(ARExperienceRequirement.replay.isSupported)
+        #endif
+        var asked = false
+        let model = ARExperienceModel(
+            requirement: .replay,
+            isSupported: true,
+            authorizationStatus: { .notDetermined },
+            requestAccess: { _ in asked = true }
+        )
+        model.resolve()
+        XCTAssertEqual(model.phase, .live)
+        XCTAssertFalse(asked)
+    }
+
     // MARK: - Session events
 
     func testInterruptionEndedWhileStartingKeepsStartingUntilTheNextFirstFrame() {

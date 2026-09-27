@@ -7,8 +7,13 @@ import simd
 import SwiftUI
 
 // The "Record your own" screen of the Rerun showcase: the live AR camera, one Record / Stop
-// control and the capture's counters. Every frame goes through `RerunCaptureRecorder`; on
+// control and the capture's figures. Every frame goes through `RerunCaptureRecorder`; on
 // Stop the finished pack is handed to the host, which replays it like the bundled room.
+//
+// Built to be filmed: the launch video shoots the phone over a shoulder, in one take, from
+// about a metre. So the figures are big and white on a near-opaque scrim, and what the
+// recorder has kept is drawn over the camera as it grows — the path walked, every voxel the
+// feature points filled, the planes tracked now. All of it is the recorder's own data.
 //
 // The screen draws no navigation chrome: the host owns the title row above (the top
 // ~110 pt stay free) and the dock below (the bottom ~140 pt stay free).
@@ -37,14 +42,16 @@ struct RerunLiveCaptureView: View {
             if isOnScreen {
                 ARSceneView(
                     planeDetection: .both,
-                    showPlaneOverlay: true,
+                    // The recorder's planes are drawn instead (`RerunLiveOverlay`): the same
+                    // polygons that go into the file, and bold enough to film.
+                    showPlaneOverlay: false,
                     showCoachingOverlay: true,
                     onTapOnPlane: { position, arView in
                         model.place(at: position, in: arView)
                     }
                 )
-                .onFrame { frame, _ in
-                    model.handle(frame)
+                .onFrame { frame, arView in
+                    model.handle(frame, in: arView)
                 }
                 .ignoresSafeArea()
             } else {
@@ -52,17 +59,20 @@ struct RerunLiveCaptureView: View {
             }
 
             VStack(spacing: SceneViewTokens.Space.sm) {
-                Spacer(minLength: CaptureTokens.topReserve)
+                CaptureReadout(model: model)
+                    .padding(.top, CaptureTokens.topReserve)
+                Spacer(minLength: SceneViewTokens.Space.md)
                 if let hint = model.hint {
                     CaptureHint(text: hint)
                 }
-                CaptureCard(model: model) {
+                CaptureControls(model: model) {
                     model.toggleRecording(onFinish: onFinish)
                 }
             }
             .frame(maxWidth: CaptureTokens.maxWidth)
             .padding(.horizontal, SceneViewTokens.Chrome.margin)
             .padding(.bottom, CaptureTokens.bottomReserve)
+            .animation(SceneViewTokens.Spring.fade, value: model.hint)
         }
         .task { await model.loadModel() }
         .onAppear { isOnScreen = true }
@@ -76,9 +86,9 @@ struct RerunLiveCaptureView: View {
 
 // MARK: - Model
 
-/// The screen's state: the recorder while recording, throttled counters for the UI, and the
-/// placed models. Driven on the main actor — ARKit delivers `ARSceneView`'s frames on the
-/// main queue.
+/// The screen's state: the recorder while recording, throttled figures for the UI, the live
+/// overlay and the placed models. Driven on the main actor — ARKit delivers `ARSceneView`'s
+/// frames on the main queue.
 @MainActor
 @Observable
 final class RerunLiveCaptureModel {
@@ -92,7 +102,7 @@ final class RerunLiveCaptureModel {
     private(set) var phase: Phase = .idle
     /// The recorder's counters, refreshed at most four times a second.
     private(set) var stats = RerunCaptureRecorder.Stats()
-    /// One line of guidance above the card, `nil` for none.
+    /// One line of guidance above the controls, `nil` for none.
     private(set) var hint: String? = RerunLiveCaptureModel.idleHint
 
     static let idleHint = "Tap Record, then walk slowly around the room. Tap a surface to place a Shiba."
@@ -103,6 +113,7 @@ final class RerunLiveCaptureModel {
     @ObservationIgnored private var shiba: ModelNode?
     @ObservationIgnored private var placed: [AnchorEntity] = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private let overlay = RerunLiveOverlay()
 
     private static let statsInterval: TimeInterval = 0.25
     /// The placed Shiba's longest side, metres.
@@ -116,7 +127,7 @@ final class RerunLiveCaptureModel {
             .withGroundingShadow()
     }
 
-    func handle(_ frame: ARFrame) {
+    func handle(_ frame: ARFrame, in arView: ARView) {
         cameraPosition = RerunCaptureMath.translation(of: frame.camera.transform)
         guard phase == .recording, recorder != nil else { return }
         recorder?.add(RerunPixelBufferFrame(frame))
@@ -124,6 +135,8 @@ final class RerunLiveCaptureModel {
         if frame.timestamp - lastStatsRefresh >= Self.statsInterval || recorder.isFull {
             lastStatsRefresh = frame.timestamp
             stats = recorder.stats
+            overlay.attach(to: arView)
+            overlay.update(path: recorder.pathPositions, points: recorder.voxelPoints, planes: recorder.currentPlanes)
             hint = recorder.stats.isPhotoLimitReached
                 ? "Photo limit reached. The path and points keep recording."
                 : nil
@@ -143,6 +156,7 @@ final class RerunLiveCaptureModel {
         // What is on screen is what gets recorded: models placed before Record go.
         for anchor in placed { anchor.removeFromParent() }
         placed.removeAll()
+        overlay.clear()
         recorder = RerunCaptureRecorder()
         stats = RerunCaptureRecorder.Stats()
         lastStatsRefresh = -.infinity
@@ -165,6 +179,7 @@ final class RerunLiveCaptureModel {
                 self.hint = Self.idleHint
                 onFinish(pack)
             } else {
+                self.overlay.clear()
                 self.hint = "Nothing recorded yet. Move the phone slowly until tracking settles, then record again."
                 SceneViewHaptic.shared.error()
             }
@@ -173,6 +188,7 @@ final class RerunLiveCaptureModel {
 
     /// Drops a recording in progress (the screen left). A save already under way completes.
     func discardRecording() {
+        overlay.detach()
         guard phase == .recording else { return }
         recorder = nil
         phase = .idle
@@ -201,6 +217,91 @@ final class RerunLiveCaptureModel {
             stats = recorder?.stats ?? stats
         }
         SceneViewHaptic.shared.light()
+    }
+}
+
+// MARK: - Live overlay
+
+/// The recorder's data drawn over the camera in world space (``RerunLiveGeometry``): the trail
+/// in the replay's newest-trail colour, points in its live-point amber, planes in its floor and
+/// wall colours — so the replay that opens on Stop is visibly the same thing.
+@MainActor
+final class RerunLiveOverlay {
+    private let anchor = AnchorEntity(world: .zero)
+    private let trail = RerunLiveOverlay.entity(SceneViewTokens.DebugView.trailNew)
+    private let horizontalFill = RerunLiveOverlay.entity(SceneViewTokens.DebugView.liveFloorFill)
+    private let verticalFill = RerunLiveOverlay.entity(SceneViewTokens.DebugView.liveWallFill)
+    private let horizontalOutline = RerunLiveOverlay.entity(SceneViewTokens.DebugView.liveFloorOutline)
+    private let verticalOutline = RerunLiveOverlay.entity(SceneViewTokens.DebugView.liveWallOutline)
+    private var pointChunks: [ModelEntity] = []
+    private var chunkCounts: [Int] = []
+    private var pathCount = 0
+    private var shownPlanes: [RerunCapturePlane] = []
+
+    init() {
+        for entity in [horizontalFill, verticalFill, horizontalOutline, verticalOutline, trail] {
+            anchor.addChild(entity)
+        }
+    }
+
+    func attach(to arView: ARView) {
+        guard anchor.scene == nil else { return }
+        arView.scene.addAnchor(anchor)
+    }
+
+    func detach() {
+        anchor.removeFromParent()
+    }
+
+    func clear() {
+        for entity in [trail, horizontalFill, verticalFill, horizontalOutline, verticalOutline] + pointChunks {
+            entity.isEnabled = false
+        }
+        chunkCounts = chunkCounts.map { _ in 0 }
+        pathCount = 0
+        shownPlanes = []
+    }
+
+    func update(path: [SIMD3<Float>], points: [SIMD3<Float>], planes: [RerunCapturePlane]) {
+        if path.count != pathCount {
+            pathCount = path.count
+            Self.show(RerunLiveGeometry.trail(path), on: trail)
+        }
+        for (i, range) in RerunLiveGeometry.pointChunks(count: points.count).enumerated() {
+            if i == pointChunks.count {
+                let chunk = Self.entity(SceneViewTokens.DebugView.livePoint)
+                anchor.addChild(chunk)
+                pointChunks.append(chunk)
+                chunkCounts.append(0)
+            }
+            guard chunkCounts[i] != range.count else { continue }
+            chunkCounts[i] = range.count
+            Self.show(RerunLiveGeometry.points(points, range: range), on: pointChunks[i])
+        }
+        if planes != shownPlanes {
+            shownPlanes = planes
+            let meshes = RerunLiveGeometry.planes(planes)
+            Self.show(meshes.horizontalFill, on: horizontalFill)
+            Self.show(meshes.verticalFill, on: verticalFill)
+            Self.show(meshes.horizontalOutline, on: horizontalOutline)
+            Self.show(meshes.verticalOutline, on: verticalOutline)
+        }
+    }
+
+    private static func show(_ mesh: RerunMesh, on entity: ModelEntity) {
+        guard let resource = RerunStageRenderer.resource(mesh) else {
+            entity.isEnabled = false
+            return
+        }
+        entity.model?.mesh = resource
+        entity.isEnabled = true
+    }
+
+    private static func entity(_ argb: UInt32) -> ModelEntity {
+        let entity = ModelEntity(mesh: .generatePlane(width: 0.001, depth: 0.001),
+                                 materials: [RerunStageRenderer.flatMaterial(argb)])
+        entity.isEnabled = false
+        return entity
     }
 }
 
@@ -252,17 +353,24 @@ extension RerunCapturePlane {
 
 // MARK: - Chrome
 
-/// Layout of the capture chrome: the AR Overlay Card of `DESIGN.md` over the camera.
-private enum CaptureTokens {
+/// Layout of the capture chrome: `DESIGN.md` AR Overlay Cards over the camera, sized for a
+/// phone filmed from about a metre.
+enum CaptureTokens {
     /// Free space kept for the host's title row and dock.
     static let topReserve: CGFloat = 110
     static let bottomReserve: CGFloat = 140
     static let maxWidth: CGFloat = 480
-    /// The shutter: one touch target plus a ring of breathing room.
-    static let shutterSize: CGFloat = SceneViewTokens.Layout.touchTarget + SceneViewTokens.Space.sm
-    static let shutterRing: CGFloat = 3
-    static let stopGlyph: CGFloat = 20
-    static let liveDot: CGFloat = 8
+    /// A figure you can read on a phone filmed from a metre: 44 pt digits are ~7 mm tall on
+    /// an iPhone 17 Pro, the size of a 30 pt headline on a laptop seen from the same distance.
+    static let figure = Font.system(size: 44, weight: .bold, design: .rounded)
+    static let figureLabel = Font.system(size: 15, weight: .bold)
+    static let clock = Font.system(size: 22, weight: .bold, design: .rounded)
+    static let swatch: CGFloat = 10
+    /// The shutter: bigger than a touch target, so Record and Stop read on film too.
+    static let shutterSize: CGFloat = 76
+    static let shutterRing: CGFloat = 4
+    static let stopGlyph: CGFloat = 26
+    static let recDot: CGFloat = 14
     /// `shadow-lg` dark — 0 12px 40px rgba(0,0,0,0.5).
     static let shadow = Color.black.opacity(0.5)
     static let shadowRadius: CGFloat = 20
@@ -271,79 +379,158 @@ private enum CaptureTokens {
     static let recording = SceneViewTokens.HomeColor.danger
 }
 
-private struct CaptureCard: View {
-    let model: RerunLiveCaptureModel
-    let onShutter: () -> Void
+/// The dark AR card every piece of the capture chrome sits on.
+private struct CaptureCard: ViewModifier {
     @Environment(\.colorScheme) private var scheme
 
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                    .fill(SceneViewTokens.ARChrome.scrim(scheme))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                    .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
+            )
+            .shadow(color: CaptureTokens.shadow, radius: CaptureTokens.shadowRadius, y: CaptureTokens.shadowY)
+    }
+}
+
+/// The four figures, big: what the recorder holds, growing as the phone moves. Each swatch is
+/// the colour that figure is drawn in over the camera.
+private struct CaptureReadout: View {
+    let model: RerunLiveCaptureModel
+
+    private typealias Palette = SceneViewTokens.DebugView
+
     var body: some View {
-        VStack(spacing: SceneViewTokens.Space.md) {
-            HStack(alignment: .center, spacing: SceneViewTokens.Space.md) {
-                VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
-                    status
-                    counters
+        let stats = model.stats
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            status
+            Grid(alignment: .leading, horizontalSpacing: SceneViewTokens.Space.md, verticalSpacing: SceneViewTokens.Space.sm) {
+                GridRow {
+                    Figure(value: String(format: "%.1f m", stats.pathLength), label: "Path walked",
+                           swatch: Palette.color(Palette.trailNew))
+                    Figure(value: stats.points.formatted(), label: "Points",
+                           swatch: Palette.color(Palette.livePoint))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                shutter
+                GridRow {
+                    Figure(value: "\(stats.planes)", label: stats.planes == 1 ? "Surface" : "Surfaces",
+                           swatch: Palette.color(Palette.liveFloorOutline))
+                    Figure(value: "\(stats.keyframes)", label: stats.keyframes == 1 ? "Photo" : "Photos",
+                           swatch: SceneViewTokens.ARChrome.onScrim)
+                }
             }
-            HStack(spacing: SceneViewTokens.Space.xs) {
-                Image(systemName: "lock.fill")
-                    .imageScale(.small)
-                    .accessibilityHidden(true)
-                Text("Everything stays on your iPhone.")
-            }
-            .font(SceneViewTokens.TypeScale.captionRegular)
-            .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(SceneViewTokens.Spring.animation, value: stats)
         }
         .padding(SceneViewTokens.Space.md)
-        .background(
-            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                .fill(SceneViewTokens.ARChrome.scrim(scheme))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
-        )
-        .shadow(color: CaptureTokens.shadow, radius: CaptureTokens.shadowRadius, y: CaptureTokens.shadowY)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(CaptureCard())
+        .accessibilityElement(children: .combine)
     }
 
     private var status: some View {
         HStack(spacing: SceneViewTokens.Space.sm) {
             if model.phase == .recording {
-                Circle()
-                    .fill(CaptureTokens.recording)
-                    .frame(width: CaptureTokens.liveDot, height: CaptureTokens.liveDot)
-                    .accessibilityHidden(true)
+                RecordingDot()
+                Text("REC")
+                    .font(CaptureTokens.clock)
+                    .foregroundStyle(CaptureTokens.recording)
+            } else {
+                Text(model.phase == .saving ? "Saving" : "Ready")
+                    .font(CaptureTokens.clock)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
             }
+            Spacer(minLength: SceneViewTokens.Space.sm)
             Text(Self.clock(model.stats.duration))
-                .font(SceneViewTokens.TypeScale.card)
+                .font(CaptureTokens.clock)
                 .monospacedDigit()
                 .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-            Text(statusLabel)
-                .font(SceneViewTokens.TypeScale.captionSemibold)
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
         }
-        .accessibilityElement(children: .combine)
     }
 
-    private var statusLabel: String {
+    /// `m:ss`.
+    static func clock(_ seconds: TimeInterval) -> String {
+        let whole = max(0, Int(seconds))
+        return String(format: "%d:%02d", whole / 60, whole % 60)
+    }
+}
+
+private struct Figure: View {
+    let value: String
+    let label: String
+    let swatch: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value)
+                .font(CaptureTokens.figure)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            HStack(spacing: SceneViewTokens.Space.xs) {
+                Circle()
+                    .fill(swatch)
+                    .frame(width: CaptureTokens.swatch, height: CaptureTokens.swatch)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(CaptureTokens.figureLabel)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A slow red pulse — the one thing on screen that says "recording" before any figure moves.
+private struct RecordingDot: View {
+    @State private var dim = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Circle()
+            .fill(CaptureTokens.recording)
+            .frame(width: CaptureTokens.recDot, height: CaptureTokens.recDot)
+            .opacity(dim ? 0.35 : 1)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { dim = true }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// The shutter and the privacy line.
+private struct CaptureControls: View {
+    let model: RerunLiveCaptureModel
+    let onShutter: () -> Void
+
+    var body: some View {
+        HStack(spacing: SceneViewTokens.Space.md) {
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                Text(title)
+                    .font(SceneViewTokens.TypeScale.title)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+                Label("Everything stays on your iPhone.", systemImage: "lock.fill")
+                    .font(SceneViewTokens.TypeScale.captionSemibold)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            shutter
+        }
+        .padding(SceneViewTokens.Space.md)
+        .modifier(CaptureCard())
+    }
+
+    private var title: String {
         switch model.phase {
-        case .idle: "Ready"
-        case .recording: "Recording"
-        case .saving: "Saving"
+        case .idle: "Record"
+        case .recording: "Stop to replay"
+        case .saving: "Saving…"
         }
-    }
-
-    private var counters: some View {
-        let stats = model.stats
-        return HStack(spacing: SceneViewTokens.Space.md) {
-            Counter(value: String(format: "%.1f m", stats.pathLength), label: "path")
-            Counter(value: "\(stats.planes)", label: stats.planes == 1 ? "plane" : "planes")
-            Counter(value: stats.points.formatted(), label: "points")
-            Counter(value: "\(stats.keyframes)", label: stats.keyframes == 1 ? "photo" : "photos")
-        }
-        .accessibilityElement(children: .combine)
     }
 
     private var shutter: some View {
@@ -357,7 +544,7 @@ private struct CaptureCard: View {
                 switch model.phase {
                 case .idle:
                     Circle()
-                        .fill(SceneViewTokens.ARChrome.onScrim)
+                        .fill(CaptureTokens.recording)
                         .padding(CaptureTokens.shutterRing + SceneViewTokens.Space.xs)
                 case .recording:
                     RoundedRectangle(cornerRadius: SceneViewTokens.Space.xs, style: .continuous)
@@ -375,31 +562,6 @@ private struct CaptureCard: View {
         .disabled(model.phase == .saving)
         .accessibilityLabel(model.phase == .recording ? "Stop recording" : "Start recording")
     }
-
-    /// `m:ss`.
-    static func clock(_ seconds: TimeInterval) -> String {
-        let whole = max(0, Int(seconds))
-        return String(format: "%d:%02d", whole / 60, whole % 60)
-    }
-}
-
-private struct Counter: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(value)
-                .font(SceneViewTokens.TypeScale.bodySemibold)
-                .monospacedDigit()
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            Text(label)
-                .font(SceneViewTokens.TypeScale.captionRegular)
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
-        }
-    }
 }
 
 private struct CaptureHint: View {
@@ -408,16 +570,18 @@ private struct CaptureHint: View {
 
     var body: some View {
         Text(text)
-            .font(SceneViewTokens.TypeScale.captionRegular)
+            .font(SceneViewTokens.TypeScale.bodySemibold)
             .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
             .multilineTextAlignment(.center)
             .padding(.horizontal, SceneViewTokens.Space.md)
             .padding(.vertical, SceneViewTokens.Space.sm)
             .background(
-                Capsule().fill(SceneViewTokens.ARChrome.scrim(scheme))
+                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                    .fill(SceneViewTokens.ARChrome.scrim(scheme))
             )
             .overlay(
-                Capsule().strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
+                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                    .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
             )
             .transition(.opacity)
     }
@@ -425,8 +589,6 @@ private struct CaptureHint: View {
 
 /// The simulator has no camera: say so, and point at the recorded replay instead.
 private struct RerunLiveCaptureSimulatorCard: View {
-    @Environment(\.colorScheme) private var scheme
-
     var body: some View {
         ZStack {
             SceneViewTokens.Stage.background.ignoresSafeArea()
@@ -444,15 +606,7 @@ private struct RerunLiveCaptureSimulatorCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(SceneViewTokens.Space.md)
-            .background(
-                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                    .fill(SceneViewTokens.ARChrome.scrim(scheme))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                    .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
-            )
-            .shadow(color: CaptureTokens.shadow, radius: CaptureTokens.shadowRadius, y: CaptureTokens.shadowY)
+            .modifier(CaptureCard())
             .frame(maxWidth: CaptureTokens.maxWidth)
             .padding(.horizontal, SceneViewTokens.Chrome.margin)
             .padding(.top, CaptureTokens.topReserve)

@@ -581,6 +581,12 @@ enum SceneViewTokens {
         static let axisX: UInt32 = 0xFFEA_4335
         static let axisY: UInt32 = 0xFF16_A34A
         static let axisZ: UInt32 = 0xFFA4_C1FF
+        /// Record mode draws over the camera, not over `Stage.background`: plane fills at
+        /// 40 % so a surface reads as found from a metre away, outlines opaque.
+        static let liveFloorFill: UInt32 = 0x66A4_C1FF
+        static let liveWallFill: UInt32 = 0x66D2_A8FF
+        static let liveFloorOutline: UInt32 = 0xFFA4_C1FF
+        static let liveWallOutline: UInt32 = 0xFFD2_A8FF
         /// The picture-in-picture: a portrait 3:4 card.
         static let pipSize = CGSize(width: 128, height: 170)
 

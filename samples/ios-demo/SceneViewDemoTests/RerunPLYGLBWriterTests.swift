@@ -307,6 +307,27 @@ final class RerunPLYGLBWriterTests: XCTestCase {
         XCTAssertEqual(extras["modelEmbedded"] as? Bool, false)
     }
 
+    /// The bundled shiba is ~1.8 m tall as authored; placed on an anchor it must stand 0.3 m,
+    /// feet on the anchor, like Android's `scaleToUnits = 0.3f`.
+    func testGLBScalesTheBundledShibaToThePlacedSize() throws {
+        let models = RerunExportAdapter.bundledModels("glb")
+        XCTAssertNotNil(models["shiba"], "shiba.glb must ship in the app bundle")
+        var scene = Self.scene()
+        scene.anchors[0].modelName = "shiba"
+        let (document, _) = try Self.parseGLB(RerunGLBWriter.data(for: scene, models: models))
+        let anchor = try Self.node(document, named: "world/anchors/7")
+        let nodes = try XCTUnwrap(document["nodes"] as? [[String: Any]])
+        let holderIndex = try XCTUnwrap((anchor["children"] as? [Int])?.first)
+        let holder = nodes[holderIndex]
+        let scale = try XCTUnwrap(holder["scale"] as? [Double])
+        XCTAssertEqual(scale.count, 3)
+        XCTAssertLessThan(scale[0], 1, "A 1.8 m model shrinks")
+        XCTAssertGreaterThan(scale[0], 0.05)
+        let translation = try XCTUnwrap(holder["translation"] as? [Double])
+        XCTAssertEqual(translation.count, 3)
+        XCTAssertTrue(translation.allSatisfy { abs($0) < 0.3 }, "Re-centred within the placed size")
+    }
+
     func testGLBMergesAModelUnderEveryAnchorSharingItsData() throws {
         var scene = Self.scene()
         scene.anchors = [

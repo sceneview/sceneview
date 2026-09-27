@@ -40,10 +40,15 @@ enum ARExperienceRequirement: Equatable {
     case peopleOcclusion
     /// ARKit camera with ReplayKit screen capture.
     case recording
+    /// Replay first: the screen opens on a recorded session and starts the camera itself, only
+    /// when the user asks for it (the Rerun replay's Live AR tab). Every device runs it, the
+    /// Simulator included, and no camera permission is asked on entry.
+    case replay
 
     /// The second line of the Unsupported card — plan §2.2: "Requires LiDAR."
     var requirementCopy: String {
         switch self {
+        case .replay: return ""
         case .worldTracking: return "Requires an iPhone with ARKit."
         case .recording: return "Requires an iPhone with ARKit and screen recording availability."
         case .faceTracking: return "Requires a TrueDepth camera."
@@ -57,7 +62,7 @@ enum ARExperienceRequirement: Equatable {
     /// The body tracker runs a raw `ARView` of its own, so the container
     /// cannot know when its first frame lands — it shows the screen directly
     /// rather than a "Starting camera…" it could never clear.
-    var reportsSession: Bool { self != .bodyTracking }
+    var reportsSession: Bool { self != .bodyTracking && self != .replay }
 
     /// The requirement of a catalog scene, by id. Everything not listed is a
     /// rear-camera world-tracking screen.
@@ -68,6 +73,7 @@ enum ARExperienceRequirement: Equatable {
         case "ar-depth-collider", "ar-depth-occlusion", "ar-scene-mesh": return .lidar
         case "ar-people-occlusion": return .peopleOcclusion
         case "ar-record-playback", "ar-recording": return .recording
+        case "ar-rerun": return .replay
         default: return .worldTracking
         }
     }
@@ -77,6 +83,7 @@ enum ARExperienceRequirement: Equatable {
     /// into the model so the Simulator (nothing supported) and a forced
     /// preview can both be exercised.
     var isSupported: Bool {
+        if self == .replay { return true }
         #if targetEnvironment(simulator)
         return false
         #else
@@ -97,6 +104,8 @@ enum ARExperienceRequirement: Equatable {
                 .unmetRequirement(capabilities: capabilities) == nil
         case .bodyTracking:
             return ARBodyTrackingConfiguration.isSupported
+        case .replay:
+            return true
         }
         #endif
     }
@@ -168,6 +177,11 @@ final class ARExperienceModel: ObservableObject {
         }
         guard isSupported else {
             phase = .unsupported(requirement)
+            return
+        }
+        // A replay-first screen asks for the camera itself, when the user starts a recording.
+        if requirement == .replay {
+            phase = .live
             return
         }
         switch authorizationStatus() {

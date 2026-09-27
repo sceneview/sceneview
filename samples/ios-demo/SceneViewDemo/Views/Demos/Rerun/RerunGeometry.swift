@@ -496,3 +496,65 @@ enum RerunPointAtlas {
         return out
     }
 }
+
+/// What the recording screen draws over the camera while it records: the path walked so far,
+/// every 3 cm voxel the feature points filled, and the planes tracked now — the recorder's own
+/// data, drawn in world space so it grows where it was found.
+///
+/// Sized to read on a phone filmed from about a metre away (the launch video's over-the-shoulder
+/// take), so fixed centimetres rather than screen pixels: a trail you can follow across a table
+/// and points you can see pile up on it.
+enum RerunLiveGeometry {
+    static let trailRadius: Float = 0.012
+    /// The newest stretch of the path ends inside the lens; it is left out so the trail never
+    /// fills the picture. It shows as soon as the phone has moved on.
+    static let trailClearance: Float = 0.3
+    static let pointRadius: Float = 0.008
+    /// Points are drawn in fixed-size chunks: the cloud only grows, so only the last chunk
+    /// is rebuilt as it fills.
+    static let pointChunk = 1_500
+    static let maxPoints = 30_000
+    static let outlineHalfWidth: Float = 0.006
+
+    /// The path minus its last `trailClearance` metres, as one tube; empty until the phone has
+    /// walked past the clearance.
+    static func trail(_ path: [SIMD3<Float>], clearance: Float = trailClearance) -> RerunMesh {
+        var mesh = RerunMesh()
+        guard let last = path.last else { return mesh }
+        var end = path.count
+        while end > 0, simd_distance(path[end - 1], last) < clearance { end -= 1 }
+        guard end >= 2 else { return mesh }
+        let kept = RerunGeometry.simplifyTrail(Array(path[0..<end]))
+        RerunGeometry.addTube(&mesh, kept, 0..<kept.count, radius: trailRadius)
+        return mesh
+    }
+
+    /// How many chunks `count` points fill, the last possibly partial; capped at `maxPoints`.
+    static func pointChunks(count: Int) -> [Range<Int>] {
+        let total = min(count, maxPoints)
+        return stride(from: 0, to: total, by: pointChunk).map { $0..<min($0 + pointChunk, total) }
+    }
+
+    static func points(_ points: [SIMD3<Float>], range: Range<Int>) -> RerunMesh {
+        var mesh = RerunMesh()
+        for i in range where i < points.count { RerunGeometry.addOcta(&mesh, points[i], pointRadius) }
+        return mesh
+    }
+
+    /// Fills and outlines, split floor-like (horizontal) and wall-like (everything else).
+    static func planes(_ planes: [RerunCapturePlane]) -> (horizontalFill: RerunMesh, verticalFill: RerunMesh,
+                                                         horizontalOutline: RerunMesh, verticalOutline: RerunMesh) {
+        var hf = RerunMesh(), vf = RerunMesh(), ho = RerunMesh(), vo = RerunMesh()
+        for plane in planes where plane.polygon.count >= 3 {
+            let horizontal = plane.kind == .horizontalUpward || plane.kind == .horizontalDownward
+            if horizontal {
+                RerunGeometry.addFan(&hf, plane.polygon)
+                RerunGeometry.addOutline(&ho, plane.polygon, halfWidth: outlineHalfWidth)
+            } else {
+                RerunGeometry.addFan(&vf, plane.polygon)
+                RerunGeometry.addOutline(&vo, plane.polygon, halfWidth: outlineHalfWidth)
+            }
+        }
+        return (hf, vf, ho, vo)
+    }
+}

@@ -146,9 +146,11 @@ final class RerunStageRenderer {
         camera.components.set(PerspectiveCameraComponent(near: 0.02, far: 200,
                                                          fieldOfViewInDegrees: RerunFraming.verticalFov,
                                                          fieldOfViewOrientation: .vertical))
-        root.addChild(camera)
         buildEntities(session)
         content.add(root)
+        // A top-level entity of the content, like SceneViewSwift's own camera: nested under
+        // `root`, RealityView kept its default camera and the room was never framed.
+        content.add(camera)
         subscription = content.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated { self?.update(Float(event.deltaTime)) }
         }

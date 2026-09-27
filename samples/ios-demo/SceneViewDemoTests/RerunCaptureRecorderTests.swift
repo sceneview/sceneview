@@ -726,4 +726,72 @@ final class RerunCaptureRecorderTests: XCTestCase {
     }
 }
 
+// MARK: - Live preview (what the recording screen draws over the camera)
+
+extension RerunCaptureRecorderTests {
+
+    func testLivePreviewExposesThePathTheVoxelsAndThePlanesTrackedNow() {
+        var recorder = RerunCaptureRecorder()
+        let camera = uprightPhone(at: SIMD3(0, 1.5, 0))
+        // Two points in one 3 cm voxel, one in the next: two voxel points, the first of each.
+        let points: [SIMD3<Float>] = [SIMD3(0.001, 1.501, -2), SIMD3(0.01, 1.51, -2), SIMD3(0.2, 1.5, -2)]
+        let floor = UUID(), wall = UUID()
+        let floorPlane = RerunCapturePlane(identifier: floor, kind: .horizontalUpward, polygon: square(at: SIMD3(0, 0, -2), half: 1))
+        let wallPlane = RerunCapturePlane(identifier: wall, kind: .vertical,
+                                          polygon: [SIMD3(-1, 0, -3), SIMD3(1, 0, -3), SIMD3(1, 2, -3), SIMD3(-1, 2, -3)])
+        recorder.add(FakeFrame(timestamp: 0, cameraTransform: camera, points: points, planeList: [floorPlane], jpeg: nil))
+        recorder.add(FakeFrame(timestamp: 0.5, cameraTransform: uprightPhone(at: SIMD3(0.2, 1.5, 0)),
+                               points: points, planeList: [wallPlane, floorPlane], jpeg: nil))
+
+        XCTAssertEqual(recorder.pathPositions.count, 2)
+        XCTAssertEqual(recorder.pathPositions.last, SIMD3(0.2, 1.5, 0))
+        XCTAssertEqual(recorder.voxelPoints.count, recorder.stats.points)
+        XCTAssertEqual(recorder.voxelPoints.first, points[0])
+        // Ordered by first sighting, whatever order ARKit lists them in.
+        XCTAssertEqual(recorder.currentPlanes.map(\.identifier), [floor, wall])
+
+        recorder.add(FakeFrame(timestamp: 1, cameraTransform: camera, planeList: [wallPlane], jpeg: nil))
+        XCTAssertEqual(recorder.currentPlanes.map(\.identifier), [wall], "a plane ARKit merged away is not drawn")
+    }
+
+    func testLiveTrailLeavesOutTheStretchInsideTheLens() {
+        let path = (0...10).map { SIMD3<Float>(Float($0) * 0.1, 0, 0) } // 1 m walked
+        XCTAssertTrue(RerunLiveGeometry.trail(Array(path.prefix(3))).isEmpty, "20 cm walked: all of it within the clearance")
+        let trail = RerunLiveGeometry.trail(path)
+        XCTAssertFalse(trail.isEmpty)
+        let reach = trail.positions.map(\.x).max() ?? .infinity
+        XCTAssertLessThan(reach, 1 - RerunLiveGeometry.trailClearance + 0.1 + RerunLiveGeometry.trailRadius)
+        XCTAssertGreaterThan(reach, 0.5)
+    }
+
+    func testLivePointsAreChunkedAndCapped() {
+        XCTAssertEqual(RerunLiveGeometry.pointChunks(count: 0), [])
+        XCTAssertEqual(RerunLiveGeometry.pointChunks(count: 1), [0..<1])
+        XCTAssertEqual(RerunLiveGeometry.pointChunks(count: 3_100), [0..<1_500, 1_500..<3_000, 3_000..<3_100])
+        let capped = RerunLiveGeometry.pointChunks(count: 100_000)
+        XCTAssertEqual(capped.last?.upperBound, RerunLiveGeometry.maxPoints)
+        XCTAssertTrue(capped.allSatisfy { $0.count == RerunLiveGeometry.pointChunk })
+
+        let cloud = (0..<10).map { SIMD3<Float>(Float($0), 0, 0) }
+        let one = RerunLiveGeometry.points(cloud, range: 0..<1)
+        XCTAssertEqual(RerunLiveGeometry.points(cloud, range: 0..<4).triangleCount, one.triangleCount * 4)
+        XCTAssertEqual(RerunLiveGeometry.points(cloud, range: 8..<12).triangleCount, one.triangleCount * 2,
+                       "a range past the end draws what exists")
+    }
+
+    func testLivePlanesSplitFloorsFromWalls() {
+        let floor = RerunCapturePlane(identifier: UUID(), kind: .horizontalUpward, polygon: square(at: .zero, half: 1))
+        let ceiling = RerunCapturePlane(identifier: UUID(), kind: .horizontalDownward, polygon: square(at: SIMD3(0, 2.5, 0), half: 1))
+        let wall = RerunCapturePlane(identifier: UUID(), kind: .vertical,
+                                     polygon: [SIMD3(-1, 0, -3), SIMD3(1, 0, -3), SIMD3(1, 2, -3)])
+        let sliver = RerunCapturePlane(identifier: UUID(), kind: .vertical, polygon: [.zero, SIMD3(1, 0, 0)])
+        let meshes = RerunLiveGeometry.planes([floor, ceiling, wall, sliver])
+        XCTAssertEqual(meshes.horizontalFill.triangleCount, 8) // two quads, fanned from their centres
+        XCTAssertEqual(meshes.verticalFill.triangleCount, 3)   // the triangle; the sliver is skipped
+        XCTAssertFalse(meshes.horizontalOutline.isEmpty)
+        XCTAssertFalse(meshes.verticalOutline.isEmpty)
+        XCTAssertTrue(RerunLiveGeometry.planes([sliver]).verticalOutline.isEmpty)
+    }
+}
+
 #endif

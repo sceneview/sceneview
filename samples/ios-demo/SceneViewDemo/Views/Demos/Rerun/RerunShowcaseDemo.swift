@@ -92,7 +92,7 @@ struct RerunShowcaseDemo: View {
         switch mode {
         case .map: "Top-down map of the room"
         case .camera: "What the camera saw"
-        default: "Drag to orbit · double-tap to recenter"
+        default: "Drag to orbit · pinch to zoom"
         }
     }
 
@@ -145,7 +145,7 @@ struct RerunShowcaseDemo: View {
 
     private var dock: [DockItem] {
         [
-            DockItem(icon: "view.3d", label: "3D view", caption: "3D", selected: mode == .scene) {
+            DockItem(icon: "rotate.3d", label: "3D view", caption: "3D", selected: mode == .scene) {
                 if mode == .scene { recenterToken += 1 } else { select(.scene) }
             },
             DockItem(icon: "map", label: "Map view", caption: "Map", selected: mode == .map) { select(.map) },
@@ -266,9 +266,13 @@ struct RerunExportSheet: View {
                 Label(ready.count == RerunExportFormat.allCases.count ? "Share all four" : "Preparing files…",
                       systemImage: "square.and.arrow.up")
                     .font(SceneViewTokens.TypeScale.bodySemibold)
+                    // `on-primary`: the system's white label on the dark theme's light
+                    // primary fill measured 1.8:1.
+                    .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
                     .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
             }
             .buttonStyle(.borderedProminent)
+            .tint(SceneViewTokens.HomeColor.primary)
             .buttonBorderShape(.capsule)
             .disabled(ready.count != RerunExportFormat.allCases.count)
             .accessibilityIdentifier("rerun-export-all")
@@ -303,7 +307,9 @@ struct RerunExportSheet: View {
                     .font(SceneViewTokens.TypeScale.captionRegular)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: SceneViewTokens.Space.sm)
             if let url = files[format] {
                 ShareLink(item: url) {

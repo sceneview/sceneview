@@ -27,7 +27,9 @@ struct HomeFeaturedPager<Hero: View>: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            LazyHStack(spacing: SceneViewTokens.Space.md) {
+            // The gap equals the home's side padding: with the clip off, the next page starts
+            // exactly at the screen edge instead of peeking into the margin.
+            LazyHStack(spacing: SceneViewTokens.Home.contentPadding) {
                 hero()
                     .containerRelativeFrame(.horizontal)
                     .id(0)
@@ -42,9 +44,9 @@ struct HomeFeaturedPager<Hero: View>: View {
         .scrollTargetBehavior(.viewAligned)
         .scrollIndicators(.hidden)
         .scrollPosition(id: Binding(get: { page }, set: { page = $0 ?? 0 }))
-        // The cards' light-mode shadow needs room the horizontal clip would cut.
-        .contentMargins(.vertical, SceneViewTokens.Space.md, for: .scrollContent)
-        .padding(.vertical, -SceneViewTokens.Space.md)
+        // Unclipped, so the cards' light-mode shadow is not cut into a visible band and a
+        // swiped page slides out to the screen edge, like a store carousel.
+        .scrollClipDisabled()
         .frame(height: height)
         .overlay(alignment: .bottomTrailing) {
             if count > 1 {
