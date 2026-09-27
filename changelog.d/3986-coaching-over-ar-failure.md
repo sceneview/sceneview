@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **`AutoPlacementScene` no longer draws its coaching glyph over the "Couldn't start AR" card ([#3986](https://github.com/sceneview/sceneview/issues/3986)).** Both are centred, so when ARCore could not start a session the phone-sweep disc kept covering the card's explanation and most of its Try again button. The coaching overlay now stays silent while `ARSceneView` shows its availability card. The demo app's AR Placement, AR View and feature-comparison screens get the same fix.
