@@ -127,20 +127,34 @@ object OpenedModelIntent {
             target.delete()
             return null
         }
-        val name = declaredName
-            ?: "model.${format ?: extensionFor(declaredType)}"
+        val name = when {
+            declaredName == null -> "model.${format ?: extensionFor(declaredType)}"
+            // A name without a model extension ("shared file", "download") gets the one the bytes
+            // proved: the viewer reads the format off this name to know an STL, OBJ or PLY carries
+            // no unit and offer the real-size question (#3543, #3490).
+            format != null && declaredName.substringAfterLast('.', "").lowercase() !in SupportedExtensions ->
+                "$declaredName.$format"
+            else -> declaredName
+        }
         return OpenedModel(location = Uri.fromFile(target).toString(), displayName = name)
     }
 
     /**
-     * The extension a file's own bytes say it is (`3mf` / `glb` / `gltf`), or `null` when they say
-     * nothing this app can open.
+     * The extension a file's own bytes say it is (`3mf` / `glb` / `gltf` / `ply` / `stl` / `obj`),
+     * or `null` when they say nothing this app can open.
      *
      * 3MF is confirmed with the SDK's own reader rather than by ZIP magic alone: a plain ZIP, a
      * `.docx` and a `.jar` all start with `PK`, and only [ThreeMfLoader.isThreeMf] knows whether
      * there is a `3D/3dmodel.model` part inside. That check needs the whole archive in memory, so
      * it is capped — past the cap the declared name and MIME decide, which is the right trade for a
      * file far larger than any print.
+     *
+     * STL, OBJ and PLY are sniffed with the SDK's own detectors too (#3490) — the ones
+     * `ModelLoader` uses to route them — because they are exactly the files a share sheet hands
+     * over as nameless `application/octet-stream`. PLY and OBJ are decided on the header. A binary
+     * STL is only recognisable by its length (`84 + 50 × facets`), so [StlLoader.isStl] gets the
+     * whole file, up to the size its loader accepts at all; an ASCII one is decided on the header.
+     * STL is tried before OBJ, whose sniff is the most conservative of the three.
      *
      * Internal rather than private so `OpenedModelIntentTest` can point it at real bytes.
      */
@@ -154,6 +168,11 @@ object OpenedModelIntent {
             header.startsWith(GlbMagic) -> "glb"
             header.startsWith(ZipMagic) -> "3mf".takeIf { isThreeMfFile(file) }
             looksLikeGltfJson(header) -> "gltf"
+            PlyLoader.isPly(header) -> "ply"
+            isStlFile(file, header) -> "stl"
+            // The extra header byte past 4096 lets the sniff tell a line cut by the prefix from
+            // a real end of file, as ModelLoader's own OBJ routing does.
+            ObjLoader.isObj(header) -> "obj"
             else -> null
         }
     }
@@ -161,6 +180,13 @@ object OpenedModelIntent {
     private fun isThreeMfFile(file: File): Boolean {
         if (file.length() > MaxSniffBytes) return false
         return runCatching { ThreeMfLoader.isThreeMf(file.readBytes()) }.getOrDefault(false)
+    }
+
+    private fun isStlFile(file: File, header: ByteArray): Boolean {
+        if (StlLoader.isStl(header)) return true
+        // Nothing more to read, or more than the loader would take anyway.
+        if (header.size >= file.length() || file.length() > StlLoader.DEFAULT_MAX_BYTES) return false
+        return runCatching { StlLoader.isStl(file.readBytes()) }.getOrDefault(false)
     }
 
     /** A glTF JSON document opens with `{` and names its `"asset"` object near the top. */
@@ -254,7 +280,7 @@ object OpenedModelIntent {
 
     private const val STAGED_FILE_NAME = "opened-model"
 
-    private const val HEADER_BYTES = 4096
+    private const val HEADER_BYTES = 4096 + 1
     private const val MaxSniffBytes = 64L * 1024 * 1024
     private val GlbMagic = "glTF".encodeToByteArray()
     private val ZipMagic = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
