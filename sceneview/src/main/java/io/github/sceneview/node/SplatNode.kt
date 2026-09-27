@@ -31,18 +31,20 @@ import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.nio.IntBuffer
 import kotlin.math.max
 
 /**
  * A node that renders a 3D Gaussian Splatting ([SplatCloud]) scene — the radiance-field capture
  * format produced by Scaniverse, Polycam, Luma, and every INRIA-style trainer (#2646).
  *
- * ### How it renders (P1 scope)
+ * ### How it renders
  *
- * Each gaussian is drawn as a **hardware-instanced camera-facing quad** using the dedicated
- * `splat.filamat` material: the vertex shader fetches the per-splat centre / half-extent /
- * colour / opacity from two square `RGBA16F` data textures indexed by the instance id, and the
- * fragment applies an isotropic gaussian falloff with premultiplied-alpha blending
+ * Each gaussian is drawn as a **hardware-instanced quad** using the dedicated `splat.filamat`
+ * material: the vertex shader fetches the splat's centre, colour, opacity, rotation and
+ * per-axis scale from square data textures, projects its 3D covariance to the screen and
+ * stretches the quad over the resulting **oriented ellipse** (the standard anisotropic 3DGS
+ * projection); the fragment applies the gaussian falloff with premultiplied-alpha blending
  * (see [SplatBuffers] for the exact texel layout contract). Splat centres are therefore
  * stored as **half-floats**: positional precision degrades with distance from the model
  * origin (~1 cm at 16 m) — fine for object/room-scale captures; very large outdoor scans
@@ -51,19 +53,21 @@ import kotlin.math.max
  * shaders (verified through 1.72.1), so correct alpha compositing relies on a
  * **CPU painter's sort**:
  *
- * - **Isotropic billboards** — each splat renders as the circumscribed disc of its gaussian
- *   (radius = 3 sigma of the largest scale axis). Anisotropic screen-space ellipses
- *   (2D-covariance projection of `SplatCloud.rotations` + per-axis scales) are the planned P2
- *   quality step of #2646; [SplatCloud.rotations] is carried but not yet consumed.
+ * - **Oriented ellipses** — each splat covers exactly its projected gaussian (out to 3σ, less
+ *   for faint splats), so thin and flat gaussians stay thin and flat instead of rendering as
+ *   the round disc of their largest axis. Colours are pre-distorted by the exact inverse of
+ *   the View's Filmic tone mapper and sRGB output, so a capture displays with the colours it
+ *   was trained on.
  * - **View-dependent sort** — when a [cameraPositionProvider] is set, the node re-sorts
  *   back-to-front on a background thread whenever the camera has moved beyond a small
- *   threshold (relative to the cloud radius), then re-uploads the data textures on the main
- *   thread. Between re-sorts the order is stale by at most the camera delta, so slow orbits
+ *   threshold (relative to the cloud radius), then re-uploads the draw-order texture (4 bytes
+ *   per splat — the attribute textures never change) on the main thread. Between re-sorts the
+ *   order is stale by at most the camera delta, so slow orbits
  *   stay visually correct; without a provider the order stays as loaded (view-independent —
  *   expect popping when orbiting to the far side).
  * - **Draw batching** — Filament caps hardware instancing at 65535 instances per renderable
  *   ([SplatBuffers.MAX_INSTANCES_PER_BATCH]). Larger clouds are split into multiple renderable
- *   batches under this single node, all sharing the same two data textures via each batch's
+ *   batches under this single node, all sharing the same textures via each batch's
  *   `instanceOffset` material parameter. With multiple batches, per-batch `blendOrder` keys
  *   (global blend order) keep the batches compositing in texel order — which the sort keeps
  *   globally back-to-front.
@@ -72,8 +76,8 @@ import kotlin.math.max
  *
  * Construction performs Filament JNI calls (texture/buffer/renderable builders) and **must run
  * on the main thread** — in Compose use the `SceneScope.SplatNode` composable /
- * `rememberSplatCloud`. The depth sort + texel re-pack run on a background dispatcher; only the
- * resulting `Texture.setImage` upload hops back to the main thread (mirroring
+ * `rememberSplatCloud`. The depth sort runs on a background dispatcher; only the resulting
+ * draw-order `Texture.setImage` upload hops back to the main thread (mirroring
  * `ModelLoader.loadModelAsync`'s contract).
  *
  * ```kotlin
@@ -110,29 +114,37 @@ open class SplatNode(
         require(splatCloud.count > 0) { "splatCloud must contain at least one splat" }
     }
 
-    /** Side of the two square RGBA16F per-splat data textures. */
+    /** Side of the four square per-splat textures. */
     val textureSize = SplatBuffers.textureSize(splatCloud.count)
 
     /** Contiguous instance ranges, one renderable batch each (cap 65535 instances per draw). */
     val batches = SplatBuffers.batchRanges(splatCloud.count)
 
-    /** Per-splat `xyz = centre, w = billboard half-extent` — see [SplatBuffers]. */
-    val positionScaleTexture: Texture = buildDataTexture()
+    /** Per-splat `xyz = centre, w = 3σ of the largest axis` (static) — see [SplatBuffers]. */
+    val positionScaleTexture: Texture = buildDataTexture(Texture.InternalFormat.RGBA16F)
 
-    /** Per-splat `rgb = linear colour, a = straight opacity` — see [SplatBuffers]. */
-    val colorOpacityTexture: Texture = buildDataTexture()
+    /** Per-splat `rgb = colour, a = straight opacity` (static) — see [SplatBuffers]. */
+    val colorOpacityTexture: Texture = buildDataTexture(Texture.InternalFormat.RGBA16F)
+
+    /** Per-splat rotation quaternion + per-axis scale, as half floats (static) — see [SplatBuffers]. */
+    val rotationScaleTexture: Texture = buildDataTexture(Texture.InternalFormat.RGBA32UI)
+
+    /** Per draw slot, the splat index drawn there — the painter's sort, re-uploaded on re-sort. */
+    val orderTexture: Texture = buildDataTexture(Texture.InternalFormat.R32UI)
 
     /** One material instance per batch (distinct `instanceOffset`), created via [materialLoader]. */
     val materialInstances: List<MaterialInstance> = batches.map { range ->
         materialLoader.createSplatInstance(
             positionScaleTexture = positionScaleTexture,
             colorOpacityTexture = colorOpacityTexture,
+            rotationScaleTexture = rotationScaleTexture,
+            orderTexture = orderTexture,
             textureSize = textureSize,
             instanceOffset = range.first
         )
     }
 
-    /** Model-space culling AABB of the whole cloud (splat centres grown by their half-extents). */
+    /** Model-space culling AABB of the whole cloud (splat centres grown by 3σ of their largest axis). */
     private val boundingBox: Box = SplatBuffers.boundingBox(splatCloud).let {
         Box(it[0], it[1], it[2], it[3], it[4], it[5])
     }
@@ -193,12 +205,25 @@ open class SplatNode(
         }
 
     init {
-        // Initial as-loaded order; the first frame with a cameraPositionProvider re-sorts.
+        // The attribute textures are written once, in cloud order; only the draw order changes
+        // afterwards. Initial order = as loaded; the first frame with a camera re-sorts.
         val identityOrder = IntArray(splatCloud.count) { it }
-        uploadTextures(
-            SplatBuffers.packPositionScale(splatCloud, identityOrder, textureSize),
+        uploadFloatTexture(
+            positionScaleTexture,
+            SplatBuffers.packPositionScale(splatCloud, identityOrder, textureSize)
+        )
+        uploadFloatTexture(
+            colorOpacityTexture,
             SplatBuffers.packColorOpacity(splatCloud, identityOrder, textureSize)
         )
+        rotationScaleTexture.setImage(
+            engine, 0,
+            Texture.PixelBufferDescriptor(
+                SplatBuffers.packRotationScale(splatCloud, identityOrder, textureSize),
+                Texture.Format.RGBA_INTEGER, Texture.Type.UINT
+            )
+        )
+        uploadOrder(SplatBuffers.packOrder(identityOrder, textureSize))
 
         // The shared unit quad ([-1, 1]^2 at z = 0) instanced once per splat.
         quadVertexBuffer = VertexBuffer.Builder()
@@ -257,7 +282,7 @@ open class SplatNode(
      *
      * All batches share the unit quad geometry, the full-cloud [boundingBox] (instances are
      * displaced in the vertex shader, so per-batch tight boxes would not survive re-sorts),
-     * and the two data textures. With several batches, a global `blendOrder` keyed on the
+     * and the four textures. With several batches, a global `blendOrder` keyed on the
      * batch index keeps Filament compositing them in texel order — the painter's sort packs
      * texels globally back-to-front, so batch 0 is always the farthest slice.
      */
@@ -318,37 +343,39 @@ open class SplatNode(
                 splatCloud.positions, splatCloud.count,
                 cameraLocal.x, cameraLocal.y, cameraLocal.z
             )
-            // Fresh buffers per sort: Filament owns an upload buffer asynchronously until the
-            // GPU copy completes, so re-using one would race. Cheap at P1 scales; a
-            // double-buffered pool is a P2 optimisation (#2646).
-            val positionScale = SplatBuffers.packPositionScale(splatCloud, order, textureSize)
-            val colorOpacity = SplatBuffers.packColorOpacity(splatCloud, order, textureSize)
+            // A fresh buffer per sort: Filament owns an upload buffer asynchronously until the
+            // GPU copy completes, so re-using one would race. 4 bytes per splat.
+            val packedOrder = SplatBuffers.packOrder(order, textureSize)
             withContext(Dispatchers.Main) {
-                if (!isSplatDestroyed) uploadTextures(positionScale, colorOpacity)
+                if (!isSplatDestroyed) uploadOrder(packedOrder)
             }
         }
     }
 
-    private fun buildDataTexture(): Texture = Texture.Builder()
+    private fun buildDataTexture(format: Texture.InternalFormat): Texture = Texture.Builder()
         .width(textureSize)
         .height(textureSize)
         .levels(1)
         .sampler(Texture.Sampler.SAMPLER_2D)
-        .format(Texture.InternalFormat.RGBA16F)
+        .format(format)
         .build(engine)
 
     @MainThread
-    private fun uploadTextures(positionScale: FloatBuffer, colorOpacity: FloatBuffer) {
+    private fun uploadFloatTexture(texture: Texture, texels: FloatBuffer) {
         // FLOAT32 pixel data into an RGBA16F texture: the backend converts on upload (GL ES 3
         // accepts GL_FLOAT for RGBA16F), which keeps the packing pure-JVM testable and skips a
         // manual half-float conversion.
-        positionScaleTexture.setImage(
+        texture.setImage(
             engine, 0,
-            Texture.PixelBufferDescriptor(positionScale, Texture.Format.RGBA, Texture.Type.FLOAT)
+            Texture.PixelBufferDescriptor(texels, Texture.Format.RGBA, Texture.Type.FLOAT)
         )
-        colorOpacityTexture.setImage(
+    }
+
+    @MainThread
+    private fun uploadOrder(order: IntBuffer) {
+        orderTexture.setImage(
             engine, 0,
-            Texture.PixelBufferDescriptor(colorOpacity, Texture.Format.RGBA, Texture.Type.FLOAT)
+            Texture.PixelBufferDescriptor(order, Texture.Format.R_INTEGER, Texture.Type.UINT)
         )
     }
 
@@ -361,7 +388,7 @@ open class SplatNode(
 
     /**
      * Destroys the batch renderables + entities, this node, the material instances (via
-     * [materialLoader]), the shared quad buffers, and frame-defers the data-texture destroy
+     * [materialLoader]), the shared quad buffers, and frame-defers the four textures' destroy
      * (textures still bound to a reclaiming MaterialInstance must outlive it by a few frames —
      * the [EngineDestroyQueue] contract, see ImageNode / #874).
      */
@@ -386,5 +413,7 @@ open class SplatNode(
         engine.safeDestroyIndexBuffer(quadIndexBuffer)
         EngineDestroyQueue.of(engine).enqueueTexture(positionScaleTexture)
         EngineDestroyQueue.of(engine).enqueueTexture(colorOpacityTexture)
+        EngineDestroyQueue.of(engine).enqueueTexture(rotationScaleTexture)
+        EngineDestroyQueue.of(engine).enqueueTexture(orderTexture)
     }
 }

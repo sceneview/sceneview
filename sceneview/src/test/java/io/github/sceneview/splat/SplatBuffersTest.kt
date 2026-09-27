@@ -6,6 +6,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
+import kotlin.math.pow
 
 /**
  * Pure-JVM pins for the [SplatBuffers] contracts consumed by `SplatNode` (#2646): the per-splat
@@ -246,6 +248,96 @@ class SplatBuffersTest {
         assertEquals(1.3f, box[3], 1e-6f) // x: centers ±1 grown by 0.3
         assertEquals(0.3f, box[4], 1e-6f) // y: grown only
         assertEquals(0.3f, box[5], 1e-6f)
+    }
+
+    // ── rotation/scale texture (anisotropic projection input) ────────────────────────────────
+
+    /** Decodes an IEEE-754 binary16 bit pattern — the GLSL `unpackHalf2x16` side of the contract. */
+    private fun halfToFloat(half: Int): Float {
+        val sign = if (half and 0x8000 != 0) -1f else 1f
+        val exponent = (half ushr 10) and 0x1F
+        val mantissa = half and 0x3FF
+        return when (exponent) {
+            0 -> sign * mantissa * 2f.pow(-24)
+            0x1F -> if (mantissa == 0) sign * Float.POSITIVE_INFINITY else Float.NaN
+            else -> sign * (1f + mantissa / 1024f) * 2f.pow(exponent - 15)
+        }
+    }
+
+    @Test
+    fun floatToHalfMatchesKnownBitPatterns() {
+        assertEquals(0x0000, SplatBuffers.floatToHalf(0f))
+        assertEquals(0x8000, SplatBuffers.floatToHalf(-0f))
+        assertEquals(0x3C00, SplatBuffers.floatToHalf(1f))
+        assertEquals(0xBC00, SplatBuffers.floatToHalf(-1f))
+        assertEquals(0x3800, SplatBuffers.floatToHalf(0.5f))
+        assertEquals(0x7BFF, SplatBuffers.floatToHalf(65504f)) // largest finite half
+        assertEquals(0x7C00, SplatBuffers.floatToHalf(1e6f)) // overflow → +inf
+        assertEquals(0x0400, SplatBuffers.floatToHalf(6.1035156e-5f)) // smallest normal
+        assertEquals(0x0001, SplatBuffers.floatToHalf(5.9604645e-8f)) // smallest subnormal
+        assertEquals(0x0000, SplatBuffers.floatToHalf(1e-9f)) // underflow → 0
+        assertEquals(0x3555, SplatBuffers.floatToHalf(1f / 3f)) // round to nearest
+        assertTrue(halfToFloat(SplatBuffers.floatToHalf(Float.NaN)).isNaN())
+    }
+
+    @Test
+    fun floatToHalfRoundTripsWithinHalfPrecision() {
+        // Quaternion components and gaussian scales from 0.05 mm to 10 m: relative error must stay
+        // within binary16's half-ulp (2^-11) for normals.
+        val values = (-1000..1000).map { it / 1000f } +
+            (0..200).map { 5e-5f * 1.07f.pow(it) }.filter { it < 10f }
+        for (v in values) {
+            val back = halfToFloat(SplatBuffers.floatToHalf(v))
+            if (abs(v) >= 6.1035156e-5f) {
+                assertTrue("$v -> $back", abs(back - v) <= abs(v) * 2f.pow(-11) * 1.0001f)
+            } else {
+                assertTrue("$v -> $back", abs(back - v) <= 2f.pow(-25))
+            }
+        }
+    }
+
+    @Test
+    fun packHalf2x16PutsTheFirstValueInTheLowBits() {
+        assertEquals((0xBC00 shl 16) or 0x3C00, SplatBuffers.packHalf2x16(1f, -1f))
+    }
+
+    @Test
+    fun packRotationScaleWritesQuaternionThenScalesPerTexel() {
+        val cloud = SplatCloud(
+            count = 2,
+            positions = FloatArray(6),
+            scales = floatArrayOf(0.01f, 0.02f, 0.03f, 0.5f, 0.25f, 0.125f),
+            rotations = floatArrayOf(0f, 0f, 0f, 1f, 0.5f, -0.5f, 0.5f, -0.5f),
+            colors = FloatArray(6),
+            opacities = floatArrayOf(1f, 1f)
+        )
+        val order = intArrayOf(1, 0)
+        val packed = SplatBuffers.packRotationScale(cloud, order, SplatBuffers.textureSize(2))
+        assertEquals(2 * 2 * 4, packed.capacity())
+        fun unpack(word: Int) = floatArrayOf(halfToFloat(word and 0xFFFF), halfToFloat(word ushr 16))
+        // Texel 0 = splat 1.
+        assertArrayEquals(floatArrayOf(0.5f, -0.5f), unpack(packed.get(0)), 0f)
+        assertArrayEquals(floatArrayOf(0.5f, -0.5f), unpack(packed.get(1)), 0f)
+        assertArrayEquals(floatArrayOf(0.5f, 0.25f), unpack(packed.get(2)), 0f)
+        assertArrayEquals(floatArrayOf(0.125f, 0f), unpack(packed.get(3)), 0f)
+        // Texel 1 = splat 0.
+        assertArrayEquals(floatArrayOf(0f, 0f), unpack(packed.get(4)), 0f)
+        assertArrayEquals(floatArrayOf(0f, 1f), unpack(packed.get(5)), 0f)
+        assertArrayEquals(floatArrayOf(0.01f, 0.02f), unpack(packed.get(6)), 1e-5f)
+        assertArrayEquals(floatArrayOf(0.03f, 0f), unpack(packed.get(7)), 2e-5f)
+        // Tail texels stay zero: zero scale draws nothing.
+        for (i in 8 until 16) assertEquals(0, packed.get(i))
+    }
+
+    @Test
+    fun packOrderWritesOneSplatIndexPerSlot() {
+        val packed = SplatBuffers.packOrder(intArrayOf(2, 0, 1), SplatBuffers.textureSize(3))
+        assertEquals(4, packed.capacity())
+        assertEquals(0, packed.position())
+        assertEquals(listOf(2, 0, 1, 0), (0 until 4).map { packed.get(it) })
+        assertThrows(IllegalArgumentException::class.java) {
+            SplatBuffers.packOrder(IntArray(5), 2)
+        }
     }
 
     // ── SplatCloud stand-in validation (interface contract, #2646 P1a) ───────────────────────

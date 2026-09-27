@@ -2097,7 +2097,9 @@ public final class io/github/sceneview/loaders/MaterialLoader {
 	public final fun createSemanticsOverlayInstance (Lcom/google/android/filament/Texture;F)Lcom/google/android/filament/MaterialInstance;
 	public static synthetic fun createSemanticsOverlayInstance$default (Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Texture;FILjava/lang/Object;)Lcom/google/android/filament/MaterialInstance;
 	public final fun createSplatInstance (Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;II)Lcom/google/android/filament/MaterialInstance;
+	public final fun createSplatInstance (Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;II)Lcom/google/android/filament/MaterialInstance;
 	public static synthetic fun createSplatInstance$default (Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;IIILjava/lang/Object;)Lcom/google/android/filament/MaterialInstance;
+	public static synthetic fun createSplatInstance$default (Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;Lcom/google/android/filament/Texture;IIILjava/lang/Object;)Lcom/google/android/filament/MaterialInstance;
 	public final fun createTextureInstance (Lcom/google/android/filament/Texture;ZFFF)Lcom/google/android/filament/MaterialInstance;
 	public static synthetic fun createTextureInstance$default (Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Texture;ZFFFILjava/lang/Object;)Lcom/google/android/filament/MaterialInstance;
 	public final fun createUbershaderInstance (Lcom/google/android/filament/gltfio/MaterialProvider$MaterialKey;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)Lcom/google/android/filament/MaterialInstance;
@@ -3287,7 +3289,9 @@ public class io/github/sceneview/node/SplatNode : io/github/sceneview/node/Node 
 	public final fun getColorOpacityTexture ()Lcom/google/android/filament/Texture;
 	public final fun getMaterialInstances ()Ljava/util/List;
 	public final fun getMaterialLoader ()Lio/github/sceneview/loaders/MaterialLoader;
+	public final fun getOrderTexture ()Lcom/google/android/filament/Texture;
 	public final fun getPositionScaleTexture ()Lcom/google/android/filament/Texture;
+	public final fun getRotationScaleTexture ()Lcom/google/android/filament/Texture;
 	public final fun getSplatCloud ()Lio/github/sceneview/core/splat/SplatCloud;
 	public final fun getSplatCount ()I
 	public final fun getTextureSize ()I
@@ -3419,8 +3423,12 @@ public final class io/github/sceneview/splat/SplatBuffers {
 	public static final field MAX_INSTANCES_PER_BATCH I
 	public final fun batchRanges (I)Ljava/util/List;
 	public final fun boundingBox (Lio/github/sceneview/core/splat/SplatCloud;)[F
+	public final fun floatToHalf (F)I
 	public final fun packColorOpacity (Lio/github/sceneview/core/splat/SplatCloud;[II)Ljava/nio/FloatBuffer;
+	public final fun packHalf2x16 (FF)I
+	public final fun packOrder ([II)Ljava/nio/IntBuffer;
 	public final fun packPositionScale (Lio/github/sceneview/core/splat/SplatCloud;[II)Ljava/nio/FloatBuffer;
+	public final fun packRotationScale (Lio/github/sceneview/core/splat/SplatCloud;[II)Ljava/nio/IntBuffer;
 	public final fun sortBackToFront ([FIFFF)[I
 	public final fun textureSize (I)I
 	public final fun visibleInBatch (ILkotlin/ranges/IntRange;)I

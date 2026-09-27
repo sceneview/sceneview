@@ -57,6 +57,7 @@ dependencies {
     implementation("io.github.sceneview:arsceneview:4.44.0") // AR (includes sceneview)
 }
 ```
+The app module needs `compileSdk = 37` (SceneView's AndroidX dependencies require it); `minSdk` stays 24.
 
 ### AndroidManifest.xml (AR apps)
 ```xml
