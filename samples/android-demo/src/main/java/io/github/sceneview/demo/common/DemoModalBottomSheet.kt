@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -83,6 +84,7 @@ fun DemoModalBottomSheet(
     sheetGesturesEnabled: Boolean = true,
     shape: Shape = BottomSheetDefaults.ExpandedShape,
     containerColor: Color = BottomSheetDefaults.ContainerColor,
+    contentColor: Color = sheetContentColorFor(containerColor),
     scrimColor: Color = BottomSheetDefaults.ScrimColor,
     dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
     content: @Composable ColumnScope.() -> Unit,
@@ -107,6 +109,7 @@ fun DemoModalBottomSheet(
         sheetGesturesEnabled = sheetGesturesEnabled,
         shape = shape,
         containerColor = containerColor,
+        contentColor = contentColor,
         scrimColor = scrimColor,
         dragHandle = dragHandle,
         properties = ModalBottomSheetProperties(
@@ -135,6 +138,21 @@ fun DemoModalBottomSheet(
         content()
     }
 }
+
+/**
+ * The text and icon colour for a sheet filled with [containerColor] (#4029).
+ *
+ * material3's own default, `contentColorFor(containerColor)`, matches the colour against the
+ * scheme's roles by exact equality. [DemoSheetDefaults.glassContainerColor] is
+ * `surface-container` at 88–90 % opacity, which equals no role, so the lookup fell through to
+ * the ambient `LocalContentColor` — black outside a `Surface` — and the Lighting sheet drew
+ * near-black text on dark glass. Resolving on the opaque version of the colour gives the
+ * glass the same `on-surface` its opaque fill would get, and leaves every opaque sheet's
+ * answer unchanged.
+ */
+@Composable
+fun sheetContentColorFor(containerColor: Color): Color =
+    contentColorFor(if (containerColor.alpha < 1f) containerColor.copy(alpha = 1f) else containerColor)
 
 /**
  * Colours for a sheet you tweak a live scene through (#3827) — the demo settings sheet
