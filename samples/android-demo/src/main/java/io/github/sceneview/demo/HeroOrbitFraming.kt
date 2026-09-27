@@ -325,28 +325,30 @@ internal class CarriedFraming(private val nanoTime: () -> Long) {
      */
     fun over(authored: () -> OrbitFraming): OrbitFraming? {
         val held = offset ?: return null
+        val w = currentWeight()
+        if (w <= 0f) {
+            // Landed: the camera is on the authored path again.
+            clear()
+            return null
+        }
+        return authored().offsetBy(held, w)
+    }
+
+    /** How much of the held offset shows this frame; `0` once it has fully eased away. */
+    private fun currentWeight(): Float {
         weight?.let { read ->
             val w = read().takeIf { it.isFinite() }?.coerceIn(0f, weightFloor) ?: 0f
             weightFloor = w
-            if (w <= 0f) {
-                clear()
-                return null
-            }
-            return authored().offsetBy(held, w)
+            return w
         }
-        if (easeNanos <= 0L) return authored().offsetBy(held, 1f)
+        if (easeNanos <= 0L) return 1f
         if (startOnFirstRead) {
             easeStartNanos = nanoTime()
             startOnFirstRead = false
         }
         val elapsed = nanoTime() - easeStartNanos
-        if (elapsed >= easeNanos) {
-            // Landed: the camera is on the authored path again.
-            clear()
-            return null
-        }
-        val weight = resumeBlendWeight(elapsed / NANOS_PER_SECOND, easeNanos / NANOS_PER_SECOND)
-        return authored().offsetBy(held, weight)
+        if (elapsed >= easeNanos) return 0f
+        return resumeBlendWeight(elapsed / NANOS_PER_SECOND, easeNanos / NANOS_PER_SECOND)
     }
 
     private companion object {

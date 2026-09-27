@@ -752,6 +752,7 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  * Set [resumeAfterMillis] to `0L` or negative to disable the resume — the manipulator then
  * stays in user control forever after the first touch (legacy behaviour).
  */
+@Suppress("TooManyFunctions") // Manipulator contract + the hand-over surface of #3692, kept together
 class HeroOrbitCameraManipulator(
     private val yawProvider: () -> Float,
     private val radius: Float,
