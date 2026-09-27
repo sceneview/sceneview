@@ -304,6 +304,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     val askEngine = rememberAskEngine()
+    val aicoreInstalled = remember(context) { context.isAicoreInstalled() }
 
     // The whole screen is one explicit state machine (#3407), and it lives in plain Kotlin
     // (`AskFlow`) so every transition is unit-tested off-device. `step` is the snapshot the
@@ -592,44 +593,48 @@ fun PointAndAskDemo(onBack: () -> Unit) {
 
             // Free-form question (P3) — blank falls back to the default prompt, which the
             // placeholder shows. The next tap asks THIS question about the composited frame.
-            // Voice input (#3083): the trailing mic launches the system speech recognizer and
-            // replaces the field with what it heard — hidden when the device has no recognizer
-            // to hand the intent to, same guard `BugReportSheet` uses (#3292).
-            OutlinedTextField(
-                value = questionText,
-                onValueChange = { questionText = it },
-                label = { Text(stringResource(R.string.demo_point_and_ask_question_label)) },
-                placeholder = { Text(defaultQuestion) },
-                singleLine = true,
-                trailingIcon = if (speechAvailable) {
-                    {
-                        IconButton(
-                            onClick = {
-                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                    putExtra(
-                                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                                    )
-                                    putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
-                                    putVoiceSilenceExtras()
-                                }
-                                runCatching { speechLauncher.launch(intent) }
-                            },
-                        ) {
-                            Icon(
-                                Icons.Outlined.Mic,
-                                contentDescription =
-                                    stringResource(R.string.demo_point_and_ask_voice_cd),
-                            )
+            // Not offered once the platform has said the model cannot run here (#4028): a
+            // question nothing can answer is a dead end. Long-press drops below still work.
+            if (shownStep != AskStep.ModelUnsupported) {
+                // Voice input (#3083): the trailing mic launches the system speech recognizer and
+                // replaces the field with what it heard — hidden when the device has no recognizer
+                // to hand the intent to, same guard `BugReportSheet` uses (#3292).
+                OutlinedTextField(
+                    value = questionText,
+                    onValueChange = { questionText = it },
+                    label = { Text(stringResource(R.string.demo_point_and_ask_question_label)) },
+                    placeholder = { Text(defaultQuestion) },
+                    singleLine = true,
+                    trailingIcon = if (speechAvailable) {
+                        {
+                            IconButton(
+                                onClick = {
+                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                        putExtra(
+                                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                        )
+                                        putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                                        putVoiceSilenceExtras()
+                                    }
+                                    runCatching { speechLauncher.launch(intent) }
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Mic,
+                                    contentDescription =
+                                        stringResource(R.string.demo_point_and_ask_voice_cd),
+                                )
+                            }
                         }
-                    }
-                } else {
-                    null
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(PointAndAskTestTags.QUESTION_FIELD),
-            )
+                    } else {
+                        null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(PointAndAskTestTags.QUESTION_FIELD),
+                )
+            }
 
             // Drop-3D mode (#3083): which bundled model the next long-press drops. All three
             // ship in the APK already (see `DROP_PROPS`), so switching is instant — no download,
@@ -797,13 +802,25 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Spacer(Modifier.height(4.dp))
+                        // Two different situations, said differently (#4028). Without AICore
+                        // there is nothing to fix from here, so no button. With AICore present
+                        // the one real lever is an AICore update, which ships through Google
+                        // Play — the app-info page this used to open enables nothing.
                         Text(
-                            text = stringResource(R.string.demo_point_and_ask_unavailable_body),
+                            text = stringResource(
+                                if (aicoreInstalled) {
+                                    R.string.demo_point_and_ask_unavailable_body_aicore_present
+                                } else {
+                                    R.string.demo_point_and_ask_unavailable_body
+                                },
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = { context.openAicoreSettings() }) {
-                            Text(stringResource(R.string.demo_point_and_ask_action_aicore))
+                        if (aicoreInstalled) {
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(onClick = { context.openAicoreStoreListing() }) {
+                                Text(stringResource(R.string.demo_point_and_ask_action_aicore))
+                            }
                         }
                     }
 
@@ -855,7 +872,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         persistent = current.persistent,
                         onAction = {
                             when (current.failure.recovery) {
-                                AskRecovery.OpenAicoreSettings -> context.openAicoreSettings()
+                                AskRecovery.OpenAicoreSettings -> context.openAicoreStoreListing()
                                 AskRecovery.FreeStorage -> context.openStorageSettings()
                                 else -> Unit
                             }
@@ -1261,23 +1278,28 @@ private fun Context.isOffline(): Boolean {
 }
 
 /**
- * Opens the system app-details screen for AICore / Android System Intelligence — the one
- * place a user can actually check for the update the two terminal failures ask for. Falls
- * back to the generic app-settings screen when that package is not installed (which is
- * itself the reason the model is unavailable), and does nothing at all rather than crash if
- * neither resolves.
+ * Opens AICore's Google Play listing, where its updates ship (#4028). The app-details screen
+ * this used to open is a dead end: nothing on it turns Gemini Nano on. Tries the Play Store
+ * app first, then the same listing on the web; does nothing rather than crash if neither
+ * resolves.
  */
-private fun Context.openAicoreSettings() {
+private fun Context.openAicoreStoreListing() {
     val targets = listOf(
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            .setData("package:$AICORE_PACKAGE".toUri()),
-        Intent(Settings.ACTION_APPLICATION_SETTINGS),
+        Intent(Intent.ACTION_VIEW, "market://details?id=$AICORE_PACKAGE".toUri()),
+        Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$AICORE_PACKAGE".toUri()),
     )
     for (intent in targets) {
         if (runCatching { startActivity(intent) }.isSuccess) return
     }
-    Log.w(ASK_LOG_TAG, "No settings activity accepted the AICore intent (#3407).")
+    Log.w(ASK_LOG_TAG, "Nothing could open the AICore Play listing (#4028).")
 }
+
+/**
+ * True when the system AICore app is installed. Visible to this app through the manifest's
+ * `<queries>` entry for the package; without it the answer would always be `false`.
+ */
+private fun Context.isAicoreInstalled(): Boolean =
+    runCatching { packageManager.getPackageInfo(AICORE_PACKAGE, 0) }.isSuccess
 
 /** Opens the storage settings screen — the action offered for `NOT_ENOUGH_DISK_SPACE`. */
 private fun Context.openStorageSettings() {

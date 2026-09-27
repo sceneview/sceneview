@@ -199,8 +199,8 @@ enum class AskRecovery(@StringRes val labelRes: Int, val openable: Boolean = fal
     FreeStorage(R.string.demo_point_and_ask_action_storage, openable = true),
 
     /**
-     * Opens the system app details for Android System Intelligence / AICore, where the user
-     * can check for an update. The only action offered for the two terminal causes: there is
+     * Opens AICore's Google Play listing, where its updates ship (#4028) — the system
+     * app-details page it used to open enables nothing. The only action offered for the two terminal causes: there is
      * no cloud fallback by design (#2648), so the honest next step is a platform one.
      */
     OpenAicoreSettings(R.string.demo_point_and_ask_action_aicore, openable = true),

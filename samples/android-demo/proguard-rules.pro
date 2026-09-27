@@ -56,3 +56,36 @@
 -dontwarn javax.lang.model.**
 -dontwarn autovalue.shaded.**
 -dontwarn com.google.auto.value.**
+
+# ── ML Kit: component registrars (object detection, GenAI Prompt) ────────────
+# ML Kit wires itself up at process start: `MlKitInitProvider` hands the
+# `ComponentRegistrar` class names listed in the merged manifest to
+# `ComponentDiscovery`, which instantiates each one reflectively through its
+# no-arg constructor. The manifest keeps the class *names*, but R8 full mode
+# drops the constructors, nothing references them in code. Every
+# registrar then fails with `NoSuchMethodException: <init> []`, the ML Kit
+# context comes up empty, and the first client built on it throws:
+# `ObjectDetection.getClient` a NullPointerException that crashed ML Kit
+# Object Labels on open (#4025), `Generation.getClient` another one that the
+# Point & Ask demo reported as "Gemini Nano isn't available" (#4028). Seen on a
+# minified build on the emulator; the debug build never shrinks, so it never showed.
+-keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }
+
+# ── MediaPipe Tasks (Pose Landmarker) ────────────────────────────────────────
+# tasks-vision ships no consumer rules. Its native graph code finds Java classes
+# by name over JNI, and its options travel as protobuf-lite messages whose
+# schema is read reflectively by field name. Shrunk, `PoseLandmarker
+# .createFromOptions` threw "Field platform_ for <obfuscated> not found"
+# (`MediaPipeLoggingProto$SystemInfo`), so the AR Body Tracker only ever
+# showed "Body tracking is unavailable" in release builds (#4027).
+-keep class com.google.mediapipe.** { *; }
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite { <fields>; }
+# MediaPipe logs through Flogger, which finds its caller by walking the stack
+# for FluentLogger's own frame. R8 renamed FluentLogger and outlined the stack
+# walk into a synthetic class, so `Graph.<clinit>` threw "no caller found on the
+# stack" and PoseLandmarker still failed to start once the protos were kept.
+-keep class com.google.common.flogger.** { *; }
+# Keeping all of MediaPipe also keeps two framework APIs (graph profiler, graph
+# templates) whose protos tasks-vision does not ship. The demo never calls them.
+-dontwarn com.google.mediapipe.proto.CalculatorProfileProto$CalculatorProfile
+-dontwarn com.google.mediapipe.proto.GraphTemplateProto$CalculatorGraphTemplate
