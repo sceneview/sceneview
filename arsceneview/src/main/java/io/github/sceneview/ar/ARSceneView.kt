@@ -1521,7 +1521,8 @@ fun ARSceneView(
         // through `attachedScene`, so registering here is what makes every push source in
         // `sceneview` — transforms, geometry, materials, visibility — reach the AR loop too.
         SceneRenderInvalidators.register(scene, sceneInvalidator)
-        onDispose { SceneRenderInvalidators.unregister(scene) }
+        // Only this view's entry: a SceneView may render the same scene (#3723).
+        onDispose { SceneRenderInvalidators.unregister(scene, sceneInvalidator) }
     }
 
     // Wire resize and surface callbacks — AR needs additional display geometry + plane renderer.

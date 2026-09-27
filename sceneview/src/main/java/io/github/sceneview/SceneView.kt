@@ -449,7 +449,8 @@ fun SceneView(
         sceneInvalidator.attach(frameRateGate)
         SceneRenderInvalidators.register(scene, sceneInvalidator)
         onDispose {
-            SceneRenderInvalidators.unregister(scene)
+            // Only this view's entry: another view may render the same scene (#3723).
+            SceneRenderInvalidators.unregister(scene, sceneInvalidator)
             sceneInvalidator.detach(frameRateGate)
         }
     }

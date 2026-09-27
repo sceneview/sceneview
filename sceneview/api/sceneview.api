@@ -382,7 +382,9 @@ public final class io/github/sceneview/SceneRenderInvalidators {
 	public static final field INSTANCE Lio/github/sceneview/SceneRenderInvalidators;
 	public final fun of (Lcom/google/android/filament/Scene;)Lio/github/sceneview/RenderInvalidator;
 	public final fun register (Lcom/google/android/filament/Scene;Lio/github/sceneview/RenderInvalidator;)V
+	public final fun requestRender (Lcom/google/android/filament/Scene;)V
 	public final fun unregister (Lcom/google/android/filament/Scene;)V
+	public final fun unregister (Lcom/google/android/filament/Scene;Lio/github/sceneview/RenderInvalidator;)V
 }
 
 public final class io/github/sceneview/SceneRenderer {

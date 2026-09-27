@@ -1312,7 +1312,7 @@ open class Node protected constructor(
      * A no-op while the node is not attached to a scene, and safe to call from any of them.
      */
     fun requestRender() {
-        attachedScene?.let { SceneRenderInvalidators.of(it) }?.requestRender()
+        attachedScene?.let { SceneRenderInvalidators.requestRender(it) }
     }
 
     /**

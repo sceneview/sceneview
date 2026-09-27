@@ -241,6 +241,89 @@ class FrameRateGateTest {
         assertFalse("a disposed scene must not be kept awake by a surviving caller", gate.isDirty)
     }
 
+    // ── Scene → invalidator registry (#3723) ─────────────────────────────────────────────────────
+
+    /** A view as the registry sees it: its invalidator wired to its own gate, parked. */
+    private fun parkedView(): Pair<RenderInvalidator, FrameRateGate> {
+        val gate = FrameRateGate()
+        gate.shouldRender(active = false, frameTimeNanos = 1_000_000_000L)
+        return RenderInvalidator().also { it.attach(gate) } to gate
+    }
+
+    @Test
+    fun twoViewsOnOneSceneAreBothWokenByOneInvalidation() {
+        val registry = InvalidatorRegistry<Any>()
+        val scene = Any()
+        val (first, firstGate) = parkedView()
+        val (second, secondGate) = parkedView()
+        registry.register(scene, first)
+        registry.register(scene, second)
+
+        registry.requestRender(scene)
+
+        assertTrue(
+            "the first view to register was overwritten: a node change on a shared scene would " +
+                "freeze it under OnDemand while the second view drew frames for nothing",
+            firstGate.isDirty
+        )
+        assertTrue(secondGate.isDirty)
+    }
+
+    @Test
+    fun unregisteringOneViewKeepsTheOtherWaking() {
+        val registry = InvalidatorRegistry<Any>()
+        val scene = Any()
+        val (leaving, leavingGate) = parkedView()
+        val (staying, stayingGate) = parkedView()
+        registry.register(scene, leaving)
+        registry.register(scene, staying)
+
+        registry.unregister(scene, leaving)
+        registry.requestRender(scene)
+
+        assertTrue(
+            "the view that left composition took the shared entry with it: the surviving view " +
+                "stopped waking on node changes",
+            stayingGate.isDirty
+        )
+        assertFalse("a view that left must no longer be requested", leavingGate.isDirty)
+        assertEquals(listOf(staying), registry.registered(scene))
+    }
+
+    @Test
+    fun registeringTheSameInvalidatorTwiceKeepsOneEntry() {
+        val registry = InvalidatorRegistry<Any>()
+        val scene = Any()
+        val (view, _) = parkedView()
+        registry.register(scene, view)
+        registry.register(scene, view)
+
+        assertEquals(1, registry.registered(scene).size)
+        registry.unregister(scene, view)
+        assertTrue(registry.registered(scene).isEmpty())
+        assertNull(registry.latest(scene))
+    }
+
+    @Test
+    fun unregisterAllStillClearsTheScene() {
+        val registry = InvalidatorRegistry<Any>()
+        val scene = Any()
+        registry.register(scene, parkedView().first)
+        registry.register(scene, parkedView().first)
+
+        registry.unregisterAll(scene)
+
+        assertTrue(registry.registered(scene).isEmpty())
+    }
+
+    @Test
+    fun anUnknownSceneIsANoOp() {
+        val registry = InvalidatorRegistry<Any>()
+        registry.requestRender(Any())
+        registry.unregister(Any(), RenderInvalidator())
+        assertNull(registry.latest(Any()))
+    }
+
     // ── Pull sources ─────────────────────────────────────────────────────────────────────────────
 
     @Test

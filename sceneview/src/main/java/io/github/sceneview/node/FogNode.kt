@@ -62,7 +62,7 @@ fun SceneScope.FogNode(
         val current = listOf<Any?>(enabled, density, height, color)
         if (current != prevFog.value) {
             prevFog.value = current
-            view.scene?.let { SceneRenderInvalidators.of(it) }?.requestRender()
+            view.scene?.let { SceneRenderInvalidators.requestRender(it) }
         }
         view.fogOptions = view.fogOptions.also { opts ->
             opts.enabled = enabled
