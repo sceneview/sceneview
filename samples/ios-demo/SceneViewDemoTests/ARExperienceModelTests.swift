@@ -243,4 +243,27 @@ final class PlacementFeedbackTests: XCTestCase {
             PlacementFeedback.Haptic.none
         )
     }
+
+    // MARK: - Face accessories ring (#4014)
+
+    /// The ring must sit in front of the face, not inside the head: ARKit's
+    /// face anchor is at the centre of the head with +Z toward the camera, and
+    /// the face surface is a few centimetres in front of it.
+    func testFaceRingSitsInFrontOfTheFace() {
+        let positions = ARAugmentedFacesDemo.ringPositions()
+        XCTAssertEqual(positions.count, 8)
+        for position in positions {
+            XCTAssertGreaterThanOrEqual(position.z, 0.05, "a sphere is inside the head")
+        }
+    }
+
+    /// And it must frame the face rather than cover it: every sphere clears a
+    /// 9 cm by 11 cm face oval.
+    func testFaceRingFramesTheFace() {
+        for position in ARAugmentedFacesDemo.ringPositions() {
+            let normalised = (position.x / 0.09) * (position.x / 0.09) + (position.y / 0.11) * (position.y / 0.11)
+            XCTAssertGreaterThan(normalised, 1, "a sphere sits over the face at \(position)")
+        }
+        XCTAssertGreaterThanOrEqual(ARAugmentedFacesDemo.sphereRadius, 0.015)
+    }
 }
