@@ -115,6 +115,18 @@ internal data class OrbitFramingOffset(
     val distanceScale: Float,
 )
 
+/**
+ * The same offset for an orbit [factor] times the size — the yaw, the elevation and the zoom
+ * *ratio* carry over as they are, only a pan is a distance. Used when the user's framing moves
+ * from one camera to another that shows the same picture from further or closer (#3692).
+ */
+internal fun OrbitFramingOffset.scaledPivot(factor: Float): OrbitFramingOffset =
+    if (!factor.isFinite()) {
+        this
+    } else {
+        copy(pivot = Position(pivot.x * factor, pivot.y * factor, pivot.z * factor))
+    }
+
 /** The offset that turns [authored] into [user]. The yaw takes the short way round. */
 internal fun orbitFramingOffset(user: OrbitFraming, authored: OrbitFraming): OrbitFramingOffset =
     OrbitFramingOffset(

@@ -80,6 +80,7 @@ import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
+import io.github.sceneview.demo.scaledPivot
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
 import io.github.sceneview.demo.HeroOrbitResume
 import io.github.sceneview.demo.OrbitSpin
@@ -452,9 +453,10 @@ private fun StudioSection(
                     0f
                 }
             },
-            // Eases back rather than keeping the user's framing (#3642): the flight out of
-            // Inspect starts from `handoverYaw + heroSpin`, the AUTHORED yaw, so a camera left
-            // on the user's azimuth for good would cut to it on every exit.
+            // Eases back rather than keeping the user's framing (#3642): Inspect is a detail
+            // view the flight out has to leave from, and a camera kept on the user's azimuth
+            // for good would carry that detour into every exit. A framing still on screen when
+            // the user leaves is handed to the flight by `changeMode` (#3692).
             resume = HeroOrbitResume.ReturnToAuthoredPath,
         )
     }
@@ -537,7 +539,20 @@ private fun StudioSection(
             } else if (inspecting && target != MaterialsMode.Inspect) {
                 // Compare draws from a fixed camera node, so nothing has moved since the
                 // hand-over; the hero orbit adds its own travel on top of it.
-                if (!compare) handoverYaw.floatValue += heroSpin.yawDegrees
+                if (!compare) {
+                    handoverYaw.floatValue += heroSpin.yawDegrees
+                    // …and the user may have moved it further still (#3692). A drag within the
+                    // last few seconds leaves the hero camera on the user's framing, or easing
+                    // home from it; `handoverYaw` alone would have the flight out open on the
+                    // authored pose, a cut. The framing rides the Gallery camera instead and is
+                    // eased away across the flight, like the one the flight in takes off it.
+                    heroManipulator.takeUserFraming()?.let { user ->
+                        galleryManipulator.carryUserFraming(
+                            offset = user.scaledPivot(focusRadius / heroOrbitRadius),
+                            blendMillis = FOCUS_FLIGHT_MILLIS.toLong(),
+                        )
+                    }
+                }
                 heroSpin.reset()
             }
         }

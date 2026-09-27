@@ -376,6 +376,78 @@ class HeroOrbitResumeTest {
             manipulator.isFrameActive)
     }
 
+    // ── Handing the user's framing to another camera (#3692) ─────────────────────────────────────
+
+    @Test
+    fun `a framing taken within the countdown shows on the next camera, then eases home`() {
+        val inspect = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        val gallery = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        inspect.dragTo(USER_EYE)
+        inspect.advance(1_000)
+        val onScreen = inspect.getTransform()
+
+        gallery.carryUserFraming(checkNotNull(inspect.takeUserFraming()), BLEND_MILLIS)
+
+        assertSamePicture(onScreen, gallery.getTransform())
+        assertFalse("the camera that gave it up is on its authored path", inspect.isPaused())
+        assertSamePicture(authoredTransform(), inspect.getTransform())
+        assertTrue("the ease keeps the frame loop awake", gallery.isFrameActive)
+
+        gallery.advance(BLEND_MILLIS / 2)
+        val halfway = gallery.getTransform()
+        assertTrue(distance(halfway.position, USER_EYE) > 1e-3f)
+        assertTrue(distance(halfway.position, authoredTransform().position) > 1e-3f)
+
+        gallery.advance(BLEND_MILLIS / 2 + 1)
+        assertSamePicture(authoredTransform(), gallery.getTransform())
+        assertFalse(gallery.isFrameActive)
+    }
+
+    @Test
+    fun `a framing taken half-way home is handed over where it stands`() {
+        val inspect = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        val gallery = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        inspect.dragTo(USER_EYE)
+        inspect.advance(RESUME_AFTER_MILLIS + 10)
+        inspect.advance(pacedBlendMillis() / 3)
+        val onScreen = inspect.getTransform()
+
+        gallery.carryUserFraming(checkNotNull(inspect.takeUserFraming()), BLEND_MILLIS)
+
+        assertSamePicture(onScreen, gallery.getTransform())
+    }
+
+    @Test
+    fun `an untouched camera has no framing to hand over`() {
+        val inspect = manipulator()
+        inspect.advance(16)
+
+        assertNull(inspect.takeUserFraming())
+    }
+
+    @Test
+    fun `carrying with no duration cuts, and drops what the next camera held of its own`() {
+        val inspect = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        val gallery = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        gallery.dragTo(Position(0.4f, 0.2f, 1.9f))
+        inspect.dragTo(USER_EYE)
+
+        gallery.carryUserFraming(checkNotNull(inspect.takeUserFraming()), blendMillis = 0L)
+
+        assertFalse(gallery.isPaused())
+        assertSamePicture(authoredTransform(), gallery.getTransform())
+    }
+
+    @Test
+    fun `scaling an offset scales the pan and nothing else`() {
+        val offset = OrbitFramingOffset(Position(0.2f, -0.4f, 1f), 40f, 0.3f, 1.5f)
+
+        val scaled = offset.scaledPivot(0.5f)
+
+        assertEquals(Position(0.1f, -0.2f, 0.5f), scaled.pivot)
+        assertEquals(offset.copy(pivot = scaled.pivot), scaled)
+    }
+
     private companion object {
         const val RADIUS = 2f
         const val Y_HEIGHT = 0.5f
