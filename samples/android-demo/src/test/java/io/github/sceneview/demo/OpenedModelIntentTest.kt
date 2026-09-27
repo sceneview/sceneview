@@ -11,8 +11,11 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -159,6 +162,72 @@ class OpenedModelIntentTest {
         assertEquals("gltf", OpenedModelIntent.detectFormat(gltf))
     }
 
+    // STL, OBJ and PLY are the formats a share sheet most often hands over as a nameless
+    // `application/octet-stream` (#3490): no extension, no model MIME, only the bytes.
+
+    @Test
+    fun `a binary STL is recognised from its bytes alone, past the sniffed header too`() {
+        val small = temporary("one-facet")
+        small.writeBytes(binaryStl(facets = 1))
+        assertEquals("stl", OpenedModelIntent.detectFormat(small))
+
+        // 84 + 50 × 200 bytes: the facet count only matches the file's length, which the 4 KiB
+        // header alone cannot show.
+        val large = temporary("two-hundred-facets")
+        large.writeBytes(binaryStl(facets = 200))
+        assertEquals("stl", OpenedModelIntent.detectFormat(large))
+    }
+
+    @Test
+    fun `an ASCII STL is recognised from its bytes alone`() {
+        val file = temporary("ascii-stl")
+        file.writeText(
+            """
+            solid part
+              facet normal 0 0 1
+                outer loop
+                  vertex 0 0 0
+                  vertex 10 0 0
+                  vertex 0 10 0
+                endloop
+              endfacet
+            endsolid part
+            """.trimIndent()
+        )
+        assertEquals("stl", OpenedModelIntent.detectFormat(file))
+    }
+
+    @Test
+    fun `an OBJ is recognised from its bytes alone`() {
+        val file = temporary("obj")
+        file.writeText("# exported\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+        assertEquals("obj", OpenedModelIntent.detectFormat(file))
+    }
+
+    @Test
+    fun `a PLY is recognised from its bytes alone`() {
+        val file = temporary("ply")
+        file.writeText(
+            "ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\n" +
+                "property float z\nelement face 1\nproperty list uchar int vertex_indices\n" +
+                "end_header\n0 0 0\n1 0 0\n0 1 0\n3 0 1 2\n"
+        )
+        assertEquals("ply", OpenedModelIntent.detectFormat(file))
+    }
+
+    @Test
+    fun `a nameless octet-stream STL is staged, and named for the format its bytes proved`() {
+        val context = RuntimeEnvironment.getApplication()
+        val shared = temporary("shared file")
+        shared.writeBytes(binaryStl(facets = 3))
+
+        val opened = OpenedModelIntent.stage(context, Uri.fromFile(shared), "application/octet-stream")
+
+        assertEquals("shared file.stl", opened?.displayName)
+        assertEquals("stl", opened?.displayName?.let(OpenedModelIntent::unitLessFormat))
+        OpenedModelIntent.sweep(context, keep = null)
+    }
+
     @Test
     fun `an unrelated file is refused by content too`() {
         val text = temporary("prose")
@@ -190,6 +259,20 @@ class OpenedModelIntentTest {
     val temporaryFolder = TemporaryFolder()
 
     private fun temporary(name: String): File = temporaryFolder.newFile(name)
+
+    /** A binary STL: an 80-byte header, a little-endian facet count, then 50 bytes per facet. */
+    private fun binaryStl(facets: Int): ByteArray {
+        val buffer = ByteBuffer.allocate(84 + 50 * facets).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.position(80)
+        buffer.putInt(facets)
+        repeat(facets) { index ->
+            val x = index.toFloat()
+            // Normal, three vertices, attribute byte count.
+            floatArrayOf(0f, 0f, 1f, x, 0f, 0f, x + 1f, 0f, 0f, x, 1f, 0f).forEach(buffer::putFloat)
+            buffer.putShort(0)
+        }
+        return buffer.array()
+    }
 
     /** A minimal but genuine 3MF package: an OPC ZIP holding a `3D/3dmodel.model` part. */
     private fun threeMfBytes(): ByteArray = zipOf(
