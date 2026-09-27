@@ -752,6 +752,7 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  * Set [resumeAfterMillis] to `0L` or negative to disable the resume — the manipulator then
  * stays in user control forever after the first touch (legacy behaviour).
  */
+@Suppress("TooManyFunctions") // Manipulator contract + the hand-over surface of #3692, kept together
 class HeroOrbitCameraManipulator(
     private val yawProvider: () -> Float,
     private val radius: Float,
@@ -858,9 +859,11 @@ class HeroOrbitCameraManipulator(
         handBack()
         if (blendMillis <= 0L) {
             dropUserFraming()
-        } else if (!carried.isEasing) {
+        } else if (!carried.isEasing || carried.isFollowing) {
             // An ease already under way keeps its own clock: restarting it from weight 1 would
-            // throw the camera back out to the pose it is half-way home from.
+            // throw the camera back out to the pose it is half-way home from. One that follows
+            // an animation of the demo's is the exception — the new animation is not the one it
+            // was fading with, so it goes on a clock from the weight it had reached.
             carried.easeBack(blendMillis)
         }
     }
@@ -923,18 +926,30 @@ class HeroOrbitCameraManipulator(
     }
 
     /**
-     * Gives up the framing the user left on this camera and returns it, as an offset from the
-     * authored framing **of this instant** — `null` when the camera is already on its authored
-     * path. The manipulator itself is back on that path afterwards.
+     * Gives up the framing the user left on this camera and returns it, as [peekUserFraming]
+     * does; the manipulator itself is back on its authored path afterwards. [handBack] is this
+     * move with the offset kept on the camera it came from.
+     */
+    internal fun takeUserFraming(): OrbitFramingOffset? {
+        val offset = peekUserFraming()
+        dropUserFraming()
+        return offset
+    }
+
+    /**
+     * The framing the user left on this camera, as an offset from the authored framing **of this
+     * instant** — `null` when the camera is already on its authored path. Covers every state the
+     * user's framing can be in — still under the finger, inside the resume countdown, or half-way
+     * through an ease home — and returns what is on screen in each.
      *
      * For a demo that swaps one manipulator out for another (Materials' Inspect → Gallery): the
      * offset is handed to the next one with [carryUserFraming], so the swap shows the pose the
-     * user left rather than cutting to the authored one first (#3692). Covers every state the
-     * user's framing can be in — still under the finger, inside the resume countdown, or half-way
-     * through an ease home — and returns what is on screen in each. [handBack] is this same move
-     * with the offset kept on the camera it came from.
+     * user left rather than cutting to the authored one first (#3692). It leaves this camera as it
+     * is, because the swap is a recomposition away and this camera draws until then: dropping the
+     * framing here showed the authored pose for a frame, a cut of its own. Whoever brings the
+     * camera back puts it on its path then (`resumeAuto(0)`).
      */
-    internal fun takeUserFraming(): OrbitFramingOffset? {
+    internal fun peekUserFraming(): OrbitFramingOffset? {
         val shown = if (fallback != null) {
             val transform = userControlTransform()
             val eye = transform.position
@@ -949,22 +964,32 @@ class HeroOrbitCameraManipulator(
         } else {
             carried.over(::authoredFraming)
         }
-        val offset = shown?.let { orbitFramingOffset(it, authoredFraming()) }
-        dropUserFraming()
-        return offset
+        return shown?.let { orbitFramingOffset(it, authoredFraming()) }
     }
 
     /**
      * Carries [offset] — typically what [takeUserFraming] took off another manipulator — on top
-     * of this camera's authored framing, and eases it away over [blendMillis]. Whatever this
-     * manipulator held of its own is dropped: the camera on screen is the one being handed over.
-     * `0` or less carries nothing, which is QA mode's cut.
+     * of this camera's authored framing, and eases it away over [blendMillis] — counted from the
+     * first frame this camera draws, not from now: it is typically not on screen yet. Whatever
+     * this manipulator held of its own is dropped: the camera on screen is the one being handed
+     * over. `0` or less carries nothing, which is QA mode's cut.
      */
     internal fun carryUserFraming(offset: OrbitFramingOffset, blendMillis: Long) {
         dropUserFraming()
         if (blendMillis <= 0L) return
         carried.hold(offset)
-        carried.easeBack(blendMillis)
+        carried.easeBackFromFirstRead(blendMillis)
+    }
+
+    /**
+     * Carries [offset] on top of this camera's authored framing at the [weight] it reads each
+     * frame, and drops it at `0` — for a hand-over whose ease is an animation of the demo's own:
+     * Materials' flight out fades the user's framing with the dolly itself (#3692). The weight
+     * only ever goes down. Whatever this manipulator held of its own is dropped.
+     */
+    internal fun carryUserFraming(offset: OrbitFramingOffset, weight: () -> Float) {
+        dropUserFraming()
+        carried.follow(offset, weight)
     }
 
     /** Back on the bare authored path, this frame. Only ever used where nobody can see the cut. */

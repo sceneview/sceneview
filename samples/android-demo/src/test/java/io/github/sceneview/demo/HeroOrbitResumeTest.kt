@@ -418,6 +418,85 @@ class HeroOrbitResumeTest {
     }
 
     @Test
+    fun `peeking at a framing leaves it on the camera still on screen`() {
+        val inspect = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        val gallery = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        inspect.dragTo(USER_EYE)
+        inspect.advance(1_000)
+        val onScreen = inspect.getTransform()
+
+        gallery.carryUserFraming(checkNotNull(inspect.peekUserFraming()), BLEND_MILLIS)
+
+        // The swap is a recomposition away and the hero draws until then: no authored frame.
+        assertTrue(inspect.isPaused())
+        assertSamePicture(onScreen, inspect.getTransform())
+        assertSamePicture(onScreen, gallery.getTransform())
+    }
+
+    @Test
+    fun `a carried framing starts easing on the first frame drawn, not on the hand-over`() {
+        val inspect = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        val gallery = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        inspect.dragTo(USER_EYE)
+        inspect.advance(1_000)
+        val onScreen = inspect.getTransform()
+
+        gallery.carryUserFraming(checkNotNull(inspect.peekUserFraming()), BLEND_MILLIS)
+        // A slow first Gallery frame: longer than the whole ease, nobody reading the camera.
+        now += 3 * BLEND_MILLIS * 1_000_000L
+
+        assertSamePicture(onScreen, gallery.getTransform())
+        assertTrue(gallery.isFrameActive)
+        gallery.advance(BLEND_MILLIS + 1)
+        assertSamePicture(authoredTransform(), gallery.getTransform())
+    }
+
+    @Test
+    fun `a framing carried at a flight's weight fades with it, never back`() {
+        val inspect = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        val gallery = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        inspect.dragTo(USER_EYE)
+        inspect.advance(1_000)
+        val onScreen = inspect.getTransform()
+        var flight = 1f
+
+        gallery.carryUserFraming(checkNotNull(inspect.peekUserFraming())) { flight }
+
+        assertSamePicture(onScreen, gallery.getTransform())
+        assertTrue(gallery.isFrameActive)
+        flight = 0.5f
+        val halfway = gallery.getTransform()
+        assertTrue(distance(halfway.position, USER_EYE) > 1e-3f)
+        assertTrue(distance(halfway.position, authoredTransform().position) > 1e-3f)
+        // A flight that turns round does not bring the user's framing back.
+        flight = 0.9f
+        assertSamePicture(halfway, gallery.getTransform())
+        flight = 0f
+        assertSamePicture(authoredTransform(), gallery.getTransform())
+        assertFalse(gallery.isFrameActive)
+    }
+
+    @Test
+    fun `resuming mid-follow eases on from where the follow had got to`() {
+        val inspect = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        val gallery = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        inspect.dragTo(USER_EYE)
+        inspect.advance(1_000)
+        var flight = 1f
+        gallery.carryUserFraming(checkNotNull(inspect.peekUserFraming())) { flight }
+        flight = 0.5f
+        val halfway = gallery.getTransform()
+
+        gallery.resumeAuto(blendMillis = BLEND_MILLIS)
+        flight = 1f
+
+        assertSamePicture(halfway, gallery.getTransform())
+        gallery.advance(BLEND_MILLIS + 1)
+        assertSamePicture(authoredTransform(), gallery.getTransform())
+        assertFalse(gallery.isFrameActive)
+    }
+
+    @Test
     fun `an untouched camera has no framing to hand over`() {
         val inspect = manipulator()
         inspect.advance(16)

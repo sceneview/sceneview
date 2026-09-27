@@ -166,6 +166,17 @@ internal fun OrbitFraming.offsetBy(offset: OrbitFramingOffset, weight: Float): O
     )
 }
 
+/** [offset] at [weight]: what [offsetBy] adds at that weight, as an offset of its own. */
+internal fun OrbitFramingOffset.weighted(weight: Float): OrbitFramingOffset {
+    val w = weight.coerceIn(0f, 1f)
+    return OrbitFramingOffset(
+        pivot = Position(pivot.x * w, pivot.y * w, pivot.z * w),
+        yawDegrees = yawDegrees * w,
+        elevation = elevation * w,
+        distanceScale = 1f + (distanceScale - 1f) * w,
+    )
+}
+
 /** Folds an angle into `(-180, 180]`, so a blend over it turns the short way. */
 internal fun wrapDegrees(degrees: Float): Float {
     if (!degrees.isFinite()) return 0f
@@ -232,14 +243,40 @@ internal class CarriedFraming(private val nanoTime: () -> Long) {
     private var easeStartNanos = 0L
     private var easeNanos = 0L
 
+    /** The ease is armed but its clock waits for the first frame that reads it. */
+    private var startOnFirstRead = false
+
+    /** What is left of the offset, read each frame from an animation of the caller's. */
+    private var weight: (() -> Float)? = null
+
+    /** The lowest [weight] read so far: the offset only ever fades. */
+    private var weightFloor = 1f
+
     val isEmpty: Boolean get() = offset == null
 
-    val isEasing: Boolean get() = offset != null && easeNanos > 0L
+    val isEasing: Boolean get() = offset != null && (easeNanos > 0L || weight != null)
+
+    /** Fading at a weight read from the caller ([follow]) rather than on a clock. */
+    val isFollowing: Boolean get() = offset != null && weight != null
 
     /** Carry [offset] at full weight until told otherwise. */
     fun hold(offset: OrbitFramingOffset) {
         this.offset = offset
         easeNanos = 0L
+        startOnFirstRead = false
+        weight = null
+    }
+
+    /**
+     * Carry [offset] at whatever [weight] reads each frame — `1` all of it, `0` none, and gone for
+     * good at `0`. For an offset that has to fade in step with a move of the caller's own rather
+     * than on a clock of its own: two eases on two curves, added up, overshoot (#3692). The
+     * weight only ever goes down, so a move that turns round does not bring the offset back.
+     */
+    fun follow(offset: OrbitFramingOffset, weight: () -> Float) {
+        hold(offset)
+        this.weight = weight
+        weightFloor = 1f
     }
 
     /**
@@ -248,14 +285,37 @@ internal class CarriedFraming(private val nanoTime: () -> Long) {
      * own asks for the exact length. Nothing carried, nothing to ease.
      */
     fun easeBack(millis: Long, paced: Boolean = false) {
-        val held = offset ?: return
+        var held = offset ?: return
+        if (weight != null) {
+            // Taken over from [follow]: what is left of the offset is what gets eased away.
+            held = held.weighted(weightFloor)
+            offset = held
+        }
         easeStartNanos = nanoTime()
         easeNanos = (if (paced) resumeBlendMillisFor(held, millis) else millis) * NANOS_PER_MILLI
+        startOnFirstRead = false
+        weight = null
+    }
+
+    /**
+     * [easeBack] over [millis], with a clock that starts on the first frame drawn from it rather
+     * than now. For a camera that is not on screen yet: Materials hands the user's framing to the
+     * Gallery camera on the tap, and the first Gallery frame can come hundreds of milliseconds
+     * later (recomposition, a slow device) — an ease already running by then would open on a
+     * pose part- or all of the way home, the very cut it exists to hide (#3692).
+     */
+    fun easeBackFromFirstRead(millis: Long) {
+        if (offset == null) return
+        easeNanos = millis * NANOS_PER_MILLI
+        startOnFirstRead = true
+        weight = null
     }
 
     fun clear() {
         offset = null
         easeNanos = 0L
+        startOnFirstRead = false
+        weight = null
     }
 
     /**
@@ -265,15 +325,30 @@ internal class CarriedFraming(private val nanoTime: () -> Long) {
      */
     fun over(authored: () -> OrbitFraming): OrbitFraming? {
         val held = offset ?: return null
-        if (easeNanos <= 0L) return authored().offsetBy(held, 1f)
-        val elapsed = nanoTime() - easeStartNanos
-        if (elapsed >= easeNanos) {
+        val w = currentWeight()
+        if (w <= 0f) {
             // Landed: the camera is on the authored path again.
             clear()
             return null
         }
-        val weight = resumeBlendWeight(elapsed / NANOS_PER_SECOND, easeNanos / NANOS_PER_SECOND)
-        return authored().offsetBy(held, weight)
+        return authored().offsetBy(held, w)
+    }
+
+    /** How much of the held offset shows this frame; `0` once it has fully eased away. */
+    private fun currentWeight(): Float {
+        weight?.let { read ->
+            val w = read().takeIf { it.isFinite() }?.coerceIn(0f, weightFloor) ?: 0f
+            weightFloor = w
+            return w
+        }
+        if (easeNanos <= 0L) return 1f
+        if (startOnFirstRead) {
+            easeStartNanos = nanoTime()
+            startOnFirstRead = false
+        }
+        val elapsed = nanoTime() - easeStartNanos
+        if (elapsed >= easeNanos) return 0f
+        return resumeBlendWeight(elapsed / NANOS_PER_SECOND, easeNanos / NANOS_PER_SECOND)
     }
 
     private companion object {
