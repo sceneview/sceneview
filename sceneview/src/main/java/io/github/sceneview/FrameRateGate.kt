@@ -193,22 +193,86 @@ fun rememberRenderInvalidator(): RenderInvalidator = remember { RenderInvalidato
  *
  * Mirrors `EngineDestroyQueue.of(engine)`: a [WeakHashMap] keyed on the Filament object, so a
  * destroyed scene's entry disappears with it and no view is kept alive by this registry.
+ *
+ * **Several views per scene (#3723).** `SceneView(scene = …)` is a public parameter, so two views
+ * — or an `ARSceneView` and a `SceneView` — may render one Filament [Scene]. Each registers its own
+ * invalidator here, [requestRender] wakes all of them, and [unregister] with an invalidator removes
+ * only that one, so the view that stays keeps waking on node changes.
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
 object SceneRenderInvalidators {
 
-    private val invalidators = WeakHashMap<Scene, RenderInvalidator>()
+    private val registry = InvalidatorRegistry<Scene>()
+
+    /** Adds [invalidator] to the views woken for [scene]. Registering it twice is a no-op. */
+    fun register(scene: Scene, invalidator: RenderInvalidator) = registry.register(scene, invalidator)
+
+    /** Removes [invalidator] from [scene] and leaves any other view on the same scene registered. */
+    fun unregister(scene: Scene, invalidator: RenderInvalidator) = registry.unregister(scene, invalidator)
+
+    /**
+     * Removes **every** view registered for [scene].
+     *
+     * Kept for binary compatibility. A view leaving composition must call
+     * `unregister(scene, invalidator)` instead: this overload also silences any other view still
+     * rendering the same scene (#3723).
+     */
+    fun unregister(scene: Scene) = registry.unregisterAll(scene)
+
+    /** Wakes every view rendering [scene]. A no-op when none is registered. */
+    fun requestRender(scene: Scene) = registry.requestRender(scene)
+
+    /**
+     * One of the invalidators registered for [scene] — the most recently registered — or `null`.
+     *
+     * With several views on one scene it reaches only one of them; use [requestRender] to wake
+     * them all.
+     */
+    fun of(scene: Scene): RenderInvalidator? = registry.latest(scene)
+}
+
+/**
+ * The storage behind [SceneRenderInvalidators], generic over the key so it can be tested on the
+ * JVM without a native Filament [Scene].
+ *
+ * Keys are held weakly ([WeakHashMap]): a destroyed scene never retains a view. Invalidators are
+ * compared by identity, in registration order.
+ *
+ * The per-key lists are immutable and replaced on every (rare) register / unregister, so the hot
+ * path — [requestRender], called on every node transform change — reads one reference under the
+ * lock and allocates nothing.
+ */
+internal class InvalidatorRegistry<K : Any> {
+
+    private val invalidators = WeakHashMap<K, List<RenderInvalidator>>()
 
     @Synchronized
-    fun register(scene: Scene, invalidator: RenderInvalidator) {
-        invalidators[scene] = invalidator
+    fun register(key: K, invalidator: RenderInvalidator) {
+        val views = invalidators[key].orEmpty()
+        if (views.none { it === invalidator }) invalidators[key] = views + invalidator
     }
 
     @Synchronized
-    fun unregister(scene: Scene) {
-        invalidators.remove(scene)
+    fun unregister(key: K, invalidator: RenderInvalidator) {
+        val views = invalidators[key] ?: return
+        val remaining = views.filterNot { it === invalidator }
+        if (remaining.isEmpty()) invalidators.remove(key) else invalidators[key] = remaining
     }
 
     @Synchronized
-    fun of(scene: Scene): RenderInvalidator? = invalidators[scene]
+    fun unregisterAll(key: K) {
+        invalidators.remove(key)
+    }
+
+    @Synchronized
+    fun latest(key: K): RenderInvalidator? = invalidators[key]?.lastOrNull()
+
+    @Synchronized
+    fun registered(key: K): List<RenderInvalidator> = invalidators[key].orEmpty()
+
+    /** Requests a frame from every registered view, outside the lock. */
+    fun requestRender(key: K) {
+        val views = registered(key)
+        for (i in views.indices) views[i].requestRender()
+    }
 }
