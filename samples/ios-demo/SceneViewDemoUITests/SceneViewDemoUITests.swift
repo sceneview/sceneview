@@ -222,4 +222,38 @@ final class SceneViewDemoUITests: XCTestCase {
         snapshot(app, "4008-02-after-pinch-out")
         XCTAssertTrue(close.exists && close.isHittable, "a pinch on the stage dismissed the demo")
     }
+
+    /// #4015: on iPad, Explore's scrolled content was drawn over the top bar,
+    /// between the floating tab bar and the navigation bar. Opens Explore from
+    /// the Showcase card, scrolls, and keeps a frame of the top edge.
+    func testExploreScrolledContentStaysUnderTheTopBar() {
+        // #4015 was reported in landscape, where the iPad tab bar floats in a
+        // row of its own above the navigation bar.
+        XCUIDevice.shared.orientation = .landscapeLeft
+        addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
+                      "app never reached the foreground")
+
+        let browse = app.buttons["Browse online models"]
+        for _ in 0..<12 where !(browse.exists && browse.isHittable) {
+            app.swipeUp()
+        }
+        XCTAssertTrue(browse.waitForExistence(timeout: 10), "Browse online models card not found")
+        browse.tap()
+
+        let search = app.textFields["explore-search-field"]
+        XCTAssertTrue(search.waitForExistence(timeout: 15), "Explore never opened")
+        Thread.sleep(forTimeInterval: 2)
+        snapshot(app, "4015-01-explore-top")
+
+        app.swipeUp(velocity: .slow)
+        app.swipeUp(velocity: .slow)
+        Thread.sleep(forTimeInterval: 2)
+        snapshot(app, "4015-02-explore-scrolled")
+
+        let back = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(back.exists && back.isHittable, "the top bar's back button is gone")
+    }
 }
