@@ -63,7 +63,8 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-22): 48 rows, 29 working / 0 stub / 19 android-only.
+# Current slice-5 ledger (2026-09-27): 49 rows, 29 working / 0 stub / 20 android-only.
+# (+1 android-only: `ar-splat-room`, #4023 — iOS has no SplatNode yet.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -850,7 +851,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1219,6 +1220,24 @@ demos:
       No iOS scene; the SDK only has ARRecorder (ReplayKit screen capture). A
       scene-only capture via RealityRenderer or AVAssetWriter is feasible
       (code-only, unverified)
+  - id: ar-splat-room
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — blocked on an iOS SplatNode renderer, the same gap as
+      splat-preview (item 2 of #2646). Added to Android in #4023.
+    category: PLACE_AR
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARSplatRoomDemo.kt
+    ios: []
+    iosFiles: []
+    contract: >-
+      The raccoon_family.spz capture auto-placed on the first surface at its
+      real size (metres, no normalisation), captured ground on the real floor;
+      drag, twist and pinch (25-400 %), Back to real size and Reset in the dock.
+    parity: missing
+    evidence: >-
+      SceneViewSwift has no SplatNode (#2646/#3654); an iOS port needs the
+      splat renderer first
 
 # ─── iOS-only scenes, no Android row: 2 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as

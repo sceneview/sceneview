@@ -16,7 +16,7 @@ object ArRawDepthPointCloudFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_raw_depth_cloud_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.ScatterPlot,
-        order = 36,
+        order = 37,
         tags = setOf("ar", "depth", "raw-depth", "point-cloud", "confidence"),
     )
 

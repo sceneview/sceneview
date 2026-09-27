@@ -717,6 +717,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Place in AR
 
 - `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
+- `ar-splat-room` — Your Scan, in Your Room. A real phone capture, standing on your floor at its real size.
 - `placement-scene` — One-Call AR. The same tap-to-place screen, in a single SDK call.
 - `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
 - `ar-plane-renderer-v2` — Plane Renderer V2. See floors, walls and ceilings as they are found.
