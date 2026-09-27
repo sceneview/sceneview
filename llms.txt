@@ -8453,6 +8453,9 @@ public struct SceneEnvironment: Sendable {
 own radiance untouched, `0.5` halves it. RealityKit's underlying
 `ImageBasedLightComponent` takes a power-of-two *exponent*; `SceneEnvironment`
 converts for you, so never pre-apply a `log2` to **this** property (#2897).
+It is live: changing only `intensity` on the environment you pass to
+`.environment(_:)` (a slider, say) rescales the IBL in place on the next update,
+without reloading the HDR or blanking the skybox (#4010).
 
 > ⚠️ **Do not carry an Android IBL value across.** Android's `Environment` has no
 > intensity member; its IBL level is Filament's `IndirectLight.intensity` in

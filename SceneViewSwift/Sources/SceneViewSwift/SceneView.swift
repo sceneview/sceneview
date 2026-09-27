@@ -1264,6 +1264,22 @@ private struct SceneViewRepresentation: View {
                 guard let env = sceneEnvironment else { return }
                 await loadEnvironment(env)
             }
+            .onChange(of: sceneEnvironment?.intensity) { _, newIntensity in
+                // The load task above is keyed on name + skybox only, so an
+                // intensity-only change (a live slider) never re-ran it and the
+                // IBL kept its first exponent (#4010). Re-keying the task would
+                // blank the skybox for a frame on every slider tick; instead,
+                // rescale the IBL component already installed. If none is
+                // installed yet, the in-flight load reads `env.intensity`
+                // itself, so nothing is lost.
+                guard let newIntensity,
+                      var ibl = entities.ibl.components[ImageBasedLightComponent.self]
+                else { return }
+                ibl.intensityExponent = SceneEnvironment.intensityExponent(
+                    forMultiplier: newIntensity
+                )
+                entities.ibl.components.set(ibl)
+            }
     }
 
     // MARK: - Camera interaction layer (#1049)
