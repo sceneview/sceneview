@@ -19,6 +19,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -69,15 +71,18 @@ fun LabeledSlider(
     onValueChangeFinished: (() -> Unit)? = null,
 ) {
     val rendered = valueText ?: formatSliderValue(value, decimals, unit)
-    // The whole control is one node to a screen reader: the track already announces its value,
-    // so leaving the label row focusable would read the number twice.
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clearAndSetSemantics { contentDescription = "$label, $rendered" }
-    ) {
+    // The track is the control's one node to a screen reader, and it keeps everything [Slider]
+    // publishes — the slider role, the `SetProgress` action TalkBack's swipe up/down drives, and
+    // the disabled state (#3721). The label row is hidden instead, and its two strings move onto
+    // the track: the name as its description, the readout as its state, which replaces the
+    // percentage TalkBack would otherwise derive from the range. The value is read once, in
+    // the unit the screen shows. (Clearing the whole column's semantics, as this used to, kept
+    // the value single but dropped the role, the action and the disabled state with it.)
+    Column(modifier = modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {},
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -115,6 +120,10 @@ fun LabeledSlider(
                     lastStop = stop
                 }
                 onValueChange(new)
+            },
+            modifier = Modifier.semantics {
+                contentDescription = label
+                stateDescription = rendered
             },
             valueRange = valueRange,
             enabled = enabled,

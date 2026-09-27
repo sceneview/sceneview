@@ -379,12 +379,13 @@ class DemoInteractionTest {
     }
 
     /**
-     * [dragSlider] for a [io.github.sceneview.sample.ui.LabeledSlider], which merges its
-     * label, its value readout and its track into a **single** semantics node so TalkBack
-     * announces the value once instead of twice. There is therefore no `Text` node to match
-     * on — the handle is the merged node's contentDescription, `"<label>, <value>"` — and
-     * the node's bounds cover the whole control, so the track is found relative to its
-     * bottom rather than to a label baseline.
+     * [dragSlider] for a [io.github.sceneview.sample.ui.LabeledSlider], which hides its label
+     * row from accessibility and hands both strings to the track (#3721): the label as the
+     * track's contentDescription, the value readout as its stateDescription, so TalkBack
+     * announces the value once and can still adjust the slider. There is therefore no `Text`
+     * node to match on — the handle is the track's contentDescription, `"<label>"` — and the
+     * node's bounds are the track's own 48 dp touch target, whose centre sits 24 dp above its
+     * bottom edge.
      */
     private fun dragSliderByDesc(labelPrefix: String, fraction: Float) {
         if (!device.hasObject(By.descStartsWith(labelPrefix))) {
@@ -485,8 +486,8 @@ class DemoInteractionTest {
     // ids still resolve here through `DEMO_ID_ALIASES`.
     //
     // The sliders are driven through their contentDescription, not their text:
-    // `LabeledSlider` merges its label, value and track into a single semantics
-    // node ("Segments, 168 rings") so a screen reader announces the value once.
+    // `LabeledSlider` hides its label row and describes the track instead
+    // ("Segments", state "168 rings") so a screen reader announces the value once.
 
     @Test
     fun customGeometry_wireframeToggle() {
