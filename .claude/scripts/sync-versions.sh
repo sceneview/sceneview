@@ -851,6 +851,18 @@ if [ -f "$WEBSITE_JS_PKG" ]; then
     add_check "website-static/js/package.json" "$V"
 fi
 
+# website-static/js/sceneview.js — the shipped script embeds its own version
+# twice: the `@version` JSDoc header and the runtime `SceneView.version`
+# literal. Both sat at 4.18.0 for twenty-odd releases while the manifest
+# above tracked VERSION_NAME (#3192), so `SceneView.version` lied at runtime.
+WEBSITE_SCENEVIEW_JS="$REPO_ROOT/website-static/js/sceneview.js"
+if [ -f "$WEBSITE_SCENEVIEW_JS" ]; then
+    V=$(grep -m1 -E '^ \* @version ' "$WEBSITE_SCENEVIEW_JS" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "NOT FOUND")
+    add_check "website-static/js/sceneview.js (@version header)" "$V"
+    V=$(grep -m1 -E "^    version: '[0-9]" "$WEBSITE_SCENEVIEW_JS" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "NOT FOUND")
+    add_check "website-static/js/sceneview.js (SceneView.version)" "$V"
+fi
+
 # docs/docs/ai-context.md — the AI quick-context block users paste into
 # assistants. Pins `io.github.sceneview:sceneview:X.Y.Z`. Stale here means
 # AI assistants actively generate code against the wrong artifact version.
@@ -1585,6 +1597,13 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
 "
             echo -e "  Fixed: website-static/js/package.json ($CURRENT -> $SOURCE_VERSION)"
         fi
+    fi
+
+    # Fix website-static/js/sceneview.js embedded version literals (#3192)
+    if [ -f "$WEBSITE_SCENEVIEW_JS" ]; then
+        _sed_inplace "s/^\\( \\* @version \\)[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*/\\1$SOURCE_VERSION/" "$WEBSITE_SCENEVIEW_JS"
+        _sed_inplace "s/^\\(    version: '\\)[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*',/\\1$SOURCE_VERSION',/" "$WEBSITE_SCENEVIEW_JS"
+        echo -e "  Synced: website-static/js/sceneview.js version literals -> $SOURCE_VERSION"
     fi
 
     # Fix off-map docs/website Maven artifact refs (#1356) — same per-old-version

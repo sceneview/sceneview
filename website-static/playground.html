@@ -2110,7 +2110,7 @@
         },
         ios: {
           file: 'ModelViewerView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct ModelViewerView: View {\n    var body: some View {\n        SceneView {\n            ModelNode("models/helmet.usdz")\n                .scaleToFit(1.0)\n        }\n        .cameraOrbit(distance: 3.0)\n        .environment("environments/studio.hdr")\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct ModelViewerView: View {\n    @State private var model: ModelNode?\n\n    var body: some View {\n        SceneView { root in\n            if let model { root.addChild(model.entity) }\n        }\n        // Re-run the content closure once the model lands\n        .contentID(model == nil ? nil : "helmet")\n        .environment(.studio)\n        .cameraControls(.orbit)\n        .task {\n            // ModelNode has no init(String): loading is async\n            let helmet = try? await ModelNode.load("models/helmet.usdz")\n            model = helmet?.scaleToUnits(1.0)\n        }\n    }\n}'
         },
         web: {
           file: 'model-viewer.js', lang: 'JavaScript',
@@ -2148,7 +2148,7 @@
         },
         ios: {
           file: 'EnvironmentView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct EnvironmentView: View {\n    var body: some View {\n        SceneView {\n            ModelNode("models/chair.usdz")\n                .scaleToFit(1.0)\n        }\n        .environment("environments/studio.hdr")\n        .cameraOrbit(distance: 4.0, target: [0, 0.5, 0])\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct EnvironmentView: View {\n    @State private var model: ModelNode?\n\n    var body: some View {\n        SceneView { root in\n            if let model { root.addChild(model.entity) }\n        }\n        .contentID(model == nil ? nil : "chair")\n        // Presets: .studio .outdoor .sunset .night .warm .autumn\n        // Your own HDR: .custom(name: "Loft", hdrFile: "loft.hdr")\n        .environment(.sunset)\n        .task {\n            let chair = try? await ModelNode.load("models/chair.usdz")\n            model = chair?.scaleToUnits(1.0)\n        }\n    }\n}'
         },
         web: {
           file: 'environment.js', lang: 'JavaScript',
@@ -2170,7 +2170,7 @@
         },
         ios: {
           file: 'CameraView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct CameraView: View {\n    var body: some View {\n        SceneView {\n            ModelNode("models/fox.usdz")\n                .scaleToFit(1.5)\n        }\n        .cameraOrbit(\n            distance: 5.0,\n            target: [0, 0.5, 0]\n        )\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct CameraView: View {\n    @State private var model: ModelNode?\n\n    var body: some View {\n        SceneView { root in\n            if let model { root.addChild(model.entity) }\n        }\n        .contentID(model == nil ? nil : "fox")\n        .cameraControls(.orbit)\n        // Initial orbit angles, in radians: 20 degrees above\n        .cameraOrbit(azimuth: 0, elevation: .pi / 9)\n        // Fit-to-bounds distance, plus 30 % of air\n        .framingMargin(1.3)\n        .task {\n            let fox = try? await ModelNode.load("models/fox.usdz")\n            model = fox?.scaleToUnits(1.5)\n        }\n    }\n}'
         },
         web: {
           file: 'camera.js', lang: 'JavaScript',
@@ -2192,7 +2192,7 @@
         },
         ios: {
           file: 'LightingView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct LightingView: View {\n    var body: some View {\n        SceneView {\n            // Key light\n            DirectionalLightNode(\n                direction: [-1, -1, -1],\n                intensity: 5000,\n                castsShadow: true\n            )\n            // Model\n            ModelNode("models/helmet.usdz")\n                .scaleToFit(1.5)\n        }\n        .cameraOrbit(distance: 3.0)\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct LightingView: View {\n    @State private var model: ModelNode?\n\n    var body: some View {\n        SceneView { root in\n            // Key light: directional, aimed from above-right\n            let key = LightNode.directional(\n                intensity: 5000,\n                castsShadow: true\n            )\n            .position([2, 4, 2])\n            .lookAt(.zero)\n            root.addChild(key.entity)\n\n            if let model { root.addChild(model.entity) }\n        }\n        .contentID(model == nil ? nil : "helmet")\n        .task {\n            let helmet = try? await ModelNode.load("models/helmet.usdz")\n            model = helmet?.scaleToUnits(1.5)\n        }\n    }\n}'
         },
         web: {
           file: 'lighting.js', lang: 'JavaScript',
@@ -2214,7 +2214,7 @@
         },
         ios: {
           file: 'ARPlacementView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\nimport ARKit\n\nstruct ARPlacementView: View {\n    @State private var placed = false\n\n    var body: some View {\n        ARSceneView(\n            planeDetection: .horizontal\n        ) {\n            // Content placed via tap\n        }\n        .onTapAR { result in\n            guard !placed else { return }\n            if let anchor = result.anchor {\n                AnchorNode(anchor: anchor) {\n                    ModelNode("models/chair.usdz")\n                        .scaleToFit(0.5)\n                }\n                placed = true\n            }\n        }\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\nimport RealityKit\n\nstruct ARPlacementView: View {\n    @State private var chair: ModelNode?\n    @State private var placed = false\n\n    var body: some View {\n        ARSceneView(\n            planeDetection: .horizontal,\n            onTapOnPlane: { position, arView in\n                guard !placed, let chair else { return }\n                let anchor = AnchorNode.world(position: position)\n                anchor.add(chair.entity)\n                arView.scene.addAnchor(anchor.entity)\n                placed = true\n            }\n        )\n        .task {\n            let model = try? await ModelNode.load("models/chair.usdz")\n            chair = model?.scaleToUnits(0.5)\n        }\n    }\n}'
         },
         web: {
           file: 'ar-placement.js', lang: 'JavaScript',
@@ -2236,7 +2236,7 @@
         },
         ios: {
           file: 'FaceTrackingView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\nimport ARKit\n\nstruct FaceTrackingView: View {\n    var body: some View {\n        ARSceneView(\n            configuration: ARFaceTrackingConfiguration()\n        ) {\n            // Face mesh overlay\n        }\n        .onFaceUpdate { faceAnchor in\n            let leftEye = faceAnchor.leftEyeTransform\n            let rightEye = faceAnchor.rightEyeTransform\n            let blendShapes = faceAnchor.blendShapes\n            // Apply effects based on expressions\n        }\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\nimport ARKit\n\nstruct FaceTrackingView: View {\n    var body: some View {\n        // Front TrueDepth camera (iPhone X and later)\n        ARSceneView(faceTracking: true)\n            .onSessionStarted { arView in\n                // Content added to a face anchor follows the face\n                let face = AnchorNode.face()\n                let dot = GeometryNode.sphere(radius: 0.01, color: .red)\n                    .position([0, 0, 0.08])\n                face.add(dot.entity)\n                arView.scene.addAnchor(face.entity)\n            }\n            .onFrame { frame, _ in\n                for case let face as ARFaceAnchor in frame.anchors {\n                    let smile = face.blendShapes[.mouthSmileLeft]?\n                        .floatValue ?? 0\n                    if smile > 0.5 {\n                        // Apply effects based on expressions\n                    }\n                }\n            }\n    }\n}'
         },
         web: {
           file: 'face-tracking.js', lang: 'JavaScript',
@@ -2258,7 +2258,7 @@
         },
         ios: {
           file: 'SpatialAnchorsView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\nimport ARKit\n\nstruct SpatialAnchorsView: View {\n    @State private var anchors: [ARAnchor] = []\n\n    var body: some View {\n        ARSceneView(\n            planeDetection: [.horizontal, .vertical]\n        ) {\n            ForEach(anchors, id: \\.identifier) { anchor in\n                AnchorNode(anchor: anchor) {\n                    ModelNode("models/waypoint.usdz")\n                        .scaleToFit(0.2)\n                }\n            }\n        }\n        .onTapAR { result in\n            if let anchor = result.anchor {\n                anchors.append(anchor)\n            }\n        }\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\nimport RealityKit\n\nstruct SpatialAnchorsView: View {\n    @State private var waypoint: ModelNode?\n\n    var body: some View {\n        ARSceneView(\n            planeDetection: .both,\n            onTapOnPlane: { position, arView in\n                guard let waypoint else { return }\n                // One anchor per tap, each with its own copy\n                let anchor = AnchorNode.world(position: position)\n                anchor.add(waypoint.entity.clone(recursive: true))\n                arView.scene.addAnchor(anchor.entity)\n            }\n        )\n        .task {\n            let model = try? await ModelNode.load("models/waypoint.usdz")\n            waypoint = model?.scaleToUnits(0.2)\n        }\n    }\n}'
         },
         web: {
           file: 'spatial-anchors.js', lang: 'JavaScript',
@@ -2280,7 +2280,7 @@
         },
         ios: {
           file: 'RerunDebugView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\nimport ARKit\n\n/// Streams camera pose + plane anchors + raw feature points to a Rerun\n/// viewer running on your Mac.\n///\n/// Setup: pip install rerun-sdk, python tools/rerun-bridge.py, rerun,\n/// point the bridge at your Mac\'s LAN IP (or tether via USB + localhost).\nstruct RerunDebugView: View {\n    @StateObject private var bridge = RerunBridge(\n        host: "192.168.1.42",  // replace with your Mac\'s LAN IP\n        port: 9876,\n        rateHz: 10\n    )\n\n    var body: some View {\n        ARSceneView(\n            onFrame: { frame in\n                let t = Int64(frame.timestamp * 1_000_000_000)\n                bridge.logCameraPose(\n                    frame.camera.transform,\n                    timestamp: t\n                )\n                let planes = frame.anchors\n                    .compactMap { $0 as? ARPlaneAnchor }\n                bridge.logPlanes(planes, timestamp: t)\n                if let raw = frame.rawFeaturePoints {\n                    bridge.logPointCloud(raw, timestamp: t)\n                }\n            }\n        )\n        .ignoresSafeArea()\n        .onAppear { bridge.connect() }\n        .onDisappear { bridge.disconnect() }\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\nimport ARKit\n\n/// Streams camera pose + plane anchors + raw feature points to a Rerun\n/// viewer running on your Mac.\n///\n/// Setup: pip install rerun-sdk, python tools/rerun-bridge.py, rerun,\n/// point the bridge at your Mac\'s LAN IP (or tether via USB + localhost).\nstruct RerunDebugView: View {\n    @StateObject private var bridge = RerunBridge(\n        host: "192.168.1.42",  // replace with your Mac\'s LAN IP\n        port: 9876,\n        rateHz: 10\n    )\n\n    var body: some View {\n        ARSceneView()\n            .onFrame { frame, _ in\n                // Camera pose, tracked planes and the raw\n                // feature cloud, throttled to rateHz\n                bridge.logFrame(frame)\n            }\n            .ignoresSafeArea()\n            .onAppear { bridge.connect() }\n            .onDisappear { bridge.disconnect() }\n    }\n}'
         },
         web: {
           file: 'rerun-embed.html', lang: 'HTML',
@@ -2320,7 +2320,7 @@
         },
         ios: {
           file: 'PrimitivesView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct PrimitivesView: View {\n    var body: some View {\n        SceneView {\n            // Red cube\n            GeometryNode(.box(size: 1.0))\n                .position(x: -2, y: 0.5, z: 0)\n                .color(.red)\n\n            // Green sphere\n            GeometryNode(.sphere(radius: 0.6))\n                .position(x: 0, y: 0.6, z: 0)\n                .color(.green)\n\n            // Blue cylinder\n            GeometryNode(.cylinder(radius: 0.5, height: 1.5))\n                .position(x: 2, y: 0.75, z: 0)\n                .color(.blue)\n        }\n        .cameraOrbit(distance: 6.0, target: [0, 1, 0])\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct PrimitivesView: View {\n    var body: some View {\n        SceneView {\n            // Red cube\n            GeometryNode.cube(size: 1.0, color: .red)\n                .position([-2, 0.5, 0])\n\n            // Green sphere\n            GeometryNode.sphere(radius: 0.6, color: .green)\n                .position([0, 0.6, 0])\n\n            // Blue cylinder\n            GeometryNode.cylinder(radius: 0.5, height: 1.5, color: .blue)\n                .position([2, 0.75, 0])\n        }\n        .cameraOrbit(elevation: .pi / 9)\n    }\n}'
         },
         web: {
           file: 'primitives.js', lang: 'JavaScript',
@@ -2342,7 +2342,7 @@
         },
         ios: {
           file: 'AnimationView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct AnimationView: View {\n    @State private var isPlaying = true\n    @State private var animIndex = 0\n\n    var body: some View {\n        ZStack(alignment: .bottom) {\n            SceneView {\n                ModelNode("models/fox.usdz")\n                    .scaleToFit(1.5)\n                    .playAnimation(\n                        index: animIndex,\n                        isPlaying: isPlaying,\n                        loop: true\n                    )\n            }\n            .cameraOrbit(distance: 3.0)\n\n            HStack(spacing: 12) {\n                Button(isPlaying ? "Pause" : "Play") {\n                    isPlaying.toggle()\n                }\n                .buttonStyle(.borderedProminent)\n\n                Button("Next") {\n                    animIndex += 1\n                }\n                .buttonStyle(.bordered)\n            }\n            .padding(24)\n        }\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct AnimationView: View {\n    @State private var fox: ModelNode?\n    @State private var isPlaying = true\n    @State private var animIndex = 0\n\n    var body: some View {\n        ZStack(alignment: .bottom) {\n            SceneView { root in\n                if let fox { root.addChild(fox.entity) }\n            }\n            .contentID(fox == nil ? nil : "fox")\n            .task {\n                let model = try? await ModelNode.load("models/fox.usdz")\n                fox = model?.scaleToUnits(1.5)\n                fox?.playAnimation(at: animIndex, loop: true)\n            }\n\n            HStack(spacing: 12) {\n                Button(isPlaying ? "Pause" : "Play") {\n                    if isPlaying {\n                        fox?.pauseAllAnimations()\n                    } else {\n                        fox?.resumeAllAnimations()\n                    }\n                    isPlaying.toggle()\n                }\n                .buttonStyle(.borderedProminent)\n\n                Button("Next") {\n                    guard let fox, fox.animationCount > 0 else { return }\n                    animIndex = (animIndex + 1) % fox.animationCount\n                    fox.playAnimation(at: animIndex, loop: true)\n                    isPlaying = true\n                }\n                .buttonStyle(.bordered)\n            }\n            .padding(24)\n        }\n    }\n}'
         },
         web: {
           file: 'animation.js', lang: 'JavaScript',
@@ -2364,7 +2364,7 @@
         },
         ios: {
           file: 'SpringPhysicsView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct SpringPhysicsView: View {\n    var body: some View {\n        SceneView {\n            ModelNode("models/duck.usdz")\n                .scaleToFit(0.5)\n                .position(y: 2.0)\n                // RealityKit has built-in physics\n                .physicsBody(\n                    mode: .dynamic,\n                    mass: 1.0\n                )\n                .collision(\n                    shapes: [.generateConvex()]\n                )\n\n            // Floor plane for collision\n            GeometryNode(.plane(width: 10, depth: 10))\n                .physicsBody(mode: .static)\n                .collision(\n                    shapes: [.generateBox()]\n                )\n        }\n        .cameraOrbit(distance: 5.0, target: [0, 1, 0])\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct SpringPhysicsView: View {\n    @State private var duck: ModelNode?\n\n    var body: some View {\n        SceneView { root in\n            // Floor: a static body collides but never moves\n            let floor = GeometryNode.plane(width: 10, depth: 10, color: .gray)\n            PhysicsNode.static(floor.entity)\n            root.addChild(floor.entity)\n\n            // RealityKit physics: gravity, then a bounce\n            if let duck {\n                duck.position = [0, 2, 0]\n                PhysicsNode.dynamic(duck.entity, mass: 1.0, restitution: 0.6)\n                root.addChild(duck.entity)\n            }\n        }\n        .contentID(duck == nil ? nil : "duck")\n        .task {\n            let model = try? await ModelNode.load("models/duck.usdz")\n            duck = model?.scaleToUnits(0.5)\n        }\n    }\n}'
         },
         web: {
           file: 'spring-physics.js', lang: 'JavaScript',
@@ -2386,7 +2386,7 @@
         },
         ios: {
           file: 'PBRView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\nimport RealityKit\n\nstruct PBRView: View {\n    var body: some View {\n        SceneView {\n            // RealityKit uses SimpleMaterial for PBR\n            ForEach(0..<4, id: \\.self) { row in\n                ForEach(0..<4, id: \\.self) { col in\n                    GeometryNode(\n                        .sphere(radius: 0.4)\n                    )\n                    .position(\n                        x: Float(col - 2) * 1.2,\n                        y: Float(row - 2) * 1.2,\n                        z: 0\n                    )\n                    .material(\n                        SimpleMaterial(\n                            color: .red,\n                            roughness: Float(col) / 3.0,\n                            isMetallic: row > 1\n                        )\n                    )\n                }\n            }\n        }\n        .environment("environments/studio.hdr")\n        .cameraOrbit(distance: 6.0)\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct PBRView: View {\n    var body: some View {\n        SceneView { root in\n            // Roughness rises left to right; top two rows are metallic\n            for row in 0..<4 {\n                for col in 0..<4 {\n                    let ball = GeometryNode.sphere(\n                        radius: 0.4,\n                        material: .pbr(\n                            color: .red,\n                            metallic: row > 1 ? 1.0 : 0.0,\n                            roughness: Float(col) / 3.0\n                        )\n                    )\n                    .position([\n                        Float(col) * 1.2 - 1.8,\n                        Float(row) * 1.2 - 1.8,\n                        0\n                    ])\n                    root.addChild(ball.entity)\n                }\n            }\n        }\n        .environment(.studio)\n    }\n}'
         },
         web: {
           file: 'pbr-materials.js', lang: 'JavaScript',
@@ -2408,7 +2408,7 @@
         },
         ios: {
           file: 'MultiModelView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct MultiModelView: View {\n    var body: some View {\n        SceneView {\n            // Table\n            ModelNode("models/table.usdz")\n\n            // Lamp on table\n            ModelNode("models/lamp.usdz")\n                .position(x: -0.5, y: 0.8, z: 0)\n                .scale(0.5)\n\n            // Vase on table\n            ModelNode("models/vase.usdz")\n                .position(x: 0.5, y: 0.8, z: 0.2)\n                .scale(0.3)\n\n            // Key light\n            DirectionalLightNode(\n                direction: [-1, -1, -1],\n                intensity: 5000,\n                castsShadow: true\n            )\n        }\n        .environment("environments/sky.hdr")\n        .cameraOrbit(\n            distance: 6.0,\n            target: [0, 1, 0]\n        )\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct MultiModelView: View {\n    @State private var models: [ModelNode] = []\n\n    var body: some View {\n        SceneView { root in\n            for model in models { root.addChild(model.entity) }\n\n            // Key light\n            let key = LightNode.directional(\n                intensity: 5000,\n                castsShadow: true\n            )\n            .position([-2, 4, 2])\n            .lookAt(.zero)\n            root.addChild(key.entity)\n        }\n        .contentID(models.isEmpty ? nil : "room")\n        .environment(.outdoor)\n        .cameraOrbit(elevation: .pi / 9)\n        .task {\n            guard\n                let table = try? await ModelNode.load("models/table.usdz"),\n                let lamp = try? await ModelNode.load("models/lamp.usdz"),\n                let vase = try? await ModelNode.load("models/vase.usdz")\n            else { return }\n\n            // Lamp and vase on the table\n            lamp.position = [-0.5, 0.8, 0]\n            lamp.scale = [0.5, 0.5, 0.5]\n            vase.position = [0.5, 0.8, 0.2]\n            vase.scale = [0.3, 0.3, 0.3]\n\n            models = [table, lamp, vase]\n        }\n    }\n}'
         },
         web: {
           file: 'multi-model.js', lang: 'JavaScript',
@@ -2430,7 +2430,7 @@
         },
         ios: {
           file: 'PostProcessingView.swift', lang: 'Swift',
-          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct PostProcessingView: View {\n    var body: some View {\n        SceneView {\n            ModelNode("models/helmet.usdz")\n                .scaleToFit(1.5)\n        }\n        .environment("environments/studio.hdr")\n        .cameraOrbit(distance: 3.0)\n        // RealityKit handles post-processing\n        // automatically with its PBR pipeline:\n        // - Ambient occlusion (built-in)\n        // - Anti-aliasing (MSAA by default)\n        // - HDR tone mapping\n        //\n        // On visionOS, additional effects:\n        // - Grounding shadows\n        // - Environment reflections\n        // - Spatial audio\n    }\n}'
+          code: 'import SwiftUI\nimport SceneViewSwift\n\nstruct PostProcessingView: View {\n    @State private var model: ModelNode?\n\n    var body: some View {\n        SceneView { root in\n            if let model { root.addChild(model.entity) }\n        }\n        .contentID(model == nil ? nil : "helmet")\n        .environment(.studio)\n        // Full-fidelity preset: shadows on every directional\n        // light, full-strength image-based lighting\n        .renderQuality(.cinematic)\n        .task {\n            let helmet = try? await ModelNode.load("models/helmet.usdz")\n            model = helmet?.scaleToUnits(1.5)\n        }\n        // RealityKit handles post-processing\n        // automatically with its PBR pipeline:\n        // - Ambient occlusion (built-in)\n        // - Anti-aliasing (MSAA by default)\n        // - HDR tone mapping\n        //\n        // On visionOS, additional effects:\n        // - Grounding shadows\n        // - Environment reflections\n        // - Spatial audio\n    }\n}'
         },
         web: {
           file: 'post-processing.js', lang: 'JavaScript',
@@ -2558,9 +2558,9 @@
       return safeHighlight(code, {
         annotations: true,
         numRe: /\b(\d+(?:\.\d+)?)\b/g,
-        kwRe: /\b(import|struct|var|let|func|if|else|return|true|false|nil|guard|some|self|private)\b/g,
-        typeRe: /\b(View|SceneView|ARSceneView|ModelNode|GeometryNode|AnchorNode|DirectionalLightNode|Body|State|HStack|VStack|ZStack|Button|Text|ForEach|SimpleMaterial|ARFaceTrackingConfiguration|ARAnchor|Float)\b/g,
-        fnRe: /\b(body|scaleToFit|cameraOrbit|environment|position|scale|color|onTapAR|onFaceUpdate|playAnimation|planeDetection|physicsBody|collision|material|buttonStyle|toggle|padding)\b/g
+        kwRe: /\b(import|struct|var|let|func|if|else|return|true|false|nil|guard|some|self|private|for|in|case|as|try|await)\b/g,
+        typeRe: /\b(View|SceneView|ARSceneView|ModelNode|GeometryNode|AnchorNode|LightNode|PhysicsNode|RerunBridge|State|StateObject|HStack|VStack|ZStack|Button|Text|ARFaceAnchor|Float)\b/g,
+        fnRe: /\b(body|load|scaleToUnits|contentID|cameraControls|cameraOrbit|framingMargin|environment|renderQuality|task|directional|lookAt|position|scale|cube|sphere|cylinder|plane|addChild|addAnchor|onTapOnPlane|onSessionStarted|onFrame|logFrame|playAnimation|pauseAllAnimations|resumeAllAnimations|buttonStyle|toggle|padding)\b/g
       });
     }
 
@@ -3527,9 +3527,12 @@
           prompt += 'AR: tap-to-place with AnchorNode, HitResultNode for surface cursor\n';
           prompt += 'Threading: Filament calls MUST be on main thread. rememberModelInstance handles this.\n';
         } else if (plat === 'ios') {
-          prompt += 'SwiftUI: SceneView { ModelNode("model.usdz") }, ARSceneView { }\n';
+          prompt += 'SwiftUI: SceneView { root in if let model { root.addChild(model.entity) } }.contentID(model == nil ? nil : "m")\n';
+          prompt += 'Load models: .task { model = try? await ModelNode.load("models/file.usdz") } (async; ModelNode has no path initializer)\n';
+          prompt += 'Lights: LightNode.directional(intensity: 1000, castsShadow: true); environment: .environment(.studio)\n';
+          prompt += 'AR: ARSceneView(onTapOnPlane: { position, arView in ... AnchorNode.world(position: position) ... })\n';
           prompt += 'Renderer: RealityKit (NOT Filament)\n';
-          prompt += 'Model formats: USDZ and .reality only\n';
+          prompt += 'Model formats: USDZ/.reality, plus STL, OBJ, PLY and 3MF (no glTF)\n';
         } else if (plat === 'web') {
           prompt += 'API: SceneView.modelViewer("canvas", "model.glb", { autoRotate: true })\n';
           prompt += 'Or: SceneView.create("canvas") then .loadModel(), .addLight(), etc.\n';
