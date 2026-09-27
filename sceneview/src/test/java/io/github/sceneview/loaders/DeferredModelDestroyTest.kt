@@ -21,8 +21,13 @@ class DeferredModelDestroyTest {
 
     private val log = Collections.synchronizedList(mutableListOf<String>())
     private val registry = Collections.synchronizedList(mutableListOf<String>())
-    private val asyncLoad = AsyncLoadSlot<String>(beginLoad = {}, cancelLoad = { log += "cancel($it)" })
+    private val asyncLoad = AsyncLoadSlot<String>(
+        beginLoad = {},
+        cancelLoad = { log += "cancel($it)" },
+        finishLoad = { log += "detach" },
+    )
     private val settling = mutableListOf<() -> Unit>()
+    private var loadFinished = false
 
     private fun load(model: String) {
         registry += model
@@ -33,6 +38,7 @@ class DeferredModelDestroyTest {
         registry,
         model,
         asyncLoad,
+        isLoadFinished = { loadFinished },
         whenLoadSettles = { _, run -> settling += run },
     ) { log += "destroy($it)" }
 
@@ -51,6 +57,28 @@ class DeferredModelDestroyTest {
 
         settle()
         assertEquals(listOf("cancel(a)", "destroy(a)"), log)
+        assertNull(asyncLoad.inFlight)
+    }
+
+    @Test
+    fun `the model in flight whose load finished is detached and freed at once, without a cancel`() {
+        // The usual case: the model is on screen, fully textured. asyncCancelLoad would only
+        // flushAndWait the engine; the loader is retired instead, and nothing is deferred.
+        load("a")
+        loadFinished = true
+        destroy("a")
+        assertEquals(listOf("detach", "destroy(a)"), log)
+        assertTrue(settling.isEmpty())
+        assertNull(asyncLoad.inFlight)
+    }
+
+    @Test
+    fun `a load that finishes while its destroy is deferred is detached, not cancelled`() {
+        load("a")
+        destroy("a")
+        loadFinished = true
+        settle()
+        assertEquals(listOf("detach", "destroy(a)"), log)
         assertNull(asyncLoad.inFlight)
     }
 
@@ -120,13 +148,13 @@ class DeferredModelDestroyTest {
     }
 
     @Test
-    fun `once decoding is done it waits for the backend, then settles`() {
+    fun `once decoding is done it settles without waiting for the backend`() {
+        // A finished load is detached, not cancelled: no flushAndWait, so no fence to wait on.
         val load = Load()
         load.progress = 1f
         load.backendBusy = true
-        assertTrue(load.gate.isBusy())
-        load.backendBusy = false
         assertFalse(load.gate.isBusy())
+        assertEquals(0, load.backendChecks)
     }
 
     @Test
@@ -148,6 +176,19 @@ class DeferredModelDestroyTest {
         load.now = 999
         assertTrue(load.gate.isBusy())
         load.now = 1_000
+        assertFalse(load.gate.isBusy())
+    }
+
+    @Test
+    fun `a stalled load is cancelled only once the backend has drained`() {
+        // The stalled load is cancelled for real, and the cancel's flushAndWait must be instant.
+        val load = Load()
+        load.progress = 0.5f
+        assertTrue(load.gate.isBusy())
+        load.now = 1_000
+        load.backendBusy = true
+        assertTrue(load.gate.isBusy())
+        load.backendBusy = false
         assertFalse(load.gate.isBusy())
     }
 
