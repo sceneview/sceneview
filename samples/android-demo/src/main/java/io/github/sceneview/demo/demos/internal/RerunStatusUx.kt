@@ -17,8 +17,8 @@ const val RERUN_INTRO: String =
 const val RERUN_REPLAY_INTRO: String =
     "A real room, filmed with a phone and rebuilt in 3D: the camera's path and photos, the floor " +
         "and table, the room's points and two models placed on them. The path and points were " +
-        "reconstructed from the video. Record scans your own room live into the same 3D view, and the " +
-        "scan stays on your phone."
+        "reconstructed from the video. \"Record your room\" scans your own room live into the same 3D view; " +
+        "your scans stay on this phone, under Your sessions."
 
 /** The status line over the camera: a dot, a [title] and a quieter [detail] line. */
 data class RerunStatusUx(
@@ -49,7 +49,7 @@ fun rerunStatusUx(isConnected: Boolean, eventsSent: Long, eventsPerSecond: Float
     }
 
 /** Heading of the settings-sheet section that holds [RERUN_SETUP_STEPS]. */
-const val RERUN_SETUP_TITLE: String = "Connect your computer"
+const val RERUN_SETUP_TITLE: String = "Advanced: stream to a computer"
 
 /** One numbered step of "Connect your computer"; [command] is shown in a mono block. */
 data class RerunSetupStep(val text: String, val command: String? = null)

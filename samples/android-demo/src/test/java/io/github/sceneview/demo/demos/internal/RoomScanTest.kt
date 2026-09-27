@@ -207,6 +207,13 @@ class RoomScanTest {
         assertEquals("photos", ScanCopy.label(2, "photo", "photos"))
     }
 
+    @Test
+    fun `a saved scan's line gives its length, points and photos`() {
+        assertEquals("0:48 · 2,521 points · 64 photos", ScanCopy.summary(48.6f, 2_521, 64))
+        assertEquals("1:05 · 1 point · 1 photo", ScanCopy.summary(65f, 1, 1))
+        assertEquals("0:00 · 0 points · 0 photos", ScanCopy.summary(Float.NaN, 0, 0))
+    }
+
     // ── End to end ────────────────────────────────────────────────────────────
 
     @Test

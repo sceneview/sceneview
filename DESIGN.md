@@ -701,8 +701,9 @@ The surface for what an AR demo needs the user to **see** rather than read — a
 share, an input to fill, a meter to watch, or an explanation of why the screen cannot
 work. It stacks directly under the coaching overlay in the same bottom band, so the two
 must read as one language: same `ar-scrim` ground, same `ar-scrim-border` hairline, same
-`radius-lg`, same 480px max width, `shadow-lg`. Padding `space-md`, children spaced
-`space-sm`.
+`radius-lg`, same 480px max width, and no elevation shadow: under a translucent scrim a
+shadow shows through as a darker inner rectangle in dark mode. Padding `space-md`,
+children spaced `space-sm`.
 
 - **Theme-independent, like the coaching overlay, and for the same reason.** The ground is
   a camera frame. A demo card that used `surface` at 90% opacity — as the Cloud Anchors
@@ -766,6 +767,14 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   card under them is the same view the replay opens on, growing as the phone moves, framed
   to the scan with no intro. While recording the dock is empty: nothing may leave a scan
   half-taken. The privacy line ("Everything stays on your phone.") ends the idle copy.
+- **One flow, like a capture app (Polycam, Scaniverse).** The demo opens on a landing over
+  the sample room turning in 3D: a glass pill "Watch a sample session" at the top, and at
+  the thumb the "Your sessions" card (cover, date, duration · points · photos, delete with
+  a confirmation) over the one primary action, "Record your room" — a full-width pill in
+  `accent-progress` with the red dot, the privacy line under it. Record starts by itself
+  once ARCore has found the room; Stop saves the scan on the phone and opens it in the
+  **same** replay as the sample, whole and paused on its last frame. Streaming to a
+  computer is an advanced option in the sheet; its status card shows only once connected.
 
 ### Tabs
 - Padding: 10px 20px

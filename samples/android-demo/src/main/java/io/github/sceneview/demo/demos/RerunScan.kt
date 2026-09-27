@@ -5,6 +5,7 @@ import android.media.Image
 import com.google.ar.core.Camera
 import com.google.ar.core.Frame
 import com.google.ar.core.Pose
+import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.KeyframeGate
@@ -12,6 +13,7 @@ import io.github.sceneview.demo.demos.internal.MediaSpan
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ReplayManifest
+import io.github.sceneview.demo.demos.internal.RerunSessionFile
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
 import io.github.sceneview.demo.demos.internal.ScanProjection
@@ -21,7 +23,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
@@ -29,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /*
  * The Rerun demo's Record mode, Android side: ARCore's camera image handed to the pure scan
- * logic in internal/RoomScan.kt. Everything stays in memory, on the phone.
+ * logic in internal/RoomScan.kt. Everything stays on the phone.
  */
 
 /**
@@ -39,7 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * ([KeyframeGate]), encoded off the main thread.
  *
  * [live] is the replay media as it grows, which the Record screen's 3D card draws; [finish]
- * packs the photos and returns the media the replay opens on.
+ * builds the scan into the file the sessions list keeps and the replay opens.
  *
  * Main thread, like the recorder, except the photo encoding it launches in [scope].
  */
@@ -48,12 +49,19 @@ internal class ScanCapture private constructor(
     private val lens: ReplayLens,
     private val scope: CoroutineScope,
 ) {
-    val trace = ArDebugTrace().apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
+    /** The scan's trace; its journal is what [finish] saves. */
+    val trace = ArDebugTrace().apply {
+        keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M
+        journal = ArrayList()
+    }
 
     private val gate = KeyframeGate()
     private val photoSize = ScanProjection.photoSize(lens, PHOTO_LONG_SIDE)
     private val jpegs = ConcurrentHashMap<String, ByteArray>()
     private val thumbnails = ConcurrentHashMap<String, Bitmap>()
+
+    /** Where each photo was taken from, display-oriented: what its pixels are upright to. */
+    private val poses = HashMap<String, DebugPose>()
     private val jobs = ArrayList<Job>()
     private val inFlight = AtomicInteger(0)
 
@@ -88,6 +96,7 @@ internal class ScanCapture private constructor(
         val pixels = image.copy()
         val sensor = image.sensor
         gate.accept(display)
+        poses[path] = display
         trace.addImage(nanos, path)
         inFlight.incrementAndGet()
         jobs += scope.launch(Dispatchers.Default) {
@@ -106,15 +115,22 @@ internal class ScanCapture private constructor(
         }
     }
 
-    /** Waits for the last photos, then packs the scan into the media the replay reads. */
-    suspend fun finish(): RerunReplayMedia {
+    /**
+     * Stops the scan, waits for the last photos, and builds it into the file the sessions list
+     * keeps — its planes painted from its photos. `null` for a scan that caught nothing. Call it
+     * on the main thread, where the recorder writes: the journal is taken there, then let go.
+     */
+    suspend fun finish(createdAt: Long): RerunSessionFile? {
+        val events = trace.journal?.toList().orEmpty()
+        trace.journal = null
         jobs.toList().joinAll()
-        val photos = (0 until trace.imageCount).map { i ->
-            val path = trace.imagePath(i)
-            path to (jpegs[path] ?: ByteArray(0))
+        if (trace.isEmpty) return null
+        val photos = events.filterIsInstance<ArDebugEvent.Image>().mapNotNull { image ->
+            val jpeg = jpegs[image.path] ?: return@mapNotNull null
+            val pose = poses[image.path] ?: return@mapNotNull null
+            ScanPhoto(image.path, jpeg, pose)
         }
-        val (archive, spans) = withContext(Dispatchers.Default) { ScanArchive.pack(photos) }
-        return RerunReplayMedia(trace, manifest(spans), emptyMap(), HashMap(thumbnails), archive)
+        return RerunSessionBuilder.build(events, lens, photos, createdAt)
     }
 
     private fun manifest(spans: Map<String, MediaSpan>) = ReplayManifest(

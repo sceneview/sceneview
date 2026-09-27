@@ -327,7 +327,23 @@ object ScanCopy {
 
     const val IDLE_TITLE = "Scan your room in 3D"
     const val IDLE_DETAIL = "Tap record, then walk the phone slowly around the room. $PRIVACY"
-    const val WAITING = "Move the phone slowly to find the room. Record unlocks once it is found."
+    const val WAITING = "Move the phone slowly to find the room. Recording starts once it is found."
+
+    /** The landing's one primary action. */
+    const val RECORD = "Record your room"
+    const val WATCH_SAMPLE = "Watch a sample session"
+    const val SESSIONS_TITLE = "Your sessions"
+    const val SESSIONS_EMPTY = "Your scans appear here. Walk the phone slowly around a room: its path, " +
+        "surfaces and photos are rebuilt in 3D."
+    const val DELETE_TITLE = "Delete this scan?"
+    const val DELETE_DETAIL = "It is removed from this phone. This cannot be undone."
+    const val OPEN_FAILED = "This scan could not be opened."
+    const val SAVE_FAILED = "Your scan could not be saved on this phone. It stays open until you leave."
+
+    /** A saved scan's line in the list: `0:48 · 2,521 points · 64 photos`. */
+    fun summary(seconds: Float, points: Int, photos: Int): String =
+        "${ArDebugFormat.clock(seconds)} · ${ArDebugFormat.count(points)} ${label(points, "point", "points")} · " +
+            "${ArDebugFormat.count(photos)} ${label(photos, "photo", "photos")}"
     const val STOP_HINT = "Tap to stop and open your scan in 3D"
     const val FINISHING = "Building your scan…"
     const val LOADING = "Opening your scan…"

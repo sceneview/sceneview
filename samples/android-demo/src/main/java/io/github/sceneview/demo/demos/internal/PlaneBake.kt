@@ -46,7 +46,16 @@ object PlaneBake {
     /** Grid a photo is scored on against a plane, per side. */
     private const val PROBE_GRID = 5
 
-    private const val OUTSIDE_SENSOR = 0xFF000000.toInt()
+    /**
+     * A photo is black where the sensor saw nothing (`ScanProjection.uprightImage`); after JPEG
+     * that black is only nearly black, so every channel at or under this level counts as unseen.
+     */
+    private const val OUTSIDE_SENSOR_LEVEL = 10
+
+    private fun isOutsideSensor(color: Int): Boolean =
+        (color shr 16 and 0xFF) <= OUTSIDE_SENSOR_LEVEL &&
+            (color shr 8 and 0xFF) <= OUTSIDE_SENSOR_LEVEL &&
+            (color and 0xFF) <= OUTSIDE_SENSOR_LEVEL
 
     /**
      * The texture rectangle of [plane]. A floor or a ceiling runs along X and Z, like the bundled
@@ -159,7 +168,7 @@ object PlaneBake {
             val camera = cameras[k]
             val score = camera.score(p, normal)
             val color = if (score > bestScore) camera.pixel(photos[k]) else 0
-            if (color != 0 && color != OUTSIDE_SENSOR) {
+            if (color != 0 && !isOutsideSensor(color)) {
                 best = color
                 bestScore = score
             }
