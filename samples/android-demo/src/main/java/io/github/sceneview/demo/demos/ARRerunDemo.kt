@@ -257,18 +257,27 @@ fun ARRerunDemo(onBack: () -> Unit) {
             if (debugFullScreen) {
                 ArDebugLegend(debugSession)
             } else {
-                RerunStatusCard(status)
-                ArDebugPip(
-                    session = debugSession,
-                    orbit = pipOrbit,
-                    engine = engine,
-                    modelLoader = modelLoader,
-                    materialLoader = materialLoader,
-                    onExpand = { debugFullScreen = true },
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .padding(end = Space.md),
-                )
+                // While the SDK's "Couldn't start AR" card explains why there is no session,
+                // the preview has nothing to mirror and sat on top of that card's title,
+                // under the "No computer connected" card (#3989). One card at a time
+                // (DESIGN.md "AR Overlay Card"): both come back as soon as a session
+                // starts. A QA fixture hides the SDK card and owns the 3D view, so it
+                // keeps them.
+                val availabilityCardShown = arCoreAvailability != null && qaState == null
+                if (!availabilityCardShown) {
+                    RerunStatusCard(status)
+                    ArDebugPip(
+                        session = debugSession,
+                        orbit = pipOrbit,
+                        engine = engine,
+                        modelLoader = modelLoader,
+                        materialLoader = materialLoader,
+                        onExpand = { debugFullScreen = true },
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .padding(end = Space.md),
+                    )
+                }
             }
         },
         // Status banner + primary action are both bottom-anchored, so both live in the
