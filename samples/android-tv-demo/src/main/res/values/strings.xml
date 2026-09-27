@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SceneView TV Viewer</string>
+    <!-- #3926: shown until the picked model's first frame is on screen. -->
+    <string name="tv_loading_caption">Loading model</string>
+    <string name="tv_loading_model">Loading %1$s</string>
 </resources>

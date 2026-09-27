@@ -12,9 +12,10 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,11 +32,18 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.animation.Transition.animateRotation
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
@@ -170,6 +178,17 @@ private fun TvModelViewerScreen() {
         )
 
         val modelInstance = rememberModelInstance(modelLoader, selectedModel.assetPath)
+        // `rememberModelInstance` keeps returning the previous model's instance until the new
+        // one is built, so "non-null" does not mean "this model": pin whatever was on screen
+        // when this entry was picked (null on launch, the previous model on a switch) and only
+        // treat a different instance as this model's. It is hidden meanwhile, so the name in
+        // the caption and the model on the stage never disagree.
+        val staleInstance = remember(selectedModel.assetPath) { modelInstance }
+        val freshInstance = modelInstance?.takeIf { it !== staleInstance }
+        // Loading ends on the first frame that actually reached the screen with the model in
+        // it (`onFrame` fires for presented frames only), not when the instance is built.
+        var drawnInstance by remember { mutableStateOf<ModelInstance?>(null) }
+        val loading = isModelLoading(modelInstance, staleInstance, drawnInstance)
         val environment = rememberEnvironment(environmentLoader) {
             environmentLoader.createHDREnvironment("environments/studio_2k.hdr")
                 ?: environmentLoader.createHDREnvironment("environments/rooftop_night_2k.hdr")!!
@@ -194,9 +213,10 @@ private fun TvModelViewerScreen() {
                 centerNode.rotation = rotation
                 cameraNode.position = Position(y = 0f, z = cameraDistance)
                 cameraNode.lookAt(centerNode)
+                if (freshInstance != null) drawnInstance = freshInstance
             }
         ) {
-            modelInstance?.let { instance ->
+            freshInstance?.let { instance ->
                 ModelNode(
                     modelInstance = instance,
                     scaleToUnits = selectedModel.scale,
@@ -204,6 +224,13 @@ private fun TvModelViewerScreen() {
                     animationLoop = true
                 )
             }
+        }
+
+        if (loading) {
+            TvLoadingState(
+                modelName = selectedModel.label,
+                modifier = Modifier.align(Alignment.Center)
+            )
         }
 
         // TV overlay — model name and controls hint
@@ -225,7 +252,7 @@ private fun TvOverlay(
         modifier = modifier
             .padding(32.dp)
             .background(
-                color = Color.Black.copy(alpha = 0.6f),
+                color = TvChrome.scrim,
                 shape = MaterialTheme.shapes.medium
             )
             .padding(16.dp),
@@ -234,7 +261,7 @@ private fun TvOverlay(
         Text(
             text = modelName,
             style = MaterialTheme.typography.headlineMedium,
-            color = Color.White
+            color = TvChrome.onGlass
         )
         Text(
             text = buildString {
@@ -243,7 +270,85 @@ private fun TvOverlay(
                 append("Play/Pause: Auto-rotate ${if (autoRotate) "ON" else "OFF"}")
             },
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.7f)
+            color = TvChrome.onGlassMuted
         )
     }
+}
+
+/**
+ * Shown from the moment a model is picked until its first frame is on screen — 6 to 13 s on a
+ * TV box for the larger models (#3926), which used to be a black stage with only the caption.
+ *
+ * Sized for ten feet: a 72 dp indicator and headline type, on the same chrome scrim as
+ * [TvOverlay]. Announced once through a polite live region, so TalkBack says which model is
+ * coming instead of nothing.
+ */
+@Composable
+private fun TvLoadingState(
+    modelName: String,
+    modifier: Modifier = Modifier
+) {
+    val announcement = stringResource(R.string.tv_loading_model, modelName)
+    Column(
+        modifier = modifier
+            .padding(48.dp)
+            .background(color = TvChrome.scrim, shape = MaterialTheme.shapes.large)
+            .padding(horizontal = 48.dp, vertical = 32.dp)
+            .clearAndSetSemantics {
+                contentDescription = announcement
+                liveRegion = LiveRegionMode.Polite
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(72.dp),
+            color = TvChrome.accent,
+            trackColor = TvChrome.track,
+            strokeWidth = 6.dp
+        )
+        Text(
+            text = stringResource(R.string.tv_loading_caption),
+            style = MaterialTheme.typography.titleLarge,
+            color = TvChrome.onGlassMuted
+        )
+        Text(
+            text = modelName,
+            style = MaterialTheme.typography.headlineLarge,
+            color = TvChrome.onGlass,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+/**
+ * Whether the stage is still waiting for the picked model.
+ *
+ * @param current what `rememberModelInstance` returns now — it lags a switch by the whole load.
+ * @param stale the instance that was on screen when the model was picked.
+ * @param drawn the last instance seen in a presented frame.
+ */
+internal fun isModelLoading(current: Any?, stale: Any?, drawn: Any?): Boolean =
+    current == null || current === stale || drawn !== current
+
+/**
+ * DESIGN.md "Glass Chrome over Media" tokens. The chrome floats over the Filament stage, which is
+ * media rather than a themed surface, so these are the same in light and dark. The phone demo's
+ * `SceneViewTokens` lives in its own module, hence the local copy of the four values used here.
+ */
+private object TvChrome {
+    /** `chrome-scrim` — black at 60 %. */
+    val scrim = Color(0x99000000)
+
+    /** `on-glass`. */
+    val onGlass = Color.White
+
+    /** `on-glass-muted` — white at 72 %. */
+    val onGlassMuted = Color(0xB8FFFFFF)
+
+    /** Brand tint light (`sceneview_tint_light`, #A4C1FF) — the over-media accent. */
+    val accent = Color(0xFFA4C1FF)
+
+    /** `glass-surface` — white at 14 %, the unfilled part of the ring. */
+    val track = Color(0x24FFFFFF)
 }
