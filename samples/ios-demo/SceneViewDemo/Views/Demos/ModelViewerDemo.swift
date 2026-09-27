@@ -273,14 +273,19 @@ struct ModelViewerDemo: View {
                         }
                     } label: {
                         GlassPill {
-                            SurpriseShuffleIcon(loading: surpriseInFlight)
-                            Text("Surprise me")
-                                .font(SceneViewTokens.TypeScale.captionSemibold)
-                                .lineLimit(1)
+                            // On-glass white is set on the glyphs themselves, inside
+                            // the glass, as the dock does: set on the pill from the
+                            // outside it did not survive the glass (#4013).
+                            Group {
+                                SurpriseShuffleIcon(loading: surpriseInFlight)
+                                Text("Surprise me")
+                                    .font(SceneViewTokens.TypeScale.captionSemibold)
+                                    .lineLimit(1)
+                            }
+                            // Dimming is reserved for the in-flight roll.
+                            .foregroundStyle(surpriseInFlight ? SceneViewTokens.Glass.onGlassMuted
+                                                              : SceneViewTokens.Glass.onGlass)
                         }
-                        // DESIGN.md on-glass stays white over 3D, independent of
-                        // theme; GlassPill retains the existing glass fill/hairline.
-                        .foregroundStyle(SceneViewTokens.Glass.onGlass)
                         .tint(SceneViewTokens.Glass.onGlass)
                         .frame(minHeight: SceneViewTokens.Layout.touchTarget)
                         .contentShape(Capsule())
@@ -307,6 +312,12 @@ struct ModelViewerDemo: View {
             }
             // Stack above the dock band.
             .padding(.bottom, SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md * 2)
+            // This band floats over the stage like the dock under it, so it is
+            // pinned to the dark glass the same way (`DemoScaffold`). Left on
+            // the system scheme, light mode gave these pills a light glass that
+            // turned the white "Surprise me" label grey: it read as disabled
+            // while the dock right under it stayed white (#4013).
+            .environment(\.colorScheme, .dark)
         }
         .demoChrome(
             title: "Model Viewer",
