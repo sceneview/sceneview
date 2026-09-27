@@ -371,6 +371,14 @@ struct ExploreTab: View {
             // unchanged: `surface` is #FFFFFF there, which is what the system
             // background already was.
             .background(SceneViewTokens.HomeColor.surface)
+            // Embedded on iPad, the floating tab bar takes a row of its own
+            // above the navigation bar, and the bar was left transparent:
+            // scrolled content showed through beside the tab bar and over the
+            // status bar (#4015). Give the bar an opaque page-surface ground,
+            // which reaches the screen's top edge. It matches the page, so it
+            // is invisible until content scrolls under it.
+            .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
+            .toolbarBackground(embedded ? .visible : .automatic, for: .navigationBar)
             .navigationTitle("Explore")
             // Placeholder names the catalog being searched so the field reflects
             // the picked source (Sketchfab / Poly Haven), #2645.
