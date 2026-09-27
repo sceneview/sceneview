@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: AR Placement's streamed models show their own picture ([#3987](https://github.com/sceneview/sceneview/issues/3987)).** The six "Streamed" cards showed the thumbnail of their bundled stand-in, which is a different model: Coffee Mug showed the Olive Dish, Picture Frame showed the Soldier. Each streamed card now shows its own Sketchfab thumbnail, or the generic AR glyph when there is no API key or no network. The card title also no longer shares the "Streamed" caption's grey, so the caption reads as a caption.

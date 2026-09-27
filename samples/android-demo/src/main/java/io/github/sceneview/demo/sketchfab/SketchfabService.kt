@@ -251,6 +251,16 @@ class SketchfabService @VisibleForTesting internal constructor(
     }
 
     /**
+     * Metadata for one model (`GET /v3/models/{uid}`) — name, thumbnails, counts. Used where
+     * the app knows a uid but not its picture, e.g. the AR Placement picker's streamed rows
+     * (#3987).
+     */
+    suspend fun model(uid: String): SketchfabModel = withContext(Dispatchers.IO) {
+        val body = authenticatedGet(buildUrl("models/$uid") {})
+        json.decodeFromString(SketchfabModel.serializer(), body)
+    }
+
+    /**
      * Resolve the signed CDN URL for a model's preferred format (GLB > glTF > USDZ).
      *
      * The returned URL is short-lived (see [SketchfabDownloadUrl.expires]) and

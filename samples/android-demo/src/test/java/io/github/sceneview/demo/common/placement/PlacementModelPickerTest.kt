@@ -134,12 +134,11 @@ class PlacementModelPickerTest {
         assertEquals(PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS, zero?.realWorldSizeMeters)
     }
 
-    // ── Picker thumbnails (#3830) ───────────────────────────────────────────────────────
-    // The "Pick a model" tray showed a generic cube glyph for every streamed row (Coffee
-    // Mug, Potted Monstera, Crates & Barrels, Wooden End Table, Floor Lamp, Picture Frame)
-    // because the lookup was gated on `source == Bundled`. It is gated on the shape of
-    // `assetLocation` now — see `placementThumbnailResFor`'s doc for why that is safe for
-    // this category specifically (#2355/#3324 pairwise-distinct fallbacks).
+    // ── Picker thumbnails (#3830, #3987) ────────────────────────────────────────────────
+    // #3830 gave the streamed rows their bundled fallback's picture; visual QA (#3987) then
+    // read it as what it is — the "Coffee Mug" card showing the Olive Dish, "Picture Frame"
+    // the Soldier. A streamed card now shows its own Sketchfab thumbnail
+    // (`PlacementModel.thumbnailUrl`) or the glyph, so the bundled lookup is Bundled-only.
 
     @Test
     fun `a bundled row resolves its own generated thumbnail`() {
@@ -153,9 +152,10 @@ class PlacementModelPickerTest {
     }
 
     @Test
-    fun `a streamed row still pointed at its bundled fallback resolves that fallback's thumbnail`() {
+    fun `a streamed row pointed at its bundled fallback never shows that fallback's picture`() {
         // Mirrors ARPlacementDemo's model list: a streamed row that has not (yet) resolved
         // to a downloaded file carries its slug's `fallbackBundledPath` as `assetLocation`.
+        // That path is a DIFFERENT model (the Olive Dish, for the Coffee Mug row).
         val coffeeMug = PlacementModel(
             id = "streamed-coffee-mug",
             displayName = "Coffee Mug",
@@ -163,11 +163,10 @@ class PlacementModelPickerTest {
             source = PlacementModelSource.Streamed,
             pending = true,
         )
-        val thumbnail = placementThumbnailResFor(coffeeMug)
-        assertEquals(ModelThumbnails.resourceFor("khronos_iridescent_dish"), thumbnail)
-        // A curated fallback must have a real generated thumbnail, not a glyph — otherwise
-        // this test would pass by both sides being null.
-        assertNotNull(thumbnail)
+        // Guard: the fallback does have a generated thumbnail — otherwise the null below
+        // would prove nothing.
+        assertNotNull(ModelThumbnails.resourceFor("khronos_iridescent_dish"))
+        assertNull(placementThumbnailResFor(coffeeMug))
     }
 
     @Test

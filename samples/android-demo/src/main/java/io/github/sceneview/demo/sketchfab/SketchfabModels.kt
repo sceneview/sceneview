@@ -34,6 +34,17 @@ data class SketchfabModel(
 ) {
     /** True when the Sketchfab model carries one or more skeletal animations. */
     val isAnimated: Boolean get() = animationCount > 0
+
+    /**
+     * The smallest thumbnail at least [minWidth] px wide, else the largest one, else `null`.
+     * Sketchfab serves the same render at several sizes up to 1920 px; a picker tile needs
+     * the small one, and decoding the original for an 80 dp tile is wasted memory.
+     */
+    fun thumbnailUrl(minWidth: Int): String? =
+        (
+            thumbnails.images.filter { it.width >= minWidth }.minByOrNull { it.width }
+                ?: thumbnails.images.maxByOrNull { it.width }
+            )?.url
 }
 
 /** Wrapper around the `images` array returned by Sketchfab for each model. */
