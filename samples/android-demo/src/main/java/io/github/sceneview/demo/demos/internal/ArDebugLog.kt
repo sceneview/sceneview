@@ -69,7 +69,7 @@ fun parseArDebugEvent(line: String): ArDebugEvent? {
                 ?.toFloatArray()
                 ?.takeIf { it.size == positions.size / 3 }
             val colors = (obj["colors"] as? JsonArray)
-                ?.mapNotNull { rgb -> floats(rgb)?.takeIf { it.size == 3 }?.let(::packRgb) }
+                ?.mapNotNull { rgb -> floats(rgb)?.takeIf { it.size == 3 }?.let(::colorOf) }
                 ?.toIntArray()
                 ?.takeIf { it.size == positions.size / 3 }
             ArDebugEvent.Points(nanos, positions, confidences, colors)
@@ -84,6 +84,12 @@ fun parseArDebugEvent(line: String): ArDebugEvent? {
         else -> null
     }
 }
+
+/**
+ * A point's colour: `[r, g, b]` packed, or `0` — no colour — for a negative channel, which is how
+ * a saved scan marks the points its photos did not show ([ArDebugLogWriter]).
+ */
+private fun colorOf(rgb: FloatArray): Int = if (rgb.any { it < 0f }) 0 else packRgb(rgb)
 
 /** `[r, g, b]` in 0..255 → `0xFFRRGGBB`, each channel clamped. */
 internal fun packRgb(rgb: FloatArray): Int {
