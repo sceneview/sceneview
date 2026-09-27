@@ -77,8 +77,8 @@ class SpzParserTest {
     }
 
     @Test
-    fun rejectsUncompressedNgspV4() {
-        // Uncompressed NGSP magic → clear "v4 not supported" error, not a crash.
+    fun rejectsTruncatedNgspHeader() {
+        // NGSP magic with a 12-byte header (v4 needs 32) → clear error, not a crash.
         val ngsp = bytesOf('N'.code, 'G'.code, 'S'.code, 'P'.code, 4, 0, 0, 0, 1, 0, 0, 0)
         assertFailsWith<SplatParseException> { SplatParser.fromSpz(ngsp) }
     }

@@ -5,25 +5,40 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * Parser for Niantic **SPZ** files, the gzip-compressed 3D Gaussian Splatting interchange format
- * (https://github.com/nianticlabs/spz). Decode formulas follow the reference `load-spz.cc`; the v3 smallest-three
- * bit layout is validated by encode/decode round-trip only — pending a real-world
- * exporter fixture, treat v3 as an anticipated layout (v2 is the established format).
+ * Parser for Niantic **SPZ** files, the compressed 3D Gaussian Splatting interchange format
+ * (https://github.com/nianticlabs/spz, MIT). Decode formulas follow the reference `load-spz.cc`.
  *
- * Supported: the legacy gzip container, version **2** (`first-three` quaternion, 3 bytes) and
- * version **3** (`smallest-three` quaternion, 4 bytes) — the formats exported by Scaniverse, Marble,
- * Polycam, KIRI et al. Not supported here: the never-released version 1 (float16 positions) and the
- * version-4 NGSP/ZSTD container (routed here only to raise a clear error).
+ * Supported:
+ * - the legacy gzip container, version **2** (`first-three` quaternion, 3 bytes) and version
+ *   **3** (`smallest-three` quaternion, 4 bytes) — the formats exported by Scaniverse, Marble,
+ *   Polycam, KIRI et al.;
+ * - the version **4** "NGSP" container (the reference library's default since v4): a 32-byte
+ *   plaintext header, optional extension records, a table of contents, then one independent
+ *   ZSTD frame per attribute, decoded by the pure-Kotlin [Zstd].
  *
- * On-disk layout of a legacy SPZ (after gzip decompression), all little-endian, structure-of-arrays:
+ * Not supported: the never-released version 1 (float16 positions). Extension records (for
+ * example `SPZ_ADOBE_coordinate_system`) are skipped, so a v4 file is read in the default RUB
+ * frame like every legacy file.
+ *
+ * Every version stores the same per-attribute encodings, structure-of-arrays, little-endian:
  * ```
- * header (16 bytes): magic u32 | version u32 | numPoints u32 | shDegree u8 | fractionalBits u8 | flags u8 | reserved u8
  * positions : numPoints * 9 bytes  (3 axes * 24-bit fixed point)
  * alphas    : numPoints * 1 byte
  * colors    : numPoints * 3 bytes
  * scales    : numPoints * 3 bytes  (uint8 log-encoded)
  * rotations : numPoints * (3 | 4) bytes
- * sh        : numPoints * shDim * 3 bytes  (ignored in P1)
+ * sh        : numPoints * shDim * 3 bytes  (ignored: SH degree 0 colour only)
+ * ```
+ * Legacy (after gzip): a 16-byte header `magic u32 | version u32 | numPoints u32 | shDegree u8 |
+ * fractionalBits u8 | flags u8 | reserved u8`, then the arrays back to back.
+ *
+ * Version 4 (not compressed as a whole):
+ * ```
+ * header (32 bytes): magic u32 | version u32 | numPoints u32 | shDegree u8 | fractionalBits u8 |
+ *                    flags u8 | numStreams u8 | tocByteOffset u32 | reserved[12]
+ * extensions       : bytes 32 until tocByteOffset (when flags & 0x2)
+ * TOC at tocByteOffset: numStreams * (compressedSize u64, uncompressedSize u64)
+ * streams          : numStreams ZSTD frames, back to back, one per non-empty array above, in order
  * ```
  */
 internal object SpzParser {
@@ -33,11 +48,9 @@ internal object SpzParser {
             return parseLegacy(Inflate.gunzip(bytes))
         }
         if (bytes.size >= 4 && readLe32(bytes, 0) == NGSP_MAGIC) {
-            splatError(
-                "SPZ version 4 (NGSP/ZSTD container) is not supported; this P1 parser handles gzip SPZ v2/v3"
-            )
+            return parseNgsp(bytes)
         }
-        splatError("not a valid SPZ file (expected gzip magic 0x1F8B)")
+        splatError("not a valid SPZ file (expected gzip magic 0x1F8B or NGSP)")
     }
 
     private fun parseLegacy(d: ByteArray): SplatCloud {
@@ -53,7 +66,7 @@ internal object SpzParser {
         when {
             version == 1 -> splatError("SPZ: version 1 (float16) is not supported")
             version < 2 || version > 3 ->
-                splatError("SPZ: unsupported version $version (supported: 2, 3)")
+                splatError("SPZ: unsupported gzip-container version $version (supported: 2, 3)")
         }
         if (shDegree > MAX_SH_DEGREE) splatError("SPZ: unsupported SH degree $shDegree")
 
@@ -74,7 +87,80 @@ internal object SpzParser {
         if (offset > d.size) {
             splatError("SPZ: data truncated (need $offset bytes, have ${d.size})")
         }
+        return decodeAttributes(
+            numPoints, fractionalBits, smallestThree,
+            d, positionsOffset, d, alphasOffset, d, colorsOffset, d, scalesOffset, d, rotationsOffset,
+        )
+    }
 
+    /** Version 4: plaintext header + TOC, one ZSTD frame per attribute array. */
+    private fun parseNgsp(b: ByteArray): SplatCloud {
+        if (b.size < NGSP_HEADER_SIZE) splatError("SPZ v4: header truncated (${b.size} bytes)")
+        val version = readLe32(b, 4)
+        val numPoints = readLe32(b, 8)
+        val shDegree = b[12].toInt() and 0xFF
+        val fractionalBits = b[13].toInt() and 0xFF
+        val numStreams = b[15].toInt() and 0xFF
+        val tocOffset = readLe32(b, 16)
+
+        if (version != 4) splatError("SPZ: unsupported NGSP-container version $version (supported: 4)")
+        if (numPoints <= 0) splatError("SPZ: invalid point count $numPoints")
+        if (shDegree > MAX_SH_DEGREE) splatError("SPZ: unsupported SH degree $shDegree")
+        // Every stream holds at least one byte per point, so the point count is bounded by the
+        // file size before anything is allocated (a lying header must not trigger a huge buffer).
+        if (numPoints.toLong() > b.size.toLong() * MAX_ZSTD_RATIO) {
+            splatError("SPZ v4: point count $numPoints is implausible for a ${b.size}-byte file")
+        }
+        if (numPoints.toLong() * 9 > Int.MAX_VALUE) splatError("SPZ v4: point count $numPoints is too large")
+        val shDim = dimForDegree(shDegree)
+        // Uncompressed size of each attribute array, in serialization order; empty arrays (SH at
+        // degree 0) have no stream.
+        val sizes = longArrayOf(
+            numPoints.toLong() * 9, numPoints.toLong(), numPoints.toLong() * 3,
+            numPoints.toLong() * 3, numPoints.toLong() * 4, numPoints.toLong() * shDim * 3,
+        )
+        val expectedStreams = sizes.count { it > 0 }
+        if (numStreams != expectedStreams) {
+            splatError("SPZ v4: $numStreams streams, expected $expectedStreams for SH degree $shDegree")
+        }
+        if (tocOffset < NGSP_HEADER_SIZE || tocOffset.toLong() + numStreams * 16L > b.size) {
+            splatError("SPZ v4: table of contents out of bounds (offset $tocOffset)")
+        }
+
+        var streamStart = tocOffset.toLong() + numStreams * 16L
+        val arrays = arrayOfNulls<ByteArray>(5)
+        for (i in 0 until numStreams) {
+            val compressed = readLe64(b, tocOffset + i * 16)
+            val uncompressed = readLe64(b, tocOffset + i * 16 + 8)
+            if (compressed < 0 || streamStart + compressed > b.size) {
+                splatError("SPZ v4: stream $i overruns the file")
+            }
+            if (uncompressed != sizes[i]) {
+                splatError("SPZ v4: stream $i holds $uncompressed bytes, expected ${sizes[i]}")
+            }
+            // SH (stream 5) is not rendered: skip it without decompressing.
+            if (i < 5) {
+                arrays[i] = Zstd.decompress(b, streamStart.toInt(), compressed.toInt(), uncompressed.toInt())
+            }
+            streamStart += compressed
+        }
+        return decodeAttributes(
+            numPoints, fractionalBits, smallestThree = true,
+            arrays[0]!!, 0, arrays[1]!!, 0, arrays[2]!!, 0, arrays[3]!!, 0, arrays[4]!!, 0,
+        )
+    }
+
+    /** Decodes the five rendered attribute arrays, wherever each one lives. */
+    private fun decodeAttributes(
+        numPoints: Int,
+        fractionalBits: Int,
+        smallestThree: Boolean,
+        positionsData: ByteArray, positionsOffset: Int,
+        alphasData: ByteArray, alphasOffset: Int,
+        colorsData: ByteArray, colorsOffset: Int,
+        scalesData: ByteArray, scalesOffset: Int,
+        rotationsData: ByteArray, rotationsOffset: Int,
+    ): SplatCloud {
         val positions = FloatArray(numPoints * 3)
         val scales = FloatArray(numPoints * 3)
         val rotations = FloatArray(numPoints * 4)
@@ -83,14 +169,14 @@ internal object SpzParser {
 
         val positionScale = 1f / (1 shl fractionalBits)
         for (i in 0 until numPoints) {
-            decodePosition(d, positionsOffset + i * 9, positions, i * 3, positionScale)
-            decodeScale(d, scalesOffset + i * 3, scales, i * 3)
-            decodeColor(d, colorsOffset + i * 3, colors, i * 3)
-            opacities[i] = (d[alphasOffset + i].toInt() and 0xFF) / 255f
+            decodePosition(positionsData, positionsOffset + i * 9, positions, i * 3, positionScale)
+            decodeScale(scalesData, scalesOffset + i * 3, scales, i * 3)
+            decodeColor(colorsData, colorsOffset + i * 3, colors, i * 3)
+            opacities[i] = (alphasData[alphasOffset + i].toInt() and 0xFF) / 255f
             if (smallestThree) {
-                decodeQuaternionSmallestThree(d, rotationsOffset + i * 4, rotations, i * 4)
+                decodeQuaternionSmallestThree(rotationsData, rotationsOffset + i * 4, rotations, i * 4)
             } else {
-                decodeQuaternionFirstThree(d, rotationsOffset + i * 3, rotations, i * 4)
+                decodeQuaternionFirstThree(rotationsData, rotationsOffset + i * 3, rotations, i * 4)
             }
             SplatMath.normalizeQuaternion(rotations, i * 4)
         }
@@ -170,6 +256,10 @@ internal object SpzParser {
 
     private const val NGSP_MAGIC = 0x5053474E // "NGSP" little-endian
     private const val HEADER_SIZE = 16
+    private const val NGSP_HEADER_SIZE = 32
+
+    /** ZSTD's best case is ~1:32 000 (RLE blocks); it bounds numPoints against the file size. */
+    private const val MAX_ZSTD_RATIO = 32_768L
     private const val MAX_SH_DEGREE = 4
     private const val COLOR_SCALE = 0.15f
     private const val SQRT_1_2 = 0.70710678f
