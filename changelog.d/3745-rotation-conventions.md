@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **`Node.rotation` and `Node.worldRotation` document their Euler conventions ([#3745](https://github.com/sceneview/sceneview/issues/3745)).** `rotation` is ZYX and reads back what was written. The `worldRotation` getter is YXZ with the yaw sign negated, even on a node with no parent, while its setter is ZYX. A pinning test records this; behaviour is unchanged because major version 4 is frozen. Compare or copy orientations through `quaternion` / `worldQuaternion`.
