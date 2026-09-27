@@ -129,13 +129,17 @@ object HomeTestTags {
     /** Test tag of the full-span header drawn above [category]'s first card (#2239). */
     fun sectionHeader(category: String): String =
         "home-section-" + category.lowercase().replace(Regex("[^a-z0-9]+"), "-")
+
+    /** Test tag of the "Featured" shelf header, right under the hero. */
+    const val FEATURED_SECTION = "home-section-featured"
 }
 
 /**
  * The Showcase tab (design spec §2): one `LazyVerticalGrid`, no nested
- * scroll. Full-span header spacer, hero and chip row, then every demo as a
- * [DemoMediaCard] in flat editorial [DemoEntry.order], closed by a
- * [BrowseOnlineModelsCard] that opens the online gallery.
+ * scroll. Full-span header spacer, hero, the "Featured" shelf
+ * ([FEATURED_SECTION_IDS], priority order), a [BrowseOnlineModelsCard] that opens
+ * the online gallery and the chip row, then every demo as a [DemoMediaCard] in flat
+ * editorial [DemoEntry.order], one section per category.
  *
  * Under the grid, and not part of it, sits the live stage (#3948): the dusk flight of
  * [HomeHeroScene] over a sky this screen paints, from the top edge of the display to
@@ -252,6 +256,9 @@ fun HomeScreen(
         }
     }
 
+    // The "Featured" shelf under the hero: the demos we push, in priority order.
+    val featuredShelf = remember(byId) { FEATURED_SECTION_IDS.mapNotNull { byId[it] } }
+
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
     val context = LocalContext.current
     val whatsNew by produceState(initialValue = emptyList<WhatsNewRelease>()) {
@@ -359,6 +366,34 @@ fun HomeScreen(
                     modifier = Modifier.testTag(HomeTestTags.HERO),
                 )
             }
+            // The "Featured" shelf: what we want seen first, right under the hero and
+            // above the catalogue, so the flagship samples never wait for a scroll to
+            // the section they are filed in. Its cards repeat in their own sections
+            // below — the catalogue stays complete — under a distinct item key.
+            if (!searching && featuredShelf.isNotEmpty()) {
+                item(key = "section-featured", span = { GridItemSpan(maxLineSpan) }) {
+                    SectionHeader(
+                        title = stringResource(R.string.home_section_featured),
+                        testTag = HomeTestTags.FEATURED_SECTION,
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeIn(cascade.delayFor(cascadeIndex++)),
+                    )
+                }
+                featuredShelf.forEach { demo ->
+                    val cardDelay = cascade.delayFor(cascadeIndex++)
+                    item(key = "featured-${demo.id}") {
+                        DemoMediaCard(
+                            demo = demo,
+                            onClick = { onDemoClick(demo.id) },
+                            freshness = freshnessById[demo.id] ?: DemoFreshness.None,
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeIn(cardDelay),
+                        )
+                    }
+                }
+            }
             if (!searching) {
                 item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
                     BrowseOnlineModelsCard(
@@ -397,7 +432,8 @@ fun HomeScreen(
                         span = { GridItemSpan(maxLineSpan) },
                     ) {
                         SectionHeader(
-                            category = demo.category,
+                            title = stringResource(categoryDisplayNameRes(demo.category)),
+                            testTag = HomeTestTags.sectionHeader(demo.category),
                             modifier = Modifier
                                 .animateItem()
                                 .cascadeIn(cascade.delayFor(cascadeIndex++)),
@@ -458,10 +494,10 @@ fun HomeScreen(
  * colour (see DESIGN.md).
  */
 @Composable
-private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
+private fun SectionHeader(title: String, testTag: String, modifier: Modifier = Modifier) {
     val home = SceneViewTokens.Home
     Text(
-        text = stringResource(categoryDisplayNameRes(category)),
+        text = title,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurface,
@@ -471,7 +507,7 @@ private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
                 top = home.sectionHeaderTopGap - home.gridGutter,
                 bottom = home.sectionHeaderBottomGap - home.gridGutter,
             )
-            .testTag(HomeTestTags.sectionHeader(category)),
+            .testTag(testTag),
     )
 }
 
@@ -614,6 +650,24 @@ const val HERO_DEMO_ID = "model-viewer"
  * bespoke full-span artwork; the rest reuse their own grid captures.
  */
 private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "lighting")
+
+/**
+ * The "Featured" shelf right under the hero: the samples we push, in priority
+ * order — the flagship replay, then the newest and most recently reworked demos.
+ * [HERO_DEMO_ID] is not repeated here; it is the hero itself. Older samples built
+ * on earlier models stay in their sections, which are themselves in priority order
+ * (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
+ */
+internal val FEATURED_SECTION_IDS = listOf(
+    "ar-rerun", // Rerun AR replay — the flagship, reworked in 4.46
+    // The splat viewer takes the first row's second slot over its AR sibling only
+    // because it has a captured card; `ar-splat-room` still shows its icon tile.
+    "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
+    "ar-splat-room", // "Your scan, in your room" — new in 4.45
+    "animation-physics", // reworked so every control shows its effect, 4.41
+    "ar-placement", // tap-to-place, picker shows each model's own thumbnail, 4.39
+    "ar-record-playback", // records and replays in place (#3914)
+)
 
 @Composable
 private fun HomeHeader(
@@ -838,10 +892,10 @@ private fun SearchRow(
 private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
     null to R.string.category_short_all,
     DemoCategory.VIEW_3D to R.string.category_short_view_3d,
-    DemoCategory.CREATE to R.string.category_short_create,
     DemoCategory.PLACE_AR to R.string.category_short_place_ar,
-    DemoCategory.UNDERSTAND to R.string.category_short_understand,
     DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
+    DemoCategory.CREATE to R.string.category_short_create,
+    DemoCategory.UNDERSTAND to R.string.category_short_understand,
 )
 
 /** The categories [CHIP_CATEGORIES] offers, minus the leading "All". */

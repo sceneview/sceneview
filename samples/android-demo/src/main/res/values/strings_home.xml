@@ -29,12 +29,14 @@
          filters down to. -->
     <string name="category_short_all">All</string>
     <string name="category_short_view_3d">View 3D</string>
-    <string name="category_short_create">Create</string>
     <string name="category_short_place_ar">Place in AR</string>
-    <string name="category_short_understand">Understand</string>
     <string name="category_short_dev_tools">Dev tools</string>
+    <string name="category_short_create">Create</string>
+    <string name="category_short_understand">Understand</string>
 
     <!-- Grid -->
+    <!-- Header of the shelf right under the hero: the samples we push, in priority order. -->
+    <string name="home_section_featured">Featured</string>
     <string name="home_browse_title">Browse online models</string>
     <string name="home_browse_subtitle">Sketchfab, Icosa and Poly Haven</string>
     <string name="home_empty_query">No demo matches \'%1$s\'</string>

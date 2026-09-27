@@ -24,7 +24,7 @@ object ArGeospatialAnchorsFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_geospatial_anchors_subtitle,
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Landscape,
-        order = 27,
+        order = 17,
         // 4.41.0: one loader, the status stays on screen, every dropped anchor
         // is visible (#3832).
         updatedIn = "4.41.0",

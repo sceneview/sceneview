@@ -16,7 +16,7 @@ object ArFaceFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_face_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Face,
-        order = 28,
+        order = 32,
         tags = setOf("ar", "face", "mesh", "tracking", "augmented-faces"),
     )
 
