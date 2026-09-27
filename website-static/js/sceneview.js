@@ -506,6 +506,7 @@
       this._tabVisible = (typeof document === 'undefined') ||
         document.visibilityState !== 'hidden';
       this._rafId = null;          // pending requestAnimationFrame handle, if any
+      this._primeRafId = null;     // pending off-screen redraw retry (#3690), if any
       this._listeners = [];        // {target, type, handler, options} for dispose() cleanup
       this._intersectionObserver = null;
       this._fallbackEl = null;     // load-failure placeholder overlay, if shown (#2509)
@@ -637,7 +638,14 @@
       var asset = this._loader.createAsset(data);
       if (!asset) throw new Error('Failed to parse model: ' + url);
 
-      asset.loadResources();
+      // gltfio decodes textures asynchronously, one every 30 ms, after this call
+      // returns: until onDone, a frame shows the geometry with no material
+      // (a black silhouette). Redraw once they have all landed, so a viewer
+      // parked off-screen does not keep that frame (#3690).
+      var self = this;
+      asset.loadResources(function() {
+        if (self._asset === asset) self._primeFrame();
+      });
       this._scene.addEntity(asset.getRoot());
       this._scene.addEntities(asset.getRenderableEntities());
       this._asset = asset;
@@ -1585,6 +1593,10 @@
         cancelAnimationFrame(this._rafId);
         this._rafId = null;
       }
+      if (this._primeRafId) {
+        cancelAnimationFrame(this._primeRafId);
+        this._primeRafId = null;
+      }
 
       // Clean up video elements
       var self = this;
@@ -1760,6 +1772,8 @@
           self._fov || 45, canvas.width / canvas.height, self._nearPlane || 0.1, 1000,
           Filament.Camera$Fov.VERTICAL
         );
+        // Resizing clears the drawing buffer: redraw if the loop is parked.
+        self._primeFrame();
       });
       this._resizeObserver.observe(this._canvas);
     }
@@ -1796,52 +1810,93 @@
         // Drive glTF animation playback (if any)
         self._updateAnimator();
 
-        var t = self._orbitTarget;
-        var r = self._orbitRadius;
-        var h = self._orbitHeight;
-        var mode = self._cameraMode || 'orbit';
-        // Mutate the reusable eye/center/up scratch arrays in place instead of
-        // allocating fresh arrays every frame (#2274). Camera.lookAt reads them
-        // synchronously, so reuse is safe.
-        var eye = self._eye;
-        var center = self._center;
-        if (mode === 'map') {
-          // Top-down: camera above target, looking straight down
-          eye[0] = t[0]; eye[1] = t[1] + r * 2; eye[2] = t[2];
-          center[0] = t[0]; center[1] = t[1]; center[2] = t[2];
-          self._camera.lookAt(eye, center, self._upMap);
-        } else if (mode === 'freelook') {
-          // Freelook: camera at orbit position but height responds to vertical drag
-          var camX = t[0] + Math.sin(self._angle) * r * 0.5;
-          var camZ = t[2] + Math.cos(self._angle) * r * 0.5;
-          eye[0] = camX; eye[1] = h; eye[2] = camZ;
-          center[0] = camX + Math.sin(self._angle + Math.PI);
-          center[1] = h;
-          center[2] = camZ + Math.cos(self._angle + Math.PI);
-          self._camera.lookAt(eye, center, self._up);
-        } else {
-          // Default orbit
-          eye[0] = t[0] + Math.sin(self._angle) * r;
-          eye[1] = h;
-          eye[2] = t[2] + Math.cos(self._angle) * r;
-          center[0] = t[0]; center[1] = t[1]; center[2] = t[2];
-          self._camera.lookAt(eye, center, self._up);
-        }
-
-        self._engine.execute();
-        try {
-          if (self._renderer.beginFrame(self._swapChain)) {
-            self._renderer.renderView(self._view);
-            self._renderer.endFrame();
-          }
-        } catch (e) {
-          // Filament 1.70 may need different render call
-          console.error('SceneView render error:', e.message);
-          self._running = false;
-        }
+        self._drawFrame();
         self._rafId = requestAnimationFrame(render);
       }
       self._rafId = requestAnimationFrame(render);
+    }
+
+    /**
+     * Position the camera for the current mode and draw one frame. Called by the
+     * render loop every tick, and by _primeFrame() while the loop is suspended.
+     * Returns false when Filament skipped the frame (beginFrame() said no).
+     */
+    _drawFrame() {
+      var self = this;
+      var t = self._orbitTarget;
+      var r = self._orbitRadius;
+      var h = self._orbitHeight;
+      var mode = self._cameraMode || 'orbit';
+      // Mutate the reusable eye/center/up scratch arrays in place instead of
+      // allocating fresh arrays every frame (#2274). Camera.lookAt reads them
+      // synchronously, so reuse is safe.
+      var eye = self._eye;
+      var center = self._center;
+      if (mode === 'map') {
+        // Top-down: camera above target, looking straight down
+        eye[0] = t[0]; eye[1] = t[1] + r * 2; eye[2] = t[2];
+        center[0] = t[0]; center[1] = t[1]; center[2] = t[2];
+        self._camera.lookAt(eye, center, self._upMap);
+      } else if (mode === 'freelook') {
+        // Freelook: camera at orbit position but height responds to vertical drag
+        var camX = t[0] + Math.sin(self._angle) * r * 0.5;
+        var camZ = t[2] + Math.cos(self._angle) * r * 0.5;
+        eye[0] = camX; eye[1] = h; eye[2] = camZ;
+        center[0] = camX + Math.sin(self._angle + Math.PI);
+        center[1] = h;
+        center[2] = camZ + Math.cos(self._angle + Math.PI);
+        self._camera.lookAt(eye, center, self._up);
+      } else {
+        // Default orbit
+        eye[0] = t[0] + Math.sin(self._angle) * r;
+        eye[1] = h;
+        eye[2] = t[2] + Math.cos(self._angle) * r;
+        center[0] = t[0]; center[1] = t[1]; center[2] = t[2];
+        self._camera.lookAt(eye, center, self._up);
+      }
+
+      self._engine.execute();
+      try {
+        if (self._renderer.beginFrame(self._swapChain)) {
+          self._renderer.renderView(self._view);
+          self._renderer.endFrame();
+          return true;
+        }
+      } catch (e) {
+        // Filament 1.70 may need different render call
+        console.error('SceneView render error:', e.message);
+        self._running = false;
+      }
+      return false;
+    }
+
+    /**
+     * Draw a single frame while the loop is suspended off-screen (#3690).
+     *
+     * The visibility gate (#2508) stops the loop before a below-the-fold viewer
+     * has ever drawn its model, so the canvas stays empty until the reader
+     * scrolls to it: a full-page capture, a print, or any compositor that reads
+     * the canvas while it is off-screen gets a blank frame, and the first real
+     * frame pays for the shader compile and texture upload at the moment the
+     * reader arrives. One frame once the model, the IBL or the canvas size
+     * changes keeps the canvas current at the cost of a single draw. It never
+     * re-arms the loop: the gate still decides when rendering runs.
+     */
+    _primeFrame() {
+      var self = this;
+      if (self._primeRafId) return;  // a retry is already queued
+      var attempts = 0;
+      function attempt() {
+        self._primeRafId = null;
+        // The running loop draws the next frame anyway; a disposed viewer never.
+        if (self._rafId !== null || !self._running) return;
+        // beginFrame() skips a frame while the GPU is still behind, and a parked
+        // loop would never ask again: retry on the next few animation frames.
+        if (!self._drawFrame() && ++attempts < 10) {
+          self._primeRafId = requestAnimationFrame(attempt);
+        }
+      }
+      attempt();
     }
 
     // ---------------------------------------------------------------
@@ -2346,9 +2401,11 @@
           console.warn('SceneView: createIblFromKtx1 failed, using SH fallback', e);
           _applySyntheticIBL(engine, scene);
         }
+        if (instance) instance._primeFrame();
       })
       .catch(function() {
         _applySyntheticIBL(engine, scene);
+        if (instance) instance._primeFrame();
       });
 
     var loader = engine.createAssetLoader();
