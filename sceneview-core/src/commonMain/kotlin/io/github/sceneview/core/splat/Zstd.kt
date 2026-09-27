@@ -21,7 +21,12 @@ internal object Zstd {
      * concatenated content. When [expectedSize] is non-negative the result must be exactly that
      * long, which also bounds the output buffer against a corrupt frame.
      */
-    fun decompress(input: ByteArray, offset: Int = 0, length: Int = input.size - offset, expectedSize: Int = -1): ByteArray {
+    fun decompress(
+        input: ByteArray,
+        offset: Int = 0,
+        length: Int = input.size - offset,
+        expectedSize: Int = -1,
+    ): ByteArray {
         val end = offset + length
         if (offset < 0 || length < 0 || end > input.size) splatError("zstd: range out of bounds")
         // Start small and grow: a corrupt or hostile size must not allocate up front.
@@ -116,7 +121,11 @@ private class FrameDecoder(private val src: ByteArray, private val end: Int, pri
     private var literals = ByteArray(0)
     private var literalsSize = 0
 
-    /** Decode the frame whose header starts at [start] (just past the magic); returns the end. */
+    /**
+     * Decode the frame whose header starts at [start] (just past the magic); returns the end.
+     * One linear pass over the RFC 8878 §3.1.1 header fields, kept whole so it reads like the spec.
+     */
+    @Suppress("CyclomaticComplexMethod")
     fun decode(start: Int): Int {
         var pos = start
         if (pos >= end) splatError("zstd: truncated frame header")
@@ -205,7 +214,11 @@ private class FrameDecoder(private val src: ByteArray, private val end: Int, pri
         executeSequences(pos, blockEnd, sequenceCount)
     }
 
-    /** Decodes the literals section into [literals]; returns the position after it. */
+    /**
+     * Decodes the literals section into [literals]; returns the position after it. Follows
+     * RFC 8878 §3.1.1.3.1 case by case (raw / RLE / compressed / treeless, 1 or 4 streams).
+     */
+    @Suppress("LongMethod")
     private fun decodeLiterals(start: Int, blockEnd: Int): Int {
         val b0 = byteAt(start)
         val type = b0 and 0x3
@@ -346,6 +359,7 @@ private class FrameDecoder(private val src: ByteArray, private val end: Int, pri
     }
 
     /** Two interleaved FSE states share one table; decoding stops when the stream is exhausted. */
+    @Suppress("LoopWithTooManyJumpStatements") // Mirrors the reference two-state termination rule.
     private fun decodeInterleavedWeights(table: FseTable, from: Int, to: Int, weights: IntArray): Int {
         if (to <= from) splatError("zstd: empty FSE weight stream")
         val bits = BackwardBitReader(src, from, to)
@@ -418,7 +432,11 @@ private class FrameDecoder(private val src: ByteArray, private val end: Int, pri
             val mlCode = ml.symbols[mlState].toInt()
             if (llCode > 35 || mlCode > 52 || ofCode > 31) splatError("zstd: invalid sequence code")
 
-            val offsetValue = if (ofCode < 31) (1 shl ofCode) + bits.readLong(ofCode) else splatError("zstd: offset code too large")
+            val offsetValue = if (ofCode < 31) {
+                (1 shl ofCode) + bits.readLong(ofCode)
+            } else {
+                splatError("zstd: offset code too large")
+            }
             val matchLength = ML_BASE[mlCode] + bits.read(ML_BITS[mlCode])
             val literalLength = LL_BASE[llCode] + bits.read(LL_BITS[llCode])
 
@@ -536,6 +554,7 @@ private class FseTable(val accuracyLog: Int, val symbols: ByteArray, val numBits
         fun rle(symbol: Int) = FseTable(0, byteArrayOf(symbol.toByte()), byteArrayOf(0), intArrayOf(0))
 
         /** Reads a normalized-count table description (RFC 8878 §4.1.1) and builds the table. */
+        @Suppress("NestedBlockDepth") // The §4.1.1 zero-run repeat flags nest inside the symbol loop.
         fun readDescription(reader: ForwardBitReader, maxLog: Int, maxSymbol: Int): FseTable {
             val accuracyLog = reader.read(4) + 5
             if (accuracyLog > maxLog) splatError("zstd: FSE accuracy log $accuracyLog > $maxLog")
