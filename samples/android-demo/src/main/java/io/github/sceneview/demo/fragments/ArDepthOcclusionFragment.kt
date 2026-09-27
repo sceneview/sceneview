@@ -16,7 +16,7 @@ object ArDepthOcclusionFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_depth_occlusion_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.FilterCenterFocus,
-        order = 31,
+        order = 32,
         tags = setOf("ar", "depth", "occlusion", "arcore"),
     )
 

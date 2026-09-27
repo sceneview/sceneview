@@ -16,7 +16,7 @@ object ArRerunFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_rerun_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.BugReport,
-        order = 48,
+        order = 49,
         tags = setOf("ar", "rerun", "streaming", "pose", "plane", "debug"),
         updatedIn = "4.43.0",
     )
