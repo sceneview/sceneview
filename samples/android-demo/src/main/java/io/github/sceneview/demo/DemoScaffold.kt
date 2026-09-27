@@ -582,7 +582,10 @@ fun DemoScaffold(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.surface),
+                                    // The viewport is still the stage when AR failed: the
+                                    // glass chrome and scrims sit on it. `surface` painted it
+                                    // white in light theme, banded by the scrims (#3990).
+                                    .background(SceneViewTokens.Stage.background),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 io.github.sceneview.demo.common.DemoStatusCard(
