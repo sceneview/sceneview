@@ -18,12 +18,20 @@
 # workflow events for anything done with the default `GITHUB_TOKEN`. That bites
 # THREE times on this pipeline, in pipeline order:
 #
-#   * the release BRANCH PUSH and the PR opened on it are GITHUB_TOKEN work, so
-#     neither `push` nor `pull_request` fires and the release PR opens with no
-#     checks at all. The required contexts never appear, `--auto` has nothing to
-#     wait on, and the `tag` job below burns its full 170-minute timeout. Three
-#     releases out of three died this way — 4.35.0 and 4.37.0 were rescued by
-#     hand, 4.36.0 was never tagged nor published (#3664);
+#   * the release BRANCH PUSH and the PR opened on it are GITHUB_TOKEN work.
+#     #3664 read that as "no `pull_request` event". The run history says
+#     otherwise (#3750): every release PR since at least 4.37.0 DID get its ten
+#     `pull_request` runs, but born `action_required` — awaiting an "Approve
+#     and run" — with zero check runs, so the PR looks check-less. The
+#     repository's fork-PR approval policy is `all_external_contributors`
+#     (GET repos/sceneview/sceneview/actions/permissions/fork-pr-contributor-approval),
+#     and `github-actions[bot]` is not a collaborator. While those suites wait,
+#     the dispatched CI below does NOT unblock the merge: on 4.38.0 it was green
+#     at 23:46 and the PR stayed BLOCKED until its runs were approved at 02:34.
+#     4.38.0 through 4.43.0 all needed a human (an approval, or an empty commit
+#     pushed with personal credentials). The `tag` job now approves the runs of
+#     its own bump commit, and fails in minutes, with the unblock commands, when
+#     it cannot;
 #   * the auto-MERGE of the release PR is performed with GITHUB_TOKEN, so the
 #     resulting push to main fires no `push` event — a companion workflow keyed
 #     on `on: push: branches: [main]` never runs. This is exactly how v4.33.0
@@ -31,15 +39,23 @@
 #   * the TAG this pipeline pushes is likewise GITHUB_TOKEN-made, so release.yml's
 #     `on: push: tags:` trigger would not fire either.
 #
-# All three fixes are the same move: stop depending on the event chain and ask
-# for the run explicitly, because `workflow_dispatch` through the API is the one
-# trigger GITHUB_TOKEN CAN start. The first is `gh workflow run ci.yml --ref
-# release/vX.Y.Z` in the checkpoint job. The second is the `tag` job below, which
+# The fixes: approve the release PR's own gated runs (first bullet, `tag` job),
+# and stop depending on the event chain for the other two by asking for the run
+# explicitly, because `workflow_dispatch` through the API is the one trigger
+# GITHUB_TOKEN CAN start. The `gh workflow run ci.yml --ref release/vX.Y.Z` in
+# the checkpoint job stays as an early red signal only. The `tag` job below, which
 # belongs to THIS run, waits for the PR it just opened to merge, and tags the
 # merge commit directly — if the merge never happens, that job fails red instead
-# of the release evaporating in silence. The third is `gh workflow run
-# release.yml --ref v$V` (release.yml already accepts workflow_dispatch, which is
-# equivalent to the tag-push path).
+# of the release evaporating in silence. The tag push is covered by `gh workflow
+# run release.yml --ref v$V` (release.yml already accepts workflow_dispatch,
+# which is equivalent to the tag-push path).
+#
+# RECOVERY when the `tag` job went red but the release PR is still open: unblock
+# the PR (approve its runs or push an empty commit with your own credentials),
+# then `gh run rerun <this run id> --failed` — only the `tag` job re-runs, with
+# the checkpoint's outputs, and resumes the wait. When the PR has ALREADY merged:
+# `gh workflow run tag-release.yml -f commit=<merge commit sha>` (the auto-merge
+# is GITHUB_TOKEN work, so tag-release.yml's own `push` trigger never fires).
 #
 # A PAT/App token for the merge was the other candidate. Rejected: it makes the
 # release depend on a credential that expires silently and fails back into the
@@ -86,6 +102,9 @@ jobs:
       actions: write
     outputs:
       branch: ${{ steps.open_pr.outputs.branch }}
+      # The bump commit this job pushed — the ONLY head whose approval-gated
+      # runs the `tag` job is allowed to approve (#3750).
+      sha: ${{ steps.open_pr.outputs.sha }}
     # Shell-injection hardening: the version input reaches shell ONLY via this
     # env var (never ${{ }} inside run: bodies) — env interpolation is inert,
     # and the regex validation below rejects anything but 4.x.y anyway.
@@ -172,36 +191,24 @@ jobs:
           git reset -q -- device-qa-report.json device-qa-artifacts ar-qa-summary.json web-qa-summary.json
           git commit -m "release: $V — version bump + changelog collate" \
             -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V from the same release-fast run, which dispatches release.yml on the tag."
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           git push origin "$BRANCH"
           gh pr create --title "release: $V — version bump + changelog collate" \
             --body "One-click release pipeline (release-fast.yml). Web device-QA gate passed (or explicitly skipped: \`${{ inputs.skip_web_qa }}\`); sync-versions 0 mismatch; changelog collated. **Merging this PR tags \`v$V\`** (the \`tag\` job of this same release-fast run) and launches release.yml." \
             --base main --head "$BRANCH"
           gh pr merge "$BRANCH" --squash --auto
 
-      # ── Start the release PR's checks by hand (#3664) ────────────────────
-      # The push and the PR above were both made with GITHUB_TOKEN, and GitHub
-      # emits no `push` / `pull_request` events for anything that token does —
-      # the same rule that already forces this workflow to tag itself. The
-      # consequence here is that the release PR opens with ZERO checks: the
-      # required contexts never appear, `--auto` has nothing to wait on and
-      # never fires, and the `tag` job below burns its full 170-minute timeout.
-      # That is not a hypothesis — it is 3 releases out of 3 (4.35.0, 4.36.0,
-      # 4.37.0), and 4.36.0 was never tagged nor published because of it.
-      #
-      # `workflow_dispatch` is the documented exception to the no-events rule:
-      # a run explicitly requested through the API starts even when the request
-      # carries GITHUB_TOKEN. So ask for it explicitly, exactly as the `tag` job
-      # already does for release.yml on the tag ref.
-      #
-      # This works because branch protection grades a PR on the check runs
-      # attached to its HEAD SHA, not on which event produced them. All nine
-      # required contexts ("Path filter completed", "Build libraries & samples",
-      # "Lint", "Unit tests", "API compatibility", "Build web targets",
-      # "Flutter plugin + demo APK", "Compile KMP core", "KMP native unit tests
-      # (iOS sim)") are jobs of ci.yml and keep their names on a dispatch run,
-      # and `--ref "$BRANCH"` runs them against the branch head — which IS the
-      # PR head. `force-all=true` makes all nine appear without depending on the
-      # path filter's verdict for the bump diff.
+      # ── Early CI signal on the release branch (#3664, corrected by #3750) ──
+      # #3664 added this dispatch believing the release PR got no
+      # `pull_request` runs and that a green dispatched CI on the head SHA
+      # would satisfy branch protection. Neither held: the PR's `pull_request`
+      # runs exist but are born `action_required`, and while they wait the
+      # dispatched suite does not unblock the merge (4.38.0: dispatch green at
+      # 23:46, PR BLOCKED until the runs were approved at 02:34). What merges
+      # the PR is the `tag` job approving those runs. This dispatch is kept
+      # because it reds a broken bump within ~10 minutes of the PR opening,
+      # independently of the approval gate (4.43.0: "Unit tests" failed here
+      # while the PR's own runs were still awaiting approval).
       - name: Start CI on the release branch
         env:
           GH_TOKEN: ${{ github.token }}
@@ -222,7 +229,7 @@ jobs:
               exit 0
             fi
           done
-          echo "::error::'gh workflow run ci.yml --ref $BRANCH' produced no run after 2 min. The release PR has no checks, so auto-merge can never fire (#3664). Start CI on that branch by hand, or push an empty commit to it with non-GITHUB_TOKEN credentials."
+          echo "::error::'gh workflow run ci.yml --ref $BRANCH' produced no run after 2 min — the release branch has no early CI signal. Start CI on that branch by hand: gh workflow run ci.yml --ref $BRANCH -f force-all=true"
           exit 1
 
   # The release is NOT done when the PR is open — it is done when the tag exists.
@@ -238,13 +245,15 @@ jobs:
     # end in a red run, which is precisely what #3358 lacked.
     timeout-minutes: 180
     # Job-level permissions REPLACE the workflow-level block, so restate what is
-    # needed: `contents` to push the tag, `actions` to dispatch release.yml.
+    # needed: `contents` to push the tag, `actions` to dispatch release.yml and
+    # to approve the release PR's approval-gated runs (#3750).
     permissions:
       contents: write
       actions: write
       pull-requests: read
     env:
       RELEASE_BRANCH: ${{ needs.checkpoint.outputs.branch }}
+      BOT_SHA: ${{ needs.checkpoint.outputs.sha }}
       GH_TOKEN: ${{ github.token }}
 
     steps:
@@ -253,19 +262,89 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      # ── The approval gate (#3750) ─────────────────────────────────────────
+      # The release PR's `pull_request` runs are born `action_required` (the
+      # repo's fork-PR approval policy treats github-actions[bot] as an external
+      # contributor), and that state never resolves by itself: 4.38.0 to 4.43.0
+      # each sat BLOCKED until a human approved the runs or pushed an empty
+      # commit. So, on every poll, list the PR head's runs awaiting approval:
+      #   * head == the bump commit the checkpoint job pushed → approve them
+      #     (POST actions/runs/{id}/approve, `actions: write`). Never any other
+      #     head: a commit this run did not write is not this run's to approve;
+      #   * the approval call is refused, or runs are still waiting ~5 min after
+      #     it → fail NOW with the unblock commands, instead of timing out 170
+      #     minutes later with no reason.
       - name: Wait for the release PR to merge
         id: wait
         run: |
+          REPO="$GITHUB_REPOSITORY"
+          RUN_URL="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+
+          # Named failure for a PR stuck behind "Approve and run": the error
+          # annotation plus the exact commands, echoed to the log and the run
+          # summary so whoever opens the red run can unblock it in one paste.
+          stuck() {
+            echo "::error::release PR $RELEASE_BRANCH is stuck: its pull_request runs on ${HEAD:0:9} await 'Approve and run' (action_required, #3750) — $1. Unblock commands in the run summary: $RUN_URL"
+            {
+              echo "### Release PR $RELEASE_BRANCH is waiting for a run approval (#3750)"
+              echo
+              echo "Reason: $1"
+              echo
+              echo '1. Unblock the PR — approve its runs:'
+              echo '```'
+              for id in $PENDING; do echo "gh api -X POST repos/$REPO/actions/runs/$id/approve"; done
+              echo '```'
+              echo "   or push an empty commit to \`$RELEASE_BRANCH\` with your own credentials."
+              echo "2. Resume the tag (this job only, the checkpoint is not redone):"
+              echo '```'
+              echo "gh run rerun $GITHUB_RUN_ID --failed -R $REPO"
+              echo '```'
+              echo "3. If the PR has already merged by then, tag it instead:"
+              echo '```'
+              echo "gh workflow run tag-release.yml -R $REPO -f commit=<merge commit sha>"
+              echo '```'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+
+          APPROVED=" "
+          GATED_POLLS=0
           # 340 × 30 s ≈ 170 min, inside the 180-min job timeout so the wait
           # ends with a named error rather than an opaque cancellation.
           for _ in $(seq 1 340); do
             # A transient API blip must cost one poll, not the whole release:
             # `|| true` keeps `bash -e` from killing the wait, and an empty
             # answer simply falls through to the next iteration.
-            STATUS=$(gh pr view "$RELEASE_BRANCH" --json state,mergeCommit \
-              -q '.state + " " + (.mergeCommit.oid // "")' || true)
-            STATE=${STATUS%% *}
-            OID=${STATUS#* }
+            STATUS=$(gh pr view "$RELEASE_BRANCH" --json state,mergeCommit,headRefOid \
+              -q '[.state, (.mergeCommit.oid // "-"), .headRefOid] | join(" ")' || true)
+            read -r STATE OID HEAD <<< "$STATUS" || true
+            [ "$OID" = "-" ] && OID=""
+
+            PENDING=""
+            if [ "$STATE" = "OPEN" ] && [ -n "$HEAD" ]; then
+              PENDING=$(gh api "repos/$REPO/actions/runs?head_sha=$HEAD&event=pull_request&per_page=100" \
+                -q '[.workflow_runs[] | select(.conclusion == "action_required") | .id] | join(" ")' || true)
+            fi
+            if [ -n "$PENDING" ]; then
+              [ "$HEAD" = "$BOT_SHA" ] \
+                || stuck "the head is not the bump commit this run pushed (${BOT_SHA:0:9}), so this run will not approve it"
+              for id in $PENDING; do
+                case "$APPROVED" in *" $id "*) continue ;; esac
+                if gh api -X POST "repos/$REPO/actions/runs/$id/approve" >/dev/null \
+                  || { sleep 5; gh api -X POST "repos/$REPO/actions/runs/$id/approve" >/dev/null; }; then
+                  echo "Approved pull_request run $id on the bump commit."
+                  APPROVED="$APPROVED$id "
+                else
+                  stuck "GITHUB_TOKEN could not approve run $id (see the API error above)"
+                fi
+              done
+              GATED_POLLS=$((GATED_POLLS + 1))
+              [ "$GATED_POLLS" -lt 10 ] \
+                || stuck "runs are still awaiting approval ~5 min after this job approved them"
+            else
+              GATED_POLLS=0
+            fi
+
             case "$STATE" in
               MERGED)
                 # Never fall back to "HEAD" on a blank oid: HEAD here is still
@@ -283,7 +362,7 @@ jobs:
             esac
             sleep 30
           done
-          echo "::error::release PR $RELEASE_BRANCH still not merged after ~170 min — check its required checks, then re-run tag-release.yml manually once it lands"
+          echo "::error::release PR $RELEASE_BRANCH still not merged after ~170 min — check its required checks. While it is open: fix them, then gh run rerun $GITHUB_RUN_ID --failed. Once it has merged: gh workflow run tag-release.yml -f commit=<merge commit sha>"
           exit 1
 
       # Same hardening rule as the checkpoint job: the commit id reaches the
