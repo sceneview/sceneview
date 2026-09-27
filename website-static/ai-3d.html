@@ -189,8 +189,8 @@
       font-weight: 500;
       color: var(--color-on-surface-variant);
       letter-spacing: 0.02em;
-      /* opacity was dimming an already-muted token to 4.07:1 in dark. */
-      opacity: 0.85;
+      /* No opacity: it dimmed an already-muted token to 4.07:1 in dark and 3.86:1 in
+         light (#3689). */
     }
 
     .ai3d-window__body {
@@ -220,7 +220,6 @@
       text-transform: uppercase;
       letter-spacing: 0.1em;
       color: var(--color-on-surface-variant);
-      opacity: 0.8;
       padding-bottom: 8px;
       border-bottom: 1px solid var(--color-outline);
     }
@@ -336,7 +335,6 @@
       text-transform: uppercase;
       letter-spacing: 0.1em;
       color: var(--color-on-surface-variant);
-      opacity: 0.8;
       padding: 16px 20px 8px;
     }
 
