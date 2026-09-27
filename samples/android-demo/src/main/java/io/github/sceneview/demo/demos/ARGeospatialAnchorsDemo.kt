@@ -46,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -222,6 +223,9 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
     var cameraGranted by remember { mutableStateOf(granted(Manifest.permission.CAMERA)) }
     var locationGranted by remember { mutableStateOf(granted(Manifest.permission.ACCESS_FINE_LOCATION)) }
     var asked by remember { mutableStateOf(false) }
+    // Bumped on every dialog answer and every resume: a second "Don't allow" changes no
+    // grant, so without it the Allow/Open settings choice below would never be re-read.
+    var permissionEpoch by remember { mutableIntStateOf(0) }
 
     fun missingPermissions() = buildList {
         if (!cameraGranted) add(Manifest.permission.CAMERA)
@@ -234,6 +238,7 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
         cameraGranted = result[Manifest.permission.CAMERA] ?: cameraGranted
         locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] ?: locationGranted
         asked = true
+        permissionEpoch++
     }
     LaunchedEffect(Unit) {
         val missing = missingPermissions()
@@ -246,6 +251,7 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
             if (event == Lifecycle.Event.ON_RESUME) {
                 cameraGranted = granted(Manifest.permission.CAMERA)
                 locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION)
+                permissionEpoch++
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -256,8 +262,10 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
     // After a denial Android shows the dialog again only while it still wants a rationale;
     // once it does not (a second "Don't allow"), the launcher returns at once, and the
     // app's settings page is the only way forward.
-    val canAskAgain = missingPermissions().any { permission ->
-        activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+    val canAskAgain = remember(permissionEpoch, cameraGranted, locationGranted) {
+        missingPermissions().any { permission ->
+            activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+        }
     }
     val title = when {
         !asked -> stringResource(R.string.demo_ar_geospatial_permissions_requesting)
