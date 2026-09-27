@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1503,9 +1504,15 @@ private fun PhysicsSection(
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Fixed over-media palette (#3726): this row is theme-independent chrome, and
+                // a default `Button` resolved to the light/dark `colorScheme.primary`.
                 Button(
                     onClick = { drop(selectedKind, 1) },
                     modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SceneViewTokens.ArOverlay.accentProgress,
+                        contentColor = SceneViewTokens.ArOverlay.onAccentProgress,
+                    ),
                 ) {
                     Icon(
                         Icons.Filled.ArrowDownward,

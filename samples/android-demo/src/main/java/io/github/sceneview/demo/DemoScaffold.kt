@@ -995,9 +995,12 @@ private fun BoxScope.DemoDock(
                             .minimumInteractiveComponentSize()
                             .size(SceneViewTokens.Layout.dockAccentSize)
                             .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
+                        // Over-media palette, never `colorScheme` (#3726): the dock is
+                        // theme-independent glass, and a light-theme `primary` disc changed
+                        // tint on every theme flip while the dock around it stayed fixed.
                         colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = SceneViewTokens.ArOverlay.accentProgress,
+                            contentColor = SceneViewTokens.ArOverlay.onAccentProgress,
                         ),
                     ) {
                         Icon(
