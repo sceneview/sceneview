@@ -17,7 +17,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
@@ -32,6 +31,8 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.demo.common.Axes3DNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -126,10 +127,17 @@ fun ARPoseDemo(onBack: () -> Unit) {
         // numbers appear alongside the lantern they describe.
         topOverlay = {
             if (isTracking && basePose != null) {
+                // Chrome over the camera feed is theme-independent and takes the glass
+                // tokens (#3683), never a copied surface literal: `chrome-scrim` for the fill
+                // (white text on it over a white wall is still ~5.6:1) and `over-media-edge`
+                // for the boundary. The old `0xCC161B22` claimed to be SurfaceDim, a token
+                // that has since moved twice.
+                val readoutShape = MaterialTheme.shapes.large
                 Surface(
-                    color = Color(0xCC161B22),  // SceneView SurfaceDim
-                    contentColor = Color.White,
-                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.overMediaEdge(readoutShape),
+                    color = SceneViewTokens.Glass.scrim,
+                    contentColor = SceneViewTokens.Glass.onGlass,
+                    shape = readoutShape,
                 ) {
                     Text(
                         text = "X %.2f   Y %.2f   Z %.2f".format(Locale.US, x, y, z),
