@@ -243,78 +243,90 @@ struct ModelViewerDemo: View {
         cameraDistanceRaw > 0 ? Float(cameraDistanceRaw) : nil
     }
 
-    var body: some View {
-        ZStack {
-            SceneViewTokens.Stage.background.ignoresSafeArea()
-            sceneView
-            VStack {
-                Spacer()
-                if let surpriseError {
-                    errorBanner(surpriseError)
-                        .padding(.bottom, SceneViewTokens.Space.sm)
-                }
-                if let name = streamedDisplayName {
-                    GlassPill {
-                        Text("Streamed: \(name)")
-                            .font(SceneViewTokens.TypeScale.caption)
-                            .foregroundStyle(SceneViewTokens.Glass.onGlass)
-                            .lineLimit(1)
-                    }
+    /// Pills that float above the dock: the error banner, the streamed
+    /// model's name, Surprise me and the animation bar.
+    ///
+    /// They ride the scaffold's `accessory` slot, part of the chrome. Drawn
+    /// as part of the stage they sat under the bottom scrim that keeps the
+    /// chrome legible, which greyed the white "Surprise me" label to about
+    /// 47 % and made the idle pill look disabled (#4013). In the chrome they
+    /// stand on the same dark glass as the dock, above the scrim.
+    @ViewBuilder
+    private var floatingBand: some View {
+        VStack(spacing: 0) {
+            if let surpriseError {
+                errorBanner(surpriseError)
                     .padding(.bottom, SceneViewTokens.Space.sm)
+            }
+            if let name = streamedDisplayName {
+                GlassPill {
+                    Text("Streamed: \(name)")
+                        .font(SceneViewTokens.TypeScale.caption)
+                        .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                        .lineLimit(1)
                 }
-                if hasSketchfabKey {
-                    // Re-roll without opening the sheet — the "switcher sans se prendre
-                    // la tête" half of #3585. Animate already occupies dock item four
-                    // and AR owns the accent, so this rides the floating band instead.
-                    // Shown in both themes: the viewer chrome is glass over live 3D and
-                    // is theme-independent by design.
-                    Button {
-                        Task { @MainActor in
-                            guard !surpriseInFlight else { return }
-                            await rollSurpriseModel()
-                        }
-                    } label: {
-                        GlassPill {
+                .padding(.bottom, SceneViewTokens.Space.sm)
+            }
+            if hasSketchfabKey {
+                // Re-roll without opening the sheet — the "switcher sans se prendre
+                // la tête" half of #3585. Animate already occupies dock item four
+                // and AR owns the accent, so this rides the floating band instead.
+                // Shown in both themes: the viewer chrome is glass over live 3D and
+                // is theme-independent by design.
+                Button {
+                    Task { @MainActor in
+                        guard !surpriseInFlight else { return }
+                        await rollSurpriseModel()
+                    }
+                } label: {
+                    GlassPill {
+                        Group {
                             SurpriseShuffleIcon(loading: surpriseInFlight)
                             Text("Surprise me")
                                 .font(SceneViewTokens.TypeScale.captionSemibold)
                                 .lineLimit(1)
                         }
-                        // DESIGN.md on-glass stays white over 3D, independent of
-                        // theme; GlassPill retains the existing glass fill/hairline.
-                        .foregroundStyle(SceneViewTokens.Glass.onGlass)
-                        .tint(SceneViewTokens.Glass.onGlass)
-                        .frame(minHeight: SceneViewTokens.Layout.touchTarget)
-                        .contentShape(Capsule())
+                        // Dimming is reserved for the in-flight roll.
+                        .foregroundStyle(surpriseInFlight ? SceneViewTokens.Glass.onGlassMuted
+                                                          : SceneViewTokens.Glass.onGlass)
                     }
-                    .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
-                    .disabled(surpriseInFlight)
-                    .accessibilityLabel("Surprise me")
-                    .accessibilityValue(surpriseInFlight ? "Loading" : "Ready")
-                    .accessibilityHint("Loads another random CC-BY model without opening Models")
-                    .accessibilityIdentifier("viewer-surprise")
-                    .padding(.bottom, SceneViewTokens.Space.sm)
+                    .tint(SceneViewTokens.Glass.onGlass)
+                    .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+                    .contentShape(Capsule())
                 }
-                if animationBarOpen && !animationNames.isEmpty {
-                    AnimationBar(
-                        clipNames: animationNames,
-                        selectedClip: $selectedAnimation,
-                        playing: $animationPlaying,
-                        progress: $animationProgress,
-                        onScrub: scrub
-                    )
-                    .padding(.horizontal, SceneViewTokens.Space.md)
-                    .transition(.opacity)
-                }
+                .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+                .disabled(surpriseInFlight)
+                .accessibilityLabel("Surprise me")
+                .accessibilityValue(surpriseInFlight ? "Loading" : "Ready")
+                .accessibilityHint("Loads another random CC-BY model without opening Models")
+                .accessibilityIdentifier("viewer-surprise")
+                .padding(.bottom, SceneViewTokens.Space.sm)
             }
-            // Stack above the dock band.
-            .padding(.bottom, SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md * 2)
+            if animationBarOpen && !animationNames.isEmpty {
+                AnimationBar(
+                    clipNames: animationNames,
+                    selectedClip: $selectedAnimation,
+                    playing: $animationPlaying,
+                    progress: $animationProgress,
+                    onScrub: scrub
+                )
+                // The accessory slot already insets the band to the chrome margin.
+                .transition(.opacity)
+            }
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            SceneViewTokens.Stage.background.ignoresSafeArea()
+            sceneView
         }
         .demoChrome(
             title: "Model Viewer",
             dock: dock,
             accent: DockItem(icon: "arkit", label: "View in AR", enabled: arSupported) { showAR = true },
-            onReset: resetAll
+            onReset: resetAll,
+            accessory: { floatingBand }
         )
         .sheet(item: $sheet) { which in
             Group {
