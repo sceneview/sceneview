@@ -547,6 +547,56 @@ enum SceneViewTokens {
         static let danger = Color(red: 0xFF / 255, green: 0xB4 / 255, blue: 0xAB / 255)
         static let warning = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
         static let success = Color(red: 0x16 / 255, green: 0xA3 / 255, blue: 0x4A / 255)
+        /// Unlit track of a meter on the scrim, and "present but empty" over
+        /// media — white at 8 %, Android's `ArOverlay.meterTrack`.
+        static let meterTrack = Color.white.opacity(0x14 / 255)
+    }
+
+    /// `DESIGN.md` "AR Debug View" — the Rerun replay's palette, the values of
+    /// Android's `SceneViewTokens.DebugView` so both apps draw the same room.
+    /// Fixed in both themes: the ground is always `Stage.background`.
+    ///
+    /// Stored as `0xAARRGGBB` so the RealityKit layers and the SwiftUI chrome read
+    /// the same value.
+    enum DebugView {
+        /// Trail, oldest → newest: `accent-deep` → `tertiary` dark → `tint-light`.
+        static let trailOld: UInt32 = 0xFF5A_32A3
+        static let trailMid: UInt32 = 0xFFD2_A8FF
+        static let trailNew: UInt32 = 0xFFA4_C1FF
+        static let frustum: UInt32 = 0xFFA4_C1FF
+        static let keyframe: UInt32 = 0x59A4_C1FF
+        static let mapPoint: UInt32 = 0x8CFF_FFFF
+        /// What the camera sees this second — `warning`.
+        static let livePoint: UInt32 = 0xFFF5_9E0B
+        static let floorFill: UInt32 = 0x29A4_C1FF
+        static let floorOutline: UInt32 = 0xD9A4_C1FF
+        static let wallFill: UInt32 = 0x24D2_A8FF
+        static let wallOutline: UInt32 = 0xCCD2_A8FF
+        static let otherFill: UInt32 = 0x1FFF_FFFF
+        static let otherOutline: UInt32 = 0xB3FF_FFFF
+        /// Placed anchors — `success`.
+        static let anchor: UInt32 = 0xFF16_A34A
+        static let gridMinor: UInt32 = 0x12FF_FFFF
+        static let gridMajor: UInt32 = 0x24FF_FFFF
+        static let axisX: UInt32 = 0xFFEA_4335
+        static let axisY: UInt32 = 0xFF16_A34A
+        static let axisZ: UInt32 = 0xFFA4_C1FF
+        /// Record mode draws over the camera, not over `Stage.background`: plane fills at
+        /// 40 % so a surface reads as found from a metre away, outlines opaque.
+        static let liveFloorFill: UInt32 = 0x66A4_C1FF
+        static let liveWallFill: UInt32 = 0x66D2_A8FF
+        static let liveFloorOutline: UInt32 = 0xFFA4_C1FF
+        static let liveWallOutline: UInt32 = 0xFFD2_A8FF
+        /// The picture-in-picture: a portrait 3:4 card.
+        static let pipSize = CGSize(width: 128, height: 170)
+
+        static func color(_ argb: UInt32) -> Color {
+            Color(.sRGB,
+                  red: Double((argb >> 16) & 0xFF) / 255,
+                  green: Double((argb >> 8) & 0xFF) / 255,
+                  blue: Double(argb & 0xFF) / 255,
+                  opacity: Double((argb >> 24) & 0xFF) / 255)
+        }
     }
 }
 
