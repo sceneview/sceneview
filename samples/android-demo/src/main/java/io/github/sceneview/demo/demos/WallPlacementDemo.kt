@@ -111,8 +111,11 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
                     { move(-0.02f, 0f) }, { move(0.02f, 0f) })
                 WallAdjustment(R.string.wall_dpad_down, R.string.wall_dpad_up, enabled,
                     { move(0f, -0.02f) }, { move(0f, 0.02f) })
-                WallAdjustment(R.string.wall_dpad_rotate_left, R.string.wall_dpad_rotate_right, enabled,
-                    { state.rotateBy(-2f) }, { state.rotateBy(2f) })
+                // The pivot turns about its +Y, which on a wall is the normal facing the room
+                // (#3741): a negative angle is clockwise as seen from the room, a positive one
+                // counter-clockwise.
+                WallAdjustment(R.string.wall_dpad_rotate_clockwise, R.string.wall_dpad_rotate_counterclockwise,
+                    enabled, { state.rotateBy(-2f) }, { state.rotateBy(2f) })
                 WallAdjustment(R.string.wall_scale_down, R.string.wall_scale_up, enabled,
                     { state.scaleTo(state.scaleFactor - 0.1f) }, { state.scaleTo(state.scaleFactor + 0.1f) })
             }

@@ -154,7 +154,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                     { move(0f, 0.02f) }, { move(0f, -0.02f) },
                 )
                 FeatureAdjustment(
-                    R.string.wall_dpad_rotate_left, R.string.wall_dpad_rotate_right, editable,
+                    R.string.ar_adjust_rotate_left, R.string.ar_adjust_rotate_right, editable,
                     { state.rotateBy(-2f) }, { state.rotateBy(2f) },
                 )
                 FeatureAdjustment(
