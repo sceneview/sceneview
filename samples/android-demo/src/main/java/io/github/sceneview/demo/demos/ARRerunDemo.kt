@@ -160,7 +160,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
     }
     val replaySession = remember { ArDebugSession().apply { loops = true } }
     // QA captures hold still: no intro fly-in, no idle drift.
-    val replayOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
+    val replayOrbit = remember { ArDebugOrbitCamera(drift = qaState == null, lift = REPLAY_STAGE_LIFT) }
     val replayPipOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
     LaunchedEffect(media) {
         val replay = media ?: return@LaunchedEffect
@@ -872,6 +872,9 @@ private val StatusDotSize = Space.sm + Space.xs / 2 // 10 dp, same as the record
 
 private const val MAX_PLACEMENT_DISTANCE_METERS = 5f
 private const val QA_SEED = "ar-rerun"
+
+/** Where the replay stage draws the room: 7 % of the height above centre, clear of the filmstrip. */
+private const val REPLAY_STAGE_LIFT = 0.07f
 private const val QA_STATE_CONNECTED = "connected"
 private const val QA_STATE_SAVED = "saved"
 private const val QA_SCRUB_FRACTION = 0.45f

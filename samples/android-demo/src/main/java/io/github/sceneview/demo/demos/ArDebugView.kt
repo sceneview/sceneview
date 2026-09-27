@@ -623,6 +623,7 @@ internal fun ArDebugSceneView(
                 val home = ArDebugFraming.home(
                     bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
                     elevationDegrees = orbit.homeElevation,
+                    margin = if (replay != null) ArDebugFraming.REPLAY_MARGIN else ArDebugFraming.HOME_MARGIN,
                 )
                 if (orbit.following) orbit.home = home
                 if (!orbit.hasFramedContent && bounds != null) {

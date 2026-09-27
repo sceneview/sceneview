@@ -33,6 +33,12 @@ class ArDebugOrbitCamera(
     initialPose: OrbitPose = ArDebugFraming.DEFAULT_POSE,
     /** Slow turntable drift while following. Off in QA, so captures are deterministic. */
     var drift: Boolean = true,
+    /**
+     * How far above the view's centre the pivot is drawn, as a fraction of the view's height.
+     * A full-screen stage with a HUD on top and a filmstrip below has its clear band above the
+     * middle: lifting the picture there keeps the room out from under the filmstrip.
+     */
+    val lift: Float = 0f,
 ) : CameraGestureDetector.CameraManipulator {
 
     /** Current pose. Plain field, not Compose state: it changes every frame. */
@@ -127,9 +133,19 @@ class ArDebugOrbitCamera(
         viewportHeight = height.coerceAtLeast(1)
     }
 
-    override fun getTransform(): Transform = Transform(
-        lookAt(eye = CameraRig.eye(pose), target = pose.target, up = Float3(0f, 1f, 0f))
-    )
+    override fun getTransform(): Transform {
+        val eye = CameraRig.eye(pose)
+        val metresPerPixel = CameraRig.worldPerPixel(pose.distance, verticalFovDegrees, viewportHeight)
+        // A pedestal move along the camera's own up axis: the picture slides, the orbit does not.
+        val drop = if (lift == 0f || metresPerPixel <= 0f) {
+            Float3()
+        } else {
+            val forward = normalize(pose.target - eye)
+            val up = cross(normalize(cross(forward, Float3(0f, 1f, 0f))), forward)
+            up * (lift * viewportHeight * metresPerPixel)
+        }
+        return Transform(lookAt(eye = eye - drop, target = pose.target - drop, up = Float3(0f, 1f, 0f)))
+    }
 
     override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
         takeOver()
@@ -275,6 +291,12 @@ object ArDebugFraming {
      */
     const val HOME_MARGIN = 0.92f
 
+    /**
+     * The tighter margin of a bundled recording: its bounds are known up front and hold no
+     * growth to leave room for, so the room fills the stage between the HUD and the filmstrip.
+     */
+    const val REPLAY_MARGIN = 0.66f
+
     /** A room-sized framing for an empty session. */
     val DEFAULT_POSE = OrbitPose(
         target = Position(0f, -0.4f, -0.5f),
@@ -304,6 +326,7 @@ object ArDebugFraming {
         verticalFovDegrees: Double,
         aspect: Float,
         elevationDegrees: Float = HOME_ELEVATION,
+        margin: Float = HOME_MARGIN,
     ): OrbitPose {
         if (bounds == null) {
             return DEFAULT_POSE.copy(azimuthDegrees = azimuthDegrees, elevationDegrees = elevationDegrees)
@@ -319,7 +342,7 @@ object ArDebugFraming {
         val halfVertical = Math.toRadians(verticalFovDegrees / 2.0)
         val halfHorizontal = kotlin.math.atan(kotlin.math.tan(halfVertical) * aspect.coerceIn(0.2f, 5f))
         val halfFov = minOf(halfVertical, halfHorizontal)
-        val distance = (radius / sin(halfFov)).toFloat() * HOME_MARGIN
+        val distance = (radius / sin(halfFov)).toFloat() * margin
         return clamp(
             OrbitPose(
                 target = Position(cx, cy, cz),

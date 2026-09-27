@@ -33,6 +33,19 @@ class ArDebugOrbitCameraTest {
     }
 
     @Test
+    fun `a bundled recording is framed tighter than a live session`() {
+        val bounds = floatArrayOf(0f, 0f, 0f, 4f, 0.5f, 4f)
+        val live = ArDebugFraming.home(bounds, 0f, 45.0, 0.46f)
+        val replay = ArDebugFraming.home(bounds, 0f, 45.0, 0.46f, margin = ArDebugFraming.REPLAY_MARGIN)
+
+        assertEquals(
+            ArDebugFraming.REPLAY_MARGIN / ArDebugFraming.HOME_MARGIN,
+            replay.distance / live.distance,
+            1e-4f,
+        )
+    }
+
+    @Test
     fun `an empty session opens on a room-sized view`() {
         val pose = ArDebugFraming.home(null, 12f, 45.0, 0.5f)
 

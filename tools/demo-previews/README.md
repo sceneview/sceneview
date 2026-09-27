@@ -61,6 +61,11 @@ told apart from the frame.
 103 px on each side filled by stretching the screen's own edge column — pure black beside the
 render, a horizontally uniform grey beside the banner — to reach 5:4.
 
+`ar-rerun` has no render golden either (#3993): its card is an emulator capture (Pixel_7a,
+1080×2400) of the bundled replay in the `replay` QA state (3D view, paused at 0:11), one per
+theme. Crop: centre 540, 1250, width 1040 — the rebuilt room with its keyframe photos, point
+cloud and the two placed models, the corner of the camera card top-right.
+
 ## iOS imagesets
 
 The iOS demo reads the same art from `samples/ios-demo/SceneViewDemo/Assets.xcassets/
