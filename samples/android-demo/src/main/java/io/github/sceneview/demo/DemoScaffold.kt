@@ -147,9 +147,9 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  * One item of the [DemoScaffold] bottom dock.
  *
  * Rendered inside the floating toolbar as an icon over a visible [caption], on a
- * 48 dp-minimum touch target; [label] is its content description. [selected] tints
- * icon and caption with the theme primary so a toggle (wireframe on, grid on) reads
- * as active. At most four items are shown before the auto-appended Controls item and
+ * 48 dp-minimum touch target; [label] is its content description. [selected] puts
+ * icon and caption on a filled `dock-selected` pill so a toggle (wireframe on, grid on)
+ * reads as active. At most four items are shown before the auto-appended Controls item and
  * the optional accent.
  *
  * **Why the caption (#3402).** Icon-only docks force the user to decode glyphs: the
@@ -1033,15 +1033,18 @@ private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
         animationSpec = SceneViewTokens.Motion.spring(),
         label = "dock-press",
     )
+    // A selected toggle sits on a filled `dock-selected` pill — the **dark-scheme** primary
+    // in both themes (#3421: never `colorScheme.primary`, the dock is media), with its own
+    // dark foreground (#3727). Tinting only the glyphs could not pass: the caption lands on
+    // the dock's 14 % white glass over the scrim, which over the near-white Contact Shadow
+    // studio composites to a mid grey, and pale #A4C1FF on it is 2.97:1 by the token maths
+    // — no pale accent reaches 4.5:1 there, and darkening the scrim until one did would
+    // blacken the whole bottom band. On the pill the caption reads at 7.3:1 whatever the
+    // scene is, and the pill itself still separates from the glass at > 3:1.
+    val selectedFill = item.enabled && item.selected
     val contentColor = when {
         !item.enabled -> SceneViewTokens.Glass.onGlass.copy(alpha = DOCK_DISABLED_ALPHA)
-        // The **dark-scheme** primary, in both themes — not `colorScheme.primary` (#3421).
-        // The dock is glass over a camera or a 3D scene, i.e. media, and `DESIGN.md` is
-        // explicit that accents read there are the dark-scheme values: light mode's
-        // `primary` is #005bc1, a dark navy that all but disappears against the dock's own
-        // dark scrim. Caught on the Cloud Anchors captures, where the *selected* step —
-        // the one item that most needs to read — was the least legible thing in the dock.
-        item.selected -> SceneViewTokens.ArOverlay.accentProgress
+        selectedFill -> SceneViewTokens.ArOverlay.onAccentProgress
         else -> SceneViewTokens.Glass.onGlass
     }
     Column(
@@ -1049,6 +1052,9 @@ private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
             .widthIn(min = SceneViewTokens.Layout.touchTarget)
             .heightIn(min = SceneViewTokens.Layout.touchTarget)
             .clip(RoundedCornerShape(SceneViewTokens.Radius.md))
+            .background(
+                if (selectedFill) SceneViewTokens.ArOverlay.accentProgress else Color.Transparent
+            )
             .clickable(
                 interactionSource = interaction,
                 indication = ripple(),

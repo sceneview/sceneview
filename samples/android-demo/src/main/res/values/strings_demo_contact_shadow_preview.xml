@@ -4,6 +4,8 @@
     <string name="demo_contact_shadow_preview_subtitle">Compare objects with and without a contact shadow</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
     <string name="contact_shadow_motion_toggle">Bounce motion</string>
+    <!-- Dock toggle: both the accessible name and the one-word visible caption (#3727). -->
+    <string name="contact_shadow_dock_shadows">Shadows</string>
     <!-- Split from a single "Shadow intensity: %d%%" string when the demos moved to the shared
          LabeledSlider, which renders the name and the value on opposite edges of one line.
          The value half is gone again with #3372: the readout is now a bare multiplier ("1.00×")
