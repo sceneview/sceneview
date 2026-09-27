@@ -319,6 +319,12 @@ class ARCore(
     /**
      * Explicitly closes the ARCore session to release native resources.
      *
+     * A session that is still resumed is paused first (#4026). `ARSceneView` leaving
+     * composition while its Activity stays in the foreground — a demo swapping a replay for a
+     * gallery, a screen dropping its AR view — closes a session no lifecycle `ON_PAUSE` ever
+     * reached, and ARCore's documented order is `pause()` then `close()`, both on the main
+     * thread.
+     *
      * Review the API reference for important considerations before calling close() in apps with
      * more complicated lifecycle requirements: [Session.close]
      */
@@ -326,7 +332,7 @@ class ARCore(
         session?.let {
             synchronized(it) {
                 if (session == null) return@synchronized
-                it.close()
+                closeSessionInOrder(isResumed = it.isResumed, pause = it::pause, close = it::close)
                 session = null
             }
         }
@@ -388,4 +394,28 @@ fun TrackingFailureReason.getDescription(context: Context) = when (this) {
     TrackingFailureReason.INSUFFICIENT_FEATURES -> context.getString(R.string.sceneview_insufficient_features_message)
     TrackingFailureReason.CAMERA_UNAVAILABLE -> context.getString(R.string.sceneview_camera_unavailable_message)
     else -> context.getString(R.string.sceneview_unknown_tracking_failure, this)
+}
+
+/**
+ * Pause-then-close for an ARCore session (#4026), split out so the order is a JVM test.
+ *
+ * A failing `pause()` must not keep the session from being closed: the caller is tearing it
+ * down either way, and leaking the native session is worse than a pause that did not happen.
+ */
+internal fun closeSessionInOrder(
+    isResumed: Boolean,
+    pause: () -> Unit,
+    close: () -> Unit,
+    onPauseFailed: (RuntimeException) -> Unit = {
+        android.util.Log.w("ARCore", "Session pause before close failed", it)
+    },
+) {
+    if (isResumed) {
+        try {
+            pause()
+        } catch (e: RuntimeException) {
+            onPauseFailed(e)
+        }
+    }
+    close()
 }

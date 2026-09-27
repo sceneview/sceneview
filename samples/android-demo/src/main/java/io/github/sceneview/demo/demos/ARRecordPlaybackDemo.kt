@@ -674,9 +674,17 @@ private class TakeState(
             return
         }
         if (packets.isEmpty()) return
+        // Close every TrackData as soon as it is decoded (decode copies the floats out).
+        // Left open, each one is released by its finalizer on the GC thread, which can run
+        // after Back has closed the playback session (#4026).
+        val decoded = try {
+            packets.mapNotNull { PlacementTrack.decode(it.data) }
+        } finally {
+            packets.forEach { runCatching { it.close() } }
+        }
+        if (decoded.isEmpty()) return
         val camera = frame.camera.pose.toRigidPose()
-        packets
-            .mapNotNull { PlacementTrack.decode(it.data) }
+        decoded
             .filter { replayQueue.shouldRestore(it, tracking) }
             .forEach { placement ->
                 val anchor = try {
