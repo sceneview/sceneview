@@ -8545,6 +8545,12 @@ public struct CameraControls: Sendable {
 }
 ```
 
+With auto-framing on (the default), `SceneView` overwrites `minRadius` / `maxRadius`
+from the content's bounds: the floor is 1.1 × the bounding-sphere radius, so a pinch
+never puts the camera inside the model, and the ceiling is 20 ×. Once the user pinches
+or orbits, the framing pass stops re-fitting the camera unless the content grows by
+more than 25 % (another streamed model); `.recenterCamera(_:)` hands it back (#4009).
+
 ---
 
 ### Entity modifiers (extension on RealityKit.Entity)

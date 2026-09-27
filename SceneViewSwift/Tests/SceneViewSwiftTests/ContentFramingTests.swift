@@ -16,12 +16,57 @@ final class ContentFramingTests: XCTestCase {
     private let fov: Float = 60
     private let aspect: Float = 0.46
 
-    /// Reproduces `refreshContentCentering()`'s limit derivation so the test
-    /// asserts on the same rule the view applies.
+    /// The limit derivation `refreshContentCentering()` applies.
     private func limits(forExtents extents: SIMD3<Float>) -> (min: Float, max: Float) {
-        let sphereRadius = simd_length(extents * 0.5)
-        let minRadius = max(sphereRadius * 0.5, 0.05)
-        return (minRadius, max(sphereRadius * 20, minRadius * 4))
+        CameraControls.zoomLimits(forContentExtents: extents)!
+    }
+
+    // MARK: - Zoom floor (#4009)
+
+    /// Pinching all the way in must leave the camera outside the model: the
+    /// floor clears the sphere that circumscribes the bounds, so no vertex of
+    /// the geometry can be at or behind the camera, whatever the orbit angle.
+    func testZoomFloorKeepsTheCameraOutsideTheContent() {
+        let cases: [SIMD3<Float>] = [
+            SIMD3(0.6, 0.6, 0.55),   // Damaged Helmet, scaled to 0.6 units
+            SIMD3(2.0, 0.8, 0.9),    // a sofa
+            SIMD3(0.06, 0.03, 0.06), // a toy car
+            SIMD3(30, 12, 30),       // a room-scale scene
+        ]
+        for extents in cases {
+            let sphereRadius = simd_length(extents * 0.5)
+            let floor = limits(forExtents: extents).min
+            XCTAssertGreaterThan(floor, sphereRadius, "\(extents): the floor sits inside the content")
+
+            var camera = CameraControls()
+            (camera.minRadius, camera.maxRadius) = limits(forExtents: extents)
+            camera.orbitRadius = camera.fitRadius(
+                boundsExtents: extents, fovYDegrees: fov, aspect: 1.43)
+            camera.handlePinch(1000) // a wild pinch-in
+            let corner = extents * 0.5
+            for azimuth in stride(from: Float(0), to: 2 * .pi, by: .pi / 8) {
+                camera.azimuth = azimuth
+                let eye = camera.cameraPosition()
+                // The eye is outside the bounding box on at least one axis.
+                let outside = abs(eye.x) > corner.x || abs(eye.y) > corner.y || abs(eye.z) > corner.z
+                XCTAssertTrue(outside, "\(extents) az \(azimuth): camera inside the bounds")
+            }
+        }
+    }
+
+    /// The floor must still leave real zoom-in room: on an iPad-landscape
+    /// frame the fitted distance is well above it.
+    func testZoomFloorLeavesRoomToZoomIn() {
+        let extents = SIMD3<Float>(0.6, 0.6, 0.55)
+        var camera = CameraControls()
+        (camera.minRadius, camera.maxRadius) = limits(forExtents: extents)
+        let fit = camera.fitRadius(boundsExtents: extents, fovYDegrees: fov, aspect: 1.43, margin: 1.12)
+        XCTAssertGreaterThan(fit, camera.minRadius * 1.5)
+    }
+
+    func testZoomLimitsRejectDegenerateBounds() {
+        XCTAssertNil(CameraControls.zoomLimits(forContentExtents: .zero))
+        XCTAssertNil(CameraControls.zoomLimits(forContentExtents: SIMD3(.nan, 1, 1)))
     }
 
     // MARK: - Bounds → distance

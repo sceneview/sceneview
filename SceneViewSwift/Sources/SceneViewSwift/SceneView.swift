@@ -1068,6 +1068,14 @@ private struct SceneViewRepresentation: View {
         /// World-space centroid of the content union AABB, as last computed by
         /// ``refreshContentCentering()``. `.zero` until the first valid pass.
         var contentWorldCenter: SIMD3<Float> = .zero
+        /// Set when a pinch or an orbit drag moves the camera; while set,
+        /// ``refreshContentCentering()`` no longer re-fits the radius or the
+        /// pivot unless the content grew materially (#4009). Cleared by every
+        /// re-arm of the framing pass.
+        var userMovedCamera = false
+        /// Union diagonal of the last fit applied, the baseline for "grew
+        /// materially" above.
+        var fittedDiagonal: Float = 0
     }
     @State private var appliedCache = AppliedCache()
 
@@ -1385,6 +1393,7 @@ private struct SceneViewRepresentation: View {
         // frustum. Threshold avoids re-framing on sub-pixel layout jitter.
         if let previous, abs(previous - aspect) > 0.01 {
             appliedCache.didCenterContent = false
+            appliedCache.userMovedCamera = false
             framingEpoch &+= 1
         }
     }
@@ -1837,6 +1846,9 @@ private struct SceneViewRepresentation: View {
     /// (which grows the union materially) always re-frames. Fed into
     /// ``FramingStabilityTracker``.
     private static let framingStabilityEpsilon: Float = 0.01
+    /// Union growth (diagonal ratio) past which the framing pass takes the
+    /// camera back from the user: another streamed model landed (#4009).
+    private static let refitGrowthThreshold: Float = 1.25
 
     /// How long the content union must hold steady before the framing pass
     /// latches `didCenterContent`. Must exceed the worst-case gap between two
@@ -1933,6 +1945,7 @@ private struct SceneViewRepresentation: View {
             stableHoldSeconds: Self.framingStableHoldSeconds
         )
         appliedCache.didCenterContent = false
+        appliedCache.userMovedCamera = false
     }
 
     /// Applies a ``SceneView/recenterCamera(_:)`` request: restores the
@@ -1998,25 +2011,43 @@ private struct SceneViewRepresentation: View {
         //    centroid so a `recentersTargetOnOrbit` re-entry can snap back
         //    to it (the content is no longer assumed to sit at the origin).
         appliedCache.contentWorldCenter = center
-        camera.target = center
         // 2. Adapt the zoom-radius limits to the content size BEFORE
         //    computing the fit, so `fitRadius`'s internal clamp does not
         //    fight the fit. The fixed `minRadius = 1.0` / `maxRadius = 50`
         //    defaults are tuned for ~1 m demo content; a 0.1 m model needs
         //    a closer min and a 30 m scene a farther max. Bracket the
-        //    limits around the bounding-sphere radius so the user can
-        //    still pinch in to roughly fill the frame and out to ~10×.
+        //    limits around the bounding-sphere radius: the floor keeps the
+        //    camera outside the content (#4009), the ceiling lets it pull
+        //    back to ~20×. See `CameraControls.zoomLimits(forContentExtents:)`.
         //    Both limits are ASSIGNED from the current bounds, never merged
         //    with the previous subject's: `max(camera.maxRadius, …)` kept a
         //    room-scale scene's 600 m ceiling after switching to a 10 cm one,
         //    and a stale floor is worse still — it clamps `fitRadius` above
         //    the distance that actually frames the new subject, which reads as
         //    "this model opened zoomed in and will not zoom out" (#3596).
-        let sphereRadius = simd_length(extents * 0.5)
-        if sphereRadius.isFinite, sphereRadius > 0 {
-            camera.minRadius = max(sphereRadius * 0.5, 0.05)
-            camera.maxRadius = max(sphereRadius * 20, camera.minRadius * 4)
+        if let limits = CameraControls.zoomLimits(forContentExtents: extents) {
+            camera.minRadius = limits.min
+            camera.maxRadius = limits.max
         }
+        // Once the user has pinched or orbited, the pass stops overriding
+        // their camera while the bounds settle (#4009). It used to re-assign
+        // the pivot and radius on every ~33 ms tick of the 2.5 s hold window,
+        // so a pinch in that window did nothing and the camera then jumped
+        // back to the fit. Only a union that grew materially (another
+        // streamed model landing) takes the camera back; Recenter, a content
+        // swap or a rotation re-arm the pass and clear the flag.
+        if appliedCache.userMovedCamera,
+           diagonal <= appliedCache.fittedDiagonal * Self.refitGrowthThreshold {
+            camera.orbitRadius = min(max(camera.orbitRadius, camera.minRadius), camera.maxRadius)
+            if stable {
+                appliedCache.didCenterContent = true
+            }
+            applyCamera()
+            return
+        }
+        appliedCache.userMovedCamera = false
+        appliedCache.fittedDiagonal = diagonal
+        camera.target = center
         // 3. Dolly the orbit radius so the bounding box fits the frustum
         //    with a small margin, accounting for the vertical FOV and the
         //    live viewport aspect ratio (#1041). Without this the camera
@@ -2343,6 +2374,7 @@ private struct SceneViewRepresentation: View {
                 if !isDragging {
                     camera.suspendAutoRotation()
                     isDragging = true
+                    appliedCache.userMovedCamera = true
                 }
                 // Push the dragged orbit straight onto the camera entity.
                 // Now that `camera` lives in a reference box (#2277), mutating
@@ -2393,6 +2425,7 @@ private struct SceneViewRepresentation: View {
                     initialPinchFov = camera.fov
                 }
                 guard cameraGesturesEnabled else { return }
+                appliedCache.userMovedCamera = true
                 switch camera.mode {
                 case .orbit, .pan:
                     if initialPinchRadius == nil {
