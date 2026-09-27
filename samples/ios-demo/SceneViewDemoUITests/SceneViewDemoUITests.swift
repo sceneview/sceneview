@@ -194,4 +194,32 @@ final class SceneViewDemoUITests: XCTestCase {
             snapshot(app, String(format: "%@-%02d-b-%@", label, i + 1, slug(name)))
         }
     }
+
+    /// A pinch on a demo's 3D stage drives the camera; it must never dismiss
+    /// the demo (#4008). The catalogue opens demos with a zoom transition,
+    /// whose system pinch-to-dismiss used to take the stage's zoom-out pinch
+    /// and shrink the whole demo back into its card. Opened from the Showcase
+    /// hero on purpose: the `-demo` launch path has no zoom transition, so it
+    /// cannot reproduce this.
+    func testPinchOnDemoStageDoesNotDismissTheDemo() {
+        let app = XCUIApplication()
+        app.launch()
+        let hero = app.descendants(matching: .any)["home-hero"]
+        XCTAssertTrue(hero.waitForExistence(timeout: 30), "Showcase hero never appeared")
+        hero.tap()
+
+        let close = app.descendants(matching: .any)["demo-close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 20), "the demo never opened")
+        // Let the model land and the framing settle.
+        Thread.sleep(forTimeInterval: 6)
+        snapshot(app, "4008-01-before-pinch")
+
+        let stage = app.windows.firstMatch
+        for _ in 0..<3 {
+            stage.pinch(withScale: 0.4, velocity: -1.5)
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+        snapshot(app, "4008-02-after-pinch-out")
+        XCTAssertTrue(close.exists && close.isHittable, "a pinch on the stage dismissed the demo")
+    }
 }
