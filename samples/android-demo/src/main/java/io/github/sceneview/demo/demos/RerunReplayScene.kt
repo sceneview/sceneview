@@ -21,8 +21,8 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayManifest
+import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
-import io.github.sceneview.demo.demos.internal.RerunSessionFile
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.loaders.MaterialLoader
@@ -97,9 +97,9 @@ internal suspend fun loadRerunReplay(context: Context): RerunReplayMedia = withC
  * Opens a scan saved on the phone ([RerunSessionStore]) — through the very code the bundled
  * replay opens by, so the two look the same. `null` when its manifest is unreadable.
  */
-internal suspend fun loadRerunSession(file: RerunSessionFile): RerunReplayMedia? = withContext(Dispatchers.Default) {
-    val manifest = ReplayManifest.parse(file.manifest) ?: return@withContext null
-    openReplay(manifest, parseArDebugLog(file.log.lineSequence()), file.media)
+internal suspend fun loadRerunSession(capture: RerunCapturePack): RerunReplayMedia? = withContext(Dispatchers.Default) {
+    val manifest = ReplayManifest.parse(String(capture.manifest)) ?: return@withContext null
+    openReplay(manifest, parseArDebugLog(String(capture.log).lineSequence()), capture.media)
 }
 
 /** A replay from its three parts: the photos and plane textures decoded side by side. */

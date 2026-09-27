@@ -240,6 +240,26 @@
             </intent-filter>
 
             <!--
+                A SceneView scan file (`.svscan`, the Rerun demo's "Share scan file", the same
+                file the iOS demo writes): MainActivity hands it to the Rerun demo, which keeps
+                it under "Your sessions" and replays it. Nothing on Android knows the type, so
+                it is matched by name, as the model files above are.
+            -->
+            <intent-filter android:label="@string/open_model_filter_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.svscan" />
+                <data android:pathPattern=".*\\.SVSCAN" />
+            </intent-filter>
+
+            <!--
                 Share sheet: "Share → SceneView" from ChatGPT, Files or Drive. Same
                 type list as the VIEW filter above; the URI arrives as EXTRA_STREAM.
             -->

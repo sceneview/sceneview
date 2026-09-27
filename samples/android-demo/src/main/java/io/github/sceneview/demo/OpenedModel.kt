@@ -212,7 +212,7 @@ object OpenedModelIntent {
     private fun openedModelsDir(context: Context): File =
         File(context.cacheDir, "opened-models").apply { mkdirs() }
 
-    private fun displayName(context: Context, uri: Uri): String? = when (uri.scheme) {
+    internal fun displayName(context: Context, uri: Uri): String? = when (uri.scheme) {
         ContentResolver.SCHEME_CONTENT -> runCatching {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                 ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }

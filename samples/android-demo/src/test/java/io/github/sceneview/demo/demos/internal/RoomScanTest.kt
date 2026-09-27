@@ -208,10 +208,22 @@ class RoomScanTest {
     }
 
     @Test
-    fun `a saved scan's line gives its length, points and photos`() {
-        assertEquals("0:48 · 2,521 points · 64 photos", ScanCopy.summary(48.6f, 2_521, 64))
-        assertEquals("1:05 · 1 point · 1 photo", ScanCopy.summary(65f, 1, 1))
-        assertEquals("0:00 · 0 points · 0 photos", ScanCopy.summary(Float.NaN, 0, 0))
+    fun `a kept session's figures read like the iOS card's`() {
+        assertEquals("4.2 m · 3.8k points · 42 photos · 0:18", ScanCopy.figures(4.23f, 3_812, 42, 18.4f))
+        assertEquals("42 cm · 1 point · 1 photo · 1:05", ScanCopy.figures(0.42f, 1, 1, 65f))
+        // No photos and no length: the figures say only what the session has.
+        assertEquals("0 m · 0 points", ScanCopy.figures(Float.NaN, 0, 0, Float.NaN))
+    }
+
+    @Test
+    fun `an opened file that fails says why, naming it`() {
+        val file = "kitchen.svscan"
+        assertEquals(
+            "“kitchen.svscan” holds no camera path, points or surfaces to replay.",
+            ScanCopy.importFailure(RerunImportFailure.Empty(file), file),
+        )
+        assertTrue(ScanCopy.importFailure(RerunImportFailure.RrdNotYet("a.rrd"), "a.rrd").contains(".svscan"))
+        assertEquals("Delete “Room”?", ScanCopy.deleteTitle("Room"))
     }
 
     // ── End to end ────────────────────────────────────────────────────────────

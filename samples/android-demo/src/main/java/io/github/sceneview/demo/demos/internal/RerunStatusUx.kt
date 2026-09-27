@@ -9,7 +9,7 @@ import java.util.Locale
  * never heard of. Connection steps live in the settings sheet only.
  */
 
-/** The one sentence that says what the demo does, shown on screen and atop the sheet. */
+/** What streaming to a computer does, under the sheet's "Advanced" heading. */
 const val RERUN_INTRO: String =
     "Sends what the camera sees to Rerun on your computer, so you can scrub through it frame by frame."
 

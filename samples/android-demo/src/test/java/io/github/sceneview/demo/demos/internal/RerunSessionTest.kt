@@ -6,8 +6,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 
 class RerunSessionTest {
@@ -114,62 +112,6 @@ class RerunSessionTest {
         assertEquals(Vec3(-1f, -1.42f, -2f), texture.origin)
         assertEquals(Vec3(2.5f, 0f, 0f), texture.u)
         assertEquals(Vec3(0f, 0f, 3f), texture.v)
-    }
-
-    // ── The saved file ────────────────────────────────────────────────────────
-
-    @Test
-    fun `the header reads back, and refuses what is not one of ours`() {
-        val meta = RerunSessionMeta(1_790_000_000_000L, 48.5f, 2521, 3, 64)
-        assertEquals(meta, RerunSessionMeta.parse(meta.toJson()))
-        assertNull(RerunSessionMeta.parse("""{"format":"something-else","version":1}"""))
-        assertNull(RerunSessionMeta.parse("""{"format":"${RerunSessionMeta.FORMAT}","version":99}"""))
-        assertNull(RerunSessionMeta.parse("not json"))
-    }
-
-    @Test
-    fun `a saved scan reads back whole, and its header alone`() {
-        val file = RerunSessionFile(
-            meta = RerunSessionMeta(1_790_000_000_000L, 12f, 100, 2, 5),
-            cover = byteArrayOf(1, 2, 3, 4),
-            manifest = """{"frames":5}""",
-            log = "{\"t\":1}\n",
-            media = ByteArray(4096) { (it % 251).toByte() },
-        )
-        val bytes = ByteArrayOutputStream().also { RerunSessionFormat.write(file, it) }.toByteArray()
-
-        val back = RerunSessionFormat.read(ByteArrayInputStream(bytes))!!
-        assertEquals(file.meta, back.meta)
-        assertArrayEquals(file.cover, back.cover)
-        assertEquals(file.manifest, back.manifest)
-        assertEquals(file.log, back.log)
-        assertArrayEquals(file.media, back.media)
-
-        val (meta, cover) = RerunSessionFormat.readHeader(ByteArrayInputStream(bytes))!!
-        assertEquals(file.meta, meta)
-        assertArrayEquals(file.cover, cover)
-    }
-
-    @Test
-    fun `a file that is not a saved scan does not open`() {
-        assertNull(RerunSessionFormat.read(ByteArrayInputStream("hello".toByteArray())))
-        assertNull(RerunSessionFormat.readHeader(ByteArrayInputStream(ByteArray(0))))
-    }
-
-    // ── The cover ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `the cover draws the points in their colours on a transparent square`() {
-        val red = 0xFFFF0000.toInt()
-        val points = FloatArray(300) { (it % 7) * 0.1f }
-        val colors = IntArray(100) { if (it % 2 == 0) red else 0 }
-        val pixels = ScanCover.render(points, colors, size = 64)!!
-
-        assertEquals(64 * 64, pixels.size)
-        assertTrue(pixels.any { it == red })
-        assertTrue(pixels.any { it == 0xFFB8C2D6.toInt() })
-        assertTrue(pixels.any { it == 0 })
-        assertNull(ScanCover.render(FloatArray(0), null))
     }
 
     private fun assertSameFrame(a: ArDebugFrame, b: ArDebugFrame) {

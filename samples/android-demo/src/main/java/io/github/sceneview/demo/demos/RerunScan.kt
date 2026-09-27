@@ -13,7 +13,7 @@ import io.github.sceneview.demo.demos.internal.MediaSpan
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ReplayManifest
-import io.github.sceneview.demo.demos.internal.RerunSessionFile
+import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
 import io.github.sceneview.demo.demos.internal.ScanProjection
@@ -116,11 +116,11 @@ internal class ScanCapture private constructor(
     }
 
     /**
-     * Stops the scan, waits for the last photos, and builds it into the file the sessions list
+     * Stops the scan, waits for the last photos, and builds it into the capture the sessions list
      * keeps — its planes painted from its photos. `null` for a scan that caught nothing. Call it
      * on the main thread, where the recorder writes: the journal is taken there, then let go.
      */
-    suspend fun finish(createdAt: Long): RerunSessionFile? {
+    suspend fun finish(): RerunCapturePack? {
         val events = trace.journal?.toList().orEmpty()
         trace.journal = null
         jobs.toList().joinAll()
@@ -130,7 +130,7 @@ internal class ScanCapture private constructor(
             val pose = poses[image.path] ?: return@mapNotNull null
             ScanPhoto(image.path, jpeg, pose)
         }
-        return RerunSessionBuilder.build(events, lens, photos, createdAt)
+        return RerunCaptureBuilder.build(events, lens, photos)
     }
 
     private fun manifest(spans: Map<String, MediaSpan>) = ReplayManifest(

@@ -329,21 +329,52 @@ object ScanCopy {
     const val IDLE_DETAIL = "Tap record, then walk the phone slowly around the room. $PRIVACY"
     const val WAITING = "Move the phone slowly to find the room. Recording starts once it is found."
 
+    // The landing, worded as the iOS demo's (#4068), "phone" for "iPhone".
+    const val LANDING_TITLE = "Scan a room in 3D"
+    const val LANDING_BODY = "Walk around with your phone. SceneView keeps the camera's path, its photos, " +
+        "the surfaces and the points, then replays the room in 3D."
+
     /** The landing's one primary action. */
     const val RECORD = "Record your room"
     const val WATCH_SAMPLE = "Watch a sample session"
+    const val OPEN_FILE = "Open file"
     const val SESSIONS_TITLE = "Your sessions"
-    const val SESSIONS_EMPTY = "Your scans appear here. Walk the phone slowly around a room: its path, " +
-        "surfaces and photos are rebuilt in 3D."
-    const val DELETE_TITLE = "Delete this scan?"
-    const val DELETE_DETAIL = "It is removed from this phone. This cannot be undone."
-    const val OPEN_FAILED = "This scan could not be opened."
+    const val ON_THIS_PHONE = "On this phone"
+    const val SESSIONS_EMPTY_TITLE = "No sessions yet"
+    const val SESSIONS_EMPTY = "Rooms you record are kept here, on this phone, until you delete them. " +
+        "You can also open a .svscan scan file."
+    const val OPENING_FILE = "Opening file…"
+    const val SHARE_SCAN = "Share scan file"
+    const val DELETE = "Delete"
+    const val DELETE_DETAIL = "It is removed from this phone. Files you already shared are not affected."
+    const val OPEN_FAILED = "This session could not be opened."
     const val SAVE_FAILED = "Your scan could not be saved on this phone. It stays open until you leave."
 
-    /** A saved scan's line in the list: `0:48 · 2,521 points · 64 photos`. */
-    fun summary(seconds: Float, points: Int, photos: Int): String =
-        "${ArDebugFormat.clock(seconds)} · ${ArDebugFormat.count(points)} ${label(points, "point", "points")} · " +
-            "${ArDebugFormat.count(photos)} ${label(photos, "photo", "photos")}"
+    /** `Delete "Room · Sep 28, 2:32 PM"?` */
+    fun deleteTitle(title: String): String = "Delete “$title”?"
+
+    /** Why [file] did not open, in the user's words. */
+    fun importFailure(failure: RerunImportFailure, file: String): String {
+        val name = "“$file”"
+        return when (failure) {
+            is RerunImportFailure.Unsupported -> "$name is not a SceneView scan file."
+            is RerunImportFailure.Empty -> "$name holds no camera path, points or surfaces to replay."
+            is RerunImportFailure.RrdNotYet ->
+                "$name is a Rerun recording. This version opens SceneView scan files (.svscan) only."
+            is RerunImportFailure.Unreadable -> "$name could not be read. SceneView opens the scan files it makes."
+        }
+    }
+
+    /** A kept session's figures: `4.2 m · 3.8k points · 42 photos · 0:18`, as on iOS. */
+    fun figures(pathMetres: Float, points: Int, photos: Int, seconds: Float): String {
+        val parts = mutableListOf(
+            ArDebugFormat.distance(pathMetres),
+            "${ArDebugFormat.compactCount(points)} ${label(points, "point", "points")}",
+        )
+        if (photos > 0) parts += "${ArDebugFormat.count(photos)} ${label(photos, "photo", "photos")}"
+        if (seconds.isFinite() && seconds > 0f) parts += ArDebugFormat.clock(seconds)
+        return parts.joinToString(" · ")
+    }
     const val STOP_HINT = "Tap to stop and open your scan in 3D"
     const val FINISHING = "Building your scan…"
     const val LOADING = "Opening your scan…"

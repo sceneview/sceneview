@@ -4,9 +4,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -98,7 +101,10 @@ import io.github.sceneview.demo.demos.internal.RERUN_SETUP_STEPS
 import io.github.sceneview.demo.demos.internal.RERUN_SETUP_TITLE
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
-import io.github.sceneview.demo.demos.internal.RerunSessionFile
+import io.github.sceneview.demo.demos.internal.RerunCapturePack
+import io.github.sceneview.demo.demos.internal.RerunImportFailure
+import io.github.sceneview.demo.demos.internal.RerunSessionSource
+import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunSetupStep
 import io.github.sceneview.demo.demos.internal.RerunStatusUx
 import io.github.sceneview.demo.demos.internal.ScanCopy
@@ -130,8 +136,8 @@ import java.io.File
 /**
  * The Rerun demo: an AR session rebuilt in 3D.
  *
- * It opens on a **landing** over the sample room turning in 3D: "Record your room", "Watch a
- * sample session", and the scans saved on this phone.
+ * It opens on a **landing** laid out as the iOS demo's (#4068): "Record your room", "Watch a
+ * sample session", "Open file", and the sessions kept on this phone.
  *
  * The **sample** is a real ARCore session bundled with the app — the camera's path, its photos in
  * their frustums, the planes it found textured with the room, the coloured point cloud and the
@@ -140,8 +146,9 @@ import java.io.File
  *
  * **Record** scans your own room live with ARCore — the path, the coloured points, the planes and
  * a photo every few steps, growing in a 3D card while you walk. Stop saves it on the phone, as
- * one file holding the same parts the sample ships, and opens it in the same replay; it stays
- * under "Your sessions" until deleted. Nothing leaves the phone.
+ * the same three files the sample ships in the iOS demo's session layout, and opens it in the
+ * same replay; it stays under "Your sessions" until deleted, and shares as a `.svscan` scan
+ * file the iOS demo opens too. Nothing leaves the phone unless you share it.
  *
  * Advanced, from the sheet: the live screen also streams the session to the Rerun viewer on a
  * computer. The bridge auto-connects to the Python recorder at `127.0.0.1:9876` — for USB,
@@ -177,10 +184,13 @@ fun ARRerunDemo(onBack: () -> Unit) {
         value = runCatching { loadRerunReplay(context) }.getOrNull()
     }
 
-    // The scans saved on this phone, re-read whenever one is saved or deleted.
-    val store = remember { RerunSessionStore(context.applicationContext) }
+    // The sessions kept on this phone, re-read whenever one is saved, opened from a file or deleted.
+    val store = remember { rerunSessionStore(context.applicationContext) }
     var sessionsVersion by remember { mutableIntStateOf(0) }
-    val sessions by produceState<List<StoredSession>?>(null, sessionsVersion) { value = store.list() }
+    val sessions by produceState<List<LandingSession>?>(null, sessionsVersion) { value = store.landingSessions() }
+    // What the landing says about the last file opened: why it did not open, or that it is opening.
+    var notice by remember { mutableStateOf<String?>(null) }
+    var openingFile by remember { mutableStateOf(false) }
 
     // What the replay shows: the sample, or one of your scans — the same view either way.
     var showingScan by remember { mutableStateOf(false) }
@@ -233,41 +243,84 @@ fun ARRerunDemo(onBack: () -> Unit) {
         screen = RerunScreen.Replay
     }
     val openStored = { id: String ->
-        // The replay's cover says "Opening your scan…" while its file is read.
+        // The replay's cover says "Opening your scan…" while its files are read.
         scanMedia = null
         showingScan = true
         mode = RerunMode.Scene
         screen = RerunScreen.Replay
         opening?.cancel()
         opening = scope.launch {
-            val opened = store.read(id)?.let { file -> runCatching { loadRerunSession(file) }.getOrNull() }
+            val capture = withContext(Dispatchers.IO) { store.capture(id) }
+            val opened = capture?.let { runCatching { loadRerunSession(it) }.getOrNull() }
             if (opened == null) {
-                Toast.makeText(context, ScanCopy.OPEN_FAILED, Toast.LENGTH_LONG).show()
+                notice = ScanCopy.OPEN_FAILED
                 screen = RerunScreen.Landing
             } else {
                 openScan(opened)
             }
         }
     }
+    // A file opened here ("Open file") or handed over by another app: kept as a session, then
+    // replayed — or, when it is not one this app reads, the landing says why.
+    val importFile = { uri: Uri ->
+        notice = null
+        openingFile = true
+        scope.launch {
+            val result = importSession(context, store, uri)
+            openingFile = false
+            sessionsVersion++
+            result
+                .onSuccess { openStored(it.id) }
+                .onFailure { failure ->
+                    notice = (failure as? RerunImportFailure)?.let { ScanCopy.importFailure(it, it.message.orEmpty()) }
+                        ?: ScanCopy.OPEN_FAILED
+                }
+        }
+        Unit
+    }
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(importFile)
+    }
+    val inbox = DemoSettings.rerunInbox
+    LaunchedEffect(inbox) {
+        val uri = inbox ?: return@LaunchedEffect
+        DemoSettings.rerunInbox = null
+        opening?.cancel()
+        screen = RerunScreen.Landing
+        importFile(uri)
+    }
 
     when (screen) {
         RerunScreen.Landing -> RerunLandingScreen(
             onBack = onBack,
-            sample = sample,
-            sessions = sessions,
-            onRecord = { screen = RerunScreen.Live },
-            onWatchSample = openSample,
-            onOpen = { openStored(it.id) },
-            onDelete = { session ->
-                scope.launch {
-                    store.delete(session.id)
-                    sessionsVersion++
-                }
-            },
-            drift = qaState == null,
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
+            state = RerunLandingState(sessions = sessions, notice = notice, openingFile = openingFile),
+            actions = RerunLandingActions(
+                onRecord = {
+                    notice = null
+                    screen = RerunScreen.Live
+                },
+                onWatchSample = {
+                    notice = null
+                    openSample()
+                },
+                onOpenFile = { pickFile.launch(arrayOf("*/*")) },
+                onOpen = {
+                    notice = null
+                    openStored(it.id)
+                },
+                onShare = { session ->
+                    scope.launch {
+                        if (!shareScanFile(context, store, session.info)) notice = ScanCopy.OPEN_FAILED
+                    }
+                },
+                onDelete = { session ->
+                    scope.launch {
+                        withContext(Dispatchers.IO) { store.delete(session.id) }
+                        sessionsVersion++
+                    }
+                },
+                onDismissNotice = { notice = null },
+            ),
         )
         RerunScreen.Live -> RerunLiveScreen(
             onBack = toLanding,
@@ -308,64 +361,18 @@ private enum class RerunScreen { Landing, Live, Replay }
 private enum class RerunMode { Scene, Map, Camera }
 
 /**
- * The landing: the sample room turning in 3D behind "Watch a sample session" at the top, and at
- * the thumb your scans over "Record your room".
+ * The landing, laid out as the iOS demo's: "Scan a room in 3D", "Record your room", the sample
+ * and "Open file", then "Your sessions". Pinned dark like the replay it opens, on the stage colour.
  */
 @Composable
-@Suppress("LongParameterList") // the demo's shared engine and state, handed down once
-private fun RerunLandingScreen(
-    onBack: () -> Unit,
-    sample: RerunReplayMedia?,
-    sessions: List<StoredSession>?,
-    onRecord: () -> Unit,
-    onWatchSample: () -> Unit,
-    onOpen: (StoredSession) -> Unit,
-    onDelete: (StoredSession) -> Unit,
-    drift: Boolean,
-    engine: Engine,
-    modelLoader: ModelLoader,
-    materialLoader: MaterialLoader,
-) {
-    // The whole sample room, still: its own session, held on the last frame.
-    val heroSession = remember(sample) {
-        ArDebugSession().apply {
-            sample?.let { media ->
-                trace = media.trace
-                scrubTo(media.trace.duration)
-            }
-        }
-    }
-    val heroOrbit = remember(sample) { ArDebugOrbitCamera(drift = drift, lift = LANDING_STAGE_LIFT) }
+private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, actions: RerunLandingActions) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
         controls = { RerunSheet() },
-        topOverlay = {
-            WatchSamplePill(onClick = onWatchSample, modifier = Modifier.align(Alignment.CenterHorizontally))
-        },
-        bottomOverlay = {
-            RerunSessionsCard(sessions = sessions, onOpen = onOpen, onDelete = onDelete)
-            RecordRoomButton(onClick = onRecord)
-        },
         dock = emptyList(),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SceneViewTokens.Stage.background),
-        ) {
-            if (sample != null) {
-                ArDebugSceneView(
-                    session = heroSession,
-                    orbit = heroOrbit,
-                    engine = engine,
-                    modelLoader = modelLoader,
-                    materialLoader = materialLoader,
-                    modifier = Modifier.fillMaxSize(),
-                    replay = sample,
-                )
-            }
-        }
+        RerunLanding(state, actions)
     }
 }
 
@@ -508,12 +515,6 @@ private fun RerunSheet() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Text(
-        text = RERUN_INTRO,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = Space.sm),
-    )
     RerunSetupSection()
     // Developer-only debug toggle — visible when QA mode is on. Lets QA force-emit each
     // TrackingFailureReason so the actionable-message overlay can be validated without staging a
@@ -616,7 +617,7 @@ private fun RerunLiveScreen(
     }
     val scanMedia = scan?.live ?: qaScan
     val recording = scanMedia != null
-    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false) }
+    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false, lift = SCAN_STAGE_LIFT) }
 
     var isTracking by remember { mutableStateOf(false) }
     var cameraReady by remember { mutableStateOf(false) }
@@ -710,16 +711,20 @@ private fun RerunLiveScreen(
         if (finishing || (qaTrace == null && capture == null)) return@stop
         finishing = true
         scope.launch {
-            val createdAt = System.currentTimeMillis()
-            val file = when {
-                qaTrace != null && sample != null -> qaSessionOf(qaTrace, sample, createdAt)
-                capture != null -> capture.finish(createdAt)
+            val now = System.currentTimeMillis()
+            val built = when {
+                qaTrace != null && sample != null -> qaSessionOf(qaTrace, sample)
+                capture != null -> capture.finish()
                 else -> null
             }
-            val opened = file?.let { built ->
-                val id = store.save(built)
-                if (id == null) Toast.makeText(context, ScanCopy.SAVE_FAILED, Toast.LENGTH_LONG).show()
-                runCatching { loadRerunSession(id?.let { store.read(it) } ?: built) }.getOrNull()
+            val opened = built?.let { pack ->
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        store.save(pack, recordingTitle(now), RerunSessionSource.Recorded, now)
+                    }.isSuccess
+                }
+                if (!saved) Toast.makeText(context, ScanCopy.SAVE_FAILED, Toast.LENGTH_LONG).show()
+                runCatching { loadRerunSession(pack) }.getOrNull()
             }
             if (capture != null) {
                 debugSession.trace = ArDebugTrace()
@@ -1044,6 +1049,12 @@ private fun RerunSetupSection() {
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.semantics { heading() },
         )
+        // What streaming does, under its own heading: it is the advanced path, not the demo.
+        Text(
+            text = RERUN_INTRO,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         RERUN_SETUP_STEPS.forEachIndexed { index, step -> RerunSetupStepRow(index + 1, step) }
     }
 }
@@ -1175,6 +1186,9 @@ private const val QA_SEED = "ar-rerun"
 
 /** Where the replay stage draws the room: 7 % of the height above centre, clear of the filmstrip. */
 private const val REPLAY_STAGE_LIFT = 0.07f
+
+/** The Record screen's 3D card frames the room higher: its floor used to sit clipped at the card's foot. */
+private const val SCAN_STAGE_LIFT = 0.12f
 private const val QA_STATE_CONNECTED = "connected"
 private const val QA_STATE_SAVED = "saved"
 
@@ -1187,14 +1201,11 @@ private const val QA_RECORD_NEVER_LOOP_S = 3_600f
 /** How often the live screen checks whether ARCore has found the room, to start recording. */
 private const val AUTO_START_POLL_MS = 100L
 
-/** The landing draws the sample room higher than the replay: clear of the sessions and Record. */
-private const val LANDING_STAGE_LIFT = 0.14f
-
 /**
  * QA only: the take the Record screen played from the sample, built into a session like a real
  * scan — its journal, and the sample's photos taken from where the trace's camera stood.
  */
-private suspend fun qaSessionOf(trace: ArDebugTrace, sample: RerunReplayMedia, createdAt: Long): RerunSessionFile? {
+private suspend fun qaSessionOf(trace: ArDebugTrace, sample: RerunReplayMedia): RerunCapturePack? {
     val events = trace.journal?.toList().orEmpty()
     trace.journal = null
     if (events.isEmpty()) return null
@@ -1206,7 +1217,7 @@ private suspend fun qaSessionOf(trace: ArDebugTrace, sample: RerunReplayMedia, c
             ScanPhoto(path, jpeg, pose)
         }
     }
-    return RerunSessionBuilder.build(events, sample.manifest.lens, photos, createdAt)
+    return RerunCaptureBuilder.build(events, sample.manifest.lens, photos)
 }
 private const val QA_SCRUB_FRACTION = 0.45f
 private const val AR_DEBUG_FIXTURE = "rerun/sample-session.jsonl"

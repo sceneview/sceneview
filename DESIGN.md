@@ -767,14 +767,24 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   card under them is the same view the replay opens on, growing as the phone moves, framed
   to the scan with no intro. While recording the dock is empty: nothing may leave a scan
   half-taken. The privacy line ("Everything stays on your phone.") ends the idle copy.
-- **One flow, like a capture app (Polycam, Scaniverse).** The demo opens on a landing over
-  the sample room turning in 3D: a glass pill "Watch a sample session" at the top, and at
-  the thumb the "Your sessions" card (cover, date, duration · points · photos, delete with
-  a confirmation) over the one primary action, "Record your room" — a full-width pill in
-  `accent-progress` with the red dot, the privacy line under it. Record starts by itself
-  once ARCore has found the room; Stop saves the scan on the phone and opens it in the
-  **same** replay as the sample, whole and paused on its last frame. Streaming to a
-  computer is an advanced option in the sheet; its status card shows only once connected.
+- **One flow, like a capture app (Polycam, Scaniverse, Reality Composer), laid out as the
+  iOS demo's (#4068).** The demo opens on a scrolling page on `Stage.background`, max width
+  560 dp, clear of the header and the settings button: `type-display` "Scan a room in 3D"
+  over one muted line; the one primary action, "Record your room", a 96 dp `radius-lg` card
+  in `accent-progress` with the camera in a 56 dp well, "Everything stays on your phone."
+  under it and a chevron; then a row of two glass actions, "Watch a sample session"
+  (weighted) and "Open file". "Your sessions" (`type-card`, "On this phone" on the right)
+  lists glass `radius-md` cards: the first photo (64 dp, `radius-sm`), the title, "date ·
+  source", then "path · points · photos · duration", and a ⋮ menu with "Share scan file" and
+  "Delete" — Delete in the theme's `error` colour, confirmed by a dialog whose confirm is
+  `error` too. No session yet is a dashed outline with what goes there. A file that does
+  not open says why in a card tinted `danger` at 24 %; a file being read shows "Opening
+  file…". Record starts by itself once ARCore has found the room; Stop saves the scan on
+  the phone and opens it in the **same** replay as the sample, whole and paused on its
+  last frame. The page is pinned dark in both themes, like the replay it opens and like
+  iOS: light and dark captures are the same by design. Streaming to a computer is an
+  advanced option in the sheet, under its own heading; its status card shows only once
+  connected.
 
 ### Tabs
 - Padding: 10px 20px
