@@ -110,6 +110,62 @@ class FrameRateGateTest {
     }
 
     @Test
+    fun aGpuSlowerThanTheWindowStillGetsARunOfFramesAfterAChange() {
+        // #3982, measured on emulator-5554: while a model's materials link, Filament accepts one
+        // frame every ~1.5 s and refuses the ticks in between. The window's deadline has long
+        // passed when the first frame after a change is presented. Closing on it parked the scene
+        // on that one frame, and the demo's loading cover, which waits for a second one, stayed up
+        // over a finished model (or a black viewport) until a touch woke the loop.
+        val gate = FrameRateGate()
+        val vsync = 10_000_000L // a round tick, so the accepted ones fall on exact multiples
+        val acceptEvery = 1_500_000_000L
+        val start = 1_000_000_000L
+        var now = start
+        var presented = 0
+        while (!gate.isSettled && now - start < 10_000_000_000L) {
+            if (gate.shouldRender(active = false, frameTimeNanos = now) &&
+                (now - start) % acceptEvery == 0L
+            ) {
+                presented++
+                gate.didRender(now)
+            }
+            now += vsync
+        }
+
+        assertTrue("the gate must settle eventually", gate.isSettled)
+        assertEquals(
+            "a change owes a run of presented frames, not the first one that happens to land " +
+                "after the deadline",
+            SETTLE_MIN_PRESENTED_FRAMES,
+            presented
+        )
+    }
+
+    @Test
+    fun aChangeRearmsTheFrameFloorToo() {
+        val gate = FrameRateGate()
+        val slow = 2_000_000_000L
+        var now = 1_000_000_000L
+        gate.shouldRender(active = false, frameTimeNanos = now)
+        gate.didRender(now)
+        now += slow
+        gate.requestRender()
+        // Armed on a tick Filament refused: nothing presented.
+        assertTrue(gate.shouldRender(active = false, frameTimeNanos = now))
+        now += slow
+        gate.shouldRender(active = false, frameTimeNanos = now)
+        gate.didRender(now)
+        assertFalse(
+            "the frame presented before the change must not count towards the run after it",
+            gate.isSettled
+        )
+        now += slow
+        gate.shouldRender(active = false, frameTimeNanos = now)
+        gate.didRender(now)
+        assertTrue(gate.isSettled)
+    }
+
+    @Test
     fun anActiveSceneNeverSettles() {
         val gate = FrameRateGate()
         val vsync = vsyncPeriodNanos(60f)
