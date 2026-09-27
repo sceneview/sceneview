@@ -103,7 +103,9 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
 internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
     val startedAt = SystemClock.uptimeMillis()
     // Destroyed by someone else while the fence was pending: only the EGL side is left to release.
-    whenBackendIdle(onEngineGone = onDestroyed) { deferred ->
+    // Last: a model loader still waiting for its texture decoders must release before the engine,
+    // and must not be forced to release early, on this thread, by safeDestroy() (#3981).
+    whenBackendIdle(onEngineGone = onDestroyed, runsLast = true) { deferred ->
         safeDestroy()
         if (deferred) logDeferredTeardown("Engine", startedAt)
         onDestroyed()
@@ -151,9 +153,51 @@ private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
  * be created. A deferred [onIdle] is run by [safeDestroy] at the latest, so the engine always
  * outlives it. [onEngineGone] runs instead of [onIdle] only when the engine is already destroyed,
  * or is destroyed without [safeDestroy] while the fence is pending; the fence is not touched then.
+ * With `runsLast`, [onIdle] also waits for every other pending teardown of this engine to have run
+ * (see [BackendIdleTeardowns.defer]) — the engine's own destroy.
  */
 internal fun Engine.whenBackendIdle(
     onEngineGone: () -> Unit = {},
+    runsLast: Boolean = false,
+    onIdle: (deferred: Boolean) -> Unit,
+) {
+    if (!isValid) {
+        onEngineGone()
+        return
+    }
+    val fence = if (Looper.myLooper() != null) runCatching { createFence() }.getOrNull() else null
+    if (fence == null) {
+        onIdle(false)
+        return
+    }
+    whenIdle(
+        isBusy = { isFenceBusy(fence) },
+        onEngineGone = onEngineGone,
+        runsLast = runsLast,
+    ) { deferred ->
+        runCatching { destroyFence(fence) }
+        onIdle(deferred)
+    }
+}
+
+/** Whether [fence] has not been reached by the backend yet — a zero-timeout wait, never blocks. */
+internal fun isFenceBusy(fence: Fence): Boolean =
+    runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
+
+/**
+ * Runs [onIdle] on the calling thread once [isBusy] returns `false`, polling it from the calling
+ * thread's [Looper] every [BACKEND_IDLE_POLL_MS] instead of waiting — the general form of
+ * [whenBackendIdle], for a release whose "would block" condition is not a fence (#3981).
+ *
+ * Same contract as [whenBackendIdle]: [onIdle] gets `deferred = false` when it ran before this
+ * function returned (nothing was busy, or the thread has no [Looper]), it runs at the latest from
+ * [safeDestroy], and [onEngineGone] replaces it once the engine is gone — [isBusy] is then never
+ * called again. Main thread only.
+ */
+internal fun Engine.whenIdle(
+    isBusy: () -> Boolean,
+    onEngineGone: () -> Unit = {},
+    runsLast: Boolean = false,
     onIdle: (deferred: Boolean) -> Unit,
 ) {
     if (!isValid) {
@@ -161,29 +205,21 @@ internal fun Engine.whenBackendIdle(
         return
     }
     val looper = Looper.myLooper()
-    val fence = if (looper != null) runCatching { createFence() }.getOrNull() else null
-    if (looper == null || fence == null) {
+    if (looper == null) {
         onIdle(false)
         return
     }
     val handler = Handler(looper)
     backendIdleTeardowns.getOrPut(this) { BackendIdleTeardowns() }.defer(
         isEngineAlive = { isValid },
-        isBackendBusy = {
-            runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }
-                .getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
-        },
+        isBackendBusy = isBusy,
         schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
         teardown = { deferred ->
             // Checked again here: whatever path runs a teardown, it never touches a dead engine.
-            if (isValid) {
-                runCatching { destroyFence(fence) }
-                onIdle(deferred)
-            } else {
-                onEngineGone()
-            }
+            if (isValid) onIdle(deferred) else onEngineGone()
         },
         onEngineGone = onEngineGone,
+        runsLast = runsLast,
     )
 }
 
