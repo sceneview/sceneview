@@ -410,7 +410,7 @@ private object StreamedPlacementThumbnails {
 
     suspend fun resolve(service: SketchfabService, slugs: List<SketchfabSlug>): Map<String, String> {
         coroutineScope {
-            slugs.filter { it.uid !in urls }.map { slug ->
+            slugs.filter { !urls.containsKey(it.uid) }.map { slug ->
                 async {
                     runCatching { service.model(slug.uid).thumbnailUrl(MIN_WIDTH_PX) }
                         .getOrNull()
