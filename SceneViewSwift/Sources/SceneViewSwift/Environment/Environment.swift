@@ -160,9 +160,75 @@ public struct SceneEnvironment: Sendable {
                 let source = CGImageSourceCreateWithURL(url as CFURL, nil),
                 let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
             else { continue }
-            return image
+            return radianceClamped(image) ?? image
         }
         return nil
+    }
+
+    /// Brightest radiance a pixel keeps before RealityKit prefilters the map.
+    ///
+    /// ImageIO decodes a Radiance file to half floats, whose ceiling is 65,504.
+    /// `outdoor_cloudy.hdr` puts its sun at 60,160 — 92 % of that ceiling — and
+    /// RealityKit's prefilter lit every model under it magenta, while its skybox
+    /// looked right (#4011). A sun a quarter of that bright still saturates any
+    /// display and still casts the same highlight direction; the headroom keeps
+    /// the prefilter's sums finite.
+    static let maxPrefilterRadiance: Float = 16_384
+
+    /// Returns `image` with every pixel brighter than ``maxPrefilterRadiance``
+    /// scaled down to it (hue kept) and non-finite pixels set to black, or `nil`
+    /// when no pixel needed it — the common case, which keeps the decoded image
+    /// untouched.
+    static func radianceClamped(_ image: CGImage) -> CGImage? {
+        guard image.bitmapInfo.contains(.floatComponents),
+              let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB),
+              let context = CGContext(
+                data: nil,
+                width: image.width,
+                height: image.height,
+                bitsPerComponent: 32,
+                bytesPerRow: image.width * 16,
+                space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    | CGBitmapInfo.floatComponents.rawValue
+                    | CGBitmapInfo.byteOrder32Little.rawValue
+              ),
+              let data = context.data
+        else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let pixels = UnsafeMutableBufferPointer(
+            start: data.bindMemory(to: Float.self, capacity: image.width * image.height * 4),
+            count: image.width * image.height * 4
+        )
+        guard clampRadiance(pixels, maximum: maxPrefilterRadiance) else { return nil }
+        return context.makeImage()
+    }
+
+    /// Clamps an RGBA float buffer in place: a pixel whose brightest channel is
+    /// above `maximum` is scaled so that channel equals `maximum`; a pixel with a
+    /// non-finite channel becomes black. Alpha is left alone.
+    ///
+    /// - Returns: `true` when at least one pixel changed.
+    @discardableResult
+    static func clampRadiance(_ rgba: UnsafeMutableBufferPointer<Float>, maximum: Float) -> Bool {
+        var changed = false
+        var i = 0
+        while i + 3 < rgba.count {
+            let r = rgba[i], g = rgba[i + 1], b = rgba[i + 2]
+            if !(r.isFinite && g.isFinite && b.isFinite) {
+                rgba[i] = 0; rgba[i + 1] = 0; rgba[i + 2] = 0
+                changed = true
+            } else {
+                let peak = Swift.max(r, g, b)
+                if peak > maximum {
+                    let scale = maximum / peak
+                    rgba[i] = r * scale; rgba[i + 1] = g * scale; rgba[i + 2] = b * scale
+                    changed = true
+                }
+            }
+            i += 4
+        }
+        return changed
     }
 
     /// Creates a custom environment from an HDR file in the bundle.

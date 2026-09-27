@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS: the Outdoor Cloudy environment no longer lights models magenta** ([#4011](https://github.com/sceneview/sceneview/issues/4011)). `outdoor_cloudy.hdr` puts its sun at 60,160, 92 % of the half-float ceiling ImageIO decodes Radiance files to, and RealityKit's prefilter broke on it. When `SceneEnvironment` decodes an HDR through ImageIO, it now scales pixels brighter than 16,384 down to that value (hue kept) and blacks out non-finite ones before building the `EnvironmentResource`.

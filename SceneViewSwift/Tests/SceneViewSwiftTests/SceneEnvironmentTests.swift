@@ -240,3 +240,45 @@ final class VisionOSSkyboxTests: XCTestCase {
 }
 #endif
 #endif
+
+/// Pins the HDR peak clamp that keeps RealityKit's prefilter finite (#4011).
+/// Pure buffer maths, so it runs on macOS too.
+final class RadianceClampTests: XCTestCase {
+
+    private func clamp(_ pixels: [Float], maximum: Float = 16_384) -> ([Float], Bool) {
+        var copy = pixels
+        let changed = copy.withUnsafeMutableBufferPointer {
+            SceneEnvironment.clampRadiance($0, maximum: maximum)
+        }
+        return (copy, changed)
+    }
+
+    func testOrdinaryPixelsAreUntouched() {
+        let pixels: [Float] = [0.2, 0.5, 1.0, 1, 180, 150, 140, 1]
+        let (out, changed) = clamp(pixels)
+        XCTAssertFalse(changed)
+        XCTAssertEqual(out, pixels)
+    }
+
+    func testTheCloudySunIsScaledDownWithItsHue() {
+        // outdoor_cloudy.hdr's brightest pixel, as ImageIO decodes it.
+        let (out, changed) = clamp([57_344, 60_160, 60_160, 1])
+        XCTAssertTrue(changed)
+        XCTAssertEqual(out[1], 16_384, accuracy: 0.01)
+        XCTAssertEqual(out[2], 16_384, accuracy: 0.01)
+        XCTAssertEqual(out[0] / out[1], 57_344 / 60_160, accuracy: 1e-5, "hue must be kept")
+        XCTAssertEqual(out[3], 1, "alpha is left alone")
+    }
+
+    func testNonFinitePixelsBecomeBlack() {
+        let (out, changed) = clamp([.infinity, 1, 1, 1, .nan, 2, 3, 1])
+        XCTAssertTrue(changed)
+        XCTAssertEqual(Array(out[0..<3]), [0, 0, 0])
+        XCTAssertEqual(Array(out[4..<7]), [0, 0, 0])
+    }
+
+    func testTheCeilingLeavesHalfFloatHeadroom() {
+        // 65,504 is the largest finite half float, the format ImageIO decodes to.
+        XCTAssertLessThanOrEqual(SceneEnvironment.maxPrefilterRadiance * 4, 65_536)
+    }
+}
