@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v4.43.0 — 2026-09-27
+
+### Added
+
+- **The demo app opens on a live dusk flight ([#3948](https://github.com/sceneview/sceneview/issues/3948)).** The home screen's hero is no longer a still with a turntable behind a card: a low-poly valley slides under the camera at dusk — a periodic flat-shaded heightfield generated on the fly, one warm sun low on the horizon with an emissive disc that bloom and a lens flare bleed from, height fog in the sky's colour, the sunset HDR as image-based light, temporal anti-aliasing, and the Damaged Helmet riding front-right of the camera, turning slowly. The camera flies a lazy S-curve and banks into it; tilting the phone steers the gaze a few degrees. It is all Filament through SceneView (one `MeshNode`, one `SphereNode`, one `ModelNode`) drawn full-bleed under the header and the featured band, from the top edge of the display, with the featured band's first page a transparent window onto it. Nothing composes before the app's first frame is presented; `isLowRamDevice` gets the same flight at a quarter of the triangles with the Performance preset and no HDR, bloom, fog or TAA; reduced motion holds the opening frame. Two new tokens (`hero-sky-*`, `home-hero-stage-bleed`) are documented in `DESIGN.md`.
+- **Demo app: Rerun Debug now draws the AR session on the phone, in 3D, with no computer attached ([#3950](https://github.com/sceneview/sceneview/issues/3950)).** A live picture-in-picture under the status card shows what ARCore understood of the room; a tap, or the dock's 3D view, opens it full-screen. A second SceneView on the demo's engine draws the camera's path as a glowing trail with the live frustum at its head, the feature points as a point cloud (the ones seen right now in amber), the planes as tinted polygons (floors blue, walls violet), and every anchor with its placed model — over a floor grid, from a free camera: drag to orbit, pinch to zoom, double-tap or Recenter to hand the framing back. Chips toggle each layer and count what it holds; a timeline scrubs the session and plays it back up to Live. Streaming to the Rerun viewer on a computer is unchanged.
+
+### Fixed
+
+- **Scrolling the demo home down and back up no longer reloads the hero, with its loading state and flash ([#3949](https://github.com/sceneview/sceneview/issues/3949)).** The 3D hero was a child of the featured band's `LazyVerticalGrid` item, so leaving the viewport disposed the Filament engine, the model and the animation state, and coming back rebuilt all of it behind a still. The stage is now composed once per screen, as a layer under the grid, and the band's page is a transparent window over it: neither the grid nor the featured pager can dispose it. Off screen the stage's own `Lifecycle` drops below `RESUMED`, SceneView parks its loop on the last frame and the flight clock stops; on the way back the very same frame is already there, then the next one — same camera, same time, no loader, no fade. The featured pager's page is hoisted to the screen for the same reason, so it no longer resets to the first page after a scroll.
+
 ## v4.42.0 — 2026-09-26
 
 ### Added
