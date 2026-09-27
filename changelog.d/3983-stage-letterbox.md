@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: no more grey bands around inset scenes ([#3983](https://github.com/sceneview/sceneview/issues/3983)).** Double Pendulum, Geometry Primitives, Animation & Physics, Contact Shadow Preview, 2D in 3D and Scene to MP4 shrink their viewport to keep it clear of their controls. The space above and below it showed the window background, light grey under the scrims in both themes. It is now painted with the dark stage colour, so the controls sit on one continuous stage.

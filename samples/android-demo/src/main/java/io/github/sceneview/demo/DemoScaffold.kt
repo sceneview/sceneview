@@ -537,6 +537,17 @@ fun DemoScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // An inset scene leaves bands above and below the viewport. Unpainted,
+                // they showed the window background — light grey under the scrims, in
+                // both themes — and the demo read as a letterboxed screenshot (#3983).
+                // Painted with the stage colour, the chrome sits on one continuous stage.
+                .then(
+                    if (bottomOverlayReservesScene) {
+                        Modifier.background(SceneViewTokens.Stage.background)
+                    } else {
+                        Modifier
+                    }
+                )
                 .onSizeChanged { rootHeightPx = it.height },
         ) {
             // The viewport names its own state (#3444): "Scene loading" while the cover
