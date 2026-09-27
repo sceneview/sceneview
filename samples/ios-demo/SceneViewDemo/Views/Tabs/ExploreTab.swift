@@ -372,15 +372,13 @@ struct ExploreTab: View {
             // background already was.
             .background(SceneViewTokens.HomeColor.surface)
             // Embedded on iPad, the floating tab bar takes a row of its own
-            // above the navigation bar, and nothing painted that row: scrolled
-            // content showed through beside the tab bar and over the status
-            // bar (#4015). Paint the whole top inset (status bar, tab bar row,
-            // navigation bar) with the page surface, as Showcase's header does.
-            // It matches the page, so it is invisible until content scrolls
-            // under it.
-            .overlay(alignment: .top) {
-                if embedded { TopInsetSurface() }
-            }
+            // above the navigation bar, and the bar was left transparent:
+            // scrolled content showed through beside the tab bar and over the
+            // status bar (#4015). Give the bar an opaque page-surface ground,
+            // which reaches the screen's top edge. It matches the page, so it
+            // is invisible until content scrolls under it.
+            .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
+            .toolbarBackground(embedded ? .visible : .automatic, for: .navigationBar)
             .navigationTitle("Explore")
             // Placeholder names the catalog being searched so the field reflects
             // the picked source (Sketchfab / Poly Haven), #2645.
@@ -2165,19 +2163,5 @@ private extension View {
     /// the pre-26 material stack gets its dark-scheme ceiling back too.
     func viewerChrome() -> some View {
         environment(\.colorScheme, .dark)
-    }
-}
-
-/// An opaque band of the page surface covering the view's top safe-area inset,
-/// from the screen's top edge down to where content starts. See #4015.
-private struct TopInsetSurface: View {
-    var body: some View {
-        GeometryReader { proxy in
-            SceneViewTokens.HomeColor.surface
-                .frame(height: proxy.safeAreaInsets.top)
-        }
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }

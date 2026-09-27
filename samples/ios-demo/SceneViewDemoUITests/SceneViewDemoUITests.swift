@@ -227,10 +227,9 @@ final class SceneViewDemoUITests: XCTestCase {
     /// between the floating tab bar and the navigation bar. Opens Explore from
     /// the Showcase card, scrolls, and keeps a frame of the top edge.
     func testExploreScrolledContentStaysUnderTheTopBar() {
-        // #4015 was reported in landscape, where the iPad tab bar floats in a
-        // row of its own above the navigation bar.
-        XCUIDevice.shared.orientation = .landscapeLeft
-        addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
+        // Portrait on purpose: #4015 was reported in landscape, but the bug is
+        // the same in portrait, and forcing landscape from XCUITest on the
+        // iPad simulator leaves the hit-test frames rotated (taps miss).
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
