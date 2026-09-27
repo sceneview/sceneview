@@ -6,10 +6,11 @@
      `samples/android-demo/demo-fragments/README.md`. -->
 <resources>
     <string name="app_name">SceneView Demo</string>
-    <!-- Home-screen label. "SceneView Demo" is cut to "SceneView …" in the
-         Pixel launcher, which reads as the consumer app "SceneView".
-         "SDK Demo" fits in full and names what the app is. -->
-    <string name="launcher_label">SDK Demo</string>
+    <!-- Home-screen label (owner decision, 2026-09-27). "SceneView Demo" is cut
+         to "SceneView …" in the Pixel launcher; "SceneView" fits in full. The
+         viewer app is "3D AR Viewer" on the home screen, so the two no longer
+         clash. The store title stays "SceneView Demo — SDK samples". -->
+    <string name="launcher_label">SceneView</string>
 
     <!-- Navigation -->
     <string name="tab_3d">3D</string>
