@@ -54,10 +54,13 @@
     <string name="ar_place_close_preview">Close preview</string>
 
     <!-- Sheet-only accessibility adjustments of the feature comparison screens. The
-         move/rotate/scale labels are shared with the wall placement demo; only the
-         depth axis differs, because a free-standing subject moves closer, not up. -->
+         move/scale labels are shared with the wall placement demo; the depth axis and the
+         rotation differ, because a free-standing subject moves closer, not up, and turns
+         about the vertical, not about a wall's normal (#3741). -->
     <string name="ar_adjust_move_closer">Move closer</string>
     <string name="ar_adjust_move_farther">Move farther</string>
+    <string name="ar_adjust_rotate_left">Rotate left</string>
+    <string name="ar_adjust_rotate_right">Rotate right</string>
     <!-- Shared AR start-up scrim (ARCameraInitScrim), shown until the first camera frame. -->
     <string name="ar_starting_camera">Starting camera…</string>
 </resources>

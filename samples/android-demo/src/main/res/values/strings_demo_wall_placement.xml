@@ -18,6 +18,8 @@
     <string name="wall_dpad_right">Move right</string>
     <string name="wall_dpad_up">Move up</string>
     <string name="wall_dpad_down">Move down</string>
-    <string name="wall_dpad_rotate_left">Rotate left</string>
-    <string name="wall_dpad_rotate_right">Rotate right</string>
+    <!-- The wall content spins about the wall's normal, so it turns clockwise or
+         counter-clockwise as seen from the room, never left or right (#3741). -->
+    <string name="wall_dpad_rotate_clockwise">Rotate clockwise</string>
+    <string name="wall_dpad_rotate_counterclockwise">Rotate counter-clockwise</string>
 </resources>
