@@ -177,7 +177,8 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Value | Usage |
 |---|---|---|
-| `success` | #16a34a | Positive states, checkmarks |
+| `success` | #16a34a | Positive states, checkmarks — as a fill, dot or icon. It is 3.3:1 on white, so it is never light-mode text |
+| `success-text` | #166534 light · #56d364 dark | `success` as text ("Stable", "Fully supported"), including on its own 8–12% tinted chip: >= 5.6:1 on every light surface. The website's `--color-status-stable` |
 | `warning` | #f59e0b | Caution states |
 | `danger` | #ea4335 | Error states, destructive |
 | `info` | #ea580c | Informational highlights |

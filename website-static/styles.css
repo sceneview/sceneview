@@ -26,7 +26,11 @@
   --color-on-primary-container: #003a7f;
   --color-on-secondary-container: #0051a0;
   --color-on-tertiary-container: #3a09a4;
-  --color-outline: #687ba3;
+  /* Outline doubles as the muted-text token (sidebar headers, counts, captions), so it
+     holds 4.5:1 on every light surface tier up to --color-surface-container-high
+     (4.55:1); #687ba3 fell to 3.58:1 on the tinted panels (#3689). --color-outline-variant
+     stays a divider/border colour only — never text. */
+  --color-outline: #56688f;
   --color-outline-variant: #9fb2dd;
   --color-inverse-surface: #040e20;
   --color-primary-fixed-dim: #8db3ff;
@@ -34,7 +38,10 @@
   --color-inverse-on-surface: #939db5;
 
   /* Status */
-  --color-status-stable: #16a34a;
+  /* #16a34a read 2.9–3.3:1 as text on white and on its own 8–12% green chip. #166534
+     holds >= 5.6:1 on every chip tint the site uses, over every light surface (#3689).
+     Dark keeps #56d364. */
+  --color-status-stable: #166534;
   --color-status-beta: #2563eb;
   --color-status-alpha: #7c3aed;
   --color-status-soon: #4c5f85;
@@ -2536,7 +2543,6 @@ ul { list-style: none; }
   font-size: 0.6875rem;
   font-family: var(--font-mono);
   color: var(--color-on-surface-variant);
-  opacity: 0.8;
   margin-top: auto;
 }
 
@@ -2702,39 +2708,44 @@ ul { list-style: none; }
 
 /* ── Developer Tools ───────────────────────────────────────────────────────── */
 /* ===== FEATURES — what you can build ===== */
+/* These two sections were written against --accent and --text-secondary, which this sheet
+   never defined: the "v4" badges rendered white on the page (1.05:1). Mapped onto the design
+   tokens (#3689). The cards also named --surface-card and --border, equally undefined, so
+   they have always rendered without a ground or a border; those declarations are gone and
+   the look is unchanged. */
 .features { padding: 96px 0; background: var(--surface-section, var(--bg, transparent)); }
 .features__container { max-width: var(--container-width); margin: 0 auto; padding: 0 var(--container-padding); text-align: center; }
 .features__title { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; letter-spacing: -0.04em; margin-bottom: 16px; }
-.features__subtitle { font-size: 1.125rem; color: var(--text-secondary); max-width: 720px; margin: 0 auto 48px; }
+.features__subtitle { font-size: 1.125rem; color: var(--color-on-surface-variant); max-width: 720px; margin: 0 auto 48px; }
 .features__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; text-align: left; }
-.feature-card { background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; display: flex; flex-direction: column; }
-.feature-card:hover { transform: translateY(-4px); box-shadow: 0 8px 32px rgba(0,0,0,0.25); border-color: var(--color-primary, var(--accent)); }
-.feature-card__icon { font-size: 32px; color: var(--color-primary, var(--accent)); margin-bottom: 16px; }
+.feature-card { border-radius: var(--radius-lg); padding: 28px; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; display: flex; flex-direction: column; }
+.feature-card:hover { transform: translateY(-4px); box-shadow: 0 8px 32px rgba(0,0,0,0.25); border-color: var(--color-primary); }
+.feature-card__icon { font-size: 32px; color: var(--color-primary); margin-bottom: 16px; }
 .feature-card__title { font-size: 1.2rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
-.feature-card__text { font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin: 0 0 16px; flex-grow: 1; }
+.feature-card__text { font-size: 0.95rem; color: var(--color-on-surface-variant); line-height: 1.6; margin: 0 0 16px; flex-grow: 1; }
 .feature-card__text code { font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 0.85em; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.06); }
 /* Was keyed on `prefers-color-scheme` alone, so a light-OS reader who used the site's
    own theme toggle kept the light chip (black at 6%) on a dark card — invisible. Keyed on
    `data-theme` like the rest of the sheet, and lifted to clear 1.25:1 against the card. */
 [data-theme="dark"] .feature-card__text code { background: rgba(255,255,255,0.14); }
 .feature-card__chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.feature-card__chip { font-size: 0.72rem; font-weight: 600; background: rgba(var(--accent-rgb, 59,130,246), 0.12); color: var(--color-primary, var(--accent)); padding: 4px 10px; border-radius: 999px; letter-spacing: 0.01em; }
+.feature-card__chip { font-size: 0.72rem; font-weight: 600; background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); padding: 4px 10px; border-radius: 999px; letter-spacing: 0.01em; }
 
 .devtools { padding: 96px 0; }
 .devtools__container { max-width: var(--container-width); margin: 0 auto; padding: 0 var(--container-padding); }
 .devtools__title { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; letter-spacing: -0.04em; margin-bottom: 16px; }
-.devtools__subtitle { font-size: 1.125rem; color: var(--text-secondary); margin-bottom: 48px; }
+.devtools__subtitle { font-size: 1.125rem; color: var(--color-on-surface-variant); margin-bottom: 48px; }
 .devtools__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; align-items: stretch; }
-.devtools__card { display: flex; flex-direction: column; background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 32px; transition: transform 0.2s, box-shadow 0.2s; }
+.devtools__card { display: flex; flex-direction: column; border-radius: var(--radius-lg); padding: 32px; transition: transform 0.2s, box-shadow 0.2s; }
 .devtools__card:hover { transform: translateY(-4px); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
 .devtools__card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; min-height: 28px; }
-.devtools__card-icon { font-size: 28px; color: var(--accent); }
-.devtools__card-badge { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; background: var(--accent); color: #fff; padding: 2px 10px; border-radius: 999px; }
+.devtools__card-icon { font-size: 28px; color: var(--color-primary); }
+.devtools__card-badge { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; background: var(--color-primary); color: var(--color-on-primary); padding: 2px 10px; border-radius: 999px; }
 .devtools__card-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 12px; }
-.devtools__card-text { font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; }
-.devtools__card-text a { color: var(--accent); text-decoration: underline; }
+.devtools__card-text { font-size: 0.95rem; color: var(--color-on-surface-variant); line-height: 1.6; }
+.devtools__card-text a { color: var(--color-primary); text-decoration: underline; }
 .devtools__card-platforms { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
-.devtools__card-platform { font-size: 0.75rem; font-weight: 600; background: rgba(var(--accent-rgb, 59,130,246), 0.15); color: var(--accent); padding: 4px 12px; border-radius: 999px; }
+.devtools__card-platform { font-size: 0.75rem; font-weight: 600; background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); padding: 4px 12px; border-radius: 999px; }
 /* First link pushed to the bottom so cards align visually regardless of content depth. */
 .devtools__card-link { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem; font-weight: 600; color: var(--color-primary); text-decoration: none; transition: color 0.15s, transform 0.15s; }
 .devtools__card-link + .devtools__card-link { margin-top: 8px; }
@@ -2743,7 +2754,9 @@ ul { list-style: none; }
 
 /* Hero store badges — published demo apps on Play Store + App Store + Web. */
 .hero__store-badges { display: flex; align-items: center; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
-.hero__store-badges-label { font-size: 0.875rem; color: var(--color-on-surface-variant); font-weight: 500; flex-basis: 100%; }
+/* On the hero gradient, not on a surface: white at the hero description's 0.9 — 5.5:1 on
+   both gradient stops. --color-on-surface-variant was a surface token (#3689). */
+.hero__store-badges-label { font-size: 0.875rem; color: #ffffff; opacity: 0.9; font-weight: 500; flex-basis: 100%; }
 .hero__store-badge { display: inline-flex; align-items: center; transition: transform 0.15s, opacity 0.15s; }
 .hero__store-badge:hover { transform: translateY(-2px); opacity: 0.92; }
 /* App Store SVG has no padding → 40 px is the canonical Apple guideline. */

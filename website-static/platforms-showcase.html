@@ -358,9 +358,10 @@
             color: var(--color-status-stable);
         }
 
+        /* Opacity took the muted token to 2.99:1 on the code panel (#3689). */
         .platform-card__code .code-comment {
             color: var(--color-on-surface-variant);
-            opacity: 0.7;
+            font-style: italic;
         }
 
         .platform-card__code .code-function {
@@ -470,7 +471,7 @@
         .architecture-diagram__connector {
             display: flex;
             justify-content: center;
-            color: var(--color-outline-variant);
+            color: var(--color-outline);
         }
 
         .architecture-diagram__connector .material-symbols-outlined {
@@ -552,8 +553,10 @@
             color: var(--color-status-stable);
         }
 
+        /* A "not supported" mark, so it carries meaning: --color-outline, not the divider
+           token (2.03:1) (#3689). */
         .comparison-table__dash {
-            color: var(--color-outline-variant);
+            color: var(--color-outline);
         }
 
         /* ===== CTA SECTION ===== */
