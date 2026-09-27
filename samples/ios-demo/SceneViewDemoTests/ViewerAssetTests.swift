@@ -19,6 +19,7 @@
 #if DEBUG
 
 import XCTest
+import RealityKit
 @testable import SceneViewDemo
 
 // `ModelViewerDemo` is a SwiftUI `View`; its `static let` catalogs are
@@ -86,6 +87,72 @@ final class ViewerAssetTests: XCTestCase {
         let first = environments.first { $0.assetName == "outdoor_cloudy" }
         XCTAssertNotNil(first, "the first-run environment left the catalog")
         XCTAssertEqual(first?.authoredAsPlace, true)
+    }
+}
+
+/// Pins the Surprise-me coherence check (#4012): a broken USDZ conversion —
+/// a small subject in a cloud of scattered shards — never goes on stage,
+/// while ordinary single-mesh and multi-part models still do.
+@MainActor
+final class SurpriseModelCheckTests: XCTestCase {
+
+    private func box(_ center: SIMD3<Float>, _ size: Float) -> BoundingBox {
+        BoundingBox(min: center - size / 2, max: center + size / 2)
+    }
+
+    func testSingleMeshPasses() {
+        XCTAssertTrue(SurpriseModelCheck.isCoherent(parts: [box(.zero, 1)]))
+    }
+
+    func testNoMeshFails() {
+        XCTAssertFalse(SurpriseModelCheck.isCoherent(parts: []))
+    }
+
+    func testSmallSubjectInScatteredShardsFails() {
+        // The "PBR Firefighter Helmet" shape: a 0.2 m helmet at the origin and
+        // 60 small shards strewn over a 4 m cube, none touching another.
+        var parts = [box(.zero, 0.2)]
+        for i in 0..<60 {
+            let t = Float(i)
+            let p = SIMD3<Float>(sin(t * 1.7), cos(t * 2.3), sin(t * 0.9 + 1)) * 2
+            parts.append(box(p, 0.03))
+        }
+        XCTAssertFalse(SurpriseModelCheck.isCoherent(parts: parts))
+    }
+
+    func testDominantPartWithSmallDetailsPasses() {
+        // A car body with four wheels and a few small trims.
+        var parts = [BoundingBox(min: [-2, 0, -1], max: [2, 1.2, 1])]
+        for x: Float in [-1.4, 1.4] {
+            for z: Float in [-1, 1] { parts.append(box([x, 0.3, z], 0.6)) }
+        }
+        XCTAssertTrue(SurpriseModelCheck.isCoherent(parts: parts))
+    }
+
+    func testManySmallTouchingPartsPass() {
+        // A fence of 40 planks, each touching its neighbours: no dominant
+        // part, but nothing is isolated.
+        let parts = (0..<40).map { i in
+            BoundingBox(min: [Float(i) * 0.1, 0, 0], max: [Float(i) * 0.1 + 0.1, 1, 0.02])
+        }
+        XCTAssertTrue(SurpriseModelCheck.isCoherent(parts: parts))
+    }
+
+    func testPartBoundsReadsNestedTransforms() {
+        let root = Entity()
+        let child = ModelEntity(mesh: .generateBox(size: 0.5))
+        child.position = [3, 0, 0]
+        let holder = Entity()
+        holder.position = [0, 2, 0]
+        holder.addChild(child)
+        root.addChild(holder)
+        root.addChild(ModelEntity(mesh: .generateBox(size: 1)))
+
+        let parts = SurpriseModelCheck.partBounds(of: root)
+        XCTAssertEqual(parts.count, 2)
+        let moved = parts.first { $0.center.x > 1 }
+        XCTAssertEqual(moved?.center.x ?? 0, 3, accuracy: 1e-4)
+        XCTAssertEqual(moved?.center.y ?? 0, 2, accuracy: 1e-4)
     }
 }
 
