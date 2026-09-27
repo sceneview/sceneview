@@ -59,9 +59,9 @@ private const val SPLAT_ASSET = "splats/raccoon_family.spz"
  * you draw ([io.github.sceneview.node.SplatNode.splatCount]), which is how a large capture stays
  * smooth on a cheaper phone without re-exporting anything.
  *
- * Rendering is [io.github.sceneview.node.SplatNode] (#2646): hardware-instanced camera-facing
- * gaussian discs, re-sorted back-to-front on a background thread whenever the camera moves, so
- * the translucent points composite correctly from every angle.
+ * Rendering is [io.github.sceneview.node.SplatNode] (#2646): hardware-instanced oriented
+ * gaussian ellipses, re-sorted back-to-front for the scene camera on a background thread whenever
+ * it moves, so the translucent points composite correctly from every angle.
  */
 @Composable
 fun SplatPreviewDemo(onBack: () -> Unit) {
@@ -102,8 +102,6 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
         }
     }
 
-    // Live camera world position, refreshed each frame and handed to the node's painter's sort.
-    var cameraPosition by remember { mutableStateOf(Position(z = 2f)) }
     // How many of the captured points are drawn. 0 until the file is open, then the whole scan.
     var drawnPoints by remember { mutableIntStateOf(0) }
     val totalPoints = scan?.cloud?.count ?: 0
@@ -150,17 +148,12 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
             materialLoader = materialLoader,
             cameraNode = cameraNode,
             cameraManipulator = cameraManipulator,
-            // Chain the first-frame signal with a per-frame camera-position read so the node's
-            // painter's sort tracks the orbit.
-            onFrame = { frameTimeNanos ->
-                firstFrame.onFrame(frameTimeNanos)
-                cameraPosition = cameraNode.worldPosition
-            },
+            onFrame = firstFrame.onFrame,
         ) {
             scan?.let { loaded ->
+                // The node re-sorts for the scene camera by itself as the orbit moves.
                 SplatNode(
                     splatCloud = loaded.cloud,
-                    cameraPositionProvider = { cameraPosition },
                     splatCount = drawnPoints,
                 )
             }
