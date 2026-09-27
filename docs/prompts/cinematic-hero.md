@@ -27,8 +27,8 @@ Add a cinematic, scroll-driven 3D hero to the top of my app's home screen with S
 4. Pass backdrop = Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer,
    MaterialTheme.colorScheme.surface)) and this content:
    rememberModelInstance(modelLoader, "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb")
-       ?.let { ModelNode(modelInstance = it, scaleToUnits = 1f, centerOrigin = Position(0f, 0f, 0f)) }
-   Imports: io.github.sceneview.rememberModelInstance, io.github.sceneview.math.Position.
+       ?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
+   Import io.github.sceneview.rememberModelInstance; ModelNode needs no import.
 5. Write no camera, gesture, animation or scroll code: CinematicHero does all of it. Load
    models only with rememberModelInstance inside the hero's content (Filament runs on the main
    thread). Do not move the Spacer, and do not put the hero inside the list.
@@ -36,18 +36,19 @@ Add a cinematic, scroll-driven 3D hero to the top of my app's home screen with S
 ```
 
 To use your own model, replace the URL with yours (`https://…` or a path under
-`src/main/assets/`) and keep `scaleToUnits = 1f` and `centerOrigin`: they fit any model to the
-hero's framing. The boom box is the Khronos glTF sample
+`src/main/assets/`) and keep `scaleToUnits = 1f`: with it, any model fits the hero's framing,
+whatever its own size, and the hero centres it for you. The boom box is the Khronos glTF sample
 [BoomBox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BoomBox) by
 Microsoft, released under CC0 1.0 (public domain), so it is safe to ship while you try the
 effect.
 
 ## What you should get
 
-![The hero at rest, then scrolled, in light and dark theme](cinematic-hero.png)
+![The hero on a blank Compose app: light theme at rest and scrolled, then dark theme at rest and scrolled](cinematic-hero.png)
 
 - At rest: the model sits in the top 420 dp, over a gradient from your theme, turning slowly.
-  Your cards start right under it.
+  Your cards start right under it. The sample model is a 10 MB download, so on first launch the
+  gradient shows alone for a few seconds before the model appears.
 - While you scroll: the camera swings round about 70°, rises and moves closer, and the whole
   hero moves up slower than the cards. Its bottom edge fades into the page.
 - Touches anywhere, the hero included, scroll the list. The hero never catches a drag.
@@ -59,8 +60,8 @@ effect.
 |---|---|
 | Build fails with "requires … compile against version 37" | `compileSdk = 37` in the app module. `minSdk` can stay where it is. |
 | `Unresolved reference: CinematicHero` | SceneView is older than 4.44.0. Use 4.44.0 or later. |
-| The gradient shows but no model appears | Missing `INTERNET` permission, or the device is offline. Check Logcat for the download error. |
-| Model off-centre, tiny or cropped | Keep `scaleToUnits = 1f` and `centerOrigin = Position(0f, 0f, 0f)` on `ModelNode`. |
+| The gradient shows but no model appears | Give the 10 MB download a few seconds. If it never comes: missing `INTERNET` permission, or the device is offline. Check Logcat for the download error. |
+| Model tiny or cropped | Keep `scaleToUnits = 1f` on `ModelNode`. For a model that still feels too close or too far, pass `contentRadius` to `CinematicHero`: larger pulls the camera back (default `0.75f`). |
 | Blank gap at the top, no 3D | The hero is drawn over by something opaque: the list has a `background`, or the hero was placed after the list in the `Box`. |
 | The 3D does not follow the scroll, or overlaps the first card | The `Spacer` is not the list's first item, or its height differs from `height`. |
 | In a grid, the hero is squeezed into one column | Give the spacer `span = { GridItemSpan(maxLineSpan) }`. |

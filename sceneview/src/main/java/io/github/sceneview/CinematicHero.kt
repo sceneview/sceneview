@@ -55,7 +55,7 @@ import kotlin.math.tan
  *         rememberModelInstance(
  *             modelLoader,
  *             "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb"
- *         )?.let { ModelNode(modelInstance = it, scaleToUnits = 1f, centerOrigin = Position(0f, 0f, 0f)) }
+ *         )?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
  *     }
  *     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
  *         item { Spacer(Modifier.height(420.dp)) } // must be the first item, same height
@@ -65,9 +65,9 @@ import kotlin.math.tan
  * ```
  *
  * A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`; a
- * bundled `assets/` path works too. The camera looks at the origin: `centerOrigin` puts the
- * model's centre there, and `scaleToUnits = 1f` matches the default framing ([contentRadius]
- * `0.5f`) — keep both for any model. The list must not paint an opaque background
+ * bundled `assets/` path works too. The content is centred on the origin the camera looks at
+ * (`SceneView`'s `autoCenterContent`), and `scaleToUnits = 1f` fits any model to the default
+ * framing ([contentRadius] `0.75f`) — keep it, whatever the model's own size. The list must not paint an opaque background
  * over the spacer (a `LazyColumn` has none by default). Everything here runs on the main
  * thread, as Filament requires; load models with [rememberModelInstance] as above.
  *
@@ -82,8 +82,8 @@ import kotlin.math.tan
  * @param backdrop      Painted behind the 3D, moving with it — e.g. a vertical gradient from
  *                      your theme. `null` (default) leaves the page's own background visible.
  * @param profile       The orbit's feel — see [CinematicCameraProfile].
- * @param contentRadius Bounding-sphere radius of the content, in world units. `0.5f` suits a
- *                      model scaled with `scaleToUnits = 1f`.
+ * @param contentRadius Bounding-sphere radius of the content, in world units. `0.75f` frames
+ *                      any model scaled with `scaleToUnits = 1f` (its sphere is 0.5 to 0.87).
  * @param parallax      How far the 3D lags behind the scroll: `0` moves with the page, `1` stays
  *                      put. Default `0.4f`.
  * @param content       The 3D scene, in the same [SceneScope] DSL as [SceneView].
@@ -95,7 +95,7 @@ fun CinematicHero(
     modifier: Modifier = Modifier,
     backdrop: Brush? = null,
     profile: CinematicCameraProfile = CinematicCameraProfile.Default,
-    contentRadius: Float = 0.5f,
+    contentRadius: Float = 0.75f,
     parallax: Float = 0.4f,
     content: @Composable SceneScope.() -> Unit,
 ) {
@@ -115,7 +115,7 @@ fun CinematicHero(
     modifier: Modifier = Modifier,
     backdrop: Brush? = null,
     profile: CinematicCameraProfile = CinematicCameraProfile.Default,
-    contentRadius: Float = 0.5f,
+    contentRadius: Float = 0.75f,
     parallax: Float = 0.4f,
     content: @Composable SceneScope.() -> Unit,
 ) {
@@ -135,7 +135,7 @@ fun CinematicHero(
     modifier: Modifier = Modifier,
     backdrop: Brush? = null,
     profile: CinematicCameraProfile = CinematicCameraProfile.Default,
-    contentRadius: Float = 0.5f,
+    contentRadius: Float = 0.75f,
     parallax: Float = 0.4f,
     content: @Composable SceneScope.() -> Unit,
 ) {
@@ -209,8 +209,8 @@ internal fun heroScrollProgress(scrolledPx: Float, heightPx: Float): Float =
  * At `scrollProgress = 0` it is exactly [cinematicCameraEye] at the framing distance of
  * [contentRadius]. Scrolling swings the orbit round by [HERO_SCROLL_ORBIT_DEGREES], raises it by
  * [HERO_SCROLL_RISE_DEGREES] and pushes in by [HERO_SCROLL_DOLLY] of the distance — linearly, so
- * the camera stays attached to the finger. The camera looks at the origin, where content
- * centred with `centerOrigin = Position(0f, 0f, 0f)` sits.
+ * the camera stays attached to the finger. The camera looks at the origin, where `SceneView`'s
+ * `autoCenterContent` puts the content.
  */
 internal fun cinematicHeroEye(
     timeSeconds: Float,
