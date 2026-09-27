@@ -223,6 +223,30 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Synthetic room walk in the Rerun bridge wire format — QA fixture of `ARRerunDemo`'s in-app 3D view (#3950)",
     },
+    # `ARRerunDemo`'s bundled replay: a real room filmed by the project's own Pixel 9 ARCore
+    # recording (the debug-only `ar-recordings/bundled-pixel9-sample.mp4`), path and points
+    # reconstructed offline with COLMAP, planes fitted to the points.
+    "showcase-session.jsonl": {
+        "name": "showcase-session.jsonl",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Replay of a room recorded on a Pixel 9, camera path and points reconstructed with COLMAP — `ARRerunDemo`",
+    },
+    "showcase-media.bin": {
+        "name": "showcase-media.bin",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Camera frames and plane photos (WebP) of the same Pixel 9 recording, packed for `ARRerunDemo`",
+    },
+    "showcase-manifest.json": {
+        "name": "showcase-manifest.json",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Lens, plane textures and media index of `ARRerunDemo`'s replay",
+    },
     # Compiled in-repo from `samples/android-demo/src/main/materials/*.mat` by matc (#3538).
     "studio_glass.filamat": {
         "name": "studio_glass.filamat",

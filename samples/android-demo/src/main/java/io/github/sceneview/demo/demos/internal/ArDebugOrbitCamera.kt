@@ -73,6 +73,42 @@ class ArDebugOrbitCamera(
     /** Seconds of following, which ramps the drift in instead of starting it at full speed. */
     private var followSeconds = 0f
 
+    /** Where the entrance crane ([playIntro]) started, `null` when none is playing. */
+    private var introFrom: OrbitPose? = null
+    private var introSeconds = 0f
+
+    /** `true` while the entrance crane plays. */
+    val introPlaying: Boolean get() = introFrom != null
+
+    /**
+     * The map framing: straight down on the room at [ArDebugFraming.MAP_ELEVATION], no drift, so
+     * the floor plan reads like a plan. Switching hands the camera back to the automatic framing.
+     */
+    var overhead: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            recenter()
+        }
+
+    /** The elevation the view frames [home] at: the three-quarter view, or the map's. */
+    val homeElevation: Float
+        get() = if (overhead) ArDebugFraming.MAP_ELEVATION else ArDebugFraming.HOME_ELEVATION
+
+    /**
+     * Plays the entrance: the camera jumps to [from] and cranes onto [home] over
+     * [ReplayIntro.DURATION_S] — following [home] as it goes, so a view that reframes mid-flight
+     * still lands. The first touch cuts it short, like any following.
+     */
+    fun playIntro(from: OrbitPose) {
+        following = true
+        azimuthVelocity = 0f
+        elevationVelocity = 0f
+        followSeconds = 0f
+        introSeconds = 0f
+        introFrom = ArDebugFraming.clamp(from).also { pose = it }
+    }
+
     /** Hands the camera back to the automatic framing — the double-tap and the Recenter button. */
     fun recenter() {
         following = true
@@ -160,8 +196,16 @@ class ArDebugOrbitCamera(
         if (grabbing) return
 
         if (following) {
+            val from = introFrom
+            if (from != null) {
+                introSeconds += dt
+                val progress = introSeconds / ReplayIntro.DURATION_S
+                pose = ArDebugFraming.clamp(ReplayIntro.pose(from, home, progress))
+                if (progress >= 1f) introFrom = null
+                return
+            }
             followSeconds += dt
-            if (drift) {
+            if (drift && !overhead) {
                 // Ramp in over two seconds so recentering does not lurch into a spin.
                 val ramp = (followSeconds / 2f).coerceAtMost(1f)
                 home = home.copy(azimuthDegrees = home.azimuthDegrees + DRIFT_DEGREES_PER_SECOND * ramp * dt)
@@ -184,6 +228,7 @@ class ArDebugOrbitCamera(
 
     private fun takeOver() {
         following = false
+        introFrom = null
         azimuthVelocity = 0f
         elevationVelocity = 0f
         // Keep following mode's heading continuous: the home angle becomes the current one, so a
@@ -220,6 +265,9 @@ object ArDebugFraming {
     const val HOME_ELEVATION = 32f
     const val HOME_AZIMUTH = 35f
 
+    /** The map's near-vertical view: a floor plan, with just enough tilt to keep depth. */
+    const val MAP_ELEVATION = 84f
+
     /**
      * The fitting distance of the content's bounding sphere, as a multiple of it. Under 1: a room
      * is a flat box, and the sphere around it is much rounder than what the lens actually sees —
@@ -250,8 +298,16 @@ object ArDebugFraming {
      * [aspect] (width / height). The whole bounding sphere fits the **narrower** field of view,
      * so a tall phone and a small PiP both see everything.
      */
-    fun home(bounds: FloatArray?, azimuthDegrees: Float, verticalFovDegrees: Double, aspect: Float): OrbitPose {
-        if (bounds == null) return DEFAULT_POSE.copy(azimuthDegrees = azimuthDegrees)
+    fun home(
+        bounds: FloatArray?,
+        azimuthDegrees: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        elevationDegrees: Float = HOME_ELEVATION,
+    ): OrbitPose {
+        if (bounds == null) {
+            return DEFAULT_POSE.copy(azimuthDegrees = azimuthDegrees, elevationDegrees = elevationDegrees)
+        }
         val cx = (bounds[0] + bounds[3]) / 2f
         val cy = (bounds[1] + bounds[4]) / 2f
         val cz = (bounds[2] + bounds[5]) / 2f
@@ -268,7 +324,7 @@ object ArDebugFraming {
             OrbitPose(
                 target = Position(cx, cy, cz),
                 azimuthDegrees = azimuthDegrees,
-                elevationDegrees = HOME_ELEVATION,
+                elevationDegrees = elevationDegrees,
                 distance = distance,
             )
         )

@@ -114,6 +114,15 @@ class ArDebugFrame(
     val keyframes: List<DebugPose> = emptyList(),
     /** Which observation [livePoints] came from, `-1` for none: a cheap "did they change" key. */
     val liveKey: Int = -1,
+    /**
+     * One `0xFFRRGGBB` colour per [mapPoints] entry, `0` for a point that has none, or `null`
+     * when the session carries no colour at all (a live ARCore session: its cloud is uncoloured).
+     */
+    val mapPointColors: IntArray? = null,
+    /** The camera image in force at [time] (see [ArDebugTrace.addImage]), `null` without one. */
+    val image: String? = null,
+    /** The image each of [keyframes] was taken with, same order; empty without images. */
+    val keyframeImages: List<String?> = emptyList(),
 ) {
     val trailLength: Int get() = trail.size / 3
     val mapPointCount: Int get() = mapPoints.size / 3
@@ -139,6 +148,8 @@ class ArDebugTrace {
 
     private var pointXyz = FloatArray(3 * 1024)
     private var pointFirstSeen = FloatArray(1024)
+    private var pointColors = IntArray(1024)
+    private var hasPointColors = false
     private var pointCount = 0
     private val voxelIndex = HashMap<Long, Int>()
 
@@ -150,9 +161,15 @@ class ArDebugTrace {
     private val planeHistory = LinkedHashMap<Int, MutableList<Pair<Float, DebugPlane>>>()
     private val anchorHistory = LinkedHashMap<Int, MutableList<Pair<Float, DebugAnchor>>>()
 
+    private var imageTimes = FloatArray(64)
+    private val imagePaths = ArrayList<String>()
+
     /** Bumped on every change, so a reader can tell "same trace" without comparing contents. */
     var version: Int = 0
         private set
+
+    /** Path between two history frustums; a replay with images draws them closer. */
+    var keyframeSpacing: Float = KEYFRAME_SPACING_M
 
     /** Seconds from the first event to the last one. */
     var duration: Float = 0f
@@ -160,6 +177,18 @@ class ArDebugTrace {
 
     val poseCount: Int get() = poses.size
     val mapPointCount: Int get() = pointCount
+
+    /** Camera images recorded, in time order. */
+    val imageCount: Int get() = imagePaths.size
+
+    /** Time (seconds) of image [index]. */
+    fun imageTime(index: Int): Float = imageTimes[index]
+
+    /** Path of image [index], as the log gave it. */
+    fun imagePath(index: Int): String = imagePaths[index]
+
+    /** Index of the image in force at [time] — the latest at or before it — or -1 before the first. */
+    fun imageIndexAt(time: Float): Int = upperBound(imageTimes, imagePaths.size, time) - 1
     val isEmpty: Boolean get() = poses.isEmpty() && pointCount == 0 && planeHistory.isEmpty()
 
     /** Seconds since the first event for an event at [nanos]; the first call sets the origin. */
@@ -228,9 +257,13 @@ class ArDebugTrace {
      * [confidences] (points under [MIN_POINT_CONFIDENCE] are dropped). Each point is merged into
      * the voxel map — a point seen again lands in the voxel it already has — and the observation
      * remembers which voxels it saw, which is what "live points" means at any instant.
+     *
+     * [colors] (`0xFFRRGGBB`, one per point) paint the map: a voxel keeps the first colour it is
+     * given, so a point does not flicker as later views of it disagree by a shade.
      */
-    @Suppress("LoopWithTooManyJumpStatements") // low-confidence and non-finite points skip early
-    fun addPoints(nanos: Long, positions: FloatArray, confidences: FloatArray? = null) {
+    // Low-confidence and non-finite points skip early.
+    @Suppress("LoopWithTooManyJumpStatements", "CyclomaticComplexMethod")
+    fun addPoints(nanos: Long, positions: FloatArray, confidences: FloatArray? = null, colors: IntArray? = null) {
         val t = secondsOf(nanos)
         val count = positions.size / 3
         val seen = IntArray(count)
@@ -246,8 +279,10 @@ class ArDebugTrace {
                 if (pointCount >= MAX_MAP_POINTS) return@run -1
                 if (pointCount == pointFirstSeen.size) {
                     pointFirstSeen = pointFirstSeen.copyOf(pointFirstSeen.size * 2)
+                    pointColors = pointColors.copyOf(pointColors.size * 2)
                     pointXyz = pointXyz.copyOf(pointXyz.size * 2)
                 }
+                pointColors[pointCount] = 0
                 pointXyz[pointCount * 3] = x
                 pointXyz[pointCount * 3 + 1] = y
                 pointXyz[pointCount * 3 + 2] = z
@@ -256,7 +291,14 @@ class ArDebugTrace {
                 pointCount++
                 pointCount - 1
             }
-            if (index >= 0) seen[seenCount++] = index
+            if (index >= 0) {
+                seen[seenCount++] = index
+                val color = colors?.getOrNull(i) ?: 0
+                if (color != 0 && pointColors[index] == 0) {
+                    pointColors[index] = color
+                    hasPointColors = true
+                }
+            }
         }
         if (observations.size >= MAX_OBSERVATIONS) {
             // Keep the timeline but forget what the oldest half of the observations saw.
@@ -284,6 +326,16 @@ class ArDebugTrace {
         val last = history.lastOrNull()?.second
         if (last != null && last.pose == pose) return
         history.add(t to DebugAnchor(id, pose, placedAt = history.firstOrNull()?.first ?: t))
+        touch(t)
+    }
+
+    /** Adds the camera image [path] taken at [nanos] (a replay's frame; a live session has none). */
+    fun addImage(nanos: Long, path: String) {
+        val t = secondsOf(nanos)
+        if (imagePaths.isNotEmpty() && t < imageTimes[imagePaths.size - 1]) return // never back in time
+        if (imagePaths.size == imageTimes.size) imageTimes = imageTimes.copyOf(imageTimes.size * 2)
+        imageTimes[imagePaths.size] = t
+        imagePaths.add(path)
         touch(t)
     }
 
@@ -321,6 +373,10 @@ class ArDebugTrace {
             history.lastOrNull { it.first <= t }?.second?.takeIf { it.polygon.size >= 9 }
         }
         val anchors = anchorHistory.values.mapNotNull { history -> history.lastOrNull { it.first <= t }?.second }
+        val keyframeIndices = keyframes(poseEnd)
+        val keyframeImages = if (imagePaths.isEmpty()) emptyList() else keyframeIndices.map { i ->
+            imageIndexAt(poseTimes[i]).takeIf { it >= 0 }?.let { imagePaths[it] }
+        }
 
         return ArDebugFrame(
             time = t,
@@ -330,33 +386,36 @@ class ArDebugTrace {
             livePoints = live,
             planes = planes,
             anchors = anchors,
-            keyframes = keyframes(poseEnd),
+            keyframes = keyframeIndices.map { poses[it] },
             liveKey = liveIndex,
+            mapPointColors = if (hasPointColors) pointColors.copyOf(mapEnd) else null,
+            image = imageIndexAt(t).takeIf { it >= 0 }?.let { imagePaths[it] },
+            keyframeImages = keyframeImages,
         )
     }
 
     /**
-     * Poses among the first [end] spaced [KEYFRAME_SPACING_M] apart along the path, the newest
+     * Indices of the poses among the first [end] spaced [keyframeSpacing] apart along the path, the newest
      * excluded (it is the live frustum). Past [MAX_KEYFRAMES] the spacing widens, so a long walk
      * keeps an even spread instead of losing its start.
      */
-    private fun keyframes(end: Int): List<DebugPose> {
+    private fun keyframes(end: Int): List<Int> {
         if (end < 2) return emptyList()
         var length = 0f
         for (i in 1 until end) length += distance(poses[i - 1], poses[i])
-        val spacing = maxOf(KEYFRAME_SPACING_M, length / MAX_KEYFRAMES)
-        val out = ArrayList<DebugPose>()
+        val spacing = maxOf(keyframeSpacing, length / MAX_KEYFRAMES)
+        val out = ArrayList<Int>()
         var travelled = spacing // the first pose is a keyframe
         for (i in 0 until end - 1) {
             if (i > 0) travelled += distance(poses[i - 1], poses[i])
             if (travelled >= spacing) {
-                out.add(poses[i])
+                out.add(i)
                 travelled = 0f
             }
         }
         // Never draw a history frustum on top of the live one.
         val head = poses[end - 1]
-        while (out.isNotEmpty() && distance(out.last(), head) < spacing * 0.5f) out.removeAt(out.lastIndex)
+        while (out.isNotEmpty() && distance(poses[out.last()], head) < spacing * 0.5f) out.removeAt(out.lastIndex)
         return out
     }
 

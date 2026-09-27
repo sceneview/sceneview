@@ -85,6 +85,8 @@ import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.ReplayGeometry
+import io.github.sceneview.demo.demos.internal.ReplayIntro
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.DebugView
@@ -246,10 +248,12 @@ internal class DebugLayerNode(
     engine: Engine,
     material: MaterialInstance,
     priority: Int,
+    /** Carries [DebugMesh.uvs] as UV0 — the textured layers of the replay. */
+    private val textured: Boolean = false,
 ) : MeshNode(
     engine = engine,
     primitiveType = PrimitiveType.TRIANGLES,
-    vertexBuffer = createVertexBuffer(engine, INITIAL_CAPACITY),
+    vertexBuffer = createVertexBuffer(engine, INITIAL_CAPACITY, textured),
     indexBuffer = createIndexBuffer(engine, INITIAL_CAPACITY),
     // The session is room-sized but unbounded; a generous fixed box keeps culling cheap and
     // never clips a layer, where a per-upload AABB would cost a pass over every vertex.
@@ -281,7 +285,11 @@ internal class DebugLayerNode(
         val indexCount = if (empty) 3 else mesh!!.indexCount
 
         val newVertexBuffer =
-            if (vertexCount > vertexCapacity) createVertexBuffer(engine, nextPowerOfTwo(vertexCount)) else null
+            if (vertexCount > vertexCapacity) {
+                createVertexBuffer(engine, nextPowerOfTwo(vertexCount), textured)
+            } else {
+                null
+            }
         val newIndexBuffer =
             if (indexCount > indexCapacity) createIndexBuffer(engine, nextPowerOfTwo(indexCount)) else null
         val vertexTarget = newVertexBuffer ?: ownedVertexBuffer
@@ -292,6 +300,13 @@ internal class DebugLayerNode(
             if (empty) vertexBytes.asFloatBuffer().put(floatArrayOf(0f, 0f, 0f))
             else vertexBytes.asFloatBuffer().put(mesh!!.positions, 0, vertexCount * 3)
             vertexTarget.setBufferAt(engine, 0, vertexBytes, 0, vertexCount * 3 * Float.SIZE_BYTES)
+            if (textured) {
+                val uvBytes = ByteBuffer.allocateDirect(vertexCount * 2 * Float.SIZE_BYTES)
+                    .order(ByteOrder.nativeOrder())
+                if (empty) uvBytes.asFloatBuffer().put(floatArrayOf(0f, 0f))
+                else uvBytes.asFloatBuffer().put(mesh!!.uvs, 0, vertexCount * 2)
+                vertexTarget.setBufferAt(engine, 1, uvBytes, 0, vertexCount * 2 * Float.SIZE_BYTES)
+            }
 
             val indexBytes = ByteBuffer.allocateDirect(indexCount * Int.SIZE_BYTES).order(ByteOrder.nativeOrder())
             if (empty) indexBytes.asIntBuffer().put(intArrayOf(0, 0, 0))
@@ -332,10 +347,11 @@ internal class DebugLayerNode(
 
         fun nextPowerOfTwo(value: Int): Int = Integer.highestOneBit((value - 1).coerceAtLeast(1)) shl 1
 
-        fun createVertexBuffer(engine: Engine, count: Int): VertexBuffer = VertexBuffer.Builder()
-            .bufferCount(1)
+        fun createVertexBuffer(engine: Engine, count: Int, textured: Boolean): VertexBuffer = VertexBuffer.Builder()
+            .bufferCount(if (textured) 2 else 1)
             .vertexCount(count)
             .attribute(VertexAttribute.POSITION, 0, AttributeType.FLOAT3)
+            .apply { if (textured) attribute(VertexAttribute.UV0, 1, AttributeType.FLOAT2) }
             .build(engine)
 
         fun createIndexBuffer(engine: Engine, count: Int): IndexBuffer = IndexBuffer.Builder()
@@ -349,8 +365,9 @@ internal class DebugLayerNode(
 private class LayerPaint(val color: Color, val glow: Float = 1f, val priority: Int = 4)
 
 private fun paintOf(layer: DebugLayer): LayerPaint = when (layer) {
-    DebugLayer.GridMinor -> LayerPaint(DebugView.gridMinor, priority = 0)
-    DebugLayer.GridMajor -> LayerPaint(DebugView.gridMajor, priority = 0)
+    // Priority 1, not 0: the replay's photo floor (priority 0) goes under the grid.
+    DebugLayer.GridMinor -> LayerPaint(DebugView.gridMinor, priority = 1)
+    DebugLayer.GridMajor -> LayerPaint(DebugView.gridMajor, priority = 1)
     DebugLayer.AxisX -> LayerPaint(DebugView.axisX)
     DebugLayer.AxisY -> LayerPaint(DebugView.axisY)
     DebugLayer.AxisZ -> LayerPaint(DebugView.axisZ)
@@ -424,10 +441,12 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
         stageBounds: FloatArray,
         floorY: Float,
         visible: (DebugGroup) -> Boolean,
+        replay: ReplayLayers? = null,
     ) {
         for (part in Part.entries) {
             val style = if (part == Part.Map || part == Part.Live) pointStyle else style
-            val shown = visible(part.group)
+            // The replay draws its map points in their photo colours, on its own layer.
+            val shown = visible(part.group) && !(part == Part.Map && replay != null)
             part.layers.forEach { nodes.getValue(it).isVisible = shown }
             if (!shown) {
                 keys.remove(part) // rebuilt when shown again
@@ -439,11 +458,21 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
             part.layers.forEach { meshes.getValue(it).clear() }
             when (part) {
                 Part.Stage -> ArDebugGeometry.buildStage(stageBounds, floorY, style, out)
-                Part.Planes -> ArDebugGeometry.buildPlanes(frame.planes, style, out)
+                Part.Planes -> ArDebugGeometry.buildPlanes(frame.planes, style, out) { replay?.isTextured(it) == true }
                 Part.Map -> ArDebugGeometry.buildMapPoints(frame.mapPoints, style, out(DebugLayer.MapPoints))
                 Part.Live -> ArDebugGeometry.buildLivePoints(frame.livePoints, style, out(DebugLayer.LivePoints))
                 Part.Trail -> ArDebugGeometry.buildTrail(frame.trail, style, out)
-                Part.Camera -> ArDebugGeometry.buildCamera(frame, style, out)
+                Part.Camera -> if (replay == null) {
+                    ArDebugGeometry.buildCamera(frame, style, out)
+                } else {
+                    ArDebugGeometry.buildCamera(
+                        frame, style, out,
+                        lens = replay.lens,
+                        depth = ReplayGeometry.FRUSTUM_DEPTH,
+                        keyframeDepth = ReplayGeometry.KEYFRAME_DEPTH,
+                        face = false,
+                    )
+                }
                 Part.Anchors -> ArDebugGeometry.buildAnchors(frame.anchors, style, out(DebugLayer.Anchors))
             }
             part.layers.forEach { nodes.getValue(it).upload(meshes.getValue(it)) }
@@ -496,6 +525,7 @@ internal fun ArDebugSceneView(
     materialLoader: MaterialLoader,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    replay: RerunReplayMedia? = null,
 ) {
     val context = LocalContext.current
 
@@ -527,6 +557,11 @@ internal fun ArDebugSceneView(
     val renderer = rememberRenderer(engine)
 
     val layers = remember(engine, materials) { ArDebugLayers(engine, materials) }
+    // The replay's textured layers: created before the SceneView, released after its nodes.
+    val replayLayers = remember(engine, materialLoader, replay) {
+        replay?.let { ReplayLayers(engine, materialLoader, it) }
+    }
+    DisposableEffect(replayLayers) { onDispose { replayLayers?.destroy() } }
     var anchors by remember { mutableStateOf(emptyList<DebugAnchor>()) }
     val clock = remember { FrameClock() }
 
@@ -571,22 +606,46 @@ internal fun ArDebugSceneView(
                     clock.frameAtNanos = frameTimeNanos
                 }
 
-                val bounds = ArDebugGeometry.contentBounds(frame)
+                if (session.fpsMeter.tick(frameTimeNanos)) session.fps = session.fpsMeter.fps
+
+                // A recording is framed whole from its first frame — the camera and the grid hold
+                // still while it plays — where a live session is framed as it grows.
+                val whole = if (replay != null) {
+                    clock.wholeFrame?.takeIf { clock.wholeFor === trace }
+                        ?: trace.frameAt(trace.duration).also {
+                            clock.wholeFrame = it
+                            clock.wholeFor = trace
+                        }
+                } else {
+                    frame
+                }
+                val bounds = ArDebugGeometry.contentBounds(whole)
                 val home = ArDebugFraming.home(
                     bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
+                    elevationDegrees = orbit.homeElevation,
                 )
                 if (orbit.following) orbit.home = home
                 if (!orbit.hasFramedContent && bounds != null) {
                     orbit.hasFramedContent = true
-                    orbit.snapTo(home)
+                    val intro = replay != null && orbit.drift
+                    if (intro) orbit.playIntro(ReplayIntro.startFor(home)) else orbit.snapTo(home)
                 }
 
                 val style = ArDebugStyle.forOrbit(orbit.pose.distance, orbit.verticalFovDegrees, orbit.viewportHeight)
-                val floorY = (ArDebugGeometry.floorHeight(frame) * 100f).roundToInt() / 100f
+                val floorY = (ArDebugGeometry.floorHeight(whole) * 100f).roundToInt() / 100f
                 // The picture-in-picture packs the room into a few hundred pixels: full-size points
                 // would read as noise there, so they shrink while lines keep their weight.
                 val pointStyle = if (compact) ArDebugStyle(style.metresPerPixel * PIP_POINT_SCALE) else style
-                layers.sync(frame, style, pointStyle, stageBoundsOf(frame), floorY, session::isVisible)
+                layers.sync(frame, style, pointStyle, stageBoundsOf(whole), floorY, session::isVisible, replayLayers)
+                replayLayers?.sync(
+                    frame, pointStyle, floorY,
+                    ReplayVisibility(
+                        planes = session.isVisible(DebugGroup.Planes),
+                        points = session.isVisible(DebugGroup.Points),
+                        anchors = session.isVisible(DebugGroup.Anchors),
+                        trail = session.isVisible(DebugGroup.Trail),
+                    ),
+                )
 
                 if (frame.anchors != anchors) anchors = frame.anchors
                 if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
@@ -596,7 +655,12 @@ internal fun ArDebugSceneView(
             },
         ) {
             // The layer nodes hang off one plain node, and are destroyed with it.
-            Node(apply = { layers.nodes.values.forEach { addChildNode(it) } })
+            Node(
+                apply = {
+                    layers.nodes.values.forEach { addChildNode(it) }
+                    replayLayers?.nodes?.forEach { addChildNode(it) }
+                },
+            )
             if (session.isVisible(DebugGroup.Anchors)) {
                 anchors.forEach { anchor ->
                     // One instance per anchor: a Filament model instance can only hang off one node.
@@ -626,6 +690,8 @@ private class FrameClock {
     var version = -1
     var frameAtNanos = 0L
     var statsAtNanos = 0L
+    var wholeFrame: ArDebugFrame? = null
+    var wholeFor: ArDebugTrace? = null
 
     fun tick(nanos: Long): Float {
         val dt = if (lastNanos == 0L) 0f else ((nanos - lastNanos) / 1e9f)
@@ -678,6 +744,7 @@ internal fun ArDebugPip(
     materialLoader: MaterialLoader,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
+    replay: RerunReplayMedia? = null,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
     Box(
@@ -696,6 +763,7 @@ internal fun ArDebugPip(
             materialLoader = materialLoader,
             modifier = Modifier.fillMaxSize(),
             compact = true,
+            replay = replay,
         )
         Box(
             modifier = Modifier

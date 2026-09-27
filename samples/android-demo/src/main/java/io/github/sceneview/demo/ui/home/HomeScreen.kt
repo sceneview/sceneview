@@ -613,7 +613,7 @@ const val HERO_DEMO_ID = "model-viewer"
  * the store listing, the deep link and the app icon all point at — and keeps its
  * bespoke full-span artwork; the rest reuse their own grid captures.
  */
-private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "materials", "lighting")
+private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "lighting")
 
 @Composable
 private fun HomeHeader(

@@ -20,10 +20,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material3.AlertDialog
@@ -37,18 +41,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -84,6 +91,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.RERUN_INTRO
+import io.github.sceneview.demo.demos.internal.RERUN_REPLAY_INTRO
 import io.github.sceneview.demo.demos.internal.RERUN_SETUP_STEPS
 import io.github.sceneview.demo.demos.internal.RERUN_SETUP_TITLE
 import io.github.sceneview.demo.demos.internal.RerunSetupStep
@@ -98,6 +106,8 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -107,36 +117,252 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
- * AR debug recording to Rerun.io demo.
+ * The Rerun demo: an AR session rebuilt in 3D.
  *
- * The bridge auto-connects to the Python recorder at `127.0.0.1:9876` on entry — for USB
- * pair with `adb reverse tcp:9876 tcp:9876`. Once connected, "Save & Share recording"
- * flushes the captured events to a `.rrd` file you can drop onto
- * https://sceneview.github.io/rerun/.
+ * It opens on a **replay** of a real ARCore session bundled with the app — the camera's path,
+ * its photos in their frustums, the planes it found textured with the room, the coloured point
+ * cloud and the models placed on them — orbitable, with a filmstrip of the recorded frames that
+ * scrubs it. It needs no ARCore, so it works on every device and on the emulator (#2754).
  *
- * #3831: the screen used to open on a banner about a "recording service" and "Settings" for
- * every Play Store user without a computer attached. It now says what the demo does, in one
- * sentence, in a status card that turns green once events reach the computer; the
- * connection steps live in the settings sheet only.
+ * **Live AR** records your own session into the same 3D view, and streams it to the Rerun viewer
+ * on a computer: the bridge auto-connects to the Python recorder at `127.0.0.1:9876` — for USB,
+ * `adb reverse tcp:9876 tcp:9876` — and "Save & Share recording" flushes a `.rrd` file you can
+ * drop onto https://sceneview.github.io/rerun/.
  */
 @Composable
 fun ARRerunDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    val context = LocalContext.current
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
-    // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch - see
-    // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
+    // with `--es ar_playback_file <path>` (#1576): that harness drives the live path.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
+    val qaState = remember { DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() } }
+    val qaReplay = remember { RerunReplayQaState.of(qaState) }
+    var mode by remember {
+        mutableStateOf(
+            when {
+                qaReplay != null -> qaReplay.mode
+                arPlaybackDataset != null || qaState in LIVE_QA_STATES -> RerunMode.Live
+                else -> RerunMode.Scene
+            },
+        )
+    }
+
+    // The replay lives here, above both screens, so a trip to Live AR comes back where it left.
+    val media by produceState<RerunReplayMedia?>(null) {
+        value = runCatching { loadRerunReplay(context) }.getOrNull()
+    }
+    val replaySession = remember { ArDebugSession().apply { loops = true } }
+    // QA captures hold still: no intro fly-in, no idle drift.
+    val replayOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
+    val replayPipOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
+    LaunchedEffect(media) {
+        val replay = media ?: return@LaunchedEffect
+        if (replaySession.trace === replay.trace) return@LaunchedEffect
+        replaySession.trace = replay.trace
+        val pause = qaReplay?.pauseAt
+        if (pause != null) replaySession.scrubTo(replay.trace.duration * pause) else replaySession.playFromStart()
+    }
+    LaunchedEffect(mode) { replayOrbit.overhead = mode == RerunMode.Map }
+
+    if (mode == RerunMode.Live) {
+        RerunLiveScreen(
+            onBack = onBack,
+            onReplay = { mode = RerunMode.Scene },
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            arPlaybackDataset = arPlaybackDataset,
+            qaState = qaState,
+        )
+    } else {
+        RerunReplayScreen(
+            onBack = onBack,
+            mode = mode,
+            onMode = { mode = it },
+            media = media,
+            session = replaySession,
+            orbit = replayOrbit,
+            pipOrbit = replayPipOrbit,
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+        )
+    }
+}
+
+/** The four views of the demo: the replay's three, and the live AR session. */
+private enum class RerunMode { Scene, Map, Camera, Live }
+
+/**
+ * The bundled replay: the 3D view (orbit, or the overhead map) or the camera's frames, under the
+ * HUD, the corner card that swaps to the other view, and the filmstrip.
+ */
+@Composable
+@Suppress("LongParameterList") // the demo's shared engine and replay state, handed down once
+private fun RerunReplayScreen(
+    onBack: () -> Unit,
+    mode: RerunMode,
+    onMode: (RerunMode) -> Unit,
+    media: RerunReplayMedia?,
+    session: ArDebugSession,
+    orbit: ArDebugOrbitCamera,
+    pipOrbit: ArDebugOrbitCamera,
+    engine: Engine,
+    modelLoader: ModelLoader,
+    materialLoader: MaterialLoader,
+) {
+    val thumbnails = remember(media) { media?.thumbnails?.mapValues { it.value.asImageBitmap() }.orEmpty() }
+    DemoScaffold(
+        title = stringResource(R.string.demo_ar_rerun_title),
+        onBack = onBack,
+        controls = { RerunSheet() },
+        topOverlay = {
+            if (media != null) {
+                RerunReplayHud(
+                    session = session,
+                    modifier = Modifier
+                        .padding(horizontal = Space.md)
+                        .widthIn(max = ArOverlay.maxWidth)
+                        .fillMaxWidth(),
+                )
+                val corner = Modifier
+                    .align(Alignment.End)
+                    .padding(end = Space.md)
+                if (mode == RerunMode.Camera) {
+                    ArDebugPip(
+                        session = session,
+                        orbit = pipOrbit,
+                        engine = engine,
+                        modelLoader = modelLoader,
+                        materialLoader = materialLoader,
+                        onExpand = { onMode(RerunMode.Scene) },
+                        modifier = corner,
+                        replay = media,
+                    )
+                } else {
+                    RerunCameraCard(
+                        media = media,
+                        thumbnails = thumbnails,
+                        session = session,
+                        onOpen = { onMode(RerunMode.Camera) },
+                        modifier = corner,
+                    )
+                }
+            }
+        },
+        bottomOverlay = {
+            if (media != null) {
+                RerunFilmstripCard(
+                    media = media,
+                    thumbnails = thumbnails,
+                    session = session,
+                    caption = when (mode) {
+                        RerunMode.Map -> "Top-down map of the room"
+                        RerunMode.Camera -> "What the camera saw"
+                        else -> "Drag to orbit · double-tap to recenter"
+                    },
+                )
+            }
+        },
+        dock = listOf(
+            DockItem(
+                icon = Icons.Rounded.ViewInAr,
+                label = "3D view",
+                caption = "3D",
+                onClick = { if (mode == RerunMode.Scene) orbit.recenter() else onMode(RerunMode.Scene) },
+                selected = mode == RerunMode.Scene,
+            ),
+            DockItem(
+                icon = Icons.Rounded.Map,
+                label = "Map view",
+                caption = "Map",
+                onClick = { onMode(RerunMode.Map) },
+                selected = mode == RerunMode.Map,
+            ),
+            DockItem(
+                icon = Icons.Rounded.Movie,
+                label = "Camera frames",
+                caption = "Camera",
+                onClick = { onMode(RerunMode.Camera) },
+                selected = mode == RerunMode.Camera,
+            ),
+            DockItem(
+                icon = Icons.Rounded.Videocam,
+                label = "Record a live AR session",
+                caption = "Live AR",
+                onClick = { onMode(RerunMode.Live) },
+            ),
+        ),
+    ) {
+        when {
+            media == null -> RerunReplayLoading(Modifier.fillMaxSize())
+            mode == RerunMode.Camera -> RerunCameraView(media, thumbnails, session, Modifier.fillMaxSize())
+            else -> ArDebugSceneView(
+                session = session,
+                orbit = orbit,
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                modifier = Modifier.fillMaxSize(),
+                replay = media,
+            )
+        }
+    }
+}
+
+/** The settings sheet: what the replay is, then how to stream your own session to a computer. */
+@Composable
+private fun RerunSheet() {
+    Text(
+        text = RERUN_REPLAY_INTRO,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Text(
+        text = RERUN_INTRO,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = Space.sm),
+    )
+    RerunSetupSection()
+    // Developer-only debug toggle — visible when QA mode is on. Lets QA force-emit each
+    // TrackingFailureReason so the actionable-message overlay can be validated without staging a
+    // real failure. See io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+    ForceTrackingFailureMenu()
+}
+
+/**
+ * Live AR: the camera, with taps placing the shiba on planes, recorded into the in-app 3D view
+ * (#3950) and streamed to the Rerun viewer on a computer.
+ *
+ * #3831: the screen used to open on a banner about a "recording service" and "Settings" for
+ * every Play Store user without a computer attached. It now says what the demo does, in one
+ * sentence, in a status card that turns green once events reach the computer; the connection
+ * steps live in the settings sheet only.
+ */
+@Composable
+@Suppress("LongParameterList", "LongMethod") // the live AR screen, moved as-is behind the replay
+private fun RerunLiveScreen(
+    onBack: () -> Unit,
+    onReplay: () -> Unit,
+    engine: Engine,
+    modelLoader: ModelLoader,
+    materialLoader: MaterialLoader,
+    arPlaybackDataset: File?,
+    qaState: String?,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // QA only (`--es qa_state connected|saved`): draw the connected status, or the saved
     // dialog, on the emulator, which can reach neither ARCore nor a computer (#2754).
-    val qaState = remember { DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() } }
     val qaConnected = qaState == QA_STATE_CONNECTED
     // QA only (`--es qa_state pip|pip-stream|3d|3d-scrub|3d-stream`, #3950): feed the in-app 3D
     // view from a recorded session, since the emulator cannot track. Never shown to a user.
@@ -239,20 +465,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
         onBack = onBack,
         // The sheet holds what the screen must not: the connection steps a developer types
         // once. The screen itself only says what the demo does and whether it is live.
-        controls = {
-            Text(
-                text = RERUN_INTRO,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            RerunSetupSection()
-
-            // Developer-only debug toggle — visible when QA mode is on. Lets QA
-            // force-emit each TrackingFailureReason so the actionable-message
-            // overlay can be validated without staging a real failure. See
-            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
-            ForceTrackingFailureMenu()
-        },
+        controls = { RerunSheet() },
         topOverlay = {
             if (debugFullScreen) {
                 ArDebugLegend(debugSession)
@@ -298,6 +511,12 @@ fun ARRerunDemo(onBack: () -> Unit) {
             }
         },
         dock = listOf(
+            DockItem(
+                icon = Icons.Rounded.Replay,
+                label = "Back to the recorded replay",
+                caption = "Replay",
+                onClick = onReplay,
+            ),
             DockItem(
                 icon = Icons.Rounded.Videocam,
                 label = "Camera view",
@@ -676,6 +895,29 @@ private enum class ArDebugQaState(
         fun of(state: String?): ArDebugQaState? = entries.firstOrNull { it.key == state }
     }
 }
+
+/** The QA states that open straight on the live AR screen. */
+private val LIVE_QA_STATES = ArDebugQaState.entries.map { it.key } + QA_STATE_CONNECTED + QA_STATE_SAVED
+
+/**
+ * The QA states of the bundled replay: a view, and where the replay stands — paused at a fixed
+ * fraction for a stable capture, or playing (`null`). With any QA state the camera neither flies
+ * in nor drifts.
+ */
+private enum class RerunReplayQaState(val key: String, val mode: RerunMode, val pauseAt: Float?) {
+    Replay("replay", RerunMode.Scene, QA_REPLAY_FRACTION),
+    ReplayPlay("replay-play", RerunMode.Scene, null),
+    ReplayMap("replay-map", RerunMode.Map, QA_REPLAY_FRACTION),
+    ReplayCamera("replay-camera", RerunMode.Camera, QA_REPLAY_FRACTION),
+    ;
+
+    companion object {
+        fun of(state: String?): RerunReplayQaState? = entries.firstOrNull { it.key == state }
+    }
+}
+
+/** 62 % in: both models placed, all three planes found, the camera mid-turn. */
+private const val QA_REPLAY_FRACTION = 0.62f
 
 private const val QA_EVENTS_SENT = 1_204L
 private const val QA_EVENTS_PER_SECOND = 10f

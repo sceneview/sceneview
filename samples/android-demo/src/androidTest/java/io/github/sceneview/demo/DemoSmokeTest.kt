@@ -159,7 +159,7 @@ class DemoSmokeTest {
 
     @Test
     fun a06_arRerun_smokeOpen() {
-        openDemoTolerant("ar-rerun", "Rerun Debug")
+        openDemoTolerant("ar-rerun", "Rerun AR Replay")
         screenshot("s06_ar_rerun")
     }
 
