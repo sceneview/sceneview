@@ -60,9 +60,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.luminance
+import androidx.core.view.WindowCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -162,6 +167,16 @@ fun GalleryModelViewerScreen(
             decorFitsSystemWindows = false,
         ),
     ) {
+        // The dialog is its own window, drawn edge to edge, so the activity's status-bar
+        // appearance does not reach it: it kept the platform default — dark icons — over
+        // the dark viewer in dark theme (#3984). Match the icons to the viewer's surface.
+        val dialogView = LocalView.current
+        val darkIcons = MaterialTheme.colorScheme.surface.luminance() >= 0.5f
+        SideEffect {
+            (dialogView.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.getInsetsController(window, dialogView).isAppearanceLightStatusBars = darkIcons
+            }
+        }
         BackHandler(onBack = onDismiss)
         // Registered after the plain BackHandler so it wins while the live scene is up:
         // the back gesture then shrinks the hero toward its thumbnail under the finger.

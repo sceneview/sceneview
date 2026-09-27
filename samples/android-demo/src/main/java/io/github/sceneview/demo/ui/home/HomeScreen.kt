@@ -2,8 +2,6 @@
 
 package io.github.sceneview.demo.ui.home
 
-import android.app.Activity
-import android.content.ContextWrapper
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
@@ -64,7 +62,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -89,7 +86,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -100,13 +96,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoFreshness
 import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.categoryDisplayNameRes
 import io.github.sceneview.demo.freshDemos
 import io.github.sceneview.demo.freshness
@@ -639,19 +635,9 @@ private fun HomeHeader(
     }
     val keyboard = LocalSoftwareKeyboardController.current
     // Status-bar icons follow the row's type: light over the sky, the theme's own
-    // otherwise. Same capture-and-restore as DemoScaffold, so leaving the screen —
-    // or scrolling the sky away — puts back exactly what the theme had set.
-    val view = LocalView.current
-    DisposableEffect(view, overStage) {
-        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
-            .filterIsInstance<Activity>()
-            .firstOrNull()
-            ?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        val previous = controller?.isAppearanceLightStatusBars
-        if (overStage) controller?.isAppearanceLightStatusBars = false
-        onDispose { if (previous != null) controller?.isAppearanceLightStatusBars = previous }
-    }
+    // otherwise — requested, not written, so leaving the screen or scrolling the sky
+    // away cannot race a demo's own request (#3984).
+    RequestLightStatusBarIcons(active = overStage)
     val overlay by animateColorAsState(
         targetValue = if (scrolled) {
             MaterialTheme.colorScheme.surface.copy(alpha = SceneViewTokens.HomeColor.headerOverlayAlpha)

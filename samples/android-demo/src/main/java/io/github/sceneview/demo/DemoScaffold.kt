@@ -2,9 +2,7 @@
 
 package io.github.sceneview.demo
 
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -77,7 +75,6 @@ import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -102,7 +99,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -112,8 +108,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 import io.github.sceneview.demo.common.DemoSheetDefaults
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.GlassIconButton
@@ -310,20 +306,11 @@ fun DemoScaffold(
     // The top scrim (#3328) puts a 60 %-black ground under the status bar, so in light
     // mode the system icons — clock, wifi, battery — turn dark-on-dark and disappear.
     // They used to read because they sat on whatever the scene rendered. Force the
-    // light (white) icon set while the scrim is up, and restore whatever the theme had
-    // when the chrome hides or the demo is left; capturing the previous value rather
-    // than deducing it keeps this correct in both themes and under edge-to-edge.
-    val view = LocalView.current
-    DisposableEffect(view, chromeVisible) {
-        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
-            .filterIsInstance<Activity>()
-            .firstOrNull()
-            ?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        val previous = controller?.isAppearanceLightStatusBars
-        if (chromeVisible) controller?.isAppearanceLightStatusBars = false
-        onDispose { if (previous != null) controller?.isAppearanceLightStatusBars = previous }
-    }
+    // light (white) icon set while the scrim is up; the theme's own set comes back when
+    // the chrome hides or the demo is left. A request, not a write: the Showcase and the
+    // demo are both composed during the navigation, and the old save-and-restore pairs
+    // raced there and left dark icons on the dark stage (#3984).
+    RequestLightStatusBarIcons(active = chromeVisible)
 
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
 
