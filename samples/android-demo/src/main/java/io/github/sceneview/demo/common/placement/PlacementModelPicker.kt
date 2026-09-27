@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.explore.components.AsyncNetworkImage
 import io.github.sceneview.demo.ui.viewer.ModelThumbnails
 import kotlinx.coroutines.launch
 
@@ -81,7 +82,7 @@ enum class PlacementModelSource { Bundled, Streamed }
  *   not, and a streamed row landing mid-session must not shift what is armed.
  * @param assetLocation `assets/`-relative path for a bundled GLB, or a `file://…` URI for
  *   a staged streamed one. NEVER null: a streamed row whose download is still in flight
- *   carries its own bundled fallback here for the picker's thumbnail path.
+ *   carries its own bundled fallback here, so a tap during the download is never a no-op.
  * @param pending `true` while a streamed row's download is in flight — drives the
  *   "Streaming …" wording on the card. A pending row is **not** offered to the session:
  *   the object appears when the real file has landed, never as a stand-in.
@@ -113,6 +114,12 @@ data class PlacementModel(
     val sizeIsMeasured: Boolean = false,
     val source: PlacementModelSource = PlacementModelSource.Bundled,
     val pending: Boolean = false,
+    /**
+     * A streamed row's own Sketchfab thumbnail, or `null` until it is known (no API key,
+     * offline, metadata still in flight). A streamed card shows this or the generic glyph —
+     * never the picture of its bundled fallback, which is a different model (#3987).
+     */
+    val thumbnailUrl: String? = null,
 ) {
     companion object {
         /**
@@ -398,28 +405,20 @@ fun PlacementModelPickerSheet(
 }
 
 /**
- * The picker card's thumbnail resource for [model], or `null` for the generic AR glyph
- * ([#3830](https://github.com/sceneview/sceneview/issues/3830)).
+ * The picker card's bundled thumbnail resource for [model], or `null` when the card has no
+ * bundled picture of **this** model ([#3830](https://github.com/sceneview/sceneview/issues/3830)).
  *
- * Keyed off [PlacementModel.assetLocation] rather than [PlacementModel.source]: a bundled
- * row's location is always an `assets/`-relative bundled path, and — per
- * `ARPlacementDemo`'s model list — a **streamed** row's location is either that same shape
- * (its own bundled fallback, carried there while the download is pending or unavailable) or
- * a `file://` URI once the real file has landed. The bundled-path case resolves to a real
- * generated thumbnail exactly like a bundled row's; the `file://` case has no generated
- * thumbnail for the downloaded bytes and correctly falls through to the glyph.
- *
- * Showing the fallback's picture under a streamed row's name used to be avoided on the
- * theory that it repeats the #2940 defect (a fallback mistaken for the real asset). That
- * concern was about **several rows sharing one fallback** — not the case here: the
- * `ar_placement` category's six fallbacks are pairwise distinct (#2355, #3324), pinned by
- * `SampleAssetsTest`, and four of the six were deliberately chosen to *resemble* the
- * streamed model they stand in for ("Coffee Mug" → the iridescent dish, "Wooden End Table"
- * → the sheen chair, …). A cube glyph on every streamed card was strictly less honest than
- * the picture of what will actually render if the row is tapped right now.
+ * Only a bundled row has one. A streamed row's `assetLocation` is either a `file://` URI
+ * (no generated thumbnail for the downloaded bytes) or its slug's bundled fallback while the
+ * download is pending — and that fallback is a different model: the "Coffee Mug" row pointed
+ * at the Olive Dish, "Potted Monstera" at the Shiba, "Picture Frame" at the Soldier. Showing
+ * the fallback's picture under the streamed row's name told the user they would get one
+ * model and then placed another (#3987). A streamed card shows its own Sketchfab thumbnail
+ * ([PlacementModel.thumbnailUrl]) or the generic AR glyph instead.
  */
 internal fun placementThumbnailResFor(model: PlacementModel): Int? =
-    model.assetLocation.takeUnless { it.startsWith("file://") }
+    model.assetLocation
+        .takeIf { model.source == PlacementModelSource.Bundled && !it.startsWith("file://") }
         ?.let { ModelThumbnails.resourceFor(it.substringAfterLast('/').substringBeforeLast('.')) }
 
 @Composable
@@ -466,7 +465,22 @@ internal fun PlacementModelCard(
                 // rendered the same glyph, so the grid was six identical tiles under six
                 // labels and the only way to know what a row looked like was to place it.
                 val thumbnail = placementThumbnailResFor(model)
-                if (thumbnail != null) {
+                val streamedThumbnail = model.thumbnailUrl
+                    ?.takeIf { model.source == PlacementModelSource.Streamed }
+                if (streamedThumbnail != null) {
+                    // A streamed row's own Sketchfab render (#3987). The glyph stays the
+                    // fallback if the image itself fails, so a tile is never left empty.
+                    AsyncNetworkImage(
+                        url = streamedThumbnail,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(PICKER_CARD_MEDIA_HEIGHT)
+                            .clip(RoundedCornerShape(SceneViewTokens.Radius.sm)),
+                        fallback = { PlacementGlyph() },
+                    )
+                } else if (thumbnail != null) {
                     Image(
                         painter = painterResource(thumbnail),
                         contentDescription = null,
@@ -477,12 +491,7 @@ internal fun PlacementModelCard(
                             .clip(RoundedCornerShape(SceneViewTokens.Radius.sm)),
                     )
                 } else {
-                    Icon(
-                        imageVector = Icons.Filled.ViewInAr,
-                        contentDescription = null,
-                        modifier = Modifier.size(PICKER_CARD_ICON_SIZE),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
+                    PlacementGlyph()
                 }
             }
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
@@ -490,6 +499,14 @@ internal fun PlacementModelCard(
                 text = model.displayName,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Medium,
+                // Explicit, because the inherited content colour resolved to
+                // `onSurfaceVariant` — the caption's own colour — so name and "Streamed"
+                // read as one two-line title instead of a name and its caption (#3987).
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1,
             )
             // Only the streamed rows carry a caption: "bundled" is the unremarkable
@@ -511,6 +528,17 @@ internal fun PlacementModelCard(
             }
         }
     }
+}
+
+/** The generic AR glyph a card shows when it has no picture of its own model. */
+@Composable
+private fun PlacementGlyph() {
+    Icon(
+        imageVector = Icons.Filled.ViewInAr,
+        contentDescription = null,
+        modifier = Modifier.size(PICKER_CARD_ICON_SIZE),
+        tint = MaterialTheme.colorScheme.primary,
+    )
 }
 
 // Picker-card geometry. Not `DESIGN.md` tokens, because none of these is one: they are the

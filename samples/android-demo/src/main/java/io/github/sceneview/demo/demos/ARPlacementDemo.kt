@@ -42,13 +42,18 @@ import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
+import io.github.sceneview.demo.sketchfab.SketchfabService
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * `ar-placement` — **the** AR placement flow of the demo app
@@ -206,11 +211,27 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         }.value
     }
 
+    // Each streamed row's OWN Sketchfab thumbnail (#3987), keyed by uid. Until a row's URL is
+    // known — no API key, offline, metadata in flight — its card shows the generic glyph,
+    // never the picture of its bundled fallback, which is a different model.
+    val streamedThumbnails: Map<String, String> by produceState(
+        initialValue = StreamedPlacementThumbnails.known(),
+        key1 = placementSlugs,
+    ) {
+        value = StreamedPlacementThumbnails.resolve(SketchfabService.getInstance(context), placementSlugs)
+    }
+
     // The catalogue the picker offers. A streamed row that has not landed yet carries its
     // OWN bundled fallback as `assetLocation` (never null), so a tap during the download
     // places that slug's stand-in rather than nothing — and the row is flagged `pending`
     // so the bar and the card both say "Streaming …" instead of lying about it.
-    val models: List<PlacementModel> = remember(placementSlugs, armedSlug, armedFile, requestedExtraRow) {
+    val models: List<PlacementModel> = remember(
+        placementSlugs,
+        armedSlug,
+        armedFile,
+        requestedExtraRow,
+        streamedThumbnails,
+    ) {
         listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
             val isArmed = slug.uid == armedSlug?.uid
             PlacementModel(
@@ -229,6 +250,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 realWorldSizeMeters = slug.scaleToUnits * 2f,
                 source = PlacementModelSource.Streamed,
                 pending = isArmed && armedFile == null,
+                thumbnailUrl = streamedThumbnails[slug.uid],
             )
         }
     }
@@ -372,3 +394,30 @@ fun ARPlacementDemo(onBack: () -> Unit) {
  * bundled row's id, and stable across catalogue rebuilds.
  */
 private fun streamedModelId(slug: SketchfabSlug): String = "streamed:${slug.uid}"
+
+/**
+ * Process-wide memo of the streamed `ar_placement` rows' Sketchfab thumbnail URLs (#3987), so
+ * reopening the demo does not re-ask the API for six pictures it already knows. A uid whose
+ * lookup failed is simply absent and is retried on the next open.
+ */
+private object StreamedPlacementThumbnails {
+    /** Smallest render width that stays sharp in an 80 dp picker tile at xxhdpi. */
+    private const val MIN_WIDTH_PX = 256
+
+    private val urls = ConcurrentHashMap<String, String>()
+
+    fun known(): Map<String, String> = urls.toMap()
+
+    suspend fun resolve(service: SketchfabService, slugs: List<SketchfabSlug>): Map<String, String> {
+        coroutineScope {
+            slugs.filter { it.uid !in urls }.map { slug ->
+                async {
+                    runCatching { service.model(slug.uid).thumbnailUrl(MIN_WIDTH_PX) }
+                        .getOrNull()
+                        ?.let { urls[slug.uid] = it }
+                }
+            }.awaitAll()
+        }
+        return urls.toMap()
+    }
+}
