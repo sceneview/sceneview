@@ -148,14 +148,6 @@ final class RerunTraceTests: XCTestCase {
         XCTAssertTrue(rerunFilmstripFrames(count: 0, slots: 5).isEmpty)
         XCTAssertTrue(rerunFilmstripFrames(count: 10, slots: 0).isEmpty)
     }
-
-    /// The home features the replay right after the hero, like Android's `FEATURED_DEMO_IDS`.
-    @MainActor
-    func testHomeFeaturesTheReplay() {
-        XCTAssertEqual(ShowcaseTab.featuredDemoIds.first, "ar-rerun")
-        let ids = Set(GeneratedScenes.all().map(\.sceneId))
-        for id in ShowcaseTab.featuredDemoIds { XCTAssertTrue(ids.contains(id), id) }
-    }
 }
 
 #endif

@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B7E400000000000000000041 /* RerunSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000041 /* RerunSessionStore.swift */; };
+		B7E400000000000000000042 /* RerunSessionsLanding.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000042 /* RerunSessionsLanding.swift */; };
+		B7E400000000000000000043 /* RerunRRDReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000043 /* RerunRRDReader.swift */; };
+		B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000044 /* RerunSessionStoreTests.swift */; };
+		B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000045 /* RerunRRDReaderTests.swift */; };
 		B7E400000000000000000001 /* RerunTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000001 /* RerunTrace.swift */; };
 		B7E400000000000000000002 /* RerunFraming.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000002 /* RerunFraming.swift */; };
 		B7E400000000000000000003 /* RerunGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000003 /* RerunGeometry.swift */; };
@@ -24,7 +29,6 @@
 		B7E40000000000000000000F /* RerunRRDProtobuf.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000F /* RerunRRDProtobuf.swift */; };
 		B7E400000000000000000010 /* RerunCaptureRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000010 /* RerunCaptureRecorder.swift */; };
 		B7E400000000000000000011 /* RerunLiveCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000011 /* RerunLiveCaptureView.swift */; };
-		B7E400000000000000000012 /* HomeFeatured.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000012 /* HomeFeatured.swift */; };
 		B7E400000000000000000013 /* RerunTraceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000013 /* RerunTraceTests.swift */; };
 		B7E400000000000000000014 /* RerunPLYGLBWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000014 /* RerunPLYGLBWriterTests.swift */; };
 		B7E400000000000000000015 /* RerunUSDZWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000015 /* RerunUSDZWriterTests.swift */; };
@@ -235,6 +239,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B7E500000000000000000041 /* RerunSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunSessionStore.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunSessionStore.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000042 /* RerunSessionsLanding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunSessionsLanding.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunSessionsLanding.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000043 /* RerunRRDReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDReader.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRRDReader.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000044 /* RerunSessionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunSessionStoreTests.swift; path = SceneViewDemoTests/RerunSessionStoreTests.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000045 /* RerunRRDReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDReaderTests.swift; path = SceneViewDemoTests/RerunRRDReaderTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000001 /* RerunTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunTrace.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunTrace.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000002 /* RerunFraming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunFraming.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunFraming.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000003 /* RerunGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunGeometry.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunGeometry.swift; sourceTree = SOURCE_ROOT; };
@@ -252,7 +261,6 @@
 		B7E50000000000000000000F /* RerunRRDProtobuf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDProtobuf.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRRDProtobuf.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000010 /* RerunCaptureRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunCaptureRecorder.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunCaptureRecorder.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000011 /* RerunLiveCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunLiveCaptureView.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift; sourceTree = SOURCE_ROOT; };
-		B7E500000000000000000012 /* HomeFeatured.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFeatured.swift; path = SceneViewDemo/Views/Home/HomeFeatured.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000013 /* RerunTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunTraceTests.swift; path = SceneViewDemoTests/RerunTraceTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000014 /* RerunPLYGLBWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunPLYGLBWriterTests.swift; path = SceneViewDemoTests/RerunPLYGLBWriterTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000015 /* RerunUSDZWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunUSDZWriterTests.swift; path = SceneViewDemoTests/RerunUSDZWriterTests.swift; sourceTree = SOURCE_ROOT; };
@@ -497,6 +505,9 @@
 				B7E50000000000000000000F /* RerunRRDProtobuf.swift */,
 				B7E500000000000000000010 /* RerunCaptureRecorder.swift */,
 				B7E500000000000000000011 /* RerunLiveCaptureView.swift */,
+				B7E500000000000000000041 /* RerunSessionStore.swift */,
+				B7E500000000000000000042 /* RerunSessionsLanding.swift */,
+				B7E500000000000000000043 /* RerunRRDReader.swift */,
 				B7E500000000000000000019 /* shiba.glb */,
 				B7E50000000000000000001A /* showcase */,
 			);
@@ -515,7 +526,6 @@
 		FBB3A11ACA2CF4520567DD1F /* Home */ = {
 			isa = PBXGroup;
 			children = (
-				B7E500000000000000000012 /* HomeFeatured.swift */,
 				B7E600000000000000000001 /* Rerun */,
 				DE31566D2309ACB52F2541CF /* HomeFilter.swift */,
 				A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */,
@@ -557,6 +567,8 @@
 				B7E500000000000000000015 /* RerunUSDZWriterTests.swift */,
 				B7E500000000000000000016 /* RerunRRDWriterTests.swift */,
 				B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */,
+				B7E500000000000000000044 /* RerunSessionStoreTests.swift */,
+				B7E500000000000000000045 /* RerunRRDReaderTests.swift */,
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
@@ -1022,7 +1034,9 @@
 				B7E40000000000000000000F /* RerunRRDProtobuf.swift in Sources */,
 				B7E400000000000000000010 /* RerunCaptureRecorder.swift in Sources */,
 				B7E400000000000000000011 /* RerunLiveCaptureView.swift in Sources */,
-				B7E400000000000000000012 /* HomeFeatured.swift in Sources */,
+				B7E400000000000000000041 /* RerunSessionStore.swift in Sources */,
+				B7E400000000000000000042 /* RerunSessionsLanding.swift in Sources */,
+				B7E400000000000000000043 /* RerunRRDReader.swift in Sources */,
 				D13CADF7F6A0750FD91AE404 /* ShowcaseTab.swift in Sources */,
 				FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */,
 				FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */,
@@ -1160,6 +1174,8 @@
 				B7E400000000000000000015 /* RerunUSDZWriterTests.swift in Sources */,
 				B7E400000000000000000016 /* RerunRRDWriterTests.swift in Sources */,
 				B7E400000000000000000017 /* RerunCaptureRecorderTests.swift in Sources */,
+				B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */,
+				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,

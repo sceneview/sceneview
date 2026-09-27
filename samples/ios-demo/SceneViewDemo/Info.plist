@@ -100,6 +100,24 @@
 				<string>com.apple.reality</string>
 			</array>
 		</dict>
+		<dict>
+			<!--
+				A room recorded with the Rerun demo: the app's own scan file, and the
+				Rerun recording it exports. Both open in the Rerun demo, which keeps
+				them as one of "Your sessions" (`RerunInbox`), not in the 3D viewer.
+			-->
+			<key>CFBundleTypeName</key>
+			<string>Room Scan</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>io.github.sceneview.scan</string>
+				<string>io.rerun.rrd</string>
+			</array>
+		</dict>
 	</array>
 	<!--
 		Imported, not exported: SceneView understands these formats, it does not
@@ -182,6 +200,24 @@
 				</array>
 			</dict>
 		</dict>
+		<dict>
+			<!-- Rerun's recording format (rerun.io): the app writes and reads it, Rerun defines it. -->
+			<key>UTTypeIdentifier</key>
+			<string>io.rerun.rrd</string>
+			<key>UTTypeDescription</key>
+			<string>Rerun Recording</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>rrd</string>
+				</array>
+			</dict>
+		</dict>
 	</array>
 	<!--
 		Exported, not imported: no other party on this system declares 3MF at all — it
@@ -210,6 +246,29 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>model/3mf</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<!--
+				SceneView's room scan (`RerunScanFile`): a stored zip of the recorder's
+				three files. Conforms to `public.data`, not `public.zip-archive`, so
+				Files opens it in the app instead of unpacking it.
+			-->
+			<key>UTTypeIdentifier</key>
+			<string>io.github.sceneview.scan</string>
+			<key>UTTypeDescription</key>
+			<string>SceneView Room Scan</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>svscan</string>
 				</array>
 			</dict>
 		</dict>

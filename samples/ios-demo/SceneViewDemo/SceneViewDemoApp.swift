@@ -99,6 +99,19 @@ struct SceneViewDemoApp: App {
 
     @Environment(\.scenePhase) private var scenePhase
 
+    /// A document handed to the app. A SceneView scan or a Rerun recording (`.svscan`,
+    /// `.rrd`) opens in the Rerun demo, which keeps it as one of "Your sessions"; any other
+    /// file opens in the 3D viewer.
+    private func open(_ url: URL) {
+        #if os(iOS)
+        if RerunInbox.handles(url) {
+            if RerunInbox.shared.accept(url) { pendingDeepLinkDemo = "ar-rerun" }
+            return
+        }
+        #endif
+        openedFile = OpenedDocument(url: url)
+    }
+
     var body: some SwiftUI.Scene {
         WindowGroup {
             ContentView(
@@ -116,7 +129,9 @@ struct SceneViewDemoApp: App {
                 }
                 #endif
                 .task {
-                    if openedFile == nil { openedFile = Self.launchArgOpenFile }
+                    if openedFile == nil, let document = Self.launchArgOpenFile {
+                        open(document.url)
+                    }
                 }
                 .onOpenURL { url in
                     // A file URL is a document the system handed us through
@@ -124,7 +139,7 @@ struct SceneViewDemoApp: App {
                     // first, because `DeepLinkRouter` would otherwise see a `file`
                     // scheme it has no business parsing.
                     if url.isFileURL {
-                        openedFile = OpenedDocument(url: url)
+                        open(url)
                     } else if let id = DeepLinkRouter.parse(url, allowedDemos: DemoDeepLinkRegistry.allowedIds) {
                         pendingDeepLinkDemo = id
                     } else if let candidate = DeepLinkRouter.extractCandidate(url) {

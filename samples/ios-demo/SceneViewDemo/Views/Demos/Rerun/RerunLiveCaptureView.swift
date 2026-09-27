@@ -25,12 +25,16 @@ import SwiftUI
 /// an anchor while recording.
 struct RerunLiveCaptureView: View {
     private let onFinish: (RerunCapturePack) -> Void
+    private let onRecordingChange: (Bool) -> Void
     @State private var model = RerunLiveCaptureModel()
     @State private var isOnScreen = false
 
     /// `onFinish` receives the capture when the user stops a recording that holds at least
-    /// one camera pose.
-    init(onFinish: @escaping (RerunCapturePack) -> Void) {
+    /// one camera pose. `onRecordingChange` tells the host when a recording starts and when it
+    /// is over (saved or discarded), so it can put away whatever would end it by accident.
+    init(onRecordingChange: @escaping (Bool) -> Void = { _ in },
+         onFinish: @escaping (RerunCapturePack) -> Void) {
+        self.onRecordingChange = onRecordingChange
         self.onFinish = onFinish
     }
 
@@ -75,6 +79,7 @@ struct RerunLiveCaptureView: View {
             .animation(SceneViewTokens.Spring.fade, value: model.hint)
         }
         .task { await model.loadModel() }
+        .onChange(of: model.phase) { _, phase in onRecordingChange(phase != .idle) }
         .onAppear { isOnScreen = true }
         .onDisappear {
             isOnScreen = false
@@ -597,10 +602,10 @@ private struct RerunLiveCaptureSimulatorCard: View {
                     .font(SceneViewTokens.TypeScale.card)
                     .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
                     .accessibilityHidden(true)
-                Text("Live AR needs an iPhone camera.")
+                Text("Recording needs an iPhone camera.")
                     .font(SceneViewTokens.TypeScale.card)
                     .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-                Text("Tap 3D to watch a real recorded room rebuild itself.")
+                Text("Go back to Sessions to watch the sample session, or open a scan file.")
                     .font(SceneViewTokens.TypeScale.body)
                     .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
             }
