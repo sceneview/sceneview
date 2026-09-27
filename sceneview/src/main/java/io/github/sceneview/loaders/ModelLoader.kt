@@ -1,10 +1,12 @@
 package io.github.sceneview.loaders
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.annotation.MainThread
 import androidx.annotation.RawRes
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
+import com.google.android.filament.Fence
 import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
@@ -16,11 +18,13 @@ import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
 import io.github.sceneview.isAsyncLoadPending
+import io.github.sceneview.isFenceBusy
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.loadFileBuffer
 import io.github.sceneview.utils.readBuffer
+import io.github.sceneview.whenIdle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -70,9 +74,9 @@ class ModelLoader(
     /**
      * The gltfio loader that finalises every model's textures, pumped by [updateLoad].
      *
-     * Read it through this property each time rather than keeping your own reference: when a model
-     * is destroyed while its textures are still decoding, the load is cancelled and this property
-     * moves to a fresh loader (see [destroyModel]). The previous one stays valid until [destroy].
+     * Read it through this property each time rather than keeping your own reference: when a
+     * model's load has to be cancelled before its textures finished decoding, this property moves
+     * to a fresh loader (see [destroyModel]). The previous one stays valid until [destroy].
      */
     var resourceLoader = ResourceLoader(engine, true)
 
@@ -125,6 +129,9 @@ class ModelLoader(
             asyncLoadStarted = false
         },
     )
+
+    // Model destroys waiting for their load to settle (#3981): the loader's own natives outlive them.
+    private val settlingDestroys = SettlingDestroys(engine)
 
     /**
      * Whether an asynchronous resource load is in flight — i.e. one was started and Filament has
@@ -569,11 +576,36 @@ class ModelLoader(
      *
      * Safe at any point of the model's load (#3868): if gltfio is still decoding this model's
      * textures, that async load is cancelled first, so the per-frame [updateLoad] never writes into
-     * the freed textures. The cancel waits on the main thread for the decodes already running.
-     * Destroying an older model cancels nothing.
+     * the freed textures. Destroying an older model cancels nothing.
+     *
+     * **Never blocks the calling thread** (#3981): gltfio's cancel waits for the decoder jobs
+     * already running and then for the engine's whole backend queue, seconds on a slow device — an
+     * ANR when a scene is left mid-load. So the model the load belongs to is destroyed once that
+     * wait would be instant instead: its textures have finished decoding (the load is pumped from
+     * the main looper meanwhile) and the backend is idle. Until then its asset stays alive, off
+     * the registry; the other models, and this one in the usual already-loaded case, are
+     * destroyed before this call returns.
      */
     fun destroyModel(model: Model) {
-        destroyAfterCancellingLoad(models, model, asyncLoad) {
+        destroyAfterCancellingLoad(
+            models,
+            model,
+            asyncLoad,
+            whenLoadSettles = { inFlight, cancelThenDestroy ->
+                settlingDestroys.defer(
+                    isInFlight = { asyncLoad.inFlight === inFlight },
+                    pumpedProgress = {
+                        updateLoad()
+                        resourceLoader.asyncGetLoadProgress()
+                    },
+                ) {
+                    // Pops whatever gltfio finished for this model since the last frame, so no
+                    // texture of it is left queued to be marked ready after it is freed.
+                    updateLoad()
+                    cancelThenDestroy()
+                }
+            },
+        ) {
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
             // Node.destroy() entirely — the sibling Nodes' cached handles need to know a
@@ -587,10 +619,17 @@ class ModelLoader(
         }
     }
 
+    /**
+     * Cancels every load still running on this loader's scope and destroys every model it made.
+     * The model whose textures are still decoding is destroyed once they are done, without
+     * blocking the calling thread (see [destroyModel]).
+     */
     fun clear() {
         runCatching { coroutineScope.cancel() }
 
-        asyncLoad.cancel()
+        // No blanket `asyncLoad.cancel()` here any more: the only load it could interrupt belongs
+        // to a model in `models`, whose destroyModel below cancels it — once doing so is instant
+        // (#3981). With nothing in flight it was a pure `flushAndWait` on the main thread.
         resourceLoader.evictResourceData()
 
         // A cancelled load's own cleanup (destroyOnCancel/createOrDestroyOnCancel, both wired
@@ -601,15 +640,24 @@ class ModelLoader(
         models.toList().forEach { destroyModel(it) }
     }
 
+    /**
+     * Destroys every model, then the loader's own gltfio objects.
+     *
+     * Never blocks the calling thread (#3981): when a model is still decoding its textures, both
+     * it and the loader's natives are released once the decoders are done, polled from the main
+     * looper. The engine outlives them — its own deferred destroy waits for them.
+     */
     fun destroy() {
         clear()
 
-        assetLoader.destroy()
-        materialProvider.destroyMaterials()
-        materialProvider.destroy()
-        resourceLoader.destroy()
-        retiredResourceLoaders.forEach { it.destroy() }
-        retiredResourceLoaders.clear()
+        settlingDestroys.afterAll {
+            assetLoader.destroy()
+            materialProvider.destroyMaterials()
+            materialProvider.destroy()
+            resourceLoader.destroy()
+            retiredResourceLoaders.forEach { it.destroy() }
+            retiredResourceLoaders.clear()
+        }
     }
 
     fun updateLoad() {
@@ -703,18 +751,107 @@ internal class AsyncLoadSlot<T : Any>(
 
 /**
  * [claimAndDestroy], with [item]'s async load cancelled first when it is still the one in flight:
- * the order Filament's own `ModelViewer` and [ModelLoader.clear] use, applied to every single
- * destroy (#3868). The cancel sits inside the claim, so a second destroy of the same item finds it
- * gone and cancels nothing.
+ * the order Filament's own `ModelViewer` uses, applied to every single destroy (#3868). The cancel
+ * sits inside the claim, so a second destroy of the same item finds it gone and cancels nothing.
+ *
+ * The cancel-then-destroy of the item in flight goes through [whenLoadSettles], which may run it
+ * later (#3981): the item is off the registry from this call on, so nothing else destroys it in
+ * the meantime. Any other item is destroyed right away.
  */
 internal fun <T : Any> destroyAfterCancellingLoad(
     registry: MutableList<T>,
     item: T,
     asyncLoad: AsyncLoadSlot<T>,
+    whenLoadSettles: (item: T, cancelThenDestroy: () -> Unit) -> Unit = { _, run -> run() },
     destroy: (T) -> Unit,
 ) = claimAndDestroy(registry, item) {
-    asyncLoad.cancelIfInFlight(it)
-    destroy(it)
+    // Only the item still in flight has a load to cancel, and so a reason to wait (#3981).
+    if (asyncLoad.inFlight !== it) {
+        destroy(it)
+    } else {
+        whenLoadSettles(it) {
+            asyncLoad.cancelIfInFlight(it)
+            destroy(it)
+        }
+    }
+}
+
+/** How long a load may make no progress before [AsyncLoadSettleGate] stops waiting for it. */
+internal const val LOAD_SETTLE_STALL_MS = 10_000L
+
+/**
+ * The model destroys a [ModelLoader] holds back until their load settles (#3981), polled from the
+ * main looper. `asyncCancelLoad` waits for every decoder job still running, then `flushAndWait`s
+ * the engine: [defer] runs its destroy once an [AsyncLoadSettleGate] says both waits would be
+ * instant — before returning in the usual case (load finished, backend idle). [afterAll] runs the
+ * loader's own release after every destroy still pending, since they need its natives.
+ *
+ * Main thread only.
+ */
+private class SettlingDestroys(private val engine: Engine) {
+    private var pending = 0
+
+    fun defer(isInFlight: () -> Boolean, pumpedProgress: () -> Float, destroy: () -> Unit) {
+        var fence: Fence? = null
+        val gate = AsyncLoadSettleGate(
+            isInFlight = isInFlight,
+            pumpedProgress = pumpedProgress,
+            isBackendBusy = { isFenceBusy(fence ?: engine.createFence().also { fence = it }) },
+            now = SystemClock::uptimeMillis,
+        )
+        pending++
+        engine.whenIdle(isBusy = gate::isBusy, onEngineGone = { pending-- }) {
+            pending--
+            fence?.let { runCatching { engine.destroyFence(it) } }
+            destroy()
+        }
+    }
+
+    fun afterAll(release: () -> Unit) {
+        if (pending == 0) release() else engine.whenIdle(isBusy = { pending > 0 }) { release() }
+    }
+}
+
+/**
+ * Answers, poll after poll, "would gltfio's `asyncCancelLoad` still block right now?" for the
+ * model a destroy is waiting on (#3981).
+ *
+ * `asyncCancelLoad` joins every texture decoder job still running (stb cannot interrupt one), then
+ * `flushAndWait`s the engine. So it is busy while the model is still the load in flight and either
+ * its progress is below 1 — pumped by [pumpedProgress], which finalises the decoded textures — or
+ * the backend has not drained ([isBackendBusy], checked only once decoding is done so its fence
+ * covers the uploads that finalisation queued). A model another load has replaced is never busy:
+ * `asyncBeginLoad` already joined its decoders and there is nothing of it left to cancel.
+ *
+ * Progress can stay below 1 for good — a texture whose external file never arrived counts as
+ * pending forever, with no job running for it — so a load that has not advanced for
+ * [stallTimeoutMs] stops holding the destroy.
+ *
+ * Filament-free so the ordering can be pinned in a JVM test. Main thread only.
+ */
+internal class AsyncLoadSettleGate(
+    private val isInFlight: () -> Boolean,
+    private val pumpedProgress: () -> Float,
+    private val isBackendBusy: () -> Boolean,
+    private val now: () -> Long,
+    private val stallTimeoutMs: Long = LOAD_SETTLE_STALL_MS,
+) {
+    private var lastProgress = Float.NaN
+    private var lastAdvanceAt = 0L
+
+    fun isBusy(): Boolean {
+        if (!isInFlight()) return false
+        val progress = pumpedProgress()
+        if (progress < 1f) {
+            val at = now()
+            if (progress != lastProgress) {
+                lastProgress = progress
+                lastAdvanceAt = at
+            }
+            if (at - lastAdvanceAt < stallTimeoutMs) return true
+        }
+        return isBackendBusy()
+    }
 }
 
 /**

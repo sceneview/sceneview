@@ -22,7 +22,7 @@ package io.github.sceneview
  */
 internal class BackendIdleTeardowns {
 
-    private inner class Teardown(private val action: () -> Unit) {
+    private inner class Teardown(val runsLast: Boolean, private val action: () -> Unit) {
         var isDone = false
             private set
 
@@ -51,6 +51,11 @@ internal class BackendIdleTeardowns {
      * If [isEngineAlive] turns `false` first — the engine destroyed without [runPending], by a raw
      * `Engine.destroy()` — [onEngineGone] runs instead and [isBackendBusy] is never called again:
      * the dead engine freed the fence it polls.
+     *
+     * With [runsLast], the teardown also waits for every teardown registered without it to have
+     * run: the engine's own destroy passes it, so a release still waiting for its own condition (a
+     * `ModelLoader` waiting for its texture decoders, #3981) is not forced early by [runPending],
+     * which would block the calling thread exactly where the deferral meant not to.
      */
     fun defer(
         isEngineAlive: () -> Boolean,
@@ -59,16 +64,18 @@ internal class BackendIdleTeardowns {
         teardown: (deferred: Boolean) -> Unit,
         onEngineGone: () -> Unit = {},
         intervalMs: Long = BACKEND_IDLE_POLL_MS,
+        runsLast: Boolean = false,
     ) {
         if (!isEngineAlive()) {
             onEngineGone()
             return
         }
-        if (!isBackendBusy()) {
+        fun othersPending() = runsLast && pending.any { !it.runsLast && !it.isDone }
+        if (!othersPending() && !isBackendBusy()) {
             teardown(false)
             return
         }
-        val entry = Teardown { teardown(true) }
+        val entry = Teardown(runsLast) { teardown(true) }
         pending.addLast(entry)
 
         fun poll() {
@@ -78,7 +85,7 @@ internal class BackendIdleTeardowns {
                     entry.drop()
                     onEngineGone()
                 }
-                isBackendBusy() -> schedule(intervalMs, ::poll)
+                othersPending() || isBackendBusy() -> schedule(intervalMs, ::poll)
                 else -> entry.run()
             }
         }

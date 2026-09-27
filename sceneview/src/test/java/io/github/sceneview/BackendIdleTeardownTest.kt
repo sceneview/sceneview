@@ -182,6 +182,56 @@ class BackendIdleTeardownTest {
     }
 
     @Test
+    fun engineDestroyWaitsForAModelLoaderStillDecoding() {
+        // #3981: a ModelLoader left mid-load releases once its decoders are done. The engine's own
+        // destroy (runsLast) must wait for it rather than force it through runPending(), which
+        // would join those decoders on the main thread — the very ANR the deferral avoids.
+        val teardowns = BackendIdleTeardowns()
+        val scheduler = RecordingScheduler()
+        val order = mutableListOf<String>()
+        var decoding = true
+        teardowns.defer(
+            isEngineAlive = { true },
+            isBackendBusy = { decoding },
+            schedule = scheduler.schedule,
+            teardown = { order += "model-loader" },
+        )
+        teardowns.defer(
+            isEngineAlive = { true },
+            isBackendBusy = { false },
+            schedule = scheduler.schedule,
+            teardown = { order += "engine" },
+            runsLast = true,
+        )
+        assertTrue("an idle backend alone must not destroy the engine early", order.isEmpty())
+
+        scheduler.runNext()
+        scheduler.runNext()
+        assertTrue(order.isEmpty())
+
+        decoding = false
+        scheduler.runAll()
+        assertEquals(listOf("model-loader", "engine"), order)
+        assertEquals(0, teardowns.size)
+    }
+
+    @Test
+    fun runsLastTeardownIsSynchronousWhenNothingElseIsPending() {
+        val teardowns = BackendIdleTeardowns()
+        val scheduler = RecordingScheduler()
+        val outcome = Outcome()
+        teardowns.defer(
+            isEngineAlive = { true },
+            isBackendBusy = { false },
+            schedule = scheduler.schedule,
+            teardown = outcome.teardown,
+            runsLast = true,
+        )
+        assertEquals(listOf(false), outcome.runs)
+        assertFalse(scheduler.hasPending)
+    }
+
+    @Test
     fun surfaceWaitsStayFarBelowTheInputDispatchAnrThreshold() {
         // Android raises an ANR when an input event waits 5 s. A detach and a resize can land in
         // the same main-thread message (a sheet closing while a tab switches); together they must
