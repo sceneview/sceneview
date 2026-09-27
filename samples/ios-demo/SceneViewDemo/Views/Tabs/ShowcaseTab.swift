@@ -194,6 +194,16 @@ struct ShowcaseTab: View {
                     // opened from it, which is why both carry a
                     // `matchedTransitionSource` keyed on `sceneId`.
                     .navigationTransition(.zoom(sourceID: scene.sceneId, in: cardNamespace))
+                    // The zoom transition brings the system's interactive
+                    // dismissal with it: a pinch-in or a downward drag anywhere
+                    // on the cover shrinks it back toward its card. On a 3D
+                    // stage that pinch is the camera's zoom-out, and the cover
+                    // won it — the demo collapsed instead of the camera pulling
+                    // back (#4008). Demos close from their back button and the
+                    // leading-edge strip (`DemoCover.edgeDismissStrip`), so the
+                    // system gesture is switched off; the zoom still plays on
+                    // open and on close.
+                    .interactiveDismissDisabled()
             }
             #else
             .sheet(item: $fullScreenScene) { scene in
@@ -234,8 +244,9 @@ struct ShowcaseTab: View {
 /// chrome of its own — every hand-rolled AR screen — opened with no way out
 /// but force-quitting the app.
 ///
-/// The leading-edge swipe is this host's own: `.fullScreenCover` has no
-/// interactive dismissal on either path, and an AR demo fills the screen with
+/// The leading-edge swipe is this host's own: interactive dismissal is off on
+/// both paths (the catalogue's zoom transition would otherwise add a pinch and
+/// drag-down dismissal that steals the stage's own pinch, #4008), and an AR demo fills the screen with
 /// a camera feed that a user will try to swipe away. It is confined to a
 /// narrow strip at the leading edge so it cannot compete with the orbit / pan
 /// gestures the stage itself installs.
