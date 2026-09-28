@@ -43,6 +43,7 @@ import io.github.sceneview.demo.rememberPausableHeroYaw
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
@@ -120,12 +121,15 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
         rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[2], 0.15f, 0.35f),
         rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[3], 0.15f, 0.35f),
     )
+    // The "lit" state has to be unmistakable at a glance (#4031). It used to be TintSoft — which is
+    // also Ramp4[3], the default colour of shape 3, and a near neighbour of Ramp4[2] — so a tap
+    // that DID pick lit the shape in the colour it already wore: "you tap and it does almost
+    // nothing". A warm highlight outside the blue/purple ramp, plus a scale pop, cannot be missed.
     val highlightedMaterial = rememberMaterialInstance(
         materialLoader,
-        SceneViewColors.TintSoft,
-        metallic = 0.9f,
-        roughness = 0.12f,
-        reflectance = 0.9f,
+        SceneViewColors.Highlight,
+        metallic = 0.2f,
+        roughness = 0.3f,
     )
 
     val shapes = remember { PickingLayout.SHAPES }
@@ -271,11 +275,15 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
                     } else {
                         defaultMaterials[shape.index % defaultMaterials.size]
                     }
+                    val scale = Scale(
+                        if (shape.index in highlightedIndices) PickingLayout.LIT_SCALE else 1f
+                    )
                     if (shape.isSphere) {
                         SphereNode(
                             radius = PickingLayout.SPHERE_RADIUS,
                             materialInstance = material,
                             position = shape.position,
+                            scale = scale,
                             apply = {
                                 name = "${PickingLayout.NAME_PREFIX}${shape.index}"
                                 isHittable = true
@@ -293,6 +301,7 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
                             // two faces visible instead of one.
                             rotation = Rotation(x = 12f, y = 24f),
                             position = shape.position,
+                            scale = scale,
                             apply = {
                                 name = "${PickingLayout.NAME_PREFIX}${shape.index}"
                                 isHittable = true
@@ -368,6 +377,12 @@ private object PickingLayout {
 
     const val CUBE_EDGE = 0.22f
     const val SPHERE_RADIUS = 0.13f
+
+    /**
+     * How much a lit shape grows (#4031): enough to read as "this one answered the tap", small
+     * enough that the widest cube still clears its neighbours (0.22 × 1.18 < the 0.25 column step).
+     */
+    const val LIT_SCALE = 1.18f
 
     /** World scale of the Compose card — its content is ~1.65 units wide at 250 px/unit. */
     const val CARD_SCALE = 0.35f

@@ -363,6 +363,15 @@ class ViewNode(
      */
     override fun onCapturedTouchEvent(e: MotionEvent): Boolean = touchForwarder.onExit(e)
 
+    /**
+     * A drag that starts on the quad belongs to the scene (#4033): once the pointer passes the
+     * touch slop — or a second finger comes down — and nothing inside the embedded view has
+     * claimed the gesture (an inner list scrolling, a slider being dragged), the view gets an
+     * `ACTION_CANCEL` and the stream goes back to the scene gesture and camera detectors. A tap
+     * still clicks; a drag started on a card orbits the camera like a drag started beside it.
+     */
+    override fun takeTouchStreamHandBack(): Boolean = touchForwarder.takeHandBack()
+
     override fun destroy() {
         surfaceTexture.setOnFrameAvailableListener(null)
         windowManager.removeView(layout)
@@ -472,6 +481,17 @@ class ViewNode(
             val parent = super.invalidateChildInParent(location, dirty)
             invalidate()
             return parent
+        }
+
+        /**
+         * A descendant wants the current gesture for itself — a list that started scrolling, a
+         * slider being dragged (#4033). Compose reports it here for any pointer input that consumed
+         * movement. The forwarder then keeps the stream instead of handing the drag back to the
+         * scene's camera.
+         */
+        override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+            super.requestDisallowInterceptTouchEvent(disallowIntercept)
+            touchForwarder.onContentClaimedGesture(disallowIntercept)
         }
 
         override fun dispatchDraw(canvas: Canvas) {

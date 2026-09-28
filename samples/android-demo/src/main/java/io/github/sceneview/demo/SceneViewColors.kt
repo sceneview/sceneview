@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
  * accent-deep    #5a32a3   alt-hero-gradient end
  * tint-light     #a4c1ff   dark-mode primary / light tint
  * tint-soft      #d2a8ff   dark-mode gradient end
+ * info           #ea580c   highlight — a picked / selected 3D object
  * surface-dim    #161B22   dark surface — used for grounding planes
  * ```
  */
@@ -37,6 +38,15 @@ object SceneViewColors {
 
     /** Soft-tint purple — #d2a8ff. Dark-mode gradient end, also the fourth ramp colour. */
     val TintSoft = Color(0xFFD2A8FF)
+
+    /**
+     * Highlight orange — #ea580c, DESIGN.md `info` ("informational highlights"). The colour of a
+     * picked or selected 3D object: warm, so it can never be mistaken for any [Ramp4] swatch,
+     * which are all blues and purples. [TintSoft] used to double as the "lit" colour in Picking &
+     * Collision and was also a default swatch there, so lighting that shape changed nothing
+     * visible (#4031).
+     */
+    val Highlight = Color(0xFFEA580C)
 
     /** Dark surface — #161B22. Used for ground planes and neutral backdrops in demos. */
     val SurfaceDim = Color(0xFF161B22)

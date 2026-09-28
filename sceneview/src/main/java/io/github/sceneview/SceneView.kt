@@ -826,6 +826,25 @@ fun SceneView(
                 // Published before `gestureDetector` runs: its double-tap callback fires from
                 // inside that call and reads this to apply the same isolation (#3608).
                 cameraGesturesAbsorbedRef.set(absorbedByEditableNode)
+                // A node that captured this stream on its DOWN just gave it back — a drag that
+                // started on an interactive ViewNode (#4033). The detectors never saw that DOWN,
+                // so replay one here, at the current pointer, before the rest of the stream.
+                if (event.actionMasked != MotionEvent.ACTION_DOWN &&
+                    capturedTouchNodeRef.get()?.takeTouchStreamHandBack() == true
+                ) {
+                    val replayedDown = MotionEvent.obtain(
+                        event.downTime, event.eventTime, MotionEvent.ACTION_DOWN,
+                        event.x, event.y, event.metaState
+                    )
+                    try {
+                        gestureDetector.onTouchEvent(replayedDown, hitResult)
+                        if (!absorbedByEditableNode) {
+                            cameraGestureDetectorRef.get()?.onTouchEvent(replayedDown)
+                        }
+                    } finally {
+                        replayedDown.recycle()
+                    }
+                }
                 gestureDetector.onTouchEvent(event, hitResult)
                 if (!absorbedByEditableNode) {
                     cameraGestureDetectorRef.get()?.onTouchEvent(event)

@@ -1463,6 +1463,23 @@ fun ARSceneView(
             consumedByNode = capturedNode?.onCapturedTouchEvent(event) == true ||
                     (hitResult != null && hitNode?.onTouchEvent(event, hitResult) == true)
             if (!consumedByNode) {
+                // A node that captured this stream on its DOWN just gave it back — a drag that
+                // started on an interactive ViewNode (#4033). Replay the DOWN the detectors never
+                // saw, at the current pointer, before the rest of the stream. Mirrors SceneView.
+                if (event.actionMasked != MotionEvent.ACTION_DOWN &&
+                    capturedTouchNodeRef.get()?.takeTouchStreamHandBack() == true
+                ) {
+                    val replayedDown = MotionEvent.obtain(
+                        event.downTime, event.eventTime, MotionEvent.ACTION_DOWN,
+                        event.x, event.y, event.metaState
+                    )
+                    try {
+                        gestureDetector.onTouchEvent(replayedDown, hitResult)
+                        cameraGestureDetectorRef.get()?.onTouchEvent(replayedDown)
+                    } finally {
+                        replayedDown.recycle()
+                    }
+                }
                 gestureDetector.onTouchEvent(event, hitResult)
                 cameraGestureDetectorRef.get()?.onTouchEvent(event)
             }
