@@ -9,6 +9,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoHostActivity
+import io.github.sceneview.demo.demoPackage
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,7 +34,7 @@ class ARDepthOcclusionToggleTest {
     private lateinit var context: Context
     private lateinit var device: UiDevice
 
-    private val pkg = "io.github.sceneview.demo"
+    private val pkg = demoPackage
     private val demoId = "ar-depth-occlusion"
     private val timeout = 15_000L
 
@@ -55,7 +56,7 @@ class ARDepthOcclusionToggleTest {
 
         context.startActivity(
             Intent().apply {
-                setClassName(pkg, "$pkg.DemoHostActivity")
+                setClassName(pkg, DemoHostActivity::class.java.name)
                 putExtra(DemoHostActivity.EXTRA_DEMO_ID, demoId)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
             }

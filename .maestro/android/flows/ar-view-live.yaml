@@ -27,7 +27,7 @@
 #
 # Run standalone:  maestro test .maestro/android/flows/ar-view-live.yaml
 # Also invoked once at the head of `.maestro/android/ar.yaml`.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 # Cold start with the camera permission pre-granted so the launcher CTA goes
 # straight to the live session instead of the system permission dialog.

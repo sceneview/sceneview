@@ -55,7 +55,7 @@ class DemoInteractionTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val device: UiDevice =
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    private val pkg = "io.github.sceneview.demo"
+    private val pkg = demoPackage
     private val timeout = 10_000L
 
     @Before
@@ -142,7 +142,7 @@ class DemoInteractionTest {
             ?: error("openDemo: demo id '$demoId' is not registered in ALL_DEMOS")
         val expectedTitle = context.getString(titleRes)
         val intent = Intent().apply {
-            setClassName(pkg, "$pkg.DemoHostActivity")
+            setClassName(pkg, DemoHostActivity::class.java.name)
             putExtra(DemoHostActivity.EXTRA_DEMO_ID, demoId)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
         }

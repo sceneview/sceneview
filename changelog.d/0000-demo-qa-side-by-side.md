@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Demo app (debug builds):** a debug build of the Android demo is now its own app, installed next to the Play Store one instead of replacing it: application id `io.github.sceneview.demo.qa`, version suffixed `-qa`, launcher label "SceneView QA" and the SceneView icon with an amber QA badge (themed icon included). QA scripts, Maestro flows and instrumentation tests now target that id.

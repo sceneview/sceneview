@@ -91,6 +91,18 @@ android {
     }
 
     buildTypes {
+        // A debug build is a separate app that installs next to the Play Store
+        // one instead of replacing it: `io.github.sceneview.demo.qa`, labelled
+        // "SceneView QA" with a badged launcher icon (both in src/debug/res), so a
+        // test build is recognisable at a glance and can be uninstalled without
+        // touching the store install. Only the applicationId moves — the Kotlin
+        // namespace (and so every class name) stays `io.github.sceneview.demo`,
+        // which means a component is `io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity`:
+        // the `<pkg>/.MainActivity` shorthand would resolve against the `.qa` id.
+        debug {
+            applicationIdSuffix ".qa"
+            versionNameSuffix "-qa"
+        }
         release {
             minifyEnabled = true
             shrinkResources = true

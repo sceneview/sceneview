@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug (QA) build, API 33+: overrides the store v33 icon (a v26 override alone would lose
+     to it on API 33+), with a themed-icon layer that keeps the badge readable. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/md_theme_primary"/>
+    <foreground android:drawable="@drawable/ic_launcher_qa_foreground"/>
+    <monochrome android:drawable="@drawable/ic_launcher_qa_monochrome"/>
+</adaptive-icon>

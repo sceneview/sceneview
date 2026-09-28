@@ -22,8 +22,8 @@ import io.github.sceneview.demo.theme.SceneViewDemoTheme
  * emulator in light and dark (`adb shell cmd uimode night yes|no`).
  *
  * ```
- * adb shell am start -n io.github.sceneview.demo/.ARCoachingPreviewActivity              # gallery
- * adb shell am start -n io.github.sceneview.demo/.ARCoachingPreviewActivity \
+ * adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.ARCoachingPreviewActivity              # gallery
+ * adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.ARCoachingPreviewActivity \
  *     --es cue SCAN --es surface WALL                                                     # one cue, full screen
  * ```
  */

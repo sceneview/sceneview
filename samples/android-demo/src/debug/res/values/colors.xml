@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DESIGN.md `warning` (#f59e0b): the "not the store build" signal of the QA launcher
+         badge. Same value in light and dark — the badge reads as one fixed sticker on either
+         launcher background, outlined and lettered in `ic_launcher_background`. -->
+    <color name="qa_badge">#F59E0B</color>
+</resources>
