@@ -46,7 +46,9 @@ struct HomeHero: View {
             .frame(height: height)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        // The copy answers the press (0.98, or a dim under Reduce Motion); the
+        // landscape behind it is the stage's and stays put.
+        .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel("\(Self.title). \(Self.subtitle). Open")
         .accessibilityIdentifier("home-hero")
     }

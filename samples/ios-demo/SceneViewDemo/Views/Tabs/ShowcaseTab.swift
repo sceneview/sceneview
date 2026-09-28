@@ -56,9 +56,13 @@ struct ShowcaseTab: View {
     @State private var catalogueRevealed = false
 
     /// The page's scroll offset, for the hero stage's travel and parallax.
-    /// An observable object rather than `@State`, so only the stage — not this
-    /// whole screen — redraws as the page scrolls.
+    /// An observable object rather than `@State`, so only the stage's
+    /// scroll-driven frames — not this whole screen — redraw as the page scrolls.
     @State private var heroScroll = HomeHeroScroll()
+    /// The hero's flight, kept for the life of the screen: the 3D view is
+    /// unmounted off screen, behind a demo, in the background and during a
+    /// search, and resumes on the frame it left (``HomeHeroFlightHost``).
+    @State private var heroFlight = HomeHeroFlightHost()
     /// The status bar's height: the hero stage starts above the content, at
     /// the top edge of the display.
     @State private var topInset: CGFloat = 0
@@ -143,7 +147,8 @@ struct ShowcaseTab: View {
                     .background(alignment: .top) {
                         if !searching {
                             HomeHeroStage(height: heroStageHeight, topInset: topInset,
-                                          restTop: heroRestTop, live: heroLive, scroll: heroScroll)
+                                          restTop: heroRestTop, live: heroLive, scroll: heroScroll,
+                                          flight: heroFlight)
                                 .padding(.horizontal, -SceneViewTokens.Home.contentPadding)
                         }
                     }
@@ -218,10 +223,17 @@ struct ShowcaseTab: View {
             } action: { _, isScrolled in
                 withAnimation(SceneViewTokens.Spring.fade) { scrolled = isScrolled }
             }
+            // The stage's offset stops at its own height: past it the stage is
+            // off screen, the transform stops changing and nothing is written.
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
+                min(geometry.contentOffset.y + geometry.contentInsets.top, heroStageHeight)
             } action: { _, offset in
                 heroScroll.offset = offset
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top < heroStageHeight - topInset
+            } action: { _, onScreen in
+                heroScroll.onScreen = onScreen
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentInsets.top
