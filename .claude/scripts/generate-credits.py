@@ -131,6 +131,10 @@ BUNDLED_SCOPES = [
         # demand a credit line for itself.
         "ignore_suffixes": (".md",),
         "format": "markdown",
+        # HD pack (2026-09-29): models the app downloads after install. They are not in
+        # the APK, but the app shows them, so their credits travel with it — read from the
+        # same manifest the download reads, never copied by hand.
+        "hd_manifest": "assets/hd-pack/android.json",
     },
     # ── JSON scopes (#3214) ──────────────────────────────────────────────────
     # The iOS and web demos cannot show a Markdown file to a user, so their
@@ -692,7 +696,33 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
                 lines.append(f"- `{rel}` — **{name}**{by} ({human_size(size)})")
             lines.append("")
 
+    hd = scope.get("hd_manifest")
+    if hd:
+        lines.extend(render_hd_pack_section(hd, to_root))
+
     return "\n".join(lines) + "\n", uncredited
+
+
+def render_hd_pack_section(manifest_rel: str, to_root: str) -> list[str]:
+    """Credits of the HD pack: downloaded after install, credited from its manifest."""
+    manifest = json.loads((ROOT / manifest_rel).read_text(encoding="utf-8"))
+    assets = sorted(manifest.get("assets", []), key=lambda a: a["id"])
+    if not assets:
+        return []
+    lines = ["## HD pack (downloaded after install)", ""]
+    lines.append("Not bundled: the app downloads these on Wi-Fi from the `hd-pack-v1` GitHub Release.")
+    lines.append(f"Listed from [`{manifest_rel}`]({to_root}{manifest_rel}).")
+    lines.append("")
+    for a in assets:
+        lic = a["license"].strip()
+        lic_link = license_url(lic)
+        lic_md = f"[{lic}]({lic_link})" if lic_link else lic
+        lines.append(
+            f"- `{a['id']}` — **[{a['title']}]({a['source']})** by {a['author']} — "
+            f"{lic_md} ({human_size(int(a['bytes']))})"
+        )
+    lines.append("")
+    return lines
 
 
 def render_bundled_credits_json(scope: dict, index: dict[str, dict]) -> tuple[str, list[str]]:

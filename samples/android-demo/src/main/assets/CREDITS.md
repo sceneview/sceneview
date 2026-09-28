@@ -93,3 +93,10 @@ per-asset author is shown where `assets/catalog.json` records one.
 - `environments/studio_warm_2k.hdr` — **Studio Warm** (1.5 MB)
 - `environments/sunset_2k.hdr` — **Seascape** (1.2 MB)
 
+## HD pack (downloaded after install)
+
+Not bundled: the app downloads these on Wi-Fi from the `hd-pack-v1` GitHub Release.
+Listed from [`assets/hd-pack/android.json`](../../../../../assets/hd-pack/android.json).
+
+- `flight-helmet` — **[Flight Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet)** by Gary Hsu (Microsoft) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (48.4 MB)
+
