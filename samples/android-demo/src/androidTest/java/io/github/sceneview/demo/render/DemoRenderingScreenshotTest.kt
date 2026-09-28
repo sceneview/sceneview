@@ -835,9 +835,10 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
-            "splatpreview_default",
             "twodinthreed_default",
             // lightinglab_default: rejected — the helmet is missing from the CI capture.
+            // splatpreview_default: rejected — its framing differs run to run (54.7 % of
+            // pixels in run 36416690269), so no single capture is a reference.
         )
 
         // How long we allow the demo screen to compose after `am start` — covers a cold
