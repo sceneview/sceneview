@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The Wall Placement coaching copy (#4070). */
-class WallCoachingTest {
+class WallCoachingHintTest {
 
     @Test fun `a plain wall is named at once, before any tracked frame`() {
         // The #4070 case: ARCore never starts tracking on a blank wall, so the flow stays in
