@@ -56,16 +56,11 @@ on:
     branches: [main]
     types: [labeled, synchronize, reopened]
 
-# One preview per PR / ref at a time: a new push supersedes the old capture.
-# Adding an UNRELATED label also fires `labeled`; that run skips every job, so it
-# gets a group of its own (the run id) and cannot cancel a preview in flight.
-concurrency:
-  group: >-
-    preview-${{ github.event_name != 'pull_request' && github.ref
-    || (github.event.action != 'labeled' || startsWith(github.event.label.name, 'preview'))
-       && format('pr-{0}', github.event.pull_request.number)
-    || github.run_id }}
-  cancel-in-progress: true
+# Concurrency is per JOB, not per workflow: adding `preview` and `preview-ios`
+# together fires two `labeled` events, and a workflow-level group let the
+# second (iOS-only) run cancel the first (Android) one. Each platform keeps one
+# capture per PR / ref; a new push supersedes the old one. A job skipped by its
+# `if:` never enters its group, so an unrelated label cannot cancel anything.
 
 permissions:
   contents: read
@@ -83,6 +78,9 @@ jobs:
          && (github.event.action != 'labeled' || github.event.label.name == 'preview') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    concurrency:
+      group: preview-android-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
 
@@ -153,6 +151,9 @@ jobs:
          && (github.event.action != 'labeled' || github.event.label.name == 'preview-ios') }}
     runs-on: macos-15
     timeout-minutes: 45
+    concurrency:
+      group: preview-ios-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
 
