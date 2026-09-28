@@ -216,7 +216,9 @@ class PlaneVisualizerV2(
     private val primitivesScratch = ArrayList<MaterialInstance>(2)
     private var currentVertexCount = 0
     private var currentIndexCount = 0
-    private var lastDepthRebuildMs: Long = Long.MIN_VALUE
+    // `null` until the first rebuild — never `Long.MIN_VALUE`, which overflowed `now - last` to a
+    // negative number and kept the depth mesh from ever being built (#4095, same bug as #2186).
+    private var lastDepthRebuildMs: Long? = null
 
     // Frame + camera handed in by PlaneRendererV2.update before each updatePlane call.
     private var currentFrame: Frame? = null
@@ -379,7 +381,7 @@ class PlaneVisualizerV2(
         val frame = currentFrame ?: return false
         val camera = currentCamera ?: return false
         if (camera.trackingState != TrackingState.TRACKING) return false
-        if (now - lastDepthRebuildMs < DEPTH_REBUILD_INTERVAL_MS) return false
+        if (!isDepthRebuildDue(now, lastDepthRebuildMs)) return false
         return rebuildDepthMesh(frame, camera)
     }
 
@@ -890,6 +892,18 @@ internal fun computeScanRadius(polygon: FloatBuffer): Float {
     polygon.position(savedPos)
     return kotlin.math.sqrt(maxSq)
 }
+
+/**
+ * Whether [PlaneVisualizerV2] may rebuild its depth-driven mesh at [nowMs]: always before the
+ * first rebuild ([lastRebuildMs] `null`), then once [intervalMs] has elapsed. `null`, not a
+ * `Long.MIN_VALUE` sentinel: `nowMs - Long.MIN_VALUE` overflows negative and the depth path
+ * never ran (#4095, the #2186 bug again). Pure, so it is unit-tested without an Engine.
+ */
+internal fun isDepthRebuildDue(
+    nowMs: Long,
+    lastRebuildMs: Long?,
+    intervalMs: Long = PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS,
+): Boolean = lastRebuildMs == null || nowMs - lastRebuildMs >= intervalMs
 
 /**
  * Returns the scan-in animation progress in `[0, 1]` for the given

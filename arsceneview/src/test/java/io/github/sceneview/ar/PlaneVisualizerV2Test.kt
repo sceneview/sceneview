@@ -4,6 +4,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -17,6 +19,30 @@ import org.junit.Test
  * tests run on plain JUnit + the JVM.
  */
 class PlaneVisualizerV2Test {
+
+    // ── isDepthRebuildDue (#4095) ───────────────────────────────────────────────────
+
+    /** `System.currentTimeMillis()` in 2026, what [PlaneVisualizerV2] passes as `now`. */
+    private val wallClockMs = 1_790_000_000_000L
+
+    @Test
+    fun `the first depth rebuild is due at a real wall-clock time`() {
+        assertTrue(isDepthRebuildDue(wallClockMs, null))
+        // The old sentinel: the subtraction overflows negative and the rebuild never ran.
+        assertFalse(wallClockMs - Long.MIN_VALUE >= PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS)
+    }
+
+    @Test
+    fun `the first depth rebuild is due at time zero`() {
+        assertTrue(isDepthRebuildDue(0L, null))
+    }
+
+    @Test
+    fun `a depth rebuild waits for its interval`() {
+        val interval = PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS
+        assertFalse(isDepthRebuildDue(wallClockMs + interval - 1, wallClockMs))
+        assertTrue(isDepthRebuildDue(wallClockMs + interval, wallClockMs))
+    }
 
     // ── computeScanProgress / computeReflectionFadeIn ───────────────────────────────
 

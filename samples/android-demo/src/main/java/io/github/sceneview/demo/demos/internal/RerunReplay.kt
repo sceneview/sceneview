@@ -147,10 +147,17 @@ object PointColorAtlas {
     /** Texels per side: 128² = 16 384, over [ArDebugTrace.MAX_MAP_POINTS]. */
     const val SIZE = 128
 
-    /** Texture coordinates of point [index]'s texel centre. */
+    /**
+     * Texture coordinates of point [index]'s texel centre, row `index / SIZE` of [pixels].
+     *
+     * V counts from the atlas's last row: the image material reads a raw `Texture.setImage`
+     * upload like this one bottom-up (the photos, uploaded from a `Bitmap`, read top-down). With
+     * V counted from the first row, every point sampled a row [pixels] never wrote — transparent,
+     * so the whole coloured layer drew nothing (#4095).
+     */
     fun uvOf(index: Int): Pair<Float, Float> {
         val i = index.coerceIn(0, SIZE * SIZE - 1)
-        return ((i % SIZE) + 0.5f) / SIZE to ((i / SIZE) + 0.5f) / SIZE
+        return ((i % SIZE) + 0.5f) / SIZE to 1f - ((i / SIZE) + 0.5f) / SIZE
     }
 
     /**

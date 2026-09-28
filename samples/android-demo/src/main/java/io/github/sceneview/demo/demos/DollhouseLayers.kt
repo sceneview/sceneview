@@ -98,8 +98,8 @@ internal class DollhouseLayers(
 
     /**
      * The points, in the palette's point colour, like the live 3D view draws them. Not the
-     * replay's photo-coloured layer: its colour atlas drew nothing here on the emulator, even
-     * with every point in the fallback colour, where these solids always draw.
+     * replay's photo-coloured layer, which drew nothing when this was written — its colour atlas
+     * was sampled upside down (#4095, since fixed).
      */
     private val points = node(palette.mapPoint, POINTS_PRIORITY)
 
