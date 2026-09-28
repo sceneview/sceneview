@@ -18,7 +18,8 @@ import simd
 ///   one pose row per photo so Rerun shows the camera where the photo was taken; those rows
 ///   are recognised and dropped (see ``pathPoses(_:path:photoTimes:)``), which gives back
 ///   the path the writer was given.
-/// - `world/points` — the coloured map, as one `point_cloud`.
+/// - `world/points` — the coloured map; `world/points/live` — what the camera saw over time,
+///   one `point_cloud` per row at its time, coloured from the map.
 /// - `world/planes/<id>` — the polygon from the outline (without its closing point), the
 ///   kind from the outline's colour, and the plane photo when the `Mesh3D` carries one: the
 ///   texels become a PNG in the media archive and the texture frame (`origin`, `u`, `v`) is
@@ -27,18 +28,19 @@ import simd
 ///   RGB/RGBA — comes back untextured rather than wrongly textured.
 /// - `world/anchors/<id>` — each anchor's pose.
 ///
-/// The `.rrd` only keeps the final map: points, planes and anchors are static. They are all
-/// emitted at the start of the session (time 0 of the `time` timeline, the session's first
-/// instant), so the replay shows the whole map from the first frame while the camera path
-/// and its photos play over time. Nothing pretends the map grew: that history is not in the
-/// file. For the same reason the replay's "live" points (what the camera saw in the last
-/// 1.5 s) are the whole map during the first 1.5 s.
+/// Planes and anchors are static, emitted at the start of the session (time 0 of the `time`
+/// timeline, the session's first instant). The points replay as they were seen when the file
+/// has `world/points/live` (this app's exports since #4093, and Android's since #4080): the
+/// map grows and the live points come back, as in the original capture; map points no
+/// sighting shows are there from the start. A file without it (an older export, another
+/// writer) only has the final map, shown whole from the first frame — nothing pretends the
+/// map grew when that history is not in the file; the replay's "live" points (what the
+/// camera saw in the last 1.5 s) are then the whole map during the first 1.5 s.
 ///
-/// Also not in the file, so not recovered: photos other than the keyframes' (the export
-/// keeps the ones the replay draws), the seconds the session ran after its last pose or
-/// photo, when each anchor was placed, the lens' original resolution (the `Pinhole` is in
-/// photo pixels; its proportions are exact) and plane photos beyond the writer's 512-pixel
-/// texture.
+/// Not in the file, so not recovered: the seconds the session ran after its last pose,
+/// photo or sighting, when each anchor was placed, the lens' original resolution (the
+/// `Pinhole` is in photo pixels; its proportions are exact) and plane photos beyond the
+/// writer's 512-pixel texture.
 ///
 /// Anything malformed — another magic, a compressed stream, a truncated message, an offset
 /// out of range, a component in an unexpected Arrow layout — throws a ``Failure``.
@@ -132,6 +134,13 @@ extension RerunRRDReader {
             var mediaType: String?
         }
 
+        /// One row of `world/points/live`: what the camera saw at `time`.
+        struct Sighting {
+            var time: Int64
+            var order: Int
+            var positions: [Float]
+        }
+
         struct Plane {
             var name: String
             var outline: [SIMD3<Float>]?
@@ -151,6 +160,7 @@ extension RerunRRDReader {
         var title: String?
         var points: [SIMD3<Float>] = []
         var pointColors: [UInt32]?
+        var sightings: [Sighting] = []
         /// Camera rows: time, then whatever of the pose the row carries.
         var poseRows: [(time: Int64, order: Int, position: SIMD3<Float>?, orientation: simd_quatf?)] = []
         var photos: [Photo] = []
@@ -164,11 +174,13 @@ extension RerunRRDReader {
 
         static let planesPrefix = "world/planes/"
         static let anchorsPrefix = "world/anchors/"
+        /// What the camera saw over time, one row per observation (``RerunRRDWriter``).
+        static let livePoints = "world/points/live"
 
         /// Whether a chunk on `entity` carries anything the replay uses; other chunks are
         /// skipped before their columns are decoded.
         static func reads(_ entity: String) -> Bool {
-            ["__properties", "world/points", "world/camera", "world/camera_path"].contains(entity)
+            ["__properties", "world/points", livePoints, "world/camera", "world/camera_path"].contains(entity)
                 || child(of: planesPrefix, entity) != nil || child(of: anchorsPrefix, entity) != nil
         }
 
@@ -193,6 +205,16 @@ extension RerunRRDReader {
                         pointColors = nil
                     }
                     if let colors = try Self.last(chunk.uint32s("Points3D:colors")) { pointColors = colors }
+
+                case Self.livePoints:
+                    let positions = try chunk.floatVectors("Points3D:positions", size: 3)
+                    if let times = chunk.times, let positions {
+                        for row in 0..<chunk.rowCount {
+                            guard let time = times[row], let flat = positions[row], flat.count >= 3 else { continue }
+                            sightings.append(Sighting(time: time, order: order, positions: flat))
+                            order += 1
+                        }
+                    }
 
                 case "world/camera":
                     let translations = try chunk.floatVectors("Transform3D:translation", size: 3)
@@ -295,8 +317,10 @@ extension RerunRRDReader {
             }
 
             // The session starts at 0 on the writer's timeline (seconds since the first event).
-            let start = min(0, (poses.map(\.time) + shots.map(\.time)).min() ?? 0)
-            let end = max(start, (poses.map(\.time) + shots.map(\.time)).max() ?? start)
+            let seen = sightings.sorted { ($0.time, $0.order) < ($1.time, $1.order) }
+            let times = poses.map(\.time) + shots.map(\.time) + seen.map(\.time)
+            let start = min(0, times.min() ?? 0)
+            let end = max(start, times.max() ?? start)
 
             var media = Data()
             var mediaEntries: [(path: String, offset: Int, length: Int)] = []
@@ -306,15 +330,18 @@ extension RerunRRDReader {
             }
 
             var log = ""
-            if !mapPoints.isEmpty {
-                let colors = pointColors.flatMap { $0.count == points.count ? $0 : nil }
+            // With the sightings, the map grows as it was seen and the live points come back; the
+            // static map only colours them, and gives the points no sighting kept at the start.
+            // Without them (an older file, another writer), the whole map is there from the start.
+            let colors = pointColors.flatMap { $0.count == points.count ? $0 : nil }
+            var mapColors = MapColors(points: points, colors: colors)
+            let sightingLines = seen.map { (time: $0.time, line: mapColors.line(time: $0.time, flat: $0.positions)) }
+            let unseen = seen.isEmpty ? mapPoints : mapColors.unseen(mapPoints)
+            if !unseen.isEmpty {
                 var line = "{\"t\":\(start),\"type\":\"point_cloud\",\"entity\":\"world/points\",\"positions\":["
-                line += mapPoints.map { JSONText.vector(points[$0]) }.joined(separator: ",") + "]"
+                line += unseen.map { JSONText.vector(points[$0]) }.joined(separator: ",") + "]"
                 if let colors {
-                    line += ",\"colors\":[" + mapPoints.map { i in
-                        let c = colors[i]
-                        return "[\(c >> 24),\(c >> 16 & 0xFF),\(c >> 8 & 0xFF)]"
-                    }.joined(separator: ",") + "]"
+                    line += ",\"colors\":[" + unseen.map { MapColors.rgb(colors[$0]) }.joined(separator: ",") + "]"
                 }
                 log += line + "}\n"
             }
@@ -337,17 +364,25 @@ extension RerunRRDReader {
                 log += ",\"quaternion\":\(JSONText.quaternion(anchor.pose.orientation))}\n"
             }
 
-            // Poses and photos in time order; at one instant the pose first, like the recorder.
+            // Poses, point sightings and photos in time order; at one instant the pose first and
+            // the photo last, like the recorder.
             var photoMedia: [(path: String, bytes: Data)] = []
             var i = 0
             var j = 0
-            while i < poses.count || j < shots.count {
-                if j >= shots.count || (i < poses.count && poses[i].time <= shots[j].time) {
+            var k = 0
+            while i < poses.count || j < shots.count || k < sightingLines.count {
+                let next = min(i < poses.count ? poses[i].time : .max,
+                               j < shots.count ? shots[j].time : .max,
+                               k < sightingLines.count ? sightingLines[k].time : .max)
+                if i < poses.count, poses[i].time == next {
                     let pose = poses[i]
                     log += "{\"t\":\(pose.time),\"type\":\"camera_pose\",\"entity\":\"world/camera\""
                     log += ",\"translation\":\(JSONText.vector(pose.position))"
                     log += ",\"quaternion\":\(JSONText.quaternion(pose.orientation))}\n"
                     i += 1
+                } else if k < sightingLines.count, sightingLines[k].time == next {
+                    log += sightingLines[k].line + "\n"
+                    k += 1
                 } else {
                     let shot = shots[j]
                     let path = "frames/" + String(format: "%03d", photoMedia.count) + "." + Self.fileExtension(shot.mediaType)
@@ -465,6 +500,51 @@ extension RerunRRDReader {
         static func last<T>(_ rows: [T?]?) -> T? {
             rows?.last { $0 != nil } ?? nil
         }
+    }
+
+    /// The static map's colours by voxel, so a sighting's points take the colour the map gave
+    /// them; it remembers which voxels a sighting has shown.
+    fileprivate struct MapColors {
+        private let points: [SIMD3<Float>]
+        private let colors: [UInt32]?
+        private var byVoxel: [Int64: Int] = [:]
+        private var sighted = Set<Int64>()
+
+        init(points: [SIMD3<Float>], colors: [UInt32]?) {
+            self.points = points
+            self.colors = colors
+            for (i, p) in points.enumerated() where Contents.isFinite(p) {
+                let voxel = RerunTrace.voxelKey(p)
+                if byVoxel[voxel] == nil { byVoxel[voxel] = i }
+            }
+        }
+
+        /// A `point_cloud` line at `time` for `flat` xyz; a point the map has no colour for gets
+        /// none (`[-1,-1,-1]`, read back as no colour).
+        mutating func line(time: Int64, flat: [Float]) -> String {
+            var positions: [String] = []
+            var rgb: [String] = []
+            for i in 0..<(flat.count / 3) {
+                let p = SIMD3(flat[3 * i], flat[3 * i + 1], flat[3 * i + 2])
+                guard Contents.isFinite(p) else { continue }
+                let voxel = RerunTrace.voxelKey(p)
+                sighted.insert(voxel)
+                positions.append(JSONText.vector(p))
+                rgb.append(byVoxel[voxel].flatMap { colors?[$0] }.map(Self.rgb) ?? "[-1,-1,-1]")
+            }
+            var line = "{\"t\":\(time),\"type\":\"point_cloud\",\"entity\":\"world/points\",\"positions\":["
+            line += positions.joined(separator: ",") + "]"
+            if colors != nil { line += ",\"colors\":[" + rgb.joined(separator: ",") + "]" }
+            return line + "}"
+        }
+
+        /// The map points of `indices` no sighting showed.
+        func unseen(_ indices: [Int]) -> [Int] {
+            indices.filter { !sighted.contains(RerunTrace.voxelKey(points[$0])) }
+        }
+
+        /// Rerun's `0xRRGGBBAA` as the session's `[r, g, b]`.
+        static func rgb(_ c: UInt32) -> String { "[\(c >> 24),\(c >> 16 & 0xFF),\(c >> 8 & 0xFF)]" }
     }
 
     /// A plane photo recovered from a `Mesh3D`: the texels as PNG and the texture frame the

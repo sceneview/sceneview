@@ -13,13 +13,16 @@ import simd
 ///
 /// - `world` — Y-up, right-handed (`ViewCoordinates` RUB), static.
 /// - `world/points` — the coloured map (`Points3D`), static.
+/// - `world/points/live` — what the camera saw over time (`Points3D`, one row per point-cloud
+///   observation, amber): the replay rebuilds the growing map and its live points from it.
 /// - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, static) and
-///   each keyframe photo at its time (`EncodedImage`, JPEG or PNG).
+///   each photo at its time (`EncodedImage`, JPEG or PNG): every photo of the session when
+///   the scene has them, else the keyframes'.
 /// - `world/camera_path` — the whole path (`LineStrips3D`), static. Not under
 ///   `world/camera`: a child of a pinhole lives in its 2D image space, and a child of the
 ///   moving camera would move with it.
 /// - `world/planes/<id>` — the outline (`LineStrips3D`) and, when the plane has a photo,
-///   the textured polygon (`Mesh3D`), static.
+///   the textured polygon (`Mesh3D`, RGB texels, or RGBA when some are transparent), static.
 /// - `world/anchors/<id>` — the pose (`Transform3D`) and a small labelled box
 ///   (`Boxes3D`), static.
 enum RerunRRDWriter {
@@ -146,6 +149,7 @@ enum RerunRRDWriter {
                 components.append(.colors("Points3D", [scene.pointColors.map { packedColor($0) }]))
             }
             chunks.append(RerunChunk(entityPath: "/world/points", components: components))
+            if let live = liveChunk(for: scene) { chunks.append(live) }
         }
 
         chunks.append(contentsOf: cameraChunks(for: scene))
@@ -174,10 +178,33 @@ enum RerunRRDWriter {
         return chunks
     }
 
+    /// One row per observation, at its time: the map points it saw. A single amber colour and
+    /// radius per row (Rerun repeats them over the row's points), as the replay draws live points.
+    private static func liveChunk(for scene: RerunExportScene) -> RerunChunk? {
+        let observations = scene.pointObservations.enumerated()
+            .map { order, observation in
+                (time: observation.time, order: order,
+                 points: observation.points.compactMap { scene.points.indices.contains($0) ? scene.points[$0] : nil })
+            }
+            .filter { !$0.points.isEmpty }
+            .sorted { ($0.time, $0.order) < ($1.time, $1.order) }
+        guard !observations.isEmpty else { return nil }
+        return RerunChunk(
+            entityPath: "/world/points/live",
+            times: observations.map { nanoseconds($0.time) },
+            components: [
+                .vectors("Points3D", "positions", "Position3D", observations.map { flatten($0.points) }, size: 3),
+                .floats("Points3D", "radii", "Radius", observations.map { _ in [livePointRadius] }),
+                .colors("Points3D", observations.map { _ in [livePointColor] }),
+            ]
+        )
+    }
+
     private static func cameraChunks(for scene: RerunExportScene) -> [RerunChunk] {
         var chunks: [RerunChunk] = []
         let path = scene.cameraPath.sorted { $0.time < $1.time }
-        let keyframes = scene.keyframes.sorted { $0.time < $1.time }
+        // Every photo when the scene has them, else the keyframes' (#4093).
+        let keyframes = (scene.photos.isEmpty ? scene.keyframes : scene.photos).sorted { $0.time < $1.time }
 
         // Photos, re-encoded to JPEG when Rerun can't decode them (WebP).
         let photos = keyframes.compactMap { keyframe -> (time: Double, photo: RerunImageCodec.Photo)? in
@@ -195,8 +222,8 @@ enum RerunRRDWriter {
             ]))
         }
 
-        // The path's poses plus each keyframe's own pose, so the camera sits exactly where
-        // the photo was taken at that instant (on a tie, the later row — the keyframe — wins).
+        // The path's poses plus each photo's own pose, so the camera sits exactly where the
+        // photo was taken at that instant (on a tie, the later row — the photo's — wins).
         let poses = (path.map { (time: $0.time, rank: 0, pose: $0) }
             + keyframes.map { (time: $0.time, rank: 1, pose: $0.pose) })
             .sorted { ($0.time, $0.rank) < ($1.time, $1.rank) }
@@ -276,8 +303,11 @@ enum RerunRRDWriter {
             .vectors("Mesh3D", "vertex_positions", "Position3D", [flatten(vertices)], size: 3),
             .vectors("Mesh3D", "vertex_texcoords", "Texcoord2D", [texcoords], size: 2),
             .u32Vectors("Mesh3D", "triangle_indices", "TriangleIndices", [triangles], size: 3),
-            .blobs("Mesh3D", "albedo_texture_buffer", "ImageBuffer", [[pixels.rgb]]),
-            .imageFormat("Mesh3D", "albedo_texture_format", width: pixels.width, height: pixels.height),
+            // The alpha is kept: a plane photo's unseen texels are transparent black, and
+            // without it a reopened file draws them as black patches (#4093).
+            .blobs("Mesh3D", "albedo_texture_buffer", "ImageBuffer", [[pixels.data]]),
+            .imageFormat("Mesh3D", "albedo_texture_format", width: pixels.width, height: pixels.height,
+                         rgba: pixels.channels == RerunImageCodec.rgba),
         ]
     }
 
@@ -286,6 +316,10 @@ enum RerunRRDWriter {
     /// `ViewCoordinates` RUB (Right, Up, Back): Y up, right-handed — the ARKit world frame,
     /// and the camera frame (looking down -Z, +Y up).
     static let viewCoordinatesRUB: [UInt8] = [3, 1, 6]
+
+    static let livePointRadius: Float = 0.008
+    /// `warning` (#F59E0B), the replay's live-point colour.
+    static let livePointColor = packedColor(SIMD3(0xF5, 0x9E, 0x0B))
 
     static func nanoseconds(_ seconds: Double) -> Int64 {
         Int64((seconds * 1e9).rounded())
@@ -466,8 +500,9 @@ struct RerunComponentColumn {
                                   child: .fixedSizeList(size: 3, child: .primitive(RerunRRDWriter.flatten(strips.flatMap { $0 })))))
     }
 
-    /// One `ImageFormat` instance: RGB, 8 bits per channel (`pixel_format` null).
-    static func imageFormat(_ archetype: String, _ name: String, width: Int, height: Int) -> Self {
+    /// One `ImageFormat` instance: RGB, or RGBA when `rgba`, 8 bits per channel
+    /// (`pixel_format` null).
+    static func imageFormat(_ archetype: String, _ name: String, width: Int, height: Int, rgba: Bool = false) -> Self {
         let fields: [RerunArrowField] = [
             RerunArrowField(name: "width", type: .uint32, nullable: false),
             RerunArrowField(name: "height", type: .uint32, nullable: false),
@@ -479,7 +514,7 @@ struct RerunComponentColumn {
             .primitive([UInt32(width)]),
             .primitive([UInt32(height)]),
             .allNull(count: 1, byteWidth: 1),
-            .primitive([UInt8(2)]), // ColorModel.RGB
+            .primitive([UInt8(rgba ? 3 : 2)]), // ColorModel.RGBA or ColorModel.RGB
             .primitive([UInt8(6)]), // ChannelDatatype.U8
         ])
         return Self(archetype, name, "ImageFormat", item: .item(.structure(fields), nullable: true),
@@ -532,8 +567,12 @@ struct RerunTuidSequence {
 
 // MARK: - Images
 
-/// ImageIO helpers: photos Rerun can decode, and raw RGB texels for plane textures.
+/// ImageIO helpers: photos Rerun can decode, and raw texels for plane textures.
 enum RerunImageCodec {
+    /// Channels of RGB and RGBA ``Pixels``.
+    static let rgb = 3
+    static let rgba = 4
+
     struct Photo {
         var data: Data
         var mediaType: String
@@ -544,8 +583,10 @@ enum RerunImageCodec {
     struct Pixels {
         var width: Int
         var height: Int
-        /// Row-major RGB, 8 bits per channel, top row first.
-        var rgb: Data
+        /// Row-major, 8 bits per channel, top row first: RGB, or RGBA (straight alpha) when
+        /// ``channels`` is 4.
+        var data: Data
+        var channels: Int
     }
 
     /// JPEG and PNG pass through; anything else ImageIO reads (WebP, HEIC) becomes JPEG,
@@ -577,36 +618,61 @@ enum RerunImageCodec {
         return output as Data
     }
 
-    /// Decodes `data`, downscaled so its longer side is at most `maxDimension`.
+    /// Decodes `data`, downscaled so its longer side is at most `maxDimension`: RGB, or RGBA
+    /// when one of its texels is not opaque. An image already small enough is not resampled.
     static func rgbPixels(from data: Data, maxDimension: Int) -> Pixels? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxDimension,
-        ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
-              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0
+        else { return nil }
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let upright = (properties?[kCGImagePropertyOrientation] as? Int).map { $0 == 1 } ?? true
+        let full = upright ? CGImageSourceCreateImageAtIndex(source, 0, nil) : nil
+        let image: CGImage
+        if let full, max(full.width, full.height) <= maxDimension {
+            image = full
+        } else {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxDimension,
+            ]
+            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+            image = thumbnail
+        }
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
         let (width, height) = (image.width, image.height)
+        let hasAlpha: Bool
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast: hasAlpha = false
+        default: hasAlpha = true
+        }
+        // CoreGraphics only draws 8-bit RGBA premultiplied; straight alpha is recovered below.
         var rgba = [UInt8](repeating: 0, count: width * height * 4)
         let drawn = rgba.withUnsafeMutableBytes { buffer -> Bool in
             guard let context = CGContext(
                 data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
                 bytesPerRow: width * 4, space: space,
-                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                bitmapInfo: (hasAlpha ? CGImageAlphaInfo.premultipliedLast : .noneSkipLast).rawValue
             ) else { return false }
+            context.setBlendMode(.copy)
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
             return true
         }
         guard drawn else { return nil }
-        var rgb = Data(count: width * height * 3)
-        rgb.withUnsafeMutableBytes { (out: UnsafeMutableRawBufferPointer) in
-            for pixel in 0..<(width * height) {
-                out[pixel * 3] = rgba[pixel * 4]
-                out[pixel * 3 + 1] = rgba[pixel * 4 + 1]
-                out[pixel * 3 + 2] = rgba[pixel * 4 + 2]
+        let count = width * height
+        let transparent = hasAlpha && (0..<count).contains { rgba[$0 * 4 + 3] != 255 }
+        let channels = transparent ? Self.rgba : Self.rgb
+        var texels = Data(count: count * channels)
+        texels.withUnsafeMutableBytes { (out: UnsafeMutableRawBufferPointer) in
+            for pixel in 0..<count {
+                let alpha = transparent ? Int(rgba[pixel * 4 + 3]) : 255
+                for channel in 0..<3 {
+                    let value = Int(rgba[pixel * 4 + channel])
+                    out[pixel * channels + channel] = alpha == 255 ? UInt8(value)
+                        : alpha == 0 ? 0 : UInt8(min(255, (value * 255 + alpha / 2) / alpha))
+                }
+                if transparent { out[pixel * channels + 3] = UInt8(alpha) }
             }
         }
-        return Pixels(width: width, height: height, rgb: rgb)
+        return Pixels(width: width, height: height, data: texels, channels: channels)
     }
 }

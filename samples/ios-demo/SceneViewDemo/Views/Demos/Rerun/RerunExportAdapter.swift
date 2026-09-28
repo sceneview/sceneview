@@ -42,9 +42,9 @@ enum RerunExportAdapter {
     /// The model the demo places on every anchor, as the bundled resource name.
     static let anchorModel = "shiba"
 
-    /// The whole session as the exporters see it: every map point, the full camera path, the
-    /// keyframe photos the replay draws in their frustums, the planes as they ended, and the
-    /// placed models.
+    /// The whole session as the exporters see it: every map point and what the camera saw of
+    /// them over time, the full camera path, every photo (and which of them the replay draws in
+    /// its frustums), the planes as they ended, and the placed models.
     static func scene(for pack: RerunPack) -> RerunExportScene {
         let trace = pack.trace
         let whole = trace.frameAt(trace.duration)
@@ -71,6 +71,7 @@ enum RerunExportAdapter {
             keyframes.append(.init(time: time, imagePath: image, pose: sample))
             images[image] = bytes
         }
+        let photos = allPhotos(of: pack, images: &images)
 
         let planes = whole.planes.map { plane in
             let texture = pack.manifest.texture(for: plane.id).flatMap { texture -> RerunExportScene.PlaneTexture? in
@@ -96,8 +97,39 @@ enum RerunExportAdapter {
             keyframes: keyframes,
             images: images,
             planes: planes,
-            anchors: anchors
+            anchors: anchors,
+            photos: photos,
+            pointObservations: observations(of: trace)
         )
+    }
+
+    /// Every photo, not only the keyframes', so the camera view of a reopened `.rrd` plays the
+    /// whole session back (#4093). Adds each photo's bytes to `images`.
+    private static func allPhotos(of pack: RerunPack, images: inout [String: Data]) -> [RerunExportScene.Keyframe] {
+        let trace = pack.trace
+        return zip(trace.imageTimes, trace.imagePaths).compactMap { time, image in
+            guard let bytes = images[image] ?? pack.bytes(for: image), let pose = pose(of: trace, at: time) else {
+                return nil
+            }
+            images[image] = bytes
+            let seconds = Double(time)
+            return .init(time: seconds, imagePath: image,
+                         pose: .init(time: seconds, position: pose.position, orientation: pose.rotation))
+        }
+    }
+
+    /// What the camera saw of the map over time: each non-empty observation, with its time.
+    private static func observations(of trace: RerunTrace) -> [RerunExportScene.PointObservation] {
+        (0..<trace.observationCount).compactMap { i in
+            let points = trace.observationPoints(i)
+            return points.isEmpty ? nil : .init(time: Double(trace.observationTime(i)), points: points)
+        }
+    }
+
+    /// The camera's kept pose in force at `time`: the latest at or before it, else the first.
+    private static func pose(of trace: RerunTrace, at time: Float) -> RerunPose? {
+        guard !trace.poses.isEmpty else { return nil }
+        return trace.poses[max(RerunTrace.upperBound(trace.poseTimes, time) - 1, 0)]
     }
 
     /// `"Recorded room"` → `recorded-room`.

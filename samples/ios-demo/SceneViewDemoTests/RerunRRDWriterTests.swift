@@ -107,6 +107,43 @@ final class RerunRRDWriterTests: XCTestCase {
         XCTAssertFalse(chunks.flatMap(\.fieldNames).contains("Mesh3D:vertex_positions"))
     }
 
+    /// The live points are one timed row per non-empty observation; every photo, not only
+    /// the keyframes', gets its `EncodedImage` row and its own pose row (#4093).
+    func testLivePointsAndEveryPhotoAreTimedRows() throws {
+        var full = scene()
+        full.pointObservations = [.init(time: 0.2, points: [0, 1]), .init(time: 0.4, points: []), .init(time: 0.7, points: [2])]
+        let photo = { (t: Double) in
+            RerunExportScene.Keyframe(time: t, imagePath: "frames/000.jpg", pose: full.keyframes[0].pose)
+        }
+        full.photos = [photo(0.25), photo(0.5), photo(0.75)]
+        let chunks = try chunks(of: full)
+        let live = try XCTUnwrap(chunks.first { $0.entityPath == "/world/points/live" })
+        XCTAssertFalse(live.isStatic)
+        XCTAssertEqual(live.rowCount, 2, "the empty observation is dropped")
+        XCTAssertTrue(Set(live.fieldNames).isSuperset(of: ["time", "Points3D:positions", "Points3D:colors", "Points3D:radii"]))
+        let images = try XCTUnwrap(chunks.first { $0.fieldNames.contains("EncodedImage:blob") })
+        XCTAssertEqual(images.rowCount, 3)
+        let poses = try XCTUnwrap(chunks.first { $0.fieldNames.contains("Transform3D:translation") && !$0.isStatic })
+        XCTAssertEqual(poses.rowCount, 6, "three path samples and one pose per photo")
+    }
+
+    func testTransparentTexelsDecodeAsRGBA() throws {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 4, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        let output = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(output as CFMutableData, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let pixels = try XCTUnwrap(RerunImageCodec.rgbPixels(from: output as Data, maxDimension: 512))
+        XCTAssertEqual(pixels.channels, RerunImageCodec.rgba)
+        XCTAssertEqual([UInt8](pixels.data), [255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+                                              255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0])
+    }
+
     func testMismatchedPointColoursThrow() {
         var broken = scene()
         broken.pointColors.removeLast()
@@ -140,7 +177,8 @@ final class RerunRRDWriterTests: XCTestCase {
         XCTAssertEqual(photo.data, png, "PNG passes through")
         XCTAssertEqual([photo.width, photo.height], [8, 6])
         let pixels = try XCTUnwrap(RerunImageCodec.rgbPixels(from: png, maxDimension: 4))
-        XCTAssertEqual(pixels.rgb.count, pixels.width * pixels.height * 3)
+        XCTAssertEqual(pixels.channels, RerunImageCodec.rgb, "opaque: RGB")
+        XCTAssertEqual(pixels.data.count, pixels.width * pixels.height * 3)
         XCTAssertEqual(max(pixels.width, pixels.height), 4)
     }
 
