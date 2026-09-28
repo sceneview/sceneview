@@ -2,10 +2,11 @@
 // @title       AR Placement
 // @subtitle    One object on the first usable surface
 // @category    ar
+// @section     placeAR
 // @available   true
 // @icon        arkit
 // @iosOnly     true
-// @order       6
+// @order       10
 // @tags        ar,plane,automatic-placement,anchor,gltf,model
 import SwiftUI
 

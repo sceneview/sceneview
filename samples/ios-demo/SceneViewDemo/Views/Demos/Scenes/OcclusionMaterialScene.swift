@@ -2,9 +2,10 @@
 // @title       Occlusion Material
 // @subtitle    Invisible geometry that hides objects behind it
 // @category    advanced
+// @section     create
 // @available   true
 // @icon        circle.lefthalf.filled
-// @order       69
+// @order       23
 import SwiftUI
 
 enum OcclusionMaterialScene: DemoScene {

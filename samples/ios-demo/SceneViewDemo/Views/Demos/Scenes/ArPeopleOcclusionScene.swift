@@ -2,10 +2,11 @@
 // @title       People Occlusion
 // @subtitle    Virtual objects hide behind real people
 // @category    ar
+// @section     understand
 // @available   true
 // @icon        person.fill.viewfinder
 // @iosOnly     true
-// @order       33
+// @order       42
 // @tags        ar,occlusion,people,segmentation,depth
 import SwiftUI
 

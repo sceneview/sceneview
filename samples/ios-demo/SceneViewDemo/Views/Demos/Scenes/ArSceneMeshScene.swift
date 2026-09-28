@@ -2,10 +2,11 @@
 // @title       Scene Mesh
 // @subtitle    LiDAR real-time polygonal mesh reconstruction
 // @category    ar
+// @section     understand
 // @available   true
 // @icon        grid
 // @iosOnly     true
-// @order       44
+// @order       45
 // @tags        ar,geospatial,streetscape,mesh,terrain,building
 import SwiftUI
 

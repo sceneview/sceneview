@@ -2,9 +2,10 @@
 // @title       Lines & Paths
 // @subtitle    Polylines, helix, grids, and circles
 // @category    content
+// @section     create
 // @available   true
 // @icon        point.topleft.down.to.point.bottomright.curvepath
-// @order       12
+// @order       32
 // @tags        line,polyline,path,helix,grid,circle
 import SwiftUI
 

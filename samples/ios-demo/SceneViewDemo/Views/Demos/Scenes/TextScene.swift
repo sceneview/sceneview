@@ -2,9 +2,10 @@
 // @title       3D Text
 // @subtitle    Extruded text with styles and sizes
 // @category    content
+// @section     create
 // @available   true
 // @icon        textformat
-// @order       11
+// @order       33
 // @tags        2d,text,image,video,billboard,quad,viewnode
 import SwiftUI
 

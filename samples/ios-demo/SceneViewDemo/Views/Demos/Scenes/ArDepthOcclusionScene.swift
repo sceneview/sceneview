@@ -2,10 +2,11 @@
 // @title       Depth Occlusion
 // @subtitle    Real-world depth masks virtual objects
 // @category    ar
+// @section     understand
 // @available   true
 // @icon        square.3.layers.3d.down.right
 // @iosOnly     true
-// @order       22
+// @order       41
 // @tags        ar,depth,occlusion,arcore
 import SwiftUI
 

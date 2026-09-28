@@ -2,11 +2,12 @@
 // @title       Pose Placement
 // @subtitle    Free pose positioning
 // @category    ar
+// @section     placeAR
 // @available   true
 // @status      working
 // @icon        move.3d
 // @iosOnly     true
-// @order       36
+// @order       13
 // @tags        ar,pose,transform,gesture,anchor
 import SwiftUI
 

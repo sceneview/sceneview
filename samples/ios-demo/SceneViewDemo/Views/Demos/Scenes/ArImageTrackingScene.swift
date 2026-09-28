@@ -2,10 +2,11 @@
 // @title       Image Tracking
 // @subtitle    Detect and track reference images
 // @category    ar
+// @section     understand
 // @available   true
 // @icon        viewfinder.circle.fill
 // @iosOnly     true
-// @order       24
+// @order       39
 // @tags        ar,image,tracking,augmented-image,marker
 import SwiftUI
 

@@ -4,10 +4,13 @@ import SceneViewSwift
 /// The Showcase tab — the iOS twin of Android's `HomeScreen.kt`.
 ///
 /// One scroll view, no nested scroll, no background scene: a 56 pt header
-/// (cube mark + wordmark + search), the `HomeHero`, the category chip row,
-/// then every demo as a `DemoMediaCard` in flat editorial `DemoItem.order`,
+/// (cube mark + wordmark + search), the `HomeHero`, the "Featured" shelf
+/// (`HomeCatalogue.featuredIds`), the section chip row, then every demo as a
+/// `DemoMediaCard` under its `DemoSection` header in editorial `DemoItem.order`,
 /// closed by a `BrowseOnlineModelsCard` that pushes the online gallery
-/// (`ExploreTab`, embedded) onto this stack.
+/// (`ExploreTab`, embedded) onto this stack. Layout and order mirror Android's
+/// `HomeScreen.kt` (#3907); demos in `HomeCatalogue.hiddenFromHome` keep
+/// their deep links but are not listed here.
 ///
 /// The header is a pinned overlay drawn over the scroll view: transparent
 /// while the hero is on screen, `surface` at 94 % light / 100 % dark plus a bottom hairline once
@@ -27,13 +30,17 @@ struct ShowcaseTab: View {
     var isActive: Bool = true
 
     @State private var scenes: [DemoItem] = []
-    @State private var selectedCategory: DemoCategory?
+    @State private var selectedSection: DemoSection?
     @State private var query = ""
     @State private var searchOpen = false
     @State private var scrolled = false
     @State private var fullScreenScene: DemoItem?
     @State private var comingSoonScene: DemoItem?
     @State private var showExplore = false
+    /// The `matchedTransitionSource` id of whatever opened the current demo. A
+    /// featured demo is on screen twice (shelf and section), so the zoom has to
+    /// know which of the two cards it grows out of.
+    @State private var transitionSourceId = ""
 
     /// Source namespace for the iOS 18 zoom presentation transition: the tapped
     /// card (or the hero) morphs into the full-screen demo instead of the demo
@@ -64,11 +71,37 @@ struct ShowcaseTab: View {
     }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
+    /// Every demo the home lists — the catalogue minus the demos parked in
+    /// `HomeCatalogue.hiddenFromHome`.
+    private var homeScenes: [DemoItem] {
+        scenes.filter { HomeCatalogue.isOnHome($0.sceneId) }
+    }
+
     private var visible: [DemoItem] {
         let byId = Dictionary(uniqueKeysWithValues: scenes.map { ($0.sceneId, $0) })
-        return filterDemos(scenes.map(HomeSearchEntry.init), category: selectedCategory, query: query)
+        return filterDemos(homeScenes.map(HomeSearchEntry.init), section: selectedSection, query: query)
             .compactMap { byId[$0.id] }
     }
+
+    /// The Featured shelf, in priority order. Hidden while searching and shown
+    /// whatever chip is selected — Android parity.
+    private var featured: [DemoItem] {
+        let byId = Dictionary(uniqueKeysWithValues: homeScenes.map { ($0.sceneId, $0) })
+        return HomeCatalogue.featuredIds.compactMap { byId[$0] }
+    }
+
+    /// `demos` cut into sections, in `DemoSection` order. Each card carries its
+    /// reading-order index across the whole list, for the entrance cascade.
+    private func sections(of demos: [DemoItem]) -> [HomeSectionGroup] {
+        let indexed = Array(demos.enumerated())
+        return DemoSection.allCases.compactMap { section in
+            let cards = indexed.filter { $0.element.section == section }
+                .map { HomeSectionGroup.Card(index: $0.offset, demo: $0.element) }
+            return cards.isEmpty ? nil : HomeSectionGroup(section: section, cards: cards)
+        }
+    }
+
+    private var showFeatured: Bool { !searching && !featured.isEmpty }
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: expanded ? SceneViewTokens.Home.gridMinCellExpanded
@@ -98,10 +131,29 @@ struct ShowcaseTab: View {
                         .staggeredReveal(position: 0, revealed: catalogueRevealed)
                     }
 
-                    CategoryChipRow(selected: $selectedCategory)
+                    if showFeatured {
+                        HomeSectionHeader(title: "Featured")
+                            .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
+                            .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
+                            .accessibilityIdentifier("home-section-featured")
+                            .staggeredReveal(position: 1, revealed: catalogueRevealed)
+                        LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
+                            ForEach(Array(featured.enumerated()), id: \.element.sceneId) { index, demo in
+                                let sourceId = "featured-\(demo.sceneId)"
+                                DemoMediaCard(demo: demo) { open(demo, from: sourceId) }
+                                    #if os(iOS)
+                                    .matchedTransitionSource(id: sourceId, in: cardNamespace)
+                                    #endif
+                                    .accessibilityIdentifier("home-featured-\(demo.sceneId)")
+                                    .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
+                            }
+                        }
+                    }
+
+                    CategoryChipRow(selected: $selectedSection)
                         .padding(.top, searching ? 0 : SceneViewTokens.Home.chipRowTopGap)
                         .padding(.bottom, searching ? SceneViewTokens.Space.sm : SceneViewTokens.Home.gridTopGap)
-                        .staggeredReveal(position: 1, revealed: catalogueRevealed)
+                        .staggeredReveal(position: chipRevealPosition, revealed: catalogueRevealed)
 
                     // While a query is live the count is the only feedback that
                     // the list under it is the answer to what was typed. It
@@ -123,22 +175,17 @@ struct ShowcaseTab: View {
                         EmptySearchState(query: query) { query = "" }
                     }
 
-                    LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                        ForEach(Array(visible.enumerated()), id: \.element.sceneId) { index, demo in
-                            DemoMediaCard(demo: demo) { open(demo) }
-                                #if os(iOS)
-                                .matchedTransitionSource(id: demo.sceneId, in: cardNamespace)
-                                #endif
-                                // Hero and chip row take the first two slots of
-                                // the cascade; the grid follows in reading order.
-                                .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
-                        }
-                        if !searching {
+                    sectionedGrid(visible)
+                        .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
+
+                    if !searching {
+                        LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
                             BrowseOnlineModelsCard { showExplore = true }
-                                .staggeredReveal(position: visible.count + 2, revealed: catalogueRevealed)
+                                .staggeredReveal(position: chipRevealPosition + 1 + visible.count,
+                                                 revealed: catalogueRevealed)
                         }
+                        .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
                     }
-                    .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
                 }
                 .animation(SceneViewTokens.Spring.fade, value: searching)
                 .padding(.horizontal, SceneViewTokens.Home.contentPadding)
@@ -192,8 +239,9 @@ struct ShowcaseTab: View {
                     // to the card the thumb had just hit (#3599). The source is
                     // the `DemoMediaCard` — or the `HomeHero` when the demo is
                     // opened from it, which is why both carry a
-                    // `matchedTransitionSource` keyed on `sceneId`.
-                    .navigationTransition(.zoom(sourceID: scene.sceneId, in: cardNamespace))
+                    // `matchedTransitionSource` (`transitionSourceId`: the
+                    // scene id, or `featured-<id>` for a Featured shelf card).
+                    .navigationTransition(.zoom(sourceID: transitionSourceId, in: cardNamespace))
                     // The zoom transition brings the system's interactive
                     // dismissal with it: a pinch-in or a downward drag anywhere
                     // on the cover shrinks it back toward its card. On a 3D
@@ -216,12 +264,49 @@ struct ShowcaseTab: View {
     /// The demo the hero opens.
     static let heroDemoId = "model-viewer"
 
-    private func open(sceneId: String) {
-        guard let scene = scenes.first(where: { $0.sceneId == sceneId }) else { return }
-        open(scene)
+    /// Every visible demo under its section header. Headers are drawn only
+    /// when more than one section is on screen: with a single chip selected,
+    /// the chip already names it (DESIGN.md, section headers).
+    @ViewBuilder
+    private func sectionedGrid(_ demos: [DemoItem]) -> some View {
+        let groups = sections(of: demos)
+        let showSections = groups.count > 1
+        let firstCardSlot = chipRevealPosition + 1
+        ForEach(Array(groups.enumerated()), id: \.element.section) { groupIndex, group in
+            if showSections {
+                HomeSectionHeader(title: group.section.title)
+                    // The chip row already leaves `gridTopGap` under it.
+                    .padding(.top, groupIndex == 0
+                             ? SceneViewTokens.Home.sectionHeaderTopGap - SceneViewTokens.Home.gridTopGap
+                             : SceneViewTokens.Home.sectionHeaderTopGap)
+                    .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
+                    .accessibilityIdentifier("home-section-\(group.section.rawValue)")
+            }
+            LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
+                ForEach(group.cards, id: \.demo.sceneId) { card in
+                    DemoMediaCard(demo: card.demo) { open(card.demo, from: card.demo.sceneId) }
+                        #if os(iOS)
+                        .matchedTransitionSource(id: card.demo.sceneId, in: cardNamespace)
+                        #endif
+                        .staggeredReveal(position: firstCardSlot + card.index, revealed: catalogueRevealed)
+                }
+            }
+        }
     }
 
-    private func open(_ scene: DemoItem) {
+    /// Reveal slot of the chip row: after the hero (0) and, when shown, the
+    /// Featured header and its cards.
+    private var chipRevealPosition: Int {
+        showFeatured ? featured.count + 2 : 1
+    }
+
+    private func open(sceneId: String) {
+        guard let scene = scenes.first(where: { $0.sceneId == sceneId }) else { return }
+        open(scene, from: sceneId)
+    }
+
+    private func open(_ scene: DemoItem, from sourceId: String) {
+        transitionSourceId = sourceId
         #if os(iOS)
         SceneViewHaptic.shared.light()
         #endif
@@ -431,13 +516,41 @@ private struct SearchRow: View {
     }
 }
 
-// MARK: - Category chips
+// MARK: - Section headers
 
-/// `nil` = All. Order is the chip order.
-private let chipCategories: [DemoCategory?] = [nil, .basics3D, .lighting, .content, .interaction, .advanced, .ar]
+/// One home section and its cards; `index` is the card's position across the
+/// whole visible list, which drives the entrance cascade.
+private struct HomeSectionGroup {
+    struct Card {
+        let index: Int
+        let demo: DemoItem
+    }
+
+    let section: DemoSection
+    let cards: [Card]
+}
+
+/// A catalogue section header (DESIGN.md): `on-surface`, semibold, no colour
+/// of its own — the iOS twin of Android's `SectionHeader`.
+private struct HomeSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(SceneViewTokens.TypeScale.card)
+            .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+// MARK: - Section chips
+
+/// `nil` = All, then Android's `DEMO_CATEGORIES` order. Order is the chip order.
+private let chipSections: [DemoSection?] = [nil] + DemoSection.allCases.map { Optional($0) }
 
 private struct CategoryChipRow: View {
-    @Binding var selected: DemoCategory?
+    @Binding var selected: DemoSection?
 
     var body: some View {
         // Bleeds to the screen edges (cancelling the page inset) and carries the
@@ -445,12 +558,12 @@ private struct CategoryChipRow: View {
         // stops at the same margin as the cards.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: SceneViewTokens.Home.chipGap) {
-                ForEach(chipCategories, id: \.self) { category in
-                    CategoryChip(label: category?.shortLabel ?? "All", selected: category == selected) {
+                ForEach(chipSections, id: \.self) { section in
+                    CategoryChip(label: section?.chipLabel ?? "All", selected: section == selected) {
                         #if os(iOS)
                         SceneViewHaptic.shared.selection()
                         #endif
-                        selected = category
+                        selected = section
                     }
                 }
             }

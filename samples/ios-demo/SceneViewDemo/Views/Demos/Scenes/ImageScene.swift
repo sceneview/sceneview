@@ -2,9 +2,10 @@
 // @title       Image Planes
 // @subtitle    Image planes in 3D space
 // @category    content
+// @section     create
 // @available   true
 // @icon        photo.fill
-// @order       65
+// @order       35
 import SwiftUI
 
 enum ImageScene: DemoScene {

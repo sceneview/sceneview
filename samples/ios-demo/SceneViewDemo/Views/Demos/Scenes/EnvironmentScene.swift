@@ -2,9 +2,10 @@
 // @title       HDR Environment
 // @subtitle    Switch between bundled HDR environments
 // @category    lighting
+// @section     create
 // @available   true
 // @icon        sun.haze.fill
-// @order       62
+// @order       26
 import SwiftUI
 
 enum EnvironmentScene: DemoScene {

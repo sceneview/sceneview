@@ -2,9 +2,10 @@
 // @title       Camera Controls
 // @subtitle    Orbit, pan, look-around, and native Apple modes
 // @category    interaction
+// @section     view3d
 // @available   true
 // @icon        camera.fill
-// @order       8
+// @order       6
 // @tags        camera,orbit,gesture,pan,zoom,manipulator,edit
 import SwiftUI
 

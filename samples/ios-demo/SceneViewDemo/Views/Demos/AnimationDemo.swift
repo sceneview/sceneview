@@ -148,6 +148,13 @@ struct AnimationDemo: View {
                 guard let loadedNode else { return }
                 loadedNode.entity.position = .init(x: 0, y: 0, z: -2)
                 root.addChild(loadedNode.entity)
+                // The model only joins the scene here, when `.contentID` swaps
+                // it in — after `loadSelectedSubject` and the playback task
+                // have already run. RealityKit ignores `playAnimation` on an
+                // entity that is not in a scene, so the character stood in its
+                // rest pose on first open until a control was touched (#3907).
+                // Start playback once it is attached.
+                Task { @MainActor in await startPlaybackWhenAttached(loadedNode) }
             }
             .cameraControls(.orbit)
             .autoRotate(speed: 0.3)
@@ -327,16 +334,32 @@ struct AnimationDemo: View {
             }
             _ = node.scaleToUnits(subject.scale)
             _ = node.centerOrigin()
+            // Playback starts from the scene's content closure, once the
+            // entity is attached (see `startPlaybackWhenAttached`).
             loadedNode = node
-            applyPlaybackState()
         } catch {
             loadError = error.localizedDescription
         }
     }
 
+    /// Starts playback on `node` as soon as it is part of a RealityKit scene.
+    /// The content closure attaches it to a root that may itself join the
+    /// scene a frame later, so this waits a few frames rather than assuming.
+    @MainActor
+    private func startPlaybackWhenAttached(_ node: ModelNode) async {
+        for _ in 0..<30 where node.entity.scene == nil {
+            try? await Task.sleep(for: .milliseconds(16))
+            guard !Task.isCancelled else { return }
+        }
+        // A newer subject may have replaced this one while we waited.
+        guard node.entity === loadedNode?.entity else { return }
+        applyPlaybackState()
+    }
+
     @MainActor
     private func applyPlaybackState() {
-        guard let loadedNode else { return }
+        // Not in a scene yet: `startPlaybackWhenAttached` will call back.
+        guard let loadedNode, loadedNode.entity.scene != nil else { return }
         // Stop everything first so the new (loop, speed) combo wins. The
         // `playAllAnimations` API drops every previously-tracked controller
         // implicitly via `entity.playAnimation`, but `stopAllAnimations` is

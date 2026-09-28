@@ -2,11 +2,12 @@
 // @title       AR Placement Reticle Preview
 // @subtitle    Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow
 // @category    ar
+// @section     placeAR
 // @available   true
 // @icon        scope
 // @iosOnly     true
 // @status      working
-// @order       20
+// @order       16
 // @tags        ar,reticle,placement,shadow,preview,no-camera
 import SwiftUI
 import RealityKit

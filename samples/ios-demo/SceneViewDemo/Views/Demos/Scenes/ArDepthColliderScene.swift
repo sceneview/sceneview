@@ -2,11 +2,12 @@
 // @title       Depth Collider
 // @subtitle    Virtual balls bounce off the real floor / table (depth-driven physics)
 // @category    ar
+// @section     understand
 // @available   true
 // @icon        circle.grid.cross.fill
 // @iosOnly     true
 // @status      knownIssue
-// @order       26
+// @order       43
 // @tags        ar,depth,physics,collision,rigid-body
 import SwiftUI
 

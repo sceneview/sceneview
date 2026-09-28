@@ -2,9 +2,10 @@
 // @title       Reflection Probes
 // @subtitle    Local cubemap reflections
 // @category    advanced
+// @section     create
 // @available   true
 // @icon        circle.lefthalf.filled
-// @order       71
+// @order       28
 import SwiftUI
 
 enum ReflectionProbesScene: DemoScene {

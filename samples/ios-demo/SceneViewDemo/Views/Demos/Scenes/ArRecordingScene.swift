@@ -2,10 +2,11 @@
 // @title       AR Recording
 // @subtitle    Capture the AR session as a screen video (record-only on iOS)
 // @category    ar
+// @section     devTools
 // @available   true
 // @icon        record.circle
 // @iosOnly     true
-// @order       48
+// @order       19
 // @tags        ar,recording,playback,session,mp4,replay
 import SwiftUI
 

@@ -9,6 +9,8 @@
 #   // @subtitle    <One-line description>
 #   // @icon        <SF Symbol name>
 #   // @category    <category>     one of: basics3D|lighting|content|interaction|advanced|ar
+#   // @section     <section>      home section (#3907), one of: view3d|placeAR|devTools|create|understand
+#                                  — mirrors Android `DemoEntry.category` / `DEMO_CATEGORIES`
 #   // @available   <true|false>   false → "Coming soon" card in SamplesTab
 #   // @iosOnly     <true|false>   (optional, default false) wraps item in #if os(iOS)
 #   // @status      <value>        (optional) one of: working|knownIssue|comingSoon|inReview
@@ -54,7 +56,7 @@
 #   bash samples/ios-demo/scripts/collate-ios-demos.sh --check   # exit non-zero if stale
 #
 # Adding a new demo:
-#   1. Create Views/Demos/Scenes/<Name>Scene.swift with the six directives.
+#   1. Create Views/Demos/Scenes/<Name>Scene.swift with the seven required directives.
 #   2. Re-run this script (Xcode does it automatically on next build).
 #   3. No other file needs editing.
 #
@@ -90,6 +92,7 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     subtitle=$(grep -m1 '// @subtitle' "$f" | sed -E 's|.*// @subtitle[[:space:]]+||; s/[[:space:]]+$//')
     icon=$(grep -m1 '// @icon' "$f" | sed -E 's|.*// @icon[[:space:]]+||; s/[[:space:]]+$//')
     category=$(grep -m1 '// @category' "$f" | sed -E 's|.*// @category[[:space:]]+||; s/[[:space:]]+$//')
+    section=$(grep -m1 '// @section' "$f" | sed -E 's|.*// @section[[:space:]]+||; s/[[:space:]]+$//')
     available=$(grep -m1 '// @available' "$f" | sed -E 's|.*// @available[[:space:]]+||; s/[[:space:]]+$//')
     ios_only=$(grep -m1 '// @iosOnly' "$f" 2>/dev/null | sed -E 's|.*// @iosOnly[[:space:]]+||; s/[[:space:]]+$//' || echo "false")
     status=$(grep -m1 '// @status' "$f" 2>/dev/null | sed -E 's|.*// @status[[:space:]]+||; s/[[:space:]]+$//' || echo "")
@@ -104,7 +107,7 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     tags=$(grep -m1 '// @tags' "$f" 2>/dev/null | sed -E 's|.*// @tags[[:space:]]+||; s/[[:space:]]+$//; s/[[:space:]]*,[[:space:]]*/,/g' || echo "")
     [ -z "$tags" ] && tags="-"
 
-    for field in scene_id title subtitle icon category available; do
+    for field in scene_id title subtitle icon category section available; do
         if [ -z "${!field}" ]; then
             echo "Error: $base is missing // @$field directive." >&2
             exit 1
@@ -119,6 +122,11 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     case "$category" in
         basics3D|lighting|content|interaction|advanced|ar) ;;
         *) echo "Error: $base @category '$category' is not one of: basics3D lighting content interaction advanced ar." >&2; exit 1 ;;
+    esac
+
+    case "$section" in
+        view3d|placeAR|devTools|create|understand) ;;
+        *) echo "Error: $base @section '$section' is not one of: view3d placeAR devTools create understand." >&2; exit 1 ;;
     esac
 
     # ios_only defaults to false when missing
@@ -187,8 +195,8 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     # decoded back to "" at the one place that reads it (step 4 below).
     android_only_reason_field="$android_only_reason"
     [ -z "$android_only_reason_field" ] && android_only_reason_field="-"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason_field" "$order" "$tags" >> "$TMP_META"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason_field" "$order" "$tags" "$section" >> "$TMP_META"
     scene_count=$((scene_count + 1))
 done
 
@@ -240,7 +248,7 @@ status_enum() {
 TMP_FULL="$(mktemp)"
 trap 'rm -f "$TMP_META" "$SORTED_META" "$TMP_FULL"' EXIT
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section; do
     # Find the *Scene.swift file whose @sceneId matches.
     type_name=""
     for f in "$SCENES_DIR"/*Scene.swift; do
@@ -254,9 +262,9 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         echo "Error: no 'enum <Name>Scene: DemoScene' declaration found for sceneId='$scene_id'." >&2
         exit 1
     fi
-    # 12 columns: sceneId title subtitle icon category available iosOnly status androidOnlyReason order tags typeName
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason" "$order" "$tags" "$type_name" >> "$TMP_FULL"
+    # 13 columns: sceneId title subtitle icon category available iosOnly status androidOnlyReason order tags section typeName
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason" "$order" "$tags" "$section" "$type_name" >> "$TMP_FULL"
 done < "$SORTED_META"
 
 # ─── 4. Emit GeneratedScenes.swift ───────────────────────────────────────
@@ -295,7 +303,7 @@ enum GeneratedScenes {
         var items: [DemoItem] = []
 HEADER
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section type_name; do
     # Decode the `-` "absent" sentinel back to a real empty string (see the
     # TMP_META write in step 1 for why this round-trip is necessary).
     [ "$android_only_reason" = "-" ] && android_only_reason=""
@@ -324,6 +332,7 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            icon: "%s",\n' "$icon"
         printf '            subtitle: "%s",\n' "$swift_subtitle"
         printf '            category: %s,\n' "$cat_enum"
+        printf '            section: .%s,\n' "$section"
         printf '            status: %s,\n' "$status_enum_val"
         printf '            order: %s,\n' "$order"
         printf '            tags: [%s]\n' "$swift_tags"
@@ -344,6 +353,7 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            subtitle: "%s",\n' "$swift_subtitle"
         printf '            order: %s,\n' "$order"
         printf '            tags: [%s],\n' "$swift_tags"
+        printf '            section: .%s,\n' "$section"
         if [ -n "$android_only_reason" ]; then
             swift_android_only_reason=$(printf '%s' "$android_only_reason" | sed 's/"/\\"/g')
             printf '            category: %s,\n' "$cat_enum"
@@ -375,7 +385,7 @@ ALL_END
 
 # `allowedIds`: every scene id (available true AND false), sorted by id so
 # the diff stays stable and two parallel PRs never collide.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section type_name; do
     printf '        "%s",\n' "$scene_id"
 done < "$TMP_FULL"
 
@@ -397,7 +407,7 @@ IDS_END
 # scenes fall through to `default: return nil` (→ placeholder), never their
 # own `EmptyView`. iOS-only scenes are guarded so a non-iOS build returns
 # `nil` (→ placeholder) rather than a blank view.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section type_name; do
     [ "$available" = "true" ] || continue
     if [ "$category" = "ar" ]; then
         # Same wrapper as the DemoItem above, so a deep link never bypasses it.

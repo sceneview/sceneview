@@ -2,9 +2,10 @@
 // @title       Custom Mesh
 // @subtitle    Custom vertex and index buffers
 // @category    advanced
+// @section     create
 // @available   true
 // @icon        diamond.fill
-// @order       10
+// @order       30
 // @tags        geometry,mesh,extrusion,composite,procedural
 import SwiftUI
 

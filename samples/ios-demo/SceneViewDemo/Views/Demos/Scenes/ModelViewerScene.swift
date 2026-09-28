@@ -2,6 +2,7 @@
 // @title       Model Viewer
 // @subtitle    Load and display 3D models
 // @category    basics3D
+// @section     view3d
 // @available   true
 // @icon        cube.transparent.fill
 // @order       1

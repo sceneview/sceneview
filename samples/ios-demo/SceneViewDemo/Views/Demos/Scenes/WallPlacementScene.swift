@@ -2,11 +2,12 @@
 // @title       Wall Placement
 // @subtitle    Place a TV automatically on the first usable wall
 // @category    ar
+// @section     placeAR
 // @available   true
 // @icon        tv.fill
 // @iosOnly     true
 // @status      inReview
-// @order       51
+// @order       11
 // @tags        ar,wall,vertical-plane,placement,tv
 import SwiftUI
 
