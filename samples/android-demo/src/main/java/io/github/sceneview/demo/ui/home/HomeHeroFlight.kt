@@ -117,17 +117,17 @@ internal const val HERO_FOX_Z = -3.4f
  * across the frame with the right-hand ridges behind it. From behind it was a dark
  * silhouette against the sunset.
  */
-private const val GLIDE_EYE_DX = -3.0f
+private const val GLIDE_EYE_DX = -3.8f
 private const val GLIDE_EYE_DY = 0.6f
 private const val GLIDE_EYE_DZ = 0f
 
 /**
- * Where the glide aims, relative to the fox's feet. Above its middle, so the fox lands
+ * Where the glide aims, relative to the fox's feet. Well above its back, so the fox lands
  * low in the frame — where the band's visible window has moved to by then — and ahead
  * of it along the run, which puts the fox right of centre, clear of the band's
  * left-aligned title, subtitle and "Open" pill.
  */
-private const val GLIDE_AIM_DY = 0.4f
+private const val GLIDE_AIM_DY = 0.75f
 private const val GLIDE_AIM_DZ = -0.25f
 
 /**
