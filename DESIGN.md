@@ -753,7 +753,15 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   `surface-container` at 88 %; text `on-surface` (13:1), secondary `on-surface-dim`
   (8.9:1); edge `on-surface` at 12 %, no halo; the chrome bands wash towards the ground
   instead of black; the one filled accent is the light scheme's `primary`; the status bar
-  keeps dark icons. Only the Rerun demo opts in — every other stage is media.
+  keeps dark icons. The Rerun and Camera & Gestures demos opt in — every other stage is
+  media.
+- **Stage sky** (`StageSky`, #4089): the backdrop of a themed stage whose subjects stand on
+  an open floor that the camera orbits. A flat skybox in the stage ground (the zenith) under
+  Filament height fog in `surface-container` (the horizon): the fog covers the far floor and
+  the sky just above the horizon, so floor, horizon glow and sky are one gradient at every
+  camera elevation — no hard horizon, no empty clear colour. The floor plane is
+  `surface-container-highest` in light, the `surface-dim` grounding plane in dark. Use it
+  instead of a Compose gradient behind a transparent scene whenever the camera can tilt.
 - **Colour carries meaning, and only existing palette values carry it**
   (`SceneViewTokens.DebugView`, one palette per ground). *Dark*: the trail runs the brand
   ramp from `accent-deep` (oldest) to `tint-light` (now); the live frustum is `tint-light`;
