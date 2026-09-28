@@ -1,26 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `ar-splat-room` demo (registered by `ArSplatRoomFragment.kt`, #4023).
+<!-- Strings for the `ar-splat-room` demo (registered by `ArSplatRoomFragment.kt`): your own Rerun
+     recording, stood on a table in AR as a dollhouse (#4075; a stock capture until then, #4023).
+     The screen's other words live in `DollhouseCopy`, beside the Rerun demo's own.
      Android's resource merger fans every `res/values/*.xml` file in, so
      `R.string.demo_ar_splat_room_title` etc. remain globally resolvable. -->
 <resources>
-    <string name="demo_ar_splat_room_title">Your Scan, in Your Room</string>
-    <string name="demo_ar_splat_room_subtitle">A real phone capture, standing on your floor at its real size</string>
-
-    <!-- Status pill while the capture decodes. -->
-    <string name="demo_ar_splat_room_opening">Opening the scan…</string>
-    <!-- Status pill and peek while pinching. %1$d = scale as a percentage of real size. -->
-    <string name="demo_ar_splat_room_scale">%1$d%% of real size</string>
-    <!-- Peek pill once placed at 100 %. %1$d = measured height in centimetres. -->
-    <string name="demo_ar_splat_room_peek_real">Real size · %1$d cm tall</string>
-
-    <!-- Dock -->
-    <string name="demo_ar_splat_room_real_size">Back to real size</string>
-    <string name="demo_ar_splat_room_real_size_caption">Real size</string>
-    <string name="demo_ar_splat_room_reset_caption">Reset</string>
-
-    <!-- Controls sheet -->
-    <string name="demo_ar_splat_room_intro">This is not a 3D model. Someone walked around a tree stump filming with a phone, and the capture is kept as coloured points. It stands on your floor at the size it really is, so walk around it and look from any side.</string>
-    <!-- %1$d = measured height in centimetres. -->
-    <string name="demo_ar_splat_room_size">About %1$d cm tall, drawn at its real size</string>
-    <string name="demo_ar_splat_room_credit">raccoon_family.spz: capture by Niantic Labs (SPZ samples, MIT), cropped to the stump.</string>
+    <string name="demo_ar_splat_room_title">Your Room, as a Dollhouse</string>
+    <string name="demo_ar_splat_room_subtitle">The room you recorded, standing on your table as a miniature</string>
 </resources>

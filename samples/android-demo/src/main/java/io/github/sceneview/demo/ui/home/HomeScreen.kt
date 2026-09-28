@@ -661,10 +661,9 @@ private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "l
  */
 internal val FEATURED_SECTION_IDS = listOf(
     "ar-rerun", // Rerun AR replay — the flagship, reworked in 4.46
-    // The splat viewer, then its AR sibling: the same scan, first on its own, then
-    // standing in a room.
+    // Record your room there, then stand it on your table here.
+    "ar-splat-room", // "Your room, as a dollhouse" — your own Rerun recording in AR, 4.46
     "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
-    "ar-splat-room", // "Your scan, in your room" — new in 4.45
     "animation-physics", // reworked so every control shows its effect, 4.41
     "ar-placement", // tap-to-place, picker shows each model's own thumbnail, 4.39
     "ar-record-playback", // records and replays in place (#3914)

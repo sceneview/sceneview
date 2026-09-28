@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded._3dRotation
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -110,6 +111,8 @@ import io.github.sceneview.demo.demos.internal.RerunSessionSource
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunSetupStep
 import io.github.sceneview.demo.demos.internal.RerunStatusUx
+import io.github.sceneview.demo.demos.internal.DollhouseCopy
+import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanFigures
 import io.github.sceneview.demo.demos.internal.of
@@ -153,12 +156,16 @@ import java.io.File
  * same replay; it stays under "Your sessions" until deleted, and shares as a `.svscan` scan
  * file the iOS demo opens too. Nothing leaves the phone unless you share it.
  *
+ * **View in AR** (#4075), at the end of a replay of your own room or from a session's menu, stands
+ * that room on a table as a miniature — a dollhouse — through [RoomDollhouseScreen]. With
+ * [startInDollhouse] the demo opens there directly: the `ar-splat-room` card of the home screen.
+ *
  * Advanced, from the sheet: the live screen also streams the session to the Rerun viewer on a
  * computer. The bridge auto-connects to the Python recorder at `127.0.0.1:9876` — for USB,
  * `adb reverse tcp:9876 tcp:9876` — and "Save & Share recording" flushes a `.rrd` file.
  */
 @Composable
-fun ARRerunDemo(onBack: () -> Unit) {
+fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -175,6 +182,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
     var screen by remember {
         mutableStateOf(
             when {
+                startInDollhouse || qaState in DOLLHOUSE_QA_STATES -> RerunScreen.Dollhouse
                 qaReplay != null -> RerunScreen.Replay
                 arPlaybackDataset != null || qaState in LIVE_QA_STATES -> RerunScreen.Live
                 else -> RerunScreen.Landing
@@ -232,12 +240,60 @@ fun ARRerunDemo(onBack: () -> Unit) {
     }
     LaunchedEffect(mode, replayOrbit) { replayOrbit.overhead = mode == RerunMode.Map }
 
+    // The dollhouse (#4075): one of your sessions, stood on a table in AR. [dollhouseRequest] is
+    // the session asked for (null: the newest), [dollhouseMedia] the one read, and Back returns to
+    // [dollhouseReturn] — or leaves the demo when it opened straight on the dollhouse.
+    val dollhouseReturn = if (startInDollhouse) null else RerunScreen.Landing
+    var dollhouseRequest by remember { mutableStateOf<String?>(null) }
+    var dollhouseMedia by remember { mutableStateOf<RerunReplayMedia?>(null) }
+    var dollhouseTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
+    var dollhouseFailed by remember { mutableStateOf(false) }
+    // Record, opened from the dollhouse's empty state, comes back to it with the new room.
+    var recordingForDollhouse by remember { mutableStateOf(false) }
+    val dollhouseSession = if (qaState == QA_STATE_DOLLHOUSE_EMPTY) {
+        null
+    } else {
+        sessions?.let { kept -> RoomDollhouse.pickSession(kept.map { it.info }, dollhouseRequest) }
+    }
+    LaunchedEffect(screen, dollhouseSession?.id) {
+        if (screen != RerunScreen.Dollhouse || dollhouseMedia != null || dollhouseFailed) return@LaunchedEffect
+        val session = dollhouseSession ?: return@LaunchedEffect
+        dollhouseTitle = session.title
+        val capture = withContext(Dispatchers.IO) { store.capture(session.id) }
+        val opened = capture?.let { runCatching { loadRerunSession(it) }.getOrNull() }
+        if (opened == null) dollhouseFailed = true else dollhouseMedia = opened
+    }
+    val openDollhouse = { id: String?, title: String, media: RerunReplayMedia? ->
+        opening?.cancel()
+        opening = null
+        dollhouseRequest = id
+        dollhouseTitle = title
+        dollhouseMedia = media
+        dollhouseFailed = false
+        screen = RerunScreen.Dollhouse
+    }
+
     val toLanding = {
         opening?.cancel()
         opening = null
         screen = RerunScreen.Landing
     }
-    BackHandler(enabled = screen != RerunScreen.Landing, onBack = toLanding)
+    val leaveDollhouse = { dollhouseReturn?.let { screen = it } ?: onBack() }
+    val leaveLive = {
+        if (recordingForDollhouse) {
+            recordingForDollhouse = false
+            screen = RerunScreen.Dollhouse
+        } else {
+            toLanding()
+        }
+    }
+    BackHandler(enabled = screen != RerunScreen.Landing) {
+        when (screen) {
+            RerunScreen.Dollhouse -> leaveDollhouse()
+            RerunScreen.Live -> leaveLive()
+            else -> toLanding()
+        }
+    }
 
     val openSample = {
         showingScan = false
@@ -327,6 +383,10 @@ fun ARRerunDemo(onBack: () -> Unit) {
                         if (!shareScanFile(context, store, session.info)) notice = ScanCopy.OPEN_FAILED
                     }
                 },
+                onViewInAr = { session ->
+                    notice = null
+                    openDollhouse(session.id, session.info.title, null)
+                },
                 onDelete = { session ->
                     scope.launch {
                         withContext(Dispatchers.IO) { store.delete(session.id) }
@@ -337,10 +397,15 @@ fun ARRerunDemo(onBack: () -> Unit) {
             ),
         )
         RerunScreen.Live -> RerunLiveScreen(
-            onBack = toLanding,
+            onBack = leaveLive,
             onScanned = { scan, title, pack ->
                 sessionsVersion++
-                openScan(scan, title, pack)
+                if (recordingForDollhouse) {
+                    recordingForDollhouse = false
+                    openDollhouse(null, title, scan)
+                } else {
+                    openScan(scan, title, pack)
+                }
             },
             store = store,
             sample = sample,
@@ -363,9 +428,30 @@ fun ARRerunDemo(onBack: () -> Unit) {
             onRevealed = { revealed = true },
             pipOrbit = replayPipOrbit,
             onExport = { exporting = true },
+            // Your own room only: the sample is not a room of yours to stand on a table.
+            onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
+                { openDollhouse(null, scanTitle, scan) }
+            },
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
+        )
+        RerunScreen.Dollhouse -> RoomDollhouseScreen(
+            onBack = leaveDollhouse,
+            title = dollhouseTitle,
+            media = dollhouseMedia,
+            sessionsKnown = sessions != null || dollhouseMedia != null,
+            hasSession = dollhouseMedia != null || dollhouseSession != null,
+            openFailed = dollhouseFailed,
+            onRecord = {
+                recordingForDollhouse = true
+                screen = RerunScreen.Live
+            },
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            arPlaybackDataset = arPlaybackDataset,
+            startIn3d = qaState == QA_STATE_DOLLHOUSE_3D,
         )
     }
     if (exporting && screen == RerunScreen.Replay && media != null) {
@@ -382,8 +468,11 @@ fun ARRerunDemo(onBack: () -> Unit) {
     }
 }
 
-/** The demo's three screens: the landing, the live AR session (Record), and the replay. */
-private enum class RerunScreen { Landing, Live, Replay }
+/**
+ * The demo's screens: the landing, the live AR session (Record), the replay, and the dollhouse —
+ * a session stood on a table in AR (#4075).
+ */
+private enum class RerunScreen { Landing, Live, Replay, Dollhouse }
 
 /** The replay's three views. */
 private enum class RerunMode { Scene, Map, Camera }
@@ -426,6 +515,7 @@ private fun RerunReplayScreen(
     orbit: ArDebugOrbitCamera,
     pipOrbit: ArDebugOrbitCamera,
     onExport: () -> Unit,
+    onViewInAr: (() -> Unit)?,
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
@@ -438,6 +528,14 @@ private fun RerunReplayScreen(
     val hudIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS)
     val cardIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS * 2)
     val filmstripIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS * 2)
+    // The session on screen as open files: .rrd, .glb and .ply, written on the phone.
+    val export = DockItem(
+        icon = Icons.Rounded.IosShare,
+        label = RerunExportFormat.DOCK_LABEL,
+        caption = RerunExportFormat.DOCK_CAPTION,
+        onClick = onExport,
+        enabled = media != null,
+    )
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
@@ -501,9 +599,9 @@ private fun RerunReplayScreen(
                 )
             }
         },
-        dock = listOf(
+        dock = listOfNotNull(
             DockItem(
-                icon = Icons.Rounded.ViewInAr,
+                icon = Icons.Rounded._3dRotation,
                 label = "3D view",
                 caption = "3D",
                 onClick = { if (mode == RerunMode.Scene) orbit.recenter() else onMode(RerunMode.Scene) },
@@ -523,15 +621,19 @@ private fun RerunReplayScreen(
                 onClick = { onMode(RerunMode.Camera) },
                 selected = mode == RerunMode.Camera,
             ),
+            // With View in AR as the accent, Export stays one tap away in the dock.
+            export.takeIf { onViewInAr != null },
         ),
-        // The session on screen as open files: .rrd, .glb and .ply, written on the phone.
-        dockAccent = DockItem(
-            icon = Icons.Rounded.IosShare,
-            label = RerunExportFormat.DOCK_LABEL,
-            caption = RerunExportFormat.DOCK_CAPTION,
-            onClick = onExport,
-            enabled = media != null,
-        ),
+        // Your own room stands on a table in AR (#4075); the sample offers its files instead.
+        dockAccent = onViewInAr?.let {
+            DockItem(
+                icon = Icons.Rounded.ViewInAr,
+                label = DollhouseCopy.VIEW_IN_AR,
+                caption = DollhouseCopy.VIEW_IN_AR_CAPTION,
+                onClick = it,
+                enabled = media != null,
+            )
+        } ?: export,
     ) {
         when {
             media == null -> Unit // the scaffold's cover says it is loading
@@ -1287,6 +1389,15 @@ private enum class ArDebugQaState(
         fun of(state: String?): ArDebugQaState? = entries.firstOrNull { it.key == state }
     }
 }
+
+/** The QA states that open straight on the dollhouse (#4075). */
+private val DOLLHOUSE_QA_STATES = setOf(QA_STATE_DOLLHOUSE_EMPTY, QA_STATE_DOLLHOUSE_3D)
+
+/** The dollhouse with no session kept, whatever the phone holds (#4075). */
+private const val QA_STATE_DOLLHOUSE_EMPTY = "dollhouse-empty"
+
+/** The dollhouse of the newest session, in the 3D view: the emulator cannot run AR (#2754). */
+private const val QA_STATE_DOLLHOUSE_3D = "dollhouse-3d"
 
 /** The QA states that open straight on the live AR screen. */
 private val LIVE_QA_STATES =

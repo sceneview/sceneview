@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -61,6 +62,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
+import io.github.sceneview.demo.demos.internal.DollhouseCopy
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -75,7 +77,7 @@ import io.github.sceneview.demo.theme.StageChrome
  * The Rerun demo's landing, laid out as the iOS demo's (#4068) and the capture apps it answers to
  * (Polycam, Scaniverse, Reality Composer): what the demo does in one line, one primary action —
  * record your own room — the sample and "Open file" one tap away, and the sessions kept on this
- * phone as cards, each opening its replay, with Share and Delete behind its menu.
+ * phone as cards, each opening its replay, with View in AR, Share and Delete behind its menu.
  */
 
 /** What the landing shows around the sessions list: an error to read, or a file being opened. */
@@ -93,6 +95,8 @@ internal class RerunLandingActions(
     val onOpenFile: () -> Unit,
     val onOpen: (LandingSession) -> Unit,
     val onShare: (LandingSession) -> Unit,
+    /** Stands the session on a table in AR, as a dollhouse (#4075). */
+    val onViewInAr: (LandingSession) -> Unit,
     val onDelete: (LandingSession) -> Unit,
     val onDismissNotice: () -> Unit,
 )
@@ -171,7 +175,7 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
  * promise under it, on the accent fill.
  */
 @Composable
-private fun RecordRoomCard(onClick: () -> Unit) {
+internal fun RecordRoomCard(onClick: () -> Unit) {
     val shape = RoundedCornerShape(Radius.lg)
     Row(
         modifier = Modifier
@@ -255,6 +259,7 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
                     session = session,
                     onOpen = { actions.onOpen(session) },
                     onShare = { actions.onShare(session) },
+                    onViewInAr = { actions.onViewInAr(session) },
                     onDelete = { confirming = session },
                 )
             }
@@ -351,10 +356,16 @@ private fun EmptySessions() {
 
 /**
  * A kept session: its first photo, its title, when and where it came from, and its figures —
- * opening its replay on a tap, with Share and Delete behind the menu.
+ * opening its replay on a tap, with View in AR (#4075), Share and Delete behind the menu.
  */
 @Composable
-private fun SessionCard(session: LandingSession, onOpen: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+private fun SessionCard(
+    session: LandingSession,
+    onOpen: () -> Unit,
+    onShare: () -> Unit,
+    onViewInAr: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val info = session.info
     val origin = remember(info) { sessionOrigin(info) }
     val figures = remember(info) { ScanCopy.figures(info.pathMetres, info.points, info.photos, info.duration) }
@@ -411,6 +422,15 @@ private fun SessionCard(session: LandingSession, onOpen: () -> Unit, onShare: ()
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(
+                    text = { Text(DollhouseCopy.VIEW_IN_AR) },
+                    leadingIcon = { Icon(Icons.Outlined.ViewInAr, contentDescription = null) },
+                    onClick = {
+                        menu = false
+                        onViewInAr()
+                    },
+                    modifier = Modifier.testTag(SESSION_VIEW_IN_AR_TAG),
+                )
+                DropdownMenuItem(
                     text = { Text(ScanCopy.SHARE_SCAN) },
                     leadingIcon = { Icon(Icons.Outlined.Share, contentDescription = null) },
                     onClick = {
@@ -452,6 +472,7 @@ internal const val OPEN_FILE_TAG = "ar_rerun_open_file"
 internal const val SESSIONS_EMPTY_TAG = "ar_rerun_sessions_empty"
 internal const val SESSION_ROW_TAG = "ar_rerun_session_row"
 internal const val SESSION_MENU_TAG = "ar_rerun_session_menu"
+internal const val SESSION_VIEW_IN_AR_TAG = "ar_rerun_session_view_in_ar"
 internal const val RECORD_ROOM_TAG = "ar_rerun_record_room"
 internal const val NOTICE_TAG = "ar_rerun_notice"
 internal const val OPENING_TAG = "ar_rerun_opening"

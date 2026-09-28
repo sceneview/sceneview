@@ -1386,7 +1386,7 @@ private fun BoxScope.DemoBottomOverlay(
                 Text(
                     text = status,
                     style = MaterialTheme.typography.labelMedium,
-                    color = SceneViewTokens.Glass.onGlass,
+                    color = LocalStageChrome.current.onGlass,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }

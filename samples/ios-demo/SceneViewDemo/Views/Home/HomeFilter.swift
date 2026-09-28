@@ -72,7 +72,7 @@ enum HomeCatalogue {
     /// The Featured shelf under the hero, in priority order — Android's
     /// `FEATURED_SECTION_IDS` (`HomeScreen.kt`) reduced to the demos that have
     /// an iOS screen. Android features `splat-preview` and `ar-splat-room`
-    /// too; neither exists on iOS yet (#2646), so the shelf skips them rather
+    /// too; neither exists on iOS yet (#2646, #4075), so the shelf skips them rather
     /// than showing a placeholder. `animation` is the iOS half of Android's
     /// `animation-physics`.
     static let featuredIds: [String] = [
