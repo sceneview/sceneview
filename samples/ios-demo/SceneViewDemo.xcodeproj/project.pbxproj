@@ -186,7 +186,6 @@
 		D10000000000000000000014 /* lamborghini_countach.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000014 /* lamborghini_countach.usdz */; };
 		D10000000000000000000015 /* nike_air_jordan.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000015 /* nike_air_jordan.usdz */; };
 		D10000000000000000000016 /* ferrari_f40.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000016 /* ferrari_f40.usdz */; };
-		D10000000000000000000017 /* porsche_911_turbo.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000017 /* porsche_911_turbo.usdz */; };
 		D10000000000000000000018 /* ps5_dualsense.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000018 /* ps5_dualsense.usdz */; };
 		D10000000000000000000019 /* tesla_cybertruck.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000019 /* tesla_cybertruck.usdz */; };
 		D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001A /* mercedes_a45_amg.usdz */; };
@@ -391,7 +390,6 @@
 		D20000000000000000000014 /* lamborghini_countach.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = lamborghini_countach.usdz; sourceTree = "<group>"; };
 		D20000000000000000000015 /* nike_air_jordan.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = nike_air_jordan.usdz; sourceTree = "<group>"; };
 		D20000000000000000000016 /* ferrari_f40.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = ferrari_f40.usdz; sourceTree = "<group>"; };
-		D20000000000000000000017 /* porsche_911_turbo.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = porsche_911_turbo.usdz; sourceTree = "<group>"; };
 		D20000000000000000000018 /* ps5_dualsense.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = ps5_dualsense.usdz; sourceTree = "<group>"; };
 		D20000000000000000000019 /* tesla_cybertruck.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = tesla_cybertruck.usdz; sourceTree = "<group>"; };
 		D2000000000000000000001A /* mercedes_a45_amg.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = mercedes_a45_amg.usdz; sourceTree = "<group>"; };
@@ -745,7 +743,6 @@
 				D20000000000000000000014 /* lamborghini_countach.usdz */,
 				D20000000000000000000015 /* nike_air_jordan.usdz */,
 				D20000000000000000000016 /* ferrari_f40.usdz */,
-				D20000000000000000000017 /* porsche_911_turbo.usdz */,
 				D20000000000000000000018 /* ps5_dualsense.usdz */,
 				D20000000000000000000019 /* tesla_cybertruck.usdz */,
 				D2000000000000000000001A /* mercedes_a45_amg.usdz */,
@@ -940,7 +937,6 @@
 				D10000000000000000000014 /* lamborghini_countach.usdz in Resources */,
 				D10000000000000000000015 /* nike_air_jordan.usdz in Resources */,
 				D10000000000000000000016 /* ferrari_f40.usdz in Resources */,
-				D10000000000000000000017 /* porsche_911_turbo.usdz in Resources */,
 				D10000000000000000000018 /* ps5_dualsense.usdz in Resources */,
 				D10000000000000000000019 /* tesla_cybertruck.usdz in Resources */,
 				D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */,
