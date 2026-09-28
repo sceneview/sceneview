@@ -149,6 +149,16 @@ final class RerunTrace: @unchecked Sendable {
     var imageCount: Int { imagePaths.count }
     var isEmpty: Bool { poses.isEmpty && points.isEmpty && planeHistory.isEmpty }
 
+    /// Point-cloud observations recorded, in time order.
+    var observationCount: Int { observations.count }
+
+    /// Time (seconds) of observation `index`.
+    func observationTime(_ index: Int) -> Float { observationTimes[index] }
+
+    /// The map points observation `index` saw, as indices into the map (the order of
+    /// ``RerunFrame/mapPoints``); empty once a long session has forgotten it.
+    func observationPoints(_ index: Int) -> [Int] { observations[index] }
+
     /// Index of the image in force at `time` — the latest at or before it — or -1.
     func imageIndexAt(_ time: Float) -> Int { Self.upperBound(imageTimes, time) - 1 }
 
@@ -358,11 +368,13 @@ final class RerunTrace: @unchecked Sendable {
     }
 
     /// Packs the voxel of `p` into one key: 21 signed bits per axis.
+    /// A coordinate too large for an `Int64` (a damaged file) is clamped instead of trapping.
     static func voxelKey(_ p: SIMD3<Float>) -> Int64 {
-        let ix = Int64((p.x / pointVoxel).rounded(.down)) & 0x1FFFFF
-        let iy = Int64((p.y / pointVoxel).rounded(.down)) & 0x1FFFFF
-        let iz = Int64((p.z / pointVoxel).rounded(.down)) & 0x1FFFFF
-        return (ix << 42) | (iy << 21) | iz
+        func cell(_ v: Float) -> Int64 {
+            let c = (v / pointVoxel).rounded(.down)
+            return Int64(c.isFinite ? min(max(c, -0x1p40), 0x1p40) : 0) & 0x1FFFFF
+        }
+        return (cell(p.x) << 42) | (cell(p.y) << 21) | cell(p.z)
     }
 
     /// Number of leading entries of the sorted `values` that are `<= t`.
@@ -438,7 +450,8 @@ enum RerunLog {
             let confidences = (obj["confidences"] as? [Any])?.compactMap { ($0 as? NSNumber)?.floatValue }
             let colors = (obj["colors"] as? [Any])?.compactMap { entry -> UInt32? in
                 guard let rgb = floats(entry), rgb.count == 3 else { return nil }
-                return packRGB(rgb)
+                // A negative channel marks a point without a colour (as Android reads it).
+                return rgb.contains { $0 < 0 } ? 0 : packRGB(rgb)
             }
             return .points(
                 nanos: nanos,

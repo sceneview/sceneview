@@ -32,6 +32,13 @@ struct RerunExportScene: Sendable {
         var orientation: simd_quatf
     }
 
+    /// One point-cloud observation at `time` (seconds): `points` are indices into
+    /// ``RerunExportScene/points``.
+    struct PointObservation: Sendable, Equatable {
+        var time: Double
+        var points: [Int]
+    }
+
     /// One recorded photo on the timeline: `imagePath` keys ``images``.
     struct Keyframe: Sendable, Equatable {
         var time: Double
@@ -81,10 +88,16 @@ struct RerunExportScene: Sendable {
     /// The camera's path, oldest first.
     var cameraPath: [CameraSample]
     var keyframes: [Keyframe]
-    /// Encoded photos by path (`frames/012.webp`): the keyframes' images.
+    /// Encoded photos by path (`frames/012.webp`): the keyframes' images, and every one of
+    /// ``photos``.
     var images: [String: Data]
     var planes: [Plane]
     var anchors: [Anchor]
+    /// Every photo the session recorded, oldest first, not only the keyframes' — what a
+    /// replay's camera view plays back. Empty when the source has none beyond ``keyframes``.
+    var photos: [Keyframe] = []
+    /// What the camera saw over time: which of ``points`` each point-cloud observation held.
+    var pointObservations: [PointObservation] = []
     /// A `.svscan` v2's dense cloud (tier `lidar` / `depth`): surfels of `denseVoxelM` with
     /// colours and unit normals, world space. `nil` for a v1 or sparse-tier capture — which then
     /// exports exactly as before.
