@@ -15,7 +15,8 @@ package io.github.sceneview.demo.demos.internal
  *   archive and the manifest indexes them, as the recorder does). The writer adds one pose row per
  *   photo so Rerun shows the camera where the photo was taken; those rows are recognised and
  *   dropped ([pathPoses]), which gives back the path the writer was given.
- * - `world/points` — the coloured map, as one `point_cloud`.
+ * - `world/points` — the coloured map; `world/points/live` — what the camera saw over time, one
+ *   `point_cloud` per row at its time, coloured from the map.
  * - `world/planes/<id>` — the polygon from the outline (without its closing point), the kind from
  *   the outline's colour, and the plane photo when the `Mesh3D` carries one: the texels become a
  *   PNG in the media archive and the texture frame (`origin`, `u`, `v`) is fitted back from the
@@ -23,10 +24,11 @@ package io.github.sceneview.demo.demos.internal
  *   back untextured rather than wrongly textured.
  * - `world/anchors/<id>` — each anchor's pose.
  *
- * The `.rrd` only keeps the final map: points, planes and anchors are static, emitted at the
- * start of the session, so the replay shows the whole map from the first frame while the camera
- * path and its photos play over time. Nothing pretends the map grew: that history is not in the
- * file.
+ * Planes and anchors are static, emitted at the start of the session. The points replay as they
+ * were seen when the file has `world/points/live` (this app's exports since #4080): the map grows
+ * and the live points come back, as in the original capture. A file without it (an older export,
+ * another writer) only has the final map, shown whole from the first frame — nothing pretends
+ * the map grew when that history is not in the file.
  *
  * Anything malformed — another magic, a compressed stream, a truncated message, an offset out of
  * range, a component in an unexpected Arrow layout — throws a [Failure].

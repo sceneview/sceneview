@@ -200,6 +200,18 @@ class ArDebugTrace {
     /** Path of image [index], as the log gave it. */
     fun imagePath(index: Int): String = imagePaths[index]
 
+    /** Point-cloud observations recorded, in time order. */
+    val observationCount: Int get() = observations.size
+
+    /** Time (seconds) of observation [index]. */
+    fun observationTime(index: Int): Float = observationTimes[index]
+
+    /**
+     * The map points observation [index] saw, as indices into the map (the order of
+     * [ArDebugFrame.mapPoints]); empty once a long session has forgotten it.
+     */
+    fun observationPoints(index: Int): IntArray = observations[index]
+
     /** Index of the image in force at [time] — the latest at or before it — or -1 before the first. */
     fun imageIndexAt(time: Float): Int = upperBound(imageTimes, imagePaths.size, time) - 1
     val isEmpty: Boolean get() = poses.isEmpty() && pointCount == 0 && planeHistory.isEmpty()

@@ -14,7 +14,10 @@ interface RerunImageCodec {
      */
     fun photo(encoded: ByteArray): Photo?
 
-    /** [encoded] decoded, downscaled so its longer side is at most [maxDimension]; `null` if it does not decode. */
+    /**
+     * [encoded] decoded, downscaled so its longer side is at most [maxDimension]: RGB, or RGBA when
+     * one of its texels is not opaque. `null` if it does not decode.
+     */
     fun rgbPixels(encoded: ByteArray, maxDimension: Int): Pixels?
 
     /** A PNG of [pixels] (RGB or RGBA, see [Pixels.channels]); `null` when it cannot be encoded. */

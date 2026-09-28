@@ -57,7 +57,6 @@ import io.github.sceneview.demo.demos.internal.RerunGlbWriter
 import io.github.sceneview.demo.demos.internal.RerunPlyWriter
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RerunRrdWriter
-import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.theme.SceneViewTokens.Type
@@ -104,63 +103,61 @@ internal fun RerunExportSheet(source: RerunExportSource, onDismiss: () -> Unit) 
         }
     }
     val ready = RerunExportFormat.entries.mapNotNull { files[it] }
-    // Pinned dark like the replay it opens over: a light sheet would flash on the stage.
-    SceneViewDemoTheme(darkTheme = true) {
-        DemoModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag(EXPORT_SHEET_TAG)) {
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .navigationBarsPadding()
-                    .padding(horizontal = Space.lg)
-                    .padding(bottom = Space.lg),
-                verticalArrangement = Arrangement.spacedBy(Space.md),
-            ) {
-                Text(
-                    text = RerunExportFormat.SHEET_TITLE,
-                    style = Type.title,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.semantics { heading() },
-                )
-                Column {
-                    RerunExportFormat.entries.forEachIndexed { index, format ->
-                        if (index > 0) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = SceneViewTokens.Layout.touchTarget + Space.sm),
-                            )
-                        }
-                        ExportRow(format, files[format], format in failed) { share(context, listOf(it), format.title) }
+    // The sheet follows the app theme, like the replay it opens over (#4080).
+    DemoModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag(EXPORT_SHEET_TAG)) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = Space.lg)
+                .padding(bottom = Space.lg),
+            verticalArrangement = Arrangement.spacedBy(Space.md),
+        ) {
+            Text(
+                text = RerunExportFormat.SHEET_TITLE,
+                style = Type.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.semantics { heading() },
+            )
+            Column {
+                RerunExportFormat.entries.forEachIndexed { index, format ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = SceneViewTokens.Layout.touchTarget + Space.sm),
+                        )
                     }
+                    ExportRow(format, files[format], format in failed) { share(context, listOf(it), format.title) }
                 }
-                val all = ready.size == RerunExportFormat.entries.size
-                Button(
-                    onClick = { share(context, ready, source.title) },
-                    enabled = all,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = SceneViewTokens.Layout.touchTarget)
-                        .testTag(EXPORT_ALL_TAG),
-                ) {
-                    Icon(Icons.Outlined.Share, contentDescription = null)
-                    Text(
-                        text = if (all) RerunExportFormat.SHARE_ALL else RerunExportFormat.PREPARING,
-                        style = Type.body.copy(fontWeight = FontWeight.SemiBold),
-                        modifier = Modifier.padding(start = Space.sm),
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Outlined.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(Space.md),
-                    )
-                    Text(
-                        text = RerunExportFormat.PRIVACY,
-                        style = Type.caption,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = Space.sm),
-                    )
-                }
+            }
+            val all = ready.size == RerunExportFormat.entries.size
+            Button(
+                onClick = { share(context, ready, source.title) },
+                enabled = all,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SceneViewTokens.Layout.touchTarget)
+                    .testTag(EXPORT_ALL_TAG),
+            ) {
+                Icon(Icons.Outlined.Share, contentDescription = null)
+                Text(
+                    text = if (all) RerunExportFormat.SHARE_ALL else RerunExportFormat.PREPARING,
+                    style = Type.body.copy(fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier.padding(start = Space.sm),
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(Space.md),
+                )
+                Text(
+                    text = RerunExportFormat.PRIVACY,
+                    style = Type.caption,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = Space.sm),
+                )
             }
         }
     }

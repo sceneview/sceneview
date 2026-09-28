@@ -67,6 +67,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.filmstripFrames
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.DebugView
@@ -76,8 +77,9 @@ import io.github.sceneview.demo.ui.overMediaEdge
 /*
  * The chrome of the Rerun demo's bundled replay: a glass HUD with what ARCore knew at this
  * instant, the camera's own picture in a corner card, and a filmstrip of the recorded frames that
- * scrubs the 3D view. Every overlay sits on the dark scrim of the other AR demos: the ground is
- * the 3D stage or a camera photo, never a themed surface.
+ * scrubs the 3D view. The replay is a themed stage (#4080): every overlay takes its card, text and
+ * edge from [LocalStageChrome] — the dark scrim of the other AR demos in dark theme, `glass-sheet`
+ * over the light stage in light theme.
  */
 
 /**
@@ -88,23 +90,24 @@ import io.github.sceneview.demo.ui.overMediaEdge
 internal fun RerunReplayHud(session: ArDebugSession, modifier: Modifier = Modifier) {
     val stats = session.stats
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
+    val chrome = LocalStageChrome.current
     Column(
         modifier = modifier
             .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
             .clip(shape)
-            .background(ArOverlay.scrimDark, shape)
-            .overMediaEdge(shape)
+            .background(chrome.card, shape)
+            .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
             .padding(horizontal = Space.md, vertical = Space.sm + Space.xs)
             .testTag(RERUN_REPLAY_HUD_TAG),
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val dot = if (stats.tracking) ArOverlay.accentSuccess else ArOverlay.onScrimMuted
+            val dot = if (stats.tracking) ArOverlay.accentSuccess else chrome.onCardMuted
             Box(Modifier.size(Space.sm).background(dot, CircleShape))
             Spacer(Modifier.width(Space.sm))
             Text(
                 text = if (stats.tracking) "Tracking" else "Initializing",
-                style = SceneViewTokens.Type.caption.copy(color = ArOverlay.onScrim, fontWeight = FontWeight.SemiBold),
+                style = SceneViewTokens.Type.caption.copy(color = chrome.onCard, fontWeight = FontWeight.SemiBold),
             )
             Spacer(Modifier.weight(1f))
             Text(
@@ -121,10 +124,10 @@ internal fun RerunReplayHud(session: ArDebugSession, modifier: Modifier = Modifi
             val planes = ArDebugFormat.count(stats.planes)
             val points = ArDebugFormat.compactCount(stats.mapPoints)
             val anchors = ArDebugFormat.count(stats.anchors)
-            HudFigure("Path", path, DebugView.trailNew, session, DebugGroup.Trail, figure)
-            HudFigure("Planes", planes, DebugView.floorOutline, session, DebugGroup.Planes, figure)
-            HudFigure("Points", points, DebugView.mapPoint, session, DebugGroup.Points, figure)
-            HudFigure("Anchors", anchors, DebugView.anchor, session, DebugGroup.Anchors, figure)
+            HudFigure("Path", path, chrome.debug.trailNew, session, DebugGroup.Trail, figure)
+            HudFigure("Planes", planes, chrome.debug.floorOutline, session, DebugGroup.Planes, figure)
+            HudFigure("Points", points, chrome.debug.mapPoint, session, DebugGroup.Points, figure)
+            HudFigure("Anchors", anchors, chrome.debug.anchor, session, DebugGroup.Anchors, figure)
         }
     }
 }
@@ -139,6 +142,7 @@ private fun HudFigure(
     modifier: Modifier = Modifier,
 ) {
     val on = session.isVisible(group)
+    val chrome = LocalStageChrome.current
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(SceneViewTokens.Radius.xs))
@@ -152,12 +156,12 @@ private fun HudFigure(
     ) {
         Text(
             text = value,
-            style = SceneViewTokens.Type.card.copy(color = ArOverlay.onScrim, fontFeatureSettings = "tnum"),
+            style = SceneViewTokens.Type.card.copy(color = chrome.onCard, fontFeatureSettings = "tnum"),
             maxLines = 1,
             overflow = TextOverflow.Clip,
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(Space.xs + Space.xs / 2).background(if (on) dot else ArOverlay.meterTrack, CircleShape))
+            Box(Modifier.size(Space.xs + Space.xs / 2).background(if (on) dot else chrome.track, CircleShape))
             Spacer(Modifier.width(Space.xs))
             Text(label, style = HudCaption, maxLines = 1)
         }
@@ -179,12 +183,13 @@ internal fun RerunCameraCard(
     val index by remember(media) { derivedStateOf { media.trace.imageIndexAt(session.time) } }
     val image = if (index < 0) null else thumbnails[media.trace.imagePath(index)]
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
+    val chrome = LocalStageChrome.current
     Box(
         modifier = modifier
             .size(DebugView.pipWidth, DebugView.pipHeight)
             .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
             .clip(shape)
-            .background(SceneViewTokens.Stage.background)
+            .background(chrome.ground)
             .testTag(RERUN_CAMERA_CARD_TAG),
     ) {
         image?.let {
@@ -193,7 +198,7 @@ internal fun RerunCameraCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .overMediaEdge(shape)
+                .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
                 .clickable(role = Role.Button, onClick = onOpen)
                 .semantics { contentDescription = "Open the camera view" },
         )
@@ -201,15 +206,16 @@ internal fun RerunCameraCard(
     }
 }
 
-/** The small dark pill in a card's corner: what the card shows. */
+/** The small pill in a card's corner, in the stage's card colours: what the card shows. */
 @Composable
 internal fun CardLabel(text: String, modifier: Modifier = Modifier) {
+    val chrome = LocalStageChrome.current
     Text(
         text = text,
-        style = SceneViewTokens.Type.caption.copy(color = ArOverlay.onScrim),
+        style = SceneViewTokens.Type.caption.copy(color = chrome.onCard),
         modifier = modifier
             .padding(Space.sm)
-            .background(ArOverlay.scrimDark, CircleShape)
+            .background(chrome.card, CircleShape)
             .padding(horizontal = Space.sm, vertical = Space.xs / 2),
     )
 }
@@ -234,7 +240,7 @@ internal fun RerunCameraView(
         if (path != null) decodeFrame(media, path)?.let { full = it.asImageBitmap() }
     }
     val shown = full ?: path?.let { thumbnails[it] }
-    Box(modifier.background(SceneViewTokens.Stage.background).testTag(RERUN_CAMERA_VIEW_TAG)) {
+    Box(modifier.background(LocalStageChrome.current.ground).testTag(RERUN_CAMERA_VIEW_TAG)) {
         val backdrop = path?.let { thumbnails[it] }
         if (backdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Image(
@@ -280,7 +286,7 @@ internal fun RerunFilmstripCard(
                 Icon(
                     if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (playing) "Pause" else "Play",
-                    tint = ArOverlay.onScrim,
+                    tint = LocalStageChrome.current.onCard,
                 )
             }
             Spacer(Modifier.width(Space.xs))
@@ -306,12 +312,15 @@ private fun Filmstrip(
     duration: Float,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.xs)
+    val chrome = LocalStageChrome.current
+    // What is still to come on the strip: washed towards the card, so the frames stay legible.
+    val dim = chrome.card.copy(alpha = FILMSTRIP_DIM_ALPHA)
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .height(FilmstripHeight)
             .clip(shape)
-            .background(ArOverlay.meterTrack, shape)
+            .background(chrome.track, shape)
             .semantics {
                 contentDescription = "Session timeline"
                 stateDescription = ArDebugFormat.clock(session.time)
@@ -341,10 +350,10 @@ private fun Filmstrip(
                 drawContent()
                 // Read in the draw phase: the playhead moves every frame without recomposing.
                 val x = size.width * if (duration > 0f) (session.time / duration).coerceIn(0f, 1f) else 0f
-                drawRect(FilmstripDim, topLeft = Offset(x, 0f), size = Size(size.width - x, size.height))
+                drawRect(dim, topLeft = Offset(x, 0f), size = Size(size.width - x, size.height))
                 val head = PlayheadWidth.toPx()
                 drawRoundRect(
-                    color = ArOverlay.onScrim,
+                    color = chrome.onCard,
                     topLeft = Offset((x - head / 2).coerceIn(0f, size.width - head), 0f),
                     size = Size(head, size.height),
                     cornerRadius = CornerRadius(head / 2),
@@ -403,14 +412,13 @@ internal fun Modifier.reveal(progress: State<Float>, rise: Dp): Modifier = graph
 }
 
 private val HudCaption @Composable get() =
-    SceneViewTokens.Type.caption.copy(color = ArOverlay.onScrimMuted, fontFeatureSettings = "tnum")
+    SceneViewTokens.Type.caption.copy(color = LocalStageChrome.current.onCardMuted, fontFeatureSettings = "tnum")
 
 /** Filmstrip height: a touch target and a half-step, so the frames read as pictures. */
 private val FilmstripHeight: Dp = SceneViewTokens.Layout.touchTarget + Space.sm
 private const val FRAME_ASPECT = 0.75f // the recorded frames are portrait 3:4
 private val PlayheadWidth: Dp = Space.xs - Space.xs / 4
-/** What is still to come on the strip: the scrim, lighter, so the frames stay legible. */
-private val FilmstripDim = ArOverlay.scrimDark.copy(alpha = 0.55f)
+private const val FILMSTRIP_DIM_ALPHA = 0.55f
 private val BACKDROP_BLUR: Dp = Space.lg + Space.sm
 private const val BACKDROP_ALPHA = 0.55f
 private const val HIDDEN_ALPHA = 0.45f

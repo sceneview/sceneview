@@ -28,12 +28,7 @@ internal object FakeRerunImageCodec : RerunImageCodec {
 
     override fun rgbPixels(encoded: ByteArray, maxDimension: Int): RerunImageCodec.Pixels? {
         if (encoded.size < 4) return null
-        fake(encoded)?.let { pixels ->
-            if (pixels.channels == RerunImageCodec.RGB) return pixels
-            val count = pixels.width * pixels.height
-            val rgb = ByteArray(count * 3) { pixels.data[it / 3 * pixels.channels + it % 3] }
-            return RerunImageCodec.Pixels(pixels.width, pixels.height, rgb)
-        }
+        fake(encoded)?.let { return it }
         return RerunImageCodec.Pixels(SIDE, SIDE, ByteArray(SIDE * SIDE * 3) { encoded[it % encoded.size] })
     }
 

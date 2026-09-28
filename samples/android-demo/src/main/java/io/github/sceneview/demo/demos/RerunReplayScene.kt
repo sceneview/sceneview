@@ -4,13 +4,20 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import com.google.android.filament.ColorGrading
 import com.google.android.filament.Engine
+import com.google.android.filament.EntityManager
 import com.google.android.filament.MaterialInstance
+import com.google.android.filament.Skybox
+import com.google.android.filament.SwapChainFlags
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
+import com.google.android.filament.ToneMapper
+import com.google.android.filament.Viewport
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
@@ -135,6 +142,66 @@ internal suspend fun decodeFrame(media: RerunReplayMedia, path: String): Bitmap?
     runCatching { media.decode(path) }.getOrNull()
 }
 
+/**
+ * Draws the replay's materials once, off screen, while the landing is read: the unlit layers,
+ * opaque and translucent, the photos, the stage's skybox, and the view's bloom, 4× MSAA and
+ * colour grading. A GL driver without parallel shader compilation — the emulator's, most
+ * low-end phones' — compiles a program on its first draw, so the first replay opened in a
+ * process waited ~2 s behind its loading cover, where the second one took 0.2 s (#4080).
+ * Filament keeps the programs once compiled; everything drawn here is released right after, in
+ * command order, so the main thread never waits on the driver. Main thread.
+ */
+internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
+    val texture = Texture.Builder()
+        .width(1)
+        .height(1)
+        .levels(1)
+        .sampler(Texture.Sampler.SAMPLER_2D)
+        .format(Texture.InternalFormat.SRGB8_A8)
+        .build(engine)
+    val instances = listOf(
+        materialLoader.createUnlitColorInstance(Color.WHITE),
+        materialLoader.createUnlitColorInstance(Color.TRANSPARENT),
+        materialLoader.createImageInstance(texture),
+    )
+    // Each draws one degenerate triangle: enough to bind, and so compile, its program.
+    val nodes = instances.mapIndexed { i, instance -> DebugLayerNode(engine, instance, i, textured = true) }
+    val skybox = Skybox.Builder().color(0f, 0f, 0f, 1f).build(engine)
+    val colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine)
+    val scene = engine.createScene().also { scene ->
+        scene.skybox = skybox
+        nodes.forEach { scene.addEntity(it.entity) }
+    }
+    val cameraEntity = EntityManager.get().create()
+    val view = engine.createView().apply {
+        this.scene = scene
+        camera = engine.createCamera(cameraEntity)
+        viewport = Viewport(0, 0, WARM_UP_SIZE, WARM_UP_SIZE)
+        configureForDebug(colorGrading)
+    }
+    val swapChain = engine.createSwapChain(WARM_UP_SIZE, WARM_UP_SIZE, SwapChainFlags.CONFIG_DEFAULT)
+    val renderer = engine.createRenderer()
+    if (renderer.beginFrame(swapChain, 0L)) {
+        renderer.render(view)
+        renderer.endFrame()
+    }
+    engine.destroyRenderer(renderer)
+    engine.destroySwapChain(swapChain)
+    engine.destroyView(view)
+    engine.destroyCameraComponent(cameraEntity)
+    EntityManager.get().destroy(cameraEntity)
+    nodes.forEach { scene.removeEntity(it.entity) }
+    engine.destroyScene(scene)
+    nodes.forEach { it.destroy() }
+    engine.destroySkybox(skybox)
+    engine.destroyColorGrading(colorGrading)
+    instances.forEach(materialLoader::destroyMaterialInstance)
+    engine.safeDestroyTexture(texture)
+}
+
+/** The off-screen warm-up's size: past bloom's seven halvings, nothing more. */
+private const val WARM_UP_SIZE = 128
+
 /** 240×320 frames at a half: 120×160, ~77 KB each — the 184 of them fit in 14 MB. */
 private const val THUMBNAIL_SAMPLE_SIZE = 2
 
@@ -150,11 +217,13 @@ internal class ReplayLayers(
 ) {
     private val textures = ArrayList<Texture>()
     private val materials = ArrayList<MaterialInstance>()
+    // Trilinear and anisotropic: the floor is mostly seen at a grazing angle, where trilinear
+    // alone drops to a mip level blurred along the view (#4080).
     private val clamp = TextureSampler(
         TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR,
         TextureSampler.MagFilter.LINEAR,
         TextureSampler.WrapMode.CLAMP_TO_EDGE,
-    )
+    ).apply { anisotropy = ANISOTROPY }
     private val nearest = TextureSampler(
         TextureSampler.MinFilter.NEAREST,
         TextureSampler.MagFilter.NEAREST,
@@ -190,6 +259,7 @@ internal class ReplayLayers(
         engine, material(texture(shadowBitmap()), solid = false), SHADOW_PRIORITY, textured = true,
     )
 
+    /** The photos in the frustums, at the archive's full size; bounded, see [evictFrames]. */
     private val frameTextures = HashMap<String, Texture>()
 
     /** One photo quad per keyframe the whole session reaches, plus the live camera's. */
@@ -284,10 +354,34 @@ internal class ReplayLayers(
                 slot.node.upload(mesh)
             }
         }
+        evictFrames()
     }
 
+    /**
+     * Photo [path] as a texture: the full-size frame (240 × 320 in the bundled replay), not the
+     * filmstrip's half-size thumbnail — a frustum's photo is drawn at up to a third of the screen
+     * (#4080). Decoded here, on the main thread, once per path the playhead reaches.
+     */
     private fun frameTexture(path: String): Texture? = frameTextures[path]
-        ?: media.thumbnails[path]?.let { texture(it) }?.also { frameTextures[path] = it }
+        ?: (media.decode(path) ?: media.thumbnails[path])
+            ?.let { ImageTexture.Builder().bitmap(it).build(engine) }
+            ?.also { frameTextures[path] = it }
+
+    /**
+     * Drops the frame textures no slot shows once there are more than [FRAME_TEXTURE_CACHE], so a
+     * whole session played through does not keep every frame on the GPU.
+     */
+    private fun evictFrames() {
+        if (frameTextures.size <= FRAME_TEXTURE_CACHE) return
+        val bound = photoSlots.mapNotNullTo(HashSet()) { it.texture }
+        val iterator = frameTextures.values.iterator()
+        while (iterator.hasNext() && frameTextures.size > FRAME_TEXTURE_CACHE) {
+            val texture = iterator.next()
+            if (texture in bound) continue
+            engine.safeDestroyTexture(texture)
+            iterator.remove()
+        }
+    }
 
     private fun changed(owner: Any, key: Any?): Boolean {
         if (keys.containsKey(owner) && keys[owner] == key) return false
@@ -299,8 +393,10 @@ internal class ReplayLayers(
     fun destroy() {
         materials.forEach { materialLoader.destroyMaterialInstance(it) }
         textures.forEach { engine.safeDestroyTexture(it) }
+        frameTextures.values.forEach { engine.safeDestroyTexture(it) }
         materials.clear()
         textures.clear()
+        frameTextures.clear()
     }
 
     private class PhotoSlot(val node: DebugLayerNode, val material: MaterialInstance) {
@@ -313,6 +409,12 @@ internal class ReplayLayers(
         const val SHADOW_PRIORITY = 2
         const val POINTS_PRIORITY = 3
         const val PHOTO_FRUSTUM_PRIORITY = 5
+
+        /** Anisotropic filtering on the photos: 8 taps, a mid-range GPU's cheap maximum. */
+        const val ANISOTROPY = 8f
+
+        /** The keyframes' photos ([ArDebugTrace.MAX_KEYFRAMES]), the live one, and slack. */
+        const val FRAME_TEXTURE_CACHE = ArDebugTrace.MAX_KEYFRAMES + 16
 
         /** Coloured points are read as the room's texture, not as markers: a touch larger. */
         const val POINT_SCALE = 1.25f

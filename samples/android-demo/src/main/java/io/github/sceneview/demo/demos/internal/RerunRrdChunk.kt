@@ -178,8 +178,14 @@ internal class RerunComponentColumn private constructor(
             )
         }
 
-        /** One `ImageFormat` instance: RGB, 8 bits per channel (`pixel_format` null). */
-        fun imageFormat(archetype: String, name: String, width: Int, height: Int): RerunComponentColumn {
+        /** One `ImageFormat` instance: RGB, or RGBA when [rgba], 8 bits per channel (`pixel_format` null). */
+        fun imageFormat(
+            archetype: String,
+            name: String,
+            width: Int,
+            height: Int,
+            rgba: Boolean = false,
+        ): RerunComponentColumn {
             val fields = listOf(
                 RerunArrowField("width", RerunArrowType.UInt32, nullable = false),
                 RerunArrowField("height", RerunArrowType.UInt32, nullable = false),
@@ -193,7 +199,7 @@ internal class RerunComponentColumn private constructor(
                     RerunArrowArray.uint32s(intArrayOf(width)),
                     RerunArrowArray.uint32s(intArrayOf(height)),
                     RerunArrowArray.allNull(1, 1),
-                    RerunArrowArray.uint8s(byteArrayOf(COLOR_MODEL_RGB)),
+                    RerunArrowArray.uint8s(byteArrayOf(if (rgba) COLOR_MODEL_RGBA else COLOR_MODEL_RGB)),
                     RerunArrowArray.uint8s(byteArrayOf(CHANNEL_U8)),
                 ),
             )
@@ -207,6 +213,9 @@ internal class RerunComponentColumn private constructor(
 
         /** Rerun's `ColorModel.RGB`. */
         const val COLOR_MODEL_RGB: Byte = 2
+
+        /** Rerun's `ColorModel.RGBA`. */
+        const val COLOR_MODEL_RGBA: Byte = 3
 
         /** Rerun's `ChannelDatatype.U8`. */
         const val CHANNEL_U8: Byte = 6
