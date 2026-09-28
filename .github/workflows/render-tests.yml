@@ -454,7 +454,10 @@ jobs:
           cores: 2
           ram-size: 4096M
           # `-skin 1080x2400`: the golden framebuffer. See the block comment above.
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
+          # `swangle_indirect` (ANGLE over SwiftShader-Vulkan) instead of
+          # `swiftshader_indirect`, which loses the emulator on the first live
+          # Filament viewport (#3554; measured in preview.yml, #4110).
+          emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
           emulator-boot-timeout: 900
           disable-animations: true
           script: |
