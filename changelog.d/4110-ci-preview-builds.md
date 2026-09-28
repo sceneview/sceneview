@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Demo builds and screenshots can run on CI instead of a local machine.** A new opt-in `preview.yml` workflow builds the Android demo APK and the iOS demo Simulator app on GitHub-hosted runners, captures the chosen demos in light and dark mode, and uploads everything as artifacts. Trigger it with `gh workflow run preview.yml` or the `preview` / `preview-ios` pull request labels; `CONTRIBUTING.md` explains how to fetch the results. It is not a required check and adds nothing to a pull request that does not ask for it.
