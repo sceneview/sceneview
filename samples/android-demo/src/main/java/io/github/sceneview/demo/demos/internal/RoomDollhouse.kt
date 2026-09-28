@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import java.util.Locale
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -75,16 +76,48 @@ object RoomDollhouse {
     const val BASE_MARGIN_M = 0.15f
     const val BASE_DROP_M = 0.02f
 
+    /** How thick the plinth stands **on the table**, in metres: a model's base, not a sheet. */
+    const val PLINTH_ON_TABLE_M = 0.008f
+
+    /** How far the contact shadow reaches past the plinth **on the table**, in metres. */
+    const val SHADOW_ON_TABLE_M = 0.012f
+
+    /** Fewer points than this, with no plane, do not draw a room: they are ARCore's noise. */
+    const val MIN_ROOM_POINTS = 30
+
     /**
      * The session to open: [requestedId] when it is still kept, else the newest room recorded on
-     * this phone, else the newest session of any kind, else `null` — nothing recorded yet, and the
-     * screen offers to record one. Never a stock asset.
+     * this phone that kept a surface, else the newest session of any kind — preferring, again, one
+     * with surfaces — else `null`: nothing recorded yet, and the screen offers to record one.
+     * Never a stock asset.
      */
     fun pickSession(sessions: List<RerunStoredSession>, requestedId: String? = null): RerunStoredSession? {
         requestedId?.let { id -> sessions.firstOrNull { it.id == id }?.let { return it } }
-        return sessions.filter { it.source == RerunSessionSource.Recorded }.maxByOrNull { it.createdAt }
-            ?: sessions.maxByOrNull { it.createdAt }
+        // A room to stand before a bare path: the newest recording that kept a surface.
+        val candidates = sessions.filter { hasSurfaces(it) }.ifEmpty { sessions }
+        return candidates.filter { it.source == RerunSessionSource.Recorded }.maxByOrNull { it.createdAt }
+            ?: candidates.maxByOrNull { it.createdAt }
     }
+
+    /** The recordings the dollhouse offers to stand instead of the one on the table, newest first. */
+    fun choices(sessions: List<RerunStoredSession>): List<RerunStoredSession> =
+        sessions.sortedByDescending { it.createdAt }
+
+    /**
+     * Whether a kept session holds any surface to stand, read from its `session.json` figures
+     * without opening it: a recording with only the path walked and its photos has none.
+     */
+    fun hasSurfaces(session: RerunStoredSession): Boolean =
+        session.planes > 0 || session.points >= MIN_ROOM_POINTS
+
+    /**
+     * Whether a [crop]ped room holds anything to stand as a room: a plane, or enough points to
+     * show its shape. The path walked alone is not a room — a recording that only kept poses and
+     * photos (#4075: the Record mode lost every plane and point on a real phone) says so, instead
+     * of standing an empty plinth under a hair-thin line.
+     */
+    fun hasSurfaces(frame: ArDebugFrame): Boolean =
+        frame.planes.any { it.vertexCount >= 3 } || frame.mapPointCount >= MIN_ROOM_POINTS
 
     /**
      * The room cut open: the ceilings go, and so do the points above [CUTAWAY_HEIGHT_M], under the
@@ -194,6 +227,39 @@ object RoomDollhouse {
         return out
     }
 
+    /**
+     * The plinth's thickness in the room's own metres, for a room drawn at [scale]: it stands
+     * [PLINTH_ON_TABLE_M] thick on the table whatever the room's scale.
+     */
+    fun plinthThickness(scale: Float): Float = PLINTH_ON_TABLE_M / scale.coerceAtLeast(MIN_SCALE)
+
+    /**
+     * [polygon] (flat `[x,y,z, …]`, horizontal) pushed [margin] metres outwards from its centre,
+     * at height [y]: the rings of the contact shadow around the plinth.
+     */
+    fun expand(polygon: FloatArray, margin: Float, y: Float): FloatArray {
+        val n = polygon.size / 3
+        if (n == 0) return FloatArray(0)
+        var cx = 0f
+        var cz = 0f
+        for (i in 0 until n) {
+            cx += polygon[i * 3]
+            cz += polygon[i * 3 + 2]
+        }
+        cx /= n
+        cz /= n
+        val out = FloatArray(n * 3)
+        for (i in 0 until n) {
+            val x = polygon[i * 3]
+            val z = polygon[i * 3 + 2]
+            val length = hypot(x - cx, z - cz).coerceAtLeast(MIN_HEIGHT_M)
+            out[i * 3] = x + (x - cx) / length * margin
+            out[i * 3 + 1] = y
+            out[i * 3 + 2] = z + (z - cz) / length * margin
+        }
+        return out
+    }
+
     /** The [fit]'s own box, [BASE_MARGIN_M] wider all round: the plinth of a room without planes. */
     fun basePolygon(fit: DollhouseFit): FloatArray {
         val y = fit.floorY - BASE_DROP_M
@@ -254,6 +320,12 @@ enum class DollhouseStage {
     /** The chosen session could not be read. */
     Failed,
 
+    /**
+     * The chosen session was read, but it holds no surface to stand, only the path walked and
+     * its photos. The screen says so and offers to record again; it never stands a stand-in.
+     */
+    NoSurfaces,
+
     /** The miniature, on a table in AR. */
     InRoom,
 
@@ -263,9 +335,11 @@ enum class DollhouseStage {
 
 /**
  * The dollhouse screen's stage. [sessionsKnown] once the store has been listed, [hasSession] when
- * it holds one to open, [opened] / [openFailed] once it has been read, [arAvailable] `false` once
- * ARCore said it cannot run here, and [previewChosen] when the user switched to the 3D view.
+ * it holds one to open, [opened] / [openFailed] once it has been read, [hasSurfaces] `false` when
+ * what was read holds no surface to stand ([RoomDollhouse.hasSurfaces]), [arAvailable] `false`
+ * once ARCore said it cannot run here, and [previewChosen] when the user switched to the 3D view.
  */
+@Suppress("LongParameterList") // one flag per fact the screen knows
 fun dollhouseStage(
     sessionsKnown: Boolean,
     hasSession: Boolean,
@@ -273,13 +347,57 @@ fun dollhouseStage(
     openFailed: Boolean,
     arAvailable: Boolean,
     previewChosen: Boolean,
+    hasSurfaces: Boolean = true,
 ): DollhouseStage = when {
     !sessionsKnown -> DollhouseStage.Loading
     !hasSession -> DollhouseStage.Empty
     openFailed -> DollhouseStage.Failed
     !opened -> DollhouseStage.Loading
+    !hasSurfaces -> DollhouseStage.NoSurfaces
     !arAvailable || previewChosen -> DollhouseStage.Preview
     else -> DollhouseStage.InRoom
+}
+
+/**
+ * The dollhouse's AR placement, as the screen drives it (#4075). Pure: the screen keeps one and
+ * replaces it on every action, and the tests pin each transition.
+ *
+ * [generation] names the `AutoPlacementState` in use: the screen remembers one state per
+ * generation. A new one is needed whenever the AR view leaves the screen and comes back — its
+ * `AutoPlacementScene` dismisses the state it was given on the way out, and a dismissed state
+ * never places again, nor resets — and on Reset, so the room goes and nothing of the last
+ * placement (anchor, twist, pinch) survives. [sceneKey] rebuilds the AR view itself (Restart,
+ * when the anchor could not be found again). [realSize] is the Real size toggle. [holdUntil] is
+ * the `uptimeMillis` before which nothing is placed: after Reset the table stays empty a beat,
+ * long enough to see the room go and aim elsewhere. Without it the room came straight back where
+ * it stood, on the very next frame, and Reset looked like it did nothing.
+ */
+data class DollhouseArControl(
+    val generation: Int = 0,
+    val sceneKey: Int = 0,
+    val realSize: Boolean = false,
+    val holdUntil: Long = 0L,
+) {
+    /** Whether a placement may be made at [nowMillis]. */
+    fun armed(nowMillis: Long): Boolean = nowMillis >= holdUntil
+
+    /** Reset: the room goes, back to its miniature scale, and stands again a beat later. */
+    fun reset(nowMillis: Long): DollhouseArControl =
+        copy(generation = generation + 1, realSize = false, holdUntil = nowMillis + RESET_HOLD_MS)
+
+    /** The AR view left the screen: the 3D view, another recording, the camera closed. */
+    fun leftAr(): DollhouseArControl = copy(generation = generation + 1, realSize = false, holdUntil = 0L)
+
+    /** Restart: the AR view is rebuilt, and the room placed afresh. */
+    fun restart(): DollhouseArControl =
+        copy(generation = generation + 1, sceneKey = sceneKey + 1, realSize = false, holdUntil = 0L)
+
+    fun toggleRealSize(): DollhouseArControl = copy(realSize = !realSize)
+
+    companion object {
+        /** How long the table stays empty after Reset. */
+        const val RESET_HOLD_MS = 1_500L
+    }
 }
 
 /** The dollhouse screen's words, in one place (English, like the rest of the Rerun demo). */
@@ -288,6 +406,16 @@ object DollhouseCopy {
     const val VIEW_IN_AR_CAPTION = "AR"
     const val OPENING = "Opening your room…"
     const val OPEN_FAILED = "This room could not be opened. Record it again, or pick another session."
+
+    const val NO_SURFACES_TITLE = "This recording has no surfaces yet — record again"
+    const val NO_SURFACES_BODY = "It kept the path you walked and its photos, but no floor, wall or " +
+        "table, so there is no room to stand on your table. Record your room again, moving slowly " +
+        "past the floor and the walls."
+    const val OTHER_RECORDINGS = "Or stand another recording"
+    const val ON_THE_TABLE = "On the table"
+    const val CHANGE_RECORDING = "Change recording"
+    const val NO_SURFACES = "No surfaces"
+    const val RESET_HOLD = "Room removed. Point at a table — it stands where you aim."
 
     const val EMPTY_TITLE = "No room recorded yet"
     const val EMPTY_BODY = "Record your room with the Rerun demo, and it stands on your table as a " +
@@ -313,6 +441,19 @@ object DollhouseCopy {
     /** `Room · Sep 28, 2:32 PM · 1:20`. */
     fun peek(title: String, fit: DollhouseFit, realSize: Boolean): String =
         "$title · ${if (realSize) REAL_SIZE else fit.label}"
+
+    /**
+     * What a kept recording holds, read from its figures: `3 surfaces · 1,240 points`, or
+     * [NO_SURFACES] when it kept only the path walked and its photos.
+     */
+    fun surfaces(planes: Int, points: Int): String {
+        if (planes <= 0 && points < RoomDollhouse.MIN_ROOM_POINTS) return NO_SURFACES
+        val parts = buildList {
+            if (planes > 0) add(if (planes == 1) "1 surface" else "$planes surfaces")
+            if (points > 0) add(if (points == 1) "1 point" else String.format(Locale.US, "%,d points", points))
+        }
+        return parts.joinToString(" · ")
+    }
 
     /** `1:20 · 30 × 22 cm on the table`, or `Real size` when the room stands at its own size. */
     fun size(fit: DollhouseFit, realSize: Boolean): String {

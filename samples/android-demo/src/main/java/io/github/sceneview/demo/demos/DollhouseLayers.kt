@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Engine
@@ -84,17 +85,30 @@ internal class DollhouseLayers(
         return DebugLayerNode(engine, material, priority)
     }
 
-    /** The planes ARCore found without a photo: tinted like the replay's. */
+    /**
+     * The planes ARCore found without a photo, in the replay's tints made solid over the plinth:
+     * the replay's see-through fills read as a ghost of a room on a table, a floor and walls of
+     * one flat colour each read as a model's.
+     */
     private val flat: Map<DebugLayer, DebugLayerNode> = mapOf(
-        DebugLayer.PlaneFloor to node(palette.floorFill, FILL_PRIORITY),
-        DebugLayer.PlaneWall to node(palette.wallFill, FILL_PRIORITY),
-        DebugLayer.PlaneOther to node(palette.otherFill, FILL_PRIORITY),
+        DebugLayer.PlaneFloor to node(solid(base, palette.floorFill), FILL_PRIORITY),
+        DebugLayer.PlaneWall to node(solid(base, palette.wallFill), FILL_PRIORITY),
+        DebugLayer.PlaneOther to node(solid(base, palette.otherFill), FILL_PRIORITY),
         DebugLayer.OutlineFloor to node(palette.floorOutline, OUTLINE_PRIORITY),
         DebugLayer.OutlineWall to node(palette.wallOutline, OUTLINE_PRIORITY),
         DebugLayer.OutlineOther to node(palette.otherOutline, OUTLINE_PRIORITY),
     )
     private val trail = node(palette.trailNew, TRAIL_PRIORITY)
     private val plinth = node(base, BASE_PRIORITY, twoSided = true)
+
+    /** The plinth's edge, a shade darker than its top, so it reads as a solid base. */
+    private val plinthEdge = node(lerp(base, Color.Black, EDGE_SHADE), BASE_PRIORITY, twoSided = true)
+
+    /**
+     * The contact shadow on the table: rings of faint black around the plinth's foot, overlapping
+     * towards it, so the miniature sits on the table rather than floating over the camera feed.
+     */
+    private val shadow = node(Color.Black.copy(alpha = SHADOW_ALPHA), SHADOW_PRIORITY, twoSided = true)
 
     /**
      * The points, in the palette's point colour, like the live 3D view draws them. Not the
@@ -104,11 +118,12 @@ internal class DollhouseLayers(
     private val points = node(palette.mapPoint, POINTS_PRIORITY)
 
     /** Every node, none of them pickable: a touch lands on [DollhouseModel]'s box instead. */
-    val nodes: List<DebugLayerNode> = (replay.nodes + flat.values + points + trail + plinth).onEach {
-        // Each layer is bounded by a 500 m box for cheap culling: as a collider it would take
-        // every touch in the room.
-        it.isHittable = false
-    }
+    val nodes: List<DebugLayerNode> =
+        (replay.nodes + flat.values + points + trail + plinth + plinthEdge + shadow).onEach {
+            // Each layer is bounded by a 500 m box for cheap culling: as a collider it would take
+            // every touch in the room.
+            it.isHittable = false
+        }
 
     private var styleScale = Float.NaN
 
@@ -134,9 +149,36 @@ internal class DollhouseLayers(
         val path = DebugMesh()
         ArDebugGeometry.buildTrail(frame.trail, style) { path }
         trail.upload(path)
-        val base = DebugMesh()
-        ArDebugGeometry.addFan(base, RoomDollhouse.basePolygon(frame, room.fit))
-        plinth.upload(base)
+        val top = RoomDollhouse.basePolygon(frame, room.fit)
+        val topY = room.fit.floorY - RoomDollhouse.BASE_DROP_M
+        val bottomY = topY - RoomDollhouse.plinthThickness(scale)
+        plinth.upload(DebugMesh().also { ArDebugGeometry.addFan(it, top) })
+        plinthEdge.upload(DebugMesh().also { addSkirt(it, top, bottomY) })
+        // The shadow's rings are sized on the table, like the points: the same few millimetres
+        // round a bedroom at 1:12 and a hall at 1:50.
+        val reach = RoomDollhouse.SHADOW_ON_TABLE_M / scale.coerceAtLeast(MIN_STYLE_SCALE)
+        val rings = DebugMesh()
+        for (ring in 1..SHADOW_RINGS) {
+            ArDebugGeometry.addFan(
+                rings,
+                RoomDollhouse.expand(top, reach * ring / SHADOW_RINGS, bottomY + SHADOW_LIFT_M * ring),
+            )
+        }
+        shadow.upload(rings)
+    }
+
+    /** The plinth's sides: one quad per edge of its [top], down to [bottomY]. */
+    private fun addSkirt(mesh: DebugMesh, top: FloatArray, bottomY: Float) {
+        val n = top.size / 3
+        for (i in 0 until n) {
+            val j = (i + 1) % n
+            val a = mesh.vertex(top[i * 3], top[i * 3 + 1], top[i * 3 + 2])
+            val b = mesh.vertex(top[j * 3], top[j * 3 + 1], top[j * 3 + 2])
+            val c = mesh.vertex(top[j * 3], bottomY, top[j * 3 + 2])
+            val d = mesh.vertex(top[i * 3], bottomY, top[i * 3 + 2])
+            mesh.triangle(a, b, c)
+            mesh.triangle(a, c, d)
+        }
     }
 
     /** Materials and textures, once the nodes are gone. */
@@ -147,11 +189,30 @@ internal class DollhouseLayers(
     }
 
     private companion object {
-        const val BASE_PRIORITY = 0
-        const val FILL_PRIORITY = 1
-        const val OUTLINE_PRIORITY = 2
-        const val POINTS_PRIORITY = 3
-        const val TRAIL_PRIORITY = 4
+        const val SHADOW_PRIORITY = 0
+        const val BASE_PRIORITY = 1
+        const val FILL_PRIORITY = 2
+        const val OUTLINE_PRIORITY = 3
+        const val POINTS_PRIORITY = 4
+        const val TRAIL_PRIORITY = 5
+
+        /** How much darker the plinth's edge is than its top. */
+        const val EDGE_SHADE = 0.28f
+
+        /** Each ring's black: three overlapping rings darken to about 0.3 at the plinth's foot. */
+        const val SHADOW_ALPHA = 0.11f
+        const val SHADOW_RINGS = 3
+
+        /** Each ring a hair above the last, in the room's metres, so none of them fight. */
+        const val SHADOW_LIFT_M = 0.0005f
+        const val MIN_STYLE_SCALE = 0.001f
+
+        /** The least a fill without a photo shows of its own tint over the plinth. */
+        const val SOLID_MIX = 0.72f
+
+        /** [fill] as an opaque colour: its tint laid over [base] at its own alpha, or more. */
+        fun solid(base: Color, fill: Color): Color =
+            lerp(base, fill.copy(alpha = 1f), maxOf(fill.alpha, SOLID_MIX))
     }
 }
 
@@ -182,7 +243,8 @@ internal fun SceneScope.DollhouseModel(
     DisposableEffect(layers) { onDispose { layers.destroy() } }
     SideEffect { layers.sync(styleScale) }
     val fit = room.fit
-    val floor = fit.floorY - RoomDollhouse.BASE_DROP_M
+    // The plinth's foot, not the room's floor, stands on the table.
+    val floor = fit.floorY - RoomDollhouse.BASE_DROP_M - RoomDollhouse.plinthThickness(styleScale)
     key(layers) {
         Node(
             position = Position(-fit.centerX * scale, -floor * scale, -fit.centerZ * scale),
