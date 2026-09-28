@@ -30,10 +30,8 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -61,7 +59,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoFreshness
@@ -340,7 +337,7 @@ private fun MediaImage(painter: Painter, shift: () -> Float, featured: Boolean) 
 }
 
 /** How much larger than its card a featured picture is drawn, so the parallax never shows an edge. */
-private const val FEATURED_MEDIA_OVERSCAN = 1.12f
+private const val FEATURED_MEDIA_OVERSCAN = 1.06f
 
 /**
  * `RenderEffect` blur exists from API 31. Below it `Modifier.blur` is a no-op and a sharp

@@ -692,18 +692,9 @@ private fun HomeHeader(
     // otherwise — requested, not written, so leaving the screen or scrolling the sky
     // away cannot race a demo's own request (#3984).
     RequestLightStatusBarIcons(active = overStage)
-    // Once the page scrolls under it, the header is glass, not a wall: `surface` at the
-    // `glass-sheet` opacity (DESIGN.md "Nav glass replaces the solid surface when the nav
-    // scrolls over image content"), so the cards' pictures keep moving, dimmed, behind the
-    // wordmark instead of vanishing at a hard edge. No blur — the grid is not sampleable.
-    val headerGlassAlpha = if (isSystemInDarkTheme()) {
-        SceneViewTokens.Glass.sheetAlphaDark
-    } else {
-        SceneViewTokens.Glass.sheetAlphaLight
-    }
     val overlay by animateColorAsState(
         targetValue = if (scrolled) {
-            MaterialTheme.colorScheme.surface.copy(alpha = headerGlassAlpha)
+            MaterialTheme.colorScheme.surface.copy(alpha = SceneViewTokens.HomeColor.headerOverlayAlpha)
         } else {
             Color.Transparent
         },

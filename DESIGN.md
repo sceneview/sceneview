@@ -117,7 +117,7 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-subtitle` | rgba(255,255,255,0.80) | rgba(255,255,255,0.80) | Hero subtitle, max width 260dp |
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
-| `header-overlay` | `surface` at 88 % | `surface` at 90 % | Sticky home header over the scrolling grid — `glass-sheet` opacity, so the cards' pictures stay visible, dimmed, as they pass under the wordmark |
+| `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid. Tried at the `glass-sheet` opacity: without a backdrop blur the card titles scrolling under the wordmark stay legible and read as an overlap bug, so it stays opaque |
 | `card-glass` | `surface-container` at 72 % over the card's own picture blurred 28dp | `surface-container` at 85 %, same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
 | `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
@@ -151,7 +151,7 @@ moves.
 | `card-glass-melt` | 28dp | Band over which the sharp picture fades into the glass (the fade spans twice this, centred on the caption's top) |
 | `featured-card-width` | 280dp (340dp from 600dp wide) | One "Featured" card |
 | `featured-media-aspect` | 4 : 5 | "Featured" card, minimum height; the caption may grow it |
-| `featured-parallax` | 0.08, clamped to a 12 % overscan | Picture lag behind its card while the shelf is swiped |
+| `featured-parallax` | 0.08, clamped to a 6 % overscan | Picture lag behind its card while the shelf is swiped |
 
 Contrast of `card-glass`, composited over the worst uniform ground: light, over black —
 `on-surface` 8.6:1, `on-surface-variant` 4.8:1; dark, over mid-grey — 10.8:1 and 5.2:1

@@ -318,6 +318,7 @@ object SceneViewTokens {
         val outlineSubtleLight = Color(0xFFEBEDF0)
         val outlineSubtleDark = Color(0xFF46516A)
 
+        const val headerOverlayAlpha = 1f
 
         /**
          * `card-glass`, light — the frosted caption of a home card: `surface-container` at
