@@ -135,6 +135,17 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
 | `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
 
+The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
+same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their
+crops are in that capture's pixels. Same 5:4 crop, 800×640 JPEG q85, one universal JPEG.
+
+| Imageset | Capture | Crop |
+|---|---|---|
+| `preview_ar_rerun` | `ar-rerun`, "Watch a sample session", 7 s into the bundled replay | 603, 1125, 1206 |
+| `preview_animation` | `animation`, bundled `cyberpunk_character` mid-clip | 603, 1420, 1206 |
+| `preview_ar_placement` | Not an AR capture: the Simulator has no ARKit. The Toy Car the demo places by default, opened in `model-viewer` | 603, 1330, 1206 |
+| `preview_ar_record_playback` | Not an AR capture, same reason. The Damaged Helmet the recorder places, opened in `model-viewer` | 603, 1300, 1206 |
+
 ## Home hero banner
 
 `heroes.json` + `--kind hero` generates the wide `preview_hero_<demo_id>.webp` (1600×1000,

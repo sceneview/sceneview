@@ -3,16 +3,6 @@
     {
       "filename": "preview_ar_record_playback.jpg",
       "idiom": "universal"
-    },
-    {
-      "filename": "preview_ar_record_playback_dark.jpg",
-      "idiom": "universal",
-      "appearances": [
-        {
-          "appearance": "luminosity",
-          "value": "dark"
-        }
-      ]
     }
   ],
   "info": {
