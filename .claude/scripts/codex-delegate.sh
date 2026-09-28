@@ -71,12 +71,18 @@
 #      explicit --model gpt-6-astra with no --effort now gets high, out loud.
 #
 #   2. A PROMPT TOO BIG FOR SOL ESCALATES TO ASTRA, for `ask` only. Every
-#      gpt-5.6-* model tops out at 272K tokens of context; gpt-6-astra takes
+#      gpt-5.6-* and gpt-6-sol/luna model tops out at 272K tokens of context; gpt-6-astra takes
 #      ~922K of input. Reading a dead session transcript, a whole module or a
 #      log dump is the one job Astra can do that nothing else here can. Handing
 #      such a prompt to Sol does not fail loudly — it truncates. Above
 #      ASK_ESCALATE_BYTES the script switches, says so, and stays switchable off
 #      with an explicit --model.
+#
+#   3. THE DEFAULT MOVED TO gpt-6-sol on 2026-09-28. GPT-6 Sol and Luna shipped
+#      in Codex on 2026-09-22 (CLI 0.158.0 lists them; 0.153.4 did not). Sol is
+#      the GPT-6 tier sized for volume, and the catalog now labels gpt-5.6-sol
+#      "Older". gpt-6-luna is the cheap tier: pass --model gpt-6-luna for
+#      mechanical, closed-brief work (renames, test scaffolds, inventories).
 #
 #   What did NOT change, and why. `implement` stays on Sol. On the ChatGPT Plus
 #   plan, three parallel Astra implements at effort high burned 206K tokens in
@@ -89,7 +95,7 @@
 #   note 1 that means effort high. Driving an emulator and reading what is
 #   actually on screen is the vision-and-persistence job Sol is weakest at, and
 #   a QA run is one call, not three in parallel — the window cost that rules
-#   Astra out for `implement` does not apply. Override with --model gpt-5.6-sol.
+#   Astra out for `implement` does not apply. Override with --model gpt-6-sol.
 #
 # Exit codes: 0 ok · 1 codex failed · 2 preflight refused (auth/binary/flags)
 #             3 quota or rate limit hit — tell Thomas, never work around it
@@ -337,7 +343,7 @@ invoke() {
 CMD="${1:-}"; shift || true
 reject_banned_flags ${1+"$@"}
 
-DEFAULT_MODEL="${CODEX_DELEGATE_MODEL:-gpt-5.6-sol}"
+DEFAULT_MODEL="${CODEX_DELEGATE_MODEL:-gpt-6-sol}"
 LABEL="" MODEL="" EFFORT="" TIMEOUT="" DIR="" NEW_WT="" HERE="" SCHEMA="" FILE=""
 QA_REPO=""
 REST=()

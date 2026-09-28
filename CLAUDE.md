@@ -64,7 +64,7 @@ Full API reference: [`llms.txt`](./llms.txt).
   tests and mechanical refactors from a closed brief. Keep with Claude: product
   decisions, UI validated by capture, anything touching secrets, billing or irreversible
   steps — and the reading of whatever Codex returns. The script pins the model
-  (`gpt-5.6-sol`) so a CLI update cannot change it silently; `--model gpt-6-astra` is
+  (`gpt-6-sol`; `--model gpt-6-luna` for mechanical work) so a CLI update cannot change it silently; `--model gpt-6-astra` is
   opt-in, per call, and now implies `--effort high` — Astra at its own default effort
   reports nothing. `ask` escalates to Astra on its own when the prompt outgrows Sol's
   272K window, because Sol truncates such a prompt instead of refusing it. Astra is
