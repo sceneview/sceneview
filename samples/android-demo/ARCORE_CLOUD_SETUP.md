@@ -42,7 +42,12 @@ https://console.cloud.google.com/apis/credentials
 Restrict the key:
 - **Application restrictions** → Android apps
   - Package name: `io.github.sceneview.demo`
-  - SHA-1 fingerprint: your debug keystore's SHA-1 (`keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey`) and/or your Play App Signing SHA-1 from Play Console.
+  - SHA-1 fingerprint: your Play App Signing SHA-1 from Play Console (see below), and/or your debug keystore's SHA-1 if you build with `-PdemoPlainDebug=true`.
+  - **+ ADD AN ITEM** for the debug (QA) build — every `assembleDebug` without `-PdemoPlainDebug=true` installs as its own app, next to the store one:
+    - Package name: `io.github.sceneview.demo.qa`
+    - SHA-1 fingerprint: your debug keystore's SHA-1 (`keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey`).
+
+    Without this entry a restricted key refuses the QA build: Cloud Anchors, Geospatial and Streetscape report "API key not authorized" there while the store build keeps working.
 - **API restrictions** → restrict key → ARCore API only.
 
 #### Play App Signing key (production blocker — issue #1177)
@@ -57,6 +62,8 @@ To unblock Cloud Anchors / Geospatial / Streetscape on Play Store production bui
 4. Under **Application restrictions** → **Android apps** → **+ ADD AN ITEM**:
    - Package name: `io.github.sceneview.demo`
    - SHA-1: paste the App signing key SHA-1 from step 2.
+
+   This entry covers the store build only. Debug builds are `io.github.sceneview.demo.qa`, signed with a debug keystore: they need their own `io.github.sceneview.demo.qa` + debug SHA-1 item (section 3 above).
 5. Save. Propagation is ~1 minute. No new APK/AAB cut needed — the running production build will start authorizing immediately.
 
 Symptom when this is missing: Cloud Anchors `Host` / `Resolve` returns `ERROR_NOT_AUTHORIZED`; Terrain / Rooftop / Streetscape demos report "API key not authorized". The in-app status banner surfaces this specific case so users see actionable guidance instead of a raw enum.

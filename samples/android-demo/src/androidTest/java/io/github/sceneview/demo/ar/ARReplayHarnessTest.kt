@@ -11,6 +11,8 @@ import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.isArDemo
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.demoPackage
+import io.github.sceneview.demo.mainActivityComponent
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
@@ -139,7 +141,7 @@ class ARReplayHarnessTest {
         // Pre-grant runtime permissions: AGP reinstalls the demo APK before each
         // test class, wiping any prior `pm grant`. Without CAMERA the AR demos
         // block at the permission prompt instead of mounting the ARSceneView.
-        device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.CAMERA")
+        device.executeShellCommand("pm grant $demoPackage android.permission.CAMERA")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
     }
@@ -283,7 +285,7 @@ class ARReplayHarnessTest {
      * empty `pidof` is an unambiguous crash signal.
      */
     private fun isDemoProcessAlive(): Boolean {
-        val out = device.executeShellCommand("pidof io.github.sceneview.demo")
+        val out = device.executeShellCommand("pidof $demoPackage")
         return out.trim().isNotEmpty()
     }
 
@@ -469,7 +471,7 @@ class ARReplayHarnessTest {
      */
     private fun launchDemo(demoSlug: String, playbackFile: String) {
         device.executeShellCommand(
-            "am start -n io.github.sceneview.demo/.MainActivity " +
+            "am start -n $mainActivityComponent " +
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK so onNewIntent fires on re-launch
                 "--es demo $demoSlug " +
                 "--es ar_playback_file $playbackFile",

@@ -28,7 +28,7 @@ import io.github.sceneview.rememberModelLoader
  * sheet too; it is here so the three can be compared side by side.
  *
  * ```
- * adb shell am start -n io.github.sceneview.demo/.PlacementPreviewQaActivity --es subject tv|helmet|lantern
+ * adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.PlacementPreviewQaActivity --es subject tv|helmet|lantern
  * ```
  */
 class PlacementPreviewQaActivity : ComponentActivity() {

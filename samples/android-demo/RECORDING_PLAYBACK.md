@@ -56,4 +56,6 @@ The same MP4 can be replayed with the [Rerun bridge](src/main/java/io/github/sce
 adb pull /sdcard/Android/data/io.github.sceneview.demo/files/ar-recordings/ar-session-20260506-153045.mp4
 ```
 
+That is the Play Store app's folder; a debug build is its own app, `io.github.sceneview.demo.qa`, with its own folder under that id.
+
 Drop the file into any messaging tool, GitHub issue, or shared drive. The receiver places it under their own `ar-recordings` directory (or any path you hand to `playbackDataset`) and replays it.

@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import io.github.sceneview.demo.demoPackage
+import io.github.sceneview.demo.mainActivityComponent
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -81,7 +83,7 @@ class ARPlaybackScreenshotTest {
         // Pre-grant runtime permissions: AGP reinstalls the demo APK before each test
         // class, wiping any prior `pm grant`. Without CAMERA the AR demo blocks at the
         // permission prompt and we would screenshot the system dialog.
-        device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.CAMERA")
+        device.executeShellCommand("pm grant $demoPackage android.permission.CAMERA")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
     }
@@ -294,7 +296,7 @@ class ARPlaybackScreenshotTest {
      */
     private fun launchPlaybackDemo(playbackFile: String) {
         device.executeShellCommand(
-            "am start -n io.github.sceneview.demo/.MainActivity " +
+            "am start -n $mainActivityComponent " +
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK so onNewIntent fires on re-launch
                 "--es demo ar-record-playback " +
                 "--es ar_playback_file $playbackFile"

@@ -335,7 +335,7 @@ jobs:
             # token under POSIX `sh` and the second line ships standalone.
             # The whole loop above (`attempts=0; while ...; done`) follows
             # the same one-line rule and is documented at line 160-164.
-            android --no-metrics run --apks=samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk --activity=io.github.sceneview.demo/.MainActivity || true
+            android --no-metrics run --apks=samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk --activity=io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity || true
             sleep 10
 
             mkdir -p demo-screenshots

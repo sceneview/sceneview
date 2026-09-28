@@ -6,7 +6,7 @@
 #
 # Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
 # mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 - runFlow:
     file: flows/demo.yaml
