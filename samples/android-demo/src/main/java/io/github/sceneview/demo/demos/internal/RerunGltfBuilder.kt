@@ -155,6 +155,80 @@ internal class RerunGltfBuilder(private val codec: RerunImageCodec?) {
         return addNode(jsonOf("name" to "world/points", "mesh" to mesh))
     }
 
+    /**
+     * A `.svscan` v2's dense cloud as `world/dense`: mode `POINTS`, `POSITION`, `COLOR_0` as
+     * normalised `UNSIGNED_BYTE` `VEC4` (linear, as glTF defines vertex colours) and unit
+     * `NORMAL`s — the layout MeshLab, Open3D and three.js read straight into a coloured cloud.
+     */
+    fun addDense(cloud: DenseCloud): Int? {
+        val kept = (0 until cloud.count).filter { i -> (0 until 3).all { cloud.positions[i * 3 + it].isFinite() } }
+        if (kept.isEmpty()) return null
+        val positions = ByteBuffer.allocate(kept.size * 12).order(ByteOrder.LITTLE_ENDIAN)
+        val colors = ByteArray(kept.size * 4)
+        val normals = ByteBuffer.allocate(kept.size * 12).order(ByteOrder.LITTLE_ENDIAN)
+        val low = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
+        val high = floatArrayOf(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
+        kept.forEachIndexed { out, i ->
+            for (axis in 0 until 3) {
+                val v = cloud.positions[i * 3 + axis]
+                positions.putFloat(v)
+                low[axis] = minOf(low[axis], v)
+                high[axis] = maxOf(high[axis], v)
+            }
+            val c = cloud.colors[i].takeIf { it != 0 } ?: -1
+            colors[out * 4] = linearByte(c shr 16 and 0xFF)
+            colors[out * 4 + 1] = linearByte(c shr 8 and 0xFF)
+            colors[out * 4 + 2] = linearByte(c and 0xFF)
+            colors[out * 4 + 3] = -1
+            putUnitNormal(normals, cloud.normals, i)
+        }
+        val position = addBufferView(positions.array(), mapOf("target" to ARRAY_BUFFER)).let { view ->
+            accessors += jsonOf(
+                "bufferView" to view, "componentType" to FLOAT_COMPONENT, "count" to kept.size, "type" to "VEC3",
+                "min" to low.map(::jsonNumber), "max" to high.map(::jsonNumber),
+            )
+            accessors.lastIndex
+        }
+        val color = addBufferView(colors, mapOf("target" to ARRAY_BUFFER)).let { view ->
+            accessors += jsonOf(
+                "bufferView" to view, "componentType" to UNSIGNED_BYTE, "normalized" to true,
+                "count" to kept.size, "type" to "VEC4",
+            )
+            accessors.lastIndex
+        }
+        val normal = addBufferView(normals.array(), mapOf("target" to ARRAY_BUFFER)).let { view ->
+            accessors += jsonOf(
+                "bufferView" to view, "componentType" to FLOAT_COMPONENT, "count" to kept.size, "type" to "VEC3",
+            )
+            accessors.lastIndex
+        }
+        val material = unlitMaterial("points", floatArrayOf(1f, 1f, 1f, 1f))
+        val mesh = addMesh(
+            "world/dense",
+            jsonOf(
+                "attributes" to jsonOf("POSITION" to position, "NORMAL" to normal, "COLOR_0" to color),
+                "mode" to MODE_POINTS,
+                "material" to material,
+            ),
+        )
+        return addNode(jsonOf("name" to "world/dense", "mesh" to mesh))
+    }
+
+    private fun linearByte(srgb: Int): Byte = (SRGB_TO_LINEAR[srgb] * 255f + 0.5f).toInt().coerceIn(0, 255).toByte()
+
+    /** Writes point [i]'s normal as a unit vector; a missing or degenerate one becomes +Y. */
+    private fun putUnitNormal(out: ByteBuffer, normals: FloatArray?, i: Int) {
+        val nx = normals?.get(i * 3) ?: 0f
+        val ny = normals?.get(i * 3 + 1) ?: 1f
+        val nz = normals?.get(i * 3 + 2) ?: 0f
+        val length = kotlin.math.sqrt(nx * nx + ny * ny + nz * nz)
+        if (length > 1e-6f && length.isFinite()) {
+            out.putFloat(nx / length).putFloat(ny / length).putFloat(nz / length)
+        } else {
+            out.putFloat(0f).putFloat(1f).putFloat(0f)
+        }
+    }
+
     fun addCameraPath(path: List<RerunExportScene.CameraSample>): Int? {
         val positions = path.map { it.position }.filter { it.isFinite() }
         if (positions.size < 2) return null
@@ -442,6 +516,7 @@ internal class RerunGltfBuilder(private val codec: RerunImageCodec?) {
         private const val ARRAY_BUFFER = 34962
         private const val ELEMENT_ARRAY_BUFFER = 34963
         private const val FLOAT_COMPONENT = 5126
+        private const val UNSIGNED_BYTE = 5121
         private const val UNSIGNED_SHORT = 5123
         private const val UNSIGNED_INT = 5125
         private const val USHORT_MAX = 65535

@@ -34,6 +34,13 @@ object ArDebugLogWriter {
             put("entity", "world/camera/image")
             put("path", event.path)
         }.toString()
+        is ArDebugEvent.DepthStats -> buildJsonObject {
+            put("t", event.nanos)
+            put("type", "depth_stats")
+            put("new", event.added)
+            put("kept", event.kept)
+            put("total", event.total)
+        }.toString()
     }
 
     /** The whole log, one event per line. */
@@ -96,6 +103,26 @@ object ArDebugLogWriter {
 
 /** The manifest [ReplayManifest.parse] reads, written back. */
 fun ReplayManifest.toJson(): String = buildJsonObject {
+    // A v1 manifest has no version key at all: v1 readers and the bundled sample stay byte-equal.
+    if (version >= 2) put("version", version)
+    device?.let { d ->
+        putJsonObject("device") {
+            put("platform", d.platform)
+            put("model", d.model)
+            put("tier", d.tier)
+            put("depthSource", d.depthSource)
+        }
+    }
+    dense?.let { d ->
+        putJsonObject("dense") {
+            put("path", d.path)
+            put("count", d.count)
+            put("voxelM", d.voxelM)
+            put("normals", d.normals)
+            putJsonArray("bounds") { d.bounds.forEach { add(JsonPrimitive(it)) } }
+        }
+    }
+    if (version >= 2) putJsonObject("built") { put("denseMs", denseMs) }
     // The lens as intrinsics of a unit focal length: `width / 2 / fx` gives it back exactly.
     putJsonObject("intrinsics") {
         put("width", lens.halfWidthPerDepth * 2f)

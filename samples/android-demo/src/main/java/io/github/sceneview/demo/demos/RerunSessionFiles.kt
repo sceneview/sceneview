@@ -18,7 +18,10 @@ import io.github.sceneview.demo.demos.internal.BakePhoto
 import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.PlaneBake
+import io.github.sceneview.demo.demos.internal.ReplayDense
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ReplayManifest
@@ -31,6 +34,8 @@ import io.github.sceneview.demo.demos.internal.RerunScanFile
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunStoredSession
 import io.github.sceneview.demo.demos.internal.ScanArchive
+import io.github.sceneview.demo.demos.internal.ScanDevice
+import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.toJson
@@ -59,11 +64,19 @@ internal object RerunCaptureBuilder {
     /**
      * The scan of [events] (a trace's journal: every change it kept, in order), photographed by
      * [photos] through [lens]. Off the main thread.
+     *
+     * With a [device] the scan is a `.svscan` v2: its [dense] cloud (tier `depth`), when it has a
+     * surfel, goes into the archive as `dense/points.bin` (SVPC, [SvpcCodec]) — never an empty
+     * blob; a sparse-tier v2 carries no `dense` key and reads exactly like a v1 scan.
      */
     suspend fun build(
         events: List<ArDebugEvent>,
         lens: ReplayLens,
         photos: List<ScanPhoto>,
+        device: ScanDevice? = null,
+        dense: DenseCloud? = null,
+        denseVoxelM: Float = DenseFusion.VOXEL_M,
+        denseMs: Long = 0L,
     ): RerunCapturePack = withContext(Dispatchers.Default) {
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         val whole = trace.frameAt(trace.duration)
@@ -72,10 +85,18 @@ internal object RerunCaptureBuilder {
 
         val viewpoint = centroid(whole.trail)
         val baked = trace.lastPlanes().mapNotNull { plane -> bakePlane(plane, viewpoint, photos, lens, ::photo) }
+        val denseCloud = dense?.takeIf { device != null && it.count > 0 }
+        val denseBlob = denseCloud?.let { listOf(ReplayDense.PATH to SvpcCodec.encode(it)) }.orEmpty()
         val (archive, spans) = ScanArchive.pack(
-            photos.map { it.path to it.jpeg } + baked.map { (texture, jpeg) -> texture.path to jpeg },
+            photos.map { it.path to it.jpeg } + baked.map { (texture, jpeg) -> texture.path to jpeg } + denseBlob,
         )
         val manifest = ReplayManifest(
+            version = if (device != null) 2 else 1,
+            device = device,
+            dense = denseCloud?.let {
+                ReplayDense(ReplayDense.PATH, it.count, denseVoxelM, it.normals != null, it.bounds())
+            },
+            denseMs = denseMs,
             lens = lens,
             frameRate = if (trace.duration > 0f) trace.imageCount / trace.duration else 0f,
             frameCount = trace.imageCount,

@@ -21,6 +21,8 @@ private typealias Column = RerunComponentColumn
  * - `world/points` — the coloured map (`Points3D`), static.
  * - `world/points/live` — what the camera saw over time (`Points3D`, one row per point-cloud
  *   observation, amber): the replay rebuilds the growing map and its live points from it.
+ * - `world/dense` — a `.svscan` v2's dense cloud (`Points3D`: positions, colours, radius half a
+ *   voxel), static, in one row: the room's surfaces where `world/points` has its landmarks.
  * - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, static) and each
  *   photo at its time (`EncodedImage`, JPEG or PNG): every photo of the session when the scene
  *   has them, else the keyframes'.
@@ -179,11 +181,30 @@ object RerunRrdWriter {
             chunks += RerunChunk("/world/points", components)
             liveChunk(scene)?.let { chunks += it }
         }
+        scene.dense?.takeIf { it.count > 0 }?.let { chunks += denseChunk(it, scene.denseVoxelM) }
         chunks += cameraChunks(scene, codec)
         for (plane in scene.planes) planeChunk(plane, codec)?.let { chunks += it }
         for (anchor in scene.anchors) chunks += anchorChunk(anchor)
         return chunks
     }
+
+    /** The dense cloud, one static row; a point the camera never coloured is written white. */
+    private fun denseChunk(cloud: DenseCloud, voxelM: Float): RerunChunk = RerunChunk(
+        "/world/dense",
+        listOf(
+            Column.vectors("Points3D", "positions", "Position3D", listOf(cloud.positions.copyOf(cloud.count * 3)), 3),
+            Column.floats("Points3D", "radii", "Radius", listOf(floatArrayOf(voxelM / 2f))),
+            Column.colors(
+                "Points3D",
+                listOf(
+                    cloud.colors.map { c ->
+                        val rgb = if (c == 0) 0xFFFFFF else c
+                        packedColor(rgb shr 16 and 0xFF, rgb shr 8 and 0xFF, rgb and 0xFF)
+                    },
+                ),
+            ),
+        ),
+    )
 
     /**
      * One row per observation, at its time: the map points it saw. A single amber colour and
