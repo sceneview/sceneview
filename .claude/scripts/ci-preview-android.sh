@@ -36,6 +36,23 @@ SETTLE="${PREVIEW_SETTLE_SECONDS:-20}"
 adbt() { timeout 60 adb "$@"; }
 alive() { [ "$(timeout 10 adb get-state 2>/dev/null)" = device ]; }
 
+# Host-side capture first. A guest-side `screencap` over a Filament viewport on
+# SwiftShader took the whole emulator down (run 36405180532, same death as
+# #3554: the guest read-back is the last line before the process vanishes).
+# `adb emu screenrecord screenshot` reads the frame from the host renderer and
+# writes the PNG straight onto the runner. `screencap` stays as the fallback.
+capture() {
+  local dest="$1" tmp f
+  tmp="$(mktemp -d)"
+  if timeout 60 adb emu screenrecord screenshot "$tmp" >/dev/null 2>&1; then
+    f="$(find "$tmp" -name '*.png' -size +0 -print -quit)"
+    if [ -n "$f" ]; then mv "$f" "$dest"; rm -rf "$tmp"; return 0; fi
+  fi
+  rm -rf "$tmp"
+  echo "::warning::host-side capture failed for $dest, falling back to screencap"
+  adbt exec-out screencap -p > "$dest" && [ -s "$dest" ]
+}
+
 mkdir -p "$OUT"
 SUMMARY="$OUT/summary.md"
 : > "$SUMMARY"
@@ -68,7 +85,9 @@ for theme in light dark; do
       adbt shell am start -n "$ACTIVITY" --es demo "$id" --ez qa_mode true --ez qa_backdrop true >/dev/null
     fi
     sleep "$SETTLE"
-    if adbt exec-out screencap -p > "$OUT/$theme/$id.png" && [ -s "$OUT/$theme/$id.png" ]; then
+    # Tells "died while rendering" apart from "died while being captured".
+    if ! alive; then lost="$theme/$id (during render, before capture)"; echo "::error::emulator lost while rendering $theme/$id"; break; fi
+    if capture "$OUT/$theme/$id.png"; then
       captured=$((captured + 1))
       echo "[preview] captured $theme/$id"
     else
