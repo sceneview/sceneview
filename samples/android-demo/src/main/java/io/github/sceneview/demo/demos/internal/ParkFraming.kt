@@ -38,6 +38,10 @@ import kotlin.math.tan
  * [yaw] turns the model on its own vertical axis, in degrees, so a piece authored side-on (the
  * bench) faces the camera. It does not enter the bounds: the cube a model is normalised into is
  * the same whichever way the model faces inside it.
+ *
+ * [fallbackYaw] is added to [yaw] only while the slot shows its bundled offline stand-in, which is
+ * a different model authored facing a different way: the three.js soldier standing in for the
+ * oaks faces away from the camera unless it is turned round.
  */
 internal data class ParkSlot(
     val uid: String,
@@ -45,6 +49,7 @@ internal data class ParkSlot(
     val z: Float,
     val scale: Float,
     val yaw: Float = 0f,
+    val fallbackYaw: Float = 0f,
 )
 
 /**
@@ -63,7 +68,7 @@ internal data class ParkSlot(
  * gets; the slots themselves only say where a model stands and how big it is drawn.
  */
 internal val PARK_SLOTS = listOf(
-    ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.45f, scale = 2.00f),
+    ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.45f, scale = 2.00f, fallbackYaw = 180f),
     ParkSlot(uid = "378cd6e6f505493aa8e22f68db1cabec", x = -0.05f, z = 0.35f, scale = 0.70f, yaw = 90f),
     ParkSlot(uid = "6881aa1e84b047d79860fa9297e05e22", x = 0.55f, z = 0.25f, scale = 1.10f),
     ParkSlot(uid = "42cb7fad10ba44ecbc9ae9cf5fdd63b6", x = -0.62f, z = 0.42f, scale = 0.45f),

@@ -62,6 +62,13 @@ struct MultiModelDemo: View {
     /// Anchor under which every model lives. Stored so we can attach / detach
     /// individual entities without rebuilding the entire scene.
     @State private var sceneAnchor: AnchorEntity?
+    /// Bumped when a slot lands long enough after the previous one that the
+    /// auto-framing may already have latched on the smaller scene; fed to
+    /// `.recenterCamera(_:)` so the camera re-fits the whole park (#4103).
+    @State private var reframeToken = 0
+    /// When the last slot landed, to tell a late arrival from one inside the
+    /// auto-framing's settle window.
+    @State private var lastLanding: Date?
 
     private struct ParkSlot {
         let slug: SketchfabSlug?
@@ -153,9 +160,14 @@ struct MultiModelDemo: View {
             SceneView { root in
                 // Stash a single sub-anchor so we can spin the whole formation
                 // without re-laying out the SceneView every frame.
+                // The lawn is NOT added here: `syncVisibility` attaches it with the
+                // first model that lands (#4103). Drawn from the first frame, it
+                // was all the auto-framing saw while the models streamed; its
+                // bounds held still for the 2.5 s settle window, the fit latched
+                // on a 2.2 m disc, and the 2 m oaks then grew out of the top of
+                // the frame.
                 let anchor = AnchorEntity()
                 root.addChild(anchor)
-                anchor.addChild(Self.makeLawn())
                 Task { @MainActor in
                     self.sceneAnchor = anchor
                     self.syncVisibility()
@@ -187,6 +199,8 @@ struct MultiModelDemo: View {
             // near its own eye level — a 30° top-down pitch spent the bottom
             // half of a portrait frame on empty ground (#2896).
             .cameraOrbit(azimuth: 0, elevation: .pi / 10)
+            // A model that lands after the fit latched re-arms it (#4103).
+            .recenterCamera(reframeToken)
             .ignoresSafeArea()
 
             if loadedEntities.isEmpty && loadError == nil {
@@ -313,7 +327,12 @@ struct MultiModelDemo: View {
             // from its authored pivot at whatever height that put it.
             _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             node.entity.components.set(GroundingShadowComponent(castsShadow: true))
-            Self.cutOutTexturedOpacity(node.entity)
+            // Only a Sketchfab export carries the miswired opacity (see
+            // `cutOutTexturedOpacity`); the bundled stand-ins keep their
+            // authored blending.
+            if !SketchfabAssetResolver.isBundledFallback(url) {
+                Self.cutOutTexturedOpacity(node.entity)
+            }
             if slug.hasBakedAnimation && node.animationCount > 0 {
                 node.playAllAnimations()
             }
@@ -325,6 +344,7 @@ struct MultiModelDemo: View {
             holder.orientation = simd_quatf(angle: slot.yaw, axis: SIMD3<Float>(0, 1, 0))
             holder.addChild(node.entity)
             loadedEntities[slug.uid] = holder
+            noteLanding()
             syncVisibility()
         } catch {
             // Per-slot failure — log and move on so the rest of the park
@@ -333,12 +353,30 @@ struct MultiModelDemo: View {
         }
     }
 
+    /// The SDK's auto-framing latches once the scene's bounds hold still for
+    /// 2.5 s (`framingStableHoldSeconds`) and does not re-fit on its own after
+    /// that. Slots stream in over seconds to a minute, so a slot landing after
+    /// such a gap would stand outside a frame fitted to the ones before it: on
+    /// a first run, the oaks above a frame fitted to the fern and the bench. A
+    /// landing more than 2 s after the previous one re-arms the fit; closer
+    /// landings are still inside the settle window and need nothing.
+    @MainActor
+    private func noteLanding() {
+        let now = Date()
+        if let lastLanding, now.timeIntervalSince(lastLanding) > 2.0 {
+            reframeToken += 1
+        }
+        lastLanding = now
+    }
+
     /// Sketchfab's USDZ exports wire leaf opacity to the base-colour texture's
     /// alpha (`tex_base.outputs:a`) and drop the glTF `MASK` mode. RealityKit
     /// samples that texture's red channel instead, about 0.4 over the whole
     /// card, so every leaf card showed as a pale translucent square. Reading
     /// the alpha channel and thresholding it gives back the cut-out the glTF
-    /// authored. Uniform opacity (a lamp's glass) is left blended.
+    /// authored. Uniform opacity (a lamp's glass) is left blended. Streamed
+    /// files only: the bundled stand-ins were converted separately and their
+    /// opacity is authored as meant.
     private static func cutOutTexturedOpacity(_ entity: Entity) {
         if var model = entity.components[ModelComponent.self] {
             var changed = false
@@ -363,6 +401,9 @@ struct MultiModelDemo: View {
         hdrFile: "chinese_garden.hdr"
     )
 
+    /// How `syncVisibility` finds the lawn it attached.
+    private static let lawnName = "park-lawn"
+
     /// The lawn every slot stands on: a thin disc whose top face is `y = 0`,
     /// centred under the park, the same 1.1 m radius as Android's
     /// `PARK_LAWN_RADIUS`. Kept tight because it counts here: the scene's
@@ -374,21 +415,30 @@ struct MultiModelDemo: View {
             mesh: .generateCylinder(height: thickness, radius: 1.1),
             materials: [SimpleMaterial(color: lawnColor, roughness: 1.0, isMetallic: false)]
         )
+        lawn.name = lawnName
         lawn.position = SIMD3<Float>(0, -thickness / 2, -1.5)
         lawn.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: true))
         return lawn
     }
 
-    /// Mown grass, the same green as Android's `PARK_LAWN_COLOR` (#335222).
-    /// #4F7A36 rendered as a pale mint under the garden's light. A 3D material,
-    /// not UI chrome, so it is not a DESIGN.md token.
-    private static let lawnColor = UIColor(red: 0x33 / 255.0, green: 0x52 / 255.0, blue: 0x22 / 255.0, alpha: 1)
+    /// Mown grass. The base colour that RENDERS as a natural lawn green (about
+    /// #536A46 on screen; Android's lawn shows about #587839) (#4103). Not the
+    /// same value as Android's `PARK_LAWN_COLOR`: RealityKit lights and
+    /// tone-maps the garden HDR much brighter and cooler than Filament, so
+    /// Android's #335222 came out here as a pale sage (#7AA566). The two are
+    /// matched on screen, not in code. A 3D material, not UI chrome, so it is
+    /// not a DESIGN.md token.
+    private static let lawnColor = UIColor(red: 0x23 / 255.0, green: 0x3B / 255.0, blue: 0x0F / 255.0, alpha: 1)
 
     /// Re-attach / detach entities based on the four visibility toggles.
     /// Cheap because RealityKit only does an add / remove on the anchor.
     @MainActor
     private func syncVisibility() {
         guard let anchor = sceneAnchor else { return }
+        // The lawn comes with the first model, never before (see `sceneContent`).
+        if !loadedEntities.isEmpty, anchor.findEntity(named: Self.lawnName) == nil {
+            anchor.addChild(Self.makeLawn())
+        }
         for slot in Self.slots {
             guard let slug = slot.slug, let entity = loadedEntities[slug.uid] else { continue }
             // `visible` is sized from `slots` at init and never resized, so this guard is

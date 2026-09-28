@@ -1408,11 +1408,15 @@ private const val PARK_ENVIRONMENT = "environments/chinese_garden_2k.hdr"
 private const val PARK_LAWN_THICKNESS = 0.05f
 
 /**
- * Mown grass: dark enough that the garden's daylight does not wash it out, light enough that the
- * contact shadows still read on it. #4F7A36 rendered as a lime plastic green under this light. A
- * 3D material, not UI chrome, so it is not a DESIGN.md token; iOS uses the same value.
+ * Mown grass. This is the base colour that RENDERS as a natural lawn green (about #587839 on
+ * screen), not the lawn's colour: the garden's diffuse light is yellow-green with little blue in
+ * it, and the Filmic tone mapper's toe crushes a dark channel further, so #335222 came out as a
+ * saturated lime (#3B7208) with no blue left. The blue here is what survives that. iOS needs a
+ * different value for the same on-screen green (RealityKit lights and tone-maps the same HDR
+ * brighter and cooler): the two are matched on screen, not in code (#4103). A 3D material, not UI
+ * chrome, so it is not a DESIGN.md token.
  */
-private val PARK_LAWN_COLOR = Color(0xFF335222)
+private val PARK_LAWN_COLOR = Color(0xFF435646)
 
 // ─── Multi-Model section ──────────────────────────────────────────────────────
 // Formerly MultiModelDemo (id `multi-model`).
@@ -1719,7 +1723,8 @@ private fun MultiModelSection(
                 // Indexed off PARK_SLOTS rather than four named locals, so visibility, loaded
                 // instance and layout can only ever be read for the SAME slot (#2933).
                 val displays = PARK_SLOTS.mapIndexed { index, slot ->
-                    Display(visible[index], instances[index], slot)
+                    val isFallback = files[index]?.let(SketchfabAssetResolver::isBundledFallback) == true
+                    Display(visible[index], instances[index], slot, if (isFallback) slot.fallbackYaw else 0f)
                 }
                 // The lawn: a flat disc whose top face is the ground plane every model stands
                 // on. It is drawn from the first frame, so the scrim lifts onto a park that is
@@ -1780,7 +1785,7 @@ private fun MultiModelSection(
                                 // and is now honoured.)
                                 centerOrigin = Position(0f, -1f, 0f),
                                 position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
-                                rotation = Rotation(y = d.slot.yaw - sceneYaw),
+                                rotation = Rotation(y = d.slot.yaw + d.extraYaw - sceneYaw),
                             )
                         }
                     }
@@ -1823,6 +1828,8 @@ private data class Display(
     val show: Boolean,
     val instance: io.github.sceneview.model.ModelInstance?,
     val slot: ParkSlot,
+    /** [ParkSlot.fallbackYaw] when the slot shows its bundled stand-in, else 0. */
+    val extraYaw: Float,
 )
 
 /**

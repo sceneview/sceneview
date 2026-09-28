@@ -52,12 +52,14 @@ struct ModelViewerDemo: View {
     /// `sunset.hdr` is a bright cloudy sky over a calm sea, so it reads
     /// "Seascape"; `studio.hdr` is a sunlit living room, "Interior"; and
     /// `studio_warm.hdr` is the softbox studio, "Studio". Android's real sunset
-    /// (`sky_on_fire`) is not bundled on iOS, so there is no "Sunset" tile here.
+    /// (`sky_on_fire`) is not bundled on iOS, so there is no "Sunset" tile here:
+    /// "Seascape", an iOS-only tile, takes its second place. The rest is
+    /// Android's order — Chinese Garden first, then Studio before Interior.
     static let environments: [ViewerEnvironment] = [
         ViewerEnvironment(assetName: "chinese_garden", displayName: "Chinese Garden", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "studio", displayName: "Interior", authoredAsPlace: false),
-        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio", authoredAsPlace: false),
         ViewerEnvironment(assetName: "sunset", displayName: "Seascape", authoredAsPlace: true),
+        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio", authoredAsPlace: false),
+        ViewerEnvironment(assetName: "studio", displayName: "Interior", authoredAsPlace: false),
         ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy", authoredAsPlace: true),
         ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky", authoredAsPlace: true),
         ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night", authoredAsPlace: true),
@@ -69,12 +71,12 @@ struct ModelViewerDemo: View {
     /// forcer". A studio rig has no backdrop worth drawing — it is four softbox
     /// panels in a void — so shipping `studio` first meant the smart default below
     /// always resolved to "hidden" and nobody ever saw an environment. Landing on a
-    /// place instead makes the default self-explanatory: the sunset you can see is
-    /// the sky lighting the model. The list keeps Android's order; only the
-    /// first-run selection differs, and the user can pick a studio (or switch the
-    /// backdrop off) at any time.
+    /// place instead makes the default self-explanatory: the garden you can see is
+    /// the sky lighting the model. Same first-run environment as Android, whose
+    /// viewer opens on the first tile, Chinese Garden (#4103); the user can pick a
+    /// studio (or switch the backdrop off) at any time.
     private static let defaultEnvironment: ViewerEnvironment =
-        environments.first { $0.assetName == "outdoor_cloudy" } ?? environments[0]
+        environments.first { $0.assetName == "chinese_garden" } ?? environments[0]
 
     /// Remembered answer to "should the backdrop be drawn?", persisted across launches.
     ///
@@ -100,7 +102,7 @@ struct ModelViewerDemo: View {
 
     /// The stage App Store slot 1 is meant to stand on, drawn as a skybox.
     ///
-    /// The interactive default is ``defaultEnvironment`` (`sunset`) with its
+    /// The interactive default is ``defaultEnvironment`` (`chinese_garden`) with its
     /// backdrop drawn (#3583). That is still the wrong stage for a store frame:
     /// the listing wants a controlled warm studio behind the hero rather than a
     /// sky, so slot 1 pins `studio_warm` and forces the skybox on. With no
