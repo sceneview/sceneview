@@ -1,0 +1,4 @@
+{"t":0,"type":"camera_pose","entity":"world/camera","translation":[0.0,1.2,0.0],"quaternion":[0.0,0.0,0.0,1.0]}
+{"t":100000000,"type":"depth_stats","new":3,"kept":40,"total":3}
+{"t":500000000,"type":"camera_pose","entity":"world/camera","translation":[0.5,1.2,-0.25],"quaternion":[0.0,0.0,0.0,1.0]}
+{"t":600000000,"type":"depth_stats","new":2,"kept":35,"total":5}
