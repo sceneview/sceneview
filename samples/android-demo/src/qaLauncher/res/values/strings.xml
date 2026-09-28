@@ -3,6 +3,8 @@
     <!-- Debug builds install as their own app (`io.github.sceneview.demo.qa`, see the `debug`
          build type) next to the Play Store one. The launcher label says so, together with the
          badged icon in mipmap-anydpi-v26/-v33, so a test build is never mistaken for the store
-         app and can be uninstalled without touching it. -->
-    <string name="launcher_label">SceneView QA</string>
+         app and can be uninstalled without touching it. Kept to five characters: "SceneView QA"
+         was cut to "SceneView…" in the Pixel launcher grid, hiding the one word that matters.
+         Not applied with `-PdemoPlainDebug=true` (the public GitHub Release APK). -->
+    <string name="launcher_label">SV QA</string>
 </resources>

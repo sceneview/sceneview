@@ -42,11 +42,14 @@ RESET='\033[0m'
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEMO_MODULE=":samples:sceneview-demo"
+# Two ids, one per mode. `--download` installs the GitHub Release APK, which
+# build-apks.yml builds with `-PdemoPlainDebug=true`: the plain public demo,
+# DEMO_PKG. A local build is a debug build without that flag, which installs as
+# its own app next to the Play Store one (`applicationIdSuffix ".qa"`):
+# DEMO_DEBUG_PKG. Either way the activity class keeps the demo namespace, so it
+# is spelled in full: `<pkg>/.MainActivity` would resolve to
+# `io.github.sceneview.demo.qa.MainActivity`, which does not exist.
 DEMO_PKG="io.github.sceneview.demo"
-# A local build is a debug build, which installs as its own app next to the
-# Play Store one (`applicationIdSuffix ".qa"`). The activity class keeps the
-# demo namespace, so it is spelled in full: `<pkg>/.MainActivity` would resolve
-# to `io.github.sceneview.demo.qa.MainActivity`, which does not exist.
 DEMO_DEBUG_PKG="${DEMO_PKG}.qa"
 DEMO_ACTIVITY="io.github.sceneview.demo.MainActivity"
 GITHUB_REPO="SceneView/sceneview"
@@ -123,7 +126,7 @@ download_and_install() {
     android_cli_install_and_launch "$tmp_apk" "${DEMO_PKG}/${DEMO_ACTIVITY}"
   else
     adb install -r "$tmp_apk"
-    launch_app
+    launch_app "$DEMO_PKG" "$DEMO_ACTIVITY"
   fi
   echo -e "${GREEN}✓${RESET} Installed"
 }

@@ -38,14 +38,21 @@ adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainA
 
 A debug build is a **separate app** that installs next to the Play Store one instead of
 replacing it: application id `io.github.sceneview.demo.qa`, version `<version>-qa`,
-launcher label **SceneView QA** and an icon with an amber **QA** badge. Uninstall it with
+launcher label **SV QA** and an icon with an amber **QA** badge (themed icon included). Uninstall it with
 `adb uninstall io.github.sceneview.demo.qa`; the store install is untouched. Only the
 application id changes — classes keep the `io.github.sceneview.demo` namespace, so an
 activity is always spelled in full after the `/` (`<id>/.MainActivity` would look for
 `io.github.sceneview.demo.qa.MainActivity`). Two consequences of the distinct id: the
 verified `https://sceneview.github.io/open` App Link stays bound to the store app (the
 `sceneview://demo` scheme reaches both, through the chooser), and a cloud API key
-restricted to the store package and signing certificate does not cover the QA build.
+restricted to the store package and signing certificate does not cover the QA build
+(add `io.github.sceneview.demo.qa` + your debug SHA-1, see
+[ARCORE_CLOUD_SETUP.md](ARCORE_CLOUD_SETUP.md)).
+
+`-PdemoPlainDebug=true` builds the debug variant as the plain public demo instead —
+`io.github.sceneview.demo`, label "SceneView", store icon. `build-apks.yml` passes it for
+the APK attached to GitHub Releases, which is the one `tools/try-demo.sh --download` and
+the [Try page](../../docs/docs/try.md) install; nothing else should need it.
 
 > ⚠️ **Not `android run`.** Google's `android` CLI has a measured install
 > no-op: it prints `App loaded:` / `Debuggable: true`, then rejects an activity
