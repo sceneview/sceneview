@@ -9,8 +9,8 @@
 #   demo-ids  comma- or space-separated ids from DemoRegistry's ALL_DEMOS, plus
 #             the pseudo-id `home` (plain launcher start). Default: home,model-viewer
 #
-# For each theme (light, dark) and each id it cold-starts the app, lets it settle
-# for PREVIEW_SETTLE_SECONDS (default 20; preview.yml passes 60, what a first
+# For each id it cold-starts the app in light mode, flips it to dark in place,
+# lets each settle for PREVIEW_SETTLE_SECONDS (default 20; preview.yml passes 60, what a first
 # Filament frame takes on swangle) and writes <out-dir>/<theme>/<id>.png plus a
 # filtered logcat/<theme>-<id>.txt. FATAL/ANR lines and an app that was gone at
 # capture time land in <out-dir>/summary.md.
@@ -71,51 +71,95 @@ done
 echo "[preview] installing $APK"
 timeout 300 adb install -r -g "$APK" || { echo "::error::adb install failed"; exit 1; }
 
+ss_pid() { timeout 10 adb shell pidof system_server 2>/dev/null | tr -d '\r\n'; }
+app_pid() { timeout 10 adb shell pidof "$PKG" 2>/dev/null | tr -d '\r\n'; }
+
+# Android on this emulator can soft-reboot (system_server restarts, adb stays
+# up) under a live Filament viewport: two runs out of two lost the 4th capture
+# that way. Wait for the framework to come back instead of capturing the
+# launcher, and keep the crash buffer so the cause is in the artifact.
+wait_framework() {
+  local i
+  for i in $(seq 1 90); do
+    [ "$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" = 1 ] && [ -n "$(ss_pid)" ] && { sleep 20; return 0; }
+    sleep 2
+  done
+  return 1
+}
+
+# Grab one theme of an already-running demo. Returns 0 on a valid frame, 2 when
+# the framework restarted under it (retryable), 1 otherwise.
+shoot() {
+  local theme="$1" id="$2" before="$3" dest="$OUT/$1/$2.png"
+  mkdir -p "$OUT/$theme" "$OUT/logcat"
+  if ! alive; then echo "::error::emulator lost at $theme/$id"; return 1; fi
+  if [ "$(ss_pid)" != "$before" ]; then
+    echo "::warning::Android restarted its framework during $theme/$id"
+    adbt logcat -b crash -d > "$OUT/logcat/$theme-$id-crash.txt" 2>/dev/null || true
+    return 2
+  fi
+  if ! capture "$dest"; then echo "::warning::capture failed for $theme/$id"; rm -f "$dest"; return 1; fi
+  adbt logcat -d 2>/dev/null | grep -iE 'filament|egl|gles|sceneview|AndroidRuntime|OpenGL|vulkan|ActivityManager|lmkd|lowmemorykiller|DEBUG|libc' | tail -300 > "$OUT/logcat/$theme-$id.txt" || true
+  # The screenshot alone cannot tell "demo on screen" from "app gone, launcher
+  # showing": say it in words.
+  if [ -z "$(app_pid)" ]; then
+    echo "::warning::the app was not running after $theme/$id"
+    echo "- app not running after \`$theme/$id\` — the capture shows whatever replaced it; see logcat/$theme-$id.txt" >> "$SUMMARY"
+  fi
+  local crash
+  crash="$(adbt logcat -d 2>/dev/null | grep -E 'FATAL EXCEPTION|ANR in '"$PKG" | head -3 || true)"
+  if [ -n "$crash" ]; then
+    echo "::warning::crash/ANR logged during $theme/$id"
+    printf -- '- crash during `%s/%s`:\n```\n%s\n```\n' "$theme" "$id" "$crash" >> "$SUMMARY"
+  fi
+  echo "[preview] captured $theme/$id"
+  return 0
+}
+
+# One cold start per demo: light first, then the theme is flipped under the
+# running app with `cmd uimode` (a configuration change, not a relaunch). This
+# halves the Filament cold starts compared with a relaunch per theme.
 captured=0
 lost=""
-for theme in light dark; do
-  [ -z "$lost" ] || break
-  if [ "$theme" = dark ]; then adbt shell cmd uimode night yes >/dev/null; else adbt shell cmd uimode night no >/dev/null; fi
-  mkdir -p "$OUT/$theme"
-  for id in "${IDS[@]}"; do
-    if ! alive; then lost="$theme/$id"; echo "::error::emulator lost before $theme/$id"; break; fi
+restarts=0
+for id in "${IDS[@]}"; do
+  done_id=""
+  for attempt in 1 2; do
+    if ! alive; then lost="$id"; break 2; fi
+    adbt shell cmd uimode night no >/dev/null
     adbt shell am force-stop "$PKG"
     adbt logcat -c 2>/dev/null || true
+    before="$(ss_pid)"
     if [ "$id" = home ]; then
       adbt shell am start -n "$ACTIVITY" >/dev/null
     else
       adbt shell am start -n "$ACTIVITY" --es demo "$id" --ez qa_mode true --ez qa_backdrop true >/dev/null
     fi
     sleep "$SETTLE"
-    # Tells "died while rendering" apart from "died while being captured".
-    if ! alive; then lost="$theme/$id (during render, before capture)"; echo "::error::emulator lost while rendering $theme/$id"; break; fi
-    if capture "$OUT/$theme/$id.png"; then
-      captured=$((captured + 1))
-      echo "[preview] captured $theme/$id"
-    else
-      echo "::warning::screencap failed for $theme/$id"
-      rm -f "$OUT/$theme/$id.png"
+    shoot light "$id" "$before"; rc=$?
+    if [ "$rc" = 0 ]; then
+      adbt shell cmd uimode night yes >/dev/null
+      sleep "$SETTLE"
+      shoot dark "$id" "$before"; rc=$?
     fi
-    mkdir -p "$OUT/logcat"
-    adbt logcat -d 2>/dev/null | grep -iE 'filament|egl|gles|sceneview|AndroidRuntime|OpenGL|vulkan|ActivityManager|lmkd|lowmemorykiller|DEBUG|libc' | tail -300 > "$OUT/logcat/$theme-$id.txt" || true
-    # The screenshot alone cannot tell "demo on screen" from "app gone, launcher
-    # showing" (the swangle probe caught one launcher frame): say it in words.
-    if [ -z "$(adbt shell pidof "$PKG" 2>/dev/null | tr -d '\r\n')" ]; then
-      echo "::warning::the app was not running after $theme/$id"
-      echo "- app not running after \`$theme/$id\` — the capture shows whatever replaced it; see logcat/$theme-$id.txt" >> "$SUMMARY"
+    if [ "$rc" = 0 ]; then captured=$((captured + 2)); done_id=1; break; fi
+    if [ "$rc" = 2 ]; then
+      restarts=$((restarts + 1))
+      wait_framework || { lost="$id (framework never came back)"; break 2; }
+      echo "[preview] retrying $id (attempt $((attempt + 1)))"
+      continue
     fi
-    crash="$(adbt logcat -d 2>/dev/null | grep -E 'FATAL EXCEPTION|ANR in '"$PKG" | head -3 || true)"
-    if [ -n "$crash" ]; then
-      echo "::warning::crash/ANR logged during $theme/$id"
-      printf -- '- crash during `%s/%s`:\n```\n%s\n```\n' "$theme" "$id" "$crash" >> "$SUMMARY"
-    fi
+    lost="$id"; break 2
   done
+  [ -n "$done_id" ] || [ -n "$lost" ] || lost="$id (framework restarted twice)"
+  [ -z "$lost" ] || break
 done
 alive && adbt shell cmd uimode night no >/dev/null 2>&1 || true
 
 {
   echo "- captured: $captured screenshot(s) — ids: ${IDS[*]}, themes: light dark, settle ${SETTLE}s"
-  [ -z "$lost" ] || echo "- emulator lost before \`$lost\` — later captures missing"
+  [ "$restarts" = 0 ] || echo "- Android framework restarted $restarts time(s); the affected demo was retried (crash buffer in logcat/)"
+  [ -z "$lost" ] || echo "- incomplete at \`$lost\` — later captures missing"
 } >> "$SUMMARY"
 cat "$SUMMARY"
 

@@ -110,9 +110,12 @@ jobs:
           target: google_apis
           arch: x86_64
           cores: 2
-          # 6 GB like device-qa.yml's ar leg: the full demo at 1080x2400 on
-          # SwiftShader is heavier than the goldens' single-scene tests.
-          ram-size: 6144M
+          # 8 GB guest RAM and a 512 MB VM heap: the full demo at 1080x2400 on
+          # a software GPU is heavier than the goldens' single-scene tests, and
+          # 6 GB saw Android restart its framework on the 4th capture twice.
+          # ubuntu-latest has 16 GB.
+          ram-size: 8192M
+          heap-size: 512M
           # Same geometry as render-tests.yml's goldens job (#3551): 1080x2400
           # framebuffer, then `wm size` + `wm density 420` = the Pixel_7a AVD.
           # `swangle_indirect` (ANGLE over SwiftShader-Vulkan), not the goldens'
