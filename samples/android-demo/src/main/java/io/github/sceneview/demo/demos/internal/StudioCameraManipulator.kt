@@ -54,12 +54,16 @@ import kotlin.math.abs
  * @param sensitivity  Multiplier on the orbit rate, driven by the demo's sensitivity slider.
  * @param inertiaEnabled Whether a release coasts. `false` parks the camera the instant the finger
  *                     lifts — the comparison that makes inertia legible as a feature.
+ * @param requestRender Wakes a parked render loop. Called by every entry point that starts the
+ *                     camera moving from *outside* a touch on the scene — a preset chip, the dock,
+ *                     the distance slider. See [isFrameActive] for why this is not optional.
  */
 class StudioCameraManipulator(
     initialPose: OrbitPose,
     private val fitDistance: () -> Float,
     private val sensitivity: () -> Float = { CameraRig.DEFAULT_SENSITIVITY },
     private val inertiaEnabled: () -> Boolean = { true },
+    private val requestRender: () -> Unit = {},
 ) : CameraGestureDetector.CameraManipulator {
 
     /**
@@ -84,8 +88,23 @@ class StudioCameraManipulator(
             if (field != value) {
                 field = value
                 cinematicSeconds = 0f
+                requestRender()
             }
         }
+
+    /**
+     * Whether the rig still owes frames — a flight, a coast or the turntable.
+     *
+     * `SceneView` renders on demand: about half a second after the camera last moved, the frame
+     * loop parks, and [update] is no longer called. Everything this rig animates is integrated in
+     * [update], so a flight started while the loop is parked never takes its first step — the
+     * HUD, which polls [gesture] on the Compose clock, printed "Flying" over a camera that did not
+     * move (#4064). Two halves close that gap: this property keeps the loop alive for as long as
+     * a motion is in progress, and [requestRender] supplies the rising edge, which nothing polled
+     * from inside a parked loop can.
+     */
+    override val isFrameActive: Boolean
+        get() = isFlying || cinematic || azimuthVelocity != 0f || elevationVelocity != 0f
 
     private var viewportWidth = 1
     private var viewportHeight = 1
@@ -125,6 +144,7 @@ class StudioCameraManipulator(
         flightSeconds = 0f
         flightDuration = (durationMillis.coerceAtLeast(1)) / 1000f
         gesture = RigGesture.Fly
+        requestRender()
     }
 
     /**
@@ -136,6 +156,7 @@ class StudioCameraManipulator(
     fun setDistance(distance: Float) {
         cancelFlight()
         pose = CameraRig.clamp(pose.copy(distance = distance), fitDistance())
+        requestRender()
     }
 
     override fun setViewport(width: Int, height: Int) {

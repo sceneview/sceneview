@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo: the Camera & Gestures shot buttons move the camera again ([#4064](https://github.com/sceneview/sceneview/issues/4064)).** Hero, Front, Side, Top and Close-up showed "Flying" but the camera stayed put, because the scene had stopped rendering while idle and nothing woke it. The Cinematic turntable and the distance slider had the same problem. The demo's camera rig now wakes the scene when it starts moving and keeps it rendering until the move ends.
