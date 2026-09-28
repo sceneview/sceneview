@@ -50,18 +50,45 @@ class DemoMathTest {
         assertEquals(DemoMath.VIEWER_FILL, heightFraction(f, 2f, 0.5f) / visible, 0.001f)
     }
 
-    @Test fun `viewerFraming fills 92 percent of the width for a wide model`() {
+    @Test fun `viewerFraming fits a wide model's front face to the horizontal fill`() {
         val f = DemoMath.viewerFraming(4f, 1f, 1f, 411f, 914f, 96f, 128f)
-        val widthFraction = 4f / (2f * (f.distance - 1f * DemoMath.DEPTH_ALLOWANCE) * halfTan * (411f / 914f))
+        // Measured at the front face, half the depth closer than the box centre (#4053).
+        val widthFraction = 4f / (2f * (f.distance - 1f / 2f) * halfTan * (411f / 914f))
         assertEquals(DemoMath.VIEWER_HORIZONTAL_FILL, widthFraction, 0.001f)
         assertTrue("wide model is constrained by width, so it spans less than 65 % of the height",
             heightFraction(f, 1f, 1f) / ((914f - 96f - 128f) / 914f) < DemoMath.VIEWER_FILL)
     }
 
     @Test fun `viewerFraming backs off by a share of the depth for a deep model`() {
-        val shallow = DemoMath.viewerFraming(1f, 1f, 0f, 411f, 914f, 96f, 128f)
-        val deep = DemoMath.viewerFraming(1f, 1f, 3f, 411f, 914f, 96f, 128f)
+        // Tall, so the height is what the fit is limited by.
+        val shallow = DemoMath.viewerFraming(1f, 3f, 0f, 411f, 914f, 96f, 128f)
+        val deep = DemoMath.viewerFraming(1f, 3f, 3f, 411f, 914f, 96f, 128f)
         assertEquals(shallow.distance + 3f * DemoMath.DEPTH_ALLOWANCE, deep.distance, 0.0001f)
+    }
+
+    @Test fun `viewerFraming leaves a margin on both edges for a wide deep model`() {
+        // #4053 — a streamed treasure chest: wider than tall, and deep. Its front corners are the
+        // widest thing on screen, and they must stay inside the screen with room to spare.
+        val chest = DemoMath.viewerFraming(2f, 1.2f, 1.4f, 411f, 914f, 96f, 128f)
+        val frontWidth = 2f / (2f * (chest.distance - 1.4f / 2f) * halfTan * (411f / 914f))
+        assertTrue("front face spans $frontWidth of the width", frontWidth <= 0.9f)
+    }
+
+    @Test fun `viewerFraming moves a model above a sheet and back when it closes`() {
+        // #4053 — the Lighting sheet covers ~40 % of the screen from the bottom. The model must
+        // fit the band above it: smaller than at rest, and aimed higher.
+        val rest = DemoMath.viewerFraming(1f, 2f, 0.5f, 411f, 914f, 96f, 128f)
+        val sheet = DemoMath.viewerFraming(1f, 2f, 0.5f, 411f, 914f, 96f, 370f)
+        assertTrue("backs off to fit the smaller band", sheet.distance > rest.distance)
+        assertTrue("aims lower, so the model draws higher", sheet.targetOffset.second < rest.targetOffset.second)
+        val visible = (914f - 96f - 370f) / 914f
+        assertEquals(DemoMath.VIEWER_FILL, heightFraction(sheet, 2f, 0.5f) / visible, 0.001f)
+        // In clip space (y up, -1..1): the model is centred on the band and its bottom edge sits
+        // above the sheet's top edge.
+        val bandCentre = -((96f - 370f) / 2f) / (914f / 2f)
+        val modelBottom = bandCentre - heightFraction(sheet, 2f, 0.5f)
+        val sheetTop = -1f + 2f * 370f / 914f
+        assertTrue("model bottom $modelBottom above sheet top $sheetTop", modelBottom > sheetTop)
     }
 
     @Test fun `viewerFraming looks from the front and slightly above`() {

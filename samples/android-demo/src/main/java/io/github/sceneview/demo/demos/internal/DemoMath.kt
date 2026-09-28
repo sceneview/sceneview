@@ -52,7 +52,8 @@ internal object DemoMath {
      * - `dVertical   = (projectedHeight / 2) / (tan(vfov/2) · fill · visibleHeight / height)`
      * - `dHorizontal = (extentX / 2) / (tan(vfov/2) · aspect · horizontalFill)`
      *
-     * The larger wins (fit, not cover). The distance is measured to the bbox centre and the
+     * The larger wins (fit, not cover); the horizontal one is measured to the box's front face,
+ * `extentZ / 2` closer than the centre. The distance is measured to the bbox centre and the
      * height is the plain Y extent: an AABB is already looser than the silhouette, and folding
      * the depth into the height (`ey·cos p + ez·sin p`) shrank deep models like the Fox to a
      * third of the band; a [DEPTH_ALLOWANCE] share of the depth is added instead.
@@ -107,7 +108,13 @@ internal object DemoMath {
         // face, which perspective enlarges: a third of the depth on top of the fit distance
         // lands them on the target fill on device (a full half over-corrected, none
         // under-corrected). It also keeps the eye outside the box.
-        val fit = max(dVertical, dHorizontal) + ez * DEPTH_ALLOWANCE
+        //
+        // The width is fitted at the box's FRONT face, half the depth closer than the centre
+        // (#4053). Fitted at the centre with only the third, the front corners of a wide, deep
+        // model (a streamed treasure chest) projected past `horizontalFill` and the model ran
+        // into both screen edges. At the front face, `horizontalFill` is the widest the box can
+        // ever draw, so the margin it leaves is a real one.
+        val fit = max(dVertical + ez * DEPTH_ALLOWANCE, dHorizontal + ez / 2f)
         val distance = if (fit.isFinite() && fit > 0f) fit.coerceIn(MIN_VIEWER_DISTANCE, MAX_VIEWER_DISTANCE)
         else DEGENERATE_VIEWER_DISTANCE
 
@@ -156,11 +163,14 @@ internal object DemoMath {
     const val VIEWER_FILL = 0.65f
 
     /**
-     * Fraction of the viewport WIDTH a model may span. Looser than [VIEWER_FILL]: on a portrait
-     * phone 65 % of the visible height is wider than the screen, so a compact model (the helmet)
-     * is width-limited — this keeps it from shrinking to a third of the band.
+     * Fraction of the viewport WIDTH a model's front face may span. Looser than [VIEWER_FILL]: on
+     * a portrait phone 65 % of the visible height is wider than the screen, so a compact model
+     * (the helmet) is width-limited — this keeps it from shrinking to a third of the band.
+     *
+     * 0.86, not the 0.92 it was (#4053): measured at the front face it leaves 7 % of the width
+     * on each side, so a wide model sits inside the screen instead of touching both edges.
      */
-    const val VIEWER_HORIZONTAL_FILL = 0.92f
+    const val VIEWER_HORIZONTAL_FILL = 0.86f
 
     /** Share of the model's depth added to the fit distance — see [viewerFraming]. */
     const val DEPTH_ALLOWANCE = 1f / 3f

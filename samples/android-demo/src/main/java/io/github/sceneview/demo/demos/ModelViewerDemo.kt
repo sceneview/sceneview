@@ -73,6 +73,7 @@ import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeTopInset
+import io.github.sceneview.demo.LocalDemoSheetCover
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
@@ -404,6 +405,8 @@ private fun SingleModelSection(
     val environmentLoader = rememberEnvironmentLoader(engine)
     var modelSheetOpen by remember { mutableStateOf(false) }
     var environmentSheetOpen by remember { mutableStateOf(false) }
+    // Height the open Lighting sheet covers from the bottom edge, as it measures itself (#4053).
+    var environmentSheetCover by remember { mutableStateOf(0.dp) }
     // Chinese Garden leads, and the flagship viewer opens on it (#3402). The old default —
     // `studio_2k` — gave correct light but no colour, and on the near-black stage the hero
     // read as a grey object on a black field. Measured on the emulator against every bundled
@@ -932,9 +935,21 @@ private fun SingleModelSection(
         // The scene fills the viewport edge to edge; the chrome floats over it. Framing
         // therefore needs the band the chrome leaves visible: the identity row at the top
         // (provided by the scaffold) and the dock band plus the navigation bar at the bottom.
+        //
+        // #4053 — or the glass sheet over the scene, when one is open and taller than the dock:
+        // the Lighting sheet, or the scaffold's settings sheet at its peek. Both are glass so the
+        // model can be watched while it changes, and the model used to lose its lower third
+        // under them. The framing below fits the band above the sheet, and `EasedFraming` flies
+        // the camera there and back as the sheet opens and closes — the model is never moved.
         val topInset = LocalDemoChromeTopInset.current
-        val bottomInset = SETTINGS_FAB_RESERVED_SPACE +
-            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val sheetCover = maxOf(
+            if (environmentSheetOpen) environmentSheetCover else 0.dp,
+            LocalDemoSheetCover.current,
+        )
+        val bottomInset = maxOf(
+            SETTINGS_FAB_RESERVED_SPACE + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+            sheetCover,
+        )
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset) {
                 val extents = bounds?.extents ?: return@remember null
@@ -1124,6 +1139,7 @@ private fun SingleModelSection(
         onSelect = { requestedEnvironment = it }, onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
         onReset = { requestedEnvironment = viewerEnvironments.first(); iblIntensity = 1f; showEnvironment = false },
         onDismiss = { environmentSheetOpen = false },
+        onCoveredHeightChange = { environmentSheetCover = it },
     )
     }
 }
