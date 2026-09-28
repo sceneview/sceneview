@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Demo app: Rolling Balls is its own demo ([#4083](https://github.com/sceneview/sceneview/issues/4083)).** The tray of rubber, steel and foam balls you drop, tilt and knock over used to be the Physics tab of *Animation & Physics*. It now has its own card in View 3D, right after Animation, on Android and iOS alike, and the old `physics` link opens it. *Animation & Physics* is now simply *Animation*, with no tab row. On iOS the demo replaces the old cubes-and-a-ball Physics screen, which was hidden from the home grid.
