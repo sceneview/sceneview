@@ -16,6 +16,7 @@
     <string name="ar_rec_start_recording">Start recording</string>
     <string name="ar_rec_stop_recording">Stop recording</string>
     <string name="ar_rec_recording">Recording</string>
+    <string name="ar_rec_minimap_cd">Map of this take, seen from above — keyframes: %1$d, surfaces found: %2$d</string>
     <string name="ar_rec_may_not_replay">This part may not replay.</string>
 
     <!-- The card that replaces the shutter once a take is saved. -->

@@ -69,6 +69,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.LocalDemoChromeTopInset
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.CaptureMapSnapshot
 import io.github.sceneview.demo.demos.internal.LiveStat
 import io.github.sceneview.demo.demos.internal.TakeQuality
 import io.github.sceneview.demo.demos.internal.formatClock
@@ -164,8 +165,9 @@ internal fun StatsRow(stats: List<LiveStat>, modifier: Modifier = Modifier) {
 }
 
 /**
- * What is being captured, live: elapsed time and file size, then frames, distance, surfaces
- * and placements — the panel the QA walkthrough asked for ("show live what can be saved").
+ * What is being captured, live: elapsed time and file size, a floor plan of the walk (path,
+ * keyframes, surfaces — [CaptureMinimap]), then frames, distance, surfaces and placements —
+ * the panel the QA walkthrough asked for ("show live what can be saved").
  */
 @Composable
 internal fun LiveCaptureCard(
@@ -174,6 +176,7 @@ internal fun LiveCaptureCard(
     stats: List<LiveStat>,
     guidance: String?,
     mayNotReplay: Boolean,
+    map: CaptureMapSnapshot = CaptureMapSnapshot.EMPTY,
 ) {
     OverlayCard(testTag = AR_REC_LIVE_CARD_TAG) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -192,6 +195,9 @@ internal fun LiveCaptureCard(
                 )
             }
         }
+        // What the take holds, drawn as it is captured (#4083): the numbers below say how
+        // much, the map says where.
+        if (!map.isEmpty) CaptureMinimap(map)
         StatsRow(stats)
         if (guidance != null) {
             Text(

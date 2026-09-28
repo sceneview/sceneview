@@ -62,7 +62,13 @@ import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.CaptureMapRecorder
+import io.github.sceneview.demo.demos.internal.CaptureMapSnapshot
 import io.github.sceneview.demo.demos.internal.LiveStat
+import io.github.sceneview.demo.demos.internal.MapPoint
+import io.github.sceneview.demo.demos.internal.MapSurface
+import io.github.sceneview.demo.demos.internal.QA_CAPTURE_MAP
+import io.github.sceneview.demo.demos.internal.headingOf
 import io.github.sceneview.demo.demos.internal.NewFrameGate
 import io.github.sceneview.demo.demos.internal.PlacementReplayQueue
 import io.github.sceneview.demo.demos.internal.PlacementTrack
@@ -210,6 +216,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
     fun startRecording() {
         take.placementTrack = take.recorder.addTrack(PlacementTrack.TRACK_ID, PlacementTrack.MIME_TYPE)
         take.interpreter.reset()
+        take.resetCaptureMap()
         take.writeSchedule.reset()
         val file = File(recordingsDir, recordingFileName(LocalDateTime.now()))
         take.recordingFile = file
@@ -322,6 +329,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                         stats = live.stats,
                         guidance = live.guidance,
                         mayNotReplay = live.mayNotReplay,
+                        map = live.map,
                     )
                 }
                 (replaying && take.cameraReady && !replayFinished) ||
@@ -482,6 +490,7 @@ private class LiveCaptureView(
     val stats: List<LiveStat>,
     val guidance: String?,
     val mayNotReplay: Boolean,
+    val map: CaptureMapSnapshot,
 )
 
 @Composable
@@ -499,6 +508,7 @@ private fun liveCaptureView(
             stats = liveCaptureStats(1_204, 2.3f, 3, 2),
             guidance = null,
             mayNotReplay = false,
+            map = QA_CAPTURE_MAP,
         )
     }
     val interpretation = take.interpreter.interpretation
@@ -520,6 +530,7 @@ private fun liveCaptureView(
         ),
         guidance = guidance,
         mayNotReplay = lost && (forced != null || lostForMillis >= MAY_NOT_REPLAY_AFTER_MILLIS),
+        map = take.captureMap,
     )
 }
 
@@ -628,6 +639,12 @@ private class TakeState(
     var restoredCount by mutableIntStateOf(0)
     var replayElapsedMillis by mutableLongStateOf(0L)
 
+    /** The take's live floor plan (#4083), republished every few camera images. */
+    var captureMap by mutableStateOf(CaptureMapSnapshot.EMPTY)
+        private set
+    private val mapRecorder = CaptureMapRecorder()
+    private var mapFrames = 0
+
     var lastTrackedMillis = 0L
     var recordingFile: File? = null
     var recordingStartedMillis = 0L
@@ -697,6 +714,36 @@ private class TakeState(
         restoredCount = anchors.size
     }
 
+    fun resetCaptureMap() {
+        mapRecorder.reset()
+        mapFrames = 0
+        captureMap = CaptureMapSnapshot.EMPTY
+    }
+
+    /**
+     * Feeds the floor plan: the camera every image, the surfaces every [MAP_SURFACE_EVERY]
+     * images (ARCore refines them slowly and their outlines are the costly part), and a new
+     * snapshot for the card every [MAP_PUBLISH_EVERY] images.
+     */
+    private fun recordMap(frame: Frame, tracking: Boolean) {
+        val pose = frame.camera.pose
+        val forward = pose.zAxis // the camera looks down its -z
+        mapRecorder.addCamera(pose.tx(), pose.tz(), headingOf(-forward[0], -forward[2]), tracking)
+        if (mapFrames % MAP_SURFACE_EVERY == 0) {
+            frame.getUpdatedTrackables(Plane::class.java).forEach { plane ->
+                // ARCore bases a trackable's hashCode on its native handle: stable across frames.
+                val id = plane.hashCode()
+                if (plane.subsumedBy != null || plane.trackingState == TrackingState.STOPPED) {
+                    mapRecorder.forgetSurface(id)
+                } else if (plane.trackingState == TrackingState.TRACKING) {
+                    mapRecorder.updateSurface(plane.toMapSurface(id))
+                }
+            }
+        }
+        if (mapFrames % MAP_PUBLISH_EVERY == 0) captureMap = mapRecorder.snapshot()
+        mapFrames++
+    }
+
     /**
      * Writes every placement into the recording, relative to the camera, about once a second
      * — anchors placed before the take started included, so a replay that misses one packet
@@ -704,6 +751,7 @@ private class TakeState(
      */
     private fun onRecordingFrame(session: Session, frame: Frame, tracking: Boolean) {
         interpreter.ingest(session, frame)
+        recordMap(frame, tracking)
         val handle = placementTrack ?: return
         if (!tracking) return
         val camera = frame.camera.pose.toRigidPose()
@@ -768,3 +816,26 @@ private val QA_REPORT = ARRecordInterpretation(
     verticalPlaneCount = 1,
     planeAreaMeters2 = 3.2f,
 )
+
+/** Camera images between two surface refreshes of the capture map. */
+private const val MAP_SURFACE_EVERY = 10
+
+/** Camera images between two map snapshots handed to the card (~6 a second at 30 fps). */
+private const val MAP_PUBLISH_EVERY = 5
+
+/** This plane's outline on the floor plan: its polygon, moved from the plane's frame to the world. */
+private fun Plane.toMapSurface(id: Int): MapSurface {
+    val polygon = polygon.duplicate()
+    polygon.rewind()
+    val center = centerPose
+    val outline = ArrayList<MapPoint>(polygon.remaining() / 2)
+    val local = FloatArray(3)
+    while (polygon.remaining() >= 2) {
+        local[0] = polygon.get()
+        local[1] = 0f
+        local[2] = polygon.get()
+        val world = center.transformPoint(local)
+        outline += MapPoint(world[0], world[2])
+    }
+    return MapSurface(id = id, outline = outline, vertical = type == Plane.Type.VERTICAL)
+}
