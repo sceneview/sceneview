@@ -168,29 +168,40 @@ class RoomDollhouseTest {
     }
 
     @Test
-    fun `a four metre room stands at 1 to 12, about a third of a metre long`() {
+    fun `a four metre room stands at 1 to 8, half a metre long`() {
         val fit = requireFit(RoomDollhouse.fit(RoomDollhouse.crop(room())))
-        assertEquals(12, fit.denominator)
-        assertEquals("1:12", fit.label)
+        assertEquals(8, fit.denominator)
+        assertEquals("1:8", fit.label)
         assertTrue(fit.width * fit.scale <= RoomDollhouse.MAX_SIDE_M)
-        assertArrayEquals(intArrayOf(33, 25), fit.footprintCentimetres())
+        assertArrayEquals(intArrayOf(50, 38), fit.footprintCentimetres())
     }
 
     @Test
     fun `the scale is the smallest model maker's scale that fits a table`() {
-        assertEquals(5, RoomDollhouse.denominatorFor(1f))
-        assertEquals(10, RoomDollhouse.denominatorFor(3.4f))
-        assertEquals(12, RoomDollhouse.denominatorFor(4f))
-        assertEquals(20, RoomDollhouse.denominatorFor(6f))
-        assertEquals(24, RoomDollhouse.denominatorFor(8f))
-        assertEquals(50, RoomDollhouse.denominatorFor(15f))
+        assertEquals(1, RoomDollhouse.denominatorFor(0.5f))
+        assertEquals(2, RoomDollhouse.denominatorFor(1f))
+        assertEquals(6, RoomDollhouse.denominatorFor(3.4f))
+        assertEquals(8, RoomDollhouse.denominatorFor(4f))
+        assertEquals(10, RoomDollhouse.denominatorFor(6f))
+        assertEquals(16, RoomDollhouse.denominatorFor(8f))
+        assertEquals(32, RoomDollhouse.denominatorFor(15f))
         assertEquals(100, RoomDollhouse.denominatorFor(80f))
     }
 
     @Test
+    fun `any room from 1 to 30 metres stands between 40 and 60 cm, never a palm wide`() {
+        var longest = 1f
+        while (longest <= 30f) {
+            val onTable = longest / RoomDollhouse.denominatorFor(longest)
+            assertTrue("$longest m stands $onTable m", onTable in 0.4f..RoomDollhouse.MAX_SIDE_M)
+            longest += 0.05f
+        }
+    }
+
+    @Test
     fun `a degenerate size still gets a scale`() {
-        assertEquals(5, RoomDollhouse.denominatorFor(0f))
-        assertEquals(5, RoomDollhouse.denominatorFor(Float.NaN))
+        assertEquals(1, RoomDollhouse.denominatorFor(0f))
+        assertEquals(1, RoomDollhouse.denominatorFor(Float.NaN))
     }
 
     @Test
@@ -216,6 +227,16 @@ class RoomDollhouseTest {
             val scale = 1f / denominator
             val onTable = RoomDollhouse.styleFor(scale).mapPointRadius * scale
             assertEquals(RoomDollhouse.MINIATURE_POINT_RADIUS_M, onTable, 1e-6f)
+        }
+    }
+
+    @Test
+    fun `the path reads thicker than the points on the table`() {
+        for (denominator in listOf(5, 8, 12)) {
+            val style = RoomDollhouse.styleFor(1f / denominator)
+            val trailOnTable = style.trailRadius / denominator
+            assertTrue("1:$denominator trail $trailOnTable m", trailOnTable >= 0.0025f)
+            assertTrue(style.trailRadius > style.mapPointRadius)
         }
     }
 
