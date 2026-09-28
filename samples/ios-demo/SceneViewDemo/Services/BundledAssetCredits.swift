@@ -75,6 +75,7 @@ enum BundledAssetCredits {
         "Models/nintendo_switch.usdz": .init(name: "Nintendo Switch Diorama", author: "Mikkel Garde Blaase", license: "CC-BY-NC 4.0"),
         "Models/bmw_m3_e30.usdz": .init(name: "BMW M3 Coupe (E30) 1986", author: "Lexyc16", license: "CC-BY-NC 4.0"),
         "Models/khronos_damaged_helmet.usdz": .init(name: "Damaged Helmet", author: "KhronosGroup (theblueturtle_)", license: "CC-BY 4.0"),
+        "Models/shiba.usdz": .init(name: "Shiba", author: "zixisun51", license: "CC-BY 4.0"),
         "Models/khronos_fox.usdz": .init(name: "Fox", author: "PixelMannen, tomkranis", license: "CC-BY 4.0"),
         "Models/khronos_lantern.usdz": .init(name: "Lantern", author: "Microsoft", license: "CC-BY 4.0"),
     ]

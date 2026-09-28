@@ -1,5 +1,6 @@
 import SwiftUI
 import RealityKit
+import Metal
 import SceneViewSwift
 
 /// Composes a "Park" scene from the 4 models in ``SampleAssets``' `park`
@@ -211,7 +212,7 @@ struct MultiModelDemo: View {
             Text("Visibility")
                 .font(.subheadline.weight(.semibold))
             // Horizontally scrolling for the same reason the Gallery chips are:
-            // catalogue names run long ("Street Lamp", "Park Bench") and four of them do
+            // catalogue names run long ("Street Lamp", "Simple Park Bench") and four of them do
             // not fit an iPhone's sheet width without truncating.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -312,6 +313,7 @@ struct MultiModelDemo: View {
             // from its authored pivot at whatever height that put it.
             _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
             node.entity.components.set(GroundingShadowComponent(castsShadow: true))
+            Self.cutOutTexturedOpacity(node.entity)
             if slug.hasBakedAnimation && node.animationCount > 0 {
                 node.playAllAnimations()
             }
@@ -331,6 +333,30 @@ struct MultiModelDemo: View {
         }
     }
 
+    /// Sketchfab's USDZ exports wire leaf opacity to the base-colour texture's
+    /// alpha (`tex_base.outputs:a`) and drop the glTF `MASK` mode. RealityKit
+    /// samples that texture's red channel instead, about 0.4 over the whole
+    /// card, so every leaf card showed as a pale translucent square. Reading
+    /// the alpha channel and thresholding it gives back the cut-out the glTF
+    /// authored. Uniform opacity (a lamp's glass) is left blended.
+    private static func cutOutTexturedOpacity(_ entity: Entity) {
+        if var model = entity.components[ModelComponent.self] {
+            var changed = false
+            model.materials = model.materials.map { material in
+                guard var pbr = material as? PhysicallyBasedMaterial,
+                      case .transparent(let opacity) = pbr.blending,
+                      var texture = opacity.texture else { return material }
+                texture.swizzle = MTLTextureSwizzleChannels(red: .alpha, green: .alpha, blue: .alpha, alpha: .alpha)
+                pbr.blending = .transparent(opacity: .init(scale: opacity.scale, texture: texture))
+                pbr.opacityThreshold = 0.5
+                changed = true
+                return pbr
+            }
+            if changed { entity.components.set(model) }
+        }
+        for child in entity.children { cutOutTexturedOpacity(child) }
+    }
+
     /// Poly Haven's "Chinese Garden" (CC0), bundled as `chinese_garden.hdr`.
     private static let gardenEnvironment = SceneEnvironment.custom(
         name: "Chinese Garden",
@@ -338,9 +364,10 @@ struct MultiModelDemo: View {
     )
 
     /// The lawn every slot stands on: a thin disc whose top face is `y = 0`,
-    /// centred under the park. Smaller than Android's 1.6 m because it counts
-    /// here: the scene's auto-framing fits everything under the content root,
-    /// and a wider disc would shrink every model to make room for grass.
+    /// centred under the park, the same 1.1 m radius as Android's
+    /// `PARK_LAWN_RADIUS`. Kept tight because it counts here: the scene's
+    /// auto-framing fits everything under the content root, and a wider disc
+    /// would shrink every model to make room for grass.
     private static func makeLawn() -> Entity {
         let thickness: Float = 0.05
         let lawn = ModelEntity(
@@ -352,9 +379,10 @@ struct MultiModelDemo: View {
         return lawn
     }
 
-    /// Mown grass, the same mid green as Android's `PARK_LAWN_COLOR` (#4F7A36).
-    /// A 3D material, not UI chrome, so it is not a DESIGN.md token.
-    private static let lawnColor = UIColor(red: 0x4F / 255.0, green: 0x7A / 255.0, blue: 0x36 / 255.0, alpha: 1)
+    /// Mown grass, the same green as Android's `PARK_LAWN_COLOR` (#335222).
+    /// #4F7A36 rendered as a pale mint under the garden's light. A 3D material,
+    /// not UI chrome, so it is not a DESIGN.md token.
+    private static let lawnColor = UIColor(red: 0x33 / 255.0, green: 0x52 / 255.0, blue: 0x22 / 255.0, alpha: 1)
 
     /// Re-attach / detach entities based on the four visibility toggles.
     /// Cheap because RealityKit only does an add / remove on the anchor.

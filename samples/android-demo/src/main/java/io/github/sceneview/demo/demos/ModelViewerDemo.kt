@@ -1408,11 +1408,11 @@ private const val PARK_ENVIRONMENT = "environments/chinese_garden_2k.hdr"
 private const val PARK_LAWN_THICKNESS = 0.05f
 
 /**
- * Mown grass, in linear-light terms a mid green: dark enough that the garden's daylight does not
- * wash it out, light enough that the contact shadows still read on it. A 3D material, not UI
- * chrome, so it is not a DESIGN.md token.
+ * Mown grass: dark enough that the garden's daylight does not wash it out, light enough that the
+ * contact shadows still read on it. #4F7A36 rendered as a lime plastic green under this light. A
+ * 3D material, not UI chrome, so it is not a DESIGN.md token; iOS uses the same value.
  */
-private val PARK_LAWN_COLOR = Color(0xFF4F7A36)
+private val PARK_LAWN_COLOR = Color(0xFF335222)
 
 // ─── Multi-Model section ──────────────────────────────────────────────────────
 // Formerly MultiModelDemo (id `multi-model`).
