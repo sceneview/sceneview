@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **74** (plus 16 pending metadata, 8 pending license review).
+Total models: **75** (plus 16 pending metadata, 8 pending license review).
 
 ---
 
@@ -96,6 +96,7 @@ Total models: **74** (plus 16 pending metadata, 8 pending license review).
 
 - **[Chinese Garden](https://polyhaven.com/a/chinese_garden)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Night Sky (Dikhololo Night)](https://polyhaven.com/a/dikhololo_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[The Sky Is On Fire](https://polyhaven.com/a/the_sky_is_on_fire)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Fab
 

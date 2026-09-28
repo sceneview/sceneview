@@ -14,7 +14,7 @@ contents of `samples/android-demo/src/main/assets` by
 Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `repo-hygiene` fails if this file and the assets disagree.
 
-Assets bundled: **30**.
+Assets bundled: **31**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -49,6 +49,8 @@ Assets bundled: **30**.
 
 - `environments/chinese_garden_2k.hdr` — **[Chinese Garden](https://polyhaven.com/a/chinese_garden)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.8 MB)
 - `environments/night_sky_2k.hdr` — **[Night Sky (Dikhololo Night)](https://polyhaven.com/a/dikhololo_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.7 MB)
+- `environments/sky_on_fire_2k.hdr` — **[The Sky Is On Fire](https://polyhaven.com/a/the_sky_is_on_fire)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.5 MB)  
+  Poly Haven 1k HDR, rolled so the sunset sits behind the viewer's model and scaled to 0.45x radiance so the sky keeps its colour under the viewer's exposure
 
 ## Other bundled assets
 
