@@ -17,7 +17,7 @@ name: Preview build
 #   - `gh workflow run preview.yml --ref <branch> -f platforms=android -f demos=home,model-viewer`
 #   - or label a pull request: `preview` (Android) and/or `preview-ios` (iOS).
 #     The run repeats on every push while the label stays on; removing the
-#     label stops it. `gh workflow run` only works once this file is on `main`
+#     label stops future runs (one already in progress finishes). `gh workflow run` only works once this file is on `main`
 #     — the label route works from the PR that adds it.
 #
 # NOT A REQUIRED CHECK, NOT ON THE CRITICAL PATH. Pull requests without a
@@ -188,8 +188,12 @@ jobs:
           echo "::error::No Xcode installation found in /Applications/"
           exit 1
 
-      - name: Cache iOS demo Swift Package dependencies
-        uses: actions/cache@v6
+      # Restore on every run, save only from a dispatch: the repo's Actions cache
+      # is already over its 10 GB quota, and a save per PR push would evict the
+      # caches the main CI depends on.
+      - name: Restore iOS demo Swift Package dependencies
+        id: spm-cache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/preview-dd/SourcePackages
           key: spm-preview-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved') }}
@@ -200,6 +204,13 @@ jobs:
         env:
           PREVIEW_DERIVED_DATA: ${{ runner.temp }}/preview-dd
         run: bash .claude/scripts/ci-preview-ios.sh preview-ios "$DEMOS"
+
+      - name: Save iOS demo Swift Package dependencies
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.spm-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/preview-dd/SourcePackages
+          key: spm-preview-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved') }}
 
       - name: Job summary
         if: always()

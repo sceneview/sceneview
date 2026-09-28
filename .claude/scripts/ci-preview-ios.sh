@@ -85,14 +85,23 @@ launch() {
 # Warm-up pass, not captured: the first launch after install compiles Metal
 # shaders and fills the model cache, and a capture taken then shows an empty
 # Showcase and a loading spinner (run 36405954123, light theme).
-for id in "${IDS[@]}"; do launch "$id"; sleep "$SETTLE"; done
+# A failed launch warns and moves on, as in ci-preview-android.sh: under
+# `set -e` one bad demo id used to end the whole job with no capture at all.
+for id in "${IDS[@]}"; do
+  launch "$id" || echo "::warning::warm-up launch failed for $id"
+  sleep "$SETTLE"
+done
 
 captured=0
 for theme in light dark; do
   xcrun simctl ui "$UDID" appearance "$theme"
   mkdir -p "$OUT/screenshots/$theme"
   for id in "${IDS[@]}"; do
-    launch "$id"
+    if ! launch "$id"; then
+      echo "::warning::launch failed for $theme/$id"
+      echo "- launch failed for \`$theme/$id\`" >> "$SUMMARY"
+      continue
+    fi
     sleep "$SETTLE"
     if xcrun simctl io "$UDID" screenshot "$OUT/screenshots/$theme/$id.png" >/dev/null 2>&1; then
       captured=$((captured + 1))
