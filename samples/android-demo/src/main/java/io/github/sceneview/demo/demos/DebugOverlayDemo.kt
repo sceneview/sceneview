@@ -193,17 +193,30 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
 
     // The camera turns around the grid (#4083): a slow turntable that shows the spheres as a
     // volume, with layers sliding past each other, instead of the one head-on view that made
-    // 1 000 spheres look like a flat 10 × 10 sheet. A drag takes over; the turn resumes after
-    // a pause. A new count is a new framing, which the manipulator eases into rather than cuts.
+    // 1 000 spheres look like a flat 10 × 10 sheet. A new count is a new framing, which the
+    // manipulator eases into rather than cuts.
+    //
+    // The tour is bounded: it runs for [ORBIT_TOUR_MILLIS] after each new count, then coasts to
+    // a stop. A camera that never stops renders every frame, and the overlay's "idle · rendering
+    // on demand" state — the point of this screen as much as the frame rate — could never show.
+    var touring by remember { mutableStateOf(true) }
+    LifecycleAwareLaunchedEffect(targetCount) {
+        touring = true
+        delay(ORBIT_TOUR_MILLIS)
+        touring = false
+    }
     val cameraNode = rememberCameraNode(engine)
     val elevation = Math.toRadians(ORBIT_ELEVATION_DEGREES.toDouble())
     val cameraManipulator = rememberHeroOrbitCameraManipulator(
-        trigger = true,
+        trigger = touring,
         radius = targetDistance * cos(elevation).toFloat(),
         yHeight = targetDistance * sin(elevation).toFloat(),
         durationMillis = ORBIT_TURN_MILLIS,
         staticYaw = ORBIT_QA_YAW_DEGREES,
         target = Position(y = gridLift),
+        // Keep a drag above the floor (#3794): the eye never drops below the aim point, which
+        // itself sits above the floor, so an upward drag cannot carry the camera under it.
+        maxPolarDegrees = ORBIT_MAX_POLAR_DEGREES,
     )
 
     // Progressive spawn: incrementally bring `currentCount` toward `targetCount` so the
@@ -737,6 +750,18 @@ private const val ORBIT_ELEVATION_DEGREES = 22f
 
 /** One full camera turn around the grid. */
 private const val ORBIT_TURN_MILLIS = 24_000
+
+/**
+ * How long the camera tours after each new count before it parks: a third of a turn, enough to
+ * see the layers slide past each other, then the scene goes back to rendering on demand.
+ */
+private const val ORBIT_TOUR_MILLIS = 8_000L
+
+/**
+ * Drag clamp, in degrees from straight up: short of horizontal, so the eye stays above the grid's
+ * centre and therefore above the floor.
+ */
+private const val ORBIT_MAX_POLAR_DEGREES = 85f
 
 /** Azimuth the orbit is frozen at under `qa_mode`: off-axis, so the layers read in depth. */
 private const val ORBIT_QA_YAW_DEGREES = 35f

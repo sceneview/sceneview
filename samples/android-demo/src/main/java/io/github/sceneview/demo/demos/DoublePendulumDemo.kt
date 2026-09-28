@@ -467,25 +467,28 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                         materialInstance = trailBobMaterial,
                         apply = { trailRef = this },
                     )
-                    // The node is destroyed when the switch turns it off: the loop must
-                    // not write into it after that.
+                    // The node is destroyed when the switch turns it off. This clears the
+                    // ref in the same composition pass, and the loop re-reads `trailRef`
+                    // every frame, so it never writes into a destroyed vertex buffer.
                     DisposableEffect(Unit) { onDispose { trailRef = null } }
                 }
 
                 // Per-frame physics loop. Keyed on the node refs, the parameters and
                 // generation so a Release or a slider change restarts it — and the
                 // trail with it, instead of drawing a jump from the old swing.
+                // The trail is deliberately not a key: toggling it must not restart the
+                // swing. The loop keeps the tip's recent path either way and writes it
+                // into whichever tube exists on that frame.
                 LaunchedEffect(
-                    leadArmRef, trailArmRef, jointBobRef, tipBobRef, trailRef,
+                    leadArmRef, trailArmRef, jointBobRef, tipBobRef,
                     generation, length1, length2, gravity,
                 ) {
                     val arm1 = leadArmRef ?: return@LaunchedEffect
                     val arm2 = trailArmRef ?: return@LaunchedEffect
                     val bobJoint = jointBobRef ?: return@LaunchedEffect
                     val bobTip = tipBobRef ?: return@LaunchedEffect
-                    val trail = trailRef
                     val trailPoints = ArrayDeque(trailSeed(state.tip))
-                    trail?.updateGeometry(points = trailPoints.toList())
+                    trailRef?.updateGeometry(points = trailPoints.toList())
                     var lastNanos = withFrameNanos { it }
                     while (true) {
                         val now = withFrameNanos { it }
@@ -498,11 +501,9 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                         applyArmTransform(arm2, state.joint, state.tip)
                         bobJoint.position = state.joint
                         bobTip.position = state.tip
-                        if (trail != null) {
-                            trailPoints.removeFirst()
-                            trailPoints.addLast(state.tip)
-                            trail.updateGeometry(points = trailPoints.toList())
-                        }
+                        trailPoints.removeFirst()
+                        trailPoints.addLast(state.tip)
+                        trailRef?.updateGeometry(points = trailPoints.toList())
                     }
                 }
             }

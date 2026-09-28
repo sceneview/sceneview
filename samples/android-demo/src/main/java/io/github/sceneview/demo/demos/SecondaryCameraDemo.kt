@@ -115,7 +115,7 @@ private const val ORBIT_PERIOD_NANOS = 12_000_000_000L
 private const val FLOOR_SIZE = 90f
 private const val GRID_SPACING = 0.25f
 private const val GRID_HALF_LINES = 4
-private const val GRID_LINE_WIDTH = 0.006f
+private const val GRID_LINE_WIDTH = 0.008f
 private const val GRID_LINE_HEIGHT = 0.002f
 
 /**
