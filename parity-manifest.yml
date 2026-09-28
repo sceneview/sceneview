@@ -305,8 +305,10 @@ demos:
       pitch and roll sliders
     parity: diverges
     evidence: >-
-      #4083: iOS is a Swift port of the Android fixed-step simulation (same
-      constants and opening shot); not yet built or captured on a simulator
+      #4083: iOS is a Swift port of the Android fixed-step simulation. Captured
+      on Pixel_7a and iPhone 17 Pro sim: same opening shot at rest (Bodies 7 ·
+      impacts 113 on both). Diverges in chrome only: iOS puts Drop, Tilt, Reset
+      and Settings in one bottom toolbar, and its tray floor reads lighter
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working

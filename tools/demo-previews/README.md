@@ -146,6 +146,10 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
 | `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
 
+`preview_rolling_balls` (#4083) is the same kind of capture on an iPhone 17 Pro simulator
+(iOS 26, 1206×2622), launched with `-demo rolling-balls`: the opening shot at rest, the
+same seven balls as the Android card. Crop: 602, 1375, 1121.
+
 The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
 same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their
 crops are in that capture's pixels. Same 5:4 crop, 800×640 JPEG q85, one universal JPEG.
