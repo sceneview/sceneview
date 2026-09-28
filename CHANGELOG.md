@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v4.47.0 — 2026-09-28
+
+### Changed
+
+- **The iOS demo home now reads like the Android one ([#3907](https://github.com/sceneview/sceneview/issues/3907)).** A Featured shelf sits under the hero, led by the Rerun AR replay, then Animation, Tap to Place and AR Record & Playback, each with a thumbnail captured from the demo itself. The catalogue below is grouped into Android's five sections (View in 3D, Place in AR, Developer tools, Create & record, Understand the world), and the chips filter by section. The Animation character now plays its clip as soon as the demo opens instead of standing in its rest pose. Six demos that are still broken on iOS (Double Pendulum, Movable Light, Physics, Scene Gallery, Multi-model, Materials) are kept off the home until they are fixed; their scenes and deep links are unchanged.
+- **Demo: "Your Room, as a Dollhouse" stands the room you recorded on your table, instead of a stock tree stump ([#4075](https://github.com/sceneview/sceneview/issues/4075)).** Record a room in the Rerun demo, then tap **View in AR** at the end of its replay, or in the session's menu in the list. The room stands on a table in AR as a miniature, with its ceiling cut away. You see the surfaces with their photos, the points and the path you walked, on a plinth that follows the outline of the room. The room is shown at a model maker's scale, about 1:12 for a bedroom, so its longest side is at most 35 cm. Drag it to move it, twist it to turn it and pinch it to resize it. **Real size** stands it at its own size, and a 3D view shows the same miniature on a device without AR. The home card (`ar-splat-room`) now opens this screen. When no room has been recorded yet, it offers "Record your room" and never shows a stock asset. The miniature is drawn with the replay's own layers, not the `.glb` export: points and paths in a glTF file are one pixel wide and would disappear at this scale.
+
+### Fixed
+
+- **The Rerun demo's replay now looks sharp, follows the app theme, and opens without a blank wait ([#4080](https://github.com/sceneview/sceneview/issues/4080)).** Opening the first replay no longer shows an empty view for about two seconds. The replay's shaders are now compiled by one off-screen draw while the landing page is on screen, so the replay appears in about 0.4 s instead of 2.6 s on the emulator. The photos projected onto the floor and the table are sharp. They now use the full-resolution keyframes, mipmapped with trilinear filtering and 8× anisotropy, and the plane textures in the sample are baked at 5 mm per texel. In light theme, the landing page and the replay now use a light ground and light glass chrome, and the 3D view uses a palette made for that ground. In dark theme they look the same as before. The live camera screen keeps its dark chrome in both themes. Exporting a session to `.rrd` and opening it again now keeps everything: the live feature points with their timestamps, planes painted with their photos instead of black, and all of the session's photos instead of the first eight.
+
 ## v4.46.0 — 2026-09-28
 
 ### Added

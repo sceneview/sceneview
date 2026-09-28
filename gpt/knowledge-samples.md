@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.46.0)
+  Source of truth: /llms.txt  (SceneView 4.47.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.46.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.47.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -703,7 +703,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Place in AR
 
-- `ar-splat-room` — Your Scan, in Your Room. A real phone capture, standing on your floor at its real size.
+- `ar-splat-room` — Your Room, as a Dollhouse. The room you recorded, standing on your table as a miniature.
 - `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
 - `placement-scene` — One-Call AR. The same tap-to-place screen, in a single SDK call.
 - `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
