@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
@@ -376,9 +377,33 @@ private fun ExploreBody(
             ),
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg),
     ) {
-        Spacer(Modifier.height(SceneViewTokens.Space.xs))
-
-        TextButton(onClick = onBack) { Text("← Showcase") }
+        // Same header as every other top-level surface: back glyph + `type-title`,
+        // `Home.headerHeight` tall. The icon button's 12 dp inner inset is pulled
+        // back so the glyph lines up with the content edge below it.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SceneViewTokens.Home.headerHeight),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.offset(x = -(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.cd_back_button),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Text(
+                text = stringResource(R.string.home_browse_title),
+                style = SceneViewTokens.Type.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (searchExpanded || isSearching) {
             SearchField(
                 value = searchQuery,

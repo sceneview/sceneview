@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
+import io.github.sceneview.demo.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -128,9 +130,25 @@ data class ViewerEnvironment(val assetPath: String, val displayName: String) { v
                 }
             }
         }
-        LabeledSlider("IBL intensity", intensity, onIntensity, 0f..2f, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md), valueText = "%.1f×".format(intensity))
-        Row(Modifier.fillMaxWidth().padding(horizontal = SceneViewTokens.Space.md), horizontalArrangement = Arrangement.SpaceBetween) { Text("Show environment"); Switch(showEnvironment, onShowEnvironment) }
-        TextButton(onClick = onReset, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm)) { Text("Reset lighting") }
+        LabeledSlider(
+            stringResource(R.string.viewer_lighting_brightness),
+            intensity,
+            onIntensity,
+            0f..2f,
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
+            valueText = "%.1f×".format(intensity),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = SceneViewTokens.Space.md),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.viewer_lighting_show_environment))
+            Switch(showEnvironment, onShowEnvironment)
+        }
+        TextButton(onClick = onReset, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm)) {
+            Text(stringResource(R.string.viewer_lighting_reset))
+        }
         Spacer(Modifier.navigationBarsPadding().height(SceneViewTokens.Space.sm))
     }
 }
