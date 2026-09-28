@@ -306,7 +306,8 @@ object LightingStage {
         EnvironmentOption(
             id = "sunset",
             label = "Sunset",
-            file = "environments/sunset_2k.hdr",
+            // A real sunset (#4052). `sunset_2k.hdr` is an overcast seascape despite its name.
+            file = "environments/sky_on_fire_2k.hdr",
             swatchTop = Color(0xFFFFB874),
             swatchBottom = Color(0xFF3A2A34),
         ),

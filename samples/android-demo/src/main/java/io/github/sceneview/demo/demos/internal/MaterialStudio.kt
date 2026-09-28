@@ -510,7 +510,8 @@ internal object MaterialStudio {
     val environments: List<StudioEnvironment> = listOf(
         StudioEnvironment("Studio", "environments/studio_warm_2k.hdr"),
         StudioEnvironment("Interior", "environments/studio_2k.hdr"),
-        StudioEnvironment("Sunset", "environments/sunset_2k.hdr"),
+        // A real sunset (#4052). `sunset_2k.hdr` is an overcast seascape despite its name.
+        StudioEnvironment("Sunset", "environments/sky_on_fire_2k.hdr"),
         StudioEnvironment("Night", "environments/night_sky_2k.hdr"),
     )
 

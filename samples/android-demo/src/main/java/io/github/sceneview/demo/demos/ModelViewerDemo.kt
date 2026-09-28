@@ -405,20 +405,25 @@ private fun SingleModelSection(
     var modelSheetOpen by remember { mutableStateOf(false) }
     var environmentSheetOpen by remember { mutableStateOf(false) }
     // Chinese Garden leads, and the flagship viewer opens on it (#3402). The old default —
-    // `studio_2k` — is a grey box with white softboxes: correct light, no colour, and on the
-    // near-black stage the hero read as a grey object on a black field. Measured on the
-    // emulator against every bundled HDR: `studio_warm` is the same picture a shade warmer,
-    // `sunset` reflects mostly pale sky and washes the model out, `outdoor_cloudy` is flat
-    // by construction, and the two night maps are darker than the stage. The garden is the
-    // one that makes a PBR viewer look like a PBR viewer — green canopy and blue sky across
+    // `studio_2k` — gave correct light but no colour, and on the near-black stage the hero
+    // read as a grey object on a black field. Measured on the emulator against every bundled
+    // HDR: the studios are neutral, `outdoor_cloudy` is flat by construction, and the two
+    // night maps are darker than the stage. The garden is the one that makes a PBR viewer
+    // look like a PBR viewer — green canopy and blue sky across
     // the chrome, a hard sun glint, real depth in the visor — and it is bright enough that
     // the model never sinks into the stage in either theme. The list still leads with the
     // default so "Reset lighting" is the first tile.
+    //
+    // #4052 — every name says what the HDR shows, and every tile is rendered from it. The
+    // bundled `sunset_2k.hdr` is an overcast seascape, so "Sunset" is Poly Haven's "The Sky Is
+    // On Fire" (CC0). `studio_warm_2k.hdr` is the grey softbox studio and `studio_2k.hdr` a
+    // sunlit living room, so they read "Studio" and "Interior" — the names Material Studio
+    // already gives the same two files.
     val viewerEnvironments = remember { listOf(
         ViewerEnvironment("environments/chinese_garden_2k.hdr", "Chinese Garden"),
-        ViewerEnvironment("environments/sunset_2k.hdr", "Sunset"),
-        ViewerEnvironment("environments/studio_2k.hdr", "Studio"),
-        ViewerEnvironment("environments/studio_warm_2k.hdr", "Studio Warm"),
+        ViewerEnvironment("environments/sky_on_fire_2k.hdr", "Sunset"),
+        ViewerEnvironment("environments/studio_warm_2k.hdr", "Studio"),
+        ViewerEnvironment("environments/studio_2k.hdr", "Interior"),
         ViewerEnvironment("environments/outdoor_cloudy_2k.hdr", "Outdoor Cloudy"),
         ViewerEnvironment("environments/night_sky_2k.hdr", "Night Sky"),
         ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),

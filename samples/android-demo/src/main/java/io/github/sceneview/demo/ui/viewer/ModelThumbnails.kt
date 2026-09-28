@@ -29,13 +29,19 @@ object ModelThumbnails {
 
 /**
  * Same deferred-resource seam for bundled HDR environment thumbnails. Keyed by the asset stem
- * minus its resolution suffix: `environments/sunset_2k.hdr` → `sunset`.
+ * minus its resolution suffix: `environments/sky_on_fire_2k.hdr` → `sky_on_fire`.
+ *
+ * Every tile is rendered from the HDR it stands for (#4052): a chrome ball reflecting that exact
+ * equirect, so the picture on the tile is the light the user gets. The drawable names are the
+ * viewer's slot names, not file stems — `env_thumb_sunset` is the tile of the "Sunset" slot, which
+ * is `sky_on_fire` since #4052. `sunset_2k.hdr` itself is an overcast seascape (it still lights the
+ * home hero and the reflection-probe demo) and has no tile because no sheet offers it.
  */
 object EnvironmentThumbnails {
     private val resources: Map<String, Int> = mapOf(
         "studio" to R.drawable.env_thumb_studio,
         "studio_warm" to R.drawable.env_thumb_studio_warm,
-        "sunset" to R.drawable.env_thumb_sunset,
+        "sky_on_fire" to R.drawable.env_thumb_sunset,
         "chinese_garden" to R.drawable.env_thumb_chinese_garden,
         "outdoor_cloudy" to R.drawable.env_thumb_outdoor_cloudy,
         "night_sky" to R.drawable.env_thumb_night_sky,

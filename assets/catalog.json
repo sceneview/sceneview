@@ -3098,6 +3098,26 @@
       "usedIn": [
         "android-demo"
       ]
+    },
+    {
+      "id": "sky_on_fire",
+      "name": "The Sky Is On Fire",
+      "source": "polyhaven",
+      "sourceId": "the_sky_is_on_fire",
+      "sourceUrl": "https://polyhaven.com/a/the_sky_is_on_fire",
+      "author": "Greg Zaal",
+      "license": "CC0-1.0",
+      "file": "environments/hdr/sky_on_fire_2k.hdr",
+      "note": "Poly Haven 1k HDR, rolled so the sunset sits behind the viewer's model and scaled to 0.45x radiance so the sky keeps its colour under the viewer's exposure",
+      "tags": [
+        "sunset",
+        "golden-hour",
+        "outdoor",
+        "warm"
+      ],
+      "usedIn": [
+        "android-demo"
+      ]
     }
   ],
   "pendingReview": [
