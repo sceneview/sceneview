@@ -98,6 +98,11 @@ import io.github.sceneview.core.threemf.ModelUnitGuess
 import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
+import io.github.sceneview.demo.demos.internal.SurprisePrefetch
+import io.github.sceneview.demo.demos.internal.SurpriseRolls
+import io.github.sceneview.demo.demos.internal.checkSurpriseSize
+import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
 import io.github.sceneview.demo.demos.internal.PARK_SLOTS
 import io.github.sceneview.demo.demos.internal.ParkSlot
@@ -131,7 +136,11 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import java.io.File
 import com.google.ar.core.ArCoreApk
@@ -466,11 +475,26 @@ private fun SingleModelSection(
     var unitSheetOpen by remember { mutableStateOf(false) }
     var unitAnswered by remember { mutableStateOf(openedModel == null) }
     // The step a "Surprise me" roll is in, or `null` when none is running (#3825). The pill
-    // narrates it — search, download, decode, textures — instead of a static
-    // "Finding…". Every exit path (success, empty search, failed download, failed decode)
-    // lands back on `null`, so the button can never stick in its loading state.
+    // narrates it — download, then decode — instead of a static "Finding…". Every exit path
+    // (success, failed download, failed decode, a model picked meanwhile) lands back on `null`,
+    // so the button can never stick in its loading state.
     var surpriseStage by remember { mutableStateOf<SurpriseStage?>(null) }
     val surpriseInFlight = surpriseStage != null
+    // The roll in flight, kept so a model picked from the sheet cancels it (#4034): a roll that
+    // finished after the pick used to replace the model the user had just chosen.
+    var surpriseJob by remember { mutableStateOf<Job?>(null) }
+    // The registry entry the last roll put on screen and the file it streamed, for the credit
+    // line: every pick is CC-BY, and the licence wants the author named.
+    var surprisePick by remember { mutableStateOf<Pair<SketchfabSlug, String>?>(null) }
+    // The next roll's model, downloaded while the user looks at this one (#4034).
+    val surprisePrefetch = remember { SurprisePrefetch() }
+    // Stops a roll the user has overridden by choosing a model (#4034).
+    val cancelSurprise: () -> Unit = {
+        surpriseJob?.cancel()
+        surpriseJob = null
+        surpriseStage = null
+        surprisePick = null
+    }
 
     // `DemoSettings.cameraDistance` is process-global — Geometry, Camera & Gestures and the Park
     // section all read it. Until #3426 only the slider could write it, which is a deliberate act;
@@ -505,9 +529,19 @@ private fun SingleModelSection(
     // `streamedModelInstance` when the load completes, leaving `assetSource`
     // pinned at `Streaming` for the whole session even though the model is
     // loaded and interactive (#1464). `rememberStreamedModelInstance` keeps the
-    // call site stable and simply returns null while no stream is active.
-    val streamedModelInstance =
-        rememberStreamedModelInstance(modelLoader, streamedFileUrl)
+    // call site stable and simply returns null while no stream is active. It hands a model
+    // over only once its textures are in and its bounds are sane (#4034).
+    val renderInvalidator = rememberRenderInvalidator()
+    val streamedModel = rememberStreamedModelInstance(
+        modelLoader,
+        streamedFileUrl,
+        wakeRenderLoop = renderInvalidator::requestRender,
+    ) { rejected ->
+        // The file loaded as nothing, or as a box with no size: the previous model stays up.
+        if (surprisePick?.second == rejected) surprisePick = null
+        if (surpriseStage == SurpriseStage.Decoding) surpriseStage = null
+    }
+    val streamedModelInstance = streamedModel?.instance
     // The bundled hero — assets/models/khronos_damaged_helmet.glb. Loaded
     // eagerly so the first frame after launch shows the hero shot.
     val bundledModelInstance = rememberModelInstance(modelLoader, selectedModel.assetPath)
@@ -589,21 +623,19 @@ private fun SingleModelSection(
     // and we never enter the streaming branch — chip stays hidden.
     //
     // NOT an [AssetSourceProbe] site, deliberately — do not "finish" #2989 by routing
-    // this one through it too. "Surprise me" is true random content with no registry
-    // entry, so `pickRandomDownloadableModel` bypasses the resolver and calls
-    // `SketchfabService.downloadModel` directly.
-    // With no registry entry there is no bundled fallback to stage: a failure yields
-    // `null`, `streamedFileUrl` stays null, the chip hides and the bundled hero simply
-    // stays on screen. So this chip can never render a stand-in under a "Streamed"
-    // label — there is no origin to get wrong, which is the probe's entire reason to
-    // exist. The other four sites go through `SketchfabAssetResolver`, whose every
+    // this one through it too. "Surprise me" draws from registry entries since #4034
+    // ([SURPRISE_POOL]), but `pickSurpriseModel` still calls `SketchfabService.downloadModel`
+    // directly and never stages the entry's bundled fallback: a failure yields `null`,
+    // `streamedFileUrl` keeps its value, and the model already on screen simply stays. So
+    // this chip can never render a stand-in under a "Streamed" label — there is no origin to
+    // get wrong, which is the probe's entire reason to exist. The other four sites go through `SketchfabAssetResolver`, whose every
     // failure path DOES end at a fallback file, and they do share the probe.
     val assetSource = when {
         // The user's own file is neither streamed nor bundled: its origin is the title bar,
         // which names the file. A "Streamed" chip over a local file would simply be false.
         openedModel != null -> null
         streamedFileUrl == null -> null
-        streamedModelInstance == null -> AssetSourceState.Streaming
+        streamedModel?.location != streamedFileUrl -> AssetSourceState.Streaming
         else -> AssetSourceState.Streamed
     }
 
@@ -625,7 +657,6 @@ private fun SingleModelSection(
     val hasModelRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     hasModelRef.set(activeModelInstance != null)
     val modelDrain = rememberBackendDrainWait(engine)
-    val renderInvalidator = rememberRenderInvalidator()
     val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, modelDrain, renderInvalidator) {
         { nanos ->
             firstFrame.onFrame(nanos)
@@ -738,50 +769,47 @@ private fun SingleModelSection(
                 if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
             }
             modelSwapped -> {
+                cancelSurprise()
                 onSelectModel(BUNDLED_VIEWER_MODELS.first())
                 streamedFileUrl = null
             }
         }
     }
 
-    // The floating pill's roll. Since #3828 it is the only "Surprise me" — the Models sheet's
-    // copy of it is gone — so closing the sheet on completion is a no-op kept for safety.
+    // The floating pill's roll. Since #3828 it is the only "Surprise me". Since #4034 it draws
+    // from a curated pool of small single objects, in shuffle-bag order, and it no longer closes
+    // the Models sheet when it lands: the sheet open at that point is one the user opened during
+    // the roll, and picking a model in it cancels the roll.
     val rollSurprise: () -> Unit = {
         if (!surpriseInFlight) {
-            surpriseStage = SurpriseStage.Searching
-            scope.launch {
-                val url = runCatching {
-                    pickRandomDownloadableModel(service) { surpriseStage = it }
-                }.getOrNull()
-                modelSheetOpen = false
-                // The same file twice (a cached pick) keeps the instance already on screen:
-                // there is nothing left to decode, so the roll is over.
-                surpriseStage = if (url == null || url == streamedFileUrl) null else SurpriseStage.Decoding
-                if (url != null) streamedFileUrl = url
+            surpriseStage = SurpriseStage.Fetching(name = "", cached = false)
+            surpriseJob = scope.launch {
+                val pick = pickSurpriseModel(service, surprisePrefetch) { surpriseStage = it }
+                if (pick == null) {
+                    surpriseStage = null
+                    return@launch
+                }
+                // The same file twice keeps the instance already on screen: nothing to decode.
+                surpriseStage = if (pick.second == streamedFileUrl) null else SurpriseStage.Decoding
+                surprisePick = pick
+                streamedFileUrl = pick.second
+                // Warm the next roll while this model is looked at.
+                surprisePrefetch.warm(scope, service)
             }
         }
         Unit
     }
-    // The two steps after the download happen in the loader, not in the roll coroutine: the
-    // GLB is parsed into a `ModelInstance` (`rememberModelInstance`), then gltfio decodes and
-    // uploads its textures (`ModelLoader.isLoading`). The narration follows those signals.
-    LaunchedEffect(streamedModelInstance, surpriseStage) {
-        when (surpriseStage) {
-            SurpriseStage.Decoding -> if (streamedModelInstance != null) {
-                surpriseStage = SurpriseStage.Textures
-            } else {
-                // A file gltfio cannot parse yields `null` forever — stop narrating a decode
-                // that has already failed and leave the previous model on screen.
-                delay(SURPRISE_STEP_TIMEOUT_MS)
-                surpriseStage = null
-            }
-            SurpriseStage.Textures -> {
-                kotlinx.coroutines.withTimeoutOrNull(SURPRISE_STEP_TIMEOUT_MS) {
-                    while (modelLoader.isLoading) delay(SURPRISE_POLL_MS)
-                }
-                surpriseStage = null
-            }
-            else -> Unit
+    // The step after the download happens in the loader, not in the roll coroutine: the GLB is
+    // parsed and its textures uploaded, and only then does [rememberStreamedModelInstance] hand
+    // the model over. The narration ends when the model on screen is the one this roll fetched.
+    LaunchedEffect(streamedModel, surpriseStage) {
+        if (surpriseStage != SurpriseStage.Decoding) return@LaunchedEffect
+        if (streamedModel != null && streamedModel.location == streamedFileUrl) {
+            surpriseStage = null
+        } else {
+            // A backstop only: a failed load reports itself through the rejection above.
+            delay(SURPRISE_STEP_TIMEOUT_MS)
+            surpriseStage = null
         }
     }
 
@@ -874,6 +902,27 @@ private fun SingleModelSection(
             // dock at four plus the accent. The pill is theme-independent like every
             // other piece of chrome over a live viewport. Hidden without a Sketchfab key
             // (App Store / F-Droid builds): there is no catalogue to surprise anyone with.
+            // CC-BY wants the author named wherever the model is shown (#4034): a Surprise pick
+            // carries its credit while it is on screen, above the pill that rolled it.
+            val credit = surprisePick?.first?.takeIf {
+                !surpriseInFlight && streamedModel?.location == surprisePick?.second &&
+                    streamedFileUrl == surprisePick?.second
+            }
+            if (hasSketchfabKey && credit != null) {
+                GlassPill(Modifier.padding(horizontal = SceneViewTokens.Space.md)) {
+                    Text(
+                        text = stringResource(
+                            R.string.demo_model_viewer_surprise_credit,
+                            credit.displayName,
+                            credit.author,
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = io.github.sceneview.demo.theme.LocalStageChrome.current.onGlass,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+            }
             if (hasSketchfabKey) {
                 GlassActionPill(
                     icon = Icons.Filled.Shuffle,
@@ -1102,8 +1151,8 @@ private fun SingleModelSection(
         // bundled model it replaced.
         selectedPath = selectedModel.assetPath.takeIf { streamedFileUrl == null },
         currentScene = null,
-        onSelect = { onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false },
-        onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
+        onSelect = { cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false },
+        onScene = { cancelSurprise(); modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
     )
     if (unitSheetOpen && unitSuggestion != null) {
@@ -1157,36 +1206,90 @@ private fun SingleModelSection(
  * reads the result. The `assetSource` chip therefore stayed stuck on
  * `Streaming` even after the model was fully loaded and interactive (#1464).
  *
- * Calling `rememberModelInstance` unconditionally here keeps its group in a
- * fixed slot, so the State invalidates the caller correctly and the chip
- * transitions `Streaming → Streamed` the moment the model is ready. The empty
- * sentinel path returns `null` without ever touching the loader.
+ * Calling it unconditionally keeps its `produceState` in a fixed slot, so the State
+ * invalidates the caller correctly and the chip transitions `Streaming → Streamed` the
+ * moment the model is ready.
+ *
+ * Since #4034 it loads the model itself rather than through `rememberModelInstance`, to hand
+ * it over only when it can be shown: textures uploaded, bounds finite and non-empty. Until
+ * then the previous model stays on screen, and a file that fails either test is reported to
+ * [onRejected] and never shown. The result carries the location it was loaded from, so the
+ * caller can tell the new model from the previous one.
  */
 @Composable
 private fun rememberStreamedModelInstance(
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     streamedFileUrl: String?,
-): io.github.sceneview.model.ModelInstance? {
-    // rememberModelInstance is called on every recomposition, in a stable slot.
-    // The named `fileLocation =` argument binds to the URL-capable overload — without it
-    // the two-arg positional call binds to the asset-path overload, which feeds the
-    // `cached.toURI()` `file://…` URL straight to `AssetManager.open`; that throws, the
-    // instance stays `null`, and "Surprise me" silently never swaps in the streamed model
-    // (#1422 / the #2302 overload trap). When there is no active stream we feed it an empty
-    // path: the URL overload sees a scheme-less location, delegates to the asset reader,
-    // which fails fast and returns null — the bundled helmet keeps rendering.
-    val instance = rememberModelInstance(modelLoader, fileLocation = streamedFileUrl ?: "")
-    return if (streamedFileUrl == null) null else instance
+    wakeRenderLoop: () -> Unit,
+    onRejected: (location: String) -> Unit = {},
+): StreamedModel? {
+    val rejected = androidx.compose.runtime.rememberUpdatedState(onRejected)
+    // One `produceState` in a stable slot, whatever the URL (#1464). It keeps its last value
+    // across a key change, so the model on screen stays there while the next one loads.
+    val presented = produceState<StreamedModel?>(initialValue = null, modelLoader, streamedFileUrl) {
+        val location = streamedFileUrl ?: run {
+            value = null
+            return@produceState
+        }
+        var loaded: io.github.sceneview.model.ModelInstance? = null
+        try {
+            loaded = runCatching { modelLoader.loadModelInstance(location) }.getOrNull()
+            currentCoroutineContext().ensureActive()
+            // #4034 — the model is handed over once gltfio has uploaded its textures, not
+            // before: a streamed model shown mid-upload is untextured blocks on the default
+            // material, which is the "garbled model" of the report. The previous model stays
+            // on screen meanwhile. The frame loop keeps pumping the upload whether or not the
+            // model is in the scene (`ModelLoader.updateLoad`), but only while it runs: a model
+            // that is not in the scene yet does not wake an on-demand loop, which then parked with
+            // the upload half done until the timeout. Asking for a frame wakes it, and
+            // `isLoading` keeps it awake from there.
+            if (loaded != null) {
+                withTimeoutOrNull(STREAMED_TEXTURES_TIMEOUT_MS) {
+                    while (modelLoader.isLoading) {
+                        wakeRenderLoop()
+                        delay(SURPRISE_POLL_MS)
+                    }
+                }
+            }
+            if (loaded != null && loaded.hasFramableBounds()) {
+                value = StreamedModel(location, loaded)
+                loaded = null
+            } else {
+                rejected.value(location)
+            }
+        } finally {
+            // Cancelled mid-load, or rejected: this instance never reached the screen.
+            loaded?.let { modelLoader.destroyModel(it.model) }
+        }
+    }.value
+    // `produceState` has no per-key disposal: destroy the previous model once it is replaced,
+    // after the node that showed it has detached (#2459, #2424).
+    androidx.compose.runtime.DisposableEffect(presented) {
+        onDispose { presented?.let { modelLoader.destroyModel(it.instance.model) } }
+    }
+    return if (streamedFileUrl == null) null else presented
 }
+
+/** A streamed model on screen and the location it was loaded from. */
+private class StreamedModel(val location: String, val instance: io.github.sceneview.model.ModelInstance)
+
+/** Whether the model measures a finite, non-empty box the viewer can frame. */
+private fun io.github.sceneview.model.ModelInstance.hasFramableBounds(): Boolean = runCatching {
+    val box = model.boundingBox
+    val half = box.halfExtent
+    val center = box.center
+    (half + center).all { it.isFinite() } && half.any { it > 0f }
+}.getOrDefault(false)
+
+/** Longest the viewer keeps the previous model up while a streamed one uploads its textures. */
+private const val STREAMED_TEXTURES_TIMEOUT_MS = 20_000L
 
 /**
  * The step a "Surprise me" roll is in (#3825). Each value is a stage the code is really
- * in — a network call, a byte stream, a parse, a texture upload — never a timed script.
+ * in — a byte stream, then a parse and texture upload — never a timed script. There is no
+ * search step since #4034: the roll draws from [SURPRISE_POOL].
  */
 private sealed interface SurpriseStage {
-    /** `SketchfabService.search` is in flight. */
-    data object Searching : SurpriseStage
-
     /**
      * `SketchfabService.downloadModel` is in flight for [name]: a download, or a cache read
      * when [cached]. [totalBytes] is `-1` until the CDN reports a `Content-Length`.
@@ -1201,17 +1304,13 @@ private sealed interface SurpriseStage {
         val fraction: Float? get() = if (!cached && totalBytes > 0L) bytesRead.toFloat() / totalBytes else null
     }
 
-    /** The GLB is on disk and being parsed into a `ModelInstance`. */
+    /** The GLB is on disk; gltfio is parsing it and uploading its textures. */
     data object Decoding : SurpriseStage
-
-    /** The instance exists; gltfio is still decoding and uploading its textures. */
-    data object Textures : SurpriseStage
 }
 
 /** The narration line for [stage]. */
 @Composable
 private fun surpriseStageText(stage: SurpriseStage): String = when (stage) {
-    SurpriseStage.Searching -> stringResource(R.string.demo_model_viewer_surprise_searching)
     is SurpriseStage.Fetching -> {
         val name = stage.name.shortModelName()
         when {
@@ -1225,7 +1324,6 @@ private fun surpriseStageText(stage: SurpriseStage): String = when (stage) {
         }
     }
     SurpriseStage.Decoding -> stringResource(R.string.demo_model_viewer_surprise_decoding)
-    SurpriseStage.Textures -> stringResource(R.string.demo_model_viewer_surprise_textures)
 }
 
 /**
@@ -1252,45 +1350,50 @@ private const val SURPRISE_STEP_TIMEOUT_MS = 30_000L
 private const val SURPRISE_POLL_MS = 100L
 
 /**
- * Surprise-me coroutine. Hits the Sketchfab search API for downloadable PBR
- * content, picks a random hit, streams it through [SketchfabService.downloadModel]
- * → on-disk cache → `file://` URL. Failure modes (no results / rate limit /
- * non-PBR download) all return `null` and the FAB caller leaves the helmet on
- * screen, so the demo never sits on a black viewport.
+ * Surprise-me coroutine (#4034). Takes the next model from the shuffle bag over
+ * [SURPRISE_POOL], streams it through [SketchfabService.downloadModel] into the on-disk cache,
+ * and returns the entry with its `file://` URL, or `null` when nothing could be fetched: the
+ * model on screen then simply stays.
  *
- * [onStage] is told each step as it starts, and the download's byte count as it
- * streams (from `Dispatchers.IO` — snapshot state is safe to write from there).
+ * A download is abandoned past [SURPRISE_MAX_BYTES] or [SURPRISE_DOWNLOAD_TIMEOUT_MS]; the one
+ * retry asks the bag for a model already on disk, so a bad network costs one attempt, not the
+ * old fall-through across three searches. A download the [prefetch] already has in flight is
+ * awaited rather than started twice.
+ *
+ * [onStage] is told each step as it starts, and the download's byte count as it streams (from
+ * `Dispatchers.IO` — snapshot state is safe to write from there).
  */
-private suspend fun pickRandomDownloadableModel(
+private suspend fun pickSurpriseModel(
     service: SketchfabService,
+    prefetch: SurprisePrefetch,
     onStage: (SurpriseStage) -> Unit,
-): String? {
-    // Search a broad PBR-friendly query so the picks read well under the demo
-    // lighting. Falls back to "modern" if "pbr" returns 0 hits for some reason.
-    val candidates = listOf("pbr", "modern", "scan")
-    @Suppress("LoopWithTooManyJumpStatements") // continue-guards replace nested ifs for readability
-    for (query in candidates) {
-        onStage(SurpriseStage.Searching)
-        val results = runCatching {
-            service.search(query = query, downloadable = true, limit = 24)
-        }.getOrNull() ?: continue
-        // Filter to PBR-ish, sub-50k-poly hits so the demo doesn't stall on
-        // a 5 M-poly scan. faceCount = 0 happens for non-PBR models — keep
-        // them out.
-        val viable = results.filter { it.downloadable && it.faceCount in 1..200_000 }
-        if (viable.isEmpty()) continue
-        val pick = viable.random()
-        val fromCache = service.isCached(pick.uid)
-        onStage(SurpriseStage.Fetching(pick.name, cached = fromCache))
-        val cached = runCatching {
-            service.downloadModel(pick.uid) { read, total ->
-                onStage(SurpriseStage.Fetching(pick.name, cached = false, bytesRead = read, totalBytes = total))
-            }
-        }.getOrNull() ?: continue
-        return cached.toURI().toString()
+): Pair<SketchfabSlug, String>? {
+    val bag = SurpriseRolls.bag
+    repeat(SURPRISE_ATTEMPTS) { attempt ->
+        val slug = (if (attempt == 0) bag.next() else bag.next { service.isCached(it.uid) }) ?: return null
+        onStage(SurpriseStage.Fetching(slug.displayName, cached = service.isCached(slug.uid)))
+        val file = withTimeoutOrNull(SURPRISE_DOWNLOAD_TIMEOUT_MS) {
+            runCatching {
+                prefetch.inFlight(slug.uid)?.await() ?: service.downloadModel(slug.uid) { read, total ->
+                    checkSurpriseSize(read, total)
+                    onStage(
+                        SurpriseStage.Fetching(slug.displayName, cached = false, bytesRead = read, totalBytes = total),
+                    )
+                }
+            }.getOrNull()
+        }
+        // `runCatching` swallows a cancellation too: a roll the user overrode stops here.
+        currentCoroutineContext().ensureActive()
+        if (file != null) return slug to file.toURI().toString()
     }
     return null
 }
+
+/** One download, then one retry from the cache. */
+private const val SURPRISE_ATTEMPTS = 2
+
+/** The pool's largest file is 5.2 MB: past this, the network is the problem, not the file. */
+private const val SURPRISE_DOWNLOAD_TIMEOUT_MS = 15_000L
 
 // ─── Multi-Model section ──────────────────────────────────────────────────────
 // Formerly MultiModelDemo (id `multi-model`).

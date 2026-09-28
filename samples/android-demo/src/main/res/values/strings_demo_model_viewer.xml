@@ -17,13 +17,13 @@
     <string name="demo_model_viewer_loading">Loading model…</string>
     <string name="demo_model_viewer_surprise">Surprise me</string>
     <!-- Surprise me narration (#3825): one line per real step of the roll, in order. -->
-    <string name="demo_model_viewer_surprise_searching">Searching Sketchfab…</string>
     <string name="demo_model_viewer_surprise_downloading">Downloading %1$s…</string>
     <!-- %1$s model name, %2$s total download size, e.g. "3.2 MB". -->
     <string name="demo_model_viewer_surprise_downloading_sized">Downloading %1$s (%2$s)…</string>
     <string name="demo_model_viewer_surprise_cached">Opening %1$s from the cache…</string>
     <string name="demo_model_viewer_surprise_decoding">Decoding the model…</string>
-    <string name="demo_model_viewer_surprise_textures">Loading textures…</string>
+    <!-- #4034: credit line under a Surprise pick. %1$s model name, %2$s author. Every pick is CC-BY. -->
+    <string name="demo_model_viewer_surprise_credit">%1$s · by %2$s · CC-BY 4.0</string>
     <!-- Accessible name of the floating Surprise me pill: the visible label is short, the spoken one says what it does. -->
     <string name="demo_model_viewer_surprise_hint">Surprise me: load another random model</string>
 
