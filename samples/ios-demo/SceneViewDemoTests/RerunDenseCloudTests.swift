@@ -409,6 +409,39 @@ final class RerunDenseCloudTests: XCTestCase {
         XCTAssertNotNil(glb.range(of: Data("\"NORMAL\"".utf8)))
     }
 
+    func testAnExportedRRDReopensWithItsDenseCloud() throws {
+        let pack = try fixturePack()
+        let original = try XCTUnwrap(pack.dense)
+        let rrd = try RerunRRDWriter.data(for: RerunExportAdapter.scene(for: pack))
+        let capture = try RerunRRDReader.capturePack(from: rrd)
+        XCTAssertTrue(String(decoding: capture.manifest, as: UTF8.self).hasPrefix("{\"version\":2,\"dense\":{\"path\":\"dense/points.bin\",\"count\":5,\"voxelM\":0.02,\"normals\":false"))
+
+        let reopened = try RerunPack.load(manifest: capture.manifest, log: capture.log, media: capture.media, title: "Dense")
+        let dense = try XCTUnwrap(reopened.dense)
+        XCTAssertEqual(dense.count, original.count)
+        XCTAssertEqual(reopened.manifest.dense?.count, original.count)
+        XCTAssertEqual(reopened.denseVoxelM, 0.02)
+        XCTAssertEqual(dense.colors, original.colors)
+        for i in 0..<dense.count { XCTAssertLessThan(simd_distance(dense.positions[i], original.positions[i]), 0.001) }
+        // Rerun's Points3D has no normals: they are the one thing the trip loses.
+        XCTAssertNil(dense.normals)
+        XCTAssertEqual(reopened.trace.denseCountAt(0), -1) // No depth_stats in a .rrd: the whole map shows.
+
+        // A second trip keeps the cloud.
+        let again = try RerunRRDReader.capturePack(from: RerunRRDWriter.data(for: RerunExportAdapter.scene(for: reopened)))
+        let twice = try RerunPack.load(manifest: again.manifest, log: again.log, media: again.media, title: "Dense")
+        XCTAssertEqual(twice.dense?.count, original.count)
+    }
+
+    func testAnRRDWithoutWorldDenseStaysAV1Capture() throws {
+        let pack = try fixturePack()
+        var scene = RerunExportAdapter.scene(for: pack)
+        scene.dense = nil
+        let capture = try RerunRRDReader.capturePack(from: RerunRRDWriter.data(for: scene))
+        XCTAssertFalse(String(decoding: capture.manifest, as: UTF8.self).contains("\"dense\""))
+        XCTAssertNil(try RerunPack.load(manifest: capture.manifest, log: capture.log, media: capture.media, title: "Sparse").dense)
+    }
+
     // MARK: - Helpers
 
     /// A deterministic pseudo-random cloud (SplitMix64): unit normals, confidences ≥ 128.

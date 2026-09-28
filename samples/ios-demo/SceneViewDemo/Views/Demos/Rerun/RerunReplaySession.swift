@@ -65,14 +65,16 @@ struct RerunDenseReplay: @unchecked Sendable {
     let atlas: CGImage?
 
     init?(_ cloud: RerunDenseCloud, voxelM: Float) {
-        count = min(cloud.count, Self.atlasSize * Self.atlasSize)
-        guard count > 0 else { return nil }
-        starts = Array(stride(from: 0, to: count, by: Self.chunkSurfels))
-        chunks = starts.map { start in
-            RerunDenseSurfels.mesh(cloud, range: start..<min(start + Self.chunkSurfels, count),
+        let n = min(cloud.count, Self.atlasSize * Self.atlasSize)
+        guard n > 0 else { return nil }
+        let firsts = Array(stride(from: 0, to: n, by: Self.chunkSurfels))
+        count = n
+        starts = firsts
+        chunks = firsts.map { start in
+            RerunDenseSurfels.mesh(cloud, range: start..<min(start + Self.chunkSurfels, n),
                                    voxelM: voxelM, atlasSize: Self.atlasSize)
         }
-        let pixels = RerunPointAtlas.pixels(cloud.colors[...], count: count, size: Self.atlasSize)
+        let pixels = RerunPointAtlas.pixels(cloud.colors[...], count: n, size: Self.atlasSize)
         atlas = RerunPointAtlas.image(pixels, size: Self.atlasSize)
     }
 
