@@ -68,6 +68,9 @@ from pathlib import Path
 ROOT = Path(os.environ.get("GENERATE_CREDITS_ROOT") or Path(__file__).resolve().parent.parent.parent)
 CATALOG = ROOT / "assets" / "catalog.json"
 CREDITS = ROOT / "assets" / "CREDITS.md"
+# Binary assets kept out of git (fetched by tools/fetch-assets.sh). They are
+# bundled whether or not they have been materialised in this working tree.
+MANIFEST = ROOT / "assets" / "manifest.json"
 
 # Licenses we are allowed to ship in an open-source project intended for
 # commercial distribution (Play Store, App Store, Maven Central).
@@ -536,6 +539,14 @@ def render_catalog_credits(models: list[dict]) -> str:
     return "\n".join(lines) + "\n", len(complete), len(incomplete), len(unsafe)
 
 
+def manifest_sizes() -> dict[str, int]:
+    """Repo-relative path -> size of every file in assets/manifest.json."""
+    if not MANIFEST.exists():
+        return {}
+    with open(MANIFEST) as f:
+        return {e["path"]: e["size"] for e in json.load(f).get("files", [])}
+
+
 def scan_bundled(scope: dict) -> list[Path]:
     """Every file that ships inside the scope's artefact, sorted.
 
@@ -551,9 +562,13 @@ def scan_bundled(scope: dict) -> list[Path]:
     roots = [base / d for d in scope.get("subdirs", ())] or [base]
     out_abs = ROOT / scope["out"]
     out: list[Path] = []
-    for p in sorted(q for r in roots if r.is_dir() for q in r.rglob("*")):
-        if not p.is_file():
-            continue
+    on_disk = {q for r in roots if r.is_dir() for q in r.rglob("*") if q.is_file()}
+    # A file listed in assets/manifest.json ships in the artefact even when this
+    # checkout has not run tools/fetch-assets.sh yet: credit it all the same, so
+    # the generated files never depend on the state of the working tree.
+    fetched = {ROOT / rel for rel in manifest_sizes()}
+    in_roots = {p for p in fetched if any(r in p.parents for r in roots)}
+    for p in sorted(on_disk | in_roots):
         rel = p.relative_to(base).as_posix()
         if any(part.startswith(".") for part in rel.split("/")):
             continue
@@ -581,7 +596,7 @@ def classify_bundled(scope: dict, index: dict[str, dict]) -> tuple[list, list, l
     uncredited: list[str] = []
     for p in scan_bundled(scope):
         rel = p.relative_to(base).as_posix()
-        size = p.stat().st_size
+        size = p.stat().st_size if p.is_file() else manifest_sizes()[p.relative_to(ROOT).as_posix()]
         declared = NON_CATALOG_BUNDLED.get(p.name)
         if declared is not None:
             credited.append((rel, declared, size))

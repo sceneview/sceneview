@@ -36,6 +36,8 @@ on:
     paths:
       - 'docs/**'
       - 'website-static/**'
+      - 'assets/manifest.json'
+      - 'tools/fetch-assets.sh'
       - 'llms.txt'
       - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'
@@ -73,6 +75,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (web)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: web
 
       # ── 1. Copy static website (marketing site — root) ─────────────────
       - name: Assemble site root from static HTML

@@ -29,6 +29,26 @@ cd sceneview
 
 Open the project in Android Studio. Gradle sync will pull all dependencies automatically.
 
+### Assets
+
+The demo apps' models and HDR environments and the website's platform models are not in
+git. They live in the `assets-v1` GitHub Release, listed with their sha256 in
+[`assets/manifest.json`](assets/manifest.json). After cloning, run once:
+
+```bash
+bash tools/fetch-assets.sh
+```
+
+Files are downloaded once into `~/.cache/sceneview-assets/` (shared by every clone and
+worktree, override with `SCENEVIEW_ASSETS_CACHE`), verified, then copied into place. The
+Android and TV demo builds and the iOS demo's first build phase run the same script, so
+a plain build also works. `--scope android|ios|tv|web` limits the fetch, `--check`
+verifies what is in place.
+
+To add or replace an asset, put the file at its path and run
+`bash tools/fetch-assets.sh --register <path>`: it updates the manifest and prints the
+`gh release upload` command to run. The file itself stays out of git (see `.gitignore`).
+
 ### Build
 
 ```bash

@@ -93,6 +93,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Full history for version calculation
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 

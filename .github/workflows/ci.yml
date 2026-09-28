@@ -239,6 +239,10 @@ jobs:
               - 'samples/android-demo/**'
               - 'samples/android-tv-demo/**'
               - 'samples/common/**'
+              # The demos' binary assets (tools/fetch-assets.sh).
+              - 'assets/manifest.json'
+              - 'tools/fetch-assets.sh'
+              - '.github/actions/fetch-assets/**'
             # `web` gates the Gradle Kotlin/JS build of the sceneview-web
             # library plus the desktop-demo compile (#2540) that lives in the
             # same job. samples/web-demo is a plain static site (no Gradle
@@ -466,6 +470,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android tv)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android tv
 
       - uses: ./.github/actions/setup-gradle
 
@@ -485,6 +493,12 @@ jobs:
             :samples:android-demo:assembleDebug \
             :samples:android-tv-demo:assembleDebug \
             --stacktrace
+
+      # The APKs above embed the files assets/manifest.json lists. Fail if one
+      # is missing, differs from its manifest sha256, or was committed to git
+      # again instead of going through `tools/fetch-assets.sh --register`.
+      - name: Check binary assets
+        run: bash tools/fetch-assets.sh --check --scope android --scope tv
 
       # The release BUNDLE is a different packaging path from the debug APK:
       # R8 rewrites the Kotlin metadata resources and AGP 9's pre-bundle step
@@ -511,6 +525,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -583,6 +601,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android tv)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android tv
 
       - uses: ./.github/actions/setup-gradle
 
