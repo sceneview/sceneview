@@ -793,10 +793,14 @@ class DemoRenderingScreenshotTest {
         const val MAX_SETTLE_MS = 25_000L
 
         /**
-         * First-frame budget on a software rasteriser (`softwareRenderer=true`), on top of
-         * the per-test minimum settle. PROBE VALUE while the slowest demo is measured.
+         * Readiness budget on a software rasteriser (`softwareRenderer=true`), on top of the
+         * per-test minimum settle. Measured on the CI profile (`-gpu swangle_indirect`,
+         * run 36415395782, 2026-09-28): the slowest demo, `picking-collision`, reached
+         * "Scene ready" and was captured 41.9 s after `am start`, settle and tail included.
+         * This is about twice that; the `first-frame` lines in the job's logcat are the
+         * numbers to re-measure it from.
          */
-        const val SOFTWARE_MAX_SETTLE_MS = 180_000L
+        const val SOFTWARE_MAX_SETTLE_MS = 85_000L
 
         const val LOG_TAG = "DemoRenderGoldens"
 
@@ -814,10 +818,27 @@ class DemoRenderingScreenshotTest {
 
         /**
          * Goldens recorded on the CI emulator profile (`-gpu swangle_indirect`, 1080x2400 @
-         * 420 dpi, API 30, light). Same contract as [BASELINED_GOLDENS]; a slug absent here
-         * has no reference on that profile and takes the first-run skip.
+         * 420 dpi, API 30, light) and reviewed one by one before commit. Same contract as
+         * [BASELINED_GOLDENS]. A case absent here has no reference on that profile and takes
+         * the first-run skip; see `render-goldens-swangle/README.md` for why each one is out.
          */
-        val SWANGLE_BASELINED_GOLDENS: Set<String> = emptySet()
+        val SWANGLE_BASELINED_GOLDENS: Set<String> = setOf(
+            "animationphysics_default",
+            "cameragestures_default",
+            "customgeometry_default",
+            "debugoverlay_default",
+            "fog_default",
+            "geometry_default",
+            "lighting_default",
+            "linespaths_default",
+            "materials_default",
+            "modelviewer_default",
+            "pickingcollision_default",
+            "secondarycamera_default",
+            "splatpreview_default",
+            "twodinthreed_default",
+            // lightinglab_default: rejected — the helmet is missing from the CI capture.
+        )
 
         // How long we allow the demo screen to compose after `am start` — covers a cold
         // app start (splash + dexopt) on the QA emulator, measured at ~3 s warm and up to

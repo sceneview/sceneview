@@ -411,7 +411,7 @@ jobs:
       ${{ github.event_name != 'pull_request' && !cancelled()
       && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     continue-on-error: true
 
     steps:
@@ -446,11 +446,11 @@ jobs:
           # RAM, more cores and a data partition big enough for 15 full-size
           # PNGs are the headroom that run did not have.
           #
-          # The death itself is NOT fixed here and is not the geometry's fault:
-          # the emulator disappears on the exact line that captures the Lighting
-          # Lab frame, on both system images, and did so at 320x544 too. Tracked
-          # as #3554 — until then this leg exercises 3 of 15 demos and the step
-          # summary says so out loud instead of showing a green tick.
+          # The death itself was the GPU mode, not the geometry: on
+          # `swiftshader_indirect` the emulator disappeared on the line that
+          # captured the Lighting Lab frame. `swangle_indirect` (below) runs all
+          # 15 cases (#3554), compared against their own CI-recorded goldens in
+          # `render-goldens-swangle/` — see that directory's README.
           cores: 2
           ram-size: 4096M
           # `-skin 1080x2400`: the golden framebuffer. See the block comment above.
@@ -503,6 +503,8 @@ jobs:
             # reading the leg. It relaxes NO pixel comparison: a frame that does
             # render is still held to its golden, so the day this job gets a
             # hardware-GPU runner it starts gating for real with no edit here.
+            # `goldenSet=render-goldens-swangle` compares against goldens recorded
+            # on THIS profile; the hardware-GPU set stays for the local AVD (#3554).
             ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest -Pandroid.testInstrumentationRunnerArguments.softwareRenderer=true -Pandroid.testInstrumentationRunnerArguments.goldenSet=render-goldens-swangle --stacktrace || true
 
             # One last pull for anything written after the loop's final pass,

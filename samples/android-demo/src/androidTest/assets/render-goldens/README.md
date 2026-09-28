@@ -70,32 +70,20 @@ is not a hypothetical, it is what the CI leg did for months (#3551).
 ## CI
 
 `demo-render-goldens` in `.github/workflows/render-tests.yml` runs this suite on
-every push to `main`, on an emulator pinned to the same 1080x2400 @ 420 dpi
-geometry as the recording AVD (`-skin 1080x2400` plus `wm size` / `wm density`,
-asserted in the step so a wrong geometry fails loudly), so the comparison
-actually executes. It is
-**advisory** (`continue-on-error`), and it renders on SwiftShader rather than a
-hardware GPU, so what its verdict is worth is asymmetric:
+every push to `main`, nightly and on dispatch, on an emulator pinned to the same
+1080x2400 @ 420 dpi geometry as the recording AVD (`-skin 1080x2400` plus
+`wm size` / `wm density`, asserted in the step so a wrong geometry fails loudly).
+It renders with `-gpu swangle_indirect`, a software rasteriser, so it does **not**
+compare against this directory: it passes `goldenSet=render-goldens-swangle` and
+is held to the goldens in `../render-goldens-swangle/`, recorded on that same CI
+profile (#3554). See that directory's README for how they are recorded and which
+cases are left out.
 
-- **Filament presents no frame at all on SwiftShader.** Every capture from that
-  leg is the demo's own "The scene has not rendered a frame yet." card. The
-  suite used to compare that card against a golden and call it a 99.75 % render
-  regression; the leg now passes `softwareRenderer=true`, which turns that one
-  outcome into an explicit skip with a reason. It relaxes no pixel comparison —
-  the day this job gets a hardware-GPU runner it starts gating for real with no
-  edit to the workflow.
-- So what the leg genuinely proves today is that every demo **launches and
-  composes** at phone geometry, plus the structural checks: a missing or
-  degenerate golden, a golden at the wrong size. A red case there is a **lead**:
-  reproduce it on the AVD above before concluding anything.
-- **Never promote a capture from that job's artifact into a golden.** SwiftShader
-  and the recording GPU do not agree pixel-for-pixel; a baseline recorded from CI
-  would then fail on every real device.
-
-- **Only 3 of the 15 cases run today.** The emulator process disappears on the
-  line that captures the Lighting Lab frame — on both system images, and already
-  at the old 320x544 geometry. The remaining 12 cases are untested, not green.
-  Tracked as [#3554](https://github.com/sceneview/sceneview/issues/3554).
+- **Never promote a capture from that job's artifact into this directory.** The
+  software rasteriser and the recording GPU do not agree pixel-for-pixel; a
+  baseline recorded from CI would fail on every real device. The reverse holds too.
+- The job is **advisory** (`continue-on-error`), but its step is strict: a failed
+  case, a run with no results or fewer cases than declared turns the job red.
 
 The job writes its real executed/passed/failed/skipped counts to the run's step summary,
 so "the leg was green" and "the leg compared something" are separate, visible
