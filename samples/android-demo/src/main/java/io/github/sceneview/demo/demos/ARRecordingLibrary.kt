@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.FileProvider
 import com.google.ar.core.Session
+import io.github.sceneview.ar.arcore.ARSession
 import io.github.sceneview.demo.demos.internal.PlacementTrack
 import io.github.sceneview.demo.demos.internal.RecordingContents
 import io.github.sceneview.demo.demos.internal.degreesOfSurfaceRotation
@@ -244,7 +245,9 @@ internal fun shareRecording(context: Context, file: File): Boolean {
  */
 internal fun recordingSurfaceRotation(context: Context, session: Session?): Int {
     val display = displayRotation(context)
-    val sensor = session?.let { cameraSensorOrientation(context, it) } ?: return display
+    // A closed session is never read (#4026): the call would run on freed native memory.
+    val sensor = session?.takeUnless { (it as? ARSession)?.isClosed == true }
+        ?.let { cameraSensorOrientation(context, it) } ?: return display
     return surfaceRotationOf(recordingRotationDegrees(sensor, degreesOfSurfaceRotation(display)))
 }
 

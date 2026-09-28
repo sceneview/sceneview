@@ -23,6 +23,8 @@ import com.google.ar.core.RecordingConfig
 import com.google.ar.core.Session
 import com.google.ar.core.Track
 import com.google.ar.core.exceptions.RecordingFailedException
+import io.github.sceneview.ar.arcore.isClosedSession
+import io.github.sceneview.ar.arcore.readUnlessClosed
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.ByteBuffer
@@ -196,15 +198,11 @@ public class ARRecorder {
         // RecordingStatus.IO_ERROR would only be observable via the next stopRecording() call
         // throwing, which is too late to alert the user (#1770).
         if (_state == State.RECORDING) {
-            // Narrow the catch to ARCore's documented JNI failure modes (#1845): we swallow
-            // a runtime failure of the JNI-backed getter (`Session.getRecordingStatus` can
-            // throw if the native handle is closed concurrently) but never an Error — those
-            // signal a process-wide problem the recorder cannot recover from.
-            val status: com.google.ar.core.RecordingStatus? = try {
-                session.recordingStatus
-            } catch (e: RuntimeException) {
-                null
-            }
+            // A closed session is never read (#4026): ARCore keeps its native handle set, so
+            // the getter would run on freed memory. Otherwise a runtime failure of the
+            // JNI-backed getter is swallowed, never an Error (#1845).
+            val status: com.google.ar.core.RecordingStatus? =
+                readUnlessClosed(isClosedSession(session), null) { session.recordingStatus }
             if (status == com.google.ar.core.RecordingStatus.IO_ERROR) {
                 // Write order matters (#1845): the previous code wrote [_errorMessage] first
                 // then [_state], so a UI-thread reader that observed the writes individually
@@ -500,6 +498,16 @@ public class ARRecorder {
      */
     public fun stop(): File? {
         val session = sessionRef.get() ?: run {
+            _state = State.IDLE
+            return _recordingFile
+        }
+        // The session was closed under the recorder (#4026) — typically the screen left while
+        // recording: the `ARSceneView` closes its session before an outer `rememberARRecorder`
+        // is disposed. [start] sets `setAutoStopOnPause(true)` and `ARCore.destroy()` pauses
+        // before closing, so ARCore has already finalized the file; calling `stopRecording()`
+        // now would run on freed native memory.
+        if (isClosedSession(session)) {
+            previousCameraConfig.set(null)
             _state = State.IDLE
             return _recordingFile
         }
@@ -805,20 +813,19 @@ public fun rememberARPlaybackStatus(session: Session?): androidx.compose.runtime
             value = PlaybackStatus.NONE
             return@produceState
         }
-        while (true) {
+        // The session is usually owned by an `ARSceneView` in another composition (a
+        // `SubcomposeLayout` slot), which can close it before this producer is cancelled. A
+        // closed session is never read: ARCore leaves its native handle set, so the call would
+        // be a use-after-free that kills the process with a signal, past any `catch` (#4026).
+        while (!isClosedSession(session)) {
             androidx.compose.runtime.withFrameNanos { _ ->
-                // Narrow the catch to ARCore JNI failures (#1845): the only documented failure
-                // mode of [Session.getPlaybackStatus] is a runtime exception when the session
-                // is closed concurrently. JVM `Error`s propagate unchanged. Plain `try`/`catch`
-                // (vs `runCatching`) avoids allocating a `Throwable` wrapper every IO_ERROR
-                // frame (#1846).
-                val current: PlaybackStatus = try {
+                // A RuntimeException still maps to NONE (#1845); JVM `Error`s propagate.
+                val current = readUnlessClosed(isClosedSession(session), PlaybackStatus.NONE) {
                     session.playbackStatus
-                } catch (e: RuntimeException) {
-                    PlaybackStatus.NONE
                 }
                 if (value != current) value = current
             }
         }
+        value = PlaybackStatus.NONE
     }
 }

@@ -151,6 +151,10 @@ open class AnchorNode(
     }
 
     override fun destroy() {
+        // Once only (#4026): `Anchor.detach()` is a native call through its session, and a
+        // second destroy() — a parent node tearing down its children after the composable
+        // already did — can come after that session was closed.
+        if (isDestroyed) return
         detachAnchor()
 
         super.destroy()
