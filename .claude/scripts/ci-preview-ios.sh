@@ -22,7 +22,7 @@ set -euo pipefail
 OUT="${1:?usage: ci-preview-ios.sh <out-dir> [demo-ids]}"
 IDS_RAW="${2:-home,model-viewer}"
 BUNDLE_ID="io.github.sceneview.demo"
-SETTLE="${PREVIEW_SETTLE_SECONDS:-12}"
+SETTLE="${PREVIEW_SETTLE_SECONDS:-20}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEMO_DIR="$ROOT/samples/ios-demo"
 
@@ -68,22 +68,31 @@ echo "[preview] app: $APP"
 
 xcrun simctl install "$UDID" "$APP"
 
+launch() {
+  xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+  if [ "$1" = home ]; then
+    xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
+  else
+    # Launch arguments, not `simctl openurl`: a URL raises SpringBoard's
+    # "Open in 'SceneView'?" alert, which the first CI run captured instead
+    # of the demo. `-demo <id>` routes on first frame (SceneViewDemoApp.swift,
+    # same path as capture-appstore-screenshots.sh); `-qa_mode 1` freezes
+    # auto-rotation, mirroring Android's `qa_mode` extra.
+    xcrun simctl launch "$UDID" "$BUNDLE_ID" -demo "$1" -qa_mode 1 >/dev/null
+  fi
+}
+
+# Warm-up pass, not captured: the first launch after install compiles Metal
+# shaders and fills the model cache, and a capture taken then shows an empty
+# Showcase and a loading spinner (run 36405954123, light theme).
+for id in "${IDS[@]}"; do launch "$id"; sleep "$SETTLE"; done
+
 captured=0
 for theme in light dark; do
   xcrun simctl ui "$UDID" appearance "$theme"
   mkdir -p "$OUT/screenshots/$theme"
   for id in "${IDS[@]}"; do
-    xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-    if [ "$id" = home ]; then
-      xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
-    else
-      # Launch arguments, not `simctl openurl`: a URL raises SpringBoard's
-      # "Open in 'SceneView'?" alert, which the first CI run captured instead
-      # of the demo. `-demo <id>` routes on first frame (SceneViewDemoApp.swift,
-      # same path as capture-appstore-screenshots.sh); `-qa_mode 1` freezes
-      # auto-rotation, mirroring Android's `qa_mode` extra.
-      xcrun simctl launch "$UDID" "$BUNDLE_ID" -demo "$id" -qa_mode 1 >/dev/null
-    fi
+    launch "$id"
     sleep "$SETTLE"
     if xcrun simctl io "$UDID" screenshot "$OUT/screenshots/$theme/$id.png" >/dev/null 2>&1; then
       captured=$((captured + 1))
@@ -98,6 +107,10 @@ for theme in light dark; do
   done
 done
 xcrun simctl ui "$UDID" appearance light || true
+# Simulator app crashes land in the host's DiagnosticReports: ship them.
+find "$HOME/Library/Logs/DiagnosticReports" -name 'SceneView*' -newer "$OUT/SceneView-simulator.app.zip" \
+  -exec sh -c 'mkdir -p "$1/crashes" && cp "$2" "$1/crashes/"' _ "$OUT" {} \; 2>/dev/null || true
+[ ! -d "$OUT/crashes" ] || echo "- crash reports: \`crashes/\` ($(ls "$OUT/crashes" | wc -l | tr -d ' '))" >> "$SUMMARY"
 [ -n "${PREVIEW_DERIVED_DATA:-}" ] || rm -rf "$DERIVED"
 
 echo "- captured: $captured screenshot(s) — ids: ${IDS[*]}, themes: light dark" >> "$SUMMARY"
