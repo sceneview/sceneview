@@ -61,7 +61,7 @@ internal object DeepLinkRouter {
      * Query parameter / intent-extra name carrying the optional initial tab a consolidated
      * demo should open on — `sceneview://demo/<id>?tab=<id|index>` and the `--es tab <v>`
      * QA extra. The value is either a 0-based segmented-button index (`?tab=1`) or a retired
-     * alias token (`?tab=physics`) resolved through [ALIAS_INITIAL_TAB]. See [resolveInitialTab]
+     * alias token (`?tab=texture-streaming`) resolved through [ALIAS_INITIAL_TAB]. See [resolveInitialTab]
      * (#2315).
      */
     const val QUERY_PARAM_TAB: String = "tab"
@@ -131,12 +131,12 @@ internal object DeepLinkRouter {
         "environment" to "lighting",
         "reflection-probes" to "lighting-lab",
         "post-processing" to "lighting-lab",
-        // #2239 Batch 3 — Animation & Physics consolidation. The retired
-        // `animation` and `physics` demos merged into `animation-physics` with a
-        // segmented-button toggle. `animation` lands on the default Animation tab
-        // and `physics` pre-selects the Physics tab (#2315 — see [ALIAS_INITIAL_TAB]).
+        // #2239 Batch 3 — the retired `animation` and `physics` demos merged into
+        // `animation-physics`. #4083 then split the Physics tab back out as its own
+        // `rolling-balls` demo, so `animation-physics` has no tabs any more and
+        // `physics` lands on the tray of balls it always meant.
         "animation" to "animation-physics",
-        "physics" to "animation-physics",
+        "physics" to "rolling-balls",
         // #2239 Batch 4 — Materials consolidation. The retired `texture-streaming`
         // and `occlusion-material` demos merged into the existing `materials` entry
         // (the natural umbrella, kept live) with a segmented-button toggle.
@@ -193,7 +193,7 @@ internal object DeepLinkRouter {
     /**
      * Retired alias ids whose content lives on a **non-default** tab of the consolidated
      * demo that absorbed them. When a consolidated demo is opened through one of these
-     * aliases (e.g. `sceneview://demo/physics`), it should pre-select the matching segmented
+     * aliases (e.g. `sceneview://demo/texture-streaming`), it should pre-select the matching segmented
      * tab instead of falling back to its default first tab (#2315).
      *
      * The index is 0-based and matches the order of the demo's segmented-button modes.
@@ -211,8 +211,6 @@ internal object DeepLinkRouter {
         // absent: the Image rig is index 0, the rig the demo already opens on.
         "movable-light" to 1,
         "dynamic-sky" to 2,
-        // animation-physics — [Animation, Physics]
-        "physics" to 1,
         // materials — [PBR Materials, Streaming, Occlusion]
         "texture-streaming" to 1,
         "occlusion-material" to 2,
@@ -328,13 +326,13 @@ internal object DeepLinkRouter {
      * Precedence — explicit user intent wins over the alias default, mirroring the
      * `cameraDistance` dual-ingress policy:
      *  1. An explicit [tabParam] (`--es tab <v>` extra or `?tab=<v>` query) — either a
-     *     0-based index (`"1"`) or a retired-alias token (`"physics"`) looked up in
+     *     0-based index (`"1"`) or a retired-alias token (`"texture-streaming"`) looked up in
      *     [ALIAS_INITIAL_TAB]. See [parseTabValue].
      *  2. Otherwise, the launching [rawId] itself: if it is a retired alias whose content
-     *     lives on a non-default tab (e.g. `physics` → 1), that tab.
+     *     lives on a non-default tab (e.g. `texture-streaming` → 1), that tab.
      *
-     * [rawId] is the **pre-validation** id as launched (the alias, e.g. `physics` — not the
-     * resolved `animation-physics`), since the alias is what carries the tab hint. Never
+     * [rawId] is the **pre-validation** id as launched (the alias, e.g. `texture-streaming` —
+     * not the resolved `materials`), since the alias is what carries the tab hint. Never
      * throws; an absent / blank / unparseable value falls through to the next rule and an
      * out-of-range index is left for the demo to clamp to its default tab.
      */
@@ -356,7 +354,7 @@ internal object DeepLinkRouter {
     /**
      * Parses a `?tab=` / `--es tab` value into a 0-based tab index: a non-negative integer
      * literal is taken as-is; any other token is looked up in [ALIAS_INITIAL_TAB] (so
-     * `?tab=physics` selects the Physics tab). A blank, negative, or unrecognised value returns
+     * `?tab=texture-streaming` selects the Streaming tab of `materials`). A blank, negative, or unrecognised value returns
      * `null`. Never throws.
      */
     internal fun parseTabValue(raw: String?): Int? {

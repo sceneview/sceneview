@@ -9,9 +9,10 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.AnimationPhysicsDemo
 
 /**
- * Unified "Animation & Physics" demo — consolidates the retired `animation` and
- * `physics` demos behind one entry with an internal segmented-button toggle
- * (#2239 Batch 3). The old deep-link ids stay routable through
+ * The Animation demo. It consolidated the retired `animation` and `physics` demos
+ * behind one entry in #2239 Batch 3; since #4083 its Physics tab is the separate
+ * `rolling-balls` demo, and the id stays `animation-physics` so links keep working.
+ * The old deep-link ids stay routable through
  * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
  */
 object AnimationPhysicsFragment : DemoFragment {
@@ -22,10 +23,9 @@ object AnimationPhysicsFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.RotateRight,
         order = 3,
-        // 4.41.0: the clip card and a subject switch read correctly while a
-        // model loads (#3883).
-        updatedIn = "4.41.0",
-        tags = setOf("animation", "skeletal", "physics", "rigid-body", "collision", "gltf"),
+        // 4.48.0: the Physics tab left for its own `rolling-balls` demo (#4083).
+        updatedIn = "4.48.0",
+        tags = setOf("animation", "skeletal", "camera", "gltf"),
     )
 
     @Composable

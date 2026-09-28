@@ -24,7 +24,7 @@ object LightingLabFragment : DemoFragment {
         subtitleRes = R.string.demo_lighting_lab_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.WbSunny,
-        order = 24,
+        order = 25,
         tags = setOf(
             "light", "hdr", "ibl", "skybox", "environment",
             "reflection", "exposure", "ssao", "fog", "post-fx",

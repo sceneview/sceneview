@@ -110,12 +110,9 @@ class DemoRenderingScreenshotTest {
     @Test
     fun animationPhysicsDemo_default_state() {
         // #2239 Batch 3 — `animation` and `physics` consolidated into
-        // `animation-physics`. Default landing tab is Animation (the skeletal
-        // playback scene), so the captured frame is comparable to the prior
-        // `animation_default` golden once re-baselined. The Physics sub-mode is
-        // reachable via a segmented-button tap but covered only via
-        // DemoInteractionTest; a dedicated physics capture would need a tab-aware
-        // deep-link parameter (follow-up).
+        // `animation-physics`; #4083 moved the physics tray back out as
+        // `rolling-balls`, so this id is the skeletal playback scene alone and the
+        // frame is unchanged. `rolling-balls` is covered by DemoInteractionTest.
         // TODO(qaMode-bind-pose): same root cause as multimodel — `stopAnimation()` only
         // pauses playback, it doesn't reset bones to the bind pose, so subsequent
         // `animator.updateBoneMatrices()` calls write whatever frame the animator was

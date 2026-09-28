@@ -20,7 +20,7 @@ object ContactShadowPreviewFragment : DemoFragment {
         // users expect a camera pass-through and read the screen as broken.
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Gradient,
-        order = 25,
+        order = 26,
         tags = setOf("shadow", "contact-shadow", "procedural", "grounding", "no-camera"),
         status = DemoStatus.InReview,
     )
