@@ -60,6 +60,8 @@ internal val <T> FeedResult<T>.modelsOrEmpty: List<T>
  * so structured concurrency still tears the request down; only our own timeout
  * is swallowed.
  */
+// Our own timeout is the one exception meant to end here: it becomes TimedOut.
+@Suppress("SwallowedException")
 internal suspend fun <T> fetchWithTimeout(
     timeoutMs: Long = EXPLORE_FEED_TIMEOUT_MS,
     onFailure: (Throwable) -> Unit = {},
