@@ -17,7 +17,7 @@ object MaterialsFragment : DemoFragment {
         subtitleRes = R.string.demo_materials_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Palette,
-        order = 22,
+        order = 23,
         tags = setOf(
             "pbr", "material", "metallic", "roughness", "clearcoat",
             "sheen", "transmission", "emissive", "occlusion",

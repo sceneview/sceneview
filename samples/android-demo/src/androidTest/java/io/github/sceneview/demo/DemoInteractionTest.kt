@@ -30,7 +30,7 @@ import java.io.File
  * `UiDevice.takeScreenshot()` (full framebuffer including Filament SurfaceView).
  *
  * **Why DemoHostActivity?** The earlier scroll-then-click approach was fragile for demos in
- * the Advanced section (`physics`, `custom-geometry`, …) — `UiScrollable.scrollTextIntoView()`
+ * the Advanced section (`rolling-balls`, `custom-geometry`, …) — `UiScrollable.scrollTextIntoView()`
  * gave up before the Compose LazyColumn recomposed the far-down row into view. Launching
  * the demo composable directly with an Intent bypasses the home list entirely.
  *
@@ -452,9 +452,8 @@ class DemoInteractionTest {
     }
 
     // ── 3. Physics ─────────────────────────────────────────────────────────────
-    // #2239 Batch 3 — `physics` consolidated into `animation-physics` (Physics tab).
-    // Covered by `animationPhysics_allTabs` below, which taps the Physics tab and
-    // exercises Drop / Drop 10 / Reset.
+    // The retired `physics` id is the `rolling-balls` demo since #4083. Covered by
+    // `rollingBalls_dropAndReset` below, which exercises Drop and Reset.
 
     // ── 4. Geometry Primitives — 4 shape chips ────────────────────────────────
 
@@ -660,17 +659,15 @@ class DemoInteractionTest {
         screenshot("37_debugOverlay_after_reset")
     }
 
-    // ── 10. Animation & Physics — both segmented tabs ─────────────────────────
+    // ── 10. Animation ─────────────────────────────────────────────────────────
 
     @Test
-    fun animationPhysics_allTabs() {
+    fun animation_playbackControls() {
         // #2239 Batch 3 — `animation` and `physics` consolidated into
-        // `animation-physics` with a 2-way segmented toggle. One test taps through
-        // both tabs so each merged half is exercised (the unified demo opens on its
-        // default Animation tab).
+        // `animation-physics`; #4083 moved the physics tray back out as
+        // `rolling-balls` (see `rollingBalls_dropAndReset`).
         openDemo("animation-physics")
 
-        // ── Animation tab (default landing tab) — loop / once / speed / playback ──
         screenshot("39_animation_loop_default")
         tap("Once")
         screenshot("40_animation_once")
@@ -682,9 +679,13 @@ class DemoInteractionTest {
         // Play / Pause icon-only button — reached via contentDescription.
         tapByDesc("Pause"); screenshot("41c_animation_paused")
         tapByDesc("Play"); screenshot("41d_animation_playing")
+    }
 
-        // ── Physics tab — drop + reset ────────────────────────────────────────
-        tap("Physics")
+    // ── 10b. Rolling Balls — drop + reset ─────────────────────────────────────
+
+    @Test
+    fun rollingBalls_dropAndReset() {
+        openDemo("rolling-balls")
         screenshot("41e_physics_initial")
         tap("Drop")
         Thread.sleep(1500)  // let physics settle

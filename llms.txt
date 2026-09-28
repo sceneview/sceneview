@@ -5732,7 +5732,8 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `splat-preview` — Real-World Scan. A tree stump and its raccoons, scanned with a phone.
-- `animation-physics` — Animation & Physics. Play character animations and try collisions.
+- `animation-physics` — Animation. Play character animations under cinematic camera shots.
+- `rolling-balls` — Rolling Balls. Drop, tilt and knock over a tray of balls.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `double-pendulum` — Double Pendulum. Explore two linked arms in chaotic motion.

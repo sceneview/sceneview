@@ -33,6 +33,47 @@ class DeepLinkRouterTest {
     }
 
 
+    @Test
+    fun `old physics tab link opens rolling balls with no tab`() {
+        val uri = Uri.parse("sceneview://demo/animation-physics?tab=1")
+        val launch = DeepLinkRouter.resolveLaunch(
+            DeepLinkRouter.parse(uri),
+            DeepLinkRouter.extractCandidate(uri),
+            DeepLinkRouter.parseTabParam(uri),
+        )
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", null), launch)
+        assertTrue(ALL_DEMOS.any { it.id == "rolling-balls" })
+    }
+
+    @Test
+    fun `tab for a demo without tabs is dropped`() {
+        // Kept, it would linger and open the next tabbed demo (Materials) on Streaming.
+        assertEquals(
+            DeepLinkRouter.Launch("animation-physics", null),
+            DeepLinkRouter.resolveLaunch("animation-physics", "animation-physics", "2"),
+        )
+        assertEquals(
+            DeepLinkRouter.Launch("rolling-balls", null),
+            DeepLinkRouter.resolveLaunch("rolling-balls", "physics", "1"),
+        )
+        assertEquals(
+            DeepLinkRouter.Launch("materials", 1),
+            DeepLinkRouter.resolveLaunch("materials", "texture-streaming", null),
+        )
+        assertEquals(DeepLinkRouter.Launch(null, null), DeepLinkRouter.resolveLaunch(null, "nope", "1"))
+    }
+
+    @Test
+    fun `every alias tab lands on a demo that reads its tab`() {
+        DeepLinkRouter.ALIAS_INITIAL_TAB.keys.forEach { alias ->
+            val target = DeepLinkRouter.DEMO_ID_ALIASES.getValue(alias)
+            assertTrue("$alias -> $target", target in DeepLinkRouter.TABBED_DEMOS)
+        }
+        DeepLinkRouter.TABBED_DEMOS.forEach { id ->
+            assertTrue(id, ALL_DEMOS.any { it.id == id })
+        }
+    }
+
     // Title / subtitle don't matter for the router under test — it only
     // looks at the id. We pass arbitrary R.string.* values to satisfy the
     // post-#1099 resource-ID typed fields without resolving them.
@@ -447,13 +488,12 @@ class DeepLinkRouterTest {
     // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────
     //
     // Consolidated demos open on their default first tab unless an alias (e.g.
-    // `physics`) or an explicit `--es tab` / `?tab=` value pre-selects another. The
+    // `movable-light`) or an explicit `--es tab` / `?tab=` value pre-selects another. The
     // resolution is pure (raw id + raw param → index); the bad-index clamp lives in
     // the demo composable (initialDemoMode), out of this unit's reach.
 
     @Test
     fun `resolveInitialTab maps a non-default alias to its tab`() {
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", null))
         assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", null))
         assertEquals(1, DeepLinkRouter.resolveInitialTab("multi-model", null))
         assertEquals(2, DeepLinkRouter.resolveInitialTab("occlusion-material", null))
@@ -477,6 +517,10 @@ class DeepLinkRouterTest {
         // default anyway, but only through the composable's clamp).
         assertNull(DeepLinkRouter.resolveInitialTab("scene-gallery", null))
         assertEquals("model-viewer", DeepLinkRouter.DEMO_ID_ALIASES["scene-gallery"])
+        // `physics` joined them in #4083: the balls left Animation & Physics for their own
+        // `rolling-balls` demo, which has no tabs.
+        assertNull(DeepLinkRouter.resolveInitialTab("physics", null))
+        assertEquals("rolling-balls", DeepLinkRouter.DEMO_ID_ALIASES["physics"])
         // A live consolidated id with no tab hint keeps its default tab.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
         assertNull(DeepLinkRouter.resolveInitialTab(null, null))
@@ -484,8 +528,8 @@ class DeepLinkRouterTest {
 
     @Test
     fun `explicit tab param wins over the alias default`() {
-        // `?tab=0` forces the default tab even when launched via the `physics` alias.
-        assertEquals(0, DeepLinkRouter.resolveInitialTab("physics", "0"))
+        // `?tab=0` forces the default tab even when launched via the `movable-light` alias.
+        assertEquals(0, DeepLinkRouter.resolveInitialTab("movable-light", "0"))
         // An explicit integer index on a plain id.
         assertEquals(2, DeepLinkRouter.resolveInitialTab("custom-geometry", "2"))
         // An explicit alias-token tab value resolves through ALIAS_INITIAL_TAB.
@@ -495,9 +539,9 @@ class DeepLinkRouterTest {
     @Test
     fun `resolveInitialTab falls back to the alias when the tab param is unusable`() {
         // A negative / unparseable / blank explicit value is ignored; the alias applies.
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "-1"))
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "garbage"))
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "  "))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", "-1"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", "garbage"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", "  "))
     }
 
     @Test

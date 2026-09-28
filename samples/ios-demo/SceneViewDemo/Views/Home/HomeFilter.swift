@@ -89,7 +89,6 @@ enum HomeCatalogue {
     static let hiddenFromHome: [String: String] = [
         "double-pendulum": "Pivot jumps around, untextured arms, camera too close (#3907)",
         "movable-light": "Moving the light barely changes the scene (#3907)",
-        "physics": "Tiny cubes on a plane floating in front of the backdrop (#3907)",
         "scene-gallery": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
         "multi-model": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
         "materials": "Shows the \"Offline placeholder\" in keyless builds (#3907)",

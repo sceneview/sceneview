@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * What the animation-physics screen is allowed to call "still running" (#3718).
+ * What the rolling-balls screen is allowed to call "still running" (#3718).
  *
  * The screen declared `FrameRatePolicy.Continuous()` from a `replaying` flag that started `true` and
  * was lowered only by the Reset button. Measured on the emulator: 878 Filament frames in 15 s on a

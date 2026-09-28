@@ -20,7 +20,7 @@ object ArSplatRoomFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_splat_room_subtitle,
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.House,
-        order = 7,
+        order = 8,
         tags = setOf("ar", "rerun", "scan", "room", "dollhouse", "miniature", "placement", "real-scale"),
         sinceVersion = "4.45.0",
         updatedIn = "4.46.0",

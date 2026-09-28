@@ -58,9 +58,11 @@ code — the demo is the authoritative recipe.
 — composing built-in geometry into a custom shape.
 
 ## 14. Physics
-[`PhysicsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/PhysicsDemo.swift)
-and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift)
+[`ArDepthColliderScene.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ArDepthColliderScene.swift)
 — `PhysicsNode.dynamic / .static / .kinematic`.
+[`RollingBallsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift)
+and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift)
+— a fixed-step simulation that moves plain entities every frame, for a result that is identical on Android.
 
 ## 15. Dynamic sky & fog
 [`DynamicSkyDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DynamicSkyDemo.swift),

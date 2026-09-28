@@ -696,8 +696,8 @@ struct ExploreTab: View {
                     SamplePromoCard(title: "Lighting", subtitle: "Directional · point · spot", icon: "lightbulb.fill", gradient: [.yellow.opacity(0.30), .orange.opacity(0.18)]) {
                         AnyView(LightingDemo())
                     }
-                    SamplePromoCard(title: "Physics", subtitle: "Dynamic · static · kinematic", icon: "figure.walk", gradient: [.green.opacity(0.30), .teal.opacity(0.18)]) {
-                        AnyView(PhysicsDemo())
+                    SamplePromoCard(title: "Rolling Balls", subtitle: "Drop, tilt and knock over a tray of balls", icon: "circle.hexagongrid.fill", gradient: [.green.opacity(0.30), .teal.opacity(0.18)]) {
+                        AnyView(RollingBallsDemo())
                     }
                     SamplePromoCard(title: "Dynamic Sky", subtitle: "Time-of-day sun simulation", icon: "sun.horizon.fill", gradient: [.blue.opacity(0.30), .cyan.opacity(0.18)]) {
                         AnyView(DynamicSkyDemo())

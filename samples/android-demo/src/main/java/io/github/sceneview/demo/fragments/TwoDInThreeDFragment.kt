@@ -23,7 +23,7 @@ object TwoDInThreeDFragment : DemoFragment {
         subtitleRes = R.string.demo_two_d_in_three_d_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Layers,
-        order = 29,
+        order = 30,
         tags = setOf(
             "2d", "viewnode", "compose", "billboard", "quad", "label", "annotation",
             "text", "image", "video", "occlusion",

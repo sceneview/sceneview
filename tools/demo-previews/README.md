@@ -52,6 +52,7 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
+| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083). The dark card is its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); its stage is the same grey |
 | `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
@@ -73,6 +74,12 @@ room as a miniature: an emulator capture (Pixel_7a, 1080×2400) of the dollhouse
 (`dollhouse-3d` QA state) after a `record` QA take of the bundled session, one per theme — the
 AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band from y = 958
 (5:4), resized to 800×640, WebP q82.
+
+`rolling-balls` became its own demo in #4083 and has no render golden: its card is an
+emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
+tray, its rails and the first balls come to rest. Crop: x 40–1040, y 740–1540 (5:4), resized
+to 800×640, WebP q85, one capture per theme: its stage is the themed stage sky, so the dark
+card is the dark stage.
 
 ## iOS imagesets
 
@@ -117,7 +124,7 @@ recorded here, so the recorded prompt is always the one that produced the commit
 
 ### iOS cards cropped from simulator captures (#3786)
 
-Fourteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
+Thirteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
 Their cards are real captures of the demo, not generated: the keyless Debug build on the
 iPhone 17 Pro Max simulator (iOS 26.3, 1320×2868), opened through `sceneview://demo/<id>`
 with QA mode on so the orbit is frozen, cropped 5:4 around the subject and resized to
@@ -134,12 +141,16 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_texture_streaming` | `texture-streaming`, Gold preset | 673, 1478, 1000 |
 | `preview_gesture_editing` | `gesture-editing` | 660, 1110, 1200 |
 | `preview_occlusion_material` | `occlusion-material` | 660, 1307, 960 |
-| `preview_physics` | `physics`, bundled cubes at rest | 680, 1480, 600 |
 | `preview_reflection_probes` | `reflection-probes` | 652, 1412, 1000 |
 | `preview_shape` | `shape`, Star | 639, 1400, 1100 |
 | `preview_multi_model` | `multi-model`, keyless stand-ins (what the App Store build shows) | 650, 1458, 1300 |
 | `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
 | `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
+
+`preview_rolling_balls` (#4083) is the same kind of capture on an iPhone 17 Pro simulator
+(iOS 26, 1206×2622), launched with `-demo rolling-balls`: the opening shot at rest, the
+same seven balls as the Android card. Crop: 603, 1377, 1121. One capture per appearance
+(`preview_rolling_balls_dark.jpg` for dark): the stage is the themed stage sky, as on Android.
 
 The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
 same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their

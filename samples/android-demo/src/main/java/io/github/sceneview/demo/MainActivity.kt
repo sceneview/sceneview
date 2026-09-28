@@ -180,7 +180,8 @@ class MainActivity : ComponentActivity() {
         // Optional initial tab for a consolidated (segmented-button) demo. Set from the alias
         // that opened it (`--es demo shape` → Shape tab) or an explicit `--es tab <i>` extra /
         // `?tab=<id|index>` query. Absent / unparseable → null (demo keeps its default tab).
-        DemoSettings.initialTab = resolveInitialTab(intent)
+        // A tab that became its own demo opens that demo instead (#4083).
+        applyLaunch(intent)
         setContent {
             SceneViewDemoTheme {
                 // The only writer of the status-bar icon appearance: screens request light
@@ -209,7 +210,7 @@ class MainActivity : ComponentActivity() {
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
-        DemoSettings.initialTab = resolveInitialTab(intent)
+        applyLaunch(intent)
     }
 
     /**
@@ -237,20 +238,23 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Resolves the optional initial tab a consolidated demo should pre-select from an
-     * incoming intent (#2315). Mirrors the `demo` / `camera_distance` dual-ingress policy:
-     * the `--es tab <v>` QA extra wins over the `?tab=<v>` URL query, and both fall back to
-     * the alias that launched the demo (`--es demo shape` → the Shape tab of
-     * `custom-geometry`). [DeepLinkRouter.resolveInitialTab] owns the precedence + parsing;
-     * an absent / unparseable value resolves to `null` so the demo keeps its default first
-     * tab and never crashes on a bad index.
+     * incoming intent (#2315), and settles it together with the pending demo. Mirrors the
+     * `demo` / `camera_distance` dual-ingress policy: the `--es tab <v>` QA extra wins over the
+     * `?tab=<v>` URL query, and both fall back to the alias that launched the demo
+     * (`--es demo shape` → the Shape tab of `custom-geometry`). [DeepLinkRouter.resolveLaunch]
+     * owns the precedence + parsing: a tab that left for a demo of its own opens that demo
+     * (`animation-physics?tab=1` → `rolling-balls`, #4083), and a tab for a demo without tabs
+     * is dropped so it cannot pre-select a tab of the next tabbed demo opened. An absent /
+     * unparseable value resolves to `null` so the demo keeps its default first tab.
      */
-    private fun resolveInitialTab(intent: Intent?): Int? {
-        if (intent == null) return null
-        val rawId = intent.getStringExtra("demo")
-            ?: intent.data?.let(DeepLinkRouter::extractCandidate)
-        val tabParam = intent.getStringExtra(DeepLinkRouter.QUERY_PARAM_TAB)
-            ?: DeepLinkRouter.parseTabParam(intent.data)
-        return DeepLinkRouter.resolveInitialTab(rawId, tabParam)
+    private fun applyLaunch(intent: Intent?) {
+        val rawId = intent?.getStringExtra("demo")
+            ?: intent?.data?.let(DeepLinkRouter::extractCandidate)
+        val tabParam = intent?.getStringExtra(DeepLinkRouter.QUERY_PARAM_TAB)
+            ?: DeepLinkRouter.parseTabParam(intent?.data)
+        val launch = DeepLinkRouter.resolveLaunch(pendingDemoId.value, rawId, tabParam)
+        pendingDemoId.value = launch.demoId
+        DemoSettings.initialTab = launch.initialTab
     }
 
     /**
