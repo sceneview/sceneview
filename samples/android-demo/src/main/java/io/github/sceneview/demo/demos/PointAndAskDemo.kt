@@ -24,10 +24,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -48,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -65,7 +68,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -112,6 +118,11 @@ import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.demos.internal.ArPlacement
+import io.github.sceneview.demo.demos.internal.CardRequest
+import io.github.sceneview.demo.demos.internal.ProjectedPoint
+import io.github.sceneview.demo.demos.internal.SafeArea
+import io.github.sceneview.demo.demos.internal.ScreenProjection
+import io.github.sceneview.demo.demos.internal.layoutAnswerCards
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -371,6 +382,25 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         }
     }
     val viewNodeManager = rememberViewNodeManager()
+
+    // Keeps the anchored cards on screen and apart (#4071). The frame callback lays them out,
+    // each card's node reads its slot; see `AnswerCardLayoutState`.
+    val cardLayout = remember { AnswerCardLayoutState() }
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val safeDrawing = WindowInsets.safeDrawing
+    SideEffect {
+        with(density) {
+            val margin = CARD_SAFE_MARGIN.toPx()
+            cardLayout.insetLeft = safeDrawing.getLeft(density, layoutDirection) + margin
+            cardLayout.insetRight = safeDrawing.getRight(density, layoutDirection) + margin
+            cardLayout.insetTop = safeDrawing.getTop(density) + CARD_TOP_CHROME.toPx() + margin
+            cardLayout.insetBottom = safeDrawing.getBottom(density) + CARD_BOTTOM_CHROME.toPx() + margin
+            cardLayout.gapPx = CARD_GAP.toPx()
+            cardLayout.cardWidthPx = ANCHORED_CARD_WIDTH.toPx()
+            cardLayout.cardHeightPx = ANCHORED_CARD_HEIGHT.toPx()
+        }
+    }
 
     // The in-flight ask. It runs on `scope`, NOT on the capture effect, so nothing else
     // stops it: a Reset that only cleared the panels would leave a round streaming into an
@@ -890,7 +920,10 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             // making the emulator indistinguishable from the device defect this fixes.
             if (qaBackdrop) QaCameraBackdrop(seed = "point-and-ask")
             ARSceneView(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onSizeChanged {
+                    cardLayout.viewportWidth = it.width
+                    cardLayout.viewportHeight = it.height
+                },
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
@@ -916,6 +949,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     cameraPosition[0] = camPose.x
                     cameraPosition[1] = camPose.y
                     cameraPosition[2] = camPose.z
+                    cardLayout.update(frame, panels)
                 },
                 onGestureListener = rememberOnGestureListener(
                     onSingleTapConfirmed = { e, _ ->
@@ -1072,6 +1106,17 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                     // the mirrored/edge-on billboard bug from #2478 instead of
                                     // re-deriving the rotation math from scratch.
                                     onFrame = { _ ->
+                                        // On screen and clear of the other cards (#4071):
+                                        // the slot is the anchored point, moved in the plane
+                                        // facing the camera. No slot: the anchor is not
+                                        // tracked, so the card sits where it was pinned.
+                                        val slot = cardLayout.slots[panel.id]
+                                        if (slot != null) {
+                                            worldPosition = Position(slot.x, slot.y, slot.z)
+                                        } else {
+                                            position = Position(y = PANEL_LIFT_METERS)
+                                        }
+                                        isVisible = !hideOverlaysForCapture && slot?.visible != false
                                         val pos = worldPosition
                                         val dx = pos.x - cameraPosition[0]
                                         val dy = pos.y - cameraPosition[1]
@@ -1082,8 +1127,11 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                         // reasoning as `BillboardNode`.
                                         if (distanceSq > 1e-12f) {
                                             lookTowards(lookDirection = Position(dx, dy, dz))
+                                            // The layout sized the card at this scale,
+                                            // from the anchored point's distance.
                                             scale = Scale(
-                                                clampedPanelScale(kotlin.math.sqrt(distanceSq))
+                                                slot?.scale
+                                                    ?: clampedPanelScale(kotlin.math.sqrt(distanceSq))
                                             )
                                         }
                                     }
@@ -1260,6 +1308,123 @@ internal fun clampedPanelScale(distanceMeters: Float): Float {
     val clamped = distanceMeters.coerceIn(PANEL_MIN_READABLE_DISTANCE, PANEL_MAX_READABLE_DISTANCE)
     return PANEL_SCALE * (clamped / PANEL_REFERENCE_DISTANCE)
 }
+
+/**
+ * Where each anchored answer card is drawn this frame (#4071), keyed by panel id.
+ *
+ * Nothing used to keep the cards on screen or apart: a card pinned near an edge ran off it,
+ * and answers pinned close together drew over each other. [update] runs on every AR frame. It
+ * projects each tracked card to the screen and lays the cards out with [layoutAnswerCards]
+ * inside the safe area (system bars, cutouts and the demo's own chrome), newest first, so the
+ * answer being read stays over what it describes. Each card's node then reads its [slots]
+ * entry. A plain holder, not Compose state, for the same reason as `cameraPosition`: it is
+ * only read from node `onFrame` callbacks. Both run on the main thread.
+ */
+private class AnswerCardLayoutState {
+    /** A card's world centre, its world scale, and whether it has room to be shown. */
+    class Slot(val x: Float, val y: Float, val z: Float, val scale: Float, val visible: Boolean)
+
+    private class Anchored(val center: FloatArray, val onScreen: ProjectedPoint, val scale: Float)
+
+    val slots = HashMap<Int, Slot>()
+
+    // Set from composition: the viewport and the safe-area insets, in px.
+    var viewportWidth = 0
+    var viewportHeight = 0
+    var insetLeft = 0f
+    var insetTop = 0f
+    var insetRight = 0f
+    var insetBottom = 0f
+    var gapPx = 0f
+    var cardWidthPx = 0f
+    var cardHeightPx = 0f
+
+    private val view = FloatArray(16)
+    private val projection = FloatArray(16)
+    private val lift = floatArrayOf(0f, PANEL_LIFT_METERS, 0f)
+
+    /** Screen offsets eased toward the layout's, so a card glides instead of jumping. */
+    private val eased = HashMap<Int, FloatArray>()
+
+    fun update(frame: Frame, panels: List<AnswerPanel>) {
+        slots.clear()
+        val camera = frame.camera
+        val width = viewportWidth.toFloat()
+        val height = viewportHeight.toFloat()
+        if (camera.trackingState != TrackingState.TRACKING || width <= 0f || height <= 0f) {
+            eased.clear()
+            return
+        }
+        camera.getViewMatrix(view, 0)
+        camera.getProjectionMatrix(projection, 0, PROJECTION_NEAR, PROJECTION_FAR)
+        val screen = ScreenProjection(view, projection, width, height)
+        val eye = camera.pose
+
+        val requests = ArrayList<CardRequest>(panels.size)
+        val anchored = HashMap<Int, Anchored>()
+        // Newest first: the layout never moves its first card away from its anchor.
+        val tracked = panels.asReversed().filter { it.anchor.trackingState == TrackingState.TRACKING }
+        for (panel in tracked) {
+            val center = panel.anchor.pose.transformPoint(lift)
+            val dx = center[0] - eye.tx()
+            val dy = center[1] - eye.ty()
+            val dz = center[2] - eye.tz()
+            val scale = clampedPanelScale(kotlin.math.sqrt(dx * dx + dy * dy + dz * dz))
+            val onScreen = screen.project(center[0], center[1], center[2])
+            if (onScreen == null || onScreen.x !in 0f..width || onScreen.y !in 0f..height) {
+                // What it describes is off screen: leave the card where it was pinned rather
+                // than pull it into view with nothing under it.
+                slots[panel.id] = Slot(center[0], center[1], center[2], scale, visible = true)
+            } else {
+                requests += CardRequest(
+                    id = panel.id,
+                    centerX = onScreen.x,
+                    centerY = onScreen.y,
+                    width = cardWidthPx / VIEW_NODE_PX_PER_METER * scale *
+                        screen.pixelsPerMeterX(onScreen.depth),
+                    height = cardHeightPx / VIEW_NODE_PX_PER_METER * scale *
+                        screen.pixelsPerMeterY(onScreen.depth),
+                )
+                anchored[panel.id] = Anchored(center, onScreen, scale)
+            }
+        }
+
+        val safe = SafeArea(insetLeft, insetTop, width - insetRight, height - insetBottom)
+        for (placement in layoutAnswerCards(requests, safe, gapPx)) {
+            val card = anchored.getValue(placement.id)
+            val offset = eased.getOrPut(placement.id) { floatArrayOf(placement.offsetX, placement.offsetY) }
+            offset[0] += (placement.offsetX - offset[0]) * CARD_EASING
+            offset[1] += (placement.offsetY - offset[1]) * CARD_EASING
+            val world = screen.screenOffsetToWorld(offset[0], offset[1], card.onScreen.depth)
+            slots[placement.id] = Slot(
+                x = card.center[0] + world[0],
+                y = card.center[1] + world[1],
+                z = card.center[2] + world[2],
+                scale = card.scale,
+                visible = placement.visible,
+            )
+        }
+        eased.keys.retainAll(anchored.keys)
+    }
+}
+
+/** `ViewNode`'s default `pxPerUnits`: how many px of card make one metre of quad. */
+private const val VIEW_NODE_PX_PER_METER = 250f
+
+/** Clip planes for the layout's projection. Only x and y are read, so any sane pair works. */
+private const val PROJECTION_NEAR = 0.1f
+private const val PROJECTION_FAR = 100f
+
+/** Share of the remaining distance a card covers each frame toward its laid-out slot. */
+private const val CARD_EASING = 0.3f
+
+/** Space kept between an anchored card and the screen edge, and between two cards. */
+private val CARD_SAFE_MARGIN = 12.dp
+private val CARD_GAP = 8.dp
+
+/** The demo chrome over the scene: the top bar, and the status card plus dock at the bottom. */
+private val CARD_TOP_CHROME = 72.dp
+private val CARD_BOTTOM_CHROME = 180.dp
 
 /** How many answers stay pinned before the oldest is retired. */
 private const val MAX_PANELS = 8
