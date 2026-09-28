@@ -110,7 +110,9 @@ jobs:
           target: google_apis
           arch: x86_64
           cores: 2
-          ram-size: 4096M
+          # 6 GB like device-qa.yml's ar leg: the full demo at 1080x2400 on
+          # SwiftShader is heavier than the goldens' single-scene tests.
+          ram-size: 6144M
           # Same geometry as render-tests.yml's goldens job (#3551): 1080x2400
           # framebuffer, then `wm size` + `wm density 420` = the Pixel_7a AVD.
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics

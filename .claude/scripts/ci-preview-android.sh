@@ -9,14 +9,20 @@
 #   demo-ids  comma- or space-separated ids from DemoRegistry's ALL_DEMOS, plus
 #             the pseudo-id `home` (plain launcher start). Default: home,model-viewer
 #
-# For each theme (light, dark) and each id it cold-starts the app, waits for the
-# viewport's own "Scene ready" accessibility node (the same signal the Maestro
-# flows gate on, #3444) and writes <out-dir>/<theme>/<id>.png. A demo that never
-# reports ready is still captured — the screen is the evidence — but is listed
-# under `not-ready` in <out-dir>/summary.md, next to any FATAL/ANR logcat line.
+# For each theme (light, dark) and each id it cold-starts the app, lets it settle
+# for PREVIEW_SETTLE_SECONDS (default 20) and writes <out-dir>/<theme>/<id>.png.
+# FATAL/ANR logcat lines land in <out-dir>/summary.md.
 #
-# Exit status: non-zero only when nothing could be captured at all (install
-# failed, emulator gone). A single slow demo is a report line, not a red run.
+# Deliberately NO `uiautomator dump` polling for the "Scene ready" node: the
+# first CI run lost the emulator (`device 'emulator-5554' not found`) two
+# minutes into polling a Filament viewport with it. A fixed settle is dumber and
+# has not killed a device; the screenshot is the evidence either way. Every adb
+# call is `timeout`-bounded, and a device that disappears ends the loop with a
+# report line instead of hanging the job until `timeout-minutes`.
+#
+# Exit status: non-zero when nothing was captured or the emulator went away
+# mid-run (the preview is then incomplete). A demo that crashes on its own is a
+# report line and a screenshot of whatever is on screen, not a red run.
 set -uo pipefail
 
 APK="${1:?usage: ci-preview-android.sh <apk> <out-dir> [demo-ids]}"
@@ -24,7 +30,11 @@ OUT="${2:?usage: ci-preview-android.sh <apk> <out-dir> [demo-ids]}"
 IDS_RAW="${3:-home,model-viewer}"
 PKG="io.github.sceneview.demo"
 ACTIVITY="$PKG/.MainActivity"
-READY_TIMEOUT="${PREVIEW_READY_TIMEOUT:-45}"
+SETTLE="${PREVIEW_SETTLE_SECONDS:-20}"
+
+# Every adb call goes through this: 60 s is far above any healthy call here.
+adbt() { timeout 60 adb "$@"; }
+alive() { [ "$(timeout 10 adb get-state 2>/dev/null)" = device ]; }
 
 mkdir -p "$OUT"
 SUMMARY="$OUT/summary.md"
@@ -40,61 +50,45 @@ done
 [ "${#IDS[@]}" -gt 0 ] || { echo "::error::no valid demo id in '$IDS_RAW'"; exit 1; }
 
 echo "[preview] installing $APK"
-adb install -r -g "$APK" || { echo "::error::adb install failed"; exit 1; }
-
-scene_ready() {
-  # uiautomator sees Compose semantics the way Maestro does; "Scene ready" is the
-  # viewport's contentDescription once a frame has reached the surface (#3444).
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || return 1
-  adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q 'Scene ready'
-}
+timeout 300 adb install -r -g "$APK" || { echo "::error::adb install failed"; exit 1; }
 
 captured=0
-not_ready=()
+lost=""
 for theme in light dark; do
-  if [ "$theme" = dark ]; then adb shell cmd uimode night yes >/dev/null; else adb shell cmd uimode night no >/dev/null; fi
+  [ -z "$lost" ] || break
+  if [ "$theme" = dark ]; then adbt shell cmd uimode night yes >/dev/null; else adbt shell cmd uimode night no >/dev/null; fi
   mkdir -p "$OUT/$theme"
   for id in "${IDS[@]}"; do
-    adb shell am force-stop "$PKG"
-    adb logcat -c 2>/dev/null || true
+    if ! alive; then lost="$theme/$id"; echo "::error::emulator lost before $theme/$id"; break; fi
+    adbt shell am force-stop "$PKG"
+    adbt logcat -c 2>/dev/null || true
     if [ "$id" = home ]; then
-      adb shell am start -W -n "$ACTIVITY" >/dev/null
-      # The home screen has no "Scene ready" contract: give it a fixed settle.
-      sleep 12
+      adbt shell am start -n "$ACTIVITY" >/dev/null
     else
-      adb shell am start -W -n "$ACTIVITY" --es demo "$id" --ez qa_mode true --ez qa_backdrop true >/dev/null
-      ready=0
-      deadline=$((SECONDS + READY_TIMEOUT))
-      while [ "$SECONDS" -lt "$deadline" ]; do
-        if scene_ready; then ready=1; break; fi
-        sleep 2
-      done
-      [ "$ready" -eq 1 ] || not_ready+=("$theme/$id")
-      # Let the loading cover finish its cross-fade.
-      sleep 3
+      adbt shell am start -n "$ACTIVITY" --es demo "$id" --ez qa_mode true --ez qa_backdrop true >/dev/null
     fi
-    if adb exec-out screencap -p > "$OUT/$theme/$id.png" && [ -s "$OUT/$theme/$id.png" ]; then
+    sleep "$SETTLE"
+    if adbt exec-out screencap -p > "$OUT/$theme/$id.png" && [ -s "$OUT/$theme/$id.png" ]; then
       captured=$((captured + 1))
       echo "[preview] captured $theme/$id"
     else
       echo "::warning::screencap failed for $theme/$id"
       rm -f "$OUT/$theme/$id.png"
     fi
-    crash="$(adb logcat -d 2>/dev/null | grep -E 'FATAL EXCEPTION|ANR in '"$PKG" | head -3 || true)"
+    crash="$(adbt logcat -d 2>/dev/null | grep -E 'FATAL EXCEPTION|ANR in '"$PKG" | head -3 || true)"
     if [ -n "$crash" ]; then
       echo "::warning::crash/ANR logged during $theme/$id"
       printf -- '- crash during `%s/%s`:\n```\n%s\n```\n' "$theme" "$id" "$crash" >> "$SUMMARY"
     fi
   done
 done
-adb shell cmd uimode night no >/dev/null 2>&1 || true
+alive && adbt shell cmd uimode night no >/dev/null 2>&1 || true
 
 {
-  echo "- captured: $captured screenshot(s) — ids: ${IDS[*]}, themes: light dark"
-  if [ "${#not_ready[@]}" -gt 0 ]; then
-    echo "- not-ready after ${READY_TIMEOUT}s (captured anyway): ${not_ready[*]}"
-  fi
+  echo "- captured: $captured screenshot(s) — ids: ${IDS[*]}, themes: light dark, settle ${SETTLE}s"
+  [ -z "$lost" ] || echo "- emulator lost before \`$lost\` — later captures missing"
 } >> "$SUMMARY"
 cat "$SUMMARY"
 
 [ "$captured" -gt 0 ] || { echo "::error::no screenshot captured"; exit 1; }
+[ -z "$lost" ] || exit 1
