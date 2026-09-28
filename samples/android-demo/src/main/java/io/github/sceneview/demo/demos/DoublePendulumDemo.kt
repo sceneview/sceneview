@@ -159,7 +159,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
 
     // Floor and its measuring grid, recoloured in place on a light/dark flip — the activity
     // handles `uiMode` itself, so the materials outlive the toggle.
-    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val gridColor = sky.grid
     val floorMaterial = remember(materialLoader) {
         materialLoader.createColorInstance(sky.floor, metallic = 0f, roughness = 0.62f)
     }

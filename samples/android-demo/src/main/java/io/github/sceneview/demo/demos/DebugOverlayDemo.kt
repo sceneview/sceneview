@@ -178,8 +178,12 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     val floorMaterial = remember(materialLoader) {
         materialLoader.createColorInstance(sky.floor, metallic = 0f, roughness = 0.7f)
     }
-    LaunchedEffect(floorMaterial, sky.floor) {
+    val gridMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(sky.grid, metallic = 0f, roughness = 0.8f)
+    }
+    LaunchedEffect(floorMaterial, gridMaterial, sky.floor, sky.grid) {
         floorMaterial.setColor(sky.floor)
+        gridMaterial.setColor(sky.grid)
         renderInvalidator.requestRender()
     }
 
@@ -253,13 +257,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     },
                 enabled = currentCount >= targetCount,
             ) {
-                Text(
-                    if (stressRunning) {
-                        stringResource(R.string.demo_debug_overlay_stop)
-                    } else {
-                        stringResource(R.string.demo_debug_overlay_start, STRESS_TARGET)
-                    },
-                )
+                Text(if (stressRunning) "Stop test" else "Start stress test")
             }
 
             DemoStatusBanner(
@@ -458,12 +456,28 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     },
                 )
 
-                // The floor the grid stands on. Still, so a camera turn reads against it.
+                // The floor the grid stands on, ruled at the spheres' own spacing. Neither
+                // moves, so a camera turn reads against them even with a single sphere, which
+                // looks the same from every side.
                 PlaneNode(
                     size = Size(x = FLOOR_SIZE, y = 0f, z = FLOOR_SIZE),
                     normal = Direction(y = 1f),
                     materialInstance = floorMaterial,
                 )
+                val floorSpan = NODE_SPACING * FLOOR_GRID_HALF_LINES * 2f
+                repeat(FLOOR_GRID_HALF_LINES * 2 + 1) { i ->
+                    val offset = (i - FLOOR_GRID_HALF_LINES) * NODE_SPACING
+                    CubeNode(
+                        size = Size(x = FLOOR_GRID_LINE_WIDTH, y = FLOOR_GRID_LINE_HEIGHT, z = floorSpan),
+                        position = Position(x = offset, y = FLOOR_GRID_LINE_HEIGHT / 2f),
+                        materialInstance = gridMaterial,
+                    )
+                    CubeNode(
+                        size = Size(x = floorSpan, y = FLOOR_GRID_LINE_HEIGHT, z = FLOOR_GRID_LINE_WIDTH),
+                        position = Position(y = FLOOR_GRID_LINE_HEIGHT / 2f, z = offset),
+                        materialInstance = gridMaterial,
+                    )
+                }
 
                 // Spawn `currentCount` procedural spheres in a centered 3-axis grid.
                 // SphereNode is a built-in SDK primitive (24×24 tessellation ≈ 1152
@@ -732,6 +746,11 @@ private const val FLOOR_GAP = 0.02f
 
 /** Side of the floor: well past where the stage sky's fog has swallowed it. */
 private const val FLOOR_SIZE = 90f
+
+/** Floor grid lines each side of the centre, one per sphere spacing: ±2.7 m, past the widest field. */
+private const val FLOOR_GRID_HALF_LINES = 15
+private const val FLOOR_GRID_LINE_WIDTH = 0.006f
+private const val FLOOR_GRID_LINE_HEIGHT = 0.002f
 
 /** Half the height of the sphere grid's centre lines for [nodeCount] spheres (see [autoFitDistance]). */
 internal fun gridHalfHeight(nodeCount: Int): Float {

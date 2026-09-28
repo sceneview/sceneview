@@ -197,7 +197,7 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
     val environment = remember(baseEnvironment, stageSkybox) {
         baseEnvironment.copy(skybox = stageSkybox)
     }
-    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val gridColor = sky.grid
     val floorMaterial = remember(materialLoader) {
         materialLoader.createColorInstance(sky.floor, metallic = 0f, roughness = 0.7f)
     }
