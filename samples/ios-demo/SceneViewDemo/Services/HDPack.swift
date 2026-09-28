@@ -259,6 +259,16 @@ final class HDPackStore: ObservableObject {
             Task { @MainActor in HDPackStore.shared.isOnMeteredNetwork = metered }
         }
         pathMonitor.start(queue: DispatchQueue(label: "dev.sceneview.demo.hdpack.path"))
+        #if DEBUG
+        // QA captures only: the simulator shares the Mac's network, so
+        // `-hdpack_offline 1` stands for "no Wi-Fi yet": nothing is scheduled
+        // and every missing asset shows the state a queued prefetch shows.
+        if let i = CommandLine.arguments.firstIndex(of: "-hdpack_offline"),
+           i + 1 < CommandLine.arguments.count, CommandLine.arguments[i + 1] == "1" {
+            for asset in manifest.assets where state(for: asset.id) != .ready { states[asset.id] = .waiting }
+            return
+        }
+        #endif
         Task {
             await reattach()
             if !UserDefaults.standard.bool(forKey: Self.userRemovedKey) {
