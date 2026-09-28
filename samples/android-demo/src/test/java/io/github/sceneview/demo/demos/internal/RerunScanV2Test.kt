@@ -156,8 +156,33 @@ class RerunScanV2Test {
         val rrd = RerunRrdWriter.write(scene, FakeRerunImageCodec)
         val withoutDense = RerunRrdWriter.write(scene.copy(dense = null), FakeRerunImageCodec)
         assertTrue(rrd.size - withoutDense.size >= 2_000 * 16)
-        // The app still reopens its own export (the dense row is for Rerun's viewer).
-        assertNotNull(RerunRrdReader.recording(rrd, FakeRerunImageCodec).pack.open())
+        // The app reopens its own export with the dense cloud: world/dense comes back as the
+        // pack's `dense/points.bin` and a v2 manifest entry, not only the sparse map.
+        val reopened = RerunRrdReader.recording(rrd, FakeRerunImageCodec).pack.open()
+        assertNotNull(reopened)
+        val manifest = reopened!!.manifest
+        assertEquals(2, manifest.version)
+        val dense = manifest.dense!!
+        assertEquals("dense/points.bin", dense.path)
+        assertEquals(2_000, dense.count)
+        assertEquals(DenseFusion.VOXEL_M, dense.voxelM, 1e-6f)
+        val cloud = SvpcCodec.decode(reopened.bytesOf(dense.path)!!)!!
+        assertEquals(2_000, cloud.count)
+        assertArrayEquals(scene.dense!!.colors, cloud.colors)
+        for (i in 0 until cloud.count * 3) {
+            // Quantised to the millimetre twice (SVPC, then SVPC again from the RRD's floats).
+            assertEquals(scene.dense!!.positions[i], cloud.positions[i], 1.5e-3f)
+        }
+        // And its exports carry it again: a reimported .rrd's PLY is still the dense cloud.
+        val again = RerunExportAdapter.scene(RerunRrdReader.recording(rrd, FakeRerunImageCodec).pack, "Again")!!
+        assertEquals(2_000, again.dense!!.count)
+        val ply = RerunPlyWriter.write(again)
+        assertTrue(String(ply, 0, headerEnd(ply)).contains("element vertex 2000\n"))
+
+        // A scan without a dense cloud still reopens as v1, with no dense entry.
+        val sparse = RerunRrdReader.recording(withoutDense, FakeRerunImageCodec).pack.open()!!
+        assertEquals(1, sparse.manifest.version)
+        assertNull(sparse.manifest.dense)
     }
 
     private fun headerEnd(data: ByteArray): Int {
