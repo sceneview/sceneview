@@ -16,10 +16,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -128,9 +130,25 @@ data class ViewerEnvironment(val assetPath: String, val displayName: String) { v
                 }
             }
         }
-        LabeledSlider("IBL intensity", intensity, onIntensity, 0f..2f, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md), valueText = "%.1f×".format(intensity))
-        Row(Modifier.fillMaxWidth().padding(horizontal = SceneViewTokens.Space.md), horizontalArrangement = Arrangement.SpaceBetween) { Text("Show environment"); Switch(showEnvironment, onShowEnvironment) }
-        TextButton(onClick = onReset, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm)) { Text("Reset lighting") }
+        LabeledSlider(
+            stringResource(R.string.viewer_lighting_brightness),
+            intensity,
+            onIntensity,
+            0f..2f,
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
+            valueText = "%.1f×".format(intensity),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = SceneViewTokens.Space.md),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.viewer_lighting_show_environment))
+            Switch(showEnvironment, onShowEnvironment)
+        }
+        TextButton(onClick = onReset, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm)) {
+            Text(stringResource(R.string.viewer_lighting_reset))
+        }
         Spacer(Modifier.navigationBarsPadding().height(SceneViewTokens.Space.sm))
     }
 }

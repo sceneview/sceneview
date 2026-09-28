@@ -14,10 +14,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
@@ -74,6 +75,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SketchfabService
@@ -369,16 +371,47 @@ private fun ExploreBody(
             .fillMaxSize()
             .verticalScroll(scroll)
             .padding(
-                start = SceneViewTokens.Layout.containerPaddingMobile,
-                end = SceneViewTokens.Layout.containerPaddingMobile,
-                top = SceneViewTokens.Space.sm,
+                start = SceneViewTokens.Home.contentPadding,
+                end = SceneViewTokens.Home.contentPadding,
                 bottom = LIST_BOTTOM_GUTTER,
             ),
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg),
     ) {
-        Spacer(Modifier.height(SceneViewTokens.Space.xs))
-
-        TextButton(onClick = onBack) { Text("← Showcase") }
+        // Home's header, glyph for glyph: `Home.headerHeight` tall from the top of
+        // the page, `Home.contentPadding` in, the back glyph in the slot Home gives
+        // its mark and the same gap before `type-title` — switching between the two
+        // screens leaves the title where it was. The 48 dp touch target overflows
+        // the 24 dp slot evenly, so the glyph sits on the content edge.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SceneViewTokens.Home.headerHeight),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.size(SceneViewTokens.Home.markSize),
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.requiredSize(SceneViewTokens.Layout.touchTarget),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.cd_back_button),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+            Spacer(Modifier.width(SceneViewTokens.Home.markGap))
+            Text(
+                text = stringResource(R.string.home_browse_title),
+                style = SceneViewTokens.Type.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (searchExpanded || isSearching) {
             SearchField(
                 value = searchQuery,

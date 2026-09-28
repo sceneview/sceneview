@@ -797,7 +797,7 @@ private fun TitleRow(
             contentDescription = null,
             modifier = Modifier.size(home.markSize),
         )
-        Spacer(Modifier.width(SceneViewTokens.Space.sm + 2.dp))
+        Spacer(Modifier.width(home.markGap))
         Text(
             text = stringResource(R.string.app_name),
             style = SceneViewTokens.Type.title,
