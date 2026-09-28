@@ -39,8 +39,10 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.common.rememberStageSkybox
+import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.CameraView
 import io.github.sceneview.demo.demos.internal.OrbitPose
@@ -49,6 +51,7 @@ import io.github.sceneview.demo.demos.internal.RigSubject
 import io.github.sceneview.demo.demos.internal.StudioCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.demo.ui.GlassSurface
@@ -57,6 +60,7 @@ import io.github.sceneview.gesture.rememberNodeEditingFeedback
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
@@ -155,15 +159,33 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
     }
     val allLoaded = instances.values.all { it != null }
 
+    // The chips, the dock and the slider all live outside the scene, so their touches never reach
+    // `SceneView`'s gesture detector — and under render-on-demand a parked loop would never run the
+    // flight they start (#4064). The rig pushes through this whenever it starts moving on its own.
+    val renderInvalidator = rememberRenderInvalidator()
+
+    // The stage sky (#4089): a themed backdrop the floor dissolves into, so no view — however low —
+    // looks past the floor's horizon into an empty clear colour. See `StageSky`.
+    val sky = themedStageSky()
+    val skybox = rememberStageSkybox(engine, sky, renderInvalidator::requestRender)
+    StageSkyFog(view, sky, renderInvalidator::requestRender)
+    val baseEnvironment = rememberModelDemoEnvironment(environmentLoader)
+    val environment = remember(baseEnvironment, skybox) { baseEnvironment.copy(skybox = skybox) }
+
     // The floor is what makes a camera move legible: orbit swings its perspective lines, pan
-    // slides them, and a dolly changes how much of it is in frame. A subject alone on a black
+    // slides them, and a dolly changes how much of it is in frame. A subject alone on an empty
     // field gives a drag nothing to move *against*.
     val floorMaterial = remember(materialLoader) {
         materialLoader.createColorInstance(
-            SceneViewColors.SurfaceDim,
+            sky.floor,
             metallic = 0f,
             roughness = 0.62f,
         )
+    }
+    // Recoloured in place: the activity handles a light/dark toggle without being recreated.
+    LaunchedEffect(floorMaterial, sky.floor) {
+        floorMaterial.setColor(sky.floor)
+        renderInvalidator.requestRender()
     }
 
     // Auto-fit distance per focus, from the demo's real viewport aspect (#3426). Computed once
@@ -191,11 +213,6 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
     val fitRef = rememberUpdatedState(focusFit)
     val sensitivityRef = rememberUpdatedState(sensitivity)
     val inertiaRef = rememberUpdatedState(inertia)
-
-    // The chips, the dock and the slider all live outside the scene, so their touches never reach
-    // `SceneView`'s gesture detector — and under render-on-demand a parked loop would never run the
-    // flight they start (#4064). The rig pushes through this whenever it starts moving on its own.
-    val renderInvalidator = rememberRenderInvalidator()
 
     val rig = remember {
         StudioCameraManipulator(
@@ -268,6 +285,9 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.camera_gestures_loading),
         onReset = resetAll,
+        // The stage sky follows the theme, so the chrome over it does too (`DESIGN.md` → Themed
+        // stage): light glass on the light sky, the media glass on the dark one.
+        themedStage = true,
         dock = listOf(
             DockItem(
                 icon = Icons.Filled.CenterFocusStrong,
@@ -357,7 +377,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
-                environment = rememberModelDemoEnvironment(environmentLoader),
+                environment = environment,
                 renderInvalidator = renderInvalidator,
                 // The three subjects are placed *as a composition*: re-centring their union on the
                 // origin would move the stage every time an async model finished loading, and the
@@ -367,7 +387,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
                 onGestureListener = rememberOnGestureListener(
                     onSingleTapConfirmed = { _, node ->
                         // A tap that lands on a subject flies to it; a tap on the floor or the
-                        // void is not an accident to punish — it leaves the camera alone.
+                        // sky is not an accident to punish — it leaves the camera alone.
                         subjectOf(node, subjectNodes)?.let { flyTo(it, CameraView.Hero) }
                     },
                     // This screen deliberately keeps its own meaning for the double-tap: back
@@ -423,10 +443,9 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
 /**
  * Side of the square floor, in metres.
  *
- * Large enough that its far edge is off-frame at every preset and at every orbit angle: an 8 m
- * slab put a hard horizon line across the upper third with pure black above it, which reads as a
- * broken scene rather than as a studio floor. The environment's image-based lighting does the
- * rest — the plane falls off into the background on its own, so no edge has to be hidden.
+ * Large enough that its far edge is off-frame at every preset and at every orbit angle, and far
+ * past the distance where the stage sky's fog has swallowed it (about 40 m, see `StageSky`): the
+ * floor ends in the horizon glow, never on an edge.
  */
 private const val FLOOR_SIZE: Float = 90f
 
@@ -472,9 +491,9 @@ private fun rememberRigReadout(rig: StudioCameraManipulator): RigReadout {
 /**
  * The camera's own readout: what has focus, where the camera is, and what the hands are doing.
  *
- * Glass over media, so it is theme-independent (`DESIGN.md` → Liquid Glass, Button-glass row):
- * the ground behind it is a rendered scene of arbitrary brightness, not an app surface, and the
- * scaffold already lays a scrim band under this slot.
+ * The stage chrome's glass (`DESIGN.md` → Themed stage): the sky behind it follows the theme, so
+ * the glass does too — the media glass over the dark sky, `glass-sheet` over the light one — and
+ * the scaffold already lays a scrim band under this slot.
  */
 @Composable
 private fun CameraHud(
@@ -482,6 +501,7 @@ private fun CameraHud(
     readout: RigReadout,
     moveMode: Boolean,
 ) {
+    val chrome = LocalStageChrome.current
     GlassSurface(
         modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(SceneViewTokens.Radius.md),
@@ -500,7 +520,7 @@ private fun CameraHud(
                     focusLabel
                 },
                 style = SceneViewTokens.Type.caption,
-                color = SceneViewTokens.Glass.onGlass,
+                color = chrome.onGlass,
                 textAlign = TextAlign.Center,
             )
             Text(
@@ -513,14 +533,14 @@ private fun CameraHud(
                     String.format(Locale.US, "%.2f", readout.distance),
                 ),
                 style = SceneViewTokens.Type.caption,
-                color = SceneViewTokens.Glass.onGlassMuted,
+                color = chrome.onGlassMuted,
                 textAlign = TextAlign.Center,
             )
             readout.gesture?.let { gesture ->
                 Text(
                     text = gesture.label,
                     style = SceneViewTokens.Type.caption,
-                    color = SceneViewTokens.Glass.onGlass,
+                    color = chrome.onGlass,
                     textAlign = TextAlign.Center,
                 )
             }
@@ -541,6 +561,7 @@ private fun CameraViewChips(
     selected: CameraView,
     onSelect: (CameraView) -> Unit,
 ) {
+    val chrome = LocalStageChrome.current
     Row(
         modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm),
         horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
@@ -556,13 +577,13 @@ private fun CameraViewChips(
                 // strokes *inside* the chip, over its own 14 % white fill, where a white
                 // line is 1.03:1 — invisible whatever its opacity. The edge belongs
                 // outside, on the scene (WCAG 1.4.11, 3:1).
-                modifier = Modifier.overMediaEdge(chipShape),
+                modifier = Modifier.overMediaEdge(chipShape, chrome.edgeRing, chrome.edgeHalo),
                 shape = chipShape,
                 colors = FilterChipDefaults.filterChipColors(
-                    containerColor = SceneViewTokens.Glass.surface,
-                    labelColor = SceneViewTokens.Glass.onGlass,
-                    selectedContainerColor = SceneViewTokens.Glass.onGlass,
-                    selectedLabelColor = SceneViewTokens.Stage.background,
+                    containerColor = chrome.glass,
+                    labelColor = chrome.onGlass,
+                    selectedContainerColor = chrome.onGlass,
+                    selectedLabelColor = chrome.ground,
                 ),
                 border = null,
             )
