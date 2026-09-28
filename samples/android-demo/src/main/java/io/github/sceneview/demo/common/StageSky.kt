@@ -48,16 +48,23 @@ class StageSky(
     val horizon: Color,
     /** Base colour of the floor plane the subjects stand on. */
     val floor: Color,
+    /**
+     * Measuring-grid lines drawn on [floor] (#4083): `outline` in light, where `outline-variant`
+     * all but vanishes on the pale floor, and `outline-variant` in dark, where `outline` glares.
+     */
+    val grid: Color,
 )
 
 /** The [StageSky] for the current theme, matching [themedStageChrome]. */
 @Composable
 fun themedStageSky(): StageSky {
     val chrome = themedStageChrome()
+    val light = chrome === StageChrome.Light
     return StageSky(
         zenith = chrome.ground,
         horizon = MaterialTheme.colorScheme.surfaceContainer,
-        floor = if (chrome === StageChrome.Light) SceneViewColors.SurfaceLight else SceneViewColors.SurfaceDim,
+        floor = if (light) SceneViewColors.SurfaceLight else SceneViewColors.SurfaceDim,
+        grid = if (light) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
     )
 }
 
