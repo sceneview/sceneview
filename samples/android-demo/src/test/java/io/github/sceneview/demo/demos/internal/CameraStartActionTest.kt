@@ -3,7 +3,7 @@ package io.github.sceneview.demo.demos.internal
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class CameraStartWatchdogTest {
+class CameraStartActionTest {
 
     @Test
     fun `a frame silences the watchdog at any time`() {
