@@ -212,6 +212,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
     // The scan's own files, for the export sheet; the sample's are read from the assets there.
     var scanPack by remember { mutableStateOf<RerunCapturePack?>(null) }
+    // The kept session the replay shows, when it was opened from the list: View in AR stands that one.
+    var scanId by remember { mutableStateOf<String?>(null) }
     var exporting by remember { mutableStateOf(qaReplay == RerunReplayQaState.ReplayExport) }
     var opening by remember { mutableStateOf<Job?>(null) }
     // Bumped on every open, so reopening the same replay frames and plays it afresh.
@@ -255,12 +257,20 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     } else {
         sessions?.let { kept -> RoomDollhouse.pickSession(kept.map { it.info }, dollhouseRequest) }
     }
+    // The kept session on the table, said by name and date. A recording handed over already read
+    // (just recorded, or from the replay) without its id is found by its title.
+    val dollhouseShown = when {
+        dollhouseRequest != null || dollhouseMedia == null -> dollhouseSession
+        else -> sessions?.firstOrNull { it.info.title == dollhouseTitle }?.info
+    }
     LaunchedEffect(screen, dollhouseSession?.id) {
         if (screen != RerunScreen.Dollhouse || dollhouseMedia != null || dollhouseFailed) return@LaunchedEffect
         val session = dollhouseSession ?: return@LaunchedEffect
         dollhouseTitle = session.title
         val capture = withContext(Dispatchers.IO) { store.capture(session.id) }
         val opened = capture?.let { runCatching { loadRerunSession(it) }.getOrNull() }
+        // Another recording picked meanwhile: this one no longer stands.
+        if (dollhouseRequest != null && dollhouseRequest != session.id) return@LaunchedEffect
         if (opened == null) dollhouseFailed = true else dollhouseMedia = opened
     }
     val openDollhouse = { id: String?, title: String, media: RerunReplayMedia? ->
@@ -302,6 +312,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         screen = RerunScreen.Replay
     }
     val openScan = { media: RerunReplayMedia, title: String, pack: RerunCapturePack ->
+        scanId = null
         scanMedia = media
         scanTitle = title
         scanPack = pack
@@ -327,6 +338,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 screen = RerunScreen.Landing
             } else {
                 openScan(opened, title, capture)
+                scanId = id
             }
         }
     }
@@ -430,7 +442,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             onExport = { exporting = true },
             // Your own room only: the sample is not a room of yours to stand on a table.
             onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
-                { openDollhouse(null, scanTitle, scan) }
+                { openDollhouse(scanId, scanTitle, scan) }
             },
             engine = engine,
             modelLoader = modelLoader,
@@ -440,6 +452,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             onBack = leaveDollhouse,
             title = dollhouseTitle,
             media = dollhouseMedia,
+            session = dollhouseShown,
+            sessions = sessions.takeUnless { qaState == QA_STATE_DOLLHOUSE_EMPTY },
+            onPickSession = { picked -> openDollhouse(picked.id, picked.title, null) },
             sessionsKnown = sessions != null || dollhouseMedia != null,
             hasSession = dollhouseMedia != null || dollhouseSession != null,
             openFailed = dollhouseFailed,
