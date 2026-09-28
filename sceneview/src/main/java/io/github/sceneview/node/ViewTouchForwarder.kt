@@ -111,11 +111,16 @@ internal fun shouldMirrorX(
  * scroll, a drag or a slider takes the change — so an inner list keeps scrolling exactly as it did.
  * A tap never travels that far and still lands on the button.
  *
+ * While the pointer is on the quad the distance is measured in **view pixels** — the space the
+ * content's own scrollables measure their slop in — so a card rendered larger than its view (a
+ * close camera, a scaled node) does not have its list's scroll stolen before the list could claim
+ * it. Off the quad there is no view pixel left, so [onExit] falls back to screen pixels.
+ *
  * Extracted from [ViewNode] so this logic can be unit-tested without a Filament engine.
  *
  * @param target The view the events are dispatched into — a [ViewNode]'s `layout`.
- * @param touchSlopPx How far, in scene pixels, a pointer may travel from its `DOWN` before an
- * unclaimed stream becomes a drag the scene takes back.
+ * @param touchSlopPx How far a pointer may travel from its `DOWN` before an unclaimed stream
+ * becomes a drag the scene takes back — in view pixels on the quad, in screen pixels off it.
  */
 internal class ViewTouchForwarder(
     private val target: View,
@@ -135,9 +140,13 @@ internal class ViewTouchForwarder(
      */
     private var isClaimedByContent: Boolean = false
 
-    /** Scene-space position of the current stream's `DOWN`, the origin of the touch-slop test. */
-    private var downX: Float = 0.0f
-    private var downY: Float = 0.0f
+    /** View-pixel position of the current stream's `DOWN`: the slop origin while on the quad. */
+    private var downViewX: Float = 0.0f
+    private var downViewY: Float = 0.0f
+
+    /** Screen position of the current stream's `DOWN`: the slop origin once off the quad. */
+    private var downScreenX: Float = 0.0f
+    private var downScreenY: Float = 0.0f
 
     /**
      * Latched when a stream [target] owned is handed back to the scene mid-gesture (#4033), and
@@ -171,8 +180,10 @@ internal class ViewTouchForwarder(
             cancelLiveStream(e)
             isClaimedByContent = false
             handedBack = false
-            downX = e.x
-            downY = e.y
+            downViewX = x
+            downViewY = y
+            downScreenX = e.x
+            downScreenY = e.y
             ownsStream = dispatch(e, x, y)
             isStreamLive = ownsStream
             return ownsStream
@@ -182,8 +193,9 @@ internal class ViewTouchForwarder(
             dispatch(e, x, y)
         }
         // After the dispatch: a list inside the card claims the drag on the very MOVE that
-        // crosses its own slop, which is the same MOVE that crosses this one.
-        if (handBackIfDrag(e)) return false
+        // crosses its own slop, which is the same MOVE that crosses this one: both are measured
+        // in view pixels.
+        if (handBackIfDrag(e, x - downViewX, y - downViewY)) return false
         endStreamIfTerminal(e)
         return true
     }
@@ -202,26 +214,24 @@ internal class ViewTouchForwarder(
         if (!ownsStream) return false
         cancelLiveStream(e)
         // A drag that left the quad is still a drag: the scene takes it, as it would on the quad.
-        if (handBackIfDrag(e)) return false
+        // No view pixel exists off the quad, so the distance is measured on screen.
+        if (handBackIfDrag(e, e.x - downScreenX, e.y - downScreenY)) return false
         endStreamIfTerminal(e)
         return true
     }
 
     /**
      * Hands an unclaimed stream back to the scene once it has become a drag or a multi-touch
-     * gesture (#4033): cancels [target]'s press and releases the stream.
+     * gesture (#4033): cancels [target]'s press and releases the stream. ([dx], [dy]) is how far
+     * the pointer travelled from its `DOWN`, in the space the caller measures it in.
      *
      * @return true when the stream was just handed back and [e] belongs to the scene.
      */
-    private fun handBackIfDrag(e: MotionEvent): Boolean {
+    private fun handBackIfDrag(e: MotionEvent, dx: Float, dy: Float): Boolean {
         if (isClaimedByContent) return false
         val isDrag = when (e.actionMasked) {
             MotionEvent.ACTION_POINTER_DOWN -> true
-            MotionEvent.ACTION_MOVE -> {
-                val dx = e.x - downX
-                val dy = e.y - downY
-                dx * dx + dy * dy > touchSlopPx * touchSlopPx
-            }
+            MotionEvent.ACTION_MOVE -> dx * dx + dy * dy > touchSlopPx * touchSlopPx
             else -> false
         }
         if (!isDrag) return false

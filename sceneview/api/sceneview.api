@@ -1763,6 +1763,11 @@ public class io/github/sceneview/gesture/GestureDetector$SimpleOnGestureListener
 	public fun onSingleTapUp (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;)V
 }
 
+public final class io/github/sceneview/gesture/HandedBackDownKt {
+	public static final fun replayHandedBackDown (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;Z)V
+	public static synthetic fun replayHandedBackDown$default (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;ZILjava/lang/Object;)V
+}
+
 public class io/github/sceneview/gesture/MoveGestureDetector {
 	public static final field $stable I
 	public fun <init> (Landroid/content/Context;Lio/github/sceneview/gesture/MoveGestureDetector$OnMoveListener;)V

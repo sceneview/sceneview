@@ -1,6 +1,7 @@
 package io.github.sceneview.gesture
 
 import android.view.MotionEvent
+import androidx.annotation.RestrictTo
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.node.Node
 
@@ -9,8 +10,14 @@ import io.github.sceneview.node.Node
  * drag that started on an interactive [io.github.sceneview.node.ViewNode] (#4033). The scene's
  * detectors never saw that stream's `DOWN`, so replay one, at the current pointer, before the rest
  * of the stream reaches them. [cameraAbsorbed] keeps it from the camera, like the rest of the stream.
+ *
+ * The scene [gestureDetector] takes it through [GestureDetector.onHandedBackDown], which keeps
+ * the platform tap detector from turning a drag into a tap, a long press or a double tap.
+ *
+ * Shared by `SceneView` and `ARSceneView`; not part of the public API.
  */
-internal fun replayHandedBackDown(
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+fun replayHandedBackDown(
     event: MotionEvent,
     capturedNode: Node?,
     hitResult: HitResult?,
@@ -25,7 +32,7 @@ internal fun replayHandedBackDown(
         event.x, event.y, event.metaState
     )
     try {
-        gestureDetector.onTouchEvent(replayedDown, hitResult)
+        gestureDetector.onHandedBackDown(replayedDown, hitResult)
         if (!cameraAbsorbed) cameraGestureDetector?.onTouchEvent(replayedDown)
     } finally {
         replayedDown.recycle()

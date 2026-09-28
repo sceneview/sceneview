@@ -24,6 +24,7 @@ import androidx.activity.setViewTreeFullyDrawnReporterOwner
 import androidx.activity.setViewTreeOnBackPressedDispatcherOwner
 import androidx.annotation.LayoutRes
 import androidx.annotation.RequiresApi
+import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -370,6 +371,7 @@ class ViewNode(
      * `ACTION_CANCEL` and the stream goes back to the scene gesture and camera detectors. A tap
      * still clicks; a drag started on a card orbits the camera like a drag started beside it.
      */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     override fun takeTouchStreamHandBack(): Boolean = touchForwarder.takeHandBack()
 
     override fun destroy() {

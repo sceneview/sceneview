@@ -275,7 +275,7 @@ class ViewTouchForwarderTest {
 
     // ── Drag hand-back (#4033) ───────────────────────────────────────────────────────────────────
 
-    /** 10 px of slop, so the scene-space coordinates below read as "tap" or "drag" at a glance. */
+    /** 10 px of slop, so the coordinates below read as "tap" or "drag" at a glance. */
     private fun slopForwarderOn(view: RecordingView) = ViewTouchForwarder(view, touchSlopPx = 10.0f)
 
     @Test
@@ -373,6 +373,37 @@ class ViewTouchForwarderTest {
         assertFalse(forwarder.onHit(event(MotionEvent.ACTION_POINTER_DOWN, 100.0f, 100.0f), 10.0f, 20.0f))
 
         assertEquals(MotionEvent.ACTION_CANCEL, view.actions.last())
+        assertTrue(forwarder.takeHandBack())
+    }
+
+    @Test
+    fun `on an enlarged card the slop is measured in view pixels, not on screen`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        // A card drawn 6x larger than its view (camera close to it): 30 screen px of travel is
+        // only 5 view px, still inside the slop an inner list measures in. The list has not had
+        // the chance to claim the drag yet, so the scene must not steal it.
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 100.0f, 130.0f), 10.0f, 25.0f))
+        forwarder.onContentClaimedGesture(true)
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 100.0f, 220.0f), 10.0f, 40.0f))
+
+        assertFalse(forwarder.takeHandBack())
+        assertEquals(
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_MOVE),
+            view.actions
+        )
+    }
+
+    @Test
+    fun `on a shrunk card a drag is handed back once it crosses the slop in view pixels`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        // A card drawn at half its view size: 8 screen px is 16 view px, past the slop.
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertFalse(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 108.0f, 100.0f), 26.0f, 20.0f))
         assertTrue(forwarder.takeHandBack())
     }
 }

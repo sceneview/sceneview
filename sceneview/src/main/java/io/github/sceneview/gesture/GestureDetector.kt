@@ -284,4 +284,30 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
         rotateGestureDetector.onTouchEvent(event)
         scaleGestureDetector.onTouchEvent(event)
     }
+
+    /**
+     * Starts recognition on a stream that is already a drag: one a node captured on its `DOWN` and
+     * handed back past the touch slop (#4033). [down] is the `DOWN` the scene never saw, replayed
+     * at the current pointer.
+     *
+     * The move / rotate / scale detectors and the editing press take it as a plain `DOWN`. The
+     * platform tap detector must not: fed a `DOWN` here it would report a tap on the release of a
+     * short drag (the pointer barely travels from the replayed point), an immediate long press
+     * (the stream's original down time is already past the timeout) and, right after an earlier
+     * tap, a double tap that zooms the camera. So it is cancelled on both sides of the `DOWN`: the
+     * first `CANCEL` drops a tap still pending from the previous stream, the second drops the tap
+     * region and the long-press / tap timers the `DOWN` just armed. It keeps the `DOWN` as the
+     * origin of `onScroll` / `onFling`, which is all a drag needs from it.
+     */
+    internal fun onHandedBackDown(down: MotionEvent, hitResult: HitResult?) {
+        val cancel = MotionEvent.obtain(down)
+        try {
+            cancel.action = MotionEvent.ACTION_CANCEL
+            gestureDetector.onTouchEvent(cancel)
+            onTouchEvent(down, hitResult)
+            gestureDetector.onTouchEvent(cancel)
+        } finally {
+            cancel.recycle()
+        }
+    }
 }

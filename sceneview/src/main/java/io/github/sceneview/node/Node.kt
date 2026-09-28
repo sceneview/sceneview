@@ -6,6 +6,7 @@ import android.view.GestureDetector
 import android.view.GestureDetector.OnContextClickListener
 import android.view.GestureDetector.OnDoubleTapListener
 import android.view.MotionEvent
+import androidx.annotation.RestrictTo
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
 import com.google.android.filament.Scene
@@ -1457,7 +1458,11 @@ open class Node protected constructor(
      *
      * The default implementation returns `false`: a node that never hands a stream back needs
      * nothing replayed.
+     *
+     * Library-internal plumbing between [ViewNode] and the scene dispatchers, not an extension
+     * point: an app never overrides or calls it.
      */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     open fun takeTouchStreamHandBack(): Boolean = false
 
     override fun onDown(e: MotionEvent) = gestureDelegate.onDown(e)
