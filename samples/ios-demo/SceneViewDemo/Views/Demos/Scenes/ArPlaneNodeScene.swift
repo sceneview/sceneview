@@ -2,10 +2,11 @@
 // @title       AR Plane Node
 // @subtitle    Detect and visualise planes with marker cubes
 // @category    ar
+// @section     placeAR
 // @available   true
 // @icon        rectangle.3.group
 // @iosOnly     true
-// @order       28
+// @order       12
 // @tags        ar,plane,planenode,lifecycle,callback
 import SwiftUI
 

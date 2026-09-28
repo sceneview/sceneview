@@ -2,10 +2,11 @@
 // @title       AR Lighting
 // @subtitle    Key and fill light presets on one model
 // @category    ar
+// @section     placeAR
 // @available   true
 // @icon        lightbulb.max.fill
 // @iosOnly     true
-// @order       73
+// @order       17
 import SwiftUI
 
 enum ArLightingScene: DemoScene {

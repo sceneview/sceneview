@@ -2,10 +2,11 @@
 // @title       Body anchor tracking
 // @subtitle    Follow a detected body anchor in real time
 // @category    ar
+// @section     understand
 // @available   true
 // @icon        figure.walk.motion
 // @iosOnly     true
-// @order       38
+// @order       40
 // @tags        ar,body,pose,anchor,skeleton
 import SwiftUI
 

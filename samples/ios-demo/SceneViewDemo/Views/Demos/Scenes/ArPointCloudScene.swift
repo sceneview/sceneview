@@ -2,10 +2,11 @@
 // @title       AR Point Cloud
 // @subtitle    Live ARKit tracking feature points
 // @category    ar
+// @section     understand
 // @available   true
 // @icon        camera.metering.spot
 // @iosOnly     true
-// @order       29
+// @order       44
 // @tags        ar,point-cloud,feature-points,tracking
 import SwiftUI
 

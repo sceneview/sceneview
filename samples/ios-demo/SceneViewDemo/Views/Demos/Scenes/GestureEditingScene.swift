@@ -2,9 +2,10 @@
 // @title       Gesture Editing
 // @subtitle    Move, scale, and rotate with gestures
 // @category    interaction
+// @section     view3d
 // @available   true
 // @icon        hand.pinch.fill
-// @order       68
+// @order       7
 import SwiftUI
 
 enum GestureEditingScene: DemoScene {

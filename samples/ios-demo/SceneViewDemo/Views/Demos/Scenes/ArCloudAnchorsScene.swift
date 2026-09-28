@@ -2,11 +2,12 @@
 // @title       Cloud Anchors
 // @subtitle    Persistent multi-user anchors
 // @category    ar
+// @section     placeAR
 // @available   true
 // @status      knownIssue
 // @icon        icloud.fill
 // @iosOnly     true
-// @order       41
+// @order       15
 // @tags        ar,cloud-anchor,multi-user,persistence,arcore
 import SwiftUI
 

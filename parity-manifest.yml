@@ -1282,13 +1282,17 @@ shell:
       - samples/ios-demo/SceneViewDemo/Views/Home/HomeFilter.swift
     contract: >-
       Header (search + What's new), 3-page featured pager (Models live,
-      Materials, Lighting, + What's-new page), Browse-online card, 5 chips,
+      Materials, Lighting, + What's-new page), Featured shelf
+      (FEATURED_SECTION_IDS, Rerun first), Browse-online card, 5 chips,
       section headers, cards by order with New/Updated chips
     parity: diverges
     evidence: >-
-      iOS single HomeHero ShowcaseTab.swift:90; 7 old chips :426 vs Android 5
-      (DemoRegistry.kt:143); flat sort, no sections HomeFilter.swift:44 vs
-      HomeScreen.kt:361; no pager/What's new
+      Featured shelf, 5 section chips and section headers match since #3907
+      (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); the shelf skips
+      splat-preview and ar-splat-room (no iOS screen, #2646). Still diverges:
+      single HomeHero instead of the pager, no What's new, Browse-online card
+      last instead of under the shelf, and six broken demos are kept off the
+      home (HomeCatalogue.hiddenFromHome)
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt

@@ -24,7 +24,7 @@ import SwiftUI
 ///
 /// `samples/ios-demo/scripts/collate-ios-demos.sh` discovers every
 /// `*Scene.swift` file, reads the `// @sceneId`, `// @title`,
-/// `// @subtitle`, `// @category`, `// @available`, and `// @status`
+/// `// @subtitle`, `// @category`, `// @section`, `// @available`, and `// @status`
 /// directives from each file's header comments, and regenerates
 /// `GeneratedScenes.swift`. That generated file is `.gitignore`d (like
 /// Android's `GeneratedDemos.kt`) and re-created before each Xcode build by a
@@ -41,12 +41,13 @@ import SwiftUI
 /// // @title       Model Viewer
 /// // @subtitle    Load and display 3D models
 /// // @category    basics3D          (one of: basics3D|lighting|content|interaction|advanced|ar)
+/// // @section     view3d            (home section: view3d|placeAR|devTools|create|understand)
 /// // @available   true              (true = shows destination view; false = "Coming soon")
 /// // @status      working           (optional — see below)
 /// // @androidOnlyReason  <reason>   (optional — see below)
 /// ```
 ///
-/// `@sceneId`, `@title`, `@subtitle`, `@category`, and `@available` are
+/// `@sceneId`, `@title`, `@subtitle`, `@category`, `@section` and `@available` are
 /// required. `@status` is **optional** and mirrors Android's `DemoStatus`
 /// (`Working`/`KnownIssue`/`ComingSoon`/`InReview`, see `DemoItem.swift`):
 ///
@@ -105,6 +106,7 @@ import SwiftUI
 /// // @title       Model Viewer
 /// // @subtitle    Load and display 3D models
 /// // @category    basics3D
+/// // @section     view3d
 /// // @available   true
 /// enum ModelViewerScene: DemoScene {
 ///     static var destination: AnyView { AnyView(ModelViewerDemo()) }

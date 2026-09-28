@@ -2,9 +2,10 @@
 // @title       Lighting
 // @subtitle    Three rigs on one stage: HDR, studio, sun
 // @category    lighting
+// @section     create
 // @available   true
 // @icon        lightbulb.fill
-// @order       2
+// @order       24
 // @tags        light,ibl,environment,studio,key,fill,rim,sun,shadow,chrome,pbr
 import SwiftUI
 

@@ -2,9 +2,10 @@
 // @title       Dynamic Sky
 // @subtitle    Time-of-day sun simulation
 // @category    lighting
+// @section     create
 // @available   true
 // @icon        sun.horizon.fill
-// @order       7
+// @order       25
 // @tags        light,hdr,ibl,skybox,environment,reflection,bloom,post-fx
 import SwiftUI
 

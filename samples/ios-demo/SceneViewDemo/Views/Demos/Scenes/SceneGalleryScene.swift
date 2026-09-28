@@ -2,9 +2,10 @@
 // @title       Scene Gallery
 // @subtitle    Themed Sketchfab bundles streamed on demand
 // @category    basics3D
+// @section     view3d
 // @available   true
 // @icon        square.grid.3x3.fill
-// @order       61
+// @order       3
 import SwiftUI
 
 enum SceneGalleryScene: DemoScene {

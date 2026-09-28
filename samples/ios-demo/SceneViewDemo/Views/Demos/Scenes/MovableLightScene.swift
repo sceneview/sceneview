@@ -2,9 +2,10 @@
 // @title       Movable Light
 // @subtitle    Drag to orbit the light around the model
 // @category    lighting
+// @section     create
 // @available   true
 // @icon        sun.dust.fill
-// @order       63
+// @order       27
 import SwiftUI
 
 enum MovableLightScene: DemoScene {

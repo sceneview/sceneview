@@ -371,6 +371,10 @@ enum SceneViewTokens {
         static let chipGap: CGFloat = 8
         static let chipPaddingHorizontal: CGFloat = 16
         static let gridTopGap: CGFloat = 20
+        /// DESIGN.md `section-header-top-gap` / `section-header-bottom-gap`:
+        /// space above a catalogue section header, and from it to its first row.
+        static let sectionHeaderTopGap: CGFloat = 32
+        static let sectionHeaderBottomGap: CGFloat = 16
         static let gridBottomInset: CGFloat = 32
         static let cardRadius: CGFloat = 20
         static let cardTextPaddingTop: CGFloat = 12

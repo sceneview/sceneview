@@ -2,6 +2,7 @@
 // @title       Animation
 // @subtitle    Play, pause, and control animations
 // @category    basics3D
+// @section     view3d
 // @available   true
 // @icon        figure.run
 // @order       4

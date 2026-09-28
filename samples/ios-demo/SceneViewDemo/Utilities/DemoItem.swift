@@ -83,6 +83,10 @@ struct DemoItem: Identifiable {
     let icon: String
     let subtitle: String
     let category: DemoCategory
+    /// Home section (`// @section`, #3907) — the user-intent grouping that
+    /// mirrors Android's `DemoEntry.category` / `DEMO_CATEGORIES`. `category`
+    /// stays the rendering subsystem (it picks the AR wrapper and the accent).
+    let section: DemoSection
     let status: DemoStatus
     let destination: AnyView
 
@@ -109,6 +113,7 @@ struct DemoItem: Identifiable {
         icon: String,
         subtitle: String,
         category: DemoCategory,
+        section: DemoSection,
         status: DemoStatus = .working,
         order: Int = 999,
         tags: [String] = [],
@@ -126,6 +131,7 @@ struct DemoItem: Identifiable {
         self.icon = icon
         self.subtitle = subtitle
         self.category = category
+        self.section = section
         self.status = status
         self.destination = AnyView(destination())
         self.androidOnlyReason = nil
@@ -147,6 +153,7 @@ struct DemoItem: Identifiable {
         subtitle: String,
         order: Int = 999,
         tags: [String] = [],
+        section: DemoSection,
         category: DemoCategory,
         androidOnlyReason: String? = nil
     ) {
@@ -157,6 +164,7 @@ struct DemoItem: Identifiable {
         self.icon = icon
         self.subtitle = subtitle
         self.category = category
+        self.section = section
         self.status = .comingSoon
         self.destination = AnyView(EmptyView())
         self.androidOnlyReason = androidOnlyReason
@@ -181,5 +189,36 @@ enum DemoCategory: String, CaseIterable, Comparable {
         let lhsIndex = order.firstIndex(of: lhs) ?? 0
         let rhsIndex = order.firstIndex(of: rhs) ?? 0
         return lhsIndex < rhsIndex
+    }
+}
+
+/// Home sections, in Android's `DEMO_CATEGORIES` order (#3907). The case order
+/// is the on-screen order; `title` is the section header, `chipLabel` the
+/// shorter filter-chip text — both verbatim from Android's `strings.xml`.
+enum DemoSection: String, CaseIterable {
+    case view3d
+    case placeAR
+    case devTools
+    case create
+    case understand
+
+    var title: String {
+        switch self {
+        case .view3d: return "View in 3D"
+        case .placeAR: return "Place in AR"
+        case .devTools: return "Developer tools"
+        case .create: return "Create & record"
+        case .understand: return "Understand the world"
+        }
+    }
+
+    var chipLabel: String {
+        switch self {
+        case .view3d: return "View 3D"
+        case .placeAR: return "Place in AR"
+        case .devTools: return "Dev tools"
+        case .create: return "Create"
+        case .understand: return "Understand"
+        }
     }
 }

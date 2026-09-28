@@ -393,6 +393,58 @@ final class DemoRegistryGuardTests: XCTestCase {
                           "failed to collate")
         }
     }
+
+    // MARK: - Showcase home (#3907)
+
+    /// Every Featured id must name a real, available scene, once — a typo or a
+    /// removed scene would otherwise just shrink the shelf in silence.
+    func testFeaturedShelfIdsAreAvailableScenesAndUnique() {
+        let byId = Dictionary(uniqueKeysWithValues: GeneratedScenes.all().map { ($0.sceneId, $0) })
+        XCTAssertEqual(Set(HomeCatalogue.featuredIds).count, HomeCatalogue.featuredIds.count,
+                       "HomeCatalogue.featuredIds has a duplicate")
+        for id in HomeCatalogue.featuredIds {
+            guard let item = byId[id] else {
+                XCTFail("Featured id '\(id)' has no *Scene.swift file"); continue
+            }
+            XCTAssertTrue(item.status.isAvailable, "Featured demo '\(id)' has no destination")
+            XCTAssertTrue(HomeCatalogue.isOnHome(id), "Featured demo '\(id)' is also hidden from the home")
+        }
+    }
+
+    /// The Rerun replay leads the shelf, as on Android (`FEATURED_SECTION_IDS`).
+    func testRerunLeadsTheFeaturedShelf() {
+        XCTAssertEqual(HomeCatalogue.featuredIds.first, "ar-rerun")
+    }
+
+    /// A hidden id must still resolve: hiding takes a demo off the home, never
+    /// out of the catalogue or the deep-link gate.
+    func testHiddenFromHomeIdsStayRegistered() {
+        let ids = Set(GeneratedScenes.all().map(\.sceneId))
+        for id in HomeCatalogue.hiddenFromHome.keys {
+            XCTAssertTrue(ids.contains(id), "Hidden id '\(id)' has no *Scene.swift file")
+            XCTAssertTrue(GeneratedScenes.allowedIds.contains(id), "Hidden id '\(id)' lost its deep link")
+        }
+    }
+
+    /// No home section may end up empty once the hidden demos are removed.
+    func testEverySectionHasAVisibleDemo() {
+        let populated = Set(GeneratedScenes.all()
+            .filter { HomeCatalogue.isOnHome($0.sceneId) }
+            .map(\.section))
+        for section in DemoSection.allCases {
+            XCTAssertTrue(populated.contains(section), "Home section '\(section.title)' has no visible demo")
+        }
+    }
+
+    /// `@order` keeps each section contiguous, so the home reads section by
+    /// section in `DemoSection` order — the Android invariant
+    /// (`DemoRegistryIntegrityTest`: a category's demos are contiguous).
+    func testOrderKeepsSectionsContiguousAndInSectionOrder() {
+        let sorted = GeneratedScenes.all().sorted { ($0.order, $0.title) < ($1.order, $1.title) }
+        let sectionIndex = sorted.map { DemoSection.allCases.firstIndex(of: $0.section) ?? 0 }
+        XCTAssertEqual(sectionIndex, sectionIndex.sorted(),
+                       "A demo's @order places it outside its @section's block")
+    }
 }
 
 #endif

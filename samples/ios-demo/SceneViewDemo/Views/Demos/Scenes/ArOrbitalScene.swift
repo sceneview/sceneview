@@ -2,10 +2,11 @@
 // @title       Orbital AR
 // @subtitle    Models orbit around you in a personal solar system
 // @category    ar
+// @section     placeAR
 // @available   true
 // @icon        circle.dotted
 // @iosOnly     true
-// @order       35
+// @order       14
 // @tags        ar,orbit,animation,model,anchor
 import SwiftUI
 

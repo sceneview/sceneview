@@ -2,9 +2,10 @@
 // @title       Double Pendulum
 // @subtitle    Chaotic two-link physics, shared KMP simulation
 // @category    advanced
+// @section     view3d
 // @available   true
 // @icon        waveform.path
-// @order       16
+// @order       9
 // @tags        physics,pendulum,chaos,simulation,kmp
 import SwiftUI
 
