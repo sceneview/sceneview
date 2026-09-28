@@ -1,5 +1,8 @@
 package io.github.sceneview.demo.demos
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -11,6 +14,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -29,8 +34,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotateRad
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -41,6 +46,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -50,20 +58,22 @@ import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.rememberARCameraStream
-import io.github.sceneview.demo.common.QaCameraBackdrop
-import io.github.sceneview.demo.common.qaCameraBackdropEnabled
-import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
-import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.ar.arcore.viewTransform
-import io.github.sceneview.demo.AssetSourceState
-import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.ARCameraInitScrim
+import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
-import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.rememberFileModelInstance
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
+import io.github.sceneview.demo.demos.internal.CameraStartAction
+import io.github.sceneview.demo.demos.internal.cameraStartAction
+import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -562,8 +572,57 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
     // QA camera backdrop (#3308) — see TapToPlaceArSession.
-    val cameraStream = rememberARCameraStream(materialLoader)
     val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
+    // The session could not be created or configured (camera held elsewhere, permission
+    // refused…), or the camera-start watchdog below gave up. DemoScaffold then swaps the
+    // viewport for its failure card instead of a spinner that never ends (#4069).
+    var arSessionFailed by remember { mutableStateOf(false) }
+    // Whether ARCameraInitScrim's spinner card is on screen. While it narrates the camera
+    // start, the status pill stays silent: one loader per screen (#3825, #4069).
+    var cameraScrimNarrating by remember { mutableStateOf(true) }
+
+    // Camera-start watchdog (#4069). Orbital AR was seen stuck on "Starting camera" on a
+    // Pixel 9 while the other AR demos of the same run started fine: the session never
+    // delivered a frame, and nothing reported it (`ARSceneView` logs and drops a failing
+    // `session.update()`). Each tick counts only while the screen is resumed with the camera
+    // permission granted, so a permission dialog or an ARCore install prompt is never
+    // mistaken for a stuck camera. A stuck start rebuilds the session through
+    // `key(sessionGeneration)` a bounded number of times, then shows the failure card.
+    // Skipped in QA backdrop mode, which covers a camera-less emulator on purpose (#3308).
+    var sessionGeneration by remember { mutableIntStateOf(0) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(sessionGeneration, cameraReady, arCoreAvailability, arSessionFailed) {
+        if (qaCameraBackdropEnabled()) return@LaunchedEffect
+        var waitedMs = 0L
+        while (true) {
+            val action = cameraStartAction(
+                waitedMs = waitedMs,
+                frameReceived = cameraReady,
+                restartsDone = sessionGeneration,
+                arBlocked = arCoreAvailability != null || arSessionFailed,
+            )
+            when (action) {
+                CameraStartAction.IDLE -> return@LaunchedEffect
+                CameraStartAction.WAIT -> {
+                    delay(CAMERA_WATCHDOG_TICK_MS)
+                    val counting = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                        PackageManager.PERMISSION_GRANTED
+                    if (counting) waitedMs += CAMERA_WATCHDOG_TICK_MS
+                }
+                CameraStartAction.RESTART_SESSION -> {
+                    Log.w(TAG, "No camera frame after $waitedMs ms; rebuilding the AR session")
+                    sessionGeneration++
+                    return@LaunchedEffect
+                }
+                CameraStartAction.GIVE_UP -> {
+                    Log.w(TAG, "No camera frame after $sessionGeneration session rebuilds")
+                    arSessionFailed = true
+                    return@LaunchedEffect
+                }
+            }
+        }
+    }
 
     // Elapsed seconds since the anchor was created, advanced by withFrameNanos. Drives
     // orbit + spin animation. Stored as nanos to avoid float-precision drift over long
@@ -743,6 +802,8 @@ fun OrbitalARDemo(onBack: () -> Unit) {
         // ARCore will never start here — the SDK overlay explains why, so drop the pill
         // rather than stack a second, and now false, message on top of it (#3374).
         arCoreAvailability != null -> null
+        // The camera-start scrim is narrating: its card is the one loader (#4069).
+        !cameraReady && cameraScrimNarrating -> null
         !isTracking -> "Initializing AR — look around to start tracking"
         userAnchor == null -> "Locking world anchor…"
         allCaught -> "All ${ORBITAL_PLANETS.size} caught — tap anywhere to release"
@@ -761,6 +822,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_ar_orbital_title),
         onBack = onBack,
         assetSource = assetSource,
+        arSessionFailed = arSessionFailed,
         topOverlay = {
             if (statusText != null) {
                 Surface(
@@ -792,154 +854,163 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                 .onSizeChanged { viewportSize = it }
         ) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-orbital")
-            ARSceneView(
-                modifier = Modifier.fillMaxSize(),
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                isOpaque = !qaCameraBackdropEnabled(),
-                surfaceType = qaCameraBackdropSurfaceType(),
-                cameraStream = if (qaBackdrop) null else cameraStream,
-                playbackDataset = arPlaybackDataset,
-                planeRenderer = false,
-                onARCoreAvailability = { arCoreAvailability = it },
-                sessionConfiguration = { _: Session, config: Config ->
-                    // Plane detection off — the formation lives in world space around the
-                    // user, not on a plane. Disabling planes is cheaper and gives a cleaner
-                    // visual (no overlay polygons in front of the orbiting models).
-                    config.planeFindingMode = Config.PlaneFindingMode.DISABLED
-                    config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                },
-                onSessionUpdated = { session: Session, frame: Frame ->
-                    cameraReady = true
-                    isTracking = frame.camera.trackingState == TrackingState.TRACKING
-                    // Drop the world-origin anchor on the first tracked frame. ARCore's
-                    // world origin = the camera's pose at session-start, which is exactly
-                    // what we want: the formation sits where the user is standing.
-                    if (isTracking && userAnchor == null) {
-                        userAnchor = runCatching {
-                            session.createAnchor(Pose.IDENTITY)
-                        }.getOrNull()
-                    }
-                    // Project **every** flyer's current world position into the camera,
-                    // once per frame. One pass now feeds two consumers (#1482, #3269,
-                    // #3341): the edge arrows, which need the off-screen subset, and the
-                    // tap-to-catch hit test, which needs the on-screen screen positions.
-                    // Projecting twice would let the hitbox and the arrow disagree about
-                    // where a flyer is.
-                    val anchor = userAnchor
-                    val viewport = viewportSize
-                    projectedTargets = if (anchor != null && isTracking &&
-                        viewport != IntSize.Zero
-                    ) {
-                        ORBITAL_PLANETS.indices.mapNotNull { index ->
-                            runCatching {
-                                val planet = ORBITAL_PLANETS[index]
-                                val targetAngle = angleOf(index)
-                                // Target position in the AnchorNode's local frame —
-                                // identical to the ModelNode `position` computed in the
-                                // content block, because both call `angleOf`.
-                                val local = Position(
-                                    x = cos(targetAngle) * ORBIT_RADIUS,
-                                    y = planet.height,
-                                    z = sin(targetAngle) * ORBIT_RADIUS,
-                                )
-                                // Lift the local point into ARCore world space through
-                                // the anchor pose, then project + frustum-test it.
-                                val worldPoint = anchor.pose.transform *
-                                    Float4(local, w = 1.0f)
-                                computeProjectedTarget(
-                                    frame,
-                                    Position(worldPoint.x, worldPoint.y, worldPoint.z),
-                                    viewport.width.toFloat(),
-                                    viewport.height.toFloat(),
-                                )?.let { index to it }
+            // A fresh session per generation: the watchdog above bumps it when a start is
+            // stuck. The camera stream lives inside the key so it is rebuilt with the session.
+            key(sessionGeneration) {
+                val cameraStream = rememberARCameraStream(materialLoader)
+                ARSceneView(
+                    modifier = Modifier.fillMaxSize(),
+                    engine = engine,
+                    modelLoader = modelLoader,
+                    materialLoader = materialLoader,
+                    isOpaque = !qaCameraBackdropEnabled(),
+                    surfaceType = qaCameraBackdropSurfaceType(),
+                    cameraStream = if (qaBackdrop) null else cameraStream,
+                    playbackDataset = arPlaybackDataset,
+                    planeRenderer = false,
+                    onARCoreAvailability = { arCoreAvailability = it },
+                    onSessionFailure = { failure ->
+                        Log.e(TAG, "AR session failed to start: $failure")
+                        arSessionFailed = true
+                    },
+                    sessionConfiguration = { _: Session, config: Config ->
+                        // Plane detection off — the formation lives in world space around the
+                        // user, not on a plane. Disabling planes is cheaper and gives a cleaner
+                        // visual (no overlay polygons in front of the orbiting models).
+                        config.planeFindingMode = Config.PlaneFindingMode.DISABLED
+                        config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                    },
+                    onSessionUpdated = { session: Session, frame: Frame ->
+                        cameraReady = true
+                        isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                        // Drop the world-origin anchor on the first tracked frame. ARCore's
+                        // world origin = the camera's pose at session-start, which is exactly
+                        // what we want: the formation sits where the user is standing.
+                        if (isTracking && userAnchor == null) {
+                            userAnchor = runCatching {
+                                session.createAnchor(Pose.IDENTITY)
                             }.getOrNull()
-                        }.toMap()
-                    } else {
-                        emptyMap()
-                    }
-                    // Caught flyers are frozen in front of the user, so they never need an
-                    // arrow — and once the formation is caught the screen goes quiet, which
-                    // is the reward. Arrows for the ones still loose stay up continuously,
-                    // per object, until that object re-enters the viewport.
-                    offscreenTargets = projectedTargets
-                        .filterKeys { it !in caughtAngles }
-                        .mapNotNull { (index, projected) ->
-                            projected.asOffscreenTarget()?.let { index to it }
                         }
-                        .toMap()
-                    // Onboarding nudge dismisses the "Turn around" **banner text** for
-                    // good the first time the user brings any flyer on-screen (#2481).
-                    // This must not affect arrow visibility (#3269) — see the
-                    // `onboardingDismissed` Kdoc above.
-                    if (anchor != null && isTracking &&
-                        projectedTargets.isNotEmpty() &&
-                        projectedTargets.size != offscreenTargets.size
-                    ) {
-                        onboardingDismissed = true
-                    }
-                }
-            ) {
-                val anchor = userAnchor
-                if (anchor != null) {
-                    AnchorNode(anchor = anchor) {
-                        ORBITAL_PLANETS.forEachIndexed { index, planet ->
-                            // Bundled planets read straight from `assets/` via the
-                            // asset-path overload of `rememberModelInstance`. Streamed
-                            // planets resolve to an on-disk `File` and must be loaded
-                            // through `ModelLoader.loadModelInstance` — the two-arg
-                            // `rememberModelInstance(modelLoader, String)` would bind to
-                            // the asset-path overload and feed the `file://` URI to
-                            // `AssetManager.open`, throwing `FileNotFoundException` (#1422).
-                            // The bundled / streamed split is a stable `val` per slot, so
-                            // the conditional keeps Compose's positional memoisation valid.
-                            // While the streamed File is still null (download in flight)
-                            // we render nothing for that slot — the orbit formation
-                            // rebuilds the moment the resolver returns.
-                            val instance = if (planet.bundledAssetPath != null) {
-                                rememberModelInstance(modelLoader, planet.bundledAssetPath)
-                            } else {
-                                rememberFileModelInstance(
-                                    modelLoader, streamedFiles.getOrNull(index)
-                                )
-                            }
-                            if (instance != null) {
-                                // Same `angleOf` the hit test uses, so the model and its
-                                // hitbox can never disagree — and it is what holds a
-                                // caught flyer still (#3341). Modulo lives inside
-                                // `orbitAngleRad`, before sin/cos, so a long-running
-                                // session (~290 h+) doesn't lose Float precision (#978).
-                                val orbitAngle = angleOf(index)
-                                val caught = index in caughtAngles
-                                // Models with a baked animation (dragon, soldier) face the
-                                // tangent of the orbit (= direction of motion) instead of
-                                // spinning on Y — a flying dragon spinning on itself breaks
-                                // the illusion. For position (R·cos θ, h, R·sin θ) on a CCW
-                                // orbit, the tangent is (-sin θ, 0, cos θ); for a glTF model
-                                // whose forward is -Z, that maps to a Y-rotation of θ + π.
-                                val rotationY = if (planet.hasBakedAnimation) {
-                                    Math.toDegrees(orbitAngle.toDouble()).toFloat() + 180f
-                                } else {
-                                    Math.toDegrees(
-                                        (planet.spinSpeed * orbitSeconds).toDouble()
-                                    ).toFloat() % 360f
-                                }
-                                ModelNode(
-                                    modelInstance = instance,
-                                    scaleToUnits = if (caught) {
-                                        planet.scaleToUnits * CATCH_SCALE_BUMP
-                                    } else {
-                                        planet.scaleToUnits
-                                    },
-                                    position = Position(
-                                        x = cos(orbitAngle) * ORBIT_RADIUS,
+                        // Project **every** flyer's current world position into the camera,
+                        // once per frame. One pass now feeds two consumers (#1482, #3269,
+                        // #3341): the edge arrows, which need the off-screen subset, and the
+                        // tap-to-catch hit test, which needs the on-screen screen positions.
+                        // Projecting twice would let the hitbox and the arrow disagree about
+                        // where a flyer is.
+                        val anchor = userAnchor
+                        val viewport = viewportSize
+                        projectedTargets = if (anchor != null && isTracking &&
+                            viewport != IntSize.Zero
+                        ) {
+                            ORBITAL_PLANETS.indices.mapNotNull { index ->
+                                runCatching {
+                                    val planet = ORBITAL_PLANETS[index]
+                                    val targetAngle = angleOf(index)
+                                    // Target position in the AnchorNode's local frame —
+                                    // identical to the ModelNode `position` computed in the
+                                    // content block, because both call `angleOf`.
+                                    val local = Position(
+                                        x = cos(targetAngle) * ORBIT_RADIUS,
                                         y = planet.height,
-                                        z = sin(orbitAngle) * ORBIT_RADIUS,
-                                    ),
-                                    rotation = Rotation(y = rotationY),
-                                    autoAnimate = true,
-                                )
+                                        z = sin(targetAngle) * ORBIT_RADIUS,
+                                    )
+                                    // Lift the local point into ARCore world space through
+                                    // the anchor pose, then project + frustum-test it.
+                                    val worldPoint = anchor.pose.transform *
+                                        Float4(local, w = 1.0f)
+                                    computeProjectedTarget(
+                                        frame,
+                                        Position(worldPoint.x, worldPoint.y, worldPoint.z),
+                                        viewport.width.toFloat(),
+                                        viewport.height.toFloat(),
+                                    )?.let { index to it }
+                                }.getOrNull()
+                            }.toMap()
+                        } else {
+                            emptyMap()
+                        }
+                        // Caught flyers are frozen in front of the user, so they never need an
+                        // arrow — and once the formation is caught the screen goes quiet, which
+                        // is the reward. Arrows for the ones still loose stay up continuously,
+                        // per object, until that object re-enters the viewport.
+                        offscreenTargets = projectedTargets
+                            .filterKeys { it !in caughtAngles }
+                            .mapNotNull { (index, projected) ->
+                                projected.asOffscreenTarget()?.let { index to it }
+                            }
+                            .toMap()
+                        // Onboarding nudge dismisses the "Turn around" **banner text** for
+                        // good the first time the user brings any flyer on-screen (#2481).
+                        // This must not affect arrow visibility (#3269) — see the
+                        // `onboardingDismissed` Kdoc above.
+                        if (anchor != null && isTracking &&
+                            projectedTargets.isNotEmpty() &&
+                            projectedTargets.size != offscreenTargets.size
+                        ) {
+                            onboardingDismissed = true
+                        }
+                    }
+                ) {
+                    val anchor = userAnchor
+                    if (anchor != null) {
+                        AnchorNode(anchor = anchor) {
+                            ORBITAL_PLANETS.forEachIndexed { index, planet ->
+                                // Bundled planets read straight from `assets/` via the
+                                // asset-path overload of `rememberModelInstance`. Streamed
+                                // planets resolve to an on-disk `File` and must be loaded
+                                // through `ModelLoader.loadModelInstance` — the two-arg
+                                // `rememberModelInstance(modelLoader, String)` would bind to
+                                // the asset-path overload and feed the `file://` URI to
+                                // `AssetManager.open`, throwing `FileNotFoundException` (#1422).
+                                // The bundled / streamed split is a stable `val` per slot, so
+                                // the conditional keeps Compose's positional memoisation valid.
+                                // While the streamed File is still null (download in flight)
+                                // we render nothing for that slot — the orbit formation
+                                // rebuilds the moment the resolver returns.
+                                val instance = if (planet.bundledAssetPath != null) {
+                                    rememberModelInstance(modelLoader, planet.bundledAssetPath)
+                                } else {
+                                    rememberFileModelInstance(
+                                        modelLoader, streamedFiles.getOrNull(index)
+                                    )
+                                }
+                                if (instance != null) {
+                                    // Same `angleOf` the hit test uses, so the model and its
+                                    // hitbox can never disagree — and it is what holds a
+                                    // caught flyer still (#3341). Modulo lives inside
+                                    // `orbitAngleRad`, before sin/cos, so a long-running
+                                    // session (~290 h+) doesn't lose Float precision (#978).
+                                    val orbitAngle = angleOf(index)
+                                    val caught = index in caughtAngles
+                                    // Models with a baked animation (dragon, soldier) face the
+                                    // tangent of the orbit (= direction of motion) instead of
+                                    // spinning on Y — a flying dragon spinning on itself breaks
+                                    // the illusion. For position (R·cos θ, h, R·sin θ) on a CCW
+                                    // orbit, the tangent is (-sin θ, 0, cos θ); for a glTF model
+                                    // whose forward is -Z, that maps to a Y-rotation of θ + π.
+                                    val rotationY = if (planet.hasBakedAnimation) {
+                                        Math.toDegrees(orbitAngle.toDouble()).toFloat() + 180f
+                                    } else {
+                                        Math.toDegrees(
+                                            (planet.spinSpeed * orbitSeconds).toDouble()
+                                        ).toFloat() % 360f
+                                    }
+                                    ModelNode(
+                                        modelInstance = instance,
+                                        scaleToUnits = if (caught) {
+                                            planet.scaleToUnits * CATCH_SCALE_BUMP
+                                        } else {
+                                            planet.scaleToUnits
+                                        },
+                                        position = Position(
+                                            x = cos(orbitAngle) * ORBIT_RADIUS,
+                                            y = planet.height,
+                                            z = sin(orbitAngle) * ORBIT_RADIUS,
+                                        ),
+                                        rotation = Rotation(y = rotationY),
+                                        autoAnimate = true,
+                                    )
+                                }
                             }
                         }
                     }
@@ -950,6 +1021,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             ARCameraInitScrim(
                 initializing = !cameraReady,
                 arCoreAvailability = arCoreAvailability,
+                onNarratingChange = { cameraScrimNarrating = it },
             )
 
             // Off-screen target indicator (#1482, #3269) — one edge arrow per
@@ -1320,3 +1392,8 @@ private const val ARROW_TAIL_DP = -20f
 private const val ARROW_SHAFT_HALF_WIDTH_DP = 6f
 private const val ARROW_HALO_WIDTH_DP = 10f
 private const val ARROW_KEYLINE_WIDTH_DP = 4f
+
+private const val TAG = "OrbitalARDemo"
+
+/** How often the camera-start watchdog checks for a first frame (#4069). */
+private const val CAMERA_WATCHDOG_TICK_MS = 250L
