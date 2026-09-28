@@ -96,35 +96,45 @@ internal object StudioBackdrop {
                 (bytes[pos + 2].toInt() and 0x80) == 0
             if (rle) {
                 pos += 4
-                for (channel in 0 until 4) {
-                    var x = 0
-                    while (x < width) {
-                        var count = bytes[pos++].toInt() and 0xff
-                        if (count > 128) {
-                            count -= 128
-                            val value = bytes[pos++]
-                            repeat(count) { scanline[(x + it) * 4 + channel] = value }
-                        } else {
-                            repeat(count) { scanline[(x + it) * 4 + channel] = bytes[pos++] }
-                        }
-                        x += count
-                    }
-                }
+                for (channel in 0 until 4) pos = readRleChannel(bytes, pos, width, channel, scanline)
             } else {
                 System.arraycopy(bytes, pos, scanline, 0, width * 4)
                 pos += width * 4
             }
-            for (x in 0 until width) {
-                val e = scanline[x * 4 + 3].toInt() and 0xff
-                val out = (y * width + x) * 3
-                if (e == 0) continue
-                val scale = Math.scalb(1f, e - 136)
-                rgb[out] = (scanline[x * 4].toInt() and 0xff) * scale
-                rgb[out + 1] = (scanline[x * 4 + 1].toInt() and 0xff) * scale
-                rgb[out + 2] = (scanline[x * 4 + 2].toInt() and 0xff) * scale
-            }
+            unpackScanline(scanline, width, rgb, y * width * 3)
         }
         return EquirectImage(width, height, rgb)
+    }
+
+    /** Reads one run-length encoded [channel] of a scanline into [scanline]; returns the new offset. */
+    private fun readRleChannel(bytes: ByteArray, start: Int, width: Int, channel: Int, scanline: ByteArray): Int {
+        var pos = start
+        var x = 0
+        while (x < width) {
+            var count = bytes[pos++].toInt() and 0xff
+            if (count > 128) {
+                count -= 128
+                val value = bytes[pos++]
+                repeat(count) { scanline[(x + it) * 4 + channel] = value }
+            } else {
+                repeat(count) { scanline[(x + it) * 4 + channel] = bytes[pos++] }
+            }
+            x += count
+        }
+        return pos
+    }
+
+    /** Converts one RGBE [scanline] to linear RGB floats at [offset] in [rgb]. */
+    private fun unpackScanline(scanline: ByteArray, width: Int, rgb: FloatArray, offset: Int) {
+        for (x in 0 until width) {
+            val e = scanline[x * 4 + 3].toInt() and 0xff
+            if (e == 0) continue
+            val scale = Math.scalb(1f, e - 136)
+            val out = offset + x * 3
+            rgb[out] = (scanline[x * 4].toInt() and 0xff) * scale
+            rgb[out + 1] = (scanline[x * 4 + 1].toInt() and 0xff) * scale
+            rgb[out + 2] = (scanline[x * 4 + 2].toInt() and 0xff) * scale
+        }
     }
 
     /**
