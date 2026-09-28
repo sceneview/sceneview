@@ -449,7 +449,9 @@ struct RerunPixelBufferFrame: RerunCaptureFrame {
 ///   plane ARKit drops is logged with an empty polygon.
 /// - A capture stops growing at 5 minutes (``isFull``).
 ///
-/// LiDAR scene meshes are not recorded: the wire format has no mesh event.
+/// A LiDAR scan's dense cloud (`.svscan` v2) is fused by the live view off the main actor; the
+/// recorder logs how it grew (``addDepthStats(timestamp:added:kept:total:)``) and writes it in
+/// ``finish(device:dense:denseVoxelM:denseMs:)``. Scene meshes are not recorded.
 struct RerunCaptureRecorder: Sendable {
     struct Configuration: Sendable {
         var poseMinStep: Float = 0.005
@@ -726,6 +728,16 @@ struct RerunCaptureRecorder: Sendable {
         return id
     }
 
+    /// Logs how far the dense map has grown — `added` surfels created and `kept` samples merged
+    /// since the last call, `total` surfels in all — stamped at `timestamp` (the frame that learns
+    /// of it; the latest frame when `nil`), so a replay reveals the cloud as it was found
+    /// (Android's `depth_stats`). Ignored before the first frame.
+    mutating func addDepthStats(timestamp: TimeInterval? = nil, added: Int, kept: Int, total: Int) {
+        guard origin != nil else { return }
+        let t = timestamp.map { max(nanos($0), 0) } ?? max(lastNanos, nanos(lastTimestamp))
+        appendEvent(t: t, RerunCaptureJSON.depthStats(t: t, added: added, kept: kept, total: total))
+    }
+
     private mutating func appendEvent(t: Int64, _ line: String) {
         let time = max(t, events.last?.t ?? t)
         events.append((time, line))
@@ -744,7 +756,13 @@ struct RerunCaptureRecorder: Sendable {
     }
 
     /// The capture as the three payloads the replay reads. Does not change the recorder.
-    func finish() -> RerunCapturePack {
+    ///
+    /// With a `device` it is a `.svscan` v2, like Android's `RerunCaptureBuilder.build`: its
+    /// `dense` cloud, when it has a surfel, goes at the end of the media archive as
+    /// `dense/points.bin` (``RerunSVPC``) — never an empty blob; a sparse-tier v2 carries no
+    /// `dense` key. Without a `device` the output is the v1 file, byte for byte.
+    func finish(device: RerunManifest.Device? = nil, dense: RerunDenseCloud? = nil,
+                denseVoxelM: Float = RerunDenseFusion.voxelM, denseMs: Int64 = 0) -> RerunCapturePack {
         var log = ""
         log.reserveCapacity(poses.count * 128 + events.count * 256)
         var i = 0
@@ -760,12 +778,30 @@ struct RerunCaptureRecorder: Sendable {
                 j += 1
             }
         }
-        return RerunCapturePack(manifest: Data(manifestJSON().utf8), log: Data(log.utf8), media: media)
+        var media = media
+        var entries = mediaEntries
+        var denseSection: String?
+        if device != nil, let dense, dense.count > 0 {
+            let blob = RerunSVPC.encode(dense)
+            entries.append(MediaEntry(path: RerunManifest.Dense.path, offset: media.count, length: blob.count))
+            media.append(blob)
+            denseSection = RerunCaptureJSON.denseSection(dense, voxelM: denseVoxelM)
+        }
+        let manifest = manifestJSON(device: device, dense: denseSection, denseMs: denseMs, media: entries)
+        return RerunCapturePack(manifest: Data(manifest.utf8), log: Data(log.utf8), media: media)
     }
 
-    private func manifestJSON() -> String {
+    private func manifestJSON(device: RerunManifest.Device?, dense: String?, denseMs: Int64,
+                              media entries: [MediaEntry]) -> String {
         typealias J = RerunCaptureJSON
         var s = "{"
+        // A v1 manifest has no version key at all: v1 readers and v1 files stay byte-equal.
+        if let device {
+            s += "\"version\":2,\"device\":{\"platform\":\(J.string(device.platform)),\"model\":\(J.string(device.model))"
+            s += ",\"tier\":\(J.string(device.tier)),\"depthSource\":\(J.string(device.depthSource))},"
+            if let dense { s += "\"dense\":\(dense)," }
+            s += "\"built\":{\"denseMs\":\(max(denseMs, 0))},"
+        }
         if let lens = photoLens {
             s += "\"intrinsics\":{\"width\":\(lens.width),\"height\":\(lens.height)"
             s += ",\"fx\":\(J.number(lens.fx, 2)),\"fy\":\(J.number(lens.fy, 2))"
@@ -776,7 +812,7 @@ struct RerunCaptureRecorder: Sendable {
         s += "\"frameRate\":\(J.number(frameRate, 2)),\"frames\":\(mediaEntries.count)"
         if let floorY { s += ",\"floorY\":\(J.number(floorY, 3))" }
         s += ",\"textures\":[],\"media\":["
-        s += mediaEntries.map { "{\"path\":\"\($0.path)\",\"offset\":\($0.offset),\"length\":\($0.length)}" }
+        s += entries.map { "{\"path\":\"\($0.path)\",\"offset\":\($0.offset),\"length\":\($0.length)}" }
             .joined(separator: ",")
         s += "]}"
         return s
@@ -795,6 +831,38 @@ enum RerunCaptureJSON {
         let scale = pow(10, Double(decimals))
         let r = (Double(v) * scale).rounded() / scale
         return r == 0 ? "0.0" : String(r)
+    }
+
+    /// `v` in the shortest form that reads back as the same `Float` — what Kotlin's `Float` JSON
+    /// primitive writes for the same value; non-finite values become `0.0`.
+    static func float(_ v: Float) -> String { v.isFinite ? "\(v)" : "0.0" }
+
+    /// `value` as a JSON string literal.
+    static func string(_ value: String) -> String {
+        var out = "\""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case _ where scalar.value < 0x20: out += String(format: "\\u%04x", scalar.value)
+            default: out.unicodeScalars.append(scalar)
+            }
+        }
+        return out + "\""
+    }
+
+    /// The manifest's v2 `dense` object for `cloud`, keys in Android's order.
+    static func denseSection(_ cloud: RerunDenseCloud, voxelM: Float) -> String {
+        "{\"path\":\"\(RerunManifest.Dense.path)\",\"count\":\(cloud.count),\"voxelM\":\(float(voxelM))"
+            + ",\"normals\":\(cloud.normals != nil),\"bounds\":[" + cloud.bounds().map(float).joined(separator: ",") + "]}"
+    }
+
+    /// `depth_stats`: a depth keyframe fused, Android's key order (no entity).
+    static func depthStats(t: Int64, added: Int, kept: Int, total: Int) -> String {
+        "{\"t\":\(t),\"type\":\"depth_stats\",\"new\":\(added),\"kept\":\(kept),\"total\":\(total)}\n"
     }
 
     private static func header(_ t: Int64, _ type: String, _ entity: String) -> String {

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import simd
 
@@ -478,14 +479,23 @@ enum RerunPointAtlas {
     static var capacity: Int { size * size }
     static let fallback: UInt32 = 0xFFB8_C2D6
 
-    static func uv(of index: Int) -> SIMD2<Float> {
+    static func uv(of index: Int, size: Int = size) -> SIMD2<Float> {
         SIMD2((Float(index % size) + 0.5) / Float(size), (Float(index / size) + 0.5) / Float(size))
     }
 
+    /// `pixels` as a `size`-square sRGB image.
+    static func image(_ pixels: [UInt8], size: Int) -> CGImage? {
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
+        return CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: size * 4,
+                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
     /// RGBA8 bytes, row 0 first; points without colour take `fallback`.
-    static func pixels(_ colors: ArraySlice<UInt32>?, count: Int, fallback: UInt32 = fallback) -> [UInt8] {
+    static func pixels(_ colors: ArraySlice<UInt32>?, count: Int, fallback: UInt32 = fallback, size: Int = size) -> [UInt8] {
         var out = [UInt8](repeating: 0, count: size * size * 4)
-        for i in 0..<min(count, capacity) {
+        for i in 0..<min(count, size * size) {
             var c = colors.map { $0[$0.startIndex + i] } ?? 0
             if c == 0 { c = fallback }
             out[i * 4] = UInt8((c >> 16) & 0xFF)

@@ -28,12 +28,14 @@
 		B7E40000000000000000000E /* RerunRRDArrow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000E /* RerunRRDArrow.swift */; };
 		B7E40000000000000000000F /* RerunRRDProtobuf.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000000F /* RerunRRDProtobuf.swift */; };
 		B7E400000000000000000010 /* RerunCaptureRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000010 /* RerunCaptureRecorder.swift */; };
+		B7E400000000000000000051 /* RerunDenseCloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000051 /* RerunDenseCloud.swift */; };
 		B7E400000000000000000011 /* RerunLiveCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000011 /* RerunLiveCaptureView.swift */; };
 		B7E400000000000000000013 /* RerunTraceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000013 /* RerunTraceTests.swift */; };
 		B7E400000000000000000014 /* RerunPLYGLBWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000014 /* RerunPLYGLBWriterTests.swift */; };
 		B7E400000000000000000015 /* RerunUSDZWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000015 /* RerunUSDZWriterTests.swift */; };
 		B7E400000000000000000016 /* RerunRRDWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000016 /* RerunRRDWriterTests.swift */; };
 		B7E400000000000000000017 /* RerunCaptureRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */; };
+		B7E400000000000000000052 /* RerunDenseCloudTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000052 /* RerunDenseCloudTests.swift */; };
 		B7E400000000000000000018 /* shiba.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000018 /* shiba.usdz */; };
 		B7E400000000000000000019 /* shiba.glb in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000019 /* shiba.glb */; };
 		B7E40000000000000000001A /* showcase in Resources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000001A /* showcase */; };
@@ -260,12 +262,14 @@
 		B7E50000000000000000000E /* RerunRRDArrow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDArrow.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRRDArrow.swift; sourceTree = SOURCE_ROOT; };
 		B7E50000000000000000000F /* RerunRRDProtobuf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDProtobuf.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRRDProtobuf.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000010 /* RerunCaptureRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunCaptureRecorder.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunCaptureRecorder.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000051 /* RerunDenseCloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunDenseCloud.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunDenseCloud.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000011 /* RerunLiveCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunLiveCaptureView.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000013 /* RerunTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunTraceTests.swift; path = SceneViewDemoTests/RerunTraceTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000014 /* RerunPLYGLBWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunPLYGLBWriterTests.swift; path = SceneViewDemoTests/RerunPLYGLBWriterTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000015 /* RerunUSDZWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunUSDZWriterTests.swift; path = SceneViewDemoTests/RerunUSDZWriterTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000016 /* RerunRRDWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRRDWriterTests.swift; path = SceneViewDemoTests/RerunRRDWriterTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunCaptureRecorderTests.swift; path = SceneViewDemoTests/RerunCaptureRecorderTests.swift; sourceTree = SOURCE_ROOT; };
+		B7E500000000000000000052 /* RerunDenseCloudTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunDenseCloudTests.swift; path = SceneViewDemoTests/RerunDenseCloudTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000018 /* shiba.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = shiba.usdz; sourceTree = "<group>"; };
 		B7E500000000000000000019 /* shiba.glb */ = {isa = PBXFileReference; lastKnownFileType = file; name = shiba.glb; path = ../android-demo/src/main/assets/models/shiba.glb; sourceTree = SOURCE_ROOT; };
 		B7E50000000000000000001A /* showcase */ = {isa = PBXFileReference; lastKnownFileType = folder; name = showcase; path = ../android-demo/src/main/assets/rerun/showcase; sourceTree = SOURCE_ROOT; };
@@ -504,6 +508,7 @@
 				B7E50000000000000000000E /* RerunRRDArrow.swift */,
 				B7E50000000000000000000F /* RerunRRDProtobuf.swift */,
 				B7E500000000000000000010 /* RerunCaptureRecorder.swift */,
+				B7E500000000000000000051 /* RerunDenseCloud.swift */,
 				B7E500000000000000000011 /* RerunLiveCaptureView.swift */,
 				B7E500000000000000000041 /* RerunSessionStore.swift */,
 				B7E500000000000000000042 /* RerunSessionsLanding.swift */,
@@ -567,6 +572,7 @@
 				B7E500000000000000000015 /* RerunUSDZWriterTests.swift */,
 				B7E500000000000000000016 /* RerunRRDWriterTests.swift */,
 				B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */,
+				B7E500000000000000000052 /* RerunDenseCloudTests.swift */,
 				B7E500000000000000000044 /* RerunSessionStoreTests.swift */,
 				B7E500000000000000000045 /* RerunRRDReaderTests.swift */,
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
@@ -1033,6 +1039,7 @@
 				B7E40000000000000000000E /* RerunRRDArrow.swift in Sources */,
 				B7E40000000000000000000F /* RerunRRDProtobuf.swift in Sources */,
 				B7E400000000000000000010 /* RerunCaptureRecorder.swift in Sources */,
+				B7E400000000000000000051 /* RerunDenseCloud.swift in Sources */,
 				B7E400000000000000000011 /* RerunLiveCaptureView.swift in Sources */,
 				B7E400000000000000000041 /* RerunSessionStore.swift in Sources */,
 				B7E400000000000000000042 /* RerunSessionsLanding.swift in Sources */,
@@ -1174,6 +1181,7 @@
 				B7E400000000000000000015 /* RerunUSDZWriterTests.swift in Sources */,
 				B7E400000000000000000016 /* RerunRRDWriterTests.swift in Sources */,
 				B7E400000000000000000017 /* RerunCaptureRecorderTests.swift in Sources */,
+				B7E400000000000000000052 /* RerunDenseCloudTests.swift in Sources */,
 				B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */,
 				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,

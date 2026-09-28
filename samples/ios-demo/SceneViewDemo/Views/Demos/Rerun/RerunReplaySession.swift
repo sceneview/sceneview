@@ -9,6 +9,8 @@ import UIKit
 struct RerunReplayMedia: @unchecked Sendable {
     var thumbnails: [String: CGImage]
     var planeImages: [Int: CGImage]
+    /// The dense surfel map of a v2 LiDAR scan, meshed here rather than on the main actor.
+    var dense: RerunDenseReplay? = nil
 
     /// Thumbnails are ~a quarter of a 480×640 frame: 184 of them fit in ~14 MB, like Android.
     static let thumbnailMaxPixels = 160
@@ -25,7 +27,8 @@ struct RerunReplayMedia: @unchecked Sendable {
         for texture in pack.manifest.textures {
             if let data = pack.bytes(for: texture.path), let image = decodeFull(data) { planes[texture.planeId] = image }
         }
-        return RerunReplayMedia(thumbnails: thumbnails, planeImages: planes)
+        let dense = pack.dense.flatMap { RerunDenseReplay($0, voxelM: pack.denseVoxelM) }
+        return RerunReplayMedia(thumbnails: thumbnails, planeImages: planes, dense: dense)
     }
 
     static func decodeFull(_ data: Data) -> CGImage? {
@@ -42,6 +45,41 @@ struct RerunReplayMedia: @unchecked Sendable {
             kCGImageSourceShouldCacheImmediately: true,
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+}
+
+/// A dense cloud ready to draw: surfels in insertion order, cut into chunks so the replay can
+/// reveal the map as it grew (`RerunTrace.denseCountAt`) by switching whole chunks on — one
+/// RealityKit mesh per chunk, one texel of `atlas` per surfel. The reveal runs ahead of the
+/// recorded count by less than one chunk.
+struct RerunDenseReplay: @unchecked Sendable {
+    /// Surfels per chunk: ~60 chunks for the 500 000-surfel cap, each a 32 768-vertex mesh.
+    static let chunkSurfels = 8_192
+    /// Holds `RerunDenseCloud.maxPoints` texels.
+    static let atlasSize = 1_024
+
+    let count: Int
+    /// The first surfel of each chunk, ascending.
+    let starts: [Int]
+    let chunks: [RerunMesh]
+    let atlas: CGImage?
+
+    init?(_ cloud: RerunDenseCloud, voxelM: Float) {
+        count = min(cloud.count, Self.atlasSize * Self.atlasSize)
+        guard count > 0 else { return nil }
+        starts = Array(stride(from: 0, to: count, by: Self.chunkSurfels))
+        chunks = starts.map { start in
+            RerunDenseSurfels.mesh(cloud, range: start..<min(start + Self.chunkSurfels, count),
+                                   voxelM: voxelM, atlasSize: Self.atlasSize)
+        }
+        let pixels = RerunPointAtlas.pixels(cloud.colors[...], count: count, size: Self.atlasSize)
+        atlas = RerunPointAtlas.image(pixels, size: Self.atlasSize)
+    }
+
+    /// How many chunks to show when the map holds `denseCount` surfels (`-1`: the whole map).
+    func chunksShown(denseCount: Int) -> Int {
+        guard denseCount >= 0 else { return starts.count }
+        return starts.prefix { $0 < denseCount }.count
     }
 }
 

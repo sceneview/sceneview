@@ -96,7 +96,9 @@ enum RerunExportAdapter {
             keyframes: keyframes,
             images: images,
             planes: planes,
-            anchors: anchors
+            anchors: anchors,
+            dense: pack.dense,
+            denseVoxelM: pack.denseVoxelM
         )
     }
 

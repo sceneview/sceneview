@@ -85,4 +85,9 @@ struct RerunExportScene: Sendable {
     var images: [String: Data]
     var planes: [Plane]
     var anchors: [Anchor]
+    /// A `.svscan` v2's dense cloud (tier `lidar` / `depth`): surfels of `denseVoxelM` with
+    /// colours and unit normals, world space. `nil` for a v1 or sparse-tier capture — which then
+    /// exports exactly as before.
+    var dense: RerunDenseCloud? = nil
+    var denseVoxelM: Float = RerunDenseFusion.voxelM
 }

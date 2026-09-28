@@ -135,6 +135,9 @@ final class RerunTrace: @unchecked Sendable {
     private(set) var imageTimes: [Float] = []
     private(set) var imagePaths: [String] = []
 
+    private var depthTimes: [Float] = []
+    private var depthTotals: [Int] = []
+
     /// Path between two history frustums; a replay with images draws them closer.
     var keyframeSpacing: Float = RerunTrace.defaultKeyframeSpacing
 
@@ -265,6 +268,26 @@ final class RerunTrace: @unchecked Sendable {
         touch(t)
     }
 
+    /// Records a `.svscan` v2 depth keyframe fused at `nanos`: `total` surfels in the dense map.
+    func addDepthStats(_ nanos: Int64, total: Int) {
+        let t = secondsOf(nanos)
+        if let last = depthTimes.last, t < last { return } // never back in time
+        depthTimes.append(t)
+        depthTotals.append(total)
+        touch(t)
+    }
+
+    /// Whether the trace says how its dense map grew (`depth_stats`).
+    var hasDepthStats: Bool { !depthTimes.isEmpty }
+
+    /// Surfels of the dense map at `time`: `0` before the first depth frame, `-1` with no stats —
+    /// Android's `ArDebugTrace.denseCountAt`.
+    func denseCountAt(_ time: Float) -> Int {
+        guard !depthTimes.isEmpty else { return -1 }
+        let i = Self.upperBound(depthTimes, time) - 1
+        return i < 0 ? 0 : depthTotals[i]
+    }
+
     /// The whole scene as it stood at `time` (clamped to the trace).
     func frameAt(_ time: Float) -> RerunFrame {
         let t = min(max(time, 0), duration)
@@ -363,6 +386,9 @@ enum RerunEvent {
     case plane(nanos: Int64, id: Int, kind: RerunPlaneKind, polygon: [SIMD3<Float>])
     case anchor(nanos: Int64, id: Int, pose: RerunPose)
     case image(nanos: Int64, path: String)
+    /// A `.svscan` v2 depth keyframe fused: `added` surfels created, `kept` samples merged,
+    /// `total` surfels in the dense map since the start.
+    case depthStats(nanos: Int64, added: Int, kept: Int, total: Int)
 
     func apply(to trace: RerunTrace) {
         switch self {
@@ -372,6 +398,7 @@ enum RerunEvent {
         case let .plane(nanos, id, kind, polygon): trace.addPlane(nanos, id: id, kind: kind, polygon: polygon)
         case let .anchor(nanos, id, pose): trace.addAnchor(nanos, id: id, pose: pose)
         case let .image(nanos, path): trace.addImage(nanos, path: path)
+        case let .depthStats(nanos, _, _, total): trace.addDepthStats(nanos, total: total)
         }
     }
 }
@@ -429,6 +456,13 @@ enum RerunLog {
         case "image":
             guard let path = obj["path"] as? String, !path.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
             return .image(nanos: nanos, path: path)
+        case "depth_stats":
+            func count(_ key: String) -> Int? {
+                guard let n = obj[key] as? NSNumber, n.doubleValue >= 0 else { return nil }
+                return n.intValue
+            }
+            guard let total = count("total") else { return nil }
+            return .depthStats(nanos: nanos, added: count("new") ?? 0, kept: count("kept") ?? 0, total: total)
         default:
             return nil
         }
@@ -530,6 +564,41 @@ struct RerunMediaSpan: Equatable, Sendable {
 
 /// What the manifest says about a recorded session.
 struct RerunManifest: Sendable {
+    /// Who recorded a `.svscan` v2 and with what: `tier` `lidar`, `depth`, `mono` or `sparse`,
+    /// `depthSource` `arkit_lidar`, `arcore_raw_depth`, `ai_mono` or `feature_points`.
+    struct Device: Sendable, Equatable {
+        static let tierLidar = "lidar"
+        static let tierSparse = "sparse"
+        static let sourceLidar = "arkit_lidar"
+        static let sourceFeaturePoints = "feature_points"
+
+        var platform: String
+        var model: String
+        var tier: String
+        var depthSource: String
+    }
+
+    /// The dense cloud of a `.svscan` v2: the SVPC blob at `path` in the media archive
+    /// (`RerunSVPC`), `count` surfels of `voxelM`, with normals when `normals`, inside `bounds`
+    /// (`[minX, minY, minZ, maxX, maxY, maxZ]`).
+    struct Dense: Sendable, Equatable {
+        static let path = "dense/points.bin"
+
+        var path: String
+        var count: Int
+        var voxelM: Float
+        var normals: Bool
+        var bounds: [Float]
+    }
+
+    /// `1` for every scan before Rerun v2 (no `version` key), `2` from it on.
+    var version: Int = 1
+    /// Who recorded it (v2); `nil` for a v1 scan.
+    var device: Device? = nil
+    /// The dense cloud (v2 tiers `lidar`, `depth`, `mono`); `nil` when there is none.
+    var dense: Dense? = nil
+    /// Milliseconds spent building the dense cloud after Stop (`built.denseMs`), `0` when live.
+    var denseMs: Int64 = 0
     struct Intrinsics: Equatable, Sendable {
         var width: Float
         var height: Float
@@ -576,6 +645,10 @@ struct RerunManifest: Sendable {
         }
         let rate = float(root, "frameRate")
         return RerunManifest(
+            version: (root["version"] as? NSNumber)?.intValue ?? 1,
+            device: (root["device"] as? [String: Any]).map(parseDevice),
+            dense: (root["dense"] as? [String: Any]).flatMap(parseDense),
+            denseMs: ((root["built"] as? [String: Any])?["denseMs"] as? NSNumber)?.int64Value ?? 0,
             intrinsics: intrinsics,
             lens: lens,
             frameRate: rate > 0 ? rate : 10,
@@ -583,6 +656,32 @@ struct RerunManifest: Sendable {
             floorY: (root["floorY"] as? NSNumber)?.floatValue,
             textures: textures,
             media: media
+        )
+    }
+
+    /// The v2 `device` section, lenient like Android's: missing fields take their defaults.
+    private static func parseDevice(_ obj: [String: Any]) -> Device {
+        Device(
+            platform: obj["platform"] as? String ?? "",
+            model: obj["model"] as? String ?? "",
+            tier: obj["tier"] as? String ?? Device.tierSparse,
+            depthSource: obj["depthSource"] as? String ?? Device.sourceFeaturePoints
+        )
+    }
+
+    /// The v2 `dense` section; `nil` without a path or with no points — the replay then stays
+    /// sparse, as on Android.
+    private static func parseDense(_ obj: [String: Any]) -> Dense? {
+        guard let path = obj["path"] as? String,
+              let count = (obj["count"] as? NSNumber)?.intValue, count > 0 else { return nil }
+        let voxelM = (obj["voxelM"] as? NSNumber)?.floatValue ?? 0
+        let bounds = (obj["bounds"] as? [Any])?.compactMap { ($0 as? NSNumber)?.floatValue }
+        return Dense(
+            path: path,
+            count: count,
+            voxelM: voxelM > 0 ? voxelM : RerunDenseFusion.voxelM,
+            normals: (obj["normals"] as? Bool) == true,
+            bounds: bounds?.count == 6 ? bounds! : [Float](repeating: 0, count: 6)
         )
     }
 }
@@ -603,18 +702,32 @@ struct RerunPack: Sendable {
     var media: Data
     /// `true` for the session bundled with the app.
     var isShowcase: Bool
+    var dense: RerunDenseCloud? = nil
 
     /// Photo `path`'s bytes, `nil` when the manifest does not index it.
     func bytes(for path: String) -> Data? {
-        guard let span = manifest.media[path], span.offset + span.length <= media.count else { return nil }
+        guard let span = manifest.media[path], span.offset <= media.count, span.length <= media.count - span.offset else { return nil }
         let start = media.startIndex + span.offset
         return media.subdata(in: start..<(start + span.length))
     }
 
+    /// The v2 dense cloud the manifest declares, `nil` for a v1 or sparse scan — and for a blob
+    /// this reader does not know, so the replay stays sparse, as on Android.
+    func denseCloud() -> RerunDenseCloud? {
+        guard let descriptor = manifest.dense, let data = bytes(for: descriptor.path),
+              let cloud = RerunSVPC.decode(data), cloud.count > 0 else { return nil }
+        return cloud
+    }
+
+    /// The dense surfel size the manifest declares; Android's 2 cm when it declares none.
+    var denseVoxelM: Float { manifest.dense?.voxelM ?? RerunDenseFusion.voxelM }
+
     static func load(manifest: Data, log: Data, media: Data, title: String, isShowcase: Bool = false) throws -> RerunPack {
         guard let parsed = RerunManifest.parse(manifest) else { throw LoadError.unreadableManifest }
         let trace = RerunTrace.of(RerunLog.parse(log), keyframeSpacing: replayKeyframeSpacing)
-        return RerunPack(title: title, manifest: parsed, trace: trace, media: media, isShowcase: isShowcase)
+        var pack = RerunPack(title: title, manifest: parsed, trace: trace, media: media, isShowcase: isShowcase)
+        pack.dense = pack.denseCloud()
+        return pack
     }
 
     /// The session bundled with the app — the very files Android ships (`rerun/showcase/`).

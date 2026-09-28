@@ -120,6 +120,8 @@ final class RerunStageRenderer {
     private var layers: [RerunLayer: ModelEntity] = [:]
     private var planePhotos: [Int: ModelEntity] = [:]
     private var points: ModelEntity?
+    /// A v2 LiDAR scan's surfel map, chunk by chunk; it takes the sparse points' place.
+    private var denseChunks: [ModelEntity] = []
     private var shadow: ModelEntity?
     private var photoSlots: [PhotoSlot] = []
     private var frameTextures: [String: TextureResource] = [:]
@@ -272,6 +274,7 @@ final class RerunStageRenderer {
 
         syncPlanePhotos(frame, floorY: floorY, shown: session.isVisible(.planes), session: session)
         syncPoints(frame, style: pointStyle, shown: session.isVisible(.points))
+        syncDense(frame, shown: session.isVisible(.points), session: session)
         syncAnchors(frame, shown: session.isVisible(.anchors))
         syncPhotos(frame, lens: lens, shown: session.isVisible(.trail), session: session)
     }
@@ -321,6 +324,24 @@ final class RerunStageRenderer {
             upload(mesh, to: points)
         }
         points.isEnabled = hasMesh(points)
+    }
+
+    /// Chunks meshed per frame: the map's first reveal is spread over a few frames instead of
+    /// stalling one.
+    private static let denseUploadsPerFrame = 4
+
+    /// Shows the dense chunks the map had reached at `frame.time`, meshing each on first show.
+    private func syncDense(_ frame: RerunFrame, shown: Bool, session: RerunReplaySession) {
+        guard let dense = session.media.dense, !denseChunks.isEmpty else { return }
+        let visible = shown ? dense.chunksShown(denseCount: session.pack.trace.denseCountAt(frame.time)) : 0
+        var uploads = 0
+        for (i, entity) in denseChunks.enumerated() {
+            if i < visible, !hasMesh(entity), uploads < Self.denseUploadsPerFrame {
+                upload(dense.chunks[i], to: entity)
+                uploads += 1
+            }
+            entity.isEnabled = i < visible && hasMesh(entity)
+        }
     }
 
     private func syncAnchors(_ frame: RerunFrame, shown: Bool) {
@@ -414,7 +435,14 @@ final class RerunStageRenderer {
             guard let texture = Self.texture(image) else { continue }
             planePhotos[id] = makeEntity(Self.photoMaterial(texture), order: Order.planePhoto)
         }
-        if let atlas = Self.atlasTexture(session.whole) {
+        if let dense = session.media.dense {
+            if let atlas = dense.atlas.flatMap(Self.atlasTexture) {
+                var material = UnlitMaterial(applyPostProcessToneMap: false)
+                material.color = .init(tint: .white, texture: .init(atlas, sampler: Self.nearest))
+                material.faceCulling = .none
+                denseChunks = dense.chunks.map { _ in makeEntity(material, order: Order.points) }
+            }
+        } else if let atlas = Self.atlasTexture(session.whole) {
             var material = UnlitMaterial(applyPostProcessToneMap: false)
             material.color = .init(tint: .white, texture: .init(atlas, sampler: Self.nearest))
             material.faceCulling = .none
@@ -564,15 +592,12 @@ final class RerunStageRenderer {
 
     /// One texel per map point, read nearest so each point keeps its own colour.
     static func atlasTexture(_ whole: RerunFrame) -> TextureResource? {
-        let size = RerunPointAtlas.size
         let pixels = RerunPointAtlas.pixels(whole.mapPointColors, count: whole.mapPointCount)
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
-              let image = CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: size * 4,
-                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
-        else { return nil }
-        return try? TextureResource(image: image, withName: nil, options: .init(semantic: .color, mipmapsMode: .none))
+        return RerunPointAtlas.image(pixels, size: RerunPointAtlas.size).flatMap(atlasTexture)
+    }
+
+    static func atlasTexture(_ image: CGImage) -> TextureResource? {
+        try? TextureResource(image: image, withName: nil, options: .init(semantic: .color, mipmapsMode: .none))
     }
 
     /// A soft black disc fading to nothing: a contact shadow without a shadow pass.

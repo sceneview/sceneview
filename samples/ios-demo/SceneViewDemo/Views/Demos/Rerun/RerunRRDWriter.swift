@@ -148,6 +148,19 @@ enum RerunRRDWriter {
             chunks.append(RerunChunk(entityPath: "/world/points", components: components))
         }
 
+        // A `.svscan` v2's dense cloud, one static row: the room's surfaces where `world/points`
+        // has its landmarks. A surfel the camera never coloured is written white.
+        if let dense = scene.dense, dense.count > 0 {
+            chunks.append(RerunChunk(entityPath: "/world/dense", components: [
+                .vectors("Points3D", "positions", "Position3D", [flatten(dense.positions)], size: 3),
+                .floats("Points3D", "radii", "Radius", [[scene.denseVoxelM / 2]]),
+                .colors("Points3D", [dense.colors.map { c in
+                    let rgb = c == 0 ? 0xFF_FFFF : c
+                    return packedColor(SIMD3(UInt8((rgb >> 16) & 0xFF), UInt8((rgb >> 8) & 0xFF), UInt8(rgb & 0xFF)))
+                }]),
+            ]))
+        }
+
         chunks.append(contentsOf: cameraChunks(for: scene))
 
         for plane in scene.planes where plane.polygon.count >= 2 {

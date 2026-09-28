@@ -9,6 +9,8 @@ import simd
 /// One scene, one `world` root node whose children carry the wire format's entity names:
 /// - `world/points` — the point cloud, mode `POINTS`, `COLOR_0` as linear float RGB (glTF's
 ///   colour space; the capture's sRGB bytes are converted);
+/// - `world/dense` — a `.svscan` v2's dense cloud, mode `POINTS`, `COLOR_0` as normalised
+///   `UNSIGNED_BYTE` RGBA and unit `NORMAL`s;
 /// - `world/camera/path` — the camera's positions as a `LINE_STRIP`;
 /// - `world/camera/keyframes` — one small frustum (`LINES`) per recorded photo, the photo
 ///   paths and times in the node's `extras`;
@@ -69,6 +71,7 @@ enum RerunGLBWriter {
         if let node = gltf.addPoints(scene.points, colors: scene.pointColors) {
             world.append(node)
         }
+        if let dense = scene.dense, dense.count > 0, let node = gltf.addDense(dense) { world.append(node) }
         if let node = gltf.addCameraPath(scene.cameraPath) { world.append(node) }
         if let node = gltf.addKeyframes(scene.keyframes, lens: scene.lens) { world.append(node) }
         for plane in scene.planes {
@@ -301,6 +304,45 @@ private struct GLTFBuilder {
             "attributes": ["POSITION": position, "COLOR_0": color], "mode": 0, "material": material,
         ])
         return addNode(["name": "world/points", "mesh": mesh])
+    }
+
+    /// A `.svscan` v2's dense cloud as `world/dense`: mode `POINTS`, `POSITION`, `COLOR_0` as
+    /// normalised `UNSIGNED_BYTE` `VEC4` (linear, as glTF defines vertex colours) and unit
+    /// `NORMAL`s — the layout MeshLab, Open3D and three.js read straight into a coloured cloud.
+    mutating func addDense(_ cloud: RerunDenseCloud) -> Int? {
+        let kept = (0..<cloud.count).filter { cloud.positions[$0].allFinite }
+        guard !kept.isEmpty else { return nil }
+        var positions: [SIMD3<Float>] = []
+        var normals: [SIMD3<Float>] = []
+        var colors = Data(capacity: kept.count * 4)
+        positions.reserveCapacity(kept.count)
+        normals.reserveCapacity(kept.count)
+        for i in kept {
+            positions.append(cloud.positions[i])
+            let c = cloud.colors[i] == 0 ? 0xFFFF_FFFF : cloud.colors[i]
+            for shift: UInt32 in [16, 8, 0] {
+                let linear = sRGBToLinear[Int((c >> shift) & 0xFF)]
+                colors.append(UInt8(min(max(Int(linear * 255 + 0.5), 0), 255)))
+            }
+            colors.append(255)
+            // A missing or degenerate normal becomes +Y.
+            let n = cloud.normals?[i] ?? SIMD3<Float>(0, 1, 0)
+            let length = simd_length(n)
+            normals.append(length > 1e-6 && length.isFinite ? n / length : SIMD3(0, 1, 0))
+        }
+        let position = addVec3(positions, bounds: true)
+        let colorView = addBufferView(colors, template: ["target": arrayBufferTarget])
+        accessors.append([
+            "bufferView": colorView, "componentType": 5121, "normalized": true,
+            "count": kept.count, "type": "VEC4",
+        ])
+        let color = accessors.count - 1
+        let normal = addVec3(normals, bounds: false)
+        let material = unlitMaterial("points", color: SIMD4(1, 1, 1, 1))
+        let mesh = addMesh("world/dense", [
+            "attributes": ["POSITION": position, "NORMAL": normal, "COLOR_0": color], "mode": 0, "material": material,
+        ])
+        return addNode(["name": "world/dense", "mesh": mesh])
     }
 
     mutating func addCameraPath(_ path: [RerunExportScene.CameraSample]) -> Int? {

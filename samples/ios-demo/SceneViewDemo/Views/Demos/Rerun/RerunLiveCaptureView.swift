@@ -45,7 +45,10 @@ struct RerunLiveCaptureView: View {
         ZStack {
             if isOnScreen {
                 ARSceneView(
-                    planeDetection: .both,
+                    configuration: ARSessionConfiguration(
+                        planeDetection: .both,
+                        frameSemantics: model.supportsLiDAR ? [.sceneDepth] : []
+                    ),
                     // The recorder's planes are drawn instead (`RerunLiveOverlay`): the same
                     // polygons that go into the file, and bold enough to film.
                     showPlaneOverlay: false,
@@ -110,6 +113,25 @@ final class RerunLiveCaptureModel {
     /// One line of guidance above the controls, `nil` for none.
     private(set) var hint: String? = RerunLiveCaptureModel.idleHint
 
+    /// A LiDAR iPhone or iPad: its scene depth is fused into a dense 2 cm surfel map while
+    /// recording (`.svscan` v2, tier `lidar`), like Android's raw-depth scan.
+    let supportsLiDAR = ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+    /// Surfels in the dense map, refreshed with `stats`.
+    private(set) var denseCount = 0
+    var denseIsFull: Bool { denseCount >= RerunDenseCloud.maxPoints }
+    // The dense map: one fusion at a time off the main actor; a depth frame that arrives while it
+    // runs is skipped. Depth is sampled at most every `depthInterval` (Android's 10 Hz).
+    @ObservationIgnored private var depthWorker: RerunDepthWorker?
+    @ObservationIgnored private var depthTask: Task<Void, Never>?
+    @ObservationIgnored private var lastDepthTime: TimeInterval = -.infinity
+    @ObservationIgnored private var denseAdded = 0
+    @ObservationIgnored private var denseKept = 0
+    @ObservationIgnored private var denseTotal = 0
+    @ObservationIgnored private var recordedTotal = 0
+    @ObservationIgnored private var captureID = UUID()
+
+    private static let depthInterval: TimeInterval = 0.1
+
     static let idleHint = "Tap Record, then walk slowly around the room. Tap a surface to place a Shiba."
 
     @ObservationIgnored private var recorder: RerunCaptureRecorder?
@@ -136,16 +158,50 @@ final class RerunLiveCaptureModel {
         cameraPosition = RerunCaptureMath.translation(of: frame.camera.transform)
         guard phase == .recording, recorder != nil else { return }
         recorder?.add(RerunPixelBufferFrame(frame))
+        recordDepthStats(timestamp: frame.timestamp)
+        fuseDepthIfDue(frame)
         guard let recorder else { return }
         if frame.timestamp - lastStatsRefresh >= Self.statsInterval || recorder.isFull {
             lastStatsRefresh = frame.timestamp
             stats = recorder.stats
+            denseCount = denseTotal
             overlay.attach(to: arView)
             overlay.update(path: recorder.pathPositions, points: recorder.voxelPoints, planes: recorder.currentPlanes)
             hint = recorder.stats.isPhotoLimitReached
                 ? "Photo limit reached. The path and points keep recording."
                 : nil
         }
+    }
+
+    /// Copies `frame`'s LiDAR depth — due, confident, and no fusion running — and fuses it into
+    /// the dense map off the main actor. The copy happens here, so no ARKit buffer outlives the
+    /// frame.
+    private func fuseDepthIfDue(_ frame: ARFrame) {
+        guard supportsLiDAR, depthTask == nil, let worker = depthWorker, recorder?.isFull == false,
+              denseTotal < RerunDenseCloud.maxPoints,
+              frame.timestamp - lastDepthTime >= Self.depthInterval,
+              case .normal = frame.camera.trackingState else { return }
+        lastDepthTime = frame.timestamp
+        guard let depth = RerunDepthFrame(frame) else { return }
+        let id = captureID
+        depthTask = Task { [weak self] in
+            let stats = await worker.add(depth)
+            guard let self, self.captureID == id else { return }
+            self.denseAdded += stats.added
+            self.denseKept += stats.kept
+            self.denseTotal = stats.total
+            self.depthTask = nil
+        }
+    }
+
+    /// Logs how far the dense map has grown since the last call, when it has, stamped at
+    /// `timestamp` — the frame that learns of it — or the latest frame.
+    private func recordDepthStats(timestamp: TimeInterval? = nil) {
+        guard denseTotal != recordedTotal else { return }
+        recorder?.addDepthStats(timestamp: timestamp, added: denseAdded, kept: denseKept, total: denseTotal)
+        recordedTotal = denseTotal
+        denseAdded = 0
+        denseKept = 0
     }
 
     /// Record when idle, stop and hand the pack over when recording.
@@ -163,6 +219,15 @@ final class RerunLiveCaptureModel {
         placed.removeAll()
         overlay.clear()
         recorder = RerunCaptureRecorder()
+        captureID = UUID()
+        depthWorker = supportsLiDAR ? RerunDepthWorker() : nil
+        depthTask = nil
+        lastDepthTime = -.infinity
+        denseCount = 0
+        denseAdded = 0
+        denseKept = 0
+        denseTotal = 0
+        recordedTotal = 0
         stats = RerunCaptureRecorder.Stats()
         lastStatsRefresh = -.infinity
         hint = nil
@@ -171,15 +236,39 @@ final class RerunLiveCaptureModel {
     }
 
     private func stop(onFinish: @escaping (RerunCapturePack) -> Void) {
-        guard let snapshot = recorder else { return }
-        recorder = nil
-        stats = snapshot.stats
+        guard recorder != nil else { return }
         phase = .saving
         SceneViewHaptic.shared.medium()
+        let pendingDepth = depthTask
+        let worker = depthWorker
+        let id = captureID
         saveTask = Task { [weak self] in
-            let pack = await Task.detached(priority: .userInitiated) { snapshot.finish() }.value
-            guard let self, !Task.isCancelled else { return }
+            // The fusion under way finishes first, and its last growth goes on the timeline.
+            await pendingDepth?.value
+            guard let self, self.captureID == id, self.recorder != nil else { return }
+            self.recordDepthStats()
+            guard let snapshot = self.recorder else { return }
+            self.recorder = nil
+            self.stats = snapshot.stats
+            let started = Date()
+            let dense = await worker?.cloud()
+            let denseMs = Int64(Date().timeIntervalSince(started) * 1000)
+            // The tier the scan really reached: LiDAR on but no surfel is a sparse scan, said so.
+            let hasDense = (dense?.count ?? 0) > 0
+            let device = RerunManifest.Device(
+                platform: "ios",
+                model: Self.hardwareModel,
+                tier: hasDense ? RerunManifest.Device.tierLidar : RerunManifest.Device.tierSparse,
+                depthSource: hasDense ? RerunManifest.Device.sourceLidar : RerunManifest.Device.sourceFeaturePoints
+            )
+            let pack = await Task.detached(priority: .userInitiated) {
+                snapshot.finish(device: device, dense: dense, denseVoxelM: RerunDenseFusion.voxelM, denseMs: denseMs)
+            }.value
+            guard !Task.isCancelled else { return }
             self.phase = .idle
+            self.denseCount = dense?.count ?? 0
+            self.depthWorker = nil
+            self.depthTask = nil
             if snapshot.hasContent {
                 self.hint = Self.idleHint
                 onFinish(pack)
@@ -196,9 +285,22 @@ final class RerunLiveCaptureModel {
         overlay.detach()
         guard phase == .recording else { return }
         recorder = nil
+        captureID = UUID()
+        depthTask?.cancel()
+        depthTask = nil
+        depthWorker = nil
+        denseCount = 0
         phase = .idle
         stats = RerunCaptureRecorder.Stats()
         hint = Self.idleHint
+    }
+
+    private static var hardwareModel: String {
+        var info = utsname()
+        uname(&info)
+        return withUnsafeBytes(of: &info.machine) { bytes in
+            String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
+        }
     }
 
     /// Places a Shiba at `position`, turned to face the camera, and logs it as an anchor
@@ -335,6 +437,72 @@ extension RerunPixelBufferFrame {
     }
 }
 
+extension RerunDepthFrame {
+    /// `frame`'s LiDAR scene depth copied out of ARKit, each kept pixel coloured from the camera
+    /// image (which the depth map is aligned with), the lens scaled from the camera image to the
+    /// depth map. `nil` without scene depth or its confidence map — unfiltered depth is too noisy
+    /// to keep, as on Android. Main actor: the buffers are read while the frame is current.
+    @MainActor init?(_ frame: ARFrame) {
+        guard let scene = frame.sceneDepth, let confidenceMap = scene.confidenceMap else { return nil }
+        let depthMap = scene.depthMap
+        let w = CVPixelBufferGetWidth(depthMap), h = CVPixelBufferGetHeight(depthMap)
+        guard w > 1, h > 1,
+              CVPixelBufferGetPixelFormatType(depthMap) == kCVPixelFormatType_DepthFloat32,
+              CVPixelBufferGetPixelFormatType(confidenceMap) == kCVPixelFormatType_OneComponent8,
+              CVPixelBufferGetWidth(confidenceMap) == w, CVPixelBufferGetHeight(confidenceMap) == h
+        else { return nil }
+        var depthM = [Float](repeating: 0, count: w * h)
+        var confidence = [UInt8](repeating: 0, count: w * h)
+        guard CVPixelBufferLockBaseAddress(depthMap, .readOnly) == kCVReturnSuccess else { return nil }
+        defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
+        guard CVPixelBufferLockBaseAddress(confidenceMap, .readOnly) == kCVReturnSuccess else { return nil }
+        defer { CVPixelBufferUnlockBaseAddress(confidenceMap, .readOnly) }
+        guard let depthBase = CVPixelBufferGetBaseAddress(depthMap),
+              let confidenceBase = CVPixelBufferGetBaseAddress(confidenceMap) else { return nil }
+        let depthRow = CVPixelBufferGetBytesPerRow(depthMap)
+        let confidenceRow = CVPixelBufferGetBytesPerRow(confidenceMap)
+        for y in 0..<h {
+            let d = depthBase.advanced(by: y * depthRow).assumingMemoryBound(to: Float32.self)
+            let c = confidenceBase.advanced(by: y * confidenceRow).assumingMemoryBound(to: UInt8.self)
+            for x in 0..<w {
+                depthM[y * w + x] = d[x]
+                // ARKit's low / medium / high on Android's 0–255 scale: medium and high pass.
+                confidence[y * w + x] = RerunDepthBackProjection.confidence(arkitLevel: c[x])
+            }
+        }
+        // Colour only the pixels the back-projection can keep: the others cost a read for nothing.
+        var colors = [UInt32](repeating: 0, count: w * h)
+        _ = RerunYCbCrImage.withPlanes(of: frame.capturedImage) { image in
+            let sx = Float(image.width) / Float(w), sy = Float(image.height) / Float(h)
+            for i in 0..<(w * h) {
+                let d = depthM[i]
+                guard d > 0, d.isFinite, Int(confidence[i]) >= RerunDepthBackProjection.minConfidence else { continue }
+                let rgb = image.color(x: Int(Float(i % w) * sx + sx * 0.5), y: Int(Float(i / w) * sy + sy * 0.5))
+                colors[i] = 0xFF00_0000 | UInt32(rgb.x) << 16 | UInt32(rgb.y) << 8 | UInt32(rgb.z)
+            }
+        }
+        let camera = frame.camera
+        let k = camera.intrinsics
+        let kx = Float(w) / Float(camera.imageResolution.width)
+        let ky = Float(h) / Float(camera.imageResolution.height)
+        self.init(width: w, height: h, depthM: depthM, confidence: confidence, colors: colors,
+                  fx: k.columns.0.x * kx, fy: k.columns.1.y * ky, cx: k.columns.2.x * kx, cy: k.columns.2.y * ky,
+                  cameraToWorld: camera.transform)
+    }
+}
+
+/// Owns the dense map: back-projection and fusion run here, off the main actor, one frame at a
+/// time.
+private actor RerunDepthWorker {
+    private let fusion = RerunDenseFusion()
+
+    func add(_ frame: RerunDepthFrame) -> RerunDenseFuseStats {
+        fusion.add(RerunDepthBackProjection.project(frame))
+    }
+
+    func cloud() -> RerunDenseCloud? { fusion.count > 0 ? fusion.cloud() : nil }
+}
+
 extension RerunCapturePlane {
     init(_ anchor: ARPlaneAnchor) {
         var isCeiling = false
@@ -413,11 +581,17 @@ private struct CaptureReadout: View {
         let stats = model.stats
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
             status
+            Text(model.supportsLiDAR
+                 ? (model.denseIsFull ? "LiDAR · Dense point limit reached" : "LiDAR · Depth scan")
+                 : "No LiDAR · Sparse scan")
+                .font(CaptureTokens.figureLabel)
+                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
             Grid(alignment: .leading, horizontalSpacing: SceneViewTokens.Space.md, verticalSpacing: SceneViewTokens.Space.sm) {
                 GridRow {
                     Figure(value: String(format: "%.1f m", stats.pathLength), label: "Path walked",
                            swatch: Palette.color(Palette.trailNew))
-                    Figure(value: stats.points.formatted(), label: "Points",
+                    Figure(value: (model.supportsLiDAR ? model.denseCount : stats.points).formatted(),
+                           label: model.supportsLiDAR ? "Dense points" : "Points",
                            swatch: Palette.color(Palette.livePoint))
                 }
                 GridRow {
