@@ -1363,10 +1363,9 @@ private class AnswerCardLayoutState {
         val requests = ArrayList<CardRequest>(panels.size)
         val anchored = HashMap<Int, Anchored>()
         // Newest first: the layout never moves its first card away from its anchor.
-        for (panel in panels.asReversed()) {
-            val anchor = panel.anchor
-            if (anchor.trackingState != TrackingState.TRACKING) continue
-            val center = anchor.pose.transformPoint(lift)
+        val tracked = panels.asReversed().filter { it.anchor.trackingState == TrackingState.TRACKING }
+        for (panel in tracked) {
+            val center = panel.anchor.pose.transformPoint(lift)
             val dx = center[0] - eye.tx()
             val dy = center[1] - eye.ty()
             val dz = center[2] - eye.tz()
@@ -1376,16 +1375,18 @@ private class AnswerCardLayoutState {
                 // What it describes is off screen: leave the card where it was pinned rather
                 // than pull it into view with nothing under it.
                 slots[panel.id] = Slot(center[0], center[1], center[2], scale, visible = true)
-                continue
+            } else {
+                requests += CardRequest(
+                    id = panel.id,
+                    centerX = onScreen.x,
+                    centerY = onScreen.y,
+                    width = cardWidthPx / VIEW_NODE_PX_PER_METER * scale *
+                        screen.pixelsPerMeterX(onScreen.depth),
+                    height = cardHeightPx / VIEW_NODE_PX_PER_METER * scale *
+                        screen.pixelsPerMeterY(onScreen.depth),
+                )
+                anchored[panel.id] = Anchored(center, onScreen, scale)
             }
-            requests += CardRequest(
-                id = panel.id,
-                centerX = onScreen.x,
-                centerY = onScreen.y,
-                width = cardWidthPx / VIEW_NODE_PX_PER_METER * scale * screen.pixelsPerMeterX(onScreen.depth),
-                height = cardHeightPx / VIEW_NODE_PX_PER_METER * scale * screen.pixelsPerMeterY(onScreen.depth),
-            )
-            anchored[panel.id] = Anchored(center, onScreen, scale)
         }
 
         val safe = SafeArea(insetLeft, insetTop, width - insetRight, height - insetBottom)
