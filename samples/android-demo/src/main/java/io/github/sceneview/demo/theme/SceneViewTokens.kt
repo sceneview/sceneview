@@ -325,6 +325,8 @@ object SceneViewTokens {
     object Home {
         val headerHeight = 56.dp
         val markSize = 24.dp
+        /** Gap between the header's leading glyph (mark or back arrow) and its title. */
+        val markGap = 10.dp
         val searchFieldHeight = 48.dp
         val contentPadding = 20.dp
         val gridGutter = 12.dp
@@ -357,9 +359,6 @@ object SceneViewTokens {
         val cardTextPaddingBottom = 14.dp
         val cardOutlineWidth = 1.dp
         val iconTileGlyph = 40.dp
-        /** Globe badge on the "Browse online models" collage — `hero-pill` colours. */
-        val browseBadgeSize = 32.dp
-        val browseBadgeGlyph = 18.dp
         /** Width from which the hero grows and the grid uses [gridMinCellExpanded]. */
         const val expandedWidthDp = 600
         const val heroScrimStart = 0.5f

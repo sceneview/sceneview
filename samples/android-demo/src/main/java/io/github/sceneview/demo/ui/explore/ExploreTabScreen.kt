@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -371,32 +371,39 @@ private fun ExploreBody(
             .fillMaxSize()
             .verticalScroll(scroll)
             .padding(
-                start = SceneViewTokens.Layout.containerPaddingMobile,
-                end = SceneViewTokens.Layout.containerPaddingMobile,
-                top = SceneViewTokens.Space.sm,
+                start = SceneViewTokens.Home.contentPadding,
+                end = SceneViewTokens.Home.contentPadding,
                 bottom = LIST_BOTTOM_GUTTER,
             ),
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg),
     ) {
-        // Same header as every other top-level surface: back glyph + `type-title`,
-        // `Home.headerHeight` tall. The icon button's 12 dp inner inset is pulled
-        // back so the glyph lines up with the content edge below it.
+        // Home's header, glyph for glyph: `Home.headerHeight` tall from the top of
+        // the page, `Home.contentPadding` in, the back glyph in the slot Home gives
+        // its mark and the same gap before `type-title` — switching between the two
+        // screens leaves the title where it was. The 48 dp touch target overflows
+        // the 24 dp slot evenly, so the glyph sits on the content edge.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(SceneViewTokens.Home.headerHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.offset(x = -(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)),
+            Box(
+                modifier = Modifier.size(SceneViewTokens.Home.markSize),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.cd_back_button),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.requiredSize(SceneViewTokens.Layout.touchTarget),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.cd_back_button),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
+            Spacer(Modifier.width(SceneViewTokens.Home.markGap))
             Text(
                 text = stringResource(R.string.home_browse_title),
                 style = SceneViewTokens.Type.title,
