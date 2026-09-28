@@ -94,6 +94,8 @@ for theme in light dark; do
       echo "::warning::screencap failed for $theme/$id"
       rm -f "$OUT/$theme/$id.png"
     fi
+    mkdir -p "$OUT/logcat"
+    adbt logcat -d 2>/dev/null | grep -iE 'filament|egl|gles|sceneview|AndroidRuntime|OpenGL|vulkan' | tail -300 > "$OUT/logcat/$theme-$id.txt" || true
     crash="$(adbt logcat -d 2>/dev/null | grep -E 'FATAL EXCEPTION|ANR in '"$PKG" | head -3 || true)"
     if [ -n "$crash" ]; then
       echo "::warning::crash/ANR logged during $theme/$id"
