@@ -44,9 +44,7 @@ internal fun isClosedSession(session: Session): Boolean = (session as? ARSession
  */
 internal inline fun <T> readUnlessClosed(isClosed: Boolean, whenClosed: T, read: () -> T): T {
     if (isClosed) return whenClosed
-    return try {
-        read()
-    } catch (e: RuntimeException) {
-        whenClosed
+    return runCatching(read).getOrElse { failure ->
+        if (failure is RuntimeException) whenClosed else throw failure
     }
 }
