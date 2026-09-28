@@ -411,7 +411,7 @@ jobs:
       ${{ github.event_name != 'pull_request' && !cancelled()
       && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     continue-on-error: true
 
     steps:
@@ -503,7 +503,7 @@ jobs:
             # reading the leg. It relaxes NO pixel comparison: a frame that does
             # render is still held to its golden, so the day this job gets a
             # hardware-GPU runner it starts gating for real with no edit here.
-            ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest -Pandroid.testInstrumentationRunnerArguments.softwareRenderer=true --stacktrace || true
+            ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest -Pandroid.testInstrumentationRunnerArguments.softwareRenderer=true -Pandroid.testInstrumentationRunnerArguments.goldenSet=render-goldens-swangle --stacktrace || true
 
             # One last pull for anything written after the loop's final pass,
             # then stop the harvesters. The `[a]db` bracket matters: `pkill -f
@@ -530,7 +530,8 @@ jobs:
             --results-dir samples/android-demo/build/outputs \
             --source samples/android-demo/src/androidTest/java/io/github/sceneview/demo/render/DemoRenderingScreenshotTest.kt \
             --title "Unified-demo render goldens" \
-            --captures-dir render-goldens-output
+            --captures-dir render-goldens-output \
+            --strict
 
       - name: Upload render-golden captures
         if: always()

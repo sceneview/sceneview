@@ -3,6 +3,7 @@ package io.github.sceneview.demo.render
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -69,6 +70,22 @@ class DemoRenderingScreenshotTest {
      */
     private val softwareRenderer: Boolean
         get() = InstrumentationRegistry.getArguments().getString("softwareRenderer") == "true"
+
+    /**
+     * Which golden set to compare against: `render-goldens` (default, recorded on the
+     * `Pixel_7a` AVD with a hardware GPU) or `render-goldens-swangle` (recorded on the CI
+     * emulator profile, `-gpu swangle_indirect`, #3554). Set with
+     * `-Pandroid.testInstrumentationRunnerArguments.goldenSet=<dir>`. The two rasterisers
+     * do not agree pixel for pixel, so each profile is held to its own baselines.
+     */
+    private val goldenDir: String
+        get() {
+            val requested = InstrumentationRegistry.getArguments().getString("goldenSet") ?: DEFAULT_GOLDEN_DIR
+            require(requested in BASELINED_BY_SET) {
+                "Unknown goldenSet '$requested': expected one of ${BASELINED_BY_SET.keys}."
+            }
+            return requested
+        }
 
     @Before
     fun setUp() {
@@ -376,6 +393,7 @@ class DemoRenderingScreenshotTest {
         // launches get a fresh demo activity (the slug + qa_mode flag take effect via
         // onNewIntent). `am force-stop` is rejected from instrumentation context with
         // "Calling from not trusted UID!" so we don't use it.
+        val launchedAt = System.currentTimeMillis()
         device.executeShellCommand(
             "am start -n io.github.sceneview.demo/.MainActivity " +
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK
@@ -418,32 +436,34 @@ class DemoRenderingScreenshotTest {
         val captured = File(targetContext.cacheDir, "render-capture-$goldenName.png")
         var capturedBitmap: Bitmap? = null
         var settled = false
-        val pollDeadline = System.currentTimeMillis() + MAX_SETTLE_MS
+        // A software rasteriser needs far longer for Filament's first frame than a phone GPU
+        // (#3554): keep polling through the stall card instead of giving up on it.
+        val settleBudgetMs = if (softwareRenderer) SOFTWARE_MAX_SETTLE_MS else MAX_SETTLE_MS
+        val pollDeadline = System.currentTimeMillis() + settleBudgetMs
         while (System.currentTimeMillis() < pollDeadline) {
             val ok = device.takeScreenshot(captured)
             if (!ok) { Thread.sleep(POLL_INTERVAL_MS); continue }
             val bmp = BitmapFactory.decodeFile(captured.absolutePath) ?: continue
             capturedBitmap = bmp // keep latest so a timeout still has something to report on
-            if (hasRenderedContent(bmp)) {
+            // The stall card is opaque, non-flat content: without the second test the probe
+            // reads "Still loading…" as a settled scene.
+            if (hasRenderedContent(bmp) && !device.hasObject(By.textContains(STALL_CARD_TEXT))) {
                 settled = true
                 break
             }
             Thread.sleep(POLL_INTERVAL_MS)
         }
+        // Grep-able in the harvested logcat: the numbers the first-frame budget is set from.
+        Log.i(
+            LOG_TAG,
+            "first-frame slug=$demoSlug settled=$settled elapsedMs=${System.currentTimeMillis() - launchedAt} " +
+                "budgetMs=$settleBudgetMs",
+        )
         val rawCapture = capturedBitmap
             ?: throw AssertionError("UiAutomator screenshot capture failed entirely for $goldenName")
         // Timing out used to fall through and capture "whatever's on screen" — which is how
         // an unrendered black viewport becomes a committed golden. The scene either rendered
         // within the settle budget or this run has nothing worth comparing (#2323).
-        if (!settled) {
-            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_never_settled")
-            throw AssertionError(
-                "Demo '$demoSlug' never rendered anything: its SceneView band stayed flat for " +
-                    "${settleSeconds}s + ${MAX_SETTLE_MS}ms of polling. Either the demo is broken " +
-                    "or the device is too slow for this budget — capture saved to $savedTo. " +
-                    "Refusing to capture or compare an empty viewport.",
-            )
-        }
         // The demo tells us itself when the renderer produced nothing: `DemoScaffold`
         // draws a "Still loading… / The scene has not rendered a frame yet." card over
         // the viewport. That card is opaque, non-flat content, so `hasRenderedContent`
@@ -459,7 +479,7 @@ class DemoRenderingScreenshotTest {
         // flag the library's render tests use (#803, #912). Skipped-with-a-reason is the
         // honest verdict there; a permanent red that means "wrong hardware" trains
         // everyone to ignore the leg.
-        if (device.hasObject(By.textContains(STALL_CARD_TEXT))) {
+        if (!settled && device.hasObject(By.textContains(STALL_CARD_TEXT))) {
             val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_never_rendered_a_frame")
             val message = "Demo '$demoSlug' displayed its \"$STALL_CARD_TEXT\" card: the " +
                 "renderer never presented a frame, so there is nothing to compare against " +
@@ -471,6 +491,15 @@ class DemoRenderingScreenshotTest {
             throw AssertionError(message)
         }
 
+        if (!settled) {
+            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_never_settled")
+            throw AssertionError(
+                "Demo '$demoSlug' never rendered anything: its SceneView band stayed flat for " +
+                    "${settleSeconds}s + ${MAX_SETTLE_MS}ms of polling. Either the demo is broken " +
+                    "or the device is too slow for this budget — capture saved to $savedTo. " +
+                    "Refusing to capture or compare an empty viewport.",
+            )
+        }
         // Crop the system status bar overlay before saving + comparing. UiAutomator's
         // `takeScreenshot` returns the FULL composited frame including the system bars
         // — clock, wifi/cellular, battery, notification icons, weather — which would
@@ -487,7 +516,7 @@ class DemoRenderingScreenshotTest {
 
         // Try to load the golden. If absent, this is first-run setup: save the capture as
         // the new golden and skip the test (re-run to verify).
-        val goldenAsset = "render-goldens/$goldenName.png"
+        val goldenAsset = "$goldenDir/$goldenName.png"
         val golden = runCatching {
             testContext.assets.open(goldenAsset).use { BitmapFactory.decodeStream(it) }
         }.getOrNull()
@@ -514,7 +543,7 @@ class DemoRenderingScreenshotTest {
             // protection (#2323): a missing golden there means the asset was
             // deleted/renamed — FAIL loudly instead of assume-skipping. Genuinely
             // new slugs keep the quiet first-run capture flow.
-            if (goldenName in BASELINED_GOLDENS) {
+            if (goldenName in BASELINED_BY_SET.getValue(goldenDir)) {
                 throw AssertionError(
                     "Golden $goldenAsset is EXPECTED (slug is in BASELINED_GOLDENS) but " +
                         "missing from the test assets — was it deleted or renamed? " +
@@ -687,6 +716,10 @@ class DemoRenderingScreenshotTest {
          * for these a missing golden is a hard FAILURE, not a first-run skip (#2323).
          * Add a slug here in the SAME commit that adds its golden PNG.
          */
+        val BASELINED_BY_SET: Map<String, Set<String>> by lazy {
+            mapOf(DEFAULT_GOLDEN_DIR to BASELINED_GOLDENS, SWANGLE_GOLDEN_DIR to SWANGLE_BASELINED_GOLDENS)
+        }
+
         val BASELINED_GOLDENS = setOf(
             "animationphysics_default",
             // Re-baselined after the #3500 rebuild (three-subject stage on a floor).
@@ -739,6 +772,24 @@ class DemoRenderingScreenshotTest {
         val DEMO_SLUG_PATTERN = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 
         const val MAX_SETTLE_MS = 25_000L
+
+        /**
+         * First-frame budget on a software rasteriser (`softwareRenderer=true`), on top of
+         * the per-test minimum settle. PROBE VALUE while the slowest demo is measured.
+         */
+        const val SOFTWARE_MAX_SETTLE_MS = 180_000L
+
+        const val LOG_TAG = "DemoRenderGoldens"
+
+        const val DEFAULT_GOLDEN_DIR = "render-goldens"
+        const val SWANGLE_GOLDEN_DIR = "render-goldens-swangle"
+
+        /**
+         * Goldens recorded on the CI emulator profile (`-gpu swangle_indirect`, 1080x2400 @
+         * 420 dpi, API 30, light). Same contract as [BASELINED_GOLDENS]; a slug absent here
+         * has no reference on that profile and takes the first-run skip.
+         */
+        val SWANGLE_BASELINED_GOLDENS: Set<String> = emptySet()
 
         // How long we allow the demo screen to compose after `am start` — covers a cold
         // app start (splash + dexopt) on the QA emulator, measured at ~3 s warm and up to
