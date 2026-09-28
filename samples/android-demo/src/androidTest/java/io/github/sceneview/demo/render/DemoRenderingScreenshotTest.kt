@@ -437,21 +437,34 @@ class DemoRenderingScreenshotTest {
         var capturedBitmap: Bitmap? = null
         var settled = false
         // A software rasteriser needs far longer for Filament's first frame than a phone GPU
-        // (#3554): keep polling through the stall card instead of giving up on it.
+        // (#3554), so the budget depends on the declared renderer.
         val settleBudgetMs = if (softwareRenderer) SOFTWARE_MAX_SETTLE_MS else MAX_SETTLE_MS
         val pollDeadline = System.currentTimeMillis() + settleBudgetMs
         while (System.currentTimeMillis() < pollDeadline) {
+            // Pixels alone cannot tell a scene from the scaffold's own loading states: the
+            // M3 loading indicator on the stage colour and the "Still loading…" card are both
+            // non-flat content (#3554 — the first swangle recording captured both as
+            // "settled"). The app states readiness itself — the viewport is named
+            // "Scene ready" only once a frame has reached the surface, the same handle
+            // `.maestro/android/flows/demo.yaml` waits on — so wait for that, for the stall
+            // card to be gone and for any model-load scrim to clear, then capture.
+            if (!sceneLooksReady()) { Thread.sleep(POLL_INTERVAL_MS); continue }
+            // Let the cover's 350 ms cross-fade and any intro settle before the capture.
+            Thread.sleep(READY_TAIL_MS)
             val ok = device.takeScreenshot(captured)
             if (!ok) { Thread.sleep(POLL_INTERVAL_MS); continue }
             val bmp = BitmapFactory.decodeFile(captured.absolutePath) ?: continue
             capturedBitmap = bmp // keep latest so a timeout still has something to report on
-            // The stall card is opaque, non-flat content: without the second test the probe
-            // reads "Still loading…" as a settled scene.
-            if (hasRenderedContent(bmp) && !device.hasObject(By.textContains(STALL_CARD_TEXT))) {
+            // Re-check after the capture: a state that flipped back during the tail must not
+            // be recorded as the scene.
+            if (hasRenderedContent(bmp) && sceneLooksReady()) {
                 settled = true
                 break
             }
             Thread.sleep(POLL_INTERVAL_MS)
+        }
+        if (capturedBitmap == null && device.takeScreenshot(captured)) {
+            capturedBitmap = BitmapFactory.decodeFile(captured.absolutePath)
         }
         // Grep-able in the harvested logcat: the numbers the first-frame budget is set from.
         Log.i(
@@ -659,6 +672,12 @@ class DemoRenderingScreenshotTest {
         return "<not saved: ${failures.joinToString("; ")}>"
     }
 
+    /** The app's own readiness statement for the demo on screen; see the poll loop. */
+    private fun sceneLooksReady(): Boolean =
+        device.hasObject(By.desc(SCENE_READY_CD)) &&
+            !device.hasObject(By.textContains(STALL_CARD_TEXT)) &&
+            !device.hasObject(By.text(LOADING_SCRIM_TEXT))
+
     /**
      * Samples the whole SceneView vertical band (between status/title bar at the top and
      * the controls panel at the bottom) and reports whether it contains any non-flat
@@ -780,6 +799,15 @@ class DemoRenderingScreenshotTest {
         const val SOFTWARE_MAX_SETTLE_MS = 180_000L
 
         const val LOG_TAG = "DemoRenderGoldens"
+
+        /** `R.string.demo_scene_ready_cd`, set on the viewport once a frame reached the surface. */
+        const val SCENE_READY_CD = "Scene ready"
+
+        /** A demo's model-load scrim ("Loading helmet…", "Streaming…"), as in the Maestro flow. */
+        val LOADING_SCRIM_TEXT: java.util.regex.Pattern = java.util.regex.Pattern.compile("(Loading|Streaming).*")
+
+        /** Wait between the ready signal and the capture: cover cross-fade plus intro tail. */
+        const val READY_TAIL_MS = 3_000L
 
         const val DEFAULT_GOLDEN_DIR = "render-goldens"
         const val SWANGLE_GOLDEN_DIR = "render-goldens-swangle"
