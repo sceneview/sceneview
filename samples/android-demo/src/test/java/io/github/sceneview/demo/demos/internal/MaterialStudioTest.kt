@@ -85,6 +85,21 @@ class MaterialStudioTest {
     }
 
     @Test
+    fun `an emissive preset glows in colour, not in white`() {
+        // #4065: emission is added after exposure and the tone mapper drains the hue out of
+        // bright light, so the neon sign rendered plain white with TintLight x 4, and still
+        // a pale (202, 242, 251) with Primary x 4. Measured on emulator-5554: Primary x 1.34
+        // gave (125, 210, 235). Pin a saturated tint and a strength near the tone curve's knee.
+        MaterialStudio.library.filter { it.trait == MaterialTrait.Emissive }.forEach { material ->
+            val c = material.traitColor
+            val brightest = maxOf(c.red, c.green, c.blue) * material.traitAmount
+            val weakest = minOf(c.red, c.green, c.blue)
+            assertTrue("${material.id} is too strong to keep its hue: $brightest", brightest <= 1.25f)
+            assertTrue("${material.id} tint is not saturated: weakest channel $weakest", weakest < 0.2f)
+        }
+    }
+
+    @Test
     fun `the default selection exists and shows an extension`() {
         val index = MaterialStudio.DEFAULT_INDEX
         assertTrue(index in MaterialStudio.library.indices)
