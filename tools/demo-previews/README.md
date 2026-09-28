@@ -117,7 +117,7 @@ recorded here, so the recorded prompt is always the one that produced the commit
 
 ### iOS cards cropped from simulator captures (#3786)
 
-Fourteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
+Thirteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
 Their cards are real captures of the demo, not generated: the keyless Debug build on the
 iPhone 17 Pro Max simulator (iOS 26.3, 1320×2868), opened through `sceneview://demo/<id>`
 with QA mode on so the orbit is frozen, cropped 5:4 around the subject and resized to
@@ -134,7 +134,6 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_texture_streaming` | `texture-streaming`, Gold preset | 673, 1478, 1000 |
 | `preview_gesture_editing` | `gesture-editing` | 660, 1110, 1200 |
 | `preview_occlusion_material` | `occlusion-material` | 660, 1307, 960 |
-| `preview_physics` | `physics`, bundled cubes at rest | 680, 1480, 600 |
 | `preview_reflection_probes` | `reflection-probes` | 652, 1412, 1000 |
 | `preview_shape` | `shape`, Star | 639, 1400, 1100 |
 | `preview_multi_model` | `multi-model`, keyless stand-ins (what the App Store build shows) | 650, 1458, 1300 |

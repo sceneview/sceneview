@@ -273,25 +273,40 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/AnimationPhysicsDemo.kt
-    ios: [animation, physics]
+    ios: [animation]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/PhysicsDemo.swift
     contract: >-
-      One card, Animation | Physics. Animation: Fox, Soldier + 4 streamed
-      models, play/pause/speed/loop, camera Hero/Reveal/Vertigo/Tracking/Free.
-      Physics: Rubber/Steel/Foam ball tray, Drop/Drop 10, tilt
+      Animation (the Physics tab left for `rolling-balls` in #4083): Fox,
+      Soldier + 4 streamed models, play/pause/speed/loop, camera
+      Hero/Reveal/Vertigo/Tracking/Free
     parity: diverges
     evidence: >-
       No Fox; 'Soldier' = cyberpunk_character (AnimationDemo.swift:64-72); on
-      screen 'camera shots…Android-only' (:288); physics drops cubes + a ball
-      (PhysicsDemo.swift:152-175); D7 spinner unverified
+      screen 'camera shots…Android-only' (:288); D7 spinner unverified
+  - id: rolling-balls
+    androidStatus: Working
+    iosStatus: working
+    category: VIEW_3D
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RollingBallsDemo.kt
+    ios: [rolling-balls]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift
+    contract: >-
+      Rubber/Steel/Foam ball tray on a neutral studio stage; opening shot of a
+      steel cue into a six-ball rubber pyramid; material chips drop one ball;
+      Drop, Tilt, Reset on the scene; sheet with counts, Drop 10, Level,
+      pitch and roll sliders
+    parity: diverges
+    evidence: >-
+      #4083: iOS is a Swift port of the Android fixed-step simulation (same
+      constants and opening shot); not yet built or captured on a simulator
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working

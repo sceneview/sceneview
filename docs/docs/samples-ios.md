@@ -65,7 +65,7 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Physics | [`PhysicsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/PhysicsDemo.swift) | Rigid-body simulation — tap to spawn bouncing balls |
+| Rolling Balls | [`RollingBallsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift) | Drop rubber, steel and foam balls on a tray, tilt it, knock the opening pyramid over |
 | Double Pendulum | [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift) | Chaotic double-pendulum physics |
 | Custom Mesh | [`CustomMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CustomMeshDemo.swift) | `MeshNode.fromVertices` — raw vertex data |
 | PBR Materials | [`MaterialsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift) | Full PBR material parameter explorer |

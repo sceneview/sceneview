@@ -105,6 +105,11 @@ enum DemoDeepLinkRegistry {
         "animation-physics": "animation",
         "two-d-in-three-d": "text",
         "lighting-lab": "dynamic-sky",
+
+        // Retired scene ids (#4083) — a scene replaced by a new one keeps its
+        // old deep link alive. `physics` (RealityKit cubes) became the Rolling
+        // Balls tray, like Android's `DeepLinkRouter` alias.
+        "physics": "rolling-balls",
     ]
 
     /// Deep-linkable ids with no `*Scene.swift` file — accepted by the gate,

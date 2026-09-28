@@ -648,7 +648,7 @@ via deep-link as well as the Samples tab.
 | Depth Occlusion | `ar-depth-occlusion` | `ARDepthOcclusionDemo.swift` | Shared automatic placement of the bundled helmet; LiDAR mesh rendering toggle retains pose and scale |
 | People Occlusion | `ar-people-occlusion` | `ARPeopleOcclusionDemo.swift` | Same subject and placement flow; person-segmentation rendering toggle retains pose and scale |
 | AR Recording | `ar-record-playback` | `ARRecorderDemo.swift` | Shared automatic placement; explicit Record/Stop; screen video only, without deterministic AR-session playback |
-| Physics (streamed bodies) | `physics` | `PhysicsDemo.swift` | Ported (bundled cubes + 4 streamed crash-test meshes; capped at 20 active bodies for RealityKit) |
+| Rolling Balls | `rolling-balls` (`physics` aliases here) | `RollingBallsDemo.swift` | Ported (Swift port of the Android tray simulation: rubber, steel and foam balls, tilt, fixed 120 Hz step) |
 
 The pre-1194 placeholder shape — `model-viewer` / `multi-model` routing
 to `SceneGalleryDemo` — is gone. Both deep-links now land on dedicated

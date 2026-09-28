@@ -182,7 +182,7 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// non-networked, non-AR demos so constructing the destination view has
     /// no side effects beyond a plain SwiftUI initializer.
     func testWellKnownWorkingDemosResolveToARealDestination() {
-        let mustBeReal = ["model-viewer", "geometry", "animation", "physics", "materials"]
+        let mustBeReal = ["model-viewer", "geometry", "animation", "rolling-balls", "materials"]
         for id in mustBeReal {
             XCTAssertNotNil(GeneratedScenes.destination(for: id),
                             "'\(id)' is expected to be a real, working demo but resolved to nil " +
@@ -276,7 +276,9 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// (`ar-rooftop-anchors`, `ar-terrain-anchors`) were dropped when their
     /// dead-end canonical targets were deleted — an alias may only point at a
     /// live Scene id, and both ids still reach `DeepLinkPlaceholder` through
-    /// the unregistered-id path. Each of the remaining 8 must keep resolving —
+    /// the unregistered-id path. `physics` joined as a retired-scene alias when
+    /// the RealityKit cubes were replaced by the Rolling Balls tray (#4083).
+    /// Each of the remaining 9 must keep resolving —
     /// through its canonical target — to exactly that target's current
     /// realness.
     func testLegacyAliasesArePinnedAndInheritTheirCanonicalTargetsRealness() {
@@ -290,6 +292,7 @@ final class DemoRegistryGuardTests: XCTestCase {
             "animation-physics": "animation",
             "two-d-in-three-d": "text",
             "lighting-lab": "dynamic-sky",
+            "physics": "rolling-balls",
         ], "legacyAliases changed — update this pin (and re-verify the new/changed alias " +
            "resolves sanely through DemoDeepLinkRegistry.destination(for:))")
 
