@@ -48,14 +48,18 @@ data class DollhouseFit(
 class DollhouseRoom(val frame: ArDebugFrame, val fit: DollhouseFit)
 
 object RoomDollhouse {
-    /** The longest side of the miniature is kept at or under this, in metres: it fits a table. */
-    const val MAX_SIDE_M = 0.35f
+    /**
+     * The longest side of the miniature is kept at or under this, in metres: a model you read from
+     * arm's length, still on a table. At 35 cm a 4 m room came out a palm wide and its path a hair.
+     */
+    const val MAX_SIDE_M = 0.6f
 
     /**
      * The scales a miniature is drawn at: the model maker's ones, so the label reads as a scale
-     * and not as a computed ratio. A room of 4 m opens at 1:12, one of 6 m at 1:20.
+     * and not as a computed ratio. Close enough to each other that any room from 1 m to 30 m stands
+     * between 40 and 60 cm: a room of 4 m opens at 1:8, one of 6 m at 1:10.
      */
-    val SCALES = listOf(5, 10, 12, 20, 24, 50, 100)
+    val SCALES = listOf(1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32, 40, 50, 100)
 
     /** Points higher than this over the floor are the ceiling's: cut away, like a dollhouse's roof. */
     const val CUTAWAY_HEIGHT_M = 2.1f
@@ -68,9 +72,12 @@ object RoomDollhouse {
 
     /**
      * The radius of a point **on the table**, in metres: the replay sizes points by screen pixels,
-     * the miniature by what reads from arm's length — under a millimetre.
+     * the miniature by what reads from arm's length — a millimetre and a half.
      */
-    const val MINIATURE_POINT_RADIUS_M = 0.0008f
+    const val MINIATURE_POINT_RADIUS_M = 0.0015f
+
+    /** How much thicker than the points the path the phone walked is drawn: the line to follow. */
+    const val MINIATURE_TRAIL_WEIGHT = 2f
 
     /** How far the plinth reaches past the room, in the room's metres, and how far under its floor. */
     const val BASE_MARGIN_M = 0.15f
@@ -193,12 +200,15 @@ object RoomDollhouse {
 
     /**
      * The replay's style, sized for a room drawn at [scale]: its points come out
-     * [MINIATURE_POINT_RADIUS_M] wide on the table, and its path as thin. At real size the style's
-     * own floor (4 mm) takes over.
+     * [MINIATURE_POINT_RADIUS_M] wide on the table, and its path [MINIATURE_TRAIL_WEIGHT] times
+     * thicker. At real size the style's own floor (4 mm) takes over.
      */
     fun styleFor(scale: Float): ArDebugStyle {
         val roomRadius = MINIATURE_POINT_RADIUS_M / scale.coerceAtLeast(MIN_SCALE)
-        return ArDebugStyle(metresPerPixel = roomRadius / POINT_RADIUS_PIXELS)
+        return ArDebugStyle(
+            metresPerPixel = roomRadius / POINT_RADIUS_PIXELS,
+            trailWeight = MINIATURE_TRAIL_WEIGHT,
+        )
     }
 
     /**
