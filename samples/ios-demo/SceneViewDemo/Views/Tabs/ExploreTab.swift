@@ -377,8 +377,7 @@ struct ExploreTab: View {
             // status bar (#4015). Give the bar an opaque page-surface ground,
             // which reaches the screen's top edge. It matches the page, so it
             // is invisible until content scrolls under it.
-            .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
-            .toolbarBackground(embedded ? .visible : .automatic, for: .navigationBar)
+            .modifier(OpaqueNavigationBar(visible: embedded))
             .navigationTitle("Explore")
             // Placeholder names the catalog being searched so the field reflects
             // the picked source (Sketchfab / Poly Haven), #2645.
@@ -1286,6 +1285,22 @@ private struct SourceChip: View {
 }
 
 // MARK: - Native search field (standalone only)
+
+/// The opaque page-surface navigation bar of #4015. `.navigationBar` exists
+/// only on iOS, so the Mac build keeps its own window chrome.
+private struct OpaqueNavigationBar: ViewModifier {
+    let visible: Bool
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+            .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
+            .toolbarBackground(visible ? .visible : .automatic, for: .navigationBar)
+        #else
+        content
+        #endif
+    }
+}
 
 private struct NativeSearchField: ViewModifier {
     let enabled: Bool
