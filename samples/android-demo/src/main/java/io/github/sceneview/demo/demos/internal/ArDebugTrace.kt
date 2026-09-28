@@ -185,6 +185,12 @@ class ArDebugTrace {
     val poseCount: Int get() = poses.size
     val mapPointCount: Int get() = pointCount
 
+    /** Time (seconds) of kept pose [index], oldest first. */
+    fun poseTime(index: Int): Float = poseTimes[index]
+
+    /** Kept pose [index], oldest first: the camera path an export writes. */
+    fun pose(index: Int): DebugPose = poses[index]
+
     /** Camera images recorded, in time order. */
     val imageCount: Int get() = imagePaths.size
 

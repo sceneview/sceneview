@@ -26,6 +26,7 @@ import io.github.sceneview.demo.demos.internal.ReplayPlaneTexture
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunFileKind
 import io.github.sceneview.demo.demos.internal.RerunImportFailure
+import io.github.sceneview.demo.demos.internal.RerunRrdReader
 import io.github.sceneview.demo.demos.internal.RerunScanFile
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunStoredSession
@@ -174,7 +175,7 @@ internal fun sessionOrigin(session: RerunStoredSession, locale: Locale = Locale.
 internal suspend fun shareScanFile(context: Context, store: RerunSessionStore, session: RerunStoredSession): Boolean {
     val file = withContext(Dispatchers.IO) {
         val capture = store.capture(session.id) ?: return@withContext null
-        val shareRoot = File(context.cacheDir, SHARE_DIR)
+        val shareRoot = File(context.cacheDir, RERUN_SHARE_DIR)
         // Only the latest shared file is kept: the share sheet has read it by the next share.
         shareRoot.deleteRecursively()
         val dir = File(shareRoot, UUID.randomUUID().toString()).apply { mkdirs() }
@@ -203,13 +204,14 @@ internal suspend fun importSession(context: Context, store: RerunSessionStore, u
         runCatching {
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBounded() }
                 ?: throw RerunImportFailure.Unreadable(name)
-            store.import(name, bytes, readRrd = { throw RerunImportFailure.RrdNotYet(name) })
+            store.import(name, bytes, readRrd = { RerunRrdReader.capturePack(it, name, BitmapRerunImageCodec) })
         }
     }
 
 /**
- * A scan file handed over by another app ("Open with" / Share), recognised by its name or, for a
- * nameless one, by its first bytes — `null` for any other file, which goes on to the model viewer.
+ * A scan file or a Rerun recording handed over by another app ("Open with" / Share), recognised
+ * by its name or, for a nameless one, by its first bytes — `false` for any other file, which goes
+ * on to the model viewer.
  * The file is only peeked at here; [importSession] reads it.
  */
 internal object RerunInbox {
@@ -220,7 +222,8 @@ internal object RerunInbox {
         val head = runCatching {
             context.contentResolver.openInputStream(uri)?.use { it.readNBytesCompat(HEAD_BYTES) }
         }.getOrNull() ?: return false
-        return RerunFileKind.of(name, head) == RerunFileKind.Scan
+        // Both kinds: a scan file, and a Rerun recording (this demo's export, or one from Rerun).
+        return RerunFileKind.of(name, head) != null
     }
 }
 
@@ -252,7 +255,8 @@ private fun InputStream.readBounded(): ByteArray {
 
 /** A share sheet reads a `.svscan` as any binary file: nothing on Android knows the type. */
 private const val SCAN_MIME_TYPE = "application/octet-stream"
-private const val SHARE_DIR = "rerun-share"
+/** Scan files and exports handed to the share sheet; the FileProvider exposes only this. */
+internal const val RERUN_SHARE_DIR = "rerun-share"
 private const val MILLIS = 1000L
 private const val HEAD_BYTES = 64
 private const val BUFFER_BYTES = 64 * 1024

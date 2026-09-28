@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Videocam
@@ -102,6 +103,8 @@ import io.github.sceneview.demo.demos.internal.RERUN_SETUP_TITLE
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
+import io.github.sceneview.demo.demos.internal.RerunExportFormat
+import io.github.sceneview.demo.demos.internal.RerunExportSource
 import io.github.sceneview.demo.demos.internal.RerunImportFailure
 import io.github.sceneview.demo.demos.internal.RerunSessionSource
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
@@ -197,6 +200,9 @@ fun ARRerunDemo(onBack: () -> Unit) {
     var scanMedia by remember { mutableStateOf<RerunReplayMedia?>(null) }
     // The replay is titled after the session it shows, as the card that opened it is.
     var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
+    // The scan's own files, for the export sheet; the sample's are read from the assets there.
+    var scanPack by remember { mutableStateOf<RerunCapturePack?>(null) }
+    var exporting by remember { mutableStateOf(qaReplay == RerunReplayQaState.ReplayExport) }
     var opening by remember { mutableStateOf<Job?>(null) }
     // Bumped on every open, so reopening the same replay frames and plays it afresh.
     var openCount by remember { mutableIntStateOf(0) }
@@ -237,9 +243,10 @@ fun ARRerunDemo(onBack: () -> Unit) {
         openCount++
         screen = RerunScreen.Replay
     }
-    val openScan = { media: RerunReplayMedia, title: String ->
+    val openScan = { media: RerunReplayMedia, title: String, pack: RerunCapturePack ->
         scanMedia = media
         scanTitle = title
+        scanPack = pack
         showingScan = true
         mode = RerunMode.Scene
         openCount++
@@ -249,6 +256,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
         // The replay's cover says "Opening your scan…" while its files are read.
         scanMedia = null
         scanTitle = title
+        scanPack = null
         showingScan = true
         mode = RerunMode.Scene
         screen = RerunScreen.Replay
@@ -256,11 +264,11 @@ fun ARRerunDemo(onBack: () -> Unit) {
         opening = scope.launch {
             val capture = withContext(Dispatchers.IO) { store.capture(id) }
             val opened = capture?.let { runCatching { loadRerunSession(it) }.getOrNull() }
-            if (opened == null) {
+            if (capture == null || opened == null) {
                 notice = ScanCopy.OPEN_FAILED
                 screen = RerunScreen.Landing
             } else {
-                openScan(opened, title)
+                openScan(opened, title, capture)
             }
         }
     }
@@ -328,9 +336,9 @@ fun ARRerunDemo(onBack: () -> Unit) {
         )
         RerunScreen.Live -> RerunLiveScreen(
             onBack = toLanding,
-            onScanned = { scan, title ->
+            onScanned = { scan, title, pack ->
                 sessionsVersion++
-                openScan(scan, title)
+                openScan(scan, title, pack)
             },
             store = store,
             sample = sample,
@@ -352,10 +360,23 @@ fun ARRerunDemo(onBack: () -> Unit) {
             revealed = revealed,
             onRevealed = { revealed = true },
             pipOrbit = replayPipOrbit,
+            onExport = { exporting = true },
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
         )
+    }
+    if (exporting && screen == RerunScreen.Replay && media != null) {
+        val source = remember(showingScan, scanTitle, scanPack) {
+            val pack = scanPack
+            if (showingScan && pack != null) {
+                RerunExportSource(scanTitle) { pack }
+            } else {
+                val appContext = context.applicationContext
+                RerunExportSource(ScanCopy.SAMPLE_TITLE) { sampleCapturePack(appContext) }
+            }
+        }
+        RerunExportSheet(source = source, onDismiss = { exporting = false })
     }
 }
 
@@ -399,6 +420,7 @@ private fun RerunReplayScreen(
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
     pipOrbit: ArDebugOrbitCamera,
+    onExport: () -> Unit,
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
@@ -496,6 +518,14 @@ private fun RerunReplayScreen(
                 selected = mode == RerunMode.Camera,
             ),
         ),
+        // The session on screen as open files: .rrd, .glb and .ply, written on the phone.
+        dockAccent = DockItem(
+            icon = Icons.Rounded.IosShare,
+            label = RerunExportFormat.DOCK_LABEL,
+            caption = RerunExportFormat.DOCK_CAPTION,
+            onClick = onExport,
+            enabled = media != null,
+        ),
     ) {
         when {
             media == null -> Unit // the scaffold's cover says it is loading
@@ -545,7 +575,7 @@ private fun RerunSheet() {
 @Suppress("LongParameterList", "LongMethod") // the live AR screen, moved as-is behind the replay
 private fun RerunLiveScreen(
     onBack: () -> Unit,
-    onScanned: (RerunReplayMedia, String) -> Unit,
+    onScanned: (RerunReplayMedia, String, RerunCapturePack) -> Unit,
     store: RerunSessionStore,
     sample: RerunReplayMedia?,
     engine: Engine,
@@ -735,14 +765,14 @@ private fun RerunLiveScreen(
                     }.isSuccess
                 }
                 if (!saved) Toast.makeText(context, ScanCopy.SAVE_FAILED, Toast.LENGTH_LONG).show()
-                runCatching { loadRerunSession(pack) }.getOrNull()
+                runCatching { loadRerunSession(pack) }.getOrNull()?.let { it to pack }
             }
             if (capture != null) {
                 debugSession.trace = ArDebugTrace()
                 scan = null
             }
             finishing = false
-            if (opened != null) onScanned(opened, title)
+            if (opened != null) onScanned(opened.first, title, opened.second)
         }
     }
 
@@ -1266,6 +1296,8 @@ private enum class RerunReplayQaState(val key: String, val mode: RerunMode, val 
     ReplayPlay("replay-play", RerunMode.Scene, null),
     ReplayMap("replay-map", RerunMode.Map, QA_REPLAY_FRACTION),
     ReplayCamera("replay-camera", RerunMode.Camera, QA_REPLAY_FRACTION),
+    /** The sample's replay with its export sheet open. */
+    ReplayExport("replay-export", RerunMode.Scene, QA_REPLAY_FRACTION),
     ;
 
     companion object {
