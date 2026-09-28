@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Wall Placement now tells you what to do when no wall is found ([#4070](https://github.com/sceneview/sceneview/issues/4070)).** Aimed at a plain wall, ARCore finds nothing to track, so the demo used to show only the coaching animation, with no words, for as long as you kept trying. It now names the cause as soon as ARCore reports it (not enough detail, too dark, moving too fast), and after three seconds without a wall it asks you to stand about a metre away and move sideways. The wall flow's vertical plane finding is now pinned by a unit test.
