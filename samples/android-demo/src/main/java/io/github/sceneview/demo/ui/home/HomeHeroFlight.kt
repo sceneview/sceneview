@@ -84,6 +84,12 @@ internal data class HeroFlightPose(
     val helmetEntrance: Float,
     /** 0 → 1 over [HERO_TERRAIN_RISE_SECONDS] from the terrain's first frame. */
     val terrainRise: Float,
+    /** The fox running down the valley floor — the subject the scroll glides onto. */
+    val foxX: Float,
+    val foxY: Float,
+    val foxZ: Float,
+    /** The eased glide actually applied, 0 = the flight's own gaze, 1 = framed on the fox. */
+    val glide: Float,
 )
 
 /** Forward speed of the flight, world units per second. */
@@ -101,139 +107,136 @@ internal const val HERO_TERRAIN_RISE_SECONDS = 1.1f
 /** Cruise altitude, world units above the valley floor at height ≈ −0.35. */
 internal const val HERO_EYE_HEIGHT = 2.3f
 
+/** Where the fox runs, relative to the flight's sway line and the camera plane. */
+internal const val HERO_FOX_OFFSET_X = -0.55f
+internal const val HERO_FOX_Z = -3.4f
+
+/**
+ * Where the camera sits relative to the fox once the glide lands: behind it, to its
+ * right and a little above, so it runs into the sunset with the valley ahead of it.
+ */
+private const val GLIDE_EYE_DX = 1.35f
+private const val GLIDE_EYE_DY = 0.75f
+private const val GLIDE_EYE_DZ = 2.1f
+
+/**
+ * How far above the fox's feet the glide aims. Higher than its middle, so the fox lands
+ * below the frame's centre — where the band's visible window has moved to by then.
+ */
+private const val GLIDE_AIM_DY = 0.42f
+
 /**
  * The flight at [seconds] since the stage first rendered.
  *
+ * The camera has exactly two inputs, time and [glide], and no memory: the pose is
+ * recomputed from scratch every frame, so nothing can drift and scrolling back to the
+ * top always lands on the very gaze the flight would have had without the scroll.
+ *
  * @param period         Terrain period, so the strip offset wraps where the tiling does.
- * @param tiltX          Smoothed device tilt, −1 → 1, left → right; steers the gaze.
- * @param tiltY          Smoothed device tilt, −1 → 1, back → forward; pitches the gaze.
+ * @param glide          How far the page has scrolled the band away, 0 → 1. The camera
+ *                       glides from the flight's gaze (and the helmet) onto the fox running
+ *                       on the valley floor. Ignored under reduced motion.
  * @param entranceStart  Flight time when the helmet became textured, or null while it has
  *                       not — until then the helmet is scaled away, whatever [motion] says.
  * @param terrainStart   Flight time of the terrain's first frame, or null before it: the
  *                       valley rises into place from below over [HERO_TERRAIN_RISE_SECONDS].
  * @param motion         False under reduced motion: the flight holds its opening frame and
  *                       the helmet, once textured, is simply there, no entrance to play.
+ * @param intro          False once the opening has played in this process: coming back to
+ *                       the screen shows the helmet and the valley in place instead of
+ *                       zooming the helmet in again (#3993).
  */
 internal fun heroFlightPose(
     seconds: Double,
     period: Float,
-    tiltX: Float = 0f,
-    tiltY: Float = 0f,
+    glide: Float = 0f,
     entranceStart: Double? = null,
     terrainStart: Double? = null,
     motion: Boolean = true,
+    intro: Boolean = true,
 ): HeroFlightPose {
     val t = if (motion) seconds.toFloat() else 0f
+    val instant = !motion || !intro
     val sway = (2f * PI.toFloat() / HERO_SWAY_PERIOD)
     val eyeX = sin(t * sway) * 0.7f
     val eyeY = HERO_EYE_HEIGHT + sin(t * 0.37f) * 0.08f
     // Bank into the turn: the roll is the sway's derivative, scaled to a few degrees.
-    val roll = -cos(t * sway) * 2.6f + tiltX * 1.5f
-    val yaw = tiltX * 0.09f + sin(t * sway) * 0.03f
-    val pitch = -0.055f + tiltY * 0.04f
+    val roll = -cos(t * sway) * 2.6f
+    val yaw = sin(t * sway) * 0.03f
+    val pitch = -0.055f
     val entrance = when {
         entranceStart == null -> 0f
-        !motion -> 1f
+        instant -> 1f
         else -> easeOutCubic(
             ((seconds - entranceStart) / HERO_ENTRANCE_SECONDS).toFloat().coerceIn(0f, 1f),
         )
     }
     val rise = when {
         terrainStart == null -> 0f
-        !motion -> 1f
+        instant -> 1f
         else -> easeOutCubic(
             ((seconds - terrainStart) / HERO_TERRAIN_RISE_SECONDS).toFloat().coerceIn(0f, 1f),
         )
     }
+    val terrainOffsetZ = ((t * HERO_FLIGHT_SPEED) % period + period) % period
+    // The fox rides the flight's sway line like the helmet does, but on the ground: its
+    // feet follow the valley floor as the strip slides under it.
+    val foxX = eyeX * 0.6f + HERO_FOX_OFFSET_X
+    val foxY = heroTerrainHeight(foxX, HERO_FOX_Z - terrainOffsetZ, period) -
+        HERO_TERRAIN_RISE_UNITS * (1f - rise)
+    val flightTargetX = eyeX + yaw * 10f
+    val flightTargetY = eyeY + pitch * 10f
+    val flightTargetZ = -10f
+    val g = if (motion) smoothstep01(glide) else 0f
     return HeroFlightPose(
-        terrainOffsetZ = ((t * HERO_FLIGHT_SPEED) % period + period) % period,
-        eyeX = eyeX,
-        eyeY = eyeY,
-        eyeZ = 0f,
-        targetX = eyeX + yaw * 10f,
-        targetY = eyeY + pitch * 10f,
-        targetZ = -10f,
-        rollDegrees = roll,
-        // The helmet rides with the camera, front-right, and bobs on its own beat.
+        terrainOffsetZ = terrainOffsetZ,
+        eyeX = lerp(eyeX, foxX + GLIDE_EYE_DX, g),
+        eyeY = lerp(eyeY, foxY + GLIDE_EYE_DY, g),
+        eyeZ = lerp(0f, HERO_FOX_Z + GLIDE_EYE_DZ, g),
+        targetX = lerp(flightTargetX, foxX, g),
+        targetY = lerp(flightTargetY, foxY + GLIDE_AIM_DY, g),
+        targetZ = lerp(flightTargetZ, HERO_FOX_Z, g),
+        // The glide levels the wings: the landing frame is steady, not banked.
+        rollDegrees = roll * (1f - g),
+        // The helmet rides with the flight, front-right, and bobs on its own beat — it
+        // does not follow the glide, which is how the camera leaves it behind.
         helmetX = eyeX + 0.85f,
         helmetY = eyeY - 0.2f + sin(t * 0.8f + 1f) * 0.05f,
         helmetZ = -4.2f,
         helmetYawDegrees = -28f + t * HERO_HELMET_DEGREES_PER_SECOND,
         helmetEntrance = entrance,
         terrainRise = rise,
+        foxX = foxX,
+        foxY = foxY,
+        foxZ = HERO_FOX_Z,
+        glide = g,
     )
+}
+
+/** How far below the valley the terrain starts, rising into place on its first frame. */
+internal const val HERO_TERRAIN_RISE_UNITS = 2.5f
+
+/**
+ * The flight time and whether the opening has played, kept for the process.
+ *
+ * Navigation disposes the home screen — and with it the engine, the model and the
+ * clock — every time a demo opens or another tab shows. Without this, every return
+ * restarted the flight at zero and zoomed the helmet in again (#3993). Process death
+ * resets it, so a cold start still gets its opening.
+ */
+internal object HeroFlightMemory {
+    var seconds: Double = 0.0
+    var introPlayed: Boolean = false
+}
+
+private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+private fun smoothstep01(x: Float): Float {
+    val t = x.coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }
 
 private fun easeOutCubic(x: Float): Float {
     val inv = 1f - x
     return 1f - inv * inv * inv
-}
-
-/**
- * Device tilt, smoothed and re-centred.
- *
- * Raw gravity is fed by the sensor at whatever cadence it likes; [update] runs once per
- * presented frame with the elapsed time. Two low-pass filters: a quick one (τ ≈ 0.15 s)
- * that follows the hand, and a slow one (τ ≈ 4 s) that learns the resting posture. The
- * output is their difference, so a phone held at any angle settles at zero and only a
- * *change* of tilt steers the gaze — nobody reads the home screen holding it flat.
- */
-internal class HeroTilt(
-    private val fastTau: Float = 0.15f,
-    private val slowTau: Float = 4f,
-    private val gain: Float = 0.25f,
-) {
-    private var rawX = 0f
-    private var rawY = 0f
-    private var fastX = 0f
-    private var fastY = 0f
-    private var slowX = 0f
-    private var slowY = 0f
-    private var primed = false
-
-    /** −1 → 1, left → right. */
-    var x: Float = 0f
-        private set
-
-    /** −1 → 1, back → forward. */
-    var y: Float = 0f
-        private set
-
-    /**
-     * Gravity vector from `Sensor.TYPE_GRAVITY`, any thread; only the latest is kept. The
-     * component along the phone's long axis (Y) carries no lean, so it is not needed.
-     */
-    fun feed(gravityX: Float, gravityZ: Float) {
-        // In portrait, gravity along +X means the phone leans left, along +Z it lies flat.
-        rawX = (-gravityX / EARTH_GRAVITY).coerceIn(-1f, 1f)
-        rawY = (gravityZ / EARTH_GRAVITY).coerceIn(-1f, 1f)
-    }
-
-    fun update(deltaSeconds: Float) {
-        if (!primed) {
-            fastX = rawX; fastY = rawY; slowX = rawX; slowY = rawY
-            primed = true
-        }
-        val dt = deltaSeconds.coerceIn(0f, 0.25f)
-        val kf = 1f - kotlin.math.exp(-dt / fastTau)
-        val ks = 1f - kotlin.math.exp(-dt / slowTau)
-        fastX += (rawX - fastX) * kf
-        fastY += (rawY - fastY) * kf
-        slowX += (fastX - slowX) * ks
-        slowY += (fastY - slowY) * ks
-        x = ((fastX - slowX) * gain / SETTLE_RANGE).coerceIn(-1f, 1f)
-        y = ((fastY - slowY) * gain / SETTLE_RANGE).coerceIn(-1f, 1f)
-    }
-
-    fun reset() {
-        primed = false
-        x = 0f
-        y = 0f
-    }
-
-    private companion object {
-        const val EARTH_GRAVITY = 9.80665f
-        /** Tilt (as a fraction of g) that maps to full deflection, before [gain]. */
-        const val SETTLE_RANGE = 0.12f
-    }
 }

@@ -2,10 +2,6 @@ package io.github.sceneview.demo.ui.home
 
 import android.app.ActivityManager
 import android.content.Context
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -65,6 +61,9 @@ import kotlin.math.sin
 /** The subject of the flight — the licensed, bundled flagship model, no download on home. */
 const val HOME_HERO_MODEL: String = "models/khronos_damaged_helmet.glb"
 
+/** What the scroll glides the camera onto (#3993): bundled, 96 KB, one run cycle. */
+private const val HOME_HERO_FOX_MODEL: String = "models/khronos_fox.glb"
+
 private const val HERO_HDR = "environments/sunset_2k.hdr"
 private const val HERO_TERRAIN_MATERIAL = "materials/hero_terrain.filamat"
 
@@ -77,8 +76,12 @@ private const val HERO_TERRAIN_MATERIAL = "materials/hero_terrain.filamat"
  * an emissive sun disc that bloom and the lens flare bleed from, height fog in the
  * horizon's colour, the sunset HDR as image-based light, TAA, and the Damaged Helmet
  * riding front-right of the camera, turning slowly. The camera flies a lazy S-curve and
- * banks into it; the device's tilt steers the gaze a few degrees. All of it is
- * Filament through SceneView — one `MeshNode`, one `SphereNode`, one `ModelNode`.
+ * banks into it. Down on the valley floor a fox runs with the flight, out of frame: as
+ * the page scrolls the band away, the camera glides down onto it ([glide], #3993), and
+ * scrolling back lifts it to the helmet again. The device's tilt steers nothing — the
+ * scroll is the camera's one input, so the stage never wobbles under a reading thumb.
+ * All of it is Filament through SceneView — one `MeshNode`, one `SphereNode`, two
+ * `ModelNode`s.
  *
  * **Why it survives the scroll.** [HomeScreen] composes this once, as a layer *under*
  * the grid, for as long as the screen lives. The grid's hero item is transparent copy
@@ -99,12 +102,19 @@ private const val HERO_TERRAIN_MATERIAL = "materials/hero_terrain.filamat"
  * no HDR decode, no bloom, fog or TAA — the same flight, matte. Reduced motion (animator
  * scale 0, QA mode) holds the opening frame under [FrameRatePolicy.OnDemand].
  *
+ * **Coming back.** Navigation disposes the screen; [HeroFlightMemory] keeps the flight
+ * time and whether the opening played, so a return resumes the flight where it was with
+ * the helmet already in place — no second zoom-in (#3993).
+ *
  * @param active The band is at least partly on screen and the screen is not searching.
  *               False parks the render loop and the clock; the last frame stays.
+ * @param glide  Read once per rendered frame, never in composition: how far the page has
+ *               scrolled the band away, 0 → 1.
  */
 @Composable
 internal fun HomeHeroScene(
     active: Boolean,
+    glide: () -> Float,
     modifier: Modifier = Modifier,
 ) {
     var firstFrameDrawn by remember { mutableStateOf(false) }
@@ -113,7 +123,7 @@ internal fun HomeHeroScene(
         firstFrameDrawn = true
     }
     if (firstFrameDrawn) {
-        HomeHeroStage(active = active, modifier = modifier)
+        HomeHeroStage(active = active, glide = glide, modifier = modifier)
     }
 }
 
@@ -148,13 +158,17 @@ private object DuskFlight {
 
     const val HELMET_UNITS = 0.8f
 
-    /** How far below the valley the terrain starts, rising into place on its first frame. */
-    const val TERRAIN_RISE_UNITS = 2.5f
+    /** Nose to tail: small on the valley floor, a subject once the glide lands. */
+    const val FOX_UNITS = 0.62f
+
+    /** The run cycle's pace, matched by eye to the ground sliding under it. */
+    const val FOX_RUN_SPEED = 1.35f
 }
 
 @Composable
 private fun HomeHeroStage(
     active: Boolean,
+    glide: () -> Float,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -164,8 +178,11 @@ private fun HomeHeroStage(
     }
     val motionEnabled = LocalMotionEnabled.current
     val moving = active && motionEnabled
-    val clock = remember { HeroClock() }
-    val tilt = remember { HeroTilt() }
+    val clock = remember { HeroClock(initialSeconds = HeroFlightMemory.seconds) }
+    val intro = remember { !HeroFlightMemory.introPlayed }
+    DisposableEffect(clock) {
+        onDispose { HeroFlightMemory.seconds = clock.seconds }
+    }
     val stageLifecycle = rememberHeroLifecycle(active, clock)
 
     val engine = rememberEngine()
@@ -182,7 +199,7 @@ private fun HomeHeroStage(
         null
     }
     val cameraNode = rememberCameraNode(engine) {
-        lookAt(heroFlightPose(0.0, tier.terrain.period))
+        lookAt(heroFlightPose(HeroFlightMemory.seconds, tier.terrain.period, intro = intro))
     }
     val sun = rememberMainLightNode(engine) {
         lightDirection = DuskFlight.sunDirection
@@ -263,37 +280,19 @@ private fun HomeHeroStage(
     }
 
     val modelInstance = rememberModelInstance(modelLoader, HOME_HERO_MODEL)
+    val foxInstance = rememberModelInstance(modelLoader, HOME_HERO_FOX_MODEL)
     // Nodes the frame loop drives. Plain holders, not state: a per-frame write must not
     // recompose anything.
     val terrainNode = remember { arrayOfNulls<MeshNodeImpl>(1) }
     val helmetNode = remember { arrayOfNulls<ModelNodeImpl>(1) }
+    val foxNode = remember { arrayOfNulls<ModelNodeImpl>(1) }
+    // The feet-on-origin offset `centerOrigin` bakes into the node's position; the frame
+    // loop writes the position, so it has to add this back or the fox sinks to its waist.
+    val foxOrigin = remember { arrayOf(Position(0f)) }
     val helmetBaseScale = remember { floatArrayOf(1f) }
     val entranceStart = remember { arrayOfNulls<Double>(1) }
     val terrainStart = remember { arrayOfNulls<Double>(1) }
 
-    // Device tilt steers the gaze while the flight is live; the listener leaves with it.
-    DisposableEffect(context, moving, tier) {
-        val manager = if (moving && tier.cinematic) {
-            context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        } else {
-            null
-        }
-        val gravity = manager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                tilt.feed(gravityX = event.values[0], gravityZ = event.values[2])
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
-        if (gravity != null) {
-            manager?.registerListener(listener, gravity, SensorManager.SENSOR_DELAY_UI)
-        }
-        onDispose {
-            manager?.unregisterListener(listener)
-            tilt.reset()
-        }
-    }
     LaunchedEffect(moving) {
         clock.pause()
         if (moving) renderInvalidator.requestRender()
@@ -330,26 +329,28 @@ private fun HomeHeroStage(
                     StartupMarker.mark("first_model_frame")
                     if (!modelLoader.isLoading) {
                         StartupMarker.mark("model_textured_frame")
-                        if (entranceStart[0] == null) entranceStart[0] = clock.seconds
+                        if (entranceStart[0] == null) {
+                            entranceStart[0] = clock.seconds
+                            HeroFlightMemory.introPlayed = true
+                        }
                     }
                 }
                 if (terrainNode[0] != null && terrainStart[0] == null) terrainStart[0] = clock.seconds
-                val before = clock.seconds
                 val seconds = clock.frame(nanos, moving)
-                tilt.update((seconds - before).toFloat())
                 val pose = heroFlightPose(
                     seconds = seconds,
                     period = tier.terrain.period,
-                    tiltX = tilt.x,
-                    tiltY = tilt.y,
+                    glide = glide(),
                     entranceStart = entranceStart[0],
                     terrainStart = terrainStart[0],
                     motion = motionEnabled,
+                    intro = intro,
                 )
                 terrainNode[0]?.position = Position(
-                    y = -DuskFlight.TERRAIN_RISE_UNITS * (1f - pose.terrainRise),
+                    y = -HERO_TERRAIN_RISE_UNITS * (1f - pose.terrainRise),
                     z = pose.terrainOffsetZ,
                 )
+                foxNode[0]?.position = foxOrigin[0] + Position(pose.foxX, pose.foxY, pose.foxZ)
                 cameraNode.lookAt(pose)
                 helmet?.apply {
                     position = Position(pose.helmetX, pose.helmetY, pose.helmetZ)
@@ -396,6 +397,24 @@ private fun HomeHeroStage(
                         helmetBaseScale[0] = scale.x
                         // Invisible until its first textured frame: the entrance scales it in.
                         scale = Scale(scale.x * 0.001f)
+                        isShadowCaster = false
+                    },
+                )
+            }
+            foxInstance?.let { instance ->
+                ModelNode(
+                    modelInstance = instance,
+                    autoAnimate = motionEnabled,
+                    animationName = "Run",
+                    animationSpeed = DuskFlight.FOX_RUN_SPEED,
+                    scaleToUnits = DuskFlight.FOX_UNITS,
+                    // Feet on the origin, so the frame loop can stand it on the terrain.
+                    centerOrigin = Position(0f, -1f, 0f),
+                    // glTF faces +Z; the flight runs towards −Z.
+                    rotation = Rotation(y = 180f),
+                    apply = {
+                        foxNode[0] = this
+                        foxOrigin[0] = position
                         isShadowCaster = false
                     },
                 )

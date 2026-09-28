@@ -66,13 +66,64 @@ class HomeHeroFlightTest {
     }
 
     @Test
-    fun `tilt steers the gaze the way the phone leans`() {
-        val level = heroFlightPose(3.0, 40f)
-        val right = heroFlightPose(3.0, 40f, tiltX = 1f)
-        val forward = heroFlightPose(3.0, 40f, tiltY = 1f)
-        assertTrue(right.targetX > level.targetX)
-        assertTrue(right.rollDegrees > level.rollDegrees)
-        assertTrue(forward.targetY > level.targetY)
+    fun `the scroll glides the camera from the flight onto the fox, and back, with no memory`() {
+        val period = 40f
+        val t = 7.3
+        val flight = heroFlightPose(t, period)
+        val landed = heroFlightPose(t, period, glide = 1f)
+        // At rest the camera looks ahead; the fox is out of frame, far below the gaze.
+        assertTrue("flight looks far ahead", flight.targetZ < -8f)
+        // Landed: the camera looks at the fox from behind and above, wings level.
+        assertEquals(landed.foxZ, landed.targetZ, 1e-4f)
+        assertEquals(landed.foxX, landed.targetX, 1e-4f)
+        assertTrue("above the fox", landed.eyeY > landed.foxY)
+        assertTrue("behind the fox", landed.eyeZ > landed.foxZ)
+        assertEquals(0f, landed.rollDegrees, 1e-4f)
+        // Glide is eased and monotone: the target only ever comes closer as p grows.
+        var previous = Float.MAX_VALUE
+        for (i in 0..20) {
+            val pose = heroFlightPose(t, period, glide = i / 20f)
+            val distance = kotlin.math.abs(pose.targetZ - landed.targetZ)
+            assertTrue("p=${i / 20f} distance=$distance", distance <= previous + 1e-5f)
+            previous = distance
+        }
+        // No memory: after any trip down, p = 0 is exactly the flight's own pose.
+        heroFlightPose(t, period, glide = 0.8f)
+        assertEquals(flight, heroFlightPose(t, period, glide = 0f))
+        // Out of range values clamp instead of overshooting.
+        assertEquals(landed, heroFlightPose(t, period, glide = 3f))
+        assertEquals(flight, heroFlightPose(t, period, glide = -1f))
+    }
+
+    @Test
+    fun `the fox stands on the valley floor wherever the strip has slid`() {
+        val period = 40f
+        for (i in 0 until 200) {
+            val pose = heroFlightPose(i * 0.37, period, terrainStart = 0.0, intro = false)
+            val ground = heroTerrainHeight(pose.foxX, pose.foxZ - pose.terrainOffsetZ, period)
+            assertEquals(ground, pose.foxY, 1e-5f)
+            assertTrue("fox in the corridor, x=${pose.foxX}", kotlin.math.abs(pose.foxX) < 2f)
+        }
+    }
+
+    @Test
+    fun `reduced motion never glides`() {
+        val still = heroFlightPose(0.0, 40f, motion = false)
+        assertEquals(still, heroFlightPose(5.0, 40f, glide = 1f, motion = false))
+    }
+
+    @Test
+    fun `coming back after the opening played shows the helmet and the valley in place`() {
+        // The helmet's first textured frame after a return: no zoom-in, no rise.
+        val back = heroFlightPose(80.0, 40f, entranceStart = 80.0, terrainStart = 80.0, intro = false)
+        assertEquals(1f, back.helmetEntrance, 0f)
+        assertEquals(1f, back.terrainRise, 0f)
+        // Still hidden until the model is textured, whatever the intro says.
+        assertEquals(0f, heroFlightPose(80.0, 40f, entranceStart = null, intro = false).helmetEntrance, 0f)
+        // The flight resumes from where it was, not from zero.
+        assertTrue(
+            heroFlightPose(81.0, 40f).terrainOffsetZ != heroFlightPose(0.0, 40f).terrainOffsetZ,
+        )
     }
 
     @Test
@@ -104,24 +155,6 @@ class HomeHeroFlightTest {
         assertEquals(opening.eyeX, later.eyeX, 0f)
         assertEquals(opening.rollDegrees, later.rollDegrees, 0f)
         assertEquals(opening.helmetYawDegrees, later.helmetYawDegrees, 0f)
-    }
-
-    @Test
-    fun `tilt settles to zero at any resting posture and follows a change of lean`() {
-        val tilt = HeroTilt()
-        // Held at a steady 30° lean for ten seconds: the slow filter learns it.
-        tilt.feed(gravityX = 4.9f, gravityZ = 0f)
-        repeat(600) { tilt.update(1f / 60f) }
-        assertEquals(0f, tilt.x, 0.02f)
-        assertEquals(0f, tilt.y, 0.02f)
-        // A quick lean the other way deflects, then decays back as it becomes the posture.
-        tilt.feed(gravityX = -1f, gravityZ = 0f)
-        repeat(12) { tilt.update(1f / 60f) }
-        assertTrue("deflects right, x=${tilt.x}", tilt.x > 0.3f)
-        repeat(1800) { tilt.update(1f / 60f) }
-        assertEquals(0f, tilt.x, 0.05f)
-        tilt.reset()
-        assertEquals(0f, tilt.x, 0f)
     }
 
     @Test

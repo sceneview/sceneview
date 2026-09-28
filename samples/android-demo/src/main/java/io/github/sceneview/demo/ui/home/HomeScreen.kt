@@ -554,6 +554,14 @@ private fun HomeHeroStage(
             .firstOrNull { it.key == HERO_ITEM_KEY }
             ?.let { (it.offset.y - restTopPx).coerceAtMost(0f) }
     }
+    // How far the scroll has glided the flight's camera onto the fox (#3993), 0 → 1 over
+    // the first [HERO_GLIDE_DISTANCE] of travel: landed while a good share of the band
+    // still shows. Read by the stage once per rendered frame — a pure function of the
+    // scroll, so scrolling back up always returns to the helmet, never somewhere else.
+    val glideDistancePx = with(density) { HERO_GLIDE_DISTANCE.toPx() }
+    val glide: () -> Float = {
+        heroTravel()?.let { (-it / glideDistancePx).coerceIn(0f, 1f) } ?: 1f
+    }
     val surface = MaterialTheme.colorScheme.surface
     val bandTop = topInset + restTop
     val bandHeight = height - bandTop - home.heroStageBleed
@@ -601,7 +609,7 @@ private fun HomeHeroStage(
                 },
         ) {
             if (!inspectionMode) {
-                HomeHeroScene(active = active, modifier = Modifier.fillMaxSize())
+                HomeHeroScene(active = active, glide = glide, modifier = Modifier.fillMaxSize())
             }
         }
         // The legibility scrim under the band's copy — the hero's usual gradient, painted
@@ -638,6 +646,9 @@ private const val HERO_SUN_X = 0.31f
 
 /** Fraction of the band's scroll travel the stage's content lags behind. */
 private const val HERO_PARALLAX = 0.35f
+
+/** Scroll travel over which the flight's camera glides from the helmet onto the fox. */
+private val HERO_GLIDE_DISTANCE = 200.dp
 
 /** The demo the first featured page opens. */
 const val HERO_DEMO_ID = "model-viewer"
