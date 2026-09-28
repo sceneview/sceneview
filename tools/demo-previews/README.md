@@ -52,6 +52,7 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
+| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083) |
 | `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
@@ -77,8 +78,8 @@ AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band 
 `rolling-balls` became its own demo in #4083 and has no render golden: its card is an
 emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
 tray, its rails and the first balls come to rest. Crop: x 40–1040, y 740–1540 (5:4), resized
-to 800×640, WebP q85; the stage does not follow the theme, so light and dark are the same
-pixels.
+to 800×640, WebP q85, one capture per theme: its stage is the themed stage sky, so the dark
+card is the dark stage.
 
 ## iOS imagesets
 
@@ -148,7 +149,8 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 
 `preview_rolling_balls` (#4083) is the same kind of capture on an iPhone 17 Pro simulator
 (iOS 26, 1206×2622), launched with `-demo rolling-balls`: the opening shot at rest, the
-same seven balls as the Android card. Crop: 602, 1375, 1121.
+same seven balls as the Android card. Crop: 603, 1377, 1121. One capture per appearance
+(`preview_rolling_balls_dark.jpg` for dark): the stage is the themed stage sky, as on Android.
 
 The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
 same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their

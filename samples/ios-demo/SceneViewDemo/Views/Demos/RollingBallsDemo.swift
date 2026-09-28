@@ -305,13 +305,19 @@ struct RollingBallsDemo: View {
         )
         // The content closure runs once per RealityView, so a return to this screen restarts
         // the tick here rather than through `install(in:)`.
-        .onAppear { coordinator.start() }
+        .onAppear {
+            coordinator.setDarkStage(colorScheme == .dark)
+            coordinator.start()
+        }
+        .onChange(of: colorScheme) { _, scheme in coordinator.setDarkStage(scheme == .dark) }
         .onDisappear { coordinator.stop() }
     }
 
     private var countsText: String {
         "Bodies: \(coordinator.bodies) · impacts: \(coordinator.impacts)"
     }
+
+    @Environment(\.colorScheme) private var colorScheme
 
     private static let tiltHint =
         "Tilt is on · drag the scene to tip the tray and the balls roll downhill. "
@@ -321,8 +327,9 @@ struct RollingBallsDemo: View {
 
     private var stage: some View {
         ZStack {
-            // Neutral studio grey behind a skybox-less studio IBL — never a black void.
-            SceneViewTokens.Stage.studioBackdrop
+            // Themed stage sky behind a skybox-less studio IBL — never a black void.
+            LinearGradient(colors: [SceneViewTokens.Stage.skyHorizon, SceneViewTokens.Stage.skyGround],
+                           startPoint: .top, endPoint: .bottom)
             SceneView { root in
                 coordinator.install(in: root)
             }
@@ -562,6 +569,8 @@ final class RollingBallsCoordinator {
     @ObservationIgnored private var lastTick: TimeInterval?
     @ObservationIgnored private var accumulator: TimeInterval = 0
     @ObservationIgnored private var built = false
+    @ObservationIgnored private var floorEntity: Entity?
+    @ObservationIgnored private var darkStage = false
     /// Level easing: start angles and elapsed time, `nil` when idle.
     @ObservationIgnored private var leveling: (pitch: Float, roll: Float, elapsed: TimeInterval)?
 
@@ -603,6 +612,13 @@ final class RollingBallsCoordinator {
     }
 
     func cancelLevel() { leveling = nil }
+
+    /// Recolours the tray floor for the colour scheme (Android's `StageSky.floor`).
+    func setDarkStage(_ dark: Bool) {
+        guard dark != darkStage else { return }
+        darkStage = dark
+        if built { buildFloor() }
+    }
 
 
     func stop() {
@@ -672,15 +688,8 @@ final class RollingBallsCoordinator {
         let floorY = RollingBallsSimulation.floor
         let railHeight = RollingBallsSimulation.railHeight
         let railThickness = RollingBallsSimulation.railThickness
-        let slabThickness: Float = 0.02
 
-        let floor = GeometryNode.cube(
-            size: 1,
-            material: .pbr(color: SceneViewTokens.Stage.trayFloor, metallic: 0, roughness: 0.8)
-        )
-        floor.entity.scale = SIMD3(size, slabThickness, size)
-        floor.entity.position = SIMD3(0, floorY - slabThickness / 2, 0)
-        pivot.addChild(floor.entity)
+        buildFloor()
 
         for side in [-1, 1] as [Float] {
             let railY = floorY + railHeight / 2
@@ -700,6 +709,22 @@ final class RollingBallsCoordinator {
             alongX.entity.position = SIMD3(0, railY, side * size / 2)
             pivot.addChild(alongX.entity)
         }
+    }
+
+    /// The floor slab, its top face at the simulation floor, in the current scheme's colour.
+    private func buildFloor() {
+        let size = RollingBallsSimulation.traySize
+        let slabThickness: Float = 0.02
+        floorEntity?.removeFromParent()
+        let floor = GeometryNode.cube(
+            size: 1,
+            material: .pbr(color: SceneViewTokens.Stage.trayFloor(dark: darkStage),
+                           metallic: 0, roughness: 0.8)
+        )
+        floor.entity.scale = SIMD3(size, slabThickness, size)
+        floor.entity.position = SIMD3(0, RollingBallsSimulation.floor - slabThickness / 2, 0)
+        pivot.addChild(floor.entity)
+        floorEntity = floor.entity
     }
 
     /// Adds entities for new balls and removes those of recycled or reset ones.

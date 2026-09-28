@@ -106,15 +106,28 @@ enum SceneViewTokens {
         /// reads at a glance against the blue and violet fills.
         static let shapePicked = UIColor(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255, alpha: 1)
 
-        /// Studio backdrop behind a physical set (Rolling Balls, #4083): a
-        /// neutral mid grey, never a black void. Android's `neutralStageSkybox`
-        /// is linear (0.40, 0.40, 0.42), which reads as #A8A8AA; same in both
-        /// themes, like every stage.
-        static let studioBackdrop = Color(red: 0xA8 / 255, green: 0xA8 / 255, blue: 0xAA / 255)
+        /// Stage sky behind a physical set (Rolling Balls, #4083) — Android's
+        /// `themedStageSky()` (#4089), drawn as a gradient because the tray's
+        /// camera looks down: the top of the frame is the horizon
+        /// (`surface-container`, #FFFFFF / #232A39), the bottom the zenith ground
+        /// (#F1F3F5 / `stage-background` #0B0F16). Never a black void.
+        static let skyHorizon = Color(
+            light: .white,
+            dark: Color(red: 0x23 / 255, green: 0x2A / 255, blue: 0x39 / 255)
+        )
+        static let skyGround = Color(
+            light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
+            dark: Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+        )
 
-        /// The Rolling Balls tray floor — `surface-container-highest` light
-        /// (#E9ECEF), Android's `SceneViewColors.SurfaceLight`.
-        static let trayFloor = UIColor(red: 0xE9 / 255, green: 0xEC / 255, blue: 0xEF / 255, alpha: 1)
+        /// The Rolling Balls tray floor — Android's `StageSky.floor`:
+        /// `surface-container-highest` light (#E9ECEF), `surface-dim` dark
+        /// (#161B22). RealityKit does not resolve dynamic colours, so the demo
+        /// picks one per colour scheme.
+        static func trayFloor(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x16 / 255, green: 0x1B / 255, blue: 0x22 / 255, alpha: 1)
+                 : UIColor(red: 0xE9 / 255, green: 0xEC / 255, blue: 0xEF / 255, alpha: 1)
+        }
 
         /// The Rolling Balls tray rails — `accent-deep` (#5A32A3), Android's
         /// `SceneViewColors.AccentDeep`.

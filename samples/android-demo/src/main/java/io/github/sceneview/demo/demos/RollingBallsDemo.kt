@@ -1,62 +1,84 @@
 package io.github.sceneview.demo.demos
 
-import io.github.sceneview.node.PhysicsBody
-import io.github.sceneview.node.FloorProvider
-import kotlin.math.sqrt
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.padding
-import io.github.sceneview.demo.common.DemoStatusCard
-import io.github.sceneview.demo.common.DemoStatusTone
-import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.rounded.ScreenRotationAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import com.google.android.filament.LightManager
+import dev.romainguy.kotlin.math.Float4
+import dev.romainguy.kotlin.math.rotation as rotationMatrix
+import dev.romainguy.kotlin.math.transpose
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.DemoStatusCard
+import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.common.StageSkyFog
+import io.github.sceneview.demo.common.rememberStageSkybox
+import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.GlassActionPill
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
-import dev.romainguy.kotlin.math.Float4
-import dev.romainguy.kotlin.math.transpose
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
-import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.math.Transform
-import dev.romainguy.kotlin.math.rotation as rotationMatrix
+import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.node.FloorProvider
+import io.github.sceneview.node.PhysicsBody
 import io.github.sceneview.node.SphereNode as SphereNodeImpl
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
@@ -64,31 +86,14 @@ import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberRenderInvalidator
+import io.github.sceneview.rememberView
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.Role
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.rounded.ScreenRotationAlt
-import androidx.compose.material.icons.outlined.RestartAlt
-import androidx.compose.runtime.mutableStateListOf
-import io.github.sceneview.demo.ui.GlassActionPill
-import io.github.sceneview.demo.ui.overMediaEdge
 
 // ─── Rolling balls ──────────────────────────────────────────────────────────
 // A tray of balls to drop, tip and knock over (#3820). PhysicsBody supplies gravity and the floor
@@ -232,15 +237,24 @@ fun RollingBallsDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    // Studio stage (#3820): the studio HDR lights the tray, a neutral grey backdrop sits behind
-    // it (Reality Composer's look) — never a black void inside the reserved band, and no room
-    // photograph competing with the balls.
+    // Studio stage (#3820): the studio HDR lights the tray, a flat themed backdrop sits behind
+    // it — never a black void inside the reserved band, and no room photograph competing with the
+    // balls. The backdrop and the tray floor are the stage-sky tokens (#4089), so the stage follows
+    // light and dark like the rest of the app (#4083).
     val studioLight = rememberHDREnvironment(
         environmentLoader,
         "environments/studio_2k.hdr",
         createSkybox = false,
     ) ?: rememberEnvironment(environmentLoader)
-    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    // A theme flip recolours the skybox in place; a settled tray is on-demand, so it has to ask for
+    // the frame that shows it.
+    val renderInvalidator = rememberRenderInvalidator()
+    val sky = themedStageSky()
+    val stageSkybox = rememberStageSkybox(engine, sky, renderInvalidator::requestRender)
+    // The stage-sky fog lifts the band above the tray's far rail to the `surface-container`
+    // horizon, so dark is a lit stage, not a black void. It starts well past the tray.
+    val view = rememberView(engine)
+    StageSkyFog(view, sky, renderInvalidator::requestRender)
     val physicsEnvironment = remember(studioLight, stageSkybox) {
         studioLight.copy(skybox = stageSkybox)
     }
@@ -380,6 +394,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
+                view = view,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
@@ -407,6 +422,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     FrameRatePolicy.OnDemand()
                 },
                 cameraManipulator = cameraManipulator,
+                renderInvalidator = renderInvalidator,
             ) {
                 LightNode(
                     type = LightManager.Type.DIRECTIONAL,
@@ -414,7 +430,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     apply = { intensity(5_000f) },
                 )
                 val trayMaterial = rememberMaterialInstance(
-                    materialLoader, SceneViewColors.SurfaceLight, metallic = 0f, roughness = 0.8f,
+                    materialLoader, sky.floor, metallic = 0f, roughness = 0.8f,
                 )
                 val railMaterial = rememberMaterialInstance(
                     materialLoader, SceneViewColors.AccentDeep, metallic = 0f, roughness = 0.5f,

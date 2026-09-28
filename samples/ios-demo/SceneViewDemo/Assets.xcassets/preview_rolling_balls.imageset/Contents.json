@@ -3,6 +3,16 @@
     {
       "filename": "preview_rolling_balls.jpg",
       "idiom": "universal"
+    },
+    {
+      "filename": "preview_rolling_balls_dark.jpg",
+      "idiom": "universal",
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ]
     }
   ],
   "info": {

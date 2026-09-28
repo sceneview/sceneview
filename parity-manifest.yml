@@ -299,7 +299,7 @@ demos:
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift
     contract: >-
-      Rubber/Steel/Foam ball tray on a neutral studio stage; opening shot of a
+      Rubber/Steel/Foam ball tray on the themed stage sky (light and dark); opening shot of a
       steel cue into a six-ball rubber pyramid; material chips drop one ball;
       Drop, Tilt, Reset on the scene; sheet with counts, Drop 10, Level,
       pitch and roll sliders
@@ -307,8 +307,10 @@ demos:
     evidence: >-
       #4083: iOS is a Swift port of the Android fixed-step simulation. Captured
       on Pixel_7a and iPhone 17 Pro sim: same opening shot at rest (Bodies 7 ·
-      impacts 113 on both). Diverges in chrome only: iOS puts Drop, Tilt, Reset
-      and Settings in one bottom toolbar, and its tray floor reads lighter
+      impacts 113 on both), and the same drag tilt (tip toward you: impacts
+      151 on both; tip sideways: balls pile in one corner). Both stages follow
+      the theme from the same tokens. Diverges in chrome only: iOS puts Drop,
+      Tilt, Reset and Settings in one bottom toolbar
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working
