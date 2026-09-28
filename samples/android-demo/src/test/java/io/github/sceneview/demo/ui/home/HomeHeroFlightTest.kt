@@ -73,11 +73,12 @@ class HomeHeroFlightTest {
         val landed = heroFlightPose(t, period, glide = 1f)
         // At rest the camera looks ahead; the fox is out of frame, far below the gaze.
         assertTrue("flight looks far ahead", flight.targetZ < -8f)
-        // Landed: the camera looks at the fox from behind and above, wings level.
-        assertEquals(landed.foxZ, landed.targetZ, 1e-4f)
+        // Landed: the camera looks at the fox from its lit left side, a little above,
+        // aiming just ahead of it along the run, wings level.
         assertEquals(landed.foxX, landed.targetX, 1e-4f)
+        assertTrue("aims just ahead", landed.targetZ < landed.foxZ && landed.targetZ > landed.foxZ - 1f)
         assertTrue("above the fox", landed.eyeY > landed.foxY)
-        assertTrue("behind the fox", landed.eyeZ > landed.foxZ)
+        assertTrue("on its left", landed.eyeX < landed.foxX - 1.5f)
         assertEquals(0f, landed.rollDegrees, 1e-4f)
         // Glide is eased and monotone: the target only ever comes closer as p grows.
         var previous = Float.MAX_VALUE

@@ -112,18 +112,23 @@ internal const val HERO_FOX_OFFSET_X = -0.55f
 internal const val HERO_FOX_Z = -3.4f
 
 /**
- * Where the camera sits relative to the fox once the glide lands: behind it, to its
- * right and a little above, so it runs into the sunset with the valley ahead of it.
+ * Where the camera sits relative to the fox once the glide lands: level with it, on its
+ * left — the side the low sun rakes in from — so it reads lit, in profile, running
+ * across the frame with the right-hand ridges behind it. From behind it was a dark
+ * silhouette against the sunset.
  */
-private const val GLIDE_EYE_DX = 1.35f
-private const val GLIDE_EYE_DY = 0.75f
-private const val GLIDE_EYE_DZ = 2.1f
+private const val GLIDE_EYE_DX = -3.0f
+private const val GLIDE_EYE_DY = 0.6f
+private const val GLIDE_EYE_DZ = 0f
 
 /**
- * How far above the fox's feet the glide aims. Higher than its middle, so the fox lands
- * below the frame's centre — where the band's visible window has moved to by then.
+ * Where the glide aims, relative to the fox's feet. Above its middle, so the fox lands
+ * low in the frame — where the band's visible window has moved to by then — and ahead
+ * of it along the run, which puts the fox right of centre, clear of the band's
+ * left-aligned title, subtitle and "Open" pill.
  */
-private const val GLIDE_AIM_DY = 0.42f
+private const val GLIDE_AIM_DY = 0.4f
+private const val GLIDE_AIM_DZ = -0.25f
 
 /**
  * The flight at [seconds] since the stage first rendered.
@@ -195,7 +200,7 @@ internal fun heroFlightPose(
         eyeZ = lerp(0f, HERO_FOX_Z + GLIDE_EYE_DZ, g),
         targetX = lerp(flightTargetX, foxX, g),
         targetY = lerp(flightTargetY, foxY + GLIDE_AIM_DY, g),
-        targetZ = lerp(flightTargetZ, HERO_FOX_Z, g),
+        targetZ = lerp(flightTargetZ, HERO_FOX_Z + GLIDE_AIM_DZ, g),
         // The glide levels the wings: the landing frame is steady, not banked.
         rollDegrees = roll * (1f - g),
         // The helmet rides with the flight, front-right, and bobs on its own beat — it
