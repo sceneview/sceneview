@@ -48,11 +48,6 @@
     "lines-paths": {
       "prompt": "The closed route of the attached reference — exactly this shape: a loop through eight control points arranged on a circle and lifted by two full sine periods, so it waves up and down twice round the ring. The route is a smooth swept tube of pale blue #A4C1FF with a real thickness and real shading, not a hairline. Eight purple #6446CD beads sit on the control points, a larger soft-lilac #D2A8FF sphere marker rides the route with a slightly fatter lilac trail behind it, and directly below, flat on the ground plane, the same eight points are drawn as a dashed straight-segment polyline in deep blue #005BC1. Seen from about 27 degrees above. No grid, no props. Demonstrates lines, paths, splines and point sets drawn as swept tube geometry.",
       "ref": "lines_paths_route.webp"
-    },
-    "ar-splat-room": {
-      "prompt": "The photo-scanned tree stump of the attached reference — this exact object, and no other: a weathered stump of grey-brown bark with a family of raccoons peering out of it (a tall raccoon at the front right with a dark nose, a smaller one at the left, a third small head at the very top), thin green grass stalks growing up its front, all of it standing on its own small patch of dry grass and soil. It is a Gaussian-splat capture of a real stump, so keep its slightly soft, photographic scan texture and its exact colours, shapes and proportions; do not tidy it into a clean 3D model and do not add or remove raccoons. It is anchored by an AR session on the wooden floor of a real photographed living room, seen through a handheld phone camera from slightly above: a sofa, a window and a potted plant softly out of focus behind it. The stump is at its real size, about knee height, its patch of grass and soil resting flat on the floorboards with a soft contact shadow — a solid object in the room, no glow, no hologram effect, no placement ring, no grid. The stump is centred and takes about 65 percent of the frame height, with clear floor below it and room above it; nothing is cropped or touching a border. No text, no letters, no UI, no device frame, no hands, no people, no watermark. Demonstrates a real-world scan placed at real size in your room.",
-      "ref": "raccoon_stump_scan.webp",
-      "ar": true
     }
   }
 }

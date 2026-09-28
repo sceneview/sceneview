@@ -1,16 +1,17 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.House
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.demos.ARSplatRoomDemo
+import io.github.sceneview.demo.demos.ARRerunDemo
 
 /**
- * Append-only fragment for the `ar-splat-room` demo: the `splat-preview` capture placed in the
- * user's room at its real size (#4023). See [DemoFragment].
+ * Append-only fragment for the `ar-splat-room` demo: the room you recorded with the Rerun demo,
+ * stood on a table in AR as a dollhouse (#4075). It first placed a stock capture (#4023); the id
+ * stays, as every id is a stable deep link. See [DemoFragment].
  */
 object ArSplatRoomFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
@@ -18,14 +19,15 @@ object ArSplatRoomFragment : DemoFragment {
         titleRes = R.string.demo_ar_splat_room_title,
         subtitleRes = R.string.demo_ar_splat_room_subtitle,
         category = DemoCategory.PLACE_AR,
-        icon = Icons.Filled.Landscape,
+        icon = Icons.Filled.House,
         order = 7,
-        tags = setOf("ar", "splat", "gaussian", "scan", "spz", "real-scale", "placement"),
+        tags = setOf("ar", "rerun", "scan", "room", "dollhouse", "miniature", "placement", "real-scale"),
         sinceVersion = "4.45.0",
+        updatedIn = "4.46.0",
     )
 
     @Composable
     override fun Screen(onBack: () -> Unit) {
-        ARSplatRoomDemo(onBack)
+        ARRerunDemo(onBack, startInDollhouse = true)
     }
 }

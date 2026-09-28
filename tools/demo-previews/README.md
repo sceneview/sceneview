@@ -25,7 +25,7 @@ does not load (#3438).
 | `damaged_helmet.webp` | The helmet the app actually loads | Cropped from `samples/android-demo/src/androidTest/assets/render-goldens/modelviewer_default.png`, i.e. a real capture of the demo on the pinned CI profile. |
 | `torus_knot.webp` | The Custom Geometry ribbon knot | Offline render of `TorusKnot.vertices()` at its default parameters (168 segments, 2.5 turns, 0.3 ripple) under the demo's own camera and tilt. |
 | `lines_paths_route.webp` | The Lines & Paths route | Offline render of `LinesPathsScene` — the eight control points, the Smooth route, the marker, the trail and the dashed ground track — under the demo's own camera. |
-| `raccoon_stump_scan.webp` | The raccoon-stump Gaussian splat both splat demos load | The `splat-preview` card below at q90: a crop of the real CI render. It feeds the generated `ar-splat-room` card (`"ar": true`), since the arm64 emulator cannot start an ARCore session to capture it (#4073). |
+| `raccoon_stump_scan.webp` | The raccoon-stump Gaussian splat `splat-preview` loads | The `splat-preview` card below at q90: a crop of the real CI render. It fed the generated `ar-splat-room` card until that demo became the dollhouse of #4075. |
 
 The last two are rendered from the demos' own generator code rather than captured, so the
 card shows the exact curve the app computes rather than an invented knot or loop.
@@ -67,6 +67,12 @@ render, a horizontally uniform grey beside the banner — to reach 5:4.
 1080×2400) of the bundled replay in the `replay` QA state (3D view, paused at 0:11), one per
 theme. Crop: centre 540, 1250, width 1040 — the rebuilt room with its keyframe photos, point
 cloud and the two placed models, the corner of the camera card top-right.
+
+`ar-splat-room` stands the user's own Rerun recording on a table (#4075), so its card is that
+room as a miniature: an emulator capture (Pixel_7a, 1080×2400) of the dollhouse's 3D view
+(`dollhouse-3d` QA state) after a `record` QA take of the bundled session, one per theme — the
+AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band from y = 958
+(5:4), resized to 800×640, WebP q82.
 
 ## iOS imagesets
 
