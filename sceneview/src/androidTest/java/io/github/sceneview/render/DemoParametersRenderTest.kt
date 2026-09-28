@@ -38,14 +38,14 @@ import kotlin.math.sin
  * Each test reproduces one demo's scene construction at a specific parameter preset
  * (e.g. `lighting_spot`, `fog_heavy`, `shape_star`) and captures the resulting pixels
  * through [RenderTestHarness]. The suite acts as a **visual regression net** for the
- * variations that the static screenshot QA in `tools/qa-screenshots/pixel9/` cannot cover:
+ * variations that the static screenshot QA in `tools/qa-screenshots/pixel9/` (removed in #4142; see it at 8d9e48764) cannot cover:
  * sliders mid-range, toggles flipped, chips rotated.
  *
  * Screenshots land in `/sdcard/Android/data/io.github.sceneview.test/files/render-test-output/`
  * alongside `demo-parameters-report.html`.
  *
  * ### Why this exists
- * `FINAL_QA_REPORT.md` lists 31/31 PASS but the automated `qa-android-demos.sh` only asserts
+ * `FINAL_QA_REPORT.md` (since removed) lists 31/31 PASS but the automated `qa-android-demos.sh` only asserts
  * "app didn't crash on entry". A Fog demo with density 0 looks identical to a Fog demo with
  * density 1 through that lens. These tests take ~500ms each headless — covering 20 variations
  * in ~10s versus ~10 min of ADB UI automation.

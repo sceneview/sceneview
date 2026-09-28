@@ -299,6 +299,10 @@ samples/screenshots/android/
 # qa-captures/* branch, not in every working tree. The evidence folders once
 # kept here (#1241, #2957, #3795) stay reachable in git history.
 tools/qa-screenshots/
+/qa-screenshots/
+docs/site-screenshots/
+docs/ux/captures/*
+!docs/ux/captures/placement-demos.md
 
 # Google Drive / iCloud Drive sync-conflict duplicates.
 # When the same file is touched concurrently in two checkouts of a synced
