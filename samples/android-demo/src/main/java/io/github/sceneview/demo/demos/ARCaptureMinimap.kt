@@ -33,12 +33,15 @@ import kotlin.math.sin
 internal const val AR_REC_MINIMAP_TAG = "ar_rec_minimap"
 
 // Built from the spacing scale, like every other size of this demo's cards.
-private val MinimapHeight = Space.x4l + Space.xl // 128 dp
+private val MinimapHeight = Space.x4l + Space.x2l // 144 dp
 private val PathWidth = Space.xs / 2 // 2 dp
 private val WallWidth = Space.xs - Space.xs / 4 // 3 dp
-private val KeyframeRadius = Space.xs - Space.xs / 4 // 3 dp
+private val KeyframeRadius = Space.xs / 2 // 2 dp: 25 cm apart, they stay distinct dots
 private val HereRadius = Space.xs + Space.xs / 2 // 6 dp
-private val HeadingLength = Space.lg // 24 dp
+private val HeadingLength = Space.md + Space.xs // 20 dp
+
+/** Clear space round the plan: enough for the dot, not the whole wedge, which may overhang. */
+private val PlanMargin = Space.md // 16 dp
 
 /** The map never zooms in closer than this many metres across: a first step stays small. */
 private const val MIN_SPAN_METERS = 1.2f
@@ -132,7 +135,7 @@ private fun DrawScope.fit(map: CaptureMapSnapshot): (MapPoint) -> Offset {
     val centreZ = (minZ + maxZ) / 2f
     val spanX = max(maxX - minX, MIN_SPAN_METERS)
     val spanZ = max(maxZ - minZ, MIN_SPAN_METERS)
-    val margin = HeadingLength.toPx()
+    val margin = PlanMargin.toPx()
     val scale = min((size.width - 2 * margin) / spanX, (size.height - 2 * margin) / spanZ)
     return { p -> Offset(size.width / 2f + (p.x - centreX) * scale, size.height / 2f + (p.z - centreZ) * scale) }
 }
