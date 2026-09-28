@@ -49,6 +49,12 @@ internal class RrdChunk(
         FloatArray((range.last + 1 - range.first) * size) { floats.float32(first + it) }
     }
 
+    /** `list<float32>` (radii): each row's instances. */
+    fun floats(component: String): List<FloatArray?>? = rows(
+        component,
+        check = { it.type == FLOAT32 },
+    ) { item, range -> FloatArray(range.last + 1 - range.first) { item.float32(range.first + it) } }
+
     /** `list<uint32>` (colours, `0xRRGGBBAA`), as `Int` bit patterns. */
     fun uint32s(component: String): List<IntArray?>? = rows(
         component,
