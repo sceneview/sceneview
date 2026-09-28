@@ -66,6 +66,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
@@ -191,6 +192,11 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
     val sensitivityRef = rememberUpdatedState(sensitivity)
     val inertiaRef = rememberUpdatedState(inertia)
 
+    // The chips, the dock and the slider all live outside the scene, so their touches never reach
+    // `SceneView`'s gesture detector — and under render-on-demand a parked loop would never run the
+    // flight they start (#4064). The rig pushes through this whenever it starts moving on its own.
+    val renderInvalidator = rememberRenderInvalidator()
+
     val rig = remember {
         StudioCameraManipulator(
             initialPose = CameraRig.poseFor(
@@ -201,6 +207,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
             fitDistance = { fitRef.value },
             sensitivity = { sensitivityRef.value },
             inertiaEnabled = { inertiaRef.value },
+            requestRender = renderInvalidator::requestRender,
         )
     }
 
@@ -351,6 +358,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 environment = rememberModelDemoEnvironment(environmentLoader),
+                renderInvalidator = renderInvalidator,
                 // The three subjects are placed *as a composition*: re-centring their union on the
                 // origin would move the stage every time an async model finished loading, and the
                 // per-subject focus targets would then point at nothing.
