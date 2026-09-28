@@ -53,12 +53,24 @@ final class ViewerAssetTests: XCTestCase {
     }
     #endif
 
+    /// A bundled model ships its own USDZ; an HD pack model ships its
+    /// stand-in instead, so the stage is never empty offline.
     func testEveryBundledModelShipsItsUSDZ() {
         for model in models {
             XCTAssertNotNil(
-                Bundle.main.url(forResource: model.assetName, withExtension: "usdz"),
-                "\(model.displayName) is listed in the picker but \(model.assetName).usdz is not in the bundle."
+                Bundle.main.url(forResource: model.bundledResourceName, withExtension: "usdz"),
+                "\(model.displayName) is listed in the picker but \(model.bundledResourceName).usdz is not in the bundle."
             )
+        }
+    }
+
+    /// Every HD pack model names a stand-in and an id the bundled manifest knows.
+    func testEveryHDPackModelResolvesInTheManifest() {
+        let manifest = HDPackManifest.loadBundled()
+        for model in models where model.hdPackID != nil {
+            XCTAssertNotNil(model.standInAssetName, "\(model.displayName) has no bundled stand-in.")
+            XCTAssertNotNil(manifest.asset(id: model.hdPackID!),
+                            "\(model.displayName) points at HD asset \(model.hdPackID!), absent from ios.json.")
         }
     }
 

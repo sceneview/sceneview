@@ -85,6 +85,10 @@
 		593E4FADBA93AF1190A3A67E /* SketchfabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C214F8F9A1B35560E551895 /* SketchfabModels.swift */; };
 		95BE47B4B9B828745697FB4B /* SketchfabConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77142EC848C995EDE06546D /* SketchfabConfig.swift */; };
 		A10000000000000000002960 /* AssetSourceProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002960 /* AssetSourceProbe.swift */; };
+		A10000000000000000004D01 /* HDPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D01 /* HDPack.swift */; };
+		A10000000000000000004D02 /* HDPackViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D02 /* HDPackViews.swift */; };
+		A10000000000000000004D03 /* ios.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D03 /* ios.json */; };
+		A10000000000000000004D04 /* HDPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D04 /* HDPackTests.swift */; };
 		A10000000000000000002966 /* BundledAssetCredits.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002966 /* BundledAssetCredits.swift */; };
 		A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* SceneViewDemoApp.swift */; };
 		A10000010000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* Assets.xcassets */; };
@@ -405,6 +409,10 @@
 		2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_damaged_helmet.usdz; sourceTree = "<group>"; };
 		D77142EC848C995EDE06546D /* SketchfabConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabConfig.swift; path = SceneViewDemo/Services/SketchfabConfig.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002960 /* AssetSourceProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourceProbe.swift; path = SceneViewDemo/Services/AssetSourceProbe.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D01 /* HDPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HDPack.swift; path = SceneViewDemo/Services/HDPack.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D02 /* HDPackViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HDPackViews.swift; path = SceneViewDemo/Views/Components/HDPackViews.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D03 /* ios.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = ios.json; path = ../../assets/hd-pack/ios.json; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D04 /* HDPackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HDPackTests.swift; path = SceneViewDemoTests/HDPackTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002966 /* BundledAssetCredits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetCredits.swift; path = SceneViewDemo/Services/BundledAssetCredits.swift; sourceTree = SOURCE_ROOT; };
 		E20000000000000000000001 /* studio.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = studio.hdr; sourceTree = "<group>"; };
 		E20000000000000000000002 /* outdoor_cloudy.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = outdoor_cloudy.hdr; sourceTree = "<group>"; };
@@ -548,6 +556,8 @@
 				5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */,
 				D77142EC848C995EDE06546D /* SketchfabConfig.swift */,
 				A20000000000000000002960 /* AssetSourceProbe.swift */,
+				A20000000000000000004D01 /* HDPack.swift */,
+				A20000000000000000004D02 /* HDPackViews.swift */,
 				A20000000000000000002966 /* BundledAssetCredits.swift */,
 				6C214F8F9A1B35560E551895 /* SketchfabModels.swift */,
 				8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */,
@@ -584,6 +594,7 @@
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
 				F000000000000000000000A0 /* ARExperienceModelTests.swift */,
 				A20000000000000000002962 /* AssetSourceProbeTests.swift */,
+				A20000000000000000004D04 /* HDPackTests.swift */,
 				A20000000000000000002968 /* BundledAssetCreditsTests.swift */,
 				F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */,
 			);
@@ -791,6 +802,7 @@
 			children = (
 				E600000000000000000000F3 /* qrcode.png */,
 				E600000000000000000000F4 /* BundledCredits.json */,
+				A20000000000000000004D03 /* ios.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -921,6 +933,7 @@
 				F50000000000000000000001 /* bell.wav in Resources */,
 				E500000000000000000000F3 /* qrcode.png in Resources */,
 				E500000000000000000000F4 /* BundledCredits.json in Resources */,
+				A10000000000000000004D03 /* ios.json in Resources */,
 				E500000000000000000000D3 /* sample.mp4 in Resources */,
 				D10000000000000000000001 /* game_boy_classic.usdz in Resources */,
 				D10000000000000000000002 /* tree_scene.usdz in Resources */,
@@ -1075,6 +1088,8 @@
 				0C0448E495F77BF795D1C647 /* ComingSoonScreen.swift in Sources */,
 				95BE47B4B9B828745697FB4B /* SketchfabConfig.swift in Sources */,
 				A10000000000000000002960 /* AssetSourceProbe.swift in Sources */,
+				A10000000000000000004D01 /* HDPack.swift in Sources */,
+				A10000000000000000004D02 /* HDPackViews.swift in Sources */,
 				A10000000000000000002966 /* BundledAssetCredits.swift in Sources */,
 				593E4FADBA93AF1190A3A67E /* SketchfabModels.swift in Sources */,
 				B4A94ABD8B5DA5F4E4CE4834 /* SketchfabService.swift in Sources */,
@@ -1191,6 +1206,7 @@
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
 				F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */,
 				A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */,
+				A10000000000000000004D04 /* HDPackTests.swift in Sources */,
 				A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */,
 				F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */,
 			);

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "flight-helmet",
+      "title": "Flight Helmet",
+      "file": "7ef14ea8764e6d7d3274e874b0dc8b51b5236ec1996c47bce1ff8aa3f4fb1cce.usdz",
+      "sha256": "7ef14ea8764e6d7d3274e874b0dc8b51b5236ec1996c47bce1ff8aa3f4fb1cce",
+      "bytes": 51704895,
+      "license": "CC0-1.0",
+      "author": "Gary Hsu (Microsoft)",
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet"
+    }
+  ]
+}

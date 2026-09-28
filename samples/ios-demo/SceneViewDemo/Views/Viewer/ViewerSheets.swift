@@ -9,7 +9,16 @@ import SceneViewSwift
 struct BundledViewerModel: Identifiable, Equatable {
     let assetName: String
     let displayName: String
+    /// HD pack asset id (`assets/hd-pack/ios.json`) when the model is not in
+    /// the bundle but downloaded once; `nil` for a bundled USDZ.
+    var hdPackID: String? = nil
+    /// The bundled USDZ shown instantly while the HD asset is not on disk.
+    /// Required when ``hdPackID`` is set.
+    var standInAssetName: String? = nil
     var id: String { assetName }
+
+    /// The bundled resource to load when the HD asset is not available.
+    var bundledResourceName: String { standInAssetName ?? assetName }
 
     /// Asset-catalog thumbnail, or `nil` when none was generated for this model.
     var thumbnailName: String? {

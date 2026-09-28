@@ -36,6 +36,11 @@ struct ModelViewerDemo: View {
     /// instead of silently regressing to the blank-cube placeholder (#3584).
     static let bundledModels: [BundledViewerModel] = [
         BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet"),
+        // HD pack: 52 MB, full 2K textures, downloaded once. The bundled
+        // Damaged Helmet stands in until the file is on disk — same choice
+        // as Android.
+        BundledViewerModel(assetName: "khronos_flight_helmet", displayName: "Flight Helmet",
+                           hdPackID: "flight-helmet", standInAssetName: "khronos_damaged_helmet"),
         BundledViewerModel(assetName: "khronos_fox", displayName: "Fox"),
         BundledViewerModel(assetName: "khronos_lantern", displayName: "Lantern"),
         BundledViewerModel(assetName: "khronos_toy_car", displayName: "Toy Car"),
@@ -166,6 +171,12 @@ struct ModelViewerDemo: View {
     @State private var streamedUid: String?
 
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// HD pack: the stage shows a bundled stand-in while the selected model's
+    /// HD file is not on disk; ``pendingHDID`` names that file, and the stage
+    /// swaps to it the moment the store reports it ready.
+    @ObservedObject private var hdPack = HDPackStore.shared
+    @State private var pendingHDID: String?
 
     /// `-qa_mode 1` / `?qa_mode=1` — keeps the authored pose for captures.
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
@@ -326,7 +337,12 @@ struct ModelViewerDemo: View {
             dock: dock,
             accent: DockItem(icon: "arkit", label: "View in AR", enabled: arSupported) { showAR = true },
             onReset: resetAll,
-            accessory: { floatingBand }
+            accessory: { floatingBand },
+            status: {
+                if let pendingHDID {
+                    HDPackPill(state: hdPack.state(for: pendingHDID))
+                }
+            }
         )
         .sheet(item: $sheet) { which in
             Group {
@@ -415,6 +431,12 @@ struct ModelViewerDemo: View {
             }
             await loadBundled(selectedModel)
         }
+        .onChange(of: hdPack.states) { _, _ in
+            // The HD file of the model on stage just landed: swap the stand-in out.
+            guard let id = pendingHDID, hdPack.state(for: id) == .ready,
+                  selectedModel.hdPackID == id else { return }
+            Task { await loadBundled(selectedModel) }
+        }
         .onChange(of: selectedAnimation) { _, index in
             play(clip: index)
         }
@@ -482,9 +504,26 @@ struct ModelViewerDemo: View {
         loadError = nil
         streamedDisplayName = nil
         streamedUid = nil
+        #if DEBUG
+        let started = Date()
+        #endif
         do {
-            let node = try await ModelNode.load(model.assetName)
-            install(node)
+            if let id = model.hdPackID, let url = hdPack.localURL(for: id) {
+                let node = try await ModelNode.load(contentsOf: url)
+                install(node)
+                pendingHDID = nil
+            } else {
+                let node = try await ModelNode.load(model.bundledResourceName)
+                install(node)
+                pendingHDID = model.hdPackID
+            }
+            #if DEBUG
+            // Guardrail for the HD pack: load time and footprint per model.
+            print(String(format: "[ModelViewer] loaded %@%@ in %.0f ms, footprint %.0f MB",
+                         model.assetName, pendingHDID == nil ? "" : " (stand-in)",
+                         Date().timeIntervalSince(started) * 1000,
+                         Double(MemoryFootprint.current()) / 1_048_576))
+            #endif
         } catch {
             loadError = "Could not load \(model.displayName): \(error.localizedDescription)"
         }
@@ -574,6 +613,7 @@ struct ModelViewerDemo: View {
                 SurpriseModelCheck.isCoherent(node.entity)
             else { continue }
             install(node)
+            pendingHDID = nil
             streamedUid = pick.uid
             streamedDisplayName = pick.name
             return

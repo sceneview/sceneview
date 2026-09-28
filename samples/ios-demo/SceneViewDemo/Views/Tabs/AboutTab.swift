@@ -22,6 +22,9 @@ struct AboutTab: View {
                 LazyVStack(spacing: 20) {
                     identity
                     supportCard
+                    if !HDPackStore.shared.manifest.assets.isEmpty {
+                        HDPackSettingsRow()
+                    }
                     aboutCards
                     footer
                 }
