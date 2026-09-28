@@ -164,6 +164,13 @@ class ArDebugTrace {
     private var imageTimes = FloatArray(64)
     private val imagePaths = ArrayList<String>()
 
+    /**
+     * When set, every event that changed the trace is appended here as it was kept — the
+     * confident, finite points only, a plane or an anchor only when it changed — so replaying
+     * the journal into a fresh trace rebuilds this one exactly. A room scan keeps one to save.
+     */
+    var journal: MutableList<ArDebugEvent>? = null
+
     /** Bumped on every change, so a reader can tell "same trace" without comparing contents. */
     var version: Int = 0
         private set
@@ -208,6 +215,7 @@ class ArDebugTrace {
      * still would otherwise fill the cap in minutes.
      */
     fun addPose(nanos: Long, pose: DebugPose) {
+        journal?.add(ArDebugEvent.CameraPose(nanos, pose))
         val t = secondsOf(nanos)
         val last = poses.lastOrNull()
         if (last != null && t <= poseTimes[poses.size - 1] + 1e-6f) {
@@ -268,12 +276,14 @@ class ArDebugTrace {
         val count = positions.size / 3
         val seen = IntArray(count)
         var seenCount = 0
+        val kept = journal?.let { PointJournal(count, colors != null) }
         for (i in 0 until count) {
             if (confidences != null && i < confidences.size && confidences[i] < MIN_POINT_CONFIDENCE) continue
             val x = positions[i * 3]
             val y = positions[i * 3 + 1]
             val z = positions[i * 3 + 2]
             if (!x.isFinite() || !y.isFinite() || !z.isFinite()) continue
+            kept?.add(x, y, z, colors?.getOrNull(i) ?: 0)
             val key = voxelKey(x, y, z)
             val index = voxelIndex[key] ?: run {
                 if (pointCount >= MAX_MAP_POINTS) return@run -1
@@ -306,6 +316,7 @@ class ArDebugTrace {
         }
         observationTimes.add(t)
         observations.add(seen.copyOf(seenCount))
+        kept?.let { journal?.add(it.event(nanos)) }
         touch(t)
     }
 
@@ -316,7 +327,16 @@ class ArDebugTrace {
         val last = history.lastOrNull()?.second
         if (last != null && last.kind == kind && last.polygon.contentEquals(polygon)) return
         history.add(t to DebugPlane(id, kind, polygon))
+        journal?.add(ArDebugEvent.Plane(nanos, id, kind, polygon))
         touch(t)
+    }
+
+    /**
+     * Every plane the session found, as it last stood with a boundary: a plane ARCore merged
+     * into another still has the shape it had before, which a replay draws until the merge.
+     */
+    fun lastPlanes(): List<DebugPlane> = planeHistory.values.mapNotNull { history ->
+        history.lastOrNull { it.second.polygon.size >= 9 }?.second
     }
 
     /** Adds (or moves) anchor [id]. */
@@ -326,6 +346,7 @@ class ArDebugTrace {
         val last = history.lastOrNull()?.second
         if (last != null && last.pose == pose) return
         history.add(t to DebugAnchor(id, pose, placedAt = history.firstOrNull()?.first ?: t))
+        journal?.add(ArDebugEvent.Anchor(nanos, id, pose))
         touch(t)
     }
 
@@ -336,6 +357,7 @@ class ArDebugTrace {
         if (imagePaths.size == imageTimes.size) imageTimes = imageTimes.copyOf(imageTimes.size * 2)
         imageTimes[imagePaths.size] = t
         imagePaths.add(path)
+        journal?.add(ArDebugEvent.Image(nanos, path))
         touch(t)
     }
 
@@ -485,4 +507,21 @@ class ArDebugTrace {
             return lo
         }
     }
+}
+
+/** The points of one observation a trace kept, gathered for its [ArDebugTrace.journal]. */
+private class PointJournal(capacity: Int, colored: Boolean) {
+    private val xyz = FloatArray(capacity * 3)
+    private val colors = if (colored) IntArray(capacity) else null
+    private var count = 0
+
+    fun add(x: Float, y: Float, z: Float, color: Int) {
+        xyz[count * 3] = x
+        xyz[count * 3 + 1] = y
+        xyz[count * 3 + 2] = z
+        colors?.set(count, color)
+        count++
+    }
+
+    fun event(nanos: Long) = ArDebugEvent.Points(nanos, xyz.copyOf(count * 3), null, colors?.copyOf(count))
 }

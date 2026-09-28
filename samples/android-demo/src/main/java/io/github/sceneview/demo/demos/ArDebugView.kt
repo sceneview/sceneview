@@ -132,7 +132,8 @@ import kotlin.math.roundToInt
  * [PLANES_INTERVAL_NS], and every anchor once. Main thread, from `onSessionUpdated`.
  *
  * Nothing is recorded while tracking is lost: a pose ARCore does not vouch for would draw a
- * trail jumping across the room.
+ * trail jumping across the room. A room scan (Record mode, [ScanCapture]) rides on the same
+ * pass: it adds the points' colours and the photos.
  */
 internal class ArDebugRecorder {
     private var lastPointsNanos = Long.MIN_VALUE
@@ -142,32 +143,38 @@ internal class ArDebugRecorder {
     private val anchorIds = HashMap<Anchor, Int>()
     private var recordedFor: ArDebugTrace? = null
 
-    fun record(trace: ArDebugTrace, session: Session, frame: Frame, anchors: List<Anchor>) {
+    /**
+     * Records [frame] into [trace]. With a [scan] recording into that same trace, the new feature
+     * points also take their colour from the frame's camera image, and the frame gives the scan a
+     * photo when the camera has moved enough since the last one.
+     */
+    fun record(
+        trace: ArDebugTrace,
+        session: Session,
+        frame: Frame,
+        anchors: List<Anchor>,
+        scan: ScanCapture? = null,
+    ) {
         if (trace !== recordedFor) reset(trace)
         val nanos = frame.timestamp
         if (nanos <= 0L || frame.camera.trackingState != TrackingState.TRACKING) return
 
-        trace.addPose(nanos, frame.camera.displayOrientedPose.toDebugPose())
+        val display = frame.camera.displayOrientedPose.toDebugPose()
+        trace.addPose(nanos, display)
 
-        if (nanos - lastPointsNanos >= POINTS_INTERVAL_NS) {
-            lastPointsNanos = nanos
-            runCatching {
-                frame.acquirePointCloud().use { cloud ->
-                    val buffer = cloud.points
-                    val count = buffer.remaining() / 4
-                    if (count > 0) {
-                        val xyz = FloatArray(count * 3)
-                        val confidence = FloatArray(count)
-                        for (i in 0 until count) {
-                            xyz[i * 3] = buffer.get(i * 4)
-                            xyz[i * 3 + 1] = buffer.get(i * 4 + 1)
-                            xyz[i * 3 + 2] = buffer.get(i * 4 + 2)
-                            confidence[i] = buffer.get(i * 4 + 3)
-                        }
-                        trace.addPoints(nanos, xyz, confidence)
-                    }
-                }
+        val capture = scan?.takeIf { it.trace === trace }
+        val pointsDue = nanos - lastPointsNanos >= POINTS_INTERVAL_NS
+        val photoDue = capture?.wantsPhoto(display) == true
+        // One camera image per frame at most, shared by the colours and the photo.
+        val image = if (capture != null && (pointsDue || photoDue)) capture.acquire(frame) else null
+        try {
+            if (pointsDue) {
+                lastPointsNanos = nanos
+                recordPoints(trace, nanos, frame, capture, image)
             }
+            if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
+        } finally {
+            image?.close()
         }
 
         if (nanos - lastPlanesNanos >= PLANES_INTERVAL_NS) {
@@ -180,6 +187,28 @@ internal class ArDebugRecorder {
             val id = anchorIds.size + 1
             anchorIds[anchor] = id
             trace.addAnchor(nanos, id, anchor.pose.toDebugPose())
+        }
+    }
+
+    /** ARCore's feature points, coloured from [image] when a [scan] records. */
+    private fun recordPoints(trace: ArDebugTrace, nanos: Long, frame: Frame, scan: ScanCapture?, image: ScanImage?) {
+        runCatching {
+            frame.acquirePointCloud().use { cloud ->
+                val buffer = cloud.points
+                val count = buffer.remaining() / 4
+                if (count > 0) {
+                    val xyz = FloatArray(count * 3)
+                    val confidence = FloatArray(count)
+                    for (i in 0 until count) {
+                        xyz[i * 3] = buffer.get(i * 4)
+                        xyz[i * 3 + 1] = buffer.get(i * 4 + 1)
+                        xyz[i * 3 + 2] = buffer.get(i * 4 + 2)
+                        confidence[i] = buffer.get(i * 4 + 3)
+                    }
+                    val colors = if (scan != null && image != null) scan.colors(image, xyz) else null
+                    trace.addPoints(nanos, xyz, confidence, colors)
+                }
+            }
         }
     }
 
@@ -615,8 +644,9 @@ internal fun ArDebugSceneView(
                 if (session.fpsMeter.tick(frameTimeNanos)) session.fps = session.fpsMeter.fps
 
                 // A recording is framed whole from its first frame — the camera and the grid hold
-                // still while it plays — where a live session is framed as it grows.
-                val whole = if (replay != null) {
+                // still while it plays — where a live session, or a scan still recording, is framed
+                // as it grows.
+                val whole = if (replay != null && !replay.growing) {
                     clock.wholeFrame?.takeIf { clock.wholeFor === trace }
                         ?: trace.frameAt(trace.duration).also {
                             clock.wholeFrame = it
@@ -634,7 +664,7 @@ internal fun ArDebugSceneView(
                 if (orbit.following) orbit.home = home
                 if (!orbit.hasFramedContent && bounds != null) {
                     orbit.hasFramedContent = true
-                    val intro = replay != null && orbit.drift
+                    val intro = replay != null && !replay.growing && orbit.drift
                     if (intro) orbit.playIntro(ReplayIntro.startFor(home), held = true) else orbit.snapTo(home)
                 }
 

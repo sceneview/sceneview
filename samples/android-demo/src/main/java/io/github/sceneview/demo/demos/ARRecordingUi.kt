@@ -52,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.luminance
@@ -120,7 +119,6 @@ internal fun OverlayCard(
                 .padding(horizontal = Space.md)
                 .widthIn(max = ArOverlay.maxWidth)
                 .fillMaxWidth()
-                .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
                 .background(color = cardScrim(), shape = shape)
                 .overMediaEdge(shape)
                 .padding(Space.md)

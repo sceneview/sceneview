@@ -110,6 +110,12 @@ object DemoSettings {
     var qaDemoState: String? by mutableStateOf(null)
 
     /**
+     * A SceneView scan file (`.svscan`) handed over by another app ("Open with" / Share), for the
+     * Rerun demo to read into "Your sessions" and replay. The demo clears it once read.
+     */
+    var rerunInbox: android.net.Uri? by mutableStateOf(null)
+
+    /**
      * Optional camera-to-model distance, in metres, the 3D demos should frame the model at
      * when they start — i.e. a zoom level. When non-null, the shared hero-orbit camera
      * ([rememberHeroOrbitCameraManipulator]) uses this value as its orbit radius instead of

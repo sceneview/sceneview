@@ -11,6 +11,7 @@ import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
+import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
@@ -20,6 +21,7 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayManifest
+import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
@@ -30,6 +32,7 @@ import io.github.sceneview.texture.ImageTexture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 
@@ -52,6 +55,11 @@ internal class RerunReplayMedia(
     val thumbnails: Map<String, Bitmap>,
     /** The media archive's bytes, which [decodeFrame] cuts full-size frames from. */
     private val archive: ByteArray,
+    /**
+     * A room scan still recording (Record mode): the trace and the thumbnails keep growing, so
+     * the view frames what is there now and keeps a photo slot for every keyframe it may reach.
+     */
+    val growing: Boolean = false,
 ) {
     /** The thumbnail of the camera image in force at [time], `null` before the first one. */
     fun thumbnailAt(time: Float): Bitmap? {
@@ -65,6 +73,13 @@ internal class RerunReplayMedia(
         if (span.offset + span.length > archive.size) return null
         return BitmapFactory.decodeByteArray(archive, span.offset, span.length, options)
     }
+
+    /** Photo [path]'s encoded bytes, as the archive holds them; `null` when it does not. */
+    fun bytesOf(path: String): ByteArray? {
+        val span = manifest.media[path] ?: return null
+        if (span.offset + span.length > archive.size) return null
+        return archive.copyOfRange(span.offset, span.offset + span.length)
+    }
 }
 
 /** Loads the bundled replay from the assets. Call off the main thread's back: it is IO. */
@@ -74,8 +89,26 @@ internal suspend fun loadRerunReplay(context: Context): RerunReplayMedia = withC
         .let(ReplayManifest::parse)
         ?: error("Unreadable replay manifest")
     val events = assets.open(RerunReplayAssets.LOG).bufferedReader().useLines { parseArDebugLog(it) }
-    val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
     val archive = assets.open(RerunReplayAssets.MEDIA).use { it.readBytes() }
+    openReplay(manifest, events, archive)
+}
+
+/**
+ * Opens a scan saved on the phone ([RerunSessionStore]) — through the very code the bundled
+ * replay opens by, so the two look the same. `null` when its manifest is unreadable.
+ */
+internal suspend fun loadRerunSession(capture: RerunCapturePack): RerunReplayMedia? = withContext(Dispatchers.Default) {
+    val manifest = ReplayManifest.parse(String(capture.manifest)) ?: return@withContext null
+    openReplay(manifest, parseArDebugLog(String(capture.log).lineSequence()), capture.media)
+}
+
+/** A replay from its three parts: the photos and plane textures decoded side by side. */
+private suspend fun openReplay(
+    manifest: ReplayManifest,
+    events: List<ArDebugEvent>,
+    archive: ByteArray,
+): RerunReplayMedia = coroutineScope {
+    val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
     val shell = RerunReplayMedia(trace, manifest, emptyMap(), emptyMap(), archive)
     // Decoded side by side: the cover stays up until they are, so their time is the wait.
     val planes = manifest.textures.map { texture ->
@@ -162,7 +195,10 @@ internal class ReplayLayers(
     /** One photo quad per keyframe the whole session reaches, plus the live camera's. */
     private val photoSlots: List<PhotoSlot> = run {
         // Keyframes only accumulate along the path, so the last frame has the most — plus a spare.
-        val count = media.trace.frameAt(media.trace.duration).keyframes.size + 2
+        // A scan still recording can reach the cap.
+        val trace = media.trace
+        val keyframes = if (media.growing) ArDebugTrace.MAX_KEYFRAMES else trace.frameAt(trace.duration).keyframes.size
+        val count = keyframes + 2
         val placeholder = planeTextures.values.firstOrNull() ?: atlas
         List(count) {
             val material = material(placeholder)

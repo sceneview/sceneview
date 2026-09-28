@@ -9,15 +9,15 @@ import java.util.Locale
  * never heard of. Connection steps live in the settings sheet only.
  */
 
-/** The one sentence that says what the demo does, shown on screen and atop the sheet. */
+/** What streaming to a computer does, under the sheet's "Advanced" heading. */
 const val RERUN_INTRO: String =
     "Sends what the camera sees to Rerun on your computer, so you can scrub through it frame by frame."
 
-/** Atop the sheet, over the bundled replay: what the replay is, and what Live AR adds. */
+/** Atop the sheet, on every screen of the demo: what it records, and where that stays. */
 const val RERUN_REPLAY_INTRO: String =
-    "A real room, filmed with a phone and rebuilt in 3D: the camera's path and photos, the floor " +
-        "and table, the room's points and two models placed on them. The path and points were " +
-        "reconstructed from the video. Live AR records your own session, straight from ARCore."
+    "\"Record your room\" keeps the camera's path, its photos, the surfaces and the points, then " +
+        "replays the room in 3D. \"Watch a sample session\" plays a real room recorded the same way. " +
+        "Your sessions stay on this phone until you share or delete them."
 
 /** The status line over the camera: a dot, a [title] and a quieter [detail] line. */
 data class RerunStatusUx(
@@ -39,15 +39,16 @@ fun rerunStatusUx(isConnected: Boolean, eventsSent: Long, eventsPerSecond: Float
             live = true,
         )
     } else {
+        // Without a computer the screen is a room scanner: it says what Record does.
         RerunStatusUx(
-            title = "No computer connected",
-            detail = RERUN_INTRO,
+            title = ScanCopy.IDLE_TITLE,
+            detail = ScanCopy.IDLE_DETAIL,
             live = false,
         )
     }
 
 /** Heading of the settings-sheet section that holds [RERUN_SETUP_STEPS]. */
-const val RERUN_SETUP_TITLE: String = "Connect your computer"
+const val RERUN_SETUP_TITLE: String = "Advanced: stream to a computer"
 
 /** One numbered step of "Connect your computer"; [command] is shown in a mono block. */
 data class RerunSetupStep(val text: String, val command: String? = null)
