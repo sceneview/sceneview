@@ -23,6 +23,7 @@ name: CI
 #   - web-desktop    Kotlin/JS + Compose Desktop     (gated on `web`)
 #   - flutter-demo   plugin analyze+test, demo APK  (gated on `flutter`)
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
+#   - app-store-scripts  App Store submit/catch-up unit tests (gated on `app-store-scripts`)
 
 on:
   push:
@@ -144,6 +145,8 @@ jobs:
       build-system: ${{ steps.filter.outputs.build-system }}
       # `changelog.d/**` fragment edits — gates `changelog-lint` below.
       changelog: ${{ steps.filter.outputs.changelog }}
+      # The App Store submit/catch-up programs — gates `app-store-scripts`.
+      app-store-scripts: ${{ steps.filter.outputs.app-store-scripts }}
     steps:
       # Checked out only on `push`. `dorny/paths-filter` reads the diff from
       # the GitHub API on `pull_request` and never touches the working tree; it
@@ -278,6 +281,13 @@ jobs:
             # filter exists to be.
             changelog:
               - 'changelog.d/**'
+            # The programs that submit to Apple and their offline tests. Not
+            # under `shared` either: nothing in the Gradle build reaches them.
+            # This workflow file is listed so a change to the job re-runs it.
+            app-store-scripts:
+              - '.github/workflows/ci.yml'
+              - '.github/scripts/app_store_*'
+              - '.github/scripts/test_app_store_*'
 
       # The `outputs:` block above warns that a missing output evaluates to the
       # empty string and silently skips every downstream job — "a gate that can
@@ -300,6 +310,7 @@ jobs:
             compose=${{ steps.filter.outputs.compose }}
             build-system=${{ steps.filter.outputs.build-system }}
             changelog=${{ steps.filter.outputs.changelog }}
+            app-store-scripts=${{ steps.filter.outputs.app-store-scripts }}
         run: |
           set -euo pipefail
           bad=0
@@ -375,6 +386,26 @@ jobs:
 
       - name: Check changelog fragment format
         run: bash .claude/scripts/check-changelog-fragments.sh
+
+  # ── App Store submit / catch-up programs ─────────────────────────────────
+  # `app_store_submit.py` and `app_store_catchup.py` decide what reaches Apple,
+  # and `app-store-catch-up.yml` runs them on a cron with no human watching.
+  # Their tests are offline (stubbed App Store Connect, no secrets, stdlib
+  # only), so they cost a checkout and a second of Python — run on every PR
+  # that touches them, not only when the cron next fires.
+  app-store-scripts:
+    name: App Store scripts tests
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.app-store-scripts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Run the offline App Store script tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_*.py' -v
 
   # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
   # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until

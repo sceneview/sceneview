@@ -35,11 +35,18 @@ file it works. That branch now has a test; see the suite's dispatch-path case.
 
 Exit codes are the step's verdict: a non-zero exit is a red step and a release
 that did NOT reach App Review. Do not add a bare `except` that swallows one.
-Exit 2 is the one exception: DEFERRED, because another version holds App Store
-Connect's single non-live slot. Callers grade it green with a notice, since
-app-store-catch-up.yml submits the latest release once the slot frees.
+Exit 75 (EX_TEMPFAIL) is the one exception: DEFERRED, because an IDENTIFIED
+version holds App Store Connect's single non-live slot. Callers grade it green
+with a notice, since app-store-catch-up.yml submits the latest release once
+the slot frees. It is not 2 on purpose: python itself exits 2 when it cannot
+open this file, and that must stay red. A 409 whose holder cannot be named is
+exit 1 — nothing proves it is only a wait.
 """
 import os, sys, json, time, pathlib, jwt, requests
+
+# See the docstring: deferred behind an identified slot holder. Kept in sync
+# with app-store.yml and app-store-catch-up.yml, which grade it green.
+EXIT_DEFERRED = 75
 
 KEY_ID = os.environ["ASC_KEY_ID"]
 ISSUER_ID = os.environ["ASC_ISSUER_ID"]
@@ -395,6 +402,13 @@ def claim_editable_version():
     stale_id = stale["id"]
     stale_vs = stale.get("attributes", {}).get("versionString")
     stale_state = stale.get("attributes", {}).get("appStoreState")
+    # Never rename a record DOWN: a newer version's record (a later release a
+    # human is handling, or one Apple rejected) must not become an older one.
+    if _vtuple(stale_vs) > _vtuple(version_string):
+        print(f"::error::The editable iOS record is {stale_vs} ({stale_state}, {stale_id}), newer "
+              f"than {version_string}. Renaming it would downgrade it, so nothing was changed. "
+              "Resolve it in App Store Connect.")
+        raise SystemExit(1)
     r = requests.patch(
         f"{BASE}/appStoreVersions/{stale_id}",
         headers=headers,
@@ -521,6 +535,8 @@ if not version_id:
         # than guess. A probe failure degrades to "could not determine" — the
         # 409 is the finding, the identification is the courtesy.
         slot = find_slot_holder()
+        if slot and "?" in slot:
+            slot = None  # a record without a name or a state identifies nothing
         holder_vs, holder_state = slot if slot else ("?", "?")
         if (SUPERSEDE and holder_state in ("WAITING_FOR_REVIEW", "IN_REVIEW")
                 and _vtuple(holder_vs) and _vtuple(holder_vs) < _vtuple(version_string)):
@@ -537,16 +553,20 @@ if not version_id:
                     why += " (supersede was requested but only applies to an OLDER version "\
                            "that is WAITING_FOR_REVIEW or IN_REVIEW)"
             else:
-                why = ("another version is in a non-live state (could not identify which); "
-                       "app-store-catch-up.yml retries on its schedule")
+                # No holder named: the 409 may be anything (a duplicate
+                # versionString, a bad payload), so it is not provably a wait.
+                print(f"::error::POST /v1/appStoreVersions → 409 for {version_string} and no "
+                      "version holding the non-live slot could be identified. Not graded as "
+                      f"deferred. Nothing was cancelled. {r.text[:400]}")
+                raise SystemExit(1)
             print(f"::notice::iOS submission for {version_string} DEFERRED: {why}. Nothing was "
                   "cancelled and no review was touched.")
             print(f"POST /v1/appStoreVersions → 409: {r.text[:400]}")
-            # Exit 2: deferred by Apple's state machine, not broken. app-store.yml
-            # grades it as a green step with this notice, because the catch-up
+            # Deferred by Apple's state machine, not broken. Both callers grade
+            # EXIT_DEFERRED as a green step with this notice, because the catch-up
             # workflow owns the retry — a red badge that only asks a human to
             # press "re-run" later is what kept iOS days behind (2026-09-28).
-            raise SystemExit(2)
+            raise SystemExit(EXIT_DEFERRED)
     else:
         r.raise_for_status()
         version_id = r.json()["data"]["id"]

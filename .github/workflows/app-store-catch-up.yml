@@ -4,7 +4,7 @@ name: App Store catch-up
 #
 # App Store Connect allows ONE non-live iOS version at a time. A tag whose
 # deploy runs while the previous version is still in review gets a 409 and
-# defers (app_store_submit.py, exit 2). Before this workflow, nothing ever
+# defers (app_store_submit.py, exit 75). Before this workflow, nothing ever
 # retried a deferred release: iOS sat at 4.40.0 for days while Android shipped
 # 4.47.0, with Apple approving every submission in 20 to 36 hours (2026-09-28).
 #
@@ -63,7 +63,7 @@ jobs:
             .github/workflows/requirements
 
       - name: Test the decision logic
-        run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_catchup.py'
+        run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_*.py'
 
       - name: Install pinned App Store Connect deps
         run: |
@@ -148,7 +148,7 @@ jobs:
           "$RUNNER_TEMP/asc-venv/bin/python3" "$RUNNER_TEMP/app_store_submit.py"
           rc=$?
           set -e
-          if [ "$rc" -eq 2 ]; then
+          if [ "$rc" -eq 75 ]; then
             echo "::notice::Deferred by App Store Connect — the next catch-up run retries."
             exit 0
           fi

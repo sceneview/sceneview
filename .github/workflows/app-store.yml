@@ -344,16 +344,17 @@ jobs:
           # above: this job sets `working-directory: samples/ios-demo`, so a
           # repo-root-relative path would not resolve (#1286).
           #
-          # Exit 2 = DEFERRED: another version holds App Store Connect's single
-          # non-live slot. That is not a broken release — app-store-catch-up.yml
-          # submits the latest release once the slot frees — so it is graded
-          # green with a notice. It used to be red, and a red run whose only
+          # Exit 75 = DEFERRED: an identified version holds App Store Connect's
+          # single non-live slot. (Not 2: python exits 2 when it cannot open the
+          # script, and that must stay red.) A deferral is not a broken release —
+          # app-store-catch-up.yml submits the latest release once the slot
+          # frees — so it is graded green with a notice. It used to be red, and a red run whose only
           # remedy was "re-run later" is what left iOS days behind Android.
           set +e
           $RUNNER_TEMP/asc-venv/bin/python3 "$GITHUB_WORKSPACE/.github/scripts/app_store_submit.py"
           rc=$?
           set -e
-          if [ "$rc" -eq 2 ]; then
+          if [ "$rc" -eq 75 ]; then
             echo "::notice::Submission deferred — app-store-catch-up.yml submits the latest release once App Store Connect's slot frees."
             exit 0
           fi
