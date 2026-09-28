@@ -235,7 +235,7 @@ object SampleAssets {
         ),
         SketchfabSlug(
             uid = "378cd6e6f505493aa8e22f68db1cabec",
-            displayName = "Park Bench",
+            displayName = "Simple Park Bench",
             author = "Planetrix23",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_sheen_chair.glb",
@@ -257,7 +257,7 @@ object SampleAssets {
         ),
         SketchfabSlug(
             uid = "42cb7fad10ba44ecbc9ae9cf5fdd63b6",
-            displayName = "Fern",
+            displayName = "Plant Bush",
             author = "Batuhan13",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/shiba.glb",

@@ -74,9 +74,11 @@ internal val PARK_SLOTS = listOf(
  *
  * Wide enough that every slot's footprint is on grass and the formation can spin without a model
  * stepping off the edge. It is a round plinth on purpose: a disc turns into itself under "Spin
- * scene", so the ground never shows a corner sweeping round.
+ * scene", so the ground never shows a corner sweeping round. At 1.6 m it outweighed the park it
+ * carried, so it stops just past the farthest footprint (the fern, 0.75 m out) and lets the
+ * canopies overhang. iOS uses the same radius.
  */
-internal const val PARK_LAWN_RADIUS = 1.6f
+internal const val PARK_LAWN_RADIUS = 1.1f
 
 /**
  * Height of the formation. Every slot is bottom-aligned onto a shared ground plane, so the union is

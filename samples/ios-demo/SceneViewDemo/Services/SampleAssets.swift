@@ -223,7 +223,7 @@ enum SampleAssets {
         ),
         SketchfabSlug(
             uid: "378cd6e6f505493aa8e22f68db1cabec",
-            displayName: "Park Bench",
+            displayName: "Simple Park Bench",
             author: "Planetrix23",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             // No bench is bundled; the 1.8 MB piano keeps a piece of furniture in the slot.
@@ -249,7 +249,7 @@ enum SampleAssets {
         ),
         SketchfabSlug(
             uid: "42cb7fad10ba44ecbc9ae9cf5fdd63b6",
-            displayName: "Fern",
+            displayName: "Plant Bush",
             author: "Batuhan13",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             // No plant is bundled apart from the tree island the oaks already fall back to.

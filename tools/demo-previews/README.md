@@ -211,8 +211,8 @@ build will load (`SketchfabConfig.apiKey`), so the card is what the scene opens 
 - `model_picker_park_streamed.webp`: a **keyed** debug build, so the four streamed `park`
   registry models. Same capture online, window x 0–1080, y 880–1744, same resize and encoding.
   The image shows CC-BY 4.0 models, credited where the app credits them, under "Park
-  (Multi-model)" in the Credits sheet: "Oak Trees" by bumstrum, "Park Bench" by Planetrix23,
-  "Street Lamp" by bez_glaza and "Fern" by Batuhan13 (`SampleAssets.kt`).
+  (Multi-model)" in the Credits sheet: "Oak Trees" by bumstrum, "Simple Park Bench" by Planetrix23,
+  "Street Lamp" by bez_glaza and "Plant Bush" by Batuhan13 (`SampleAssets.kt`).
 
 Re-capture both when the `park` category or the Park's lawn changes.
 
