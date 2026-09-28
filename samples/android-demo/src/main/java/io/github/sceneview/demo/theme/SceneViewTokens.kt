@@ -318,7 +318,23 @@ object SceneViewTokens {
         val outlineSubtleLight = Color(0xFFEBEDF0)
         val outlineSubtleDark = Color(0xFF46516A)
 
-        const val headerOverlayAlpha = 1f
+
+        /**
+         * `card-glass`, light — the frosted caption of a home card: `surface-container` at
+         * 72 % over a blurred copy of the card's own image, so the caption is tinted by the
+         * picture it describes instead of sitting in a white box under it. The blur averages
+         * the image, so the worst ground is a uniformly black one: there `on-surface` holds
+         * 8.6:1 and `on-surface-variant` 4.8:1.
+         */
+        const val cardGlassAlphaLight = 0.72f
+
+        /**
+         * `card-glass`, dark — `surface-container` at 85 %. Over a mid-grey image
+         * `on-surface-variant` holds 5.2:1; the theoretical worst ground, a uniformly white
+         * image, takes it to 3.9:1 (`on-surface` 8.1:1) — dark mode draws the dark captures,
+         * whose blurred average is never near white.
+         */
+        const val cardGlassAlphaDark = 0.85f
     }
 
     /** Home screen geometry (design spec §2) — `home-*` tokens. */
@@ -371,6 +387,34 @@ object SceneViewTokens {
 
         /** Where [HomeColor.heroSkyHorizon] sits in the stage, as a fraction of its height. */
         const val heroSkyHorizon = 0.44f
+
+        /**
+         * `card-media-aspect` — a catalogue card's picture is square, not 5:4: the caption
+         * no longer sits in a box of its own under it, so the picture takes the room.
+         */
+        const val cardMediaAspect = 1f
+
+        /** `card-glass-blur` — how far a card's own image is blurred under its caption. */
+        val cardGlassBlur = 28.dp
+
+        /**
+         * `card-glass-melt` — the band over which a card's sharp picture dissolves into its
+         * frosted caption. There is no line between the two: the image turns into the glass.
+         */
+        val cardGlassMelt = 28.dp
+
+        /** `featured-card-width` — one "Featured" card; the next one peeks at the edge. */
+        val featuredCardWidth = 280.dp
+        val featuredCardWidthExpanded = 340.dp
+
+        /** `featured-media-aspect` — a "Featured" card is portrait, 4:5, its picture full-bleed. */
+        const val featuredMediaAspect = 0.8f
+
+        /**
+         * Fraction of a "Featured" card's horizontal travel its picture lags behind the card
+         * while the shelf is swiped — the depth cue of a store's editorial row.
+         */
+        const val featuredParallax = 0.08f
     }
 
     /**

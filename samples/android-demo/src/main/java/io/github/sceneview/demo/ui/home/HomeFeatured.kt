@@ -16,6 +16,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.LocalDensity
+import io.github.sceneview.demo.DemoFreshness
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -99,6 +108,7 @@ sealed interface FeaturedPage {
 object FeaturedTestTags {
     const val PAGER = "home-featured-pager"
     const val INDICATOR = "home-featured-indicator"
+    const val SHELF = "home-featured-shelf"
 }
 
 /**
@@ -311,6 +321,54 @@ private fun FeaturedCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The "Featured" shelf under the hero: the demos we push, as a swipeable row of portrait
+ * cards ([DemoMediaCard] with `featured = true`) — the editorial row of a store's front
+ * page rather than two more cells of the grid below.
+ *
+ * Each card is `featured-card-width` wide, so the next one always peeks at the right edge
+ * and says "swipe"; a fling settles on a card's leading edge. The row bleeds out of the
+ * grid's side inset and carries it as content padding, like the chip row, so cards scroll
+ * to the screen edge. While it moves, each picture lags its card by `featured-parallax`.
+ */
+@Composable
+fun FeaturedShelf(
+    demos: List<DemoEntry>,
+    freshness: (DemoEntry) -> DemoFreshness,
+    onDemoClick: (String) -> Unit,
+    expanded: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val home = SceneViewTokens.Home
+    val listState = rememberLazyListState()
+    val startPadding = with(LocalDensity.current) { home.contentPadding.toPx() }
+    LazyRow(
+        state = listState,
+        flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Start),
+        contentPadding = PaddingValues(horizontal = home.contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(home.gridGutter),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(FeaturedTestTags.SHELF),
+    ) {
+        itemsIndexed(demos, key = { _, demo -> demo.id }) { index, demo ->
+            DemoMediaCard(
+                demo = demo,
+                onClick = { onDemoClick(demo.id) },
+                freshness = freshness(demo),
+                featured = true,
+                mediaShift = {
+                    listState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.index == index }
+                        ?.let { -(it.offset - startPadding) * home.featuredParallax }
+                        ?: 0f
+                },
+                modifier = Modifier.width(if (expanded) home.featuredCardWidthExpanded else home.featuredCardWidth),
+            )
         }
     }
 }

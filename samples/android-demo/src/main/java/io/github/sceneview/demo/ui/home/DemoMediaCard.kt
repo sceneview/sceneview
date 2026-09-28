@@ -1,6 +1,25 @@
 package io.github.sceneview.demo.ui.home
 
+import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -56,12 +75,19 @@ import io.github.sceneview.sample.ui.DemoCategoryAccent
 /**
  * One demo on the home grid (design spec §2, "Card").
  *
- * Anatomy, top to bottom: a 5:4 media slot ([SceneViewTokens.Layout.mediaAspect])
+ * Anatomy, top to bottom: a square picture ([SceneViewTokens.Home.cardMediaAspect])
  * showing the captured preview when the image pipeline has produced one
  * ([DemoEntry.previewPainter]) and the category-tinted [DemoEntry.icon] tile
- * otherwise; then title (`type-card`, one line) and subtitle (`type-caption`,
- * weight 400, one line). `surface` fill, 1 dp `outline-subtle` hairline, 20 dp
- * radius, no shadow, no scrim, no overlay — the media is the card.
+ * otherwise; then title (`type-card`) and subtitle (`type-caption`, weight 400), never
+ * truncated. There is no white box under the picture any more: the caption sits on
+ * `card-glass` — a blurred copy of the card's own picture under `surface-container` at
+ * 72 % / 85 % — and the sharp picture dissolves into it over `card-glass-melt`, so each
+ * card is tinted by what it shows. 20 dp radius; light lifts it with `shadow-sm`, dark
+ * keeps the 1 dp `outline-subtle`.
+ *
+ * [featured] is the "Featured" shelf's variant ([FeaturedShelf]): a 4:5 portrait card,
+ * picture full-bleed, the same frosted caption floating on its lower part, `type-title`,
+ * `radius-xl`, `shadow-md`, and the picture drifting by [mediaShift] as the shelf moves.
  *
  * A status chip sits on the media only for [DemoStatus.ComingSoon] /
  * [DemoStatus.KnownIssue], and [DemoStatus.InReview] behind
@@ -78,6 +104,8 @@ fun DemoMediaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     freshness: DemoFreshness = DemoFreshness.None,
+    featured: Boolean = false,
+    mediaShift: () -> Float = { 0f },
 ) {
     val dark = isSystemInDarkTheme()
     MediaCard(
@@ -90,6 +118,8 @@ fun DemoMediaCard(
         onClick = onClick,
         modifier = modifier,
         freshness = freshness,
+        featured = featured,
+        mediaShift = mediaShift,
     )
 }
 
@@ -133,9 +163,11 @@ private fun MediaCard(
     status: DemoStatus,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    /** Custom media; wins over [preview] and [icon]. */
-    media: (@Composable BoxScope.() -> Unit)? = null,
     freshness: DemoFreshness = DemoFreshness.None,
+    /** A "Featured" card: portrait, picture full-bleed, caption floating on it. */
+    featured: Boolean = false,
+    /** Horizontal lag of the picture inside the card, in px — the shelf's parallax. */
+    mediaShift: () -> Float = { 0f },
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -148,6 +180,8 @@ private fun MediaCard(
         label = "cardPress",
     )
     val home = SceneViewTokens.Home
+    val dark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(if (featured) SceneViewTokens.Radius.xl else home.cardRadius)
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -160,34 +194,108 @@ private fun MediaCard(
                 role = Role.Button,
                 onClick = onClick,
             ),
-        shape = RoundedCornerShape(home.cardRadius),
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(home.cardOutlineWidth, outlineSubtle()),
+        // Light lifts the card off the page with `shadow-sm` (`shadow-md` for a featured
+        // one); dark keeps the 1 dp `outline-subtle` a shadow cannot draw on a dark page.
+        shadowElevation = when {
+            dark -> 0.dp
+            featured -> SceneViewTokens.Elevation.md
+            else -> SceneViewTokens.Elevation.sm
+        },
+        border = if (dark) BorderStroke(home.cardOutlineWidth, outlineSubtle()) else null,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(SceneViewTokens.Layout.mediaAspect),
-            ) {
-                if (media != null) {
-                    media()
-                } else if (preview != null) {
-                    Image(
-                        painter = preview,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val mediaHeight = maxWidth / if (featured) home.featuredMediaAspect else home.cardMediaAspect
+            // Where the caption starts, read at draw time only: the glass is drawn from there
+            // down, so a caption that grows (a long subtitle, a 1.5 font scale) takes its
+            // glass with it and nothing re-lays out.
+            var captionTop by remember { mutableFloatStateOf(Float.NaN) }
+            val melt = with(LocalDensity.current) { home.cardGlassMelt.toPx() }
+            val glass = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardGlassAlpha())
+            val captionInset = if (featured) home.heroPadding - SceneViewTokens.Space.xs else home.cardTextPaddingHorizontal
+            Box(modifier = Modifier.fillMaxWidth()) {
+                // 1. The picture, sharp — full-bleed on a featured card, the top square otherwise.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (featured) Modifier.matchParentSize() else Modifier.height(mediaHeight))
+                        .clipToBounds(),
+                ) {
+                    if (preview != null) {
+                        MediaImage(preview, mediaShift, featured)
+                    } else {
+                        IconTile(icon = icon, accent = accent)
+                    }
+                }
+                // 2. The same picture, blurred, under the caption: frosted glass tinted by the
+                //    image it describes. It fades in over `card-glass-melt`, so the sharp picture
+                //    dissolves into the glass instead of stopping at an edge.
+                if (preview != null && FROSTED_BLUR_SUPPORTED) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                            .drawWithContent {
+                                drawContent()
+                                drawRect(meltBrush(captionTop, melt, Color.Black), blendMode = BlendMode.DstIn)
+                            }
+                            .blur(home.cardGlassBlur, BlurredEdgeTreatment.Rectangle),
+                    ) {
+                        MediaImage(preview, mediaShift, featured)
+                    }
+                }
+                // 3. The glass tint — what the caption's contrast is measured against.
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .drawBehind { drawRect(meltBrush(captionTop, melt, glass)) },
+                )
+                // Sizing column: the picture's height, then the caption — pulled up over the
+                // picture's melt band on a grid card, pinned to the bottom of a featured one.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (featured) Modifier.heightIn(min = mediaHeight) else Modifier),
+                ) {
+                    Spacer(
+                        if (featured) {
+                            Modifier.weight(1f)
+                        } else {
+                            Modifier.height(mediaHeight - home.cardGlassMelt)
+                        },
                     )
-                } else {
-                    IconTile(icon = icon, accent = accent)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onPlaced { captionTop = it.positionInParent().y }
+                            .padding(
+                                top = home.cardGlassMelt,
+                                start = captionInset,
+                                end = captionInset,
+                                bottom = if (featured) captionInset else home.cardTextPaddingBottom,
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+                    ) {
+                        Text(
+                            text = title,
+                            style = if (featured) SceneViewTokens.Type.title else SceneViewTokens.Type.card,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = subtitle,
+                            style = if (featured) SceneViewTokens.Type.body else SceneViewTokens.Type.caption,
+                            fontWeight = FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 if (status != DemoStatus.Working) {
                     StatusChip(
                         status = status,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(SceneViewTokens.Space.sm),
+                            .padding(if (featured) SceneViewTokens.Space.md else SceneViewTokens.Space.sm),
                     )
                 }
                 if (freshness != DemoFreshness.None) {
@@ -196,39 +304,78 @@ private fun MediaCard(
                         accent = accent,
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .padding(SceneViewTokens.Space.sm),
+                            .padding(if (featured) SceneViewTokens.Space.md else SceneViewTokens.Space.sm),
                     )
                 }
             }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        top = home.cardTextPaddingTop,
-                        start = home.cardTextPaddingHorizontal,
-                        end = home.cardTextPaddingHorizontal,
-                        bottom = home.cardTextPaddingBottom,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
-            ) {
-                Text(
-                    text = title,
-                    style = SceneViewTokens.Type.card,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = Int.MAX_VALUE,
-
-                )
-                Text(
-                    text = subtitle,
-                    style = SceneViewTokens.Type.caption,
-                    fontWeight = FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = Int.MAX_VALUE,
-
-                )
-            }
         }
     }
+}
+
+/**
+ * The card's picture, cropped to fill. On a featured card it is drawn a little larger than
+ * the card and slides by `shift` as the shelf is swiped — parallax, read at draw time.
+ */
+@Composable
+private fun MediaImage(painter: Painter, shift: () -> Float, featured: Boolean) {
+    Image(
+        painter = painter,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (featured) {
+                    Modifier.graphicsLayer {
+                        scaleX = FEATURED_MEDIA_OVERSCAN
+                        scaleY = FEATURED_MEDIA_OVERSCAN
+                        val slack = size.width * (FEATURED_MEDIA_OVERSCAN - 1f) / 2f
+                        translationX = shift().coerceIn(-slack, slack)
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+    )
+}
+
+/** How much larger than its card a featured picture is drawn, so the parallax never shows an edge. */
+private const val FEATURED_MEDIA_OVERSCAN = 1.12f
+
+/**
+ * `RenderEffect` blur exists from API 31. Below it `Modifier.blur` is a no-op and a sharp
+ * copy of the picture would sit under the text, so older devices draw no copy at all and
+ * the caption takes the more opaque `glass-sheet` fill instead (see [cardGlassAlpha]).
+ */
+private val FROSTED_BLUR_SUPPORTED = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/** `card-glass` for the current scheme, or the `glass-sheet` value where there is no blur. */
+@Composable
+private fun cardGlassAlpha(): Float {
+    val dark = isSystemInDarkTheme()
+    return when {
+        !FROSTED_BLUR_SUPPORTED && dark -> SceneViewTokens.Glass.sheetAlphaDark
+        !FROSTED_BLUR_SUPPORTED -> SceneViewTokens.Glass.sheetAlphaLight
+        dark -> SceneViewTokens.HomeColor.cardGlassAlphaDark
+        else -> SceneViewTokens.HomeColor.cardGlassAlphaLight
+    }
+}
+
+/**
+ * [color] from the caption's top edge down, fading in over the [melt] band above it — the
+ * mask of the blurred copy and the glass tint share it, so they melt in together. Draws
+ * nothing before the caption has been placed.
+ */
+private fun DrawScope.meltBrush(top: Float, melt: Float, color: Color): Brush {
+    if (top.isNaN() || size.height <= 0f) return SolidColor(Color.Transparent)
+    val end = (top + melt).coerceIn(0f, size.height)
+    val start = (top - melt).coerceIn(0f, end)
+    return Brush.verticalGradient(
+        0f to Color.Transparent,
+        start / size.height to Color.Transparent,
+        end / size.height to color,
+        1f to color,
+    )
 }
 
 /** Fallback media while no preview capture exists: the demo icon on `surface-dim`. */

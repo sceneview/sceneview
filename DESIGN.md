@@ -117,7 +117,8 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-subtitle` | rgba(255,255,255,0.80) | rgba(255,255,255,0.80) | Hero subtitle, max width 260dp |
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
-| `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid |
+| `header-overlay` | `surface` at 88 % | `surface` at 90 % | Sticky home header over the scrolling grid — `glass-sheet` opacity, so the cards' pictures stay visible, dimmed, as they pass under the wordmark |
+| `card-glass` | `surface-container` at 72 % over the card's own picture blurred 28dp | `surface-container` at 85 %, same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
 | `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
 Catalogue **section headers** (the full-span label above each group of demo cards)
@@ -131,6 +132,30 @@ a header that tints itself competes with the cards it introduces. Geometry:
 
 A header is drawn only when more than one section is visible: with a single category
 filtered, the chip already names it.
+
+**Home cards are pictures first.** A catalogue card is a square picture whose lower edge
+*melts* into a frosted caption: the caption's ground is a blurred copy of the same picture
+under `card-glass`, faded in over `card-glass-melt`, so there is no line between image and
+text and each card is tinted by what it shows. No white box, no border in light (`shadow-sm`
+lifts it), the 1 dp `outline-subtle` in dark. Titles and subtitles are never truncated; the
+caption grows and takes its glass with it. The "Featured" shelf under the hero uses the same
+card as a swipeable row of 4:5 portraits — picture full-bleed, the frosted caption floating
+on its lower part, `type-title`, `radius-xl`, `shadow-md` in light — the next card peeking at
+the edge, a fling settling on a card, and each picture lagging its card slightly as the row
+moves.
+
+| Token | Value | Usage |
+|---|---|---|
+| `card-media-aspect` | 1 : 1 | Catalogue card picture |
+| `card-glass-blur` | 28dp | Blur of the picture copy under a card caption |
+| `card-glass-melt` | 28dp | Band over which the sharp picture fades into the glass (the fade spans twice this, centred on the caption's top) |
+| `featured-card-width` | 280dp (340dp from 600dp wide) | One "Featured" card |
+| `featured-media-aspect` | 4 : 5 | "Featured" card, minimum height; the caption may grow it |
+| `featured-parallax` | 0.08, clamped to a 12 % overscan | Picture lag behind its card while the shelf is swiped |
+
+Contrast of `card-glass`, composited over the worst uniform ground: light, over black —
+`on-surface` 8.6:1, `on-surface-variant` 4.8:1; dark, over mid-grey — 10.8:1 and 5.2:1
+(over a uniformly white picture, which dark captures never are, 8.1:1 and 3.9:1).
 
 ### Demo App About (Android)
 
