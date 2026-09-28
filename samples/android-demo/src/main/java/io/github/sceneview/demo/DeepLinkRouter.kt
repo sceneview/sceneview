@@ -216,9 +216,9 @@ internal object DeepLinkRouter {
         // materials — [PBR Materials, Streaming, Occlusion]
         "texture-streaming" to 1,
         "occlusion-material" to 2,
-        // model-viewer — [Single Model, Multi-Model, Gallery]
+        // model-viewer — [Single Model, Multi-Model]. `scene-gallery` is deliberately absent
+        // since #4039 removed its Gallery section: the link opens the Single Model section.
         "multi-model" to 1,
-        "scene-gallery" to 2,
         // ar-geospatial-anchors — [Terrain, Rooftop] (#2239). `ar-terrain` is the
         // default first mode, so it is deliberately absent: an absent entry means
         // "no pre-selection needed", which is exactly right for index 0.

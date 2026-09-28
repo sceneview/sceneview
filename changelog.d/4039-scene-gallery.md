@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: the Models sheet shows what each entry opens ([#4039](https://github.com/sceneview/sceneview/issues/4039)).** The Scene Gallery is gone. It showed one streamed model at a time on a black stage, which is not a scene; "Surprise me" is the way to stream a single model. Its old `scene-gallery` link now opens the model viewer. The Park Scene card now pictures the trees the scene actually loads. Builds without a Sketchfab key still show their bundled stand-ins.

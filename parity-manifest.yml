@@ -779,8 +779,8 @@ demos:
     contract: >-
       One Models card: helmet on the stage, lit by Chinese Garden IBL with no
       backdrop, camera fly-in; dock Models/Lighting/Animate/Recenter + View in
-      AR; Models sheet = 7 GLBs, Park scene (Multi), Browse (Gallery),
-      Surprise me
+      AR; Models sheet = 7 GLBs, Park scene (Multi), Surprise me (the
+      Gallery scene left in #4039)
     parity: diverges
     evidence: >-
       Models Fox/Hovercar/Butterfly vs Sofa/Chair/Dish/Soldier

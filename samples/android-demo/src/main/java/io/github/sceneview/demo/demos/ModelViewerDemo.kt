@@ -80,7 +80,6 @@ import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
-import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
@@ -109,8 +108,6 @@ import io.github.sceneview.demo.rememberBackendDrainWait
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.VIEWER_MAX_ZOOM_FACTOR
 import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
-import io.github.sceneview.demo.rememberFitOrbitRadius
-import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.rememberHeroYaw
 import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
@@ -151,8 +148,11 @@ import androidx.compose.animation.core.Animatable
  * - **Multi-Model** — a themed "Park" scene composed from 4 streamed glTF
  *   assets with per-model visibility chips and a spin toggle. (Formerly
  *   `multi-model`.)
- * - **Gallery** — a chip-picked gallery of themed Sketchfab CC-BY models, one
- *   on screen at a time on an automated orbit. (Formerly `scene-gallery`.)
+ *
+ * The third section, **Gallery** (formerly `scene-gallery`: one streamed Sketchfab
+ * model at a time on a black stage), was removed by #4039 — it was not a scene, and
+ * streamed single models are what "Surprise me" is for. Its deep link opens the
+ * Single Model section.
  *
  * Each sub-mode keeps its own `SceneView` + its own [rememberEngine] / loaders,
  * so switching tabs tears down the inactive section completely — no engine is
@@ -179,8 +179,8 @@ fun ModelViewerDemo(onBack: () -> Unit) {
         if (next != mode) DemoSettings.cameraDistance = null
         mode = next
     }
-    // The model on the single-model stage lives here, above the three sections, so the Models
-    // sheet opened from the Park or the Gallery can open a model directly (#3828) — it used to
+    // The model on the single-model stage lives here, above the sections, so the Models
+    // sheet opened from the Park can open a model directly (#3828) — it used to
     // offer only the Damaged Helmet there — and coming back from a scene finds the model the
     // user left rather than the default.
     var selectedModel by remember { mutableStateOf(BUNDLED_VIEWER_MODELS.first()) }
@@ -191,7 +191,6 @@ fun ModelViewerDemo(onBack: () -> Unit) {
     when (mode) {
         ModelViewerMode.Single -> SingleModelSection(onBack, mode, onModeChange, selectedModel) { selectedModel = it }
         ModelViewerMode.Multi -> MultiModelSection(onBack, mode, onModeChange, openModel)
-        ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange, openModel)
     }
 }
 
@@ -220,7 +219,6 @@ private val BUNDLED_VIEWER_MODELS = listOf(
 /** The section a scene card of the Models sheet opens. */
 private fun ViewerScene.mode(): ModelViewerMode = when (this) {
     ViewerScene.Park -> ModelViewerMode.Multi
-    ViewerScene.Gallery -> ModelViewerMode.Gallery
 }
 
 /**
@@ -346,7 +344,6 @@ private class EasedFraming {
 private enum class ModelViewerMode(val label: String) {
     Single("Single Model"),
     Multi("Multi-Model"),
-    Gallery("Gallery"),
 }
 
 @Composable
@@ -1281,7 +1278,7 @@ private suspend fun pickRandomDownloadableModel(
 // The layout is positional and fixed ([PARK_SLOTS]); WHICH model stands in each slot
 // is the registry's call ([ParkSlot.uid]). Nothing here names a species: the
 // visibility chips read their label off the resolved [SketchfabSlug.displayName], the
-// same curated-English source the Gallery section's chips use, so a registry edit
+// same curated-English name the Credits sheet lists, so a registry edit
 // renames the chip with the model. Until a slug resolves the chip falls back to a
 // positional "Model N". They used to be hardcoded "Tree" / "Bench" / "Dog" / "Bird"
 // from a composition the registry stopped holding — four oaks named after a bench and
@@ -1337,7 +1334,7 @@ private fun MultiModelSection(
     onOpenModel: (BundledViewerModel) -> Unit,
 ) {
     var modelSheetOpen by remember { mutableStateOf(false) }
-    // #3822 — `mode` (Single/Multi/Gallery) lives in the parent `ModelViewerDemo` composable,
+    // #3822 — `mode` (Single/Multi) lives in the parent `ModelViewerDemo` composable,
     // not on the Android back stack, so without this the raw `onBack` handed down from
     // `MainActivity` skipped straight past "Park scene" to the Showcase home on one press.
     // Close the sheet first if it is open, otherwise step back to the single-model view —
@@ -1426,7 +1423,7 @@ private fun MultiModelSection(
         trigger = allLoaded && spinScene, durationMillis = 30_000, staticYaw = 0f,
     )
 
-    // Same asset-source vocabulary as the Gallery section, and what keeps the chip
+    // Same asset-source vocabulary as the other streamed demos, and what keeps the chip
     // labels honest: they name the catalogue entry, and an "Offline model" pill says
     // the geometry under them is the bundled stand-in rather than the oak the label
     // names (#2933).
@@ -1467,9 +1464,9 @@ private fun MultiModelSection(
         controls = {
             Text("Visibility", style = MaterialTheme.typography.labelLarge)
             // Labels come from the resolved slug's curated-English `displayName`
-            // (same source as the Gallery chips), never from a hardcoded noun — the
+            // (the registry's own name), never from a hardcoded noun — the
             // registry decides what stands in each slot, so it decides the label
-            // too. Horizontally scrolling for the same reason Gallery's row is:
+            // too. Horizontally scrolling because
             // catalogue names run long ("Skovfogedegen Oak") and four of them do not
             // fit a portrait phone width without clipping. `OverflowChipRow` fades
             // the overflowing edge so the off-screen chip is discoverable (#2944).
@@ -1675,275 +1672,6 @@ private fun rememberSlugFile(slug: SketchfabSlug?): File? {
             SketchfabAssetResolver.getInstance(context).resolve(slug)
         }.getOrNull()
     }.value
-}
-
-// ─── Gallery section ──────────────────────────────────────────────────────────
-// Formerly SceneGalleryDemo (id `scene-gallery`).
-//
-// Streamed model gallery — themed bundles (Animals, Furniture, Retro, …) rotating
-// Sketchfab CC-BY content. Each chip selects one [SketchfabSlug] in the curated
-// `gallery` category of [SampleAssets]; the resolver hands back either the
-// streamed GLB or the bundled fallback when no API key is configured. The
-// `SceneView` composable then renders the model with an automated orbit camera.
-//
-// Honours the umbrella's hard rules:
-//  - **No Sketchfab WebView / external link** — the demo only ever points
-//    [rememberModelInstance] at the local [java.io.File] returned by
-//    [SketchfabAssetResolver.resolve].
-//  - **No network required to render something useful** — empty key (App Store
-//    cold-cache builds) → the resolver stages the bundled fallback under the
-//    same cache root and the demo renders it the same way as the streamed file.
-//  - **License attribution preserved** — the per-chip caption shows the author
-//    name. The Credits sheet (Stage 3) will surface the full per-model
-//    attribution.
-//
-// The chip labels come from [SketchfabSlug.displayName] (set by registry
-// curators in English at design time) — they're not user-facing copy strings
-// subject to translation. Authors and license URLs are user-data of the
-// Sketchfab catalogue itself; only the demo scaffolding (title / subtitle /
-// loading copy) goes through `stringResource()`.
-
-@Composable
-private fun GallerySection(
-    onBack: () -> Unit,
-    mode: ModelViewerMode,
-    onModeChange: (ModelViewerMode) -> Unit,
-    onOpenModel: (BundledViewerModel) -> Unit,
-) {
-    val context = LocalContext.current
-    val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
-
-    // #3822 — see the matching handler in `MultiModelSection`: `mode` is not on the Android
-    // back stack, so the raw `onBack` from `MainActivity` skipped straight past "Scene
-    // Gallery" to the Showcase home. Step back to the single-model view first instead.
-    var modelSheetOpen by remember { mutableStateOf(false) }
-    BackHandler {
-        if (modelSheetOpen) modelSheetOpen = false else onModeChange(ModelViewerMode.Single)
-    }
-
-    // The four curated `gallery` slugs declared in SampleAssets. Stage 2 keeps
-    // the chip count low so the offline-fallback footprint stays bounded — Stage
-    // 2 follow-ups can fan out to ~10 via Sketchfab `search()`.
-    val slugs = remember { SampleAssets.byCategory["gallery"].orEmpty() }
-    var selectedIndex by remember { mutableStateOf(0) }
-    val selectedSlug = slugs.getOrNull(selectedIndex)
-
-    // Bumped by the error scrim's Retry button. It is a `produceState` key so a
-    // tap re-runs the resolve coroutine for the same slug instead of leaving the
-    // demo stuck on a failed resolution forever (#2088).
-    var retryTick by remember { mutableStateOf(0) }
-
-    // Warm every gallery slug in parallel on first frame so chip taps switch
-    // instantly after the cold-start download. The resolver is idempotent
-    // (cache-hit -> touches lastModified only) so re-running is cheap.
-    LaunchedEffect(resolver) {
-        runCatching { resolver.prefetchAll("gallery") }
-    }
-
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val environmentLoader = rememberEnvironmentLoader(engine)
-
-    // Resolve the slug to a local file. produceState delegates IO + retries to
-    // the resolver; the `key1 = selectedSlug` rebinds the file when the user
-    // picks a new chip without leaking any prior coroutine. A failed resolve is
-    // surfaced as [GalleryResolveState.Error] instead of being swallowed into a
-    // `null` path that hangs the loading scrim forever (#2088). `retryTick`
-    // re-runs the resolve when the user taps Retry.
-    val resolveState: GalleryResolveState by produceState<GalleryResolveState>(
-        initialValue = GalleryResolveState.Loading,
-        key1 = resolver,
-        key2 = selectedSlug?.uid,
-        key3 = retryTick,
-    ) {
-        value = GalleryResolveState.Loading
-        val slug = selectedSlug ?: return@produceState
-        value = runCatching { resolver.resolve(slug) }
-            .fold(
-                onSuccess = { GalleryResolveState.Resolved(it) },
-                onFailure = { GalleryResolveState.Error(it.message ?: it.javaClass.simpleName) },
-            )
-    }
-    val resolvedFile = (resolveState as? GalleryResolveState.Resolved)?.file
-    val resolveError = (resolveState as? GalleryResolveState.Error)?.message
-
-    // Load the resolved file (streamed GLB or bundled fallback) through
-    // [rememberFileModelInstance] → `ModelLoader.loadModelInstance("file://…")`,
-    // NOT the two-argument `rememberModelInstance(modelLoader, fileUri)`. The
-    // latter binds to the asset-path overload — Kotlin prefers the candidate that
-    // needs no default argument — which feeds the `file://` string straight to
-    // `AssetManager.open`; that throws, the instance stays `null`, and the
-    // "Streaming model…" scrim hangs forever even though the bundled fallback
-    // resolved instantly offline (#2306 — same root cause as #1422 / the
-    // Multi-Model section above). Called unconditionally so its `produceState`
-    // slot stays stable (#1464).
-    val modelInstance = rememberFileModelInstance(modelLoader, resolvedFile)
-
-    // Per-demo offline indicator chip (#1152 Stage 3). The origin is MEASURED from the
-    // resolved file, never inferred from the config — [AssetSourceProbe] owns that rule.
-    // Measured here too: on the QA emulator (2026-07-28, key configured, radio off) this
-    // section staged out of `cache/sketchfab/fallback/` — the only thing under
-    // `cache/sketchfab/` — while the pill read "Streamed (cached)" over the bundled car
-    // (#2936).
-    //
-    // `loaded` is the parsed `ModelInstance`, NOT the resolved file, and that choice is
-    // load-bearing: it keeps the chip in lockstep with the centre LoadingScrim (#1465),
-    // so the chip reads "Streaming…" until the model is fully parsed and can never claim
-    // a finished download over a still-spinning scrim.
-    //
-    // The probe's fallback branch deliberately outranks `loaded`, so a file known to be
-    // the bundled stand-in reads "Offline model" while the scrim is still spinning on the
-    // local load. That pairing is not new — a keyless build has always shown "Offline
-    // model" over a spinning scrim — and it is the honest way round: #1465 is about the
-    // chip never claiming COMPLETION early, and "Offline model" claims an ORIGIN, not a
-    // finished download.
-    val assetSource = if (slugs.isEmpty()) {
-        null
-    } else {
-        AssetSourceProbe.of(
-            resolvedFile = resolvedFile,
-            hasApiKey = SketchfabConfig.apiKey != null,
-            loaded = modelInstance != null,
-        )
-    }
-
-    val firstFrame = rememberFirstFrameState(engine)
-
-    DemoScaffold(
-        title = stringResource(R.string.demo_scene_gallery_title),
-        onBack = onBack,
-        assetSource = assetSource,
-        firstFrameRendered = firstFrame.rendered,
-        // #3828 — the Gallery had no way to the Models sheet: the only exits were back and the
-        // system gesture. Same dock item as the other two sections.
-        dock = listOf(DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true })),
-        controls = {
-            // Category chips along the top of the controls sheet. We expose
-            // them as a horizontally scrolling row so the four labels never
-            // wrap at portrait phone widths. Each chip's label is a hand-
-            // curated English `displayName` from SampleAssets — these are
-            // catalogue identifiers, not localizable UI copy. The overflowing edge
-            // fades so the row reads as scrollable (#2944).
-            OverflowChipRow {
-                slugs.forEachIndexed { index, slug ->
-                    FilterChip(
-                        selected = index == selectedIndex,
-                        onClick = { selectedIndex = index },
-                        label = { Text(slug.displayName) },
-                    )
-                }
-            }
-            // Author credit — required by CC-BY 4.0 attribution. Stage 3 adds
-            // a full Credits sheet; the inline byline below keeps the
-            // attribution visible without a tap.
-            selectedSlug?.let { slug ->
-                Text(
-                    text = stringResource(R.string.demo_scene_gallery_credit, slug.author),
-                )
-            }
-        },
-    ) {
-        // Hero orbit so lighting + reflections sweep over the same surface
-        // every frame — same camera contract as the Single Model section, just
-        // bound to a different model. yHeight = 0 keeps the model centered in
-        // portrait without the empty-top-band artefact (QA finding
-        // 2026-05-11).
-        //
-        // #3426 — the radius used to be a flat `1.6f` for *every* chip, while the gallery's slugs
-        // are normalised anywhere from 0.20 to 0.85 units. The same shot therefore ranged from a
-        // model overflowing the frame to one filling a sixth of it, purely by which chip was
-        // tapped. It is now fitted per chip, so switching chips changes the model and not its
-        // apparent size.
-        val cameraManipulator = rememberHeroOrbitCameraManipulator(
-            trigger = modelInstance != null,
-            radius = rememberFitOrbitRadius(
-                extentX = selectedSlug?.scaleToUnits ?: 0.5f,
-                extentY = selectedSlug?.scaleToUnits ?: 0.5f,
-                extentZ = selectedSlug?.scaleToUnits ?: 0.5f,
-            ),
-            yHeight = 0f,
-            durationMillis = 24_000,
-            // The next chip's radius arrives while the stage is empty: taken at once. A rotation
-            // changes it with the model in frame: that one is a camera move.
-            contentShown = modelInstance != null,
-        )
-        Box(modifier = Modifier.fillMaxSize()) {
-            SceneView(
-                modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
-                engine = engine,
-                modelLoader = modelLoader,
-                environmentLoader = environmentLoader,
-                environment = rememberModelDemoEnvironment(environmentLoader),
-                cameraManipulator = cameraManipulator,
-            ) {
-                val instance = modelInstance
-                val slug = selectedSlug
-                if (instance != null && slug != null) {
-                    // Switching chips swaps the model in this single slot. The previous
-                    // model is disposed correctly on every switch (its `onDispose` runs and
-                    // `SceneNodeManager.removeNode` removes all of its renderable entities —
-                    // verified on device: `Scene.getRenderableCount()` drops to the new
-                    // model's count). The earlier "stacking" symptom was NOT a disposal bug:
-                    // the IBL-only environment has no skybox, so the Filament swap chain was
-                    // never cleared and the previous (larger) model's uncovered pixels lingered
-                    // on screen. Fixed library-side (#2400) by clearing the color buffer every
-                    // frame in `SceneView`; no demo-side `key()` wrapper is needed.
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = slug.scaleToUnits,
-                        // Framing is handled by the scene's default autoCenterContent, which
-                        // recentres the content root once the union bounding box is known. A
-                        // previous `centerOrigin = Position(0, 0, 0)` here was a silent no-op
-                        // (#2622 — the old formula ignored the AABB center) and was removed to
-                        // keep this scene byte-for-byte identical now that centerOrigin works.
-                    )
-                }
-            }
-            // Mutually exclusive with LoadingScrim: a resolve failure shows the
-            // error scrim (with Retry) instead of hanging on "Streaming…" (#2088).
-            if (resolveError != null) {
-                ErrorScrim(
-                    message = resolveError,
-                    onRetry = { retryTick++ },
-                    label = stringResource(R.string.demo_scene_gallery_error),
-                    retryLabel = stringResource(R.string.demo_scene_gallery_retry),
-                )
-            } else {
-                // Names the model and the step (#3825): the resolver fetching the file, then
-                // gltfio parsing it — the two states this section can actually tell apart.
-                val name = selectedSlug?.displayName.orEmpty()
-                LoadingScrim(
-                    loading = modelInstance == null,
-                    label = when {
-                        name.isEmpty() -> stringResource(R.string.demo_scene_gallery_loading)
-                        resolvedFile == null -> stringResource(R.string.demo_scene_gallery_loading_fetching, name)
-                        else -> stringResource(R.string.demo_scene_gallery_loading_decoding, name)
-                    },
-                )
-            }
-        }
-    }
-    if (modelSheetOpen) ModelPickerSheet(
-        models = BUNDLED_VIEWER_MODELS,
-        selectedPath = null,
-        currentScene = ViewerScene.Gallery,
-        onSelect = { modelSheetOpen = false; onOpenModel(it) },
-        onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
-        onDismiss = { modelSheetOpen = false },
-    )
-}
-
-/** Resolution lifecycle for a streamed gallery slug. See [GallerySection]. */
-private sealed interface GalleryResolveState {
-    /** Resolve coroutine in flight. */
-    data object Loading : GalleryResolveState
-
-    /** Resolve succeeded — [file] is the on-disk GLB (streamed or bundled fallback). */
-    data class Resolved(val file: File) : GalleryResolveState
-
-    /** Resolve failed — [message] is a short human-readable reason. */
-    data class Error(val message: String) : GalleryResolveState
 }
 
 /**

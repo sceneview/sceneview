@@ -455,7 +455,7 @@ class DeepLinkRouterTest {
     fun `resolveInitialTab maps a non-default alias to its tab`() {
         assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", null))
         assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", null))
-        assertEquals(2, DeepLinkRouter.resolveInitialTab("scene-gallery", null))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("multi-model", null))
         assertEquals(2, DeepLinkRouter.resolveInitialTab("occlusion-material", null))
     }
 
@@ -472,6 +472,11 @@ class DeepLinkRouterTest {
         assertNull(DeepLinkRouter.resolveInitialTab("image", null))
         assertNull(DeepLinkRouter.resolveInitialTab("video", null))
         assertNull(DeepLinkRouter.resolveInitialTab("billboard", null))
+        // `scene-gallery` joined them in #4039: the Models demo lost its Gallery section, and
+        // the old link opens the Single Model section (a stale index 2 would fall to the
+        // default anyway, but only through the composable's clamp).
+        assertNull(DeepLinkRouter.resolveInitialTab("scene-gallery", null))
+        assertEquals("model-viewer", DeepLinkRouter.DEMO_ID_ALIASES["scene-gallery"])
         // A live consolidated id with no tab hint keeps its default tab.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
         assertNull(DeepLinkRouter.resolveInitialTab(null, null))

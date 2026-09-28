@@ -1,4 +1,4 @@
-# Maestro flow — "3D Basics" demo category (5 demos).
+# Maestro flow — "3D Basics" demo category (4 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/3d-basics.yaml
@@ -6,6 +6,8 @@
 # Each demo is exercised by the reusable flows/demo.yaml subflow (deep-link
 # launch, camera orbit, tap, one screenshot, crash assertion, navigate back).
 # Demo ids mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+# `scene-gallery` left this flow with #4039: its deep link now opens the same
+# single-model screen as the model-viewer entry.
 #
 # Zoom QA (#1571): the model-viewer entry below also passes CAMERA_DISTANCE, so
 # flows/demo.yaml additionally re-launches it at a near + far framing via the
@@ -36,8 +38,3 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: multi-model
       DEMO_NAME: Multi Model
-- runFlow:
-    file: flows/demo.yaml
-    env:
-      DEMO_ID: scene-gallery
-      DEMO_NAME: Scene Gallery

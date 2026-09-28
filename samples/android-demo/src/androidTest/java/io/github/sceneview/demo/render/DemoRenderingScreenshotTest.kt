@@ -101,7 +101,8 @@ class DemoRenderingScreenshotTest {
 
     // #2239 Batch 5 — `multi-model` and `scene-gallery` consolidated into the existing
     // `model-viewer` entry (covered by `modelViewerDemo_default_state` below). The
-    // Multi-Model / Gallery sub-modes are reachable via segmented-button taps; dedicated
+    // Multi-Model sub-mode is reachable from the Models sheet (the Gallery one was removed
+    // by #4039); dedicated
     // sub-mode captures would need a tab-aware deep-link parameter (follow-up). The stale
     // `multimodel_default.png` golden + its `multiModelDemo_default_state` test (which
     // launched the now-retired `multi-model` slug) were removed.
