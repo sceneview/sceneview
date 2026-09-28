@@ -317,8 +317,23 @@ print(f"Target App Store versionString: {version_string}")
 # reviewSubmissionItems CREATE ("Supported platforms are not
 # compatible"). That exact hijack silently killed every iOS
 # App Review submission from 4.19.0 through 4.22.0.
+#
+# The rejected states are editable drafts too, and they hold the one
+# non-live slot exactly like PREPARE_FOR_SUBMISSION does. A version pulled
+# out of review ("Remove from Review" → DEVELOPER_REJECTED) or rejected by
+# Apple (REJECTED / METADATA_REJECTED) stays open for edits and can be
+# resubmitted — App Store Connect shows "Add for Review" on it. Leaving them
+# out of this filter made the record invisible here, so the POST below 409'd
+# and the release "deferred" behind a version nobody was ever going to
+# resubmit: 4.42.0 was removed from review on 2026-09-28 and every later tag
+# would have deferred behind it forever.
+EDITABLE_STATES = [
+    "PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED",
+]
 r = requests.get(
-    f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&filter[platform]=IOS&include=appStoreVersionSubmission",
+    f"{BASE}/apps/{app_id}/appStoreVersions"
+    f"?filter[appStoreState]={','.join(EDITABLE_STATES + ['READY_FOR_REVIEW'])}"
+    f"&filter[platform]=IOS&include=appStoreVersionSubmission",
     headers=headers,
 )
 versions = r.json().get("data", [])
@@ -343,16 +358,20 @@ if not version_id:
     # 409. Reuse that draft and retarget its versionString
     # instead — this is the "fall back to the first editable
     # one" behaviour, and it lets a release absorb an abandoned
-    # draft without a manual App Store Connect cleanup.
+    # draft without a manual App Store Connect cleanup. A rejected or
+    # withdrawn version (see EDITABLE_STATES above) is absorbed the same
+    # way: the new release takes over its record, gets its own build and
+    # whatsNew below, and is what goes back to App Review.
     stale = next(
-        (v for v in versions
-         if v.get("attributes", {}).get("appStoreState") == "PREPARE_FOR_SUBMISSION"),
+        (v for state in EDITABLE_STATES for v in versions
+         if v.get("attributes", {}).get("appStoreState") == state),
         None,
     )
     if stale:
         version_id = stale["id"]
         matched_version = stale
         stale_vs = stale.get("attributes", {}).get("versionString")
+        stale_state = stale.get("attributes", {}).get("appStoreState")
         r = requests.patch(
             f"{BASE}/appStoreVersions/{version_id}",
             headers=headers,
@@ -362,8 +381,12 @@ if not version_id:
                 "attributes": {"versionString": version_string},
             }},
         )
-        r.raise_for_status()
-        print(f"Reused editable draft {version_id}: retargeted {stale_vs} → {version_string}")
+        if r.status_code not in (200, 201):
+            print(f"::error::Could not retarget the {stale_state} version {stale_vs} ({version_id}) "
+                  f"to {version_string}: {r.status_code} {r.text[:300]}")
+            raise SystemExit(1)
+        print(f"Reused editable {stale_state} version {version_id}: "
+              f"retargeted {stale_vs} → {version_string}")
 if not version_id:
     payload = {
         "data": {
@@ -376,8 +399,8 @@ if not version_id:
     if r.status_code == 409:
         # App Store Connect allows exactly ONE non-live version at a time, and
         # the GET above cannot see the one holding the slot: its filter admits
-        # only PREPARE_FOR_SUBMISSION and READY_FOR_REVIEW, so a predecessor
-        # sitting in IN_REVIEW / WAITING_FOR_REVIEW is invisible. We reach this
+        # only the editable states, so a predecessor sitting in IN_REVIEW /
+        # WAITING_FOR_REVIEW is invisible. We reach this
         # POST believing nothing exists, and Apple 409s (#3143). Measured:
         # 4.30.0's release run died here at 16:48 on 2026-08-12 while 4.29.0
         # was still in review — it went live at 20:39 the same day.
