@@ -275,6 +275,19 @@ val LocalDemoChromeTopInset = androidx.compose.runtime.compositionLocalOf { 0.dp
  */
 val LocalDemoChromeBottomInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
+/**
+ * How much of the scene the scaffold's settings sheet covers from the bottom edge, in dp — zero
+ * while it is hidden (#4053).
+ *
+ * The sheet is glass over a live scene, so a demo that frames a subject can re-frame it into
+ * the band above the sheet instead of leaving its lower part under the glass. The value follows
+ * the sheet's **target** detent, so the change is known as the sheet starts to move and a demo
+ * can ease its camera alongside it. Fully dragged up, the value stays at the peek height: the
+ * band above an expanded sheet is too thin to frame anything in, and the user dragged up to
+ * reach the controls, not to watch the model shrink to a sliver.
+ */
+val LocalDemoSheetCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
 @Composable
 fun DemoScaffold(
     title: String,
@@ -376,6 +389,8 @@ fun DemoScaffold(
         minOf(rootHeightPx * SceneViewTokens.Glass.sheetPeekFraction, settingsContentPx.toFloat())
     }
     val settingsPeek = with(rootDensity) { settingsPeekPx.toDp() }
+    // What the sheet covers once it settles, for [LocalDemoSheetCover].
+    val settingsSheetCover = if (settingsSheetState.targetValue == SheetValue.Hidden) 0.dp else settingsPeek
     // Fully dragged up, the sheet stops `Space.x2l` under the status bar: the identity
     // row's back button stays reachable and the sheet never reads as a new screen.
     val settingsMaxHeight = if (rootHeightPx == 0) {
@@ -590,6 +605,7 @@ fun DemoScaffold(
                         androidx.compose.runtime.CompositionLocalProvider(
                             LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
                             LocalDemoChromeBottomInset provides dockBandClearance,
+                            LocalDemoSheetCover provides settingsSheetCover,
                         ) {
                             if (arSessionFailed) {
                                 Box(

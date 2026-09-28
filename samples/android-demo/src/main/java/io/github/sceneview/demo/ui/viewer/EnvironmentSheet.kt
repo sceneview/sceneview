@@ -13,10 +13,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -24,9 +27,24 @@ import io.github.sceneview.sample.ui.LabeledSlider
 
 data class ViewerEnvironment(val assetPath: String, val displayName: String) { val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.') }
 
-@Composable fun EnvironmentSheet(environments: List<ViewerEnvironment>, selectedPath: String, intensity: Float, showEnvironment: Boolean, onSelect: (ViewerEnvironment) -> Unit, onIntensity: (Float) -> Unit, onShowEnvironment: (Boolean) -> Unit, onReset: () -> Unit, onDismiss: () -> Unit) {
+/**
+ * The viewer's Lighting sheet.
+ *
+ * [onCoveredHeightChange] reports how much of the screen the sheet covers, from the bottom edge
+ * (#4053): the sheet is glass so the model can be watched while it re-lights, and the viewer
+ * re-frames the model into the band above it. It is the sheet's measured size, not its animated
+ * offset, so the camera eases once to where the sheet settles instead of chasing its slide-in.
+ */
+@Composable fun EnvironmentSheet(
+    environments: List<ViewerEnvironment>, selectedPath: String, intensity: Float, showEnvironment: Boolean,
+    onSelect: (ViewerEnvironment) -> Unit, onIntensity: (Float) -> Unit, onShowEnvironment: (Boolean) -> Unit,
+    onReset: () -> Unit, onDismiss: () -> Unit,
+    onCoveredHeightChange: (Dp) -> Unit = {},
+) {
+    val density = LocalDensity.current
     DemoModalBottomSheet(
         onDismissRequest = onDismiss,
+        modifier = Modifier.onSizeChanged { onCoveredHeightChange(with(density) { it.height.toDp() }) },
         // Glass, no scrim (#3827): the point of this sheet is to watch the model re-light,
         // and an opaque sheet over a dimming scrim hid the model while you changed it.
         containerColor = DemoSheetDefaults.glassContainerColor(),
