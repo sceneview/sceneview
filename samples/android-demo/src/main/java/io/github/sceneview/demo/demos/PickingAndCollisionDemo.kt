@@ -124,7 +124,8 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
     // The "lit" state has to be unmistakable at a glance (#4031). It used to be TintSoft — which is
     // also Ramp4[3], the default colour of shape 3, and a near neighbour of Ramp4[2] — so a tap
     // that DID pick lit the shape in the colour it already wore: "you tap and it does almost
-    // nothing". A warm highlight outside the blue/purple ramp, plus a scale pop, cannot be missed.
+    // nothing". A warm highlight (the `warning` token) outside the blue/purple ramp, plus a scale pop,
+    // cannot be missed.
     val highlightedMaterial = rememberMaterialInstance(
         materialLoader,
         SceneViewColors.Highlight,
