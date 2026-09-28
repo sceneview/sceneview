@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -25,8 +26,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.filament.Box
+import com.google.android.filament.Engine
+import com.google.android.filament.IndexBuffer
 import com.google.android.filament.Material
 import com.google.android.filament.RenderableManager
+import com.google.android.filament.VertexBuffer
 import com.google.android.filament.View
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.FrameRatePolicy
@@ -36,7 +41,6 @@ import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.StartupMarker
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.environment.rememberHDREnvironment
-import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
@@ -56,7 +60,8 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
-import io.github.sceneview.safeDestroyGeometry
+import io.github.sceneview.safeDestroyIndexBuffer
+import io.github.sceneview.safeDestroyVertexBuffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.cos
@@ -99,6 +104,15 @@ private const val HERO_TERRAIN_MATERIAL = "materials/hero_terrain.filamat"
  * no HDR decode, no bloom, fog or TAA — the same flight, matte. Reduced motion (animator
  * scale 0, QA mode) holds the opening frame under [FrameRatePolicy.OnDemand].
  *
+ * **Leaving before it has loaded.** The stage only starts, and only *issues* a load, while
+ * the home screen is the resumed destination. Navigation drops the screen below RESUMED
+ * the moment a demo is opened, so a tap on the hero's Open during a cold start no longer
+ * leaves a second engine prefiltering the HDR, compiling the terrain and helmet materials
+ * and uploading textures through the whole of the viewer's own start — on a shared GPU
+ * that backlog ran for seconds after the screen was gone, starved the viewer and held the
+ * main thread in the TextureView's detach: the Home → Models stall. What has already
+ * landed stays; a load still in flight is cancelled and simply starts again on resume.
+ *
  * @param active The band is at least partly on screen and the screen is not searching.
  *               False parks the render loop and the clock; the last frame stays.
  */
@@ -112,9 +126,22 @@ internal fun HomeHeroScene(
         withFrameNanos { }
         firstFrameDrawn = true
     }
-    if (firstFrameDrawn) {
-        HomeHeroStage(active = active, modifier = modifier)
+    val hostResumed = rememberHostResumed()
+    // Latched: once the stage exists it stays for the screen's life (#3949) — tearing it
+    // down on a pause would reload everything on the way back.
+    var started by remember { mutableStateOf(false) }
+    if (firstFrameDrawn && hostResumed) started = true
+    if (started) {
+        HomeHeroStage(active = active, loadsAllowed = hostResumed, modifier = modifier)
     }
+}
+
+/** Whether the screen hosting the stage is the resumed destination, as state. */
+@Composable
+private fun rememberHostResumed(): Boolean {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val state by lifecycle.currentStateFlow.collectAsState()
+    return state.isAtLeast(Lifecycle.State.RESUMED)
 }
 
 /**
@@ -155,6 +182,8 @@ private object DuskFlight {
 @Composable
 private fun HomeHeroStage(
     active: Boolean,
+    /** False while the screen is not the resumed destination: nothing new is loaded. */
+    loadsAllowed: Boolean,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -176,8 +205,12 @@ private fun HomeHeroStage(
     val fallbackEnvironment = rememberEnvironment(environmentLoader, isOpaque = false)
     // The HDR is decoded and prefiltered off the main thread and lands when it lands; the
     // flight starts under the plain environment. Skipped entirely on the light tier.
-    val hdrEnvironment = if (tier.cinematic) {
+    // Each load below is composed only while loads are allowed or once it has landed:
+    // leaving composition cancels a load still in flight before it reaches the engine.
+    var hdrLanded by remember { mutableStateOf(false) }
+    val hdrEnvironment = if (tier.cinematic && (loadsAllowed || hdrLanded)) {
         rememberHDREnvironment(environmentLoader, HERO_HDR, createSkybox = false)
+            ?.also { hdrLanded = true }
     } else {
         null
     }
@@ -194,49 +227,36 @@ private fun HomeHeroStage(
     }
     val renderInvalidator = rememberRenderInvalidator()
 
-    // The terrain: CPU work off the main thread, Filament buffers on it.
-    val terrainVertices by produceState<Pair<List<Geometry.Vertex>, List<Int>>?>(null, tier) {
-        value = withContext(Dispatchers.Default) {
-            val mesh = buildHeroTerrain(tier.terrain)
-            val vertices = ArrayList<Geometry.Vertex>(mesh.vertexCount)
-            for (i in 0 until mesh.vertexCount) {
-                vertices += Geometry.Vertex(
-                    position = Position(
-                        mesh.positions[i * 3],
-                        mesh.positions[i * 3 + 1],
-                        mesh.positions[i * 3 + 2],
-                    ),
-                    normal = Direction(
-                        mesh.normals[i * 3],
-                        mesh.normals[i * 3 + 1],
-                        mesh.normals[i * 3 + 2],
-                    ),
-                    color = Color(
-                        mesh.colors[i * 4],
-                        mesh.colors[i * 4 + 1],
-                        mesh.colors[i * 4 + 2],
-                        mesh.colors[i * 4 + 3],
-                    ),
-                )
-            }
-            vertices to mesh.indices.toList()
+    // The terrain: every CPU step off the main thread — the heightfield, and the packing
+    // into upload-ready buffers — so the main thread only creates two buffer objects and
+    // queues three copies. It used to pack ~54 000 vertices through `Geometry.Builder` right
+    // here, half a second on the emulator, and that often landed while the user was already
+    // leaving for the viewer (Home → Models stall).
+    val terrainBuffers by produceState<HeroTerrainBuffers?>(null, tier) {
+        value = withContext(Dispatchers.Default) { buildHeroTerrain(tier.terrain).packForUpload() }
+    }
+    // Uploaded from an effect (main thread) rather than during composition, and only while
+    // Home is resumed; once uploaded it stays for the exit transition.
+    var uploadedTerrain by remember { mutableStateOf<HeroTerrainGeometry?>(null) }
+    LaunchedEffect(engine, terrainBuffers, loadsAllowed) {
+        val buffers = terrainBuffers
+        if (uploadedTerrain == null && loadsAllowed && buffers != null) {
+            uploadedTerrain = uploadHeroTerrain(engine, buffers)
         }
     }
-    val terrainGeometry = remember(engine, terrainVertices) {
-        terrainVertices?.let { (vertices, indices) ->
-            Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
-                .vertices(vertices)
-                .indices(indices)
-                .build(engine)
-        }
-    }
+    val terrainGeometry = uploadedTerrain
     DisposableEffect(engine, terrainGeometry) {
-        onDispose { terrainGeometry?.let { engine.safeDestroyGeometry(it) } }
+        onDispose {
+            terrainGeometry?.let {
+                engine.safeDestroyVertexBuffer(it.vertexBuffer)
+                engine.safeDestroyIndexBuffer(it.indexBuffer)
+            }
+        }
     }
     // One compiled material, two instances: the matte ground and the glowing disc. The
     // loader owns both and destroys them with the screen.
-    val terrainMaterial by produceState<Material?>(null, materialLoader) {
-        value = materialLoader.loadMaterial(HERO_TERRAIN_MATERIAL)
+    val terrainMaterial by produceState<Material?>(null, materialLoader, loadsAllowed) {
+        if (value == null && loadsAllowed) value = materialLoader.loadMaterial(HERO_TERRAIN_MATERIAL)
     }
     val terrainInstance = remember(materialLoader, terrainMaterial) {
         terrainMaterial?.let { material ->
@@ -262,7 +282,12 @@ private fun HomeHeroStage(
         }
     }
 
-    val modelInstance = rememberModelInstance(modelLoader, HOME_HERO_MODEL)
+    var modelLanded by remember { mutableStateOf(false) }
+    val modelInstance = if (loadsAllowed || modelLanded) {
+        rememberModelInstance(modelLoader, HOME_HERO_MODEL)?.also { modelLanded = true }
+    } else {
+        null
+    }
     // Nodes the frame loop drives. Plain holders, not state: a per-frame write must not
     // recompose anything.
     val terrainNode = remember { arrayOfNulls<MeshNodeImpl>(1) }
@@ -451,6 +476,42 @@ private fun CameraNode.lookAt(pose: HeroFlightPose) {
         eye = Position(pose.eyeX, pose.eyeY, pose.eyeZ),
         center = Position(pose.targetX, pose.targetY, pose.targetZ),
         up = Direction(sin(roll).toFloat(), cos(roll).toFloat(), 0f),
+    )
+}
+
+/** The terrain's Filament side: two buffer objects and the bounds the renderable culls with. */
+private class HeroTerrainGeometry(
+    val vertexBuffer: VertexBuffer,
+    val indexBuffer: IndexBuffer,
+    val boundingBox: Box,
+)
+
+/**
+ * Main-thread half of the terrain: the same vertex layout `Geometry` declares (POSITION,
+ * normalized TANGENTS, normalized COLOR), filled from buffers packed off the main thread.
+ */
+private fun uploadHeroTerrain(engine: Engine, buffers: HeroTerrainBuffers): HeroTerrainGeometry {
+    val vertexBuffer = VertexBuffer.Builder()
+        .bufferCount(3)
+        .vertexCount(buffers.vertexCount)
+        .attribute(VertexBuffer.VertexAttribute.POSITION, 0, VertexBuffer.AttributeType.FLOAT3, 0, 12)
+        .attribute(VertexBuffer.VertexAttribute.TANGENTS, 1, VertexBuffer.AttributeType.FLOAT4, 0, 16)
+        .normalized(VertexBuffer.VertexAttribute.TANGENTS)
+        .attribute(VertexBuffer.VertexAttribute.COLOR, 2, VertexBuffer.AttributeType.FLOAT4, 0, 16)
+        .normalized(VertexBuffer.VertexAttribute.COLOR)
+        .build(engine)
+    vertexBuffer.setBufferAt(engine, 0, buffers.positions)
+    vertexBuffer.setBufferAt(engine, 1, buffers.tangents)
+    vertexBuffer.setBufferAt(engine, 2, buffers.colors)
+    val indexBuffer = IndexBuffer.Builder()
+        .indexCount(buffers.indexCount)
+        .bufferType(IndexBuffer.Builder.IndexType.UINT)
+        .build(engine)
+    indexBuffer.setBuffer(engine, buffers.indices)
+    return HeroTerrainGeometry(
+        vertexBuffer = vertexBuffer,
+        indexBuffer = indexBuffer,
+        boundingBox = Box(buffers.center, buffers.halfExtent),
     )
 }
 

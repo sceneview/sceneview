@@ -418,7 +418,13 @@ class SceneRenderer(
             // 1.71.6). Unregistering the listener first (as SceneView 2.3.0 did) closes the
             // window. (#2709)
             displayHelper?.detach()
-            swapChainRef.getAndSet(null)?.let { engine.destroySwapChain(it) }
+            // UiHelper calls this twice when a TextureView leaves: once from
+            // onSurfaceTextureDestroyed, then again from detach() when the scene is disposed.
+            // The second call has no swap chain left to destroy and so nothing to wait for —
+            // but it used to wait anyway, a second bounded stall (up to the full second on a
+            // backend still compiling) on the same navigation (Home → Models stall).
+            val swapChain = swapChainRef.getAndSet(null) ?: return
+            engine.destroySwapChain(swapChain)
             // UiHelper's contract: do not return before the backend has run destroySwapChain,
             // or Android releases the surface under it. But flushAndWait() cannot jump the
             // queue — it waits for every command already submitted, including the lazy GL
