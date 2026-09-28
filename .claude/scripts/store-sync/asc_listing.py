@@ -31,8 +31,8 @@ What it diffs (en-US):
 Version selection differs per mode, on purpose:
   --dry-run           the LIVE version (`READY_FOR_SALE`) — drift is what
                       users actually see. No live version → SKIP.
-  --apply-screenshots the EDITABLE version (`PREPARE_FOR_SUBMISSION` /
-                      `READY_FOR_REVIEW`) — the only one Apple lets us write
+  --apply-screenshots the EDITABLE version (`PREPARE_FOR_SUBMISSION`, a
+                      `*_REJECTED` one, or `READY_FOR_REVIEW`) — the only one Apple lets us write
                       to. No editable version → SKIP (never create one).
 Both filter on `filter[platform]=IOS`: without it a macOS draft can hijack
 the query and every downstream call targets the wrong listing (#2731).
@@ -680,7 +680,7 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False,
     draft_sets = {}
     r = requests.get(
         f"{BASE}/apps/{app_id}/appStoreVersions"
-        "?filter[platform]=IOS&filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&limit=1",
+        "?filter[platform]=IOS&filter[appStoreState]=PREPARE_FOR_SUBMISSION,DEVELOPER_REJECTED,REJECTED,METADATA_REJECTED,READY_FOR_REVIEW&limit=1",
         headers=headers, timeout=HTTP_TIMEOUT_S,
     )
     if r.status_code == 200 and r.json().get("data"):
@@ -771,11 +771,16 @@ def _editable_version(requests, headers, app_id):
     `filter[platform]=IOS` is mandatory (#2731): without it the macOS app's
     permanently-editable draft can be returned instead, and every write then
     lands on the wrong listing.
+
+    A version withdrawn from review (DEVELOPER_REJECTED) or rejected by Apple
+    (REJECTED / METADATA_REJECTED) is still editable, and app_store_submit.py
+    reuses it for the next release — so it has to count here too, or the
+    screenshots of that release are skipped.
     """
     r = requests.get(
         f"{BASE}/apps/{app_id}/appStoreVersions"
         "?filter[platform]=IOS"
-        "&filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&limit=1",
+        "&filter[appStoreState]=PREPARE_FOR_SUBMISSION,DEVELOPER_REJECTED,REJECTED,METADATA_REJECTED,READY_FOR_REVIEW&limit=1",
         headers=headers, timeout=HTTP_TIMEOUT_S,
     )
     r.raise_for_status()
@@ -971,7 +976,7 @@ def apply_screenshots(headers, bundle_id, shots_dir):
 
     editable = _editable_version(requests, headers, app_id)
     if editable is None:
-        return [], ("no editable iOS version (PREPARE_FOR_SUBMISSION / READY_FOR_REVIEW) — "
+        return [], ("no editable iOS version (PREPARE_FOR_SUBMISSION / *_REJECTED / READY_FOR_REVIEW) — "
                     "screenshots can only be written to an editable version, and this "
                     "script never creates one (app-store.yml owns version creation)")
     version_id, version_string = editable
