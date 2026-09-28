@@ -417,45 +417,14 @@ private fun ExploreBody(
                     modifier = Modifier
                         .padding(SceneViewTokens.Space.md),
                 )
-            Box(modifier = Modifier.fillMaxWidth()) {
-                if (hero != null) {
-                    SpatialHero(model = hero, onViewIn3D = { onModelClick(hero) })
-                } else if (!loadingFeeds) {
-                    // The load ended with nothing to feature (#3993): say why and
-                    // offer a retry, in the stage's own footprint so nothing jumps.
-                    FeedUnavailableCard(
-                        title = stringResource(
-                            if (feedsStatus == FeedsStatus.Empty) {
-                                R.string.explore_feed_empty_title
-                            } else {
-                                R.string.explore_feed_error_title
-                            },
-                            selectedSource.id.displayName,
-                        ),
-                        body = stringResource(
-                            if (feedsStatus == FeedsStatus.Empty) {
-                                R.string.explore_feed_empty_body
-                            } else {
-                                R.string.explore_feed_error_body
-                            },
-                        ),
-                        onRetry = onRetryFeeds,
-                        modifier = Modifier.height(SceneViewTokens.Layout.heroStageHeight),
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(SceneViewTokens.Layout.heroStageHeight)
-                            .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ContainedLoadingIndicator()
-                    }
-                }
-
-            }
+            ExploreStage(
+                hero = hero,
+                feedsStatus = feedsStatus,
+                sourceName = selectedSource.id.displayName,
+                sketchfabUnavailable = showSketchfabBanner,
+                onRetry = onRetryFeeds,
+                onModelClick = onModelClick,
+            )
         }
 
         // "Sketchfab unavailable" banner (#2095) — only when the Sketchfab key was
@@ -470,6 +439,9 @@ private fun ExploreBody(
             // searchResults == null ⇒ still loading; empty ⇒ ran but 0 hits;
             // non-empty ⇒ render carousel.
             when {
+                // A rejected Sketchfab key already has its banner above; a retry
+                // card blaming the connection would be wrong and could not work.
+                searchFailed && showSketchfabBanner -> Unit
                 searchFailed -> FeedUnavailableCard(
                     title = stringResource(R.string.explore_feed_error_title, selectedSource.id.displayName),
                     body = stringResource(R.string.explore_feed_error_body),
@@ -718,6 +690,9 @@ internal object ExploreTestTags {
     /** The error / empty card with a retry that replaces a failed load (#3993). */
     const val FEED_UNAVAILABLE = "explore_feed_unavailable"
 
+    /** The featured stage's spinner while the feeds load. */
+    const val STAGE_LOADING = "explore_stage_loading"
+
     /** Tag of the source picker button for [id]. */
     fun sourceOption(id: ModelSourceId): String = "explore_source_${id.slug}"
 }
@@ -816,6 +791,56 @@ private fun SketchfabDisabledBanner(keyRejected: Boolean = false) {
                 }
             },
         )
+    }
+}
+
+/**
+ * The featured stage at the top of the gallery: the hero model once the feeds
+ * load, a spinner while they do, and — when the load ended with nothing to
+ * feature (#3993) — a card that says why, with a retry, in the stage's own
+ * footprint so nothing below it jumps.
+ *
+ * When [sketchfabUnavailable] (the key was rejected, and the "Sketchfab
+ * unavailable" banner below explains it) the card is left out: "check your
+ * connection, then try again" would be wrong, and retrying cannot fix a key.
+ */
+@Composable
+internal fun ExploreStage(
+    hero: GalleryModel?,
+    feedsStatus: FeedsStatus,
+    sourceName: String,
+    sketchfabUnavailable: Boolean,
+    onRetry: () -> Unit,
+    onModelClick: (GalleryModel) -> Unit,
+) {
+    when {
+        hero != null -> SpatialHero(model = hero, onViewIn3D = { onModelClick(hero) })
+        feedsStatus == FeedsStatus.Loading -> Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SceneViewTokens.Layout.heroStageHeight)
+                .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .testTag(ExploreTestTags.STAGE_LOADING),
+            contentAlignment = Alignment.Center,
+        ) {
+            ContainedLoadingIndicator()
+        }
+        sketchfabUnavailable -> Unit
+        else -> {
+            val empty = feedsStatus == FeedsStatus.Empty
+            FeedUnavailableCard(
+                title = stringResource(
+                    if (empty) R.string.explore_feed_empty_title else R.string.explore_feed_error_title,
+                    sourceName,
+                ),
+                body = stringResource(
+                    if (empty) R.string.explore_feed_empty_body else R.string.explore_feed_error_body,
+                ),
+                onRetry = onRetry,
+                modifier = Modifier.height(SceneViewTokens.Layout.heroStageHeight),
+            )
+        }
     }
 }
 
@@ -1052,7 +1077,9 @@ private fun RecentSearchesSection(
 }
 
 /**
- * Width of a demo card in the "Try a demo" row: narrower than the trending cards
- * so the next card peeks in, wide enough for the title on one line.
+ * Width of a demo card in the "Try a demo" row: the trending cards' width, so the
+ * two rows read as one family. At 232 dp the next card showed ~140 dp — enough
+ * of "Geometry Primit…" to read as a clipped title rather than a peek; at this
+ * width only a sliver of it shows, which reads as "scroll for more".
  */
-private val SAMPLE_CARD_WIDTH = SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l * 2
+private val SAMPLE_CARD_WIDTH = SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l
