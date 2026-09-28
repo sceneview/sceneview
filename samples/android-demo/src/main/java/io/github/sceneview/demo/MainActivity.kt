@@ -296,8 +296,8 @@ class MainActivity : ComponentActivity() {
         val uri = OpenedModelIntent.modelUri(intent) ?: return
         val mimeType = intent?.type
         lifecycleScope.launch {
-            // A SceneView scan file (`.svscan`) is a session, not a model: the Rerun demo opens
-            // it, keeps it under "Your sessions" and replays it.
+            // A SceneView scan file (`.svscan`) or a Rerun recording (`.rrd`) is a session, not a
+            // model: the Rerun demo opens it, keeps it under "Your sessions" and replays it.
             val isScan = withContext(Dispatchers.IO) {
                 io.github.sceneview.demo.demos.RerunInbox.accepts(this@MainActivity, uri)
             }

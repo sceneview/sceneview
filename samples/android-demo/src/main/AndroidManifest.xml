@@ -241,9 +241,10 @@
 
             <!--
                 A SceneView scan file (`.svscan`, the Rerun demo's "Share scan file", the same
-                file the iOS demo writes): MainActivity hands it to the Rerun demo, which keeps
-                it under "Your sessions" and replays it. Nothing on Android knows the type, so
-                it is matched by name, as the model files above are.
+                file the iOS demo writes) or a Rerun recording (`.rrd`, the Rerun demo's export
+                or one saved from Rerun): MainActivity hands it to the Rerun demo, which keeps
+                it under "Your sessions" and replays it. Nothing on Android knows either type,
+                so they are matched by name, as the model files above are.
             -->
             <intent-filter android:label="@string/open_model_filter_label">
                 <action android:name="android.intent.action.VIEW" />
@@ -257,6 +258,8 @@
                 <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.svscan" />
                 <data android:pathPattern=".*\\.SVSCAN" />
+                <data android:pathPattern=".*\\.rrd" />
+                <data android:pathPattern=".*\\.RRD" />
             </intent-filter>
 
             <!--

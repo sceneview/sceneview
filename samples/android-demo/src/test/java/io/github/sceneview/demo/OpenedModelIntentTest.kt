@@ -252,9 +252,9 @@ class OpenedModelIntentTest {
             .toSet()
 
         assertTrue("no pathPattern found in the manifest", advertised.isNotEmpty())
-        // `.svscan` is the one advertised file that is not a model: MainActivity hands it to the
-        // Rerun demo (RerunInbox) before the model path ever sees it.
-        assertEquals(OpenedModelIntent.SupportedExtensions + "svscan", advertised)
+        // `.svscan` and `.rrd` are the advertised files that are not models: MainActivity hands
+        // them to the Rerun demo (RerunInbox) before the model path ever sees them.
+        assertEquals(OpenedModelIntent.SupportedExtensions + "svscan" + "rrd", advertised)
     }
 
     @get:Rule

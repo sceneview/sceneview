@@ -196,8 +196,11 @@ sealed class RerunImportFailure(message: String) : Exception(message) {
     /** It read, and holds no camera path, point or surface: nothing to replay. */
     class Empty(file: String) : RerunImportFailure(file)
 
-    /** A Rerun recording, which this version does not read yet: it says so rather than guess. */
-    class RrdNotYet(file: String) : RerunImportFailure(file)
+    /** A Rerun recording saved with compression, which this app does not decompress. */
+    class RrdCompressed(file: String) : RerunImportFailure(file)
+
+    /** A Rerun recording from a Rerun version newer than the one this app reads. */
+    class RrdNewerVersion(file: String) : RerunImportFailure(file)
 }
 
 /**

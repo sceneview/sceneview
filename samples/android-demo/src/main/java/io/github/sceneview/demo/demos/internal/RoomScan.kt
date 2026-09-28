@@ -357,11 +357,13 @@ object ScanCopy {
     fun importFailure(failure: RerunImportFailure, file: String): String {
         val name = "“$file”"
         return when (failure) {
-            is RerunImportFailure.Unsupported -> "$name is not a SceneView scan file."
+            is RerunImportFailure.Unsupported -> "$name is not a SceneView scan file or a Rerun recording."
             is RerunImportFailure.Empty -> "$name holds no camera path, points or surfaces to replay."
-            is RerunImportFailure.RrdNotYet ->
-                "$name is a Rerun recording. This version opens SceneView scan files (.svscan) only."
-            is RerunImportFailure.Unreadable -> "$name could not be read. SceneView opens the scan files it makes."
+            is RerunImportFailure.RrdCompressed ->
+                "$name is a compressed Rerun recording. Save it again from Rerun without compression."
+            is RerunImportFailure.RrdNewerVersion ->
+                "$name comes from a newer version of Rerun than this app can read."
+            is RerunImportFailure.Unreadable -> "$name could not be read. It may be damaged or cut short."
         }
     }
 

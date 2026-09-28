@@ -222,7 +222,14 @@ class RoomScanTest {
             "“kitchen.svscan” holds no camera path, points or surfaces to replay.",
             ScanCopy.importFailure(RerunImportFailure.Empty(file), file),
         )
-        assertTrue(ScanCopy.importFailure(RerunImportFailure.RrdNotYet("a.rrd"), "a.rrd").contains(".svscan"))
+        assertEquals(
+            "“a.rrd” is a compressed Rerun recording. Save it again from Rerun without compression.",
+            ScanCopy.importFailure(RerunImportFailure.RrdCompressed("a.rrd"), "a.rrd"),
+        )
+        assertEquals(
+            "“a.rrd” comes from a newer version of Rerun than this app can read.",
+            ScanCopy.importFailure(RerunImportFailure.RrdNewerVersion("a.rrd"), "a.rrd"),
+        )
         assertEquals("Delete “Room”?", ScanCopy.deleteTitle("Room"))
     }
 

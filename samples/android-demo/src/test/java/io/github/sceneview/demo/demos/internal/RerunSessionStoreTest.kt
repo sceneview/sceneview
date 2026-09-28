@@ -204,8 +204,14 @@ class RerunSessionStoreTest {
         assertThrows<RerunImportFailure.Empty> { store.import("empty.svscan", RerunScanFile.write(empty), noRrd) }
         assertThrows<RerunImportFailure.Unreadable> { store.import("broken.svscan", "PK".toByteArray(), noRrd) }
         assertThrows<RerunImportFailure.Unsupported> { store.import("notes.txt", "hello".toByteArray(), noRrd) }
-        assertThrows<RerunImportFailure.RrdNotYet> {
-            store.import("take.rrd", "RRF2".toByteArray(), readRrd = { throw RerunImportFailure.RrdNotYet("take.rrd") })
+        assertThrows<RerunImportFailure.RrdCompressed> {
+            store.import("take.rrd", "RRF2".toByteArray(), readRrd = {
+                throw RerunImportFailure.RrdCompressed("take.rrd")
+            })
+        }
+        // Any other exception from the reader is an unreadable file.
+        assertThrows<RerunImportFailure.Unreadable> {
+            store.import("bad.rrd", "RRF2".toByteArray(), readRrd = { error("boom") })
         }
         assertEquals(1, store.list().size)
     }
