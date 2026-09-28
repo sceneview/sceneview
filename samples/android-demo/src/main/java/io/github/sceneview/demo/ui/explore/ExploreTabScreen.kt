@@ -75,6 +75,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SketchfabService
