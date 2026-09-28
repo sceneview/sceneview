@@ -115,7 +115,11 @@ jobs:
           ram-size: 6144M
           # Same geometry as render-tests.yml's goldens job (#3551): 1080x2400
           # framebuffer, then `wm size` + `wm density 420` = the Pixel_7a AVD.
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
+          # `swangle_indirect` (ANGLE over SwiftShader-Vulkan), not the goldens'
+          # `swiftshader_indirect`: on the latter a live Filament viewport wedges
+          # the host renderer and the emulator dies (#3554; run 36405917269 lost
+          # it on model-viewer with both guest and host-side capture).
+          emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
           emulator-boot-timeout: 900
           disable-animations: true
           # The action runs each line through `sh -c`: keep every line
