@@ -45,6 +45,8 @@
 		F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE31566D2309ACB52F2541CF /* HomeFilter.swift */; };
 		B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */; };
 		4D3AFF95252330C277928054 /* HomeHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251CDB4D89CD0202517E852 /* HomeHero.swift */; };
+		C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B001 /* HomeHeroFlight.swift */; };
+		C0DE4E50000000000000A002 /* HomeHeroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B002 /* HomeHeroScene.swift */; };
 		7E28E9DEA941B656301CDA67 /* DemoScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DDC7D4F688438DB5EBE4ED /* DemoScene.swift */; };
 		F962AD205078EAFC5201865B /* AnimationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C649EB882E1792036DA612 /* AnimationScene.swift */; };
 		96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63582A5C1EEB276B6E9CA85 /* ArAugmentedFacesScene.swift */; };
@@ -277,6 +279,8 @@
 		DE31566D2309ACB52F2541CF /* HomeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilter.swift; path = SceneViewDemo/Views/Home/HomeFilter.swift; sourceTree = SOURCE_ROOT; };
 		A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoMediaCard.swift; path = SceneViewDemo/Views/Home/DemoMediaCard.swift; sourceTree = SOURCE_ROOT; };
 		A251CDB4D89CD0202517E852 /* HomeHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHero.swift; path = SceneViewDemo/Views/Home/HomeHero.swift; sourceTree = SOURCE_ROOT; };
+		C0DE4E50000000000000B001 /* HomeHeroFlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroFlight.swift; path = SceneViewDemo/Views/Home/HomeHeroFlight.swift; sourceTree = SOURCE_ROOT; };
+		C0DE4E50000000000000B002 /* HomeHeroScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroScene.swift; path = SceneViewDemo/Views/Home/HomeHeroScene.swift; sourceTree = SOURCE_ROOT; };
 		5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComingSoonScreen.swift; path = SceneViewDemo/Views/ComingSoonScreen.swift; sourceTree = SOURCE_ROOT; };
 		6C214F8F9A1B35560E551895 /* SketchfabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabModels.swift; path = SceneViewDemo/Services/SketchfabModels.swift; sourceTree = SOURCE_ROOT; };
 		8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabService.swift; path = SceneViewDemo/Services/SketchfabService.swift; sourceTree = SOURCE_ROOT; };
@@ -530,6 +534,8 @@
 				DE31566D2309ACB52F2541CF /* HomeFilter.swift */,
 				A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */,
 				A251CDB4D89CD0202517E852 /* HomeHero.swift */,
+				C0DE4E50000000000000B001 /* HomeHeroFlight.swift */,
+				C0DE4E50000000000000B002 /* HomeHeroScene.swift */,
 			);
 			name = Home;
 			sourceTree = "<group>";
@@ -1043,6 +1049,8 @@
 				F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */,
 				B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */,
 				4D3AFF95252330C277928054 /* HomeHero.swift in Sources */,
+				C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */,
+				C0DE4E50000000000000A002 /* HomeHeroScene.swift in Sources */,
 				A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */,
 				C10000000000000000000002 /* DemoItem.swift in Sources */,
 				C10000000000000000000030 /* FavoritesManager.swift in Sources */,
