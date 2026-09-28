@@ -217,6 +217,14 @@ enum SceneViewTokens {
         static let heroSubtitle = Color.white.opacity(0.80)
         static let heroPillBackground = Color.white
         static let heroPillText = Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x2E / 255)
+        /// `DESIGN.md` `hero-sky-*`: the dusk gradient painted behind the
+        /// transparent live flight on the home stage (#3948). One gradient in
+        /// both themes — the hero stays dark. The horizon stop is also the
+        /// flight's fog colour, so the far ridges dissolve into it.
+        static let heroSkyTop = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+        static let heroSkyDusk = Color(red: 0x3B / 255, green: 0x1D / 255, blue: 0x46 / 255)
+        static let heroSkyHorizon = Color(red: 0xE2 / 255, green: 0x73 / 255, blue: 0x4F / 255)
+        static let heroSkyGround = Color(red: 0x2A / 255, green: 0x12 / 255, blue: 0x20 / 255)
         /// Hero stage field — an **embedded** stage, so it follows the
         /// container scale in dark rather than the full-screen stage colour.
         ///
@@ -410,6 +418,15 @@ enum SceneViewTokens {
         static let cardOutlineWidth: CGFloat = 1
         static let iconTileGlyph: CGFloat = 40
         static let heroScrimStart: CGFloat = 0.5
+        /// How far the home stage runs past the hero band before it has faded
+        /// into the page — Android's `heroStageBleed`.
+        static let heroStageBleed: CGFloat = 48
+        /// Where the horizon sits down the stage sky, as a fraction of its height.
+        static let heroSkyHorizon: CGFloat = 0.44
+        /// Where the sun sits across the stage, as a fraction of its width.
+        static let heroSunX: CGFloat = 0.31
+        /// Fraction of the band's scroll travel the sky and the flight lag behind.
+        static let heroParallax: CGFloat = 0.35
     }
 
     /// `DESIGN.md` — Demo App About (`about-*`), the iOS twin of Android's

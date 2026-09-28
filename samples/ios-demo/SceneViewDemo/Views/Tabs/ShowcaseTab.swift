@@ -55,13 +55,21 @@ struct ShowcaseTab: View {
     /// a rebuilt card is simply already revealed.
     @State private var catalogueRevealed = false
 
+    /// The page's scroll offset, for the hero stage's travel and parallax.
+    /// An observable object rather than `@State`, so only the stage — not this
+    /// whole screen — redraws as the page scrolls.
+    @State private var heroScroll = HomeHeroScroll()
+    /// The status bar's height: the hero stage starts above the content, at
+    /// the top edge of the display.
+    @State private var topInset: CGFloat = 0
+
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
 
     private var expanded: Bool { sizeClass == .regular }
 
     /// The hero's 3D stage runs only here: visible tab, foreground app, nothing
-    /// presented on top. Everything else tears it down — see ``HomeHero``.
+    /// presented on top. Everything else tears it down — see ``HomeHeroStage``.
     private var heroLive: Bool {
         isActive
             && scenePhase == .active
@@ -113,22 +121,31 @@ struct ShowcaseTab: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // The pinned header overlay covers this band; the spacer keeps
-                    // the hero from starting underneath it.
-                    Color.clear.frame(height: SceneViewTokens.Home.headerHeight + SceneViewTokens.Home.heroTopGap)
+                    VStack(alignment: .leading, spacing: 0) {
+                        // The pinned header overlay covers this band; the spacer keeps
+                        // the hero from starting underneath it.
+                        Color.clear.frame(height: SceneViewTokens.Home.headerHeight + SceneViewTokens.Home.heroTopGap)
 
-                    // While a query is active the hero steps aside so the results
-                    // sit right under the header (Android parity).
-                    if !searching {
-                        HomeHero(height: expanded ? SceneViewTokens.Home.heroHeightExpanded
-                                                  : SceneViewTokens.Home.heroHeight,
-                                 live: heroLive) {
-                            open(sceneId: Self.heroDemoId)
+                        // While a query is active the hero steps aside so the results
+                        // sit right under the header (Android parity).
+                        if !searching {
+                            HomeHero(height: heroHeight) {
+                                open(sceneId: Self.heroDemoId)
+                            }
+                            #if os(iOS)
+                            .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
+                            #endif
+                            .staggeredReveal(position: 0, revealed: catalogueRevealed)
                         }
-                        #if os(iOS)
-                        .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
-                        #endif
-                        .staggeredReveal(position: 0, revealed: catalogueRevealed)
+                    }
+                    // The dusk sky and the live flight, under the header and the
+                    // hero band, full-bleed from the top edge of the display.
+                    .background(alignment: .top) {
+                        if !searching {
+                            HomeHeroStage(height: heroStageHeight, topInset: topInset,
+                                          restTop: heroRestTop, live: heroLive, scroll: heroScroll)
+                                .padding(.horizontal, -SceneViewTokens.Home.contentPadding)
+                        }
                     }
 
                     if showFeatured {
@@ -193,14 +210,31 @@ struct ShowcaseTab: View {
             }
             .background(SceneViewTokens.HomeColor.surface)
             .scrollDismissesKeyboard(.immediately)
+            // "Scrolled" once the header band has gone under the header, as on
+            // Android (the grid's header spacer leaving the viewport): until
+            // then the header sits on the stage's sky.
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top > SceneViewTokens.Home.heroTopGap
+                geometry.contentOffset.y + geometry.contentInsets.top > heroRestTop
             } action: { _, isScrolled in
                 withAnimation(SceneViewTokens.Spring.fade) { scrolled = isScrolled }
             }
-            .overlay(alignment: .top) {
-                HomeHeader(scrolled: scrolled, query: $query, searchOpen: $searchOpen)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                heroScroll.offset = offset
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentInsets.top
+            } action: { _, inset in
+                topInset = inset
+            }
+            .overlay(alignment: .top) {
+                HomeHeader(scrolled: scrolled, overStage: overStage, query: $query, searchOpen: $searchOpen)
+            }
+            #if os(iOS)
+            // Light status-bar icons while they sit on the sky.
+            .toolbarColorScheme(overStage ? .dark : nil, for: .navigationBar)
+            #endif
             .hideNavigationBar()
             .navigationDestination(isPresented: $showExplore) {
                 ExploreTab(embedded: true)
@@ -263,6 +297,24 @@ struct ShowcaseTab: View {
 
     /// The demo the hero opens.
     static let heroDemoId = "model-viewer"
+
+    private var heroHeight: CGFloat {
+        expanded ? SceneViewTokens.Home.heroHeightExpanded : SceneViewTokens.Home.heroHeight
+    }
+
+    /// Where the hero band starts below the content's top edge.
+    private var heroRestTop: CGFloat {
+        SceneViewTokens.Home.headerHeight + SceneViewTokens.Home.heroTopGap
+    }
+
+    /// The stage: status bar, header band, hero band, then the bleed that fades
+    /// into the page — Android's `HomeHeroStage` height.
+    private var heroStageHeight: CGFloat {
+        topInset + heroRestTop + heroHeight + SceneViewTokens.Home.heroStageBleed
+    }
+
+    /// The header sits on the stage's sky: white type and light status-bar icons.
+    private var overStage: Bool { !scrolled && !searching && !searchOpen }
 
     /// Every visible demo under its section header. Headers are drawn only
     /// when more than one section is on screen: with a single chip selected,
@@ -405,6 +457,9 @@ private struct HomeHeader: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let scrolled: Bool
+    /// Over the hero stage's sky rather than the page: the title row turns to
+    /// the hero's fixed whites (Android `overStage`).
+    var overStage = false
     @Binding var query: String
     @Binding var searchOpen: Bool
 
@@ -418,7 +473,7 @@ private struct HomeHeader: View {
                     }
                     .transition(.opacity)
                 } else {
-                    TitleRow { searchOpen = true }
+                    TitleRow(overStage: overStage) { searchOpen = true }
                         .transition(.opacity)
                 }
             }
@@ -440,6 +495,7 @@ private struct HomeHeader: View {
 }
 
 private struct TitleRow: View {
+    var overStage = false
     let onSearch: () -> Void
 
     var body: some View {
@@ -452,12 +508,14 @@ private struct TitleRow: View {
             Text("SceneView")
                 .font(SceneViewTokens.TypeScale.title)
                 .tracking(SceneViewTokens.TypeScale.titleTracking)
-                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                .foregroundStyle(overStage ? SceneViewTokens.HomeColor.heroTitle : SceneViewTokens.HomeColor.onSurface)
+                .animation(SceneViewTokens.Spring.fade, value: overStage)
             Spacer()
             Button(action: onSearch) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                    .foregroundStyle(overStage ? SceneViewTokens.HomeColor.heroSubtitle : SceneViewTokens.HomeColor.onSurfaceDim)
+                    .animation(SceneViewTokens.Spring.fade, value: overStage)
                     .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
             }
             .buttonStyle(.plain)
