@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import ImageIO
 import Observation
@@ -130,3 +131,4 @@ final class RerunReplaySession {
         return await Task.detached(priority: .userInitiated) { RerunReplayMedia.decodeFull(data) }.value
     }
 }
+#endif
