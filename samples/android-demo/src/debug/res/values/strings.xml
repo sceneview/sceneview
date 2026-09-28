@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug builds install as their own app (`io.github.sceneview.demo.qa`, see the `debug`
+         build type) next to the Play Store one. The launcher label says so, together with the
+         badged icon in mipmap-anydpi-v26/-v33, so a test build is never mistaken for the store
+         app and can be uninstalled without touching it. -->
+    <string name="launcher_label">SceneView QA</string>
+</resources>

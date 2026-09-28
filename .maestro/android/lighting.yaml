@@ -14,7 +14,7 @@
 # now hosts its subject — `dynamic-sky` on the Sun rig of `lighting`,
 # `environment` on its Image rig, `fog` on the lab. Deleting a leg would delete
 # the coverage, not the redundancy.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 - runFlow:
     file: flows/demo.yaml

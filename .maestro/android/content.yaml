@@ -13,7 +13,7 @@
 # four legs became four identical launches. They are one leg now, launched by
 # the live id. The retired ids still resolve through `DEMO_ID_ALIASES` — that
 # contract is covered by `DeepLinkRouterTest`, which is the right place for it.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 - runFlow:
     file: flows/demo.yaml

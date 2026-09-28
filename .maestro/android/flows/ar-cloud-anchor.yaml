@@ -11,11 +11,11 @@
 #
 # Names come from `CloudAnchorScenario`; `CloudAnchorScenarioTest` pins each name to the
 # state it claims, so a scenario cannot drift from its label without failing the JVM suite.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 # ── Host step, the honest first frame ──────────────────────────────────────
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:
@@ -33,7 +33,7 @@ appId: io.github.sceneview.demo
 
 # ── The room-mapping meter, and Host withheld until it fills ───────────────
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:
@@ -50,7 +50,7 @@ appId: io.github.sceneview.demo
 # ── Hosted: the code, with the two ways to hand it over ────────────────────
 # The old screen told the user to "copy" the id and offered nothing that could.
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:
@@ -68,7 +68,7 @@ appId: io.github.sceneview.demo
 
 # ── Resolve step: the field that used to be on screen at the wrong time ────
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:
@@ -85,7 +85,7 @@ appId: io.github.sceneview.demo
 
 # ── A failure the user can act on, not an ARCore constant ──────────────────
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:
@@ -102,7 +102,7 @@ appId: io.github.sceneview.demo
 
 # ── A build with no key explains itself in a card, with no dead buttons ────
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:

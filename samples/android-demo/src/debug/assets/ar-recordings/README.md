@@ -25,7 +25,7 @@ a stable real-world capture instead of needing live camera + IMU.
 2. Open the **AR Recording** demo, tap the red shutter, capture an AR session, tap it again.
 3. Pull the `.mp4` from the device:
    ```bash
-   adb -s <SERIAL> pull /sdcard/Android/data/io.github.sceneview.demo/files/ar-recordings/<filename>.mp4
+   adb -s <SERIAL> pull /sdcard/Android/data/io.github.sceneview.demo.qa/files/ar-recordings/<filename>.mp4
    ```
 4. Verify the dataset is well-formed:
    ```bash

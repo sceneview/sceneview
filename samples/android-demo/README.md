@@ -33,15 +33,26 @@ adb install -r samples/android-demo/build/outputs/apk/debug/android-demo-debug.a
 …and launch it:
 
 ```bash
-adb shell am start -n io.github.sceneview.demo/.MainActivity
+adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity
 ```
+
+A debug build is a **separate app** that installs next to the Play Store one instead of
+replacing it: application id `io.github.sceneview.demo.qa`, version `<version>-qa`,
+launcher label **SceneView QA** and an icon with an amber **QA** badge. Uninstall it with
+`adb uninstall io.github.sceneview.demo.qa`; the store install is untouched. Only the
+application id changes — classes keep the `io.github.sceneview.demo` namespace, so an
+activity is always spelled in full after the `/` (`<id>/.MainActivity` would look for
+`io.github.sceneview.demo.qa.MainActivity`). Two consequences of the distinct id: the
+verified `https://sceneview.github.io/open` App Link stays bound to the store app (the
+`sceneview://demo` scheme reaches both, through the chooser), and a cloud API key
+restricted to the store package and signing certificate does not cover the QA build.
 
 > ⚠️ **Not `android run`.** Google's `android` CLI has a measured install
 > no-op: it prints `App loaded:` / `Debuggable: true`, then rejects an activity
 > the platform resolves fine, **and exits 0 having installed nothing** — leaving
 > the previous build on the device. Seen three times in this repo (#2796, #2854,
 > #2990). Use `adb install -r` and check the install actually landed:
-> `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
+> `adb shell dumpsys package io.github.sceneview.demo.qa | grep lastUpdateTime`.
 
 ## QA
 
@@ -50,7 +61,7 @@ the ARCore emulator, which has no camera, AR demos render on a black surface; de
 can draw a blurred room photo beneath the AR scene instead:
 
 ```bash
-adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-placement --ez qa_mode true --ez qa_backdrop true
+adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es demo ar-placement --ez qa_mode true --ez qa_backdrop true
 ```
 
 `qa_backdrop` follows `qa_mode` when omitted; it only kicks in if no camera frame arrives
@@ -66,8 +77,8 @@ which is **ignored unless `qa_mode` is on** (`DeepLinkRouter.resolveQaState`,
 know leaves it in its real state:
 
 ```bash
-adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-cloud-anchor --ez qa_mode true --es qa_state hosted
-adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo point-and-ask --ez qa_mode true --es qa_state streaming
+adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es demo ar-cloud-anchor --ez qa_mode true --es qa_state hosted
+adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es demo point-and-ask --ez qa_mode true --es qa_state streaming
 ```
 
 | Demo | `qa_state` ids | Resolver |

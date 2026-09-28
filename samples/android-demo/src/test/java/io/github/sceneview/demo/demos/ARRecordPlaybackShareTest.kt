@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo
 import androidx.test.core.app.ApplicationProvider
+import io.github.sceneview.demo.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -37,7 +38,14 @@ class ARRecordPlaybackShareTest {
     fun `share authority is the package id plus fileprovider suffix`() {
         // Mirror of the runtime assembly in `shareRecording(...)`.
         val authority = "${context.packageName}.fileprovider"
-        assertEquals("io.github.sceneview.demo.fileprovider", authority)
+        // Debug builds carry `applicationIdSuffix ".qa"` (they install next to the Play
+        // Store app), so the id is the build's own, never a literal: a hardcoded
+        // `io.github.sceneview.demo.fileprovider` would collide between the two installs.
+        assertEquals("${BuildConfig.APPLICATION_ID}.fileprovider", authority)
+        assertTrue(
+            "Application id should be the demo's, got '${context.packageName}'",
+            context.packageName.startsWith("io.github.sceneview.demo"),
+        )
     }
 
     @Test

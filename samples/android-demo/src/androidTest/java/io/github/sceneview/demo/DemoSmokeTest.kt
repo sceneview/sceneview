@@ -42,7 +42,7 @@ class DemoSmokeTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val device: UiDevice =
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    private val pkg = "io.github.sceneview.demo"
+    private val pkg = demoPackage
     private val timeout = 8_000L
 
     @Before
@@ -66,7 +66,7 @@ class DemoSmokeTest {
      */
     private fun openDemoTolerant(demoId: String, expectedTitle: String): Boolean {
         val intent = Intent().apply {
-            setClassName(pkg, "$pkg.DemoHostActivity")
+            setClassName(pkg, DemoHostActivity::class.java.name)
             putExtra(DemoHostActivity.EXTRA_DEMO_ID, demoId)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
         }

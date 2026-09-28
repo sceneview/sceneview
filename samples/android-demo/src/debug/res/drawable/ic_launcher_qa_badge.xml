@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "QA" badge laid over the SceneView launcher foreground in debug builds.
+
+    Same 108 x 108 adaptive-icon canvas as ic_launcher_foreground. The pill is centred
+    under the cube at y 63-87, x 34-74: its farthest point sits 35.2 units from the centre,
+    inside the 72-unit circle a round-mask launcher keeps, so no mask shape clips it.
+    Letters are 13 units tall, stroked 2.8, so they stay legible at launcher size.
+    Colours: fill DESIGN.md `warning` (@color/qa_badge), outline and lettering the
+    launcher's own navy (@color/ic_launcher_background), about 8:1 on the amber.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Pill, outlined in navy so it separates from the blue cube and background. -->
+    <path
+        android:fillColor="@color/qa_badge"
+        android:strokeColor="@color/ic_launcher_background"
+        android:strokeWidth="1.5"
+        android:pathData="M46,63 H62 A12,12 0 0,1 62,87 H46 A12,12 0 0,1 46,63 Z" />
+
+    <!-- Q -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/ic_launcher_background"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M42.8,75 A5,6.5 0 1,0 52.8,75 A5,6.5 0 1,0 42.8,75 Z M50.6,78.2 L53.6,81.8" />
+
+    <!-- A -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/ic_launcher_background"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M56.2,81.5 L60.7,68.5 L65.2,81.5 M57.7,77.2 L63.7,77.2" />
+</vector>

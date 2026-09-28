@@ -9,6 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import io.github.sceneview.demo.mainActivityComponent
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -392,7 +393,7 @@ class DemoRenderingScreenshotTest {
         // "Calling from not trusted UID!" so we don't use it.
         val launchedAt = System.currentTimeMillis()
         device.executeShellCommand(
-            "am start -n io.github.sceneview.demo/.MainActivity " +
+            "am start -n $mainActivityComponent " +
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK
                 "--es demo $demoSlug --ez qa_mode true"
         )

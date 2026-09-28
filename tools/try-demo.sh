@@ -43,6 +43,12 @@ RESET='\033[0m'
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEMO_MODULE=":samples:sceneview-demo"
 DEMO_PKG="io.github.sceneview.demo"
+# A local build is a debug build, which installs as its own app next to the
+# Play Store one (`applicationIdSuffix ".qa"`). The activity class keeps the
+# demo namespace, so it is spelled in full: `<pkg>/.MainActivity` would resolve
+# to `io.github.sceneview.demo.qa.MainActivity`, which does not exist.
+DEMO_DEBUG_PKG="${DEMO_PKG}.qa"
+DEMO_ACTIVITY="io.github.sceneview.demo.MainActivity"
 GITHUB_REPO="SceneView/sceneview"
 
 banner() {
@@ -114,7 +120,7 @@ download_and_install() {
   # file's own header. Only the lib's availability is checked — try-demo.sh can
   # be copied out of the repo, and then there is no helper to call.
   if type android_cli_install_and_launch >/dev/null 2>&1; then
-    android_cli_install_and_launch "$tmp_apk" "${DEMO_PKG}/.MainActivity"
+    android_cli_install_and_launch "$tmp_apk" "${DEMO_PKG}/${DEMO_ACTIVITY}"
   else
     adb install -r "$tmp_apk"
     launch_app
@@ -124,7 +130,8 @@ download_and_install() {
 
 build_and_install() {
   local module="${1:-$DEMO_MODULE}"
-  local pkg="${2:-$DEMO_PKG}"
+  local pkg="${2:-$DEMO_DEBUG_PKG}"
+  local activity="${3:-$DEMO_ACTIVITY}"
 
   echo -e "${CYAN}Building ${BOLD}${module}${RESET}${CYAN}...${RESET}"
   cd "$REPO_ROOT"
@@ -158,18 +165,19 @@ build_and_install() {
   # Same as install_prebuilt: the helper's own adb fallback is the proven path,
   # so gating on the CLI's presence would skip the proof (#2990).
   if type android_cli_install_and_launch >/dev/null 2>&1; then
-    android_cli_install_and_launch "$apk" "${pkg}/.MainActivity"
+    android_cli_install_and_launch "$apk" "${pkg}/${activity}"
   else
     adb install -r "$apk"
-    launch_app "$pkg"
+    launch_app "$pkg" "$activity"
   fi
   echo -e "${GREEN}✓${RESET} Installed"
 }
 
 launch_app() {
   local pkg="${1:-$DEMO_PKG}"
+  local activity="${2:-$DEMO_ACTIVITY}"
   echo -e "${CYAN}Launching...${RESET}"
-  adb shell am start -n "${pkg}/.MainActivity" 2>/dev/null \
+  adb shell am start -n "${pkg}/${activity}" 2>/dev/null \
     || adb shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 2>/dev/null \
     || true
   echo ""
@@ -244,7 +252,7 @@ elif [[ -n "$SAMPLE" ]]; then
   module=$(sample_to_module "$SAMPLE")
   # Derive package from sample name
   sample_pkg="io.github.sceneview.sample.${SAMPLE//-/.}"
-  build_and_install "$module" "$sample_pkg"
+  build_and_install "$module" "$sample_pkg" "${sample_pkg}.MainActivity"
 else
   build_and_install
 fi

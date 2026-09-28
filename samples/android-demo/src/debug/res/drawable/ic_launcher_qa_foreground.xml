@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The store launcher foreground, untouched, with the QA badge on top — the debug icon
+     follows any change to ic_launcher_foreground instead of forking it. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+    <item android:drawable="@drawable/ic_launcher_qa_badge" />
+</layer-list>
