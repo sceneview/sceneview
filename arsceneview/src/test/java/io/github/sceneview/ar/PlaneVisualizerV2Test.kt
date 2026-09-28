@@ -48,37 +48,34 @@ class PlaneVisualizerV2Test {
 
     // ── acquirePlaneDepthImage (#4104 review) ────────────────────────────────────────
 
-    private fun failIfCalled(): String = throw AssertionError("depth acquired on a depth-less session")
+    private fun failIfCalled(): String = throw AssertionError("depth acquired on a session without smoothed depth")
 
     @Test
     fun `a session with depth disabled is never asked for a depth image`() {
-        assertNull(acquirePlaneDepthImage(Config.DepthMode.DISABLED, ::failIfCalled, ::failIfCalled))
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.DISABLED, ::failIfCalled))
+    }
+
+    @Test
+    fun `a raw-depth-only session is never asked for the smoothed image`() {
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.RAW_DEPTH_ONLY, ::failIfCalled))
     }
 
     @Test
     fun `no depth image is acquired before the renderer reports the depth mode`() {
-        assertNull(acquirePlaneDepthImage(null, ::failIfCalled, ::failIfCalled))
+        assertNull(acquirePlaneDepthImage(null, ::failIfCalled))
     }
 
     @Test
     fun `a throwing acquisition falls back instead of escaping`() {
-        // ARCore raises IllegalStateException when depth is off or degraded; escaping here made
+        // ARCore raises IllegalStateException when depth is degraded; escaping here made
         // PlaneRendererV2.update's catch skip the whole plane update instead of drawing flat.
-        val degraded: () -> String = { throw IllegalStateException("depth mode is not enabled") }
-        assertNull(acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC, degraded, degraded))
-        assertNull(acquirePlaneDepthImage(Config.DepthMode.RAW_DEPTH_ONLY, degraded, degraded))
+        val degraded: () -> String = { throw IllegalStateException("depth is not available") }
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC, degraded))
     }
 
     @Test
-    fun `each depth mode reads its own depth image`() {
-        assertEquals(
-            "smoothed",
-            acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC, { "smoothed" }, { "raw" }),
-        )
-        assertEquals(
-            "raw",
-            acquirePlaneDepthImage(Config.DepthMode.RAW_DEPTH_ONLY, { "smoothed" }, { "raw" }),
-        )
+    fun `an automatic-depth session reads its depth image`() {
+        assertEquals("depth", acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC) { "depth" })
     }
 
     // ── computeScanProgress / computeReflectionFadeIn ───────────────────────────────

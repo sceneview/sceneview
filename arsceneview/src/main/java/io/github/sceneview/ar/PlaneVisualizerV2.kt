@@ -226,9 +226,9 @@ class PlaneVisualizerV2(
 
     /**
      * The session's effective [Config.DepthMode], handed in by [PlaneRendererV2.update] every
-     * update. `null` (never set) or [Config.DepthMode.DISABLED] — `ARSceneView`'s default, and
-     * what `ArSession.configure` downgrades an unsupported request to — keeps the depth path off
-     * so the plane stays on the flat polygon without ever asking ARCore for a depth image.
+     * update. Anything but [Config.DepthMode.AUTOMATIC] — `null` (never set), `DISABLED`
+     * (`ARSceneView`'s default), `RAW_DEPTH_ONLY` — keeps the depth path off, so the plane stays
+     * on the flat polygon without ever asking ARCore for a depth image it cannot give.
      */
     internal var depthMode: Config.DepthMode? = null
 
@@ -406,11 +406,8 @@ class PlaneVisualizerV2(
         // or degraded, NotYetAvailableException before the first depth frame). It must fail
         // here, where it falls back to flat, not up in PlaneRendererV2.update's catch, which
         // would skip the whole plane update instead.
-        val depthImage = acquirePlaneDepthImage(
-            depthMode = depthMode,
-            acquireSmoothed = frame::acquireDepthImage16Bits,
-            acquireRaw = frame::acquireRawDepthImage16Bits,
-        ) ?: return false
+        val depthImage = acquirePlaneDepthImage(depthMode, frame::acquireDepthImage16Bits)
+            ?: return false
         try {
             val intrinsics = computeScaledIntrinsics(camera, depthImage.width, depthImage.height)
                 ?: return false
@@ -922,24 +919,19 @@ internal fun isDepthRebuildDue(
 ): Boolean = lastRebuildMs == null || nowMs - lastRebuildMs >= intervalMs
 
 /**
- * Acquires the depth image [PlaneVisualizerV2] builds its mesh from, or `null` when there is
- * none to use: [Config.DepthMode.AUTOMATIC] reads the smoothed image, [Config.DepthMode.RAW_DEPTH_ONLY]
- * the raw one, and any other mode (`DISABLED`, or `null` when the renderer has not said) asks ARCore
- * for nothing. A throwing acquisition — ARCore raises `IllegalStateException` when depth is off or
- * degraded, `NotYetAvailableException` before the first depth frame — also yields `null`, so the
- * caller keeps the flat fallback (#4104 review). Pure, so it is unit-tested without ARCore.
+ * Acquires the smoothed depth image [PlaneVisualizerV2] builds its mesh from, or `null` when
+ * there is none to use. Only a [Config.DepthMode.AUTOMATIC] session is asked: `DISABLED` (the
+ * `ARSceneView` default, and what `ArSession.configure` downgrades an unsupported request to),
+ * `RAW_DEPTH_ONLY` (no smoothed image — its noisy raw depth stays with the app that asked for
+ * it), and `null` (the renderer has not said yet) all keep the flat polygon. A throwing
+ * acquisition — `IllegalStateException` when depth is degraded, `NotYetAvailableException`
+ * before the first depth frame — also yields `null`, so the caller keeps the flat fallback
+ * instead of escaping to PlaneRendererV2.update and skipping the plane (#4104 review). Pure, so
+ * it is unit-tested without ARCore.
  */
 @Suppress("TooGenericExceptionCaught", "SwallowedException")
-internal fun <T : Any> acquirePlaneDepthImage(
-    depthMode: Config.DepthMode?,
-    acquireSmoothed: () -> T,
-    acquireRaw: () -> T,
-): T? {
-    val acquire = when (depthMode) {
-        Config.DepthMode.AUTOMATIC -> acquireSmoothed
-        Config.DepthMode.RAW_DEPTH_ONLY -> acquireRaw
-        else -> return null
-    }
+internal fun <T : Any> acquirePlaneDepthImage(depthMode: Config.DepthMode?, acquire: () -> T): T? {
+    if (depthMode != Config.DepthMode.AUTOMATIC) return null
     return try {
         acquire()
     } catch (_: Exception) {
