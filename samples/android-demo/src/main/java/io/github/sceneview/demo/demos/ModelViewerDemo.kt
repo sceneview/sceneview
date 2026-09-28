@@ -101,6 +101,7 @@ import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
 import io.github.sceneview.demo.demos.internal.SurprisePrefetch
 import io.github.sceneview.demo.demos.internal.SurpriseRolls
 import io.github.sceneview.demo.demos.internal.checkSurpriseSize
+import io.github.sceneview.demo.demos.internal.drawFullyOpaqueMaskedMaterials
 import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
 import io.github.sceneview.demo.demos.internal.PARK_SLOTS
@@ -625,7 +626,7 @@ private fun SingleModelSection(
     // directly and never stages the entry's bundled fallback: a failure yields `null`,
     // `streamedFileUrl` keeps its value, and the model already on screen simply stays. So
     // this chip can never render a stand-in under a "Streamed" label — there is no origin to
-    // get wrong, which is the probe's entire reason to exist. The other four sites go through `SketchfabAssetResolver`, whose every
+    // get wrong, which is the probe's entire reason to exist. The other three sites go through `SketchfabAssetResolver`, whose every
     // failure path DOES end at a fallback file, and they do share the probe.
     val assetSource = when {
         // The user's own file is neither streamed nor bundled: its origin is the title bar,
@@ -1232,6 +1233,9 @@ private fun rememberStreamedModelInstance(
         try {
             loaded = runCatching { modelLoader.loadModelInstance(location) }.getOrNull()
             currentCoroutineContext().ensureActive()
+            // #4103 — a masked material cut off at 1.0 is discarded whole by Filament: the
+            // Fantasy Butterfly framed as an empty stage. See [drawFullyOpaqueMaskedMaterials].
+            loaded?.drawFullyOpaqueMaskedMaterials()
             // #4034 — the model is handed over once gltfio has uploaded its textures, not
             // before: a streamed model shown mid-upload is untextured blocks on the default
             // material, which is the "garbled model" of the report. The previous model stays

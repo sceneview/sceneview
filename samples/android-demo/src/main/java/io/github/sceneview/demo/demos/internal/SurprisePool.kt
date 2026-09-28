@@ -23,7 +23,10 @@ import kotlin.random.Random
  * and the crates pile and the potteries are several objects, not one. Three small ones were tried
  * and dropped after a look on the emulator: the Coffee Mug renders as a glowing white block
  * under the viewer's lighting, the Picture Frame lands edge-on at the viewer's hero angle, and
- * the Fantasy Butterfly frames as an empty screen (its bounds are far larger than its mesh).
+ * the Fantasy Butterfly framed as an empty screen. That last one was not its bounds but its
+ * material: a mask cut off at 1.0, which Filament discards whole. The viewer draws it since #4103
+ * ([drawFullyOpaqueMaskedMaterials]), but its emissive map is authored ten times over full
+ * strength and it lands as a white glow, so it stays out.
  *
  * [SURPRISE_MAX_BYTES] still caps a download at run time, because an author can re-upload a
  * heavier model under the same uid.

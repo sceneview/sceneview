@@ -229,7 +229,10 @@ private fun CreditsRow(slug: SketchfabSlug, onOpen: () -> Unit) {
 /** Map an internal `SampleAssets` category key to a human-facing title. */
 private fun categoryLabel(category: String): String = when (category) {
     "solar" -> "Solar (Orbital AR)"
-    "gallery" -> "Gallery"
+    // The Scene Gallery these four came from is gone (#4102). The Fox, the Desk Lamp and the
+    // Vintage Camera are in the Model Viewer's "Surprise me" pool now (#4103); the Nile scan
+    // is too heavy for it and is shown nowhere since #4102.
+    "gallery" -> "Model Viewer (Surprise me)"
     "animation" -> "Animation"
     "park" -> "Park (Multi-model)"
     "ar_placement" -> "AR Placement"

@@ -28,7 +28,8 @@ package io.github.sceneview.demo.sketchfab
  * streams them:
  *
  *  - `solar` — animated companions / orbital decoration for `OrbitalARDemo`.
- *  - `gallery` — variety pack for `SceneGalleryDemo`.
+ *  - `gallery` — variety pack of the removed `SceneGalleryDemo` (#4102); part of the Model
+ *    Viewer's "Surprise me" pool now.
  *  - `animation` — skeletal-animated models for `AnimationDemo`.
  *  - `park` — outdoor tree set for the `MultiModelDemo` park composition.
  *  - `ar_placement` — household-scale items for `ARPlacementDemo` /
@@ -113,7 +114,9 @@ object SampleAssets {
             tags = listOf("insect", "swarm"),
         ),
 
-        // ── Gallery (SceneGalleryDemo) ─────────────────────────────────────
+        // ── Gallery (was SceneGalleryDemo, removed in #4102) ───────────────
+        // The Fox, the Desk Lamp and the Vintage Camera are in the Model Viewer's
+        // "Surprise me" pool; the Credits sheet titles this group after it.
         // 4 variety-pack models. Each gallery chip points at a *distinct*
         // bundled GLB so two chips never render the identical fallback model
         // when offline (#1433). `displayName` / `author` describe the streamed
