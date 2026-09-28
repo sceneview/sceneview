@@ -3098,7 +3098,8 @@
         "day"
       ],
       "usedIn": [
-        "android-demo"
+        "android-demo",
+        "ios-demo"
       ]
     },
     {

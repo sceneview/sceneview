@@ -330,7 +330,7 @@ class DemoMathTest {
         // Pin the actual demo's 4 slot offsets at yaw=0 (the default) to lock in the
         // visible layout. Since #2913 the formation is centred on the world origin
         // (`autoCenterContent = false`), so the offsets ARE the world coordinates:
-        // back row z=-0.2, front row z=+0.2. The literals live in `parkSlotLayout` below, which is
+        // the oaks at z=-0.45, the front row between z=+0.25 and z=+0.42. The literals live in `parkSlotLayout` below, which is
         // the single place the layout is pinned.
         for ((index, slot) in PARK_SLOTS.withIndex()) {
             val (rx, rz) = DemoMath.rotateAroundCentre(slot.x, slot.z, sceneYaw = 0f)
@@ -359,10 +359,10 @@ class DemoMathTest {
 
         assertEquals(
             listOf(
-                ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.2f, scale = 1.80f),
-                ParkSlot(uid = "6d1aeea748f147789004bc03e1930d32", x = 0.0f, z = 0.2f, scale = 0.65f),
-                ParkSlot(uid = "4f6ab5594a8a415aba3f958682b9ced5", x = -0.55f, z = 0.2f, scale = 0.40f),
-                ParkSlot(uid = "fd582b0d4a8c4af1a1b5c4f21a481c93", x = 0.55f, z = 0.2f, scale = 0.15f),
+                ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.45f, scale = 2.00f),
+                ParkSlot(uid = "378cd6e6f505493aa8e22f68db1cabec", x = -0.05f, z = 0.35f, scale = 0.70f, yaw = 90f),
+                ParkSlot(uid = "6881aa1e84b047d79860fa9297e05e22", x = 0.55f, z = 0.25f, scale = 1.10f),
+                ParkSlot(uid = "42cb7fad10ba44ecbc9ae9cf5fdd63b6", x = -0.62f, z = 0.42f, scale = 0.45f),
             ),
             PARK_SLOTS,
         )
@@ -370,16 +370,16 @@ class DemoMathTest {
         // Every slot is bottom-aligned on a shared ground plane, so the union is as tall as the
         // tallest model — recomputed here independently of the production expression.
         assertEquals(PARK_SLOTS.maxOf { it.scale }, PARK_HEIGHT, eps)
-        assertEquals(1.80f, PARK_HEIGHT, eps)
+        assertEquals(2.00f, PARK_HEIGHT, eps)
 
         // The framing box is the union of the slots' `scale` cubes, each centred on its x / z and
         // standing on the ground plane — recomputed here from the literals above.
-        assertEquals(-0.90f, PARK_BOUNDS.minX, eps)
-        assertEquals(0.90f, PARK_BOUNDS.maxX, eps)
-        assertEquals(-0.90f, PARK_BOUNDS.minY, eps)
-        assertEquals(0.90f, PARK_BOUNDS.maxY, eps)
-        assertEquals(-1.10f, PARK_BOUNDS.minZ, eps)
-        assertEquals(0.70f, PARK_BOUNDS.maxZ, eps)
+        assertEquals(-1.00f, PARK_BOUNDS.minX, eps)
+        assertEquals(1.10f, PARK_BOUNDS.maxX, eps)
+        assertEquals(-1.00f, PARK_BOUNDS.minY, eps)
+        assertEquals(1.00f, PARK_BOUNDS.maxY, eps)
+        assertEquals(-1.45f, PARK_BOUNDS.minZ, eps)
+        assertEquals(0.80f, PARK_BOUNDS.maxZ, eps)
     }
 
     @Test

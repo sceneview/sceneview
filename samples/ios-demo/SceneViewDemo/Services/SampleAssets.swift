@@ -204,70 +204,62 @@ enum SampleAssets {
         ),
 
         // ── Park scene composition (MultiModelDemo) ────────────────────────
+        // One corner of a park, same four models as Android (#4103): a pair of oaks, a bench,
+        // a street lamp and a fern. Until #4103 the four slots held four tree scans, the
+        // largest a 15 MB USDZ, at unrelated sizes in the `.studio` interior.
+        //
+        // The keyless fallbacks stay pairwise distinct (#2355): four copies of one stand-in
+        // would stack on top of each other instead of composing a scene.
         SketchfabSlug(
             uid: "d841c3bcc5324daebee50f45619e05fc",
             displayName: "Oak Trees",
             author: "bumstrum",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/tree_scene.usdz",
-            scaleToUnits: 2.40,
+            scaleToUnits: 2.00,
             hasBakedAnimation: false,
             category: "park",
             tags: ["nature", "tree"]
         ),
         SketchfabSlug(
-            uid: "6d1aeea748f147789004bc03e1930d32",
-            displayName: "Stylized Tree",
-            author: "yonimantz09",
+            uid: "378cd6e6f505493aa8e22f68db1cabec",
+            displayName: "Park Bench",
+            author: "Planetrix23",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            // Keyless fallback for the MultiModelDemo *bench* slot. The streamed
-            // model is a tree, but the four park slots map to distinct diorama
-            // roles (tree / bench / dog / bird) — so the fallbacks must be
-            // DISTINCT too, or keyless mode stacks four identical 14 MB
-            // tree_scene islands instead of a scene (#2355). A small furniture-
-            // like prop (1.8 MB retro_piano) reads as the foreground bench.
+            // No bench is bundled; the 1.8 MB piano keeps a piece of furniture in the slot.
             fallbackBundledPath: "Models/retro_piano.usdz",
-            // Offline placeholder (#2960): deliberate bench-slot stand-in, see above — still not a tree.
+            // Offline placeholder (#2960): a piano is not a bench.
             fallbackRole: .placeholder,
-            scaleToUnits: 1.80,
+            scaleToUnits: 0.70,
             hasBakedAnimation: false,
             category: "park",
-            tags: ["nature", "tree"]
+            tags: ["furniture", "outdoor"]
         ),
         SketchfabSlug(
-            uid: "4f6ab5594a8a415aba3f958682b9ced5",
-            displayName: "Mighty Oak Trees",
-            author: "Jagobo",
+            uid: "6881aa1e84b047d79860fa9297e05e22",
+            displayName: "Street Lamp",
+            author: "bez_glaza",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            // Keyless fallback for the MultiModelDemo *dog* (animated occupant)
-            // slot — a small animated creature (3.1 MB animated_butterfly).
-            // Distinct silhouette from the tree backdrop (#2355).
-            fallbackBundledPath: "Models/animated_butterfly.usdz",
-            // Offline placeholder (#2960): deliberate dog-slot stand-in — a butterfly is not a tree.
-            fallbackRole: .placeholder,
-            scaleToUnits: 2.60,
+            // The Khronos lantern is a lamp on a post: the same kind of thing as the streamed lamp.
+            fallbackBundledPath: "Models/khronos_lantern.usdz",
+            scaleToUnits: 1.10,
             hasBakedAnimation: false,
             category: "park",
-            tags: ["nature", "tree"]
+            tags: ["lighting", "outdoor"]
         ),
         SketchfabSlug(
-            uid: "fd582b0d4a8c4af1a1b5c4f21a481c93",
-            displayName: "Skovfogedegen Oak",
-            author: "rigsters",
+            uid: "42cb7fad10ba44ecbc9ae9cf5fdd63b6",
+            displayName: "Fern",
+            author: "Batuhan13",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            // Keyless fallback for the MultiModelDemo *bird* slot — an actual
-            // bird (phoenix_bird) AND the lightest bundled model at 1.1 MB, so
-            // it lands FIRST and dismisses the "Loading park scene…" scrim early
-            // (#1056 progressive reveal — previously defeated because every slot
-            // loaded the same heavy 14 MB tree_scene). Distinct silhouette
-            // (#2355).
-            fallbackBundledPath: "Models/phoenix_bird.usdz",
-            // Offline placeholder (#2960): deliberate bird-slot stand-in — a phoenix is not a tree.
+            // No plant is bundled apart from the tree island the oaks already fall back to.
+            fallbackBundledPath: "Models/shiba.usdz",
+            // Offline placeholder (#2960): a dog in the park, not a fern.
             fallbackRole: .placeholder,
-            scaleToUnits: 2.30,
+            scaleToUnits: 0.45,
             hasBakedAnimation: false,
             category: "park",
-            tags: ["nature", "tree", "scan"]
+            tags: ["nature", "plant"]
         ),
 
         // ── AR placement (ARPlacementDemo) ─────────────────────────────────
