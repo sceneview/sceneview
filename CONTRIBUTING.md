@@ -438,6 +438,40 @@ in the nightly every leg of both workflows still runs.
   requirements files), not on every `*.md` — a `changelog.d/` fragment alone no
   longer redeploys the site; the generated `CHANGELOG.md` does.
 
+### Build and screenshot on CI instead of locally
+
+`preview.yml` builds the demos and captures them, light and dark, on free
+GitHub-hosted runners: an emulator on `ubuntu-latest` with KVM for Android, a
+Simulator on `macos-15` for iOS. Use it before compiling the demo or booting an
+emulator on your own machine, agents included. It is opt-in and never a
+required check.
+
+```bash
+# Any branch pushed to sceneview/sceneview (the file must be on main):
+gh workflow run preview.yml -R sceneview/sceneview --ref <branch> \
+  -f platforms=android -f demos=home,model-viewer    # platforms: android | ios | both
+# Or on a pull request: add the `preview` label (Android) and/or `preview-ios`.
+gh pr edit <pr> -R sceneview/sceneview --add-label preview
+
+gh run list -R sceneview/sceneview -w preview.yml -b <branch> -L 1   # get the run id
+gh run watch <run-id> -R sceneview/sceneview --exit-status
+gh run download <run-id> -R sceneview/sceneview -n preview-android-screenshots -D /tmp/preview
+```
+
+| Artifact | Contents |
+|---|---|
+| `android-demo-debug-apk` | Debug APK, install with `adb install -r` |
+| `preview-android-screenshots` | `light/<id>.png`, `dark/<id>.png` at 1080x2400, 420 dpi, plus `summary.md` (an app that was gone at capture time, crash lines) and `logcat/<theme>-<id>.txt` |
+| `preview-ios` | `SceneView-simulator.app.zip` (`xcrun simctl install booted`), `screenshots/<theme>/<id>.png`, `summary.md`, `crashes/` if the app crashed |
+
+`demos` takes ids from `DemoRegistry` / `DemoDeepLinkRegistry`, plus `home` for
+the launch screen. The builds are keyless: artifacts of a public repository can
+be downloaded by any signed-in user, so no store key is baked in, and the
+Sketchfab- and Geospatial-backed screens show their keyless fallback. The
+captures come from SwiftShader and the Simulator, not a phone GPU, so use them to
+check layout, theming and "does it launch", and never copy one into a render
+golden. Artifacts are kept 7 days.
+
 ### Code style
 
 - **Kotlin**: follow the official [Kotlin style guide](https://developer.android.com/kotlin/style-guide) and existing Compose API conventions (composable functions, `remember*` helpers, named parameters). The code style is stored in the repository and auto-configured by Android Studio.

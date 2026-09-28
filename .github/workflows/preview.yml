@@ -1,0 +1,232 @@
+name: Preview build
+
+# On-demand demo builds + screenshots on GitHub-hosted runners, so that nobody
+# (human or agent) has to compile the demos or boot an emulator / Simulator on
+# their own machine to see what a branch looks like.
+#
+# WHAT IT PRODUCES (artifacts, 7-day retention)
+#   android-demo-debug-apk      keyless debug APK — `adb install -r` it
+#   preview-android-screenshots <theme>/<demo-id>.png + summary.md + logcat/
+#                               (1080x2400 @ 420 dpi, the Pixel_7a geometry the
+#                               goldens and the local QA AVD use)
+#   preview-ios                 SceneView-simulator.app.zip (`xcrun simctl
+#                               install booted <app>`) + screenshots/ + summary.md
+#
+# HOW TO TRIGGER — see CONTRIBUTING.md, "Build and screenshot on CI instead of
+# locally":
+#   - `gh workflow run preview.yml --ref <branch> -f platforms=android -f demos=home,model-viewer`
+#   - or label a pull request: `preview` (Android) and/or `preview-ios` (iOS).
+#     The run repeats on every push while the label stays on; removing the
+#     label stops future runs (one already in progress finishes). `gh workflow run` only works once this file is on `main`
+#     — the label route works from the PR that adds it.
+#
+# NOT A REQUIRED CHECK, NOT ON THE CRITICAL PATH. Pull requests without a
+# `preview*` label trigger the workflow, but every job is `if:`-skipped in
+# seconds — nothing here touches `ci.yml` or its `changes-verdict` check.
+#
+# Screens are advisory evidence, not a gate: SwiftShader (Android) and the
+# Simulator do not rasterise like a phone GPU, so NEVER promote a capture from
+# here into a render golden. A job goes red only when nothing could be built
+# or captured at all.
+#
+# KEYLESS BY DESIGN. Artifacts of a public repository can be downloaded by any
+# signed-in GitHub user, so no store secret (ARCORE_API_KEY, SKETCHFAB_API_KEY)
+# is baked into these builds. Key-gated screens fall back the way they do on a
+# fork. Use a local build, or the internal Play track, to see them keyed.
+#
+# Always GitHub-hosted (`ubuntu-latest` with KVM, `macos-15`), never the
+# self-hosted Mac: free for a public repository, and it keeps Gradle, Xcode,
+# the emulator and the Simulator off the maintainer's machine.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Which demo to build and capture
+        type: choice
+        options: [android, ios, both]
+        default: android
+      demos:
+        description: >-
+          Comma-separated demo ids (DemoRegistry / DemoDeepLinkRegistry) to
+          capture, plus `home` for the launch screen.
+        type: string
+        default: home,model-viewer
+  pull_request:
+    branches: [main]
+    types: [labeled, synchronize, reopened]
+
+# Concurrency is per JOB, not per workflow: adding `preview` and `preview-ios`
+# together fires two `labeled` events, and a workflow-level group let the
+# second (iOS-only) run cancel the first (Android) one. Each platform keeps one
+# capture per PR / ref; a new push supersedes the old one. A job skipped by its
+# `if:` never enters its group, so an unrelated label cannot cancel anything.
+
+permissions:
+  contents: read
+
+env:
+  # `inputs.*` is empty on pull_request; these are the PR-label defaults.
+  DEMOS: ${{ inputs.demos || 'home,model-viewer' }}
+
+jobs:
+  android:
+    name: Preview — android-demo APK + screenshots
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' && inputs.platforms != 'ios'
+      || github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview')
+         && (github.event.action != 'labeled' || github.event.label.name == 'preview') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: preview-android-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Build android-demo debug APK (keyless)
+        run: ./gradlew :samples:android-demo:assembleDebug --console=plain
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-demo-debug-apk
+          path: samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Capture screenshots on the emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          cores: 2
+          # 8 GB guest RAM and a 512 MB VM heap: the full demo at 1080x2400 on
+          # a software GPU is heavier than the goldens' single-scene tests, and
+          # 6 GB saw Android restart its framework on the 4th capture twice.
+          # ubuntu-latest has 16 GB.
+          ram-size: 8192M
+          heap-size: 512M
+          # Same geometry as render-tests.yml's goldens job (#3551): 1080x2400
+          # framebuffer, then `wm size` + `wm density 420` = the Pixel_7a AVD.
+          # `swangle_indirect` (ANGLE over SwiftShader-Vulkan), not the goldens'
+          # `swiftshader_indirect`. Measured side by side in run 36408320822:
+          # swiftshader_indirect loses the emulator on the first Filament
+          # viewport (#3554) at 1080x2400 and at the default small skin, on API
+          # 30 and API 34 alike; swangle_indirect survives and renders, but
+          # needs a longer settle before the first frame (see
+          # PREVIEW_SETTLE_SECONDS below).
+          emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
+          emulator-boot-timeout: 900
+          disable-animations: true
+          # The action runs each line through `sh -c`: keep every line
+          # self-contained; the real logic is in the script.
+          script: |
+            timeout 150 adb wait-for-device
+            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 90 ]; do sleep 2; attempts=$((attempts + 1)); done
+            adb shell wm size 1080x2400 && adb shell wm density 420
+            PREVIEW_SETTLE_SECONDS=60 bash .claude/scripts/ci-preview-android.sh samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk preview-android "$DEMOS"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Android preview"
+            [ -f preview-android/summary.md ] && cat preview-android/summary.md || echo "no summary (capture did not run)"
+            echo
+            echo "Fetch: \`gh run download ${{ github.run_id }} -R ${{ github.repository }} -n preview-android-screenshots -n android-demo-debug-apk\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-android-screenshots
+          path: preview-android/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ios:
+    name: Preview — iOS demo simulator app + screenshots
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' && inputs.platforms != 'android'
+      || github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview-ios')
+         && (github.event.action != 'labeled' || github.event.label.name == 'preview-ios') }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    concurrency:
+      group: preview-ios-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same Xcode preference list as ios.yml / device-qa.yml; DEVELOPER_DIR
+      # instead of `sudo xcode-select` so the step is portable.
+      - name: Select Xcode
+        run: |
+          for cand in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode installation found in /Applications/"
+          exit 1
+
+      # Restore on every run, save only from a dispatch: the repo's Actions cache
+      # is already over its 10 GB quota, and a save per PR push would evict the
+      # caches the main CI depends on.
+      - name: Restore iOS demo Swift Package dependencies
+        id: spm-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/preview-dd/SourcePackages
+          key: spm-preview-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+          restore-keys: |
+            spm-preview-${{ runner.os }}-
+
+      - name: Build, install and capture on the Simulator
+        env:
+          PREVIEW_DERIVED_DATA: ${{ runner.temp }}/preview-dd
+        run: bash .claude/scripts/ci-preview-ios.sh preview-ios "$DEMOS"
+
+      - name: Save iOS demo Swift Package dependencies
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.spm-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/preview-dd/SourcePackages
+          key: spm-preview-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### iOS preview"
+            [ -f preview-ios/summary.md ] && cat preview-ios/summary.md || echo "no summary (capture did not run)"
+            echo
+            echo "Fetch: \`gh run download ${{ github.run_id }} -R ${{ github.repository }} -n preview-ios\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload app + screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-ios
+          path: preview-ios/
+          if-no-files-found: ignore
+          retention-days: 7
