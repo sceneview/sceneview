@@ -461,8 +461,8 @@ gh run download <run-id> -R sceneview/sceneview -n preview-android-screenshots -
 | Artifact | Contents |
 |---|---|
 | `android-demo-debug-apk` | Debug APK, install with `adb install -r` |
-| `preview-android-screenshots` | `light/<id>.png`, `dark/<id>.png` at 1080x2400, 420 dpi, plus `summary.md` (demos that never reported "Scene ready", crash lines) |
-| `preview-ios` | `SceneView-simulator.app.zip` (`xcrun simctl install booted`), `screenshots/<theme>/<id>.png`, `summary.md` |
+| `preview-android-screenshots` | `light/<id>.png`, `dark/<id>.png` at 1080x2400, 420 dpi, plus `summary.md` (an app that was gone at capture time, crash lines) and `logcat/<theme>-<id>.txt` |
+| `preview-ios` | `SceneView-simulator.app.zip` (`xcrun simctl install booted`), `screenshots/<theme>/<id>.png`, `summary.md`, `crashes/` if the app crashed |
 
 `demos` takes ids from `DemoRegistry` / `DemoDeepLinkRegistry`, plus `home` for
 the launch screen. The builds are keyless: artifacts of a public repository can

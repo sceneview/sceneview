@@ -10,8 +10,10 @@
 #             the pseudo-id `home` (plain launcher start). Default: home,model-viewer
 #
 # For each theme (light, dark) and each id it cold-starts the app, lets it settle
-# for PREVIEW_SETTLE_SECONDS (default 20) and writes <out-dir>/<theme>/<id>.png.
-# FATAL/ANR logcat lines land in <out-dir>/summary.md.
+# for PREVIEW_SETTLE_SECONDS (default 20; preview.yml passes 60, what a first
+# Filament frame takes on swangle) and writes <out-dir>/<theme>/<id>.png plus a
+# filtered logcat/<theme>-<id>.txt. FATAL/ANR lines and an app that was gone at
+# capture time land in <out-dir>/summary.md.
 #
 # Deliberately NO `uiautomator dump` polling for the "Scene ready" node: the
 # first CI run lost the emulator (`device 'emulator-5554' not found`) two
@@ -95,7 +97,13 @@ for theme in light dark; do
       rm -f "$OUT/$theme/$id.png"
     fi
     mkdir -p "$OUT/logcat"
-    adbt logcat -d 2>/dev/null | grep -iE 'filament|egl|gles|sceneview|AndroidRuntime|OpenGL|vulkan' | tail -300 > "$OUT/logcat/$theme-$id.txt" || true
+    adbt logcat -d 2>/dev/null | grep -iE 'filament|egl|gles|sceneview|AndroidRuntime|OpenGL|vulkan|ActivityManager|lmkd|lowmemorykiller|DEBUG|libc' | tail -300 > "$OUT/logcat/$theme-$id.txt" || true
+    # The screenshot alone cannot tell "demo on screen" from "app gone, launcher
+    # showing" (the swangle probe caught one launcher frame): say it in words.
+    if [ -z "$(adbt shell pidof "$PKG" 2>/dev/null | tr -d '\r\n')" ]; then
+      echo "::warning::the app was not running after $theme/$id"
+      echo "- app not running after \`$theme/$id\` — the capture shows whatever replaced it; see logcat/$theme-$id.txt" >> "$SUMMARY"
+    fi
     crash="$(adbt logcat -d 2>/dev/null | grep -E 'FATAL EXCEPTION|ANR in '"$PKG" | head -3 || true)"
     if [ -n "$crash" ]; then
       echo "::warning::crash/ANR logged during $theme/$id"
