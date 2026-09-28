@@ -3006,13 +3006,15 @@
     },
     {
       "id": "sunset",
-      "name": "Sunset",
+      "name": "Seascape",
       "source": "polyhaven",
       "file": "environments/hdr/sunset_2k.hdr",
+      "note": "Despite its file name, a bright cloudy sky over a calm sea, not a sunset; the viewer's Sunset is sky_on_fire_2k.hdr (#4052, #4103)",
       "tags": [
-        "golden-hour",
+        "sea",
         "outdoor",
-        "warm"
+        "daylight",
+        "cloudy"
       ],
       "usedIn": [
         "android-demo"

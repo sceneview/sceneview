@@ -91,5 +91,5 @@ per-asset author is shown where `assets/catalog.json` records one.
 - `environments/rooftop_night_2k.hdr` — **Rooftop Night** (1.6 MB)
 - `environments/studio_2k.hdr` — **Studio** (1.7 MB)
 - `environments/studio_warm_2k.hdr` — **Studio Warm** (1.5 MB)
-- `environments/sunset_2k.hdr` — **Sunset** (1.2 MB)
+- `environments/sunset_2k.hdr` — **Seascape** (1.2 MB)
 
