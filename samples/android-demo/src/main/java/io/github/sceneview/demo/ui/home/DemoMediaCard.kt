@@ -210,7 +210,11 @@ private fun MediaCard(
             var captionTop by remember { mutableFloatStateOf(Float.NaN) }
             val melt = with(LocalDensity.current) { home.cardGlassMelt.toPx() }
             val glass = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardGlassAlpha())
-            val captionInset = if (featured) home.heroPadding - SceneViewTokens.Space.xs else home.cardTextPaddingHorizontal
+            val captionInset = if (featured) {
+                home.heroPadding - SceneViewTokens.Space.xs
+            } else {
+                home.cardTextPaddingHorizontal
+            }
             Box(modifier = Modifier.fillMaxWidth()) {
                 // 1. The picture, sharp — full-bleed on a featured card, the top square otherwise.
                 Box(
