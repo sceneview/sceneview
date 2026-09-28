@@ -296,7 +296,7 @@ struct RollingBallsDemo: View {
             },
             onReset: { reset() },
             accessory: {
-                VStack(spacing: 8) {
+                VStack(spacing: SceneViewTokens.Space.sm) {
                     DemoHint(tiltEnabled ? "\(countsText) · \(Self.tiltHint)" : countsText)
                     materialStrip
                 }
@@ -431,10 +431,10 @@ struct RollingBallsDemo: View {
                     selectedKind = kind
                     drop(count: 1)
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: SceneViewTokens.Space.xs) {
                         Circle()
                             .fill(kind.swatch)
-                            .frame(width: 12, height: 12)
+                            .frame(width: SceneViewTokens.Space.md, height: SceneViewTokens.Space.md)
                             .overlay(Circle().strokeBorder(SceneViewTokens.Glass.onGlass.opacity(0.5),
                                                            lineWidth: 1))
                         Text(kind.label)
@@ -468,11 +468,11 @@ struct RollingBallsDemo: View {
 
     @ViewBuilder
     private var controlsSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
             Text(countsText)
                 .font(.subheadline.weight(.semibold).monospacedDigit())
 
-            HStack(spacing: 12) {
+            HStack(spacing: SceneViewTokens.Space.sm) {
                 Button {
                     drop(count: 10)
                 } label: {

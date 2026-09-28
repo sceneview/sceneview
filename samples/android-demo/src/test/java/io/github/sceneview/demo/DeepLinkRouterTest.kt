@@ -33,6 +33,47 @@ class DeepLinkRouterTest {
     }
 
 
+    @Test
+    fun `old physics tab link opens rolling balls with no tab`() {
+        val uri = Uri.parse("sceneview://demo/animation-physics?tab=1")
+        val launch = DeepLinkRouter.resolveLaunch(
+            DeepLinkRouter.parse(uri),
+            DeepLinkRouter.extractCandidate(uri),
+            DeepLinkRouter.parseTabParam(uri),
+        )
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", null), launch)
+        assertTrue(ALL_DEMOS.any { it.id == "rolling-balls" })
+    }
+
+    @Test
+    fun `tab for a demo without tabs is dropped`() {
+        // Kept, it would linger and open the next tabbed demo (Materials) on Streaming.
+        assertEquals(
+            DeepLinkRouter.Launch("animation-physics", null),
+            DeepLinkRouter.resolveLaunch("animation-physics", "animation-physics", "2"),
+        )
+        assertEquals(
+            DeepLinkRouter.Launch("rolling-balls", null),
+            DeepLinkRouter.resolveLaunch("rolling-balls", "physics", "1"),
+        )
+        assertEquals(
+            DeepLinkRouter.Launch("materials", 1),
+            DeepLinkRouter.resolveLaunch("materials", "texture-streaming", null),
+        )
+        assertEquals(DeepLinkRouter.Launch(null, null), DeepLinkRouter.resolveLaunch(null, "nope", "1"))
+    }
+
+    @Test
+    fun `every alias tab lands on a demo that reads its tab`() {
+        DeepLinkRouter.ALIAS_INITIAL_TAB.keys.forEach { alias ->
+            val target = DeepLinkRouter.DEMO_ID_ALIASES.getValue(alias)
+            assertTrue("$alias -> $target", target in DeepLinkRouter.TABBED_DEMOS)
+        }
+        DeepLinkRouter.TABBED_DEMOS.forEach { id ->
+            assertTrue(id, ALL_DEMOS.any { it.id == id })
+        }
+    }
+
     // Title / subtitle don't matter for the router under test — it only
     // looks at the id. We pass arbitrary R.string.* values to satisfy the
     // post-#1099 resource-ID typed fields without resolving them.

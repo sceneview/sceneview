@@ -72,6 +72,7 @@ import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
+import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
@@ -429,9 +430,17 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     direction = io.github.sceneview.math.Direction(-0.3f, -1f, -0.5f),
                     apply = { intensity(5_000f) },
                 )
+                // Allocated once with the opening theme's floor, then recoloured in place: the
+                // activity survives a light/dark switch, and keying the instance on the colour
+                // would destroy it before the tray node lets go of it.
+                val initialFloor = remember { sky.floor }
                 val trayMaterial = rememberMaterialInstance(
-                    materialLoader, sky.floor, metallic = 0f, roughness = 0.8f,
+                    materialLoader, initialFloor, metallic = 0f, roughness = 0.8f,
                 )
+                LaunchedEffect(trayMaterial, sky.floor) {
+                    trayMaterial.setColor(sky.floor)
+                    renderInvalidator.requestRender()
+                }
                 val railMaterial = rememberMaterialInstance(
                     materialLoader, SceneViewColors.AccentDeep, metallic = 0f, roughness = 0.5f,
                 )

@@ -227,6 +227,46 @@ internal object DeepLinkRouter {
         "ar-streetscape" to 1,
     )
 
+    /**
+     * Tabs that left their demo for a demo of their own, keyed by (demo, 0-based tab). A link
+     * that still asks for one — `sceneview://demo/animation-physics?tab=1`, the old Physics
+     * tab — opens the new demo instead (#4083). See [resolveLaunch].
+     */
+    val SPLIT_OUT_TABS: Map<Pair<String, Int>, String> = mapOf(
+        ("animation-physics" to 1) to "rolling-balls",
+    )
+
+    /**
+     * The demos whose screen reads a launch tab (through `initialDemoMode` or
+     * `DemoSettings.consumeInitialTab`). A tab resolved for any other demo is dropped by
+     * [resolveLaunch]: nothing would consume it, so it would linger and pre-select a tab of
+     * the next tabbed demo opened from the home (`animation-physics?tab=1`, then Materials
+     * opening on Streaming).
+     */
+    val TABBED_DEMOS: Set<String> = setOf(
+        "materials",
+        "ar-scene-mesh",
+        "ar-placement",
+        "model-viewer",
+        "ar-geospatial-anchors",
+        "lighting",
+    )
+
+    /** Where an incoming link lands: the demo to open and the tab it should pre-select. */
+    data class Launch(val demoId: String?, val initialTab: Int?)
+
+    /**
+     * Combines the validated [demoId] with the tab resolved by [resolveInitialTab] from
+     * [rawId] and [tabParam]: a tab listed in [SPLIT_OUT_TABS] opens its new demo with no
+     * tab, and a tab for a demo outside [TABBED_DEMOS] is dropped. Never throws.
+     */
+    fun resolveLaunch(demoId: String?, rawId: String?, tabParam: String?): Launch {
+        if (demoId == null) return Launch(null, null)
+        val tab = resolveInitialTab(rawId, tabParam)
+        if (tab != null) SPLIT_OUT_TABS[demoId to tab]?.let { return Launch(it, null) }
+        return Launch(demoId, tab?.takeIf { demoId in TABBED_DEMOS })
+    }
+
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {
         if (data == null) return null
         val candidate = extractCandidate(data) ?: return null
