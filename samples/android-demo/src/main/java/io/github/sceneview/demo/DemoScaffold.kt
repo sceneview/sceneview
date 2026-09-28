@@ -83,6 +83,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -625,7 +626,9 @@ fun DemoScaffold(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (onArSessionRetry != null) {
-                                        val retry by androidx.compose.runtime.rememberUpdatedState<() -> Unit>(onArSessionRetry)
+                                        val retry by rememberUpdatedState<() -> Unit>(
+                                            onArSessionRetry,
+                                        )
                                         val state = remember {
                                             ARCoreAvailabilityState(
                                                 availability = ARCoreAvailability.SessionFailed,
