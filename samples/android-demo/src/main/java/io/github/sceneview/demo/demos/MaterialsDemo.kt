@@ -75,6 +75,7 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialStudio
+import io.github.sceneview.demo.demos.internal.rememberStudioBackdrop
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.initialDemoMode
@@ -249,15 +250,25 @@ private fun StudioSection(
     // material demo that hides the environment is asking the viewer to take the reflections
     // on faith, and the reproducibility problem #2874 hit was the 360° orbit, which this
     // screen no longer has in Gallery and pins in QA mode everywhere.
+    //
+    // The loader lights the scene; the skybox it would draw is not used (#4065). Its 256 px
+    // cube, sampled sharp and tone-mapped from studio panels far brighter than white, broke
+    // every bright edge into stair-stepped blocks. `rememberStudioBackdrop` draws the same
+    // HDR instead, softened and with its highlights rolled off — see `StudioBackdrop`.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
         environmentOption.assetPath,
-        createSkybox = true,
+        createSkybox = false,
     )
+    val backdrop = rememberStudioBackdrop(engine, environmentOption.assetPath)
     // Neutral default while the HDR decodes and prefilters — without it the first frames of
     // an environment change are black, which reads as a crash rather than as a load.
     val neutralEnvironment = rememberEnvironment(environmentLoader)
-    val environment = hdrEnvironment ?: neutralEnvironment
+    val studioEnvironment = remember(hdrEnvironment, backdrop) {
+        if (hdrEnvironment == null || backdrop == null) null
+        else hdrEnvironment.copy(skybox = backdrop)
+    }
+    val environment = studioEnvironment ?: neutralEnvironment
 
     // One MaterialInstance per library entry, allocated once for the life of the screen and
     // shared by the wall and the hero. That sharing is the point rather than an economy: the
@@ -1026,7 +1037,7 @@ private fun StudioSection(
             // IBL prefilter is real work, and until it lands the spheres have nothing to
             // reflect. The cover follows the environment, not a model.
             LoadingScrim(
-                loading = hdrEnvironment == null,
+                loading = studioEnvironment == null,
                 label = stringResource(R.string.demo_materials_loading),
             )
         }

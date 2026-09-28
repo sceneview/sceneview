@@ -266,8 +266,14 @@ internal object MaterialStudio {
             roughness = 0.6f,
             reflectance = 0.35f,
             trait = MaterialTrait.Emissive,
-            traitAmount = 4f,
-            traitColor = SceneViewColors.TintLight,
+            // A saturated tint at a modest strength (#4065). Emission is added after exposure,
+            // and Filament's colour grading tone-maps in a wide working space, so a bright
+            // light loses its hue on the way to white whatever its tint: TintLight x 4
+            // rendered as plain white, and even Primary x 4 as a pale (202, 242, 251). At
+            // x 1.5 Primary still reads as coloured light; the slider goes to 8 for anyone
+            // who wants to watch it clip.
+            traitAmount = 1.5f,
+            traitColor = SceneViewColors.Primary,
         ),
     )
 

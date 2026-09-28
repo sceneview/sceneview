@@ -54,7 +54,7 @@
     <string name="demo_materials_explainer_car_paint">At the preset values, clearCoat = 1 adds a second specular lobe over the base coat: the extra sharp highlight is the lacquer.</string>
     <string name="demo_materials_explainer_velvet">At the preset values, sheenColor adds a tinted fabric rim and sheenRoughness = 0.3 controls its spread at grazing angles.</string>
     <string name="demo_materials_explainer_crystal">At the preset values, transmission = 1 and ior = 1.5 let the environment refract through the crystal.</string>
-    <string name="demo_materials_explainer_glow">At the preset values, emissive is the tint multiplied by 4, so the neon surface stays bright independently of the studio light.</string>
+    <string name="demo_materials_explainer_glow">At the preset values, emissive is the tint multiplied by 1.5, so the neon surface stays bright independently of the studio light. Push it much higher and the tone mapper clips the glow toward white.</string>
     <string name="demo_materials_base_matte">Base · matte plastic</string>
     <string name="demo_materials_base_layer">Base · no extra layer</string>
     <string name="demo_materials_single">Single</string>
