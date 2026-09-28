@@ -60,6 +60,7 @@ import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
+import io.github.sceneview.gesture.replayHandedBackDown
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
@@ -2175,34 +2176,6 @@ fun rememberViewNodeManager(
     }
 
     return windowManager
-}
-
-/**
- * A node that captured the current touch stream on its `DOWN` may give it back mid-gesture — a
- * drag that started on an interactive [io.github.sceneview.node.ViewNode] (#4033). The scene's
- * detectors never saw that stream's `DOWN`, so replay one, at the current pointer, before the rest
- * of the stream reaches them. [cameraAbsorbed] keeps it from the camera, like the rest of the stream.
- */
-private fun replayHandedBackDown(
-    event: MotionEvent,
-    capturedNode: Node?,
-    hitResult: HitResult?,
-    gestureDetector: GestureDetector,
-    cameraGestureDetector: CameraGestureDetector?,
-    cameraAbsorbed: Boolean = false,
-) {
-    if (event.actionMasked == MotionEvent.ACTION_DOWN) return
-    if (capturedNode?.takeTouchStreamHandBack() != true) return
-    val replayedDown = MotionEvent.obtain(
-        event.downTime, event.eventTime, MotionEvent.ACTION_DOWN,
-        event.x, event.y, event.metaState
-    )
-    try {
-        gestureDetector.onTouchEvent(replayedDown, hitResult)
-        if (!cameraAbsorbed) cameraGestureDetector?.onTouchEvent(replayedDown)
-    } finally {
-        replayedDown.recycle()
-    }
 }
 
 /**
