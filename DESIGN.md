@@ -742,17 +742,38 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   picture of the 3D view under the status card (`radius-lg`, the glass edge of every
   over-media element); tapping it opens *3D view*. *3D view*: the debug view full screen,
   entity toggles on top, the timeline card at the bottom. Recenter is the dock's third item.
-- **Ground is `Stage.background`, in both themes** — a debug view is read against its own
-  dark stage, never against `surface`. The chrome over it is the AR overlay chrome.
+- **The replay follows the theme; the camera does not (#4080).** Over the live camera the
+  3D view is drawn on `Stage.background` with the AR overlay chrome, in both themes. The
+  replay and the landing are views the app draws itself, so they take the **themed stage**
+  (below): in dark theme the same `Stage.background` and media chrome, in light theme a
+  `surface-dim` ground under `glass-sheet` chrome with `on-surface` text.
+- **Themed stage** (`DemoScaffold(themedStage = true)`, `StageChrome`, read through
+  `LocalStageChrome`; `themedStageChrome()` picks by the surface's luminance). *Media*: the
+  theme-independent glass of every demo. *Light*: ground `surface-dim`; glass and cards
+  `surface-container` at 88 %; text `on-surface` (13:1), secondary `on-surface-dim`
+  (8.9:1); edge `on-surface` at 12 %, no halo; the chrome bands wash towards the ground
+  instead of black; the one filled accent is the light scheme's `primary`; the status bar
+  keeps dark icons. Only the Rerun demo opts in — every other stage is media.
 - **Colour carries meaning, and only existing palette values carry it**
-  (`SceneViewTokens.DebugView`). The trail runs the brand ramp from `accent-deep` (oldest)
-  to `tint-light` (now); the live frustum is `tint-light`; what the camera sees *this
-  second* is `warning`; everything seen so far is dim white; anchors are `success`; planes
-  are a translucent fill with a solid outline, blue on floors and tables, lilac on walls; the
-  origin gizmo follows X red / Y green / Z blue.
-- **Only the present glows.** The trail head, the live frustum, the live points and the
-  anchors are pushed past 1.0 in linear light so bloom lifts them; history stays flat. The
-  eye lands on "now" without a legend.
+  (`SceneViewTokens.DebugView`, one palette per ground). *Dark*: the trail runs the brand
+  ramp from `accent-deep` (oldest) to `tint-light` (now); the live frustum is `tint-light`;
+  what the camera sees *this second* is `warning`; everything seen so far is dim white;
+  anchors are `success`; planes are a translucent fill with a solid outline, blue on floors
+  and tables, lilac on walls; the origin gizmo follows X red / Y green / Z blue. *Light*: the
+  same meanings in the light scheme's values — the trail runs `tint-soft` → `tertiary` →
+  `primary`, the frustum and floors take `primary`, walls `tertiary`, history points are
+  `on-surface` at 55 %, the grid `on-surface` at 8 % / 16 %.
+- **Only the present glows.** On the dark ground the trail head, the live frustum, the live
+  points and the anchors are pushed past 1.0 in linear light so bloom lifts them; history
+  stays flat. The eye lands on "now" without a legend. On the light ground nothing glows —
+  bloom only brightens, and a haze on a light stage reads as a smudge — so saturation
+  carries the present.
+- **Photos are sharp.** The keyframes projected onto planes and shown in the filmstrip are
+  full-resolution, mipmapped, trilinear with 8× anisotropy, so a floor seen at a grazing
+  angle keeps its boards legible.
+- **Never a blank first frame.** The replay's shaders are compiled by one off-screen draw
+  while the landing is read, so opening a replay reveals it in a fraction of a second; the
+  loading line covers whatever is left.
 - **Screen-constant sizes.** Point, line and tube widths are specified in pixels and turned
   into metres from the orbit distance (quantised, so a pinch does not rebuild every frame):
   a room seen from 8 m and a table seen from 50 cm both read.
@@ -768,7 +789,7 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   to the scan with no intro. While recording the dock is empty: nothing may leave a scan
   half-taken. The privacy line ("Everything stays on your phone.") ends the idle copy.
 - **One flow, like a capture app (Polycam, Scaniverse, Reality Composer), laid out as the
-  iOS demo's (#4068).** The demo opens on a scrolling page on `Stage.background`, max width
+  iOS demo's (#4068).** The demo opens on a scrolling page on the themed stage's ground, max width
   560 dp, clear of the header and the settings button: `type-display` "Scan a room in 3D"
   over one muted line; the one primary action, "Record your room", a 96 dp `radius-lg` card
   in `accent-progress` with the camera in a 56 dp well, "Everything stays on your phone."
@@ -781,8 +802,8 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   not open says why in a card tinted `danger` at 24 %; a file being read shows "Opening
   file…". Record starts by itself once ARCore has found the room; Stop saves the scan on
   the phone and opens it in the **same** replay as the sample, whole and paused on its
-  last frame. The page is pinned dark in both themes, like the replay it opens and like
-  iOS: light and dark captures are the same by design. Streaming to a computer is an
+  last frame. The page follows the theme, like the replay it opens (#4080); the iOS demo
+  is still pinned dark (#3907). Streaming to a computer is an
   advanced option in the sheet, under its own heading; its status card shows only once
   connected.
 

@@ -13,6 +13,9 @@ import kotlin.math.roundToInt
 internal class RerunRrdContents(chunks: List<RrdChunk>) {
     private class Photo(val time: Long, val order: Int, val data: ByteArray, val mediaType: String?)
 
+    /** One row of `world/points/live`: what the camera saw at [time]. */
+    private class Sighting(val time: Long, val order: Int, val positions: FloatArray)
+
     private class CameraRow(
         val time: Long,
         val order: Int,
@@ -37,6 +40,7 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
     private var title: String? = null
     private var points: List<Vec3> = emptyList()
     private var pointColors: IntArray? = null
+    private val sightings = ArrayList<Sighting>()
     private val cameraRows = ArrayList<CameraRow>()
     private val photos = ArrayList<Photo>()
     private var pinhole: FloatArray? = null
@@ -59,6 +63,13 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
                     pointColors = null
                 }
                 last(chunk.uint32s("Points3D:colors"))?.let { pointColors = it }
+            }
+            LIVE_POINTS -> {
+                val positions = chunk.floatVectors("Points3D:positions", 3)
+                chunk.times?.forEachIndexed { row, time ->
+                    val flat = positions?.getOrNull(row)
+                    if (time != null && flat != null && flat.size >= 3) sightings += Sighting(time, order++, flat)
+                }
             }
             "world/camera" -> readCamera(chunk)
             "world/camera_path" -> last(chunk.strips("LineStrips3D:strips"))?.firstOrNull()?.let { path = it }
@@ -135,12 +146,19 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
             rrdFail(Failure.NothingToReplay())
         }
         // The session starts at 0 on the writer's timeline (seconds since the first event).
-        val times = poses.map { it.time } + shots.map { it.time }
+        val seen = sightings.sortedWith(compareBy<Sighting> { it.time }.thenBy { it.order })
+        val times = poses.map { it.time } + shots.map { it.time } + seen.map { it.time }
         val start = minOf(0L, times.minOrNull() ?: 0L)
         val end = maxOf(start, times.maxOrNull() ?: start)
 
         val log = StringBuilder()
-        if (mapPoints.isNotEmpty()) log.append(pointCloudLine(start, mapPoints)).append('\n')
+        // With the sightings, the map grows as it was seen and the live points come back; the
+        // static map only colours them, and gives the points no sighting kept at the start.
+        // Without them (an older file, another writer), the whole map is there from the start.
+        val colors = MapColors(pointColors)
+        val sightingLines = seen.map { it.time to colors.line(it.time, it.positions) }
+        val unseen = if (seen.isEmpty()) mapPoints else colors.unseen(mapPoints)
+        if (unseen.isNotEmpty()) log.append(pointCloudLine(start, unseen)).append('\n')
         val planeMedia = ArrayList<Pair<String, ByteArray>>()
         val textures = ArrayList<String>()
         for (plane in planeEvents) {
@@ -161,7 +179,7 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
             log.append(",\"translation\":${Json.vector(anchor.position)}")
             log.append(",\"quaternion\":${Json.quaternion(anchor.orientation)}}\n")
         }
-        val photoMedia = cameraLines(poses, shots, log)
+        val photoMedia = cameraLines(poses, shots, sightingLines, log)
 
         // Photos first in the archive, as in a recorded capture; plane photos after them.
         val media = ByteArrayOutputStream()
@@ -186,6 +204,49 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
         PlaneEvent(PLANES_PREFIX + plane.name, id, planeKind(plane.color), polygon, Texture.of(plane, codec))
     }
 
+    /**
+     * The static map's colours by voxel, so a sighting's points take the colour the map gave
+     * them; it remembers which voxels a sighting has shown.
+     */
+    private inner class MapColors(colors: IntArray?) {
+        private val colors = colors?.takeIf { it.size == points.size }
+        private val byVoxel = HashMap<Long, Int>()
+        private val sighted = HashSet<Long>()
+
+        init {
+            points.forEachIndexed { i, p -> if (p.isFinite()) byVoxel.putIfAbsent(voxelOf(p), i) }
+        }
+
+        /** A `point_cloud` line at [time] for [flat] xyz; a point the map has no colour for gets none. */
+        fun line(time: Long, flat: FloatArray): String {
+            val line = StringBuilder("{\"t\":$time,\"type\":\"point_cloud\",")
+                .append("\"entity\":\"world/points\",\"positions\":[")
+            val rgb = StringBuilder()
+            var n = 0
+            for (i in 0 until flat.size / 3) {
+                val p = Vec3(flat[3 * i], flat[3 * i + 1], flat[3 * i + 2])
+                if (!p.isFinite()) continue
+                val voxel = voxelOf(p)
+                sighted += voxel
+                if (n++ > 0) {
+                    line.append(',')
+                    rgb.append(',')
+                }
+                line.append(Json.vector(p))
+                val c = byVoxel[voxel]?.let { colors?.get(it) }
+                rgb.append(if (c == null) "[-1,-1,-1]" else "[${c ushr 24},${c ushr 16 and 0xFF},${c ushr 8 and 0xFF}]")
+            }
+            line.append(']')
+            if (colors != null) line.append(",\"colors\":[").append(rgb).append(']')
+            return line.append('}').toString()
+        }
+
+        /** The map points of [indices] no sighting showed. */
+        fun unseen(indices: List<Int>): List<Int> = indices.filter { voxelOf(points[it]) !in sighted }
+
+        private fun voxelOf(p: Vec3) = ArDebugTrace.voxelKey(p.x, p.y, p.z)
+    }
+
     private fun pointCloudLine(start: Long, mapPoints: List<Int>): String {
         val colors = pointColors?.takeIf { it.size == points.size }
         val line = StringBuilder("{\"t\":$start,\"type\":\"point_cloud\",\"entity\":\"world/points\",\"positions\":[")
@@ -202,21 +263,33 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
         return line.append('}').toString()
     }
 
-    /** Poses and photos in time order, at one instant the pose first like the recorder; returns the photos' media. */
+    /**
+     * Poses, point sightings and photos in time order, at one instant the pose first and the
+     * photo last like the recorder; returns the photos' media.
+     */
     private fun cameraLines(
         poses: List<PoseRow>,
         shots: List<Shot>,
+        sightings: List<Pair<Long, String>>,
         log: StringBuilder,
     ): List<Pair<String, ByteArray>> {
         val photoMedia = ArrayList<Pair<String, ByteArray>>()
         var i = 0
         var j = 0
-        while (i < poses.size || j < shots.size) {
-            if (j >= shots.size || (i < poses.size && poses[i].time <= shots[j].time)) {
+        var k = 0
+        while (i < poses.size || j < shots.size || k < sightings.size) {
+            val next = minOf(
+                poses.getOrNull(i)?.time ?: Long.MAX_VALUE,
+                shots.getOrNull(j)?.time ?: Long.MAX_VALUE,
+                sightings.getOrNull(k)?.first ?: Long.MAX_VALUE,
+            )
+            if (i < poses.size && poses[i].time == next) {
                 val pose = poses[i++]
                 log.append("{\"t\":${pose.time},\"type\":\"camera_pose\",\"entity\":\"world/camera\"")
                 log.append(",\"translation\":${Json.vector(pose.position)}")
                 log.append(",\"quaternion\":${Json.quaternion(pose.orientation)}}\n")
+            } else if (k < sightings.size && sightings[k].first == next) {
+                log.append(sightings[k++].second).append('\n')
             } else {
                 val shot = shots[j++]
                 val path = "frames/" + "%03d".format(photoMedia.size) + "." + fileExtension(shot.mediaType)
@@ -414,6 +487,9 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
     companion object {
         const val PLANES_PREFIX = "world/planes/"
         const val ANCHORS_PREFIX = "world/anchors/"
+
+        /** What the camera saw over time, one row per observation ([RerunRrdWriter]). */
+        const val LIVE_POINTS = "world/points/live"
         private const val NANOS_PER_SECOND = 1e9
         private const val DEFAULT_FRAME_RATE = 10.0
         private const val MAX_LENS_SIZE = 1e6f
@@ -422,7 +498,7 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
 
         /** Whether a chunk on [entity] carries anything the replay uses; other chunks are not decoded. */
         fun reads(entity: String): Boolean =
-            entity in setOf("__properties", "world/points", "world/camera", "world/camera_path") ||
+            entity in setOf("__properties", "world/points", LIVE_POINTS, "world/camera", "world/camera_path") ||
                 child(PLANES_PREFIX, entity) != null || child(ANCHORS_PREFIX, entity) != null
 
         /** `world/planes/7` → `7`; `null` for any other path or a deeper one. */

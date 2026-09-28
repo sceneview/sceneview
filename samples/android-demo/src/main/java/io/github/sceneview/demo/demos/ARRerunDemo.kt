@@ -162,6 +162,8 @@ fun ARRerunDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // The replay's shaders compile while the landing is read, not behind its loading cover.
+    LaunchedEffect(engine, materialLoader) { warmUpReplay(engine, materialLoader) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
@@ -388,7 +390,8 @@ private enum class RerunMode { Scene, Map, Camera }
 
 /**
  * The landing, laid out as the iOS demo's: "Scan a room in 3D", "Record your room", the sample
- * and "Open file", then "Your sessions". Pinned dark like the replay it opens, on the stage colour.
+ * and "Open file", then "Your sessions". A themed stage like the replay it opens (#4080): the
+ * light stage in light theme, the dark one in dark theme.
  */
 @Composable
 private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, actions: RerunLandingActions) {
@@ -397,6 +400,7 @@ private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, act
         onBack = onBack,
         controls = { RerunSheet() },
         dock = emptyList(),
+        themedStage = true,
     ) {
         RerunLanding(state, actions)
     }
@@ -404,7 +408,8 @@ private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, act
 
 /**
  * The bundled replay: the 3D view (orbit, or the overhead map) or the camera's frames, under the
- * HUD, the corner card that swaps to the other view, and the filmstrip.
+ * HUD, the corner card that swaps to the other view, and the filmstrip. A themed stage (#4080):
+ * it follows the app theme, where the live camera screen keeps the media chrome.
  */
 @Composable
 @Suppress("LongParameterList") // the demo's shared engine and replay state, handed down once
@@ -439,6 +444,7 @@ private fun RerunReplayScreen(
         controls = { RerunSheet() },
         firstFrameRendered = readyState,
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
+        themedStage = true,
         topOverlay = {
             if (media != null) {
                 RerunReplayHud(

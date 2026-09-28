@@ -77,7 +77,9 @@ import io.github.sceneview.demo.demos.internal.formatRecordingTitle
 import io.github.sceneview.demo.demos.internal.recordingContentsLine
 import io.github.sceneview.demo.demos.internal.recordingTitleOf
 import io.github.sceneview.demo.demos.internal.replayProgress
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.StageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.ui.overMediaEdge
@@ -113,14 +115,17 @@ internal fun OverlayCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
+    // Over media, the AR scrim; on a themed stage (the Rerun replay, #4080), that stage's card.
+    val chrome = LocalStageChrome.current
+    val fill = if (chrome === StageChrome.Media) cardScrim() else chrome.card
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Column(
             modifier = modifier
                 .padding(horizontal = Space.md)
                 .widthIn(max = ArOverlay.maxWidth)
                 .fillMaxWidth()
-                .background(color = cardScrim(), shape = shape)
-                .overMediaEdge(shape)
+                .background(color = fill, shape = shape)
+                .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
                 .padding(Space.md)
                 .testTag(testTag),
             verticalArrangement = Arrangement.spacedBy(Space.sm),
@@ -134,10 +139,12 @@ internal fun OverlayCard(
 private fun cardScrim(): Color =
     if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) ArOverlay.scrimDark else ArOverlay.scrimLight
 
-internal val OnScrimTitle: TextStyle @Composable get() = SceneViewTokens.Type.card.copy(color = ArOverlay.onScrim)
-internal val OnScrimBody: TextStyle @Composable get() = SceneViewTokens.Type.body.copy(color = ArOverlay.onScrimMuted)
+internal val OnScrimTitle: TextStyle @Composable get() =
+    SceneViewTokens.Type.card.copy(color = LocalStageChrome.current.onCard)
+internal val OnScrimBody: TextStyle @Composable get() =
+    SceneViewTokens.Type.body.copy(color = LocalStageChrome.current.onCardMuted)
 internal val OnScrimCaption: TextStyle @Composable get() =
-    SceneViewTokens.Type.caption.copy(color = ArOverlay.onScrimMuted)
+    SceneViewTokens.Type.caption.copy(color = LocalStageChrome.current.onCardMuted)
 
 /** Four figures side by side: a big value over a small label. */
 @Composable

@@ -26,8 +26,9 @@ object RerunExportAdapter {
     }
 
     /**
-     * The whole session: every map point, the full camera path, the keyframe photos the replay
-     * draws in their frustums, the planes as they ended, and the placed models.
+     * The whole session: every map point and what the camera saw of them over time, the full
+     * camera path, every photo (and which of them the replay draws in its frustums), the planes
+     * as they ended, and the placed models.
      */
     fun scene(opened: OpenedCapture, title: String, lens: RerunExportScene.Lens?): RerunExportScene {
         val trace = opened.trace
@@ -57,6 +58,7 @@ object RerunExportAdapter {
             keyframes += RerunExportScene.Keyframe(time, image, sample(time, pose))
             images[image] = bytes
         }
+        val photos = photosOf(opened, images)
 
         val planes = whole.planes.map { plane ->
             val texture = opened.manifest.textureFor(plane.id)?.let { texture ->
@@ -82,7 +84,47 @@ object RerunExportAdapter {
             images = images,
             planes = planes,
             anchors = anchors,
+            photos = photos,
+            pointObservations = observationsOf(trace),
         )
+    }
+
+    /**
+     * Every photo, not only the keyframes', so the camera view of a reopened `.rrd` plays the
+     * whole session back (#4080). Adds each photo's bytes to [images].
+     */
+    private fun photosOf(
+        opened: OpenedCapture,
+        images: MutableMap<String, ByteArray>,
+    ): List<RerunExportScene.Keyframe> {
+        val trace = opened.trace
+        return (0 until trace.imageCount).mapNotNull { i ->
+            val image = trace.imagePath(i)
+            val bytes = images[image] ?: opened.bytesOf(image) ?: return@mapNotNull null
+            images[image] = bytes
+            val time = trace.imageTime(i).toDouble()
+            poseAt(trace, trace.imageTime(i))?.let { RerunExportScene.Keyframe(time, image, sample(time, it)) }
+        }
+    }
+
+    /** What the camera saw of the map over time: each non-empty observation, with its time. */
+    private fun observationsOf(trace: ArDebugTrace): List<RerunExportScene.PointObservation> =
+        (0 until trace.observationCount).mapNotNull { i ->
+            trace.observationPoints(i).takeIf { it.isNotEmpty() }?.let {
+                RerunExportScene.PointObservation(trace.observationTime(i).toDouble(), it.toList())
+            }
+        }
+
+    /** The camera's kept pose in force at [time]: the latest at or before it, else the first. */
+    private fun poseAt(trace: ArDebugTrace, time: Float): DebugPose? {
+        if (trace.poseCount == 0) return null
+        var lo = 0
+        var hi = trace.poseCount
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (trace.poseTime(mid) <= time) lo = mid + 1 else hi = mid
+        }
+        return trace.pose(maxOf(lo - 1, 0))
     }
 
     /**

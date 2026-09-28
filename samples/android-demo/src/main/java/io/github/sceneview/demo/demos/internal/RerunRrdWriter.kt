@@ -19,8 +19,11 @@ private typealias Column = RerunComponentColumn
  *
  * - `world` — Y-up, right-handed (`ViewCoordinates` RUB), static.
  * - `world/points` — the coloured map (`Points3D`), static.
+ * - `world/points/live` — what the camera saw over time (`Points3D`, one row per point-cloud
+ *   observation, amber): the replay rebuilds the growing map and its live points from it.
  * - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, static) and each
- *   keyframe photo at its time (`EncodedImage`, JPEG or PNG).
+ *   photo at its time (`EncodedImage`, JPEG or PNG): every photo of the session when the scene
+ *   has them, else the keyframes'.
  * - `world/camera_path` — the whole path (`LineStrips3D`), static. Not under `world/camera`: a
  *   child of a pinhole lives in its 2D image space, and a child of the moving camera would move
  *   with it.
@@ -174,11 +177,33 @@ object RerunRrdWriter {
                 components += Column.colors("Points3D", listOf(scene.pointColors.map { packedColor(it.r, it.g, it.b) }))
             }
             chunks += RerunChunk("/world/points", components)
+            liveChunk(scene)?.let { chunks += it }
         }
         chunks += cameraChunks(scene, codec)
         for (plane in scene.planes) planeChunk(plane, codec)?.let { chunks += it }
         for (anchor in scene.anchors) chunks += anchorChunk(anchor)
         return chunks
+    }
+
+    /**
+     * One row per observation, at its time: the map points it saw. A single amber colour and
+     * radius per row (Rerun repeats them over the row's points), as the replay draws live points.
+     */
+    private fun liveChunk(scene: RerunExportScene): RerunChunk? {
+        val observations = scene.pointObservations
+            .map { o -> o.time to o.points.mapNotNull { scene.points.getOrNull(it) } }
+            .filter { it.second.isNotEmpty() }
+            .sortedBy { it.first }
+        if (observations.isEmpty()) return null
+        return RerunChunk(
+            "/world/points/live",
+            listOf(
+                Column.vectors("Points3D", "positions", "Position3D", observations.map { flatten(it.second) }, 3),
+                Column.floats("Points3D", "radii", "Radius", observations.map { floatArrayOf(LIVE_POINT_RADIUS) }),
+                Column.colors("Points3D", observations.map { listOf(LIVE_POINT_COLOR) }),
+            ),
+            times = observations.map { nanoseconds(it.first) },
+        )
     }
 
     private fun planeChunk(plane: RerunExportScene.Plane, codec: RerunImageCodec): RerunChunk? {
@@ -210,7 +235,8 @@ object RerunRrdWriter {
     private fun cameraChunks(scene: RerunExportScene, codec: RerunImageCodec): List<RerunChunk> {
         val chunks = ArrayList<RerunChunk>()
         val path = scene.cameraPath.sortedBy { it.time }
-        val keyframes = scene.keyframes.sortedBy { it.time }
+        // Every photo when the scene has them, else the keyframes' (#4080).
+        val keyframes = scene.photos.ifEmpty { scene.keyframes }.sortedBy { it.time }
         // Photos, re-encoded to JPEG when Rerun can't decode them (WebP).
         val photos = keyframes.mapNotNull { keyframe ->
             val data = scene.images[keyframe.imagePath] ?: return@mapNotNull null
@@ -219,8 +245,8 @@ object RerunRrdWriter {
         pinhole(scene.lens, photos.firstOrNull()?.second)?.let { (matrix, resolution) ->
             chunks += pinholeChunk(matrix, resolution)
         }
-        // The path's poses plus each keyframe's own pose, so the camera sits exactly where the
-        // photo was taken at that instant (on a tie, the later row — the keyframe — wins).
+        // The path's poses plus each photo's own pose, so the camera sits exactly where the
+        // photo was taken at that instant (on a tie, the later row — the photo's — wins).
         val poses = (path.map { Triple(it.time, 0, it) } + keyframes.map { Triple(it.time, 1, it.pose) })
             .sortedWith(compareBy<Triple<Double, Int, RerunExportScene.CameraSample>> { it.first }.thenBy { it.second })
         if (poses.isNotEmpty()) chunks += poseChunk(poses.map { it.first to it.third })
@@ -344,25 +370,34 @@ object RerunRrdWriter {
             Column.vectors("Mesh3D", "vertex_positions", "Position3D", listOf(flatten(vertices)), 3),
             Column.vectors("Mesh3D", "vertex_texcoords", "Texcoord2D", listOf(texcoords), 2),
             Column.u32Vectors("Mesh3D", "triangle_indices", "TriangleIndices", listOf(triangles), 3),
-            Column.blobs("Mesh3D", "albedo_texture_buffer", "ImageBuffer", listOf(listOf(rgbOf(pixels)))),
-            Column.imageFormat("Mesh3D", "albedo_texture_format", pixels.width, pixels.height),
+            Column.blobs("Mesh3D", "albedo_texture_buffer", "ImageBuffer", listOf(listOf(texelsOf(pixels)))),
+            Column.imageFormat(
+                "Mesh3D",
+                "albedo_texture_format",
+                pixels.width,
+                pixels.height,
+                rgba = pixels.channels == RerunImageCodec.RGBA,
+            ),
         )
     }
 
-    /** [pixels] as tightly packed RGB, alpha dropped. */
-    private fun rgbOf(pixels: RerunImageCodec.Pixels): ByteArray {
-        if (pixels.channels == RerunImageCodec.RGB) return pixels.data
-        val count = pixels.width * pixels.height
-        return ByteArray(count * RerunImageCodec.RGB) { i ->
-            pixels.data[i / RerunImageCodec.RGB * pixels.channels + i % RerunImageCodec.RGB]
-        }
-    }
+    /**
+     * [pixels] tightly packed, RGB or RGBA as [RerunImageCodec.Pixels.channels] says. The alpha is
+     * kept: a plane photo's unseen texels are transparent black, and without their alpha a
+     * reopened file draws them as black patches (#4080).
+     */
+    private fun texelsOf(pixels: RerunImageCodec.Pixels): ByteArray =
+        pixels.data.copyOf(pixels.width * pixels.height * pixels.channels)
 
     // Helpers
 
     /** `ViewCoordinates` RUB (Right, Up, Back): Y up, right-handed — the camera looks down -Z. */
     private val VIEW_COORDINATES_RUB = byteArrayOf(3, 1, 6)
     private const val POINT_RADIUS = 0.01f
+    private const val LIVE_POINT_RADIUS = 0.008f
+
+    /** `warning` (#F59E0B), the replay's live-point colour. */
+    private val LIVE_POINT_COLOR = packedColor(0xF5, 0x9E, 0x0B)
     private const val ANCHOR_BOX = 0.05f
     private const val IMAGE_PLANE = 0.25f
     private const val NANOS_PER_SECOND = 1e9

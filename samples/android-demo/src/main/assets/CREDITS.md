@@ -68,7 +68,7 @@ Assets bundled: **30**.
   Synthetic room walk in the Rerun bridge wire format — QA fixture of `ARRerunDemo`'s in-app 3D view (#3950)
 - `rerun/showcase/showcase-manifest.json` — **[showcase-manifest.json](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (11 KB)  
   Lens, plane textures and media index of `ARRerunDemo`'s replay
-- `rerun/showcase/showcase-media.bin` — **[showcase-media.bin](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (866 KB)  
+- `rerun/showcase/showcase-media.bin` — **[showcase-media.bin](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (885 KB)  
   Camera frames and plane photos (WebP) of the same Pixel 9 recording, packed for `ARRerunDemo`
 - `rerun/showcase/showcase-session.jsonl` — **[showcase-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (1.4 MB)  
   Replay of a room recorded on a Pixel 9, camera path and points reconstructed with COLMAP — `ARRerunDemo`

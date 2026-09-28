@@ -88,6 +88,8 @@ import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
+import io.github.sceneview.demo.theme.DebugPalette
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.DebugView
@@ -391,34 +393,34 @@ internal class DebugLayerNode(
     }
 }
 
-/** Colour, glow and draw priority of each layer — all from [SceneViewTokens.DebugView]. */
+/** Colour, glow and draw priority of each layer — all from a [SceneViewTokens.DebugView] palette. */
 private class LayerPaint(val color: Color, val glow: Float = 1f, val priority: Int = 4)
 
-private fun paintOf(layer: DebugLayer): LayerPaint = when (layer) {
+private fun paintOf(layer: DebugLayer, palette: DebugPalette): LayerPaint = when (layer) {
     // Priority 1, not 0: the replay's photo floor (priority 0) goes under the grid.
-    DebugLayer.GridMinor -> LayerPaint(DebugView.gridMinor, priority = 1)
-    DebugLayer.GridMajor -> LayerPaint(DebugView.gridMajor, priority = 1)
-    DebugLayer.AxisX -> LayerPaint(DebugView.axisX)
-    DebugLayer.AxisY -> LayerPaint(DebugView.axisY)
-    DebugLayer.AxisZ -> LayerPaint(DebugView.axisZ)
-    DebugLayer.PlaneFloor -> LayerPaint(DebugView.floorFill, priority = 1)
-    DebugLayer.PlaneWall -> LayerPaint(DebugView.wallFill, priority = 1)
-    DebugLayer.PlaneOther -> LayerPaint(DebugView.otherFill, priority = 1)
-    DebugLayer.OutlineFloor -> LayerPaint(DebugView.floorOutline, priority = 2)
-    DebugLayer.OutlineWall -> LayerPaint(DebugView.wallOutline, priority = 2)
-    DebugLayer.OutlineOther -> LayerPaint(DebugView.otherOutline, priority = 2)
-    DebugLayer.MapPoints -> LayerPaint(DebugView.mapPoint, priority = 3)
-    DebugLayer.LivePoints -> LayerPaint(DebugView.livePoint, glow = DebugView.livePointGlow, priority = 6)
-    DebugLayer.TrailHead -> LayerPaint(DebugView.trailNew, glow = DebugView.trailHeadGlow)
-    DebugLayer.Keyframes -> LayerPaint(DebugView.keyframe, priority = 3)
-    DebugLayer.Frustum -> LayerPaint(DebugView.frustum, glow = DebugView.frustumGlow)
-    DebugLayer.FrustumFace -> LayerPaint(DebugView.frustumFace, priority = 5)
-    DebugLayer.Anchors -> LayerPaint(DebugView.anchor, glow = DebugView.anchorGlow)
+    DebugLayer.GridMinor -> LayerPaint(palette.gridMinor, priority = 1)
+    DebugLayer.GridMajor -> LayerPaint(palette.gridMajor, priority = 1)
+    DebugLayer.AxisX -> LayerPaint(palette.axisX)
+    DebugLayer.AxisY -> LayerPaint(palette.axisY)
+    DebugLayer.AxisZ -> LayerPaint(palette.axisZ)
+    DebugLayer.PlaneFloor -> LayerPaint(palette.floorFill, priority = 1)
+    DebugLayer.PlaneWall -> LayerPaint(palette.wallFill, priority = 1)
+    DebugLayer.PlaneOther -> LayerPaint(palette.otherFill, priority = 1)
+    DebugLayer.OutlineFloor -> LayerPaint(palette.floorOutline, priority = 2)
+    DebugLayer.OutlineWall -> LayerPaint(palette.wallOutline, priority = 2)
+    DebugLayer.OutlineOther -> LayerPaint(palette.otherOutline, priority = 2)
+    DebugLayer.MapPoints -> LayerPaint(palette.mapPoint, priority = 3)
+    DebugLayer.LivePoints -> LayerPaint(palette.livePoint, glow = palette.livePointGlow, priority = 6)
+    DebugLayer.TrailHead -> LayerPaint(palette.trailNew, glow = palette.trailHeadGlow)
+    DebugLayer.Keyframes -> LayerPaint(palette.keyframe, priority = 3)
+    DebugLayer.Frustum -> LayerPaint(palette.frustum, glow = palette.frustumGlow)
+    DebugLayer.FrustumFace -> LayerPaint(palette.frustumFace, priority = 5)
+    DebugLayer.Anchors -> LayerPaint(palette.anchor, glow = palette.anchorGlow)
     else -> {
         // Trail0 … Trail7: the brand ramp, oldest to newest, through tint-soft.
         val f = DebugLayer.trailSteps.indexOf(layer).toFloat() / (DebugLayer.trailSteps.size - 1)
-        val color = if (f < 0.5f) lerp(DebugView.trailOld, DebugView.trailMid, f * 2f)
-        else lerp(DebugView.trailMid, DebugView.trailNew, (f - 0.5f) * 2f)
+        val color = if (f < 0.5f) lerp(palette.trailOld, palette.trailMid, f * 2f)
+        else lerp(palette.trailMid, palette.trailNew, (f - 0.5f) * 2f)
         LayerPaint(color)
     }
 }
@@ -457,7 +459,8 @@ private enum class Part(val layers: List<DebugLayer>, val group: DebugGroup) {
  */
 private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialInstance>) {
     val nodes: Map<DebugLayer, DebugLayerNode> = DebugLayer.entries.associateWith { layer ->
-        DebugLayerNode(engine, materials.getValue(layer), paintOf(layer).priority)
+        // Draw priorities do not depend on the palette.
+        DebugLayerNode(engine, materials.getValue(layer), paintOf(layer, DebugView.Dark).priority)
     }
     private val meshes = DebugLayer.entries.associateWith { DebugMesh() }
     private val keys = HashMap<Part, Any?>()
@@ -563,22 +566,26 @@ internal fun ArDebugSceneView(
 ) {
     val context = LocalContext.current
     val shown by rememberUpdatedState(onShown)
+    // The ground and palette of the stage this view is drawn on (#4080): the dark stage under
+    // media chrome, the light one on a themed stage in light theme.
+    val chrome = LocalStageChrome.current
+    val palette = chrome.debug
 
     // Created before the SceneView so they are released after it (Compose forgets in reverse).
-    val materials = remember(materialLoader) {
-        DebugLayer.entries.associateWith { materialLoader.createLayerMaterial(paintOf(it)) }
+    val materials = remember(materialLoader, palette) {
+        DebugLayer.entries.associateWith { materialLoader.createLayerMaterial(paintOf(it, palette)) }
     }
     DisposableEffect(materials) {
         onDispose { materials.values.forEach { materialLoader.destroyMaterialInstance(it) } }
     }
     // Linear tone mapping: the unlit layers show their token colours exactly, and the stage
-    // skybox is exactly `Stage.background`. Values past 1.0 still bloom (bloom runs before it).
+    // skybox is exactly the stage's ground. Values past 1.0 still bloom (bloom runs before it).
     val colorGrading = remember(engine) {
         ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine)
     }
     DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
-    val environment = rememberEnvironment(engine) {
-        val stage = colorOf(SceneViewTokens.Stage.background).toLinearSpace()
+    val environment = rememberEnvironment(engine, key = chrome.ground) {
+        val stage = colorOf(chrome.ground).toLinearSpace()
         Environment(
             // The placed models are lit; the debug layers are unlit and ignore it.
             indirectLight = KTX1Loader.createIndirectLight(
@@ -602,7 +609,7 @@ internal fun ArDebugSceneView(
 
     // The stage colour behind the view: a TextureView stays transparent until its first frame,
     // which would show the AR camera through the "3D view" for as long as the engine takes.
-    Box(modifier.background(SceneViewTokens.Stage.background)) {
+    Box(modifier.background(chrome.ground)) {
         SceneView(
             modifier = Modifier.matchParentSize(),
             // A TextureView composes with the chrome and the AR SurfaceView under it.
@@ -754,7 +761,7 @@ private class FrameClock {
  * with a glow), 4× MSAA for the thin lines, no SSAO or shadows (nothing here is lit but the
  * placed models, and there is no ground to receive a shadow).
  */
-private fun com.google.android.filament.View.configureForDebug(colorGrading: ColorGrading) {
+internal fun com.google.android.filament.View.configureForDebug(colorGrading: ColorGrading) {
     this.colorGrading = colorGrading
     bloomOptions = bloomOptions.apply {
         enabled = true
@@ -799,12 +806,13 @@ internal fun ArDebugPip(
     replay: RerunReplayMedia? = null,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
+    val chrome = LocalStageChrome.current
     Box(
         modifier = modifier
             .size(DebugView.pipWidth, DebugView.pipHeight)
             .shadow(elevation = SceneViewTokens.Elevation.md, shape = shape, clip = false)
             .clip(shape)
-            .background(SceneViewTokens.Stage.background)
+            .background(chrome.ground)
             .testTag(AR_DEBUG_PIP_TAG),
     ) {
         ArDebugSceneView(
@@ -820,7 +828,7 @@ internal fun ArDebugPip(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .overMediaEdge(shape)
+                .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
                 .clickable(role = Role.Button, onClick = onExpand)
                 .semantics { contentDescription = "Open the 3D view" },
         )
@@ -828,16 +836,16 @@ internal fun ArDebugPip(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(Space.sm)
-                .background(ArOverlay.scrimDark, CircleShape)
+                .background(chrome.card, CircleShape)
                 .padding(horizontal = Space.sm, vertical = Space.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("3D", style = SceneViewTokens.Type.caption.copy(color = ArOverlay.onScrim))
+            Text("3D", style = SceneViewTokens.Type.caption.copy(color = chrome.onCard))
             Spacer(Modifier.width(Space.xs))
             Icon(
                 Icons.Rounded.OpenInFull,
                 contentDescription = null,
-                tint = ArOverlay.onScrim,
+                tint = chrome.onCard,
                 modifier = Modifier.size(Space.md - Space.xs / 2),
             )
         }
@@ -852,6 +860,7 @@ internal fun ArDebugPip(
 @Composable
 internal fun ArDebugLegend(session: ArDebugSession, modifier: Modifier = Modifier) {
     val stats = session.stats
+    val palette = LocalStageChrome.current.debug
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -862,15 +871,15 @@ internal fun ArDebugLegend(session: ArDebugSession, modifier: Modifier = Modifie
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             val path = ArDebugFormat.distance(stats.pathMetres)
-            LegendChip("Path", path, DebugView.trailNew, session, DebugGroup.Trail, Modifier.weight(1f))
+            LegendChip("Path", path, palette.trailNew, session, DebugGroup.Trail, Modifier.weight(1f))
             val points = ArDebugFormat.count(stats.mapPoints)
-            LegendChip("Points", points, DebugView.livePoint, session, DebugGroup.Points, Modifier.weight(1f))
+            LegendChip("Points", points, palette.livePoint, session, DebugGroup.Points, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             val planes = ArDebugFormat.count(stats.planes)
-            LegendChip("Planes", planes, DebugView.floorOutline, session, DebugGroup.Planes, Modifier.weight(1f))
+            LegendChip("Planes", planes, palette.floorOutline, session, DebugGroup.Planes, Modifier.weight(1f))
             val anchors = ArDebugFormat.count(stats.anchors)
-            LegendChip("Anchors", anchors, DebugView.anchor, session, DebugGroup.Anchors, Modifier.weight(1f))
+            LegendChip("Anchors", anchors, palette.anchor, session, DebugGroup.Anchors, Modifier.weight(1f))
         }
     }
 }

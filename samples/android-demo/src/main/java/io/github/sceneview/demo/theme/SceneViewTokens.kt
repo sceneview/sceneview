@@ -470,53 +470,86 @@ object SceneViewTokens {
     /**
      * `DESIGN.md` — AR Debug View: the in-app 3D view of the Rerun demo (#3950).
      *
-     * Drawn on [Stage.background], so like the stage it is identical in light and dark: a debug
-     * view is read against its own dark ground, never against `surface`. Every colour is an
-     * existing palette value — the brand ramp for the trail, `warning` for what the camera sees
-     * right now, `success` for anchors, the axis convention X red / Y green / Z blue. The `glow`
-     * factors multiply a colour past 1.0 in linear light so bloom picks it up: only the few
-     * "live" elements glow, so the eye lands on the present.
+     * Two palettes, one per ground (#4080). [Dark] is drawn on [Stage.background] — the live
+     * camera's picture-in-picture, and the replay in dark theme. [Light] is drawn on the light
+     * stage the replay takes in light theme (`surface-dim`, see [StageChrome.Light]). Every
+     * colour is an existing palette value — the brand ramp for the trail, `warning` for what the
+     * camera sees right now, `success` for anchors, the axis convention X red / Y green / Z blue.
+     * The `glow` factors multiply a colour past 1.0 in linear light so bloom picks it up: only the
+     * few "live" elements glow, so the eye lands on the present. On the light ground nothing
+     * glows — bloom only brightens, and a haze on a light stage reads as a smudge — so the
+     * present is carried by saturation instead.
      */
     object DebugView {
-        /** Trail, oldest → newest: `accent-deep` → `tint-soft` → `tint-light`. */
-        val trailOld = Color(0xFF5A32A3)
-        val trailMid = Color(0xFFD2A8FF)
-        val trailNew = Color(0xFFA4C1FF)
-        const val trailHeadGlow = 2.6f
+        /** On the dark stage. */
+        val Dark = DebugPalette(
+            // Trail, oldest → newest: `accent-deep` → `tint-soft` → `tint-light`.
+            trailOld = Color(0xFF5A32A3),
+            trailMid = Color(0xFFD2A8FF),
+            trailNew = Color(0xFFA4C1FF),
+            trailHeadGlow = 2.6f,
+            // The live camera frustum, and the fainter history frusta left every 60 cm.
+            frustum = Color(0xFFA4C1FF),
+            frustumGlow = 1.8f,
+            frustumFace = Color(0x33A4C1FF),
+            keyframe = Color(0x59A4C1FF),
+            // Map points: everything seen so far, dim white — the room emerges as a cloud.
+            mapPoint = Color(0x8CFFFFFF),
+            // Live points: what the camera sees this second — `warning`, glowing.
+            livePoint = Color(0xFFF59E0B),
+            livePointGlow = 2.0f,
+            // Planes: translucent fill + solid outline, by orientation.
+            floorFill = Color(0x29A4C1FF),
+            floorOutline = Color(0xD9A4C1FF),
+            wallFill = Color(0x24D2A8FF),
+            wallOutline = Color(0xCCD2A8FF),
+            otherFill = Color(0x1FFFFFFF),
+            otherOutline = Color(0xB3FFFFFF),
+            // Anchors — `success`: something the user placed and that holds.
+            anchor = Color(0xFF16A34A),
+            anchorGlow = 1.6f,
+            // Floor grid: 0.5 m minor, 1 m major, white at 7 % / 14 %.
+            gridMinor = Color(0x12FFFFFF),
+            gridMajor = Color(0x24FFFFFF),
+            // Origin gizmo: X `danger`, Y `success`, Z `primary` (dark value).
+            axisX = Color(0xFFEA4335),
+            axisY = Color(0xFF16A34A),
+            axisZ = Color(0xFFA4C1FF),
+        )
 
-        /** The live camera frustum, and the fainter history frusta left every 60 cm. */
-        val frustum = Color(0xFFA4C1FF)
-        const val frustumGlow = 1.8f
-        val frustumFace = Color(0x33A4C1FF)
-        val keyframe = Color(0x59A4C1FF)
-
-        /** Map points: everything seen so far, dim white — the room emerges as a cloud. */
-        val mapPoint = Color(0x8CFFFFFF)
-
-        /** Live points: what the camera sees this second — `warning`, glowing. */
-        val livePoint = Color(0xFFF59E0B)
-        const val livePointGlow = 2.0f
-
-        /** Planes: translucent fill + solid outline, by orientation. */
-        val floorFill = Color(0x29A4C1FF)
-        val floorOutline = Color(0xD9A4C1FF)
-        val wallFill = Color(0x24D2A8FF)
-        val wallOutline = Color(0xCCD2A8FF)
-        val otherFill = Color(0x1FFFFFFF)
-        val otherOutline = Color(0xB3FFFFFF)
-
-        /** Anchors — `success`: something the user placed and that holds. */
-        val anchor = Color(0xFF16A34A)
-        const val anchorGlow = 1.6f
-
-        /** Floor grid: 0.5 m minor, 1 m major, white at 7 % / 14 %. */
-        val gridMinor = Color(0x12FFFFFF)
-        val gridMajor = Color(0x24FFFFFF)
-
-        /** Origin gizmo: X `danger`, Y `success`, Z `primary` (dark value). */
-        val axisX = Color(0xFFEA4335)
-        val axisY = Color(0xFF16A34A)
-        val axisZ = Color(0xFFA4C1FF)
+        /**
+         * On the light stage: the same meanings in the light scheme's values. The trail runs
+         * `tint-soft` → `tertiary` → `primary` (the oldest is now the palest, as it is the
+         * dimmest on the dark stage); the frustum and the floor planes take `primary`, the walls
+         * `tertiary`; history points are `on-surface` at 55 %; the grid is `on-surface` at
+         * 8 % / 16 %.
+         */
+        val Light = DebugPalette(
+            trailOld = Color(0xFFD2A8FF),
+            trailMid = Color(0xFF6446CD),
+            trailNew = Color(0xFF005BC1),
+            trailHeadGlow = 1f,
+            frustum = Color(0xFF005BC1),
+            frustumGlow = 1f,
+            frustumFace = Color(0x29005BC1),
+            keyframe = Color(0x66005BC1),
+            mapPoint = Color(0x8C1A1A2E),
+            livePoint = Color(0xFFF59E0B),
+            livePointGlow = 1f,
+            floorFill = Color(0x1F005BC1),
+            floorOutline = Color(0xD9005BC1),
+            wallFill = Color(0x1F6446CD),
+            wallOutline = Color(0xCC6446CD),
+            otherFill = Color(0x141A1A2E),
+            otherOutline = Color(0x991A1A2E),
+            anchor = Color(0xFF16A34A),
+            anchorGlow = 1f,
+            gridMinor = Color(0x141A1A2E),
+            gridMajor = Color(0x291A1A2E),
+            axisX = Color(0xFFEA4335),
+            axisY = Color(0xFF16A34A),
+            axisZ = Color(0xFF005BC1),
+        )
 
         /** Picture-in-picture over the camera: portrait 3:4, like the phone it shows. */
         val pipWidth = 128.dp

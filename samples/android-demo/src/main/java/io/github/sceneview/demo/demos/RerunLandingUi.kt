@@ -62,13 +62,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.demos.internal.ScanCopy
-import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Glass
 import io.github.sceneview.demo.theme.SceneViewTokens.Radius
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.theme.SceneViewTokens.Type
+import io.github.sceneview.demo.theme.StageChrome
 
 /*
  * The Rerun demo's landing, laid out as the iOS demo's (#4068) and the capture apps it answers to
@@ -98,19 +99,23 @@ internal class RerunLandingActions(
 
 /**
  * The landing's scrolling page, clear of the demo's header above and its settings button below.
- * The page is pinned dark, so its menu and its dialog are too: a light popup over it would flash.
+ * It is a themed stage (#4080): ground, cards and text come from [LocalStageChrome], so the page,
+ * its menu and its dialog all follow the app theme.
  */
 @Composable
 internal fun RerunLanding(state: RerunLandingState, actions: RerunLandingActions) {
-    SceneViewDemoTheme(darkTheme = true) { LandingPage(state, actions) }
+    LandingPage(state, actions)
 }
+
+/** The themed stage the landing is drawn on. */
+private val stage: StageChrome @Composable get() = LocalStageChrome.current
 
 @Composable
 private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SceneViewTokens.Stage.background),
+            .background(stage.ground),
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(
@@ -131,10 +136,10 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
                 Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
                     Text(
                         text = ScanCopy.LANDING_TITLE,
-                        style = Type.display.copy(color = Glass.onGlass),
+                        style = Type.display.copy(color = stage.onGlass),
                         modifier = Modifier.semantics { heading() },
                     )
-                    Text(text = ScanCopy.LANDING_BODY, style = Type.body.copy(color = Glass.onGlassMuted))
+                    Text(text = ScanCopy.LANDING_BODY, style = Type.body.copy(color = stage.onGlassMuted))
                 }
                 RecordRoomCard(onClick = actions.onRecord)
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -173,7 +178,7 @@ private fun RecordRoomCard(onClick: () -> Unit) {
             .fillMaxWidth()
             .heightIn(min = RecordCardHeight)
             .clip(shape)
-            .background(ArOverlay.accentProgress)
+            .background(stage.accent)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = Space.md)
             .testTag(RECORD_ROOM_TAG),
@@ -183,22 +188,22 @@ private fun RecordRoomCard(onClick: () -> Unit) {
         Box(
             modifier = Modifier
                 .size(RecordWellSize)
-                .background(ArOverlay.onAccentProgress.copy(alpha = WELL_ALPHA), CircleShape),
+                .background(stage.onAccent.copy(alpha = WELL_ALPHA), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Videocam, contentDescription = null, tint = ArOverlay.onAccentProgress)
+            Icon(Icons.Rounded.Videocam, contentDescription = null, tint = stage.onAccent)
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = ScanCopy.RECORD, style = Type.title.copy(color = ArOverlay.onAccentProgress))
+            Text(text = ScanCopy.RECORD, style = Type.title.copy(color = stage.onAccent))
             Text(
                 text = ScanCopy.PRIVACY,
-                style = Type.caption.copy(color = ArOverlay.onAccentProgress.copy(alpha = MUTED_ALPHA)),
+                style = Type.caption.copy(color = stage.onAccent.copy(alpha = MUTED_ALPHA)),
             )
         }
         Icon(
             Icons.AutoMirrored.Rounded.KeyboardArrowRight,
             contentDescription = null,
-            tint = ArOverlay.onAccentProgress,
+            tint = stage.onAccent,
         )
     }
 }
@@ -211,14 +216,14 @@ private fun GlassAction(icon: ImageVector, label: String, onClick: () -> Unit, m
         modifier = modifier
             .heightIn(min = GlassActionHeight)
             .clip(shape)
-            .background(Glass.surface)
+            .background(stage.glass)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = Space.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.sm, Alignment.CenterHorizontally),
     ) {
-        Icon(icon, contentDescription = null, tint = Glass.onGlass)
-        Text(text = label, style = Type.body.copy(color = Glass.onGlass), maxLines = 1)
+        Icon(icon, contentDescription = null, tint = stage.onGlass)
+        Text(text = label, style = Type.body.copy(color = stage.onGlass), maxLines = 1)
     }
 }
 
@@ -231,13 +236,13 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
         Row {
             Text(
                 text = ScanCopy.SESSIONS_TITLE,
-                style = Type.card.copy(color = Glass.onGlass),
+                style = Type.card.copy(color = stage.onGlass),
                 modifier = Modifier.weight(1f).alignByBaseline().semantics { heading() },
             )
             if (!sessions.isNullOrEmpty()) {
                 Text(
                     text = ScanCopy.ON_THIS_PHONE,
-                    style = Type.caption.copy(color = Glass.onGlassMuted),
+                    style = Type.caption.copy(color = stage.onGlassMuted),
                     modifier = Modifier.alignByBaseline(),
                 )
             }
@@ -277,22 +282,22 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
 @Composable
 private fun NoticeCard(text: String, onDismiss: () -> Unit) {
     LandingCard(background = ArOverlay.accentRecord.copy(alpha = NOTICE_ALPHA), testTag = NOTICE_TAG) {
-        Text(text = text, style = Type.body.copy(color = Glass.onGlass), modifier = Modifier.weight(1f))
+        Text(text = text, style = Type.body.copy(color = stage.onGlass), modifier = Modifier.weight(1f))
         IconButton(onClick = onDismiss) {
-            Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = Glass.onGlassMuted)
+            Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = stage.onGlassMuted)
         }
     }
 }
 
 @Composable
 private fun OpeningCard() {
-    LandingCard(background = Glass.surface, testTag = OPENING_TAG) {
+    LandingCard(background = stage.glass, testTag = OPENING_TAG) {
         CircularProgressIndicator(
             modifier = Modifier.size(ProgressSize),
-            color = ArOverlay.accentProgress,
+            color = stage.accent,
             strokeWidth = ProgressStroke,
         )
-        Text(text = ScanCopy.OPENING_FILE, style = Type.body.copy(color = Glass.onGlass))
+        Text(text = ScanCopy.OPENING_FILE, style = Type.body.copy(color = stage.onGlass))
     }
 }
 
@@ -320,7 +325,7 @@ private fun LandingCard(
 /** No session yet: a dashed outline where the cards will be, and what goes there. */
 @Composable
 private fun EmptySessions() {
-    val dash = Glass.onGlassMuted.copy(alpha = DASH_ALPHA)
+    val dash = stage.onGlassMuted.copy(alpha = DASH_ALPHA)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -339,8 +344,8 @@ private fun EmptySessions() {
             .testTag(SESSIONS_EMPTY_TAG),
         verticalArrangement = Arrangement.spacedBy(Space.xs),
     ) {
-        Text(text = ScanCopy.SESSIONS_EMPTY_TITLE, style = Type.card.copy(color = Glass.onGlass))
-        Text(text = ScanCopy.SESSIONS_EMPTY, style = Type.body.copy(color = Glass.onGlassMuted))
+        Text(text = ScanCopy.SESSIONS_EMPTY_TITLE, style = Type.card.copy(color = stage.onGlass))
+        Text(text = ScanCopy.SESSIONS_EMPTY, style = Type.body.copy(color = stage.onGlassMuted))
     }
 }
 
@@ -358,7 +363,7 @@ private fun SessionCard(session: LandingSession, onOpen: () -> Unit, onShare: ()
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radius.md))
-            .background(Glass.surface)
+            .background(stage.glass)
             .clickable(role = Role.Button, onClickLabel = "Open", onClick = onOpen)
             .padding(start = Space.sm, top = Space.sm, bottom = Space.sm)
             .testTag(SESSION_ROW_TAG),
@@ -369,7 +374,7 @@ private fun SessionCard(session: LandingSession, onOpen: () -> Unit, onShare: ()
             modifier = Modifier
                 .size(ThumbnailSize)
                 .clip(RoundedCornerShape(Radius.sm))
-                .background(SceneViewTokens.Stage.background),
+                .background(stage.ground),
         ) {
             session.thumbnail?.let {
                 Image(
@@ -383,26 +388,26 @@ private fun SessionCard(session: LandingSession, onOpen: () -> Unit, onShare: ()
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs / 2)) {
             Text(
                 text = info.title,
-                style = Type.card.copy(color = Glass.onGlass),
+                style = Type.card.copy(color = stage.onGlass),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = origin,
-                style = Type.caption.copy(color = Glass.onGlassMuted),
+                style = Type.caption.copy(color = stage.onGlassMuted),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = figures,
-                style = Type.caption.copy(color = Glass.onGlassMuted),
+                style = Type.caption.copy(color = stage.onGlassMuted),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         Box {
             IconButton(onClick = { menu = true }, modifier = Modifier.testTag(SESSION_MENU_TAG)) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = "More for ${info.title}", tint = Glass.onGlass)
+                Icon(Icons.Rounded.MoreVert, contentDescription = "More for ${info.title}", tint = stage.onGlass)
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(

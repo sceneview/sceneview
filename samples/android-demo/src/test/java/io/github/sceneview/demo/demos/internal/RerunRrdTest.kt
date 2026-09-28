@@ -142,8 +142,57 @@ class RerunRrdTest {
     }
 
     @Test
-    fun `the map is static in an rrd, there from the first frame`() {
+    fun `points survive a round trip with their timestamps`() {
+        val original = FakeRerunImageCodec.showcase().open()!!.trace
         val exported = exported()
+        assertTrue(exported.pointObservations.size > 10)
+        val reopened = RerunRrdReader.recording(rrd(exported), codec).pack.open()!!.trace
+
+        // The map grows as it was seen, and the live points — what the camera saw that second —
+        // come back: before #4080 every point landed at t = 0 and no live point survived.
+        var live = 0
+        var t = 0.1f
+        while (t < original.duration) {
+            val a = original.frameAt(t)
+            val b = reopened.frameAt(t)
+            assertEquals("map at $t s", a.mapPointCount, b.mapPointCount)
+            assertArrayEquals("map at $t s", a.mapPoints, b.mapPoints, 0f)
+            assertArrayEquals("live points at $t s", a.livePoints, b.livePoints, 0f)
+            if (b.livePoints.isNotEmpty()) live++
+            t += 0.5f
+        }
+        assertTrue("live points mid-session", live > 10)
+        assertTrue(reopened.frameAt(1f).mapPointCount < reopened.frameAt(original.duration).mapPointCount)
+
+        // The map's colours, and every photo, not only the keyframes'.
+        val end = original.frameAt(original.duration)
+        assertArrayEquals(end.mapPointColors, reopened.frameAt(original.duration).mapPointColors)
+        assertEquals(original.imageCount, reopened.imageCount)
+        for (i in 0 until original.imageCount) assertEquals(original.imageTime(i), reopened.imageTime(i), 1e-4f)
+    }
+
+    @Test
+    fun `plane photos keep their transparent texels`() {
+        val rgba = RerunImageCodec.Pixels(2, 1, byteArrayOf(10, 20, 30, -1, 0, 0, 0, 0), RerunImageCodec.RGBA)
+        val photo = FakeRerunImageCodec.encodePng(rgba)!!
+        val scene = exported().let { scene ->
+            scene.copy(
+                planes = scene.planes.map { plane ->
+                    val texture = plane.texture?.let { RerunExportScene.PlaneTexture(photo, it.origin, it.u, it.v) }
+                    plane.copy(texture = texture)
+                },
+            )
+        }
+        val reopened = reread(scene).second
+        val texture = reopened.planes.firstNotNullOf { it.texture }
+        val pixels = FakeRerunImageCodec.rgbPixels(texture.imageData, 512)!!
+        assertEquals(RerunImageCodec.RGBA, pixels.channels)
+        assertArrayEquals(rgba.data, pixels.data)
+    }
+
+    @Test
+    fun `a file without sightings keeps the map static, there from the first frame`() {
+        val exported = exported().copy(pointObservations = emptyList())
         val opened = RerunRrdReader.recording(rrd(exported), codec).pack.open()!!
         val first = opened.trace.frameAt(0f)
         assertEquals(exported.points.size, first.mapPointCount)

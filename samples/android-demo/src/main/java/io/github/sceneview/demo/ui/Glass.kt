@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 
 /**
@@ -78,12 +80,16 @@ import io.github.sceneview.demo.theme.SceneViewTokens
  * Modifier.overMediaEdge(shape).clip(shape).background(SceneViewTokens.Glass.surface)
  * ```
  */
-fun Modifier.overMediaEdge(shape: Shape): Modifier = drawWithContent {
+fun Modifier.overMediaEdge(
+    shape: Shape,
+    ring: Color = SceneViewTokens.Glass.edgeRing,
+    halo: Color = SceneViewTokens.Glass.edgeHalo,
+): Modifier = drawWithContent {
     drawContent()
     val band = SceneViewTokens.Glass.edgeWidth.toPx()
     drawOutline(
         outline = shape.createOutline(size, layoutDirection, this),
-        color = SceneViewTokens.Glass.edgeRing,
+        color = ring,
         style = Stroke(width = band),
     )
     translate(left = -band, top = -band) {
@@ -93,7 +99,7 @@ fun Modifier.overMediaEdge(shape: Shape): Modifier = drawWithContent {
                 layoutDirection,
                 this,
             ),
-            color = SceneViewTokens.Glass.edgeHalo,
+            color = halo,
             style = Stroke(width = band),
         )
     }
@@ -105,18 +111,19 @@ fun GlassSurface(
     shape: Shape = RoundedCornerShape(SceneViewTokens.Radius.full),
     content: @Composable () -> Unit,
 ) {
+    val chrome = LocalStageChrome.current
     Box(
         modifier = modifier
-            .overMediaEdge(shape)
+            .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
             .clip(shape)
-            .background(SceneViewTokens.Glass.surface),
+            .background(chrome.glass),
         // Centred, not the Box default of top-start (#3835). A caller that raises the
         // surface's minimum size — `GlassActionPill` lifts a 36 dp pill to the 48 dp
         // touch target — got its content pinned to the top 36 dp, 12 dp off the
         // pill's vertical centre. A wrap-content surface is unaffected.
         contentAlignment = Alignment.Center,
     ) {
-        CompositionLocalProvider(LocalContentColor provides SceneViewTokens.Glass.onGlass) {
+        CompositionLocalProvider(LocalContentColor provides chrome.onGlass) {
             content()
         }
     }
@@ -166,7 +173,7 @@ fun GlassIconButton(
                 Icon(
                     imageVector = icon,
                     contentDescription = contentDescription,
-                    tint = SceneViewTokens.Glass.onGlass.copy(alpha = if (enabled) 1f else 0.38f),
+                    tint = LocalStageChrome.current.onGlass.copy(alpha = if (enabled) 1f else 0.38f),
                 )
             }
         }

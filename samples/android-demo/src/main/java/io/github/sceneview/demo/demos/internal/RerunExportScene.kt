@@ -23,11 +23,21 @@ data class RerunExportScene(
     /** The camera's path, oldest first. */
     val cameraPath: List<CameraSample>,
     val keyframes: List<Keyframe>,
-    /** Encoded photos by path (`frames/012.webp`): the keyframes' images. */
+    /** Encoded photos by path (`frames/012.webp`): the keyframes' images, and every one of [photos]. */
     val images: Map<String, ByteArray>,
     val planes: List<Plane>,
     val anchors: List<Anchor>,
+    /**
+     * Every photo the session recorded, oldest first, not only the keyframes' — what a replay's
+     * camera view plays back. Empty when the source has none beyond [keyframes].
+     */
+    val photos: List<Keyframe> = emptyList(),
+    /** What the camera saw over time: which of [points] each point-cloud observation held. */
+    val pointObservations: List<PointObservation> = emptyList(),
 ) {
+    /** One point-cloud observation at [time] (seconds): [points] are indices into [RerunExportScene.points]. */
+    data class PointObservation(val time: Double, val points: List<Int>)
+
     /** A pinhole lens, in pixels of the recorded frames (portrait: `width < height`). */
     data class Lens(val width: Int, val height: Int, val fx: Float, val fy: Float, val cx: Float, val cy: Float)
 

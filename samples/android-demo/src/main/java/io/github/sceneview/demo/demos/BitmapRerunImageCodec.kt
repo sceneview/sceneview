@@ -57,14 +57,17 @@ internal object BitmapRerunImageCodec : RerunImageCodec {
         }
         val argb = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(argb, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        val rgb = ByteArray(argb.size * RerunImageCodec.RGB)
+        // RGBA when a texel is not opaque: a plane photo's unseen texels must stay transparent (#4080).
+        val channels = if (argb.any { (it ushr ALPHA_SHIFT) != BYTE }) RerunImageCodec.RGBA else RerunImageCodec.RGB
+        val texels = ByteArray(argb.size * channels)
         for (i in argb.indices) {
             val c = argb[i]
-            rgb[3 * i] = (c shr RED_SHIFT and BYTE).toByte()
-            rgb[3 * i + 1] = (c shr GREEN_SHIFT and BYTE).toByte()
-            rgb[3 * i + 2] = (c and BYTE).toByte()
+            texels[channels * i] = (c shr RED_SHIFT and BYTE).toByte()
+            texels[channels * i + 1] = (c shr GREEN_SHIFT and BYTE).toByte()
+            texels[channels * i + 2] = (c and BYTE).toByte()
+            if (channels == RerunImageCodec.RGBA) texels[channels * i + 3] = (c ushr ALPHA_SHIFT).toByte()
         }
-        val pixels = RerunImageCodec.Pixels(bitmap.width, bitmap.height, rgb)
+        val pixels = RerunImageCodec.Pixels(bitmap.width, bitmap.height, texels, channels)
         bitmap.recycle()
         return pixels
     }
