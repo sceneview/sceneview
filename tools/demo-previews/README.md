@@ -74,6 +74,12 @@ room as a miniature: an emulator capture (Pixel_7a, 1080×2400) of the dollhouse
 AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band from y = 958
 (5:4), resized to 800×640, WebP q82.
 
+`rolling-balls` became its own demo in #4083 and has no render golden: its card is an
+emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
+tray, its rails and the first balls come to rest. Crop: x 40–1040, y 740–1540 (5:4), resized
+to 800×640, WebP q85; the stage does not follow the theme, so light and dark are the same
+pixels.
+
 ## iOS imagesets
 
 The iOS demo reads the same art from `samples/ios-demo/SceneViewDemo/Assets.xcassets/
