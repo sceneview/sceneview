@@ -534,14 +534,14 @@ class DemoInteractionTest {
         screenshot("29_customGeometry_ripple_none")
     }
 
-    // ── 7. Models — all 3 segmented tabs ──────────────────────────────────────
+    // ── 7. Models — both sections ─────────────────────────────────────────────
 
     @Test
     fun modelViewer_allTabs() {
         // #2239 Batch 5 — `multi-model` and `scene-gallery` consolidated into the
-        // existing `model-viewer` entry (the flagship umbrella, kept live) with a
-        // 3-way segmented toggle. One test taps through every tab so each merged
-        // half is exercised (the unified demo opens on its default Single Model tab).
+        // existing `model-viewer` entry (the flagship umbrella, kept live). One test
+        // taps through every section so each merged half is exercised (the unified
+        // demo opens on its default Single Model section). #4039 removed the Gallery.
         openDemo("model-viewer")
 
         // ── Single Model tab (default landing tab) — bundled hero helmet ──────
@@ -559,11 +559,7 @@ class DemoInteractionTest {
         screenshot("28a_models_multi_no_hero")
         tap("Oak Trees")
         screenshot("28b_models_multi_hero_back")
-
-        // ── Gallery tab — chip-picked themed Sketchfab model ──────────────────
-        tap("Models")
-        tap("Scene Gallery")
-        screenshot("29_models_gallery_default")
+        // The Gallery tab (`29_models_gallery_default`) left with its section in #4039.
     }
 
     // ── 8. Post Processing — 4 toggle rows ────────────────────────────────────

@@ -4,7 +4,8 @@
      `scene-gallery` demos (#2239 Batch 5) — the `model-viewer` id stays the
      live flagship umbrella (its id + `ModelViewerDemo.kt` file are referenced
      across docs and kept verbatim), the other two deep-link through
-     `DeepLinkRouter.DEMO_ID_ALIASES`. Android's resource merger fans every
+     `DeepLinkRouter.DEMO_ID_ALIASES`. The Scene Gallery section was removed
+     by #4039; `scene-gallery` now opens the single-model section. Android's resource merger fans every
      `res/values/*.xml` file in, so `R.string.demo_model_viewer` etc.
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
@@ -27,12 +28,11 @@
     <!-- Accessible name of the floating Surprise me pill: the visible label is short, the spoken one says what it does. -->
     <string name="demo_model_viewer_surprise_hint">Surprise me: load another random model</string>
 
-    <!-- Models sheet (#3828): one picker for the three sections. -->
+    <!-- Models sheet (#3828): one picker for both sections. -->
     <string name="demo_model_picker_title">Models</string>
     <string name="demo_model_picker_scenes">Scenes</string>
     <string name="demo_model_picker_models">Single models</string>
     <string name="demo_model_picker_park_desc">Four models in one scene</string>
-    <string name="demo_model_picker_gallery_desc">Online models from Sketchfab</string>
     <!-- One line under each bundled model's name: what the model shows off. -->
     <string name="demo_model_desc_damaged_helmet">Scuffed metal and glass</string>
     <string name="demo_model_desc_velvet_sofa">Velvet fabric sheen</string>
@@ -48,14 +48,4 @@
     <!-- %1$d models ready so far, %2$d models in the scene. -->
     <string name="demo_multi_model_loading_fetching">Fetching the models (%1$d of %2$d)…</string>
     <string name="demo_multi_model_loading_decoding">Decoding the models (%1$d of %2$d)…</string>
-
-    <!-- Gallery section — formerly the `scene-gallery` demo. -->
-    <string name="demo_scene_gallery_title">Scene Gallery</string>
-    <string name="demo_scene_gallery_credit">by %1$s · CC-BY 4.0</string>
-    <string name="demo_scene_gallery_loading">Loading the model…</string>
-    <!-- %1$s is the model's catalogue name. -->
-    <string name="demo_scene_gallery_loading_fetching">Fetching %1$s…</string>
-    <string name="demo_scene_gallery_loading_decoding">Decoding %1$s…</string>
-    <string name="demo_scene_gallery_error">Couldn\'t load this model</string>
-    <string name="demo_scene_gallery_retry">Retry</string>
 </resources>

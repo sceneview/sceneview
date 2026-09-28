@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
+import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.home.outlineSubtle
 
@@ -60,21 +61,28 @@ data class BundledViewerModel(
     val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.')
 }
 
-/** The two scenes the picker opens, besides a single model. */
+/**
+ * The scenes the picker opens, besides a single model.
+ *
+ * A scene card is a capture of the scene it opens, and a scene streams different models with and
+ * without a Sketchfab key: [streamedPreview] shows the streamed registry models, [preview] the
+ * bundled stand-ins a keyless build loads instead. The sheet picks the one this build will show
+ * (#4039 — the card showed a lantern and a shiba over a scene of four trees).
+ *
+ * #4039 also removed the Scene Gallery: one streamed model at a time on a black stage, not a
+ * scene. Streamed single models are what "Surprise me" is for.
+ */
 enum class ViewerScene(
     @StringRes val title: Int,
     @StringRes val description: Int,
     @DrawableRes val preview: Int,
+    @DrawableRes val streamedPreview: Int,
 ) {
     Park(
         title = R.string.demo_multi_model_title,
         description = R.string.demo_model_picker_park_desc,
         preview = R.drawable.model_picker_park,
-    ),
-    Gallery(
-        title = R.string.demo_scene_gallery_title,
-        description = R.string.demo_model_picker_gallery_desc,
-        preview = R.drawable.model_picker_gallery,
+        streamedPreview = R.drawable.model_picker_park_streamed,
     ),
 }
 
@@ -82,8 +90,8 @@ enum class ViewerScene(
  * The Models sheet — one picker for the whole viewer, opened from the Models dock item of all
  * three sections (#3828).
  *
- * Two sections, both made of the same card: **Scenes** first, so the two destinations that are not
- * a single model are seen before anything else (they used to be two text rows under the grid that
+ * Two sections, both made of the same card: **Scenes** first, so a destination that is not a
+ * single model is seen before anything else (scenes used to be text rows under the grid that
  * nobody scrolled to), then the **single models**. Every card is a picture of what it opens: a
  * render of the exact bundled GLB (see `tools/demo-previews/README.md`) or a capture of the scene.
  *
@@ -131,9 +139,12 @@ fun ModelPickerSheet(
                     selected = scene == currentScene,
                     onClick = { onScene(scene) },
                 ) {
-                    // A capture of the scene itself — its own stage, its own models.
+                    // A capture of the scene itself — its own stage, and the models this build
+                    // loads into it.
                     Image(
-                        painter = painterResource(scene.preview),
+                        painter = painterResource(
+                            if (SketchfabConfig.apiKey != null) scene.streamedPreview else scene.preview,
+                        ),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
