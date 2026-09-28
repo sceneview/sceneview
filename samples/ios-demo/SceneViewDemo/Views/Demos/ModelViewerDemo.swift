@@ -47,10 +47,17 @@ struct ModelViewerDemo: View {
     ///
     /// `internal`, not `private` — see ``bundledModels``: `ViewerAssetTests`
     /// walks this array directly.
+    ///
+    /// Every name says what the HDR shows, as on Android since #4052 (#4103):
+    /// `sunset.hdr` is a bright cloudy sky over a calm sea, so it reads
+    /// "Seascape"; `studio.hdr` is a sunlit living room, "Interior"; and
+    /// `studio_warm.hdr` is the softbox studio, "Studio". Android's real sunset
+    /// (`sky_on_fire`) is not bundled on iOS, so there is no "Sunset" tile here.
     static let environments: [ViewerEnvironment] = [
-        ViewerEnvironment(assetName: "studio", displayName: "Studio", authoredAsPlace: false),
-        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio Warm", authoredAsPlace: false),
-        ViewerEnvironment(assetName: "sunset", displayName: "Sunset", authoredAsPlace: true),
+        ViewerEnvironment(assetName: "chinese_garden", displayName: "Chinese Garden", authoredAsPlace: true),
+        ViewerEnvironment(assetName: "studio", displayName: "Interior", authoredAsPlace: false),
+        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio", authoredAsPlace: false),
+        ViewerEnvironment(assetName: "sunset", displayName: "Seascape", authoredAsPlace: true),
         ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy", authoredAsPlace: true),
         ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky", authoredAsPlace: true),
         ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night", authoredAsPlace: true),
@@ -73,7 +80,7 @@ struct ModelViewerDemo: View {
     ///
     /// `auto` is the smart default (#3583): the backdrop follows the picked
     /// environment — drawn for one authored as a place, hidden for a studio rig, so
-    /// choosing Sunset actually shows you a sunset instead of only its reflection.
+    /// choosing Seascape actually shows you the sea instead of only its reflection.
     /// The moment the user touches the "Show environment" switch the answer stops
     /// being inferred and their choice sticks for every environment and every launch,
     /// which is the "sans le forcer" half of the ask. "Reset" returns to `auto`.

@@ -199,7 +199,10 @@ struct CreditsSheet: View {
     private func label(for category: String) -> String {
         switch category {
         case "solar": return "Solar (Orbital AR)"
-        case "gallery": return "Gallery"
+        // Named after the screen that shows them. Android titles the same group "Model Viewer
+        // (Surprise me)" because its Scene Gallery is gone (#4102); iOS still has one, and its
+        // Surprise me streams Sketchfab's live feeds rather than this group.
+        case "gallery": return "Scene Gallery"
         case "animation": return "Animation"
         case "park": return "Park (Multi-model)"
         case "ar_placement": return "AR Placement"

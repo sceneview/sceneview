@@ -204,15 +204,15 @@ The sheet's "Scenes" row holds one card, the Park, in two files: the sheet shows
 build will load (`SketchfabConfig.apiKey`), so the card is what the scene opens on (#4039).
 
 - `model_picker_park.webp`: a **keyless** debug build, so the bundled fallback models only
-  (lantern, lantern, shiba, soldier). Emulator capture (Pixel_7a, 1080×2400) of
+  (soldier, sheen chair, lantern, shiba). Emulator capture (Pixel_7a, 1080×2400) of
   `--es demo multi-model --ef camera_distance 6.5`, window x 0–1080, y 780–1644, resized to
   600×480.
 - `model_picker_park_streamed.webp`: a **keyed** debug build, so the four streamed `park`
   registry models. Same capture with `--ez qa_mode true` (orbit frozen), window x 0–1080,
   y 832–1696, resized to 600×480 and encoded with `cwebp -q 85`. The image shows CC-BY 4.0
   models, credited where the app credits them, under "Park (Multi-model)" in the Credits
-  sheet: "Oak Trees" by bumstrum, "Stylized Tree" by yonimantz09, "Mighty Oak Trees" by
-  Jagobo and "Skovfogedegen Oak" by rigsters (`SampleAssets.kt`). Re-capture it when the
+  sheet: "Oak Trees" by bumstrum, "Park Bench" by Planetrix23, "Street Lamp" by bez_glaza
+  and "Fern" by Batuhan13 (`SampleAssets.kt`). Re-capture it when the
   `park` category changes.
 
 The Scene Gallery card (`model_picker_gallery.webp`, a collage of four bundled fallbacks) left
