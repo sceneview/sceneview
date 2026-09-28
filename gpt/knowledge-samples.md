@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.45.0)
+  Source of truth: /llms.txt  (SceneView 4.46.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.45.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.46.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -696,28 +696,15 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `splat-preview` — Real-World Scan. A tree stump and its raccoons, scanned with a phone.
+- `animation-physics` — Animation & Physics. Play character animations and try collisions.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
-- `animation-physics` — Animation & Physics. Play character animations and try collisions.
 - `double-pendulum` — Double Pendulum. Explore two linked arms in chaotic motion.
-
-### Create & record
-
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
-- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
-- `lines-paths` — Lines & Paths. Follow animated curves and paths.
-- `materials` — Materials. Compare metal, glass, fabric and glow.
-- `lighting` — Lighting. Compare studio light, daylight and reflections.
-- `lighting-lab` — Lighting Lab. See how light and reflections shape a model.
-- `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
-- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
-- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `video-recording` — Scene to MP4. Record and share a moving 3D model.
 
 ### Place in AR
 
-- `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
 - `ar-splat-room` — Your Scan, in Your Room. A real phone capture, standing on your floor at its real size.
+- `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
 - `placement-scene` — One-Call AR. The same tap-to-place screen, in a single SDK call.
 - `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
 - `ar-plane-renderer-v2` — Plane Renderer V2. See floors, walls and ceilings as they are found.
@@ -727,6 +714,26 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
 - `ar-collaborative` — Collaborative AR. Place one object in two shared views.
 - `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
+
+### Developer tools
+
+- `ar-rerun` — Rerun AR Replay. Watch a real AR session rebuild itself in 3D.
+- `ar-record-playback` — AR Recording. Record an AR session and replay it anywhere.
+- `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
+- `secondary-camera` — Secondary Camera (PiP). Add an independent camera inset to a 3D viewer.
+
+### Create & record
+
+- `materials` — Materials. Compare metal, glass, fabric and glow.
+- `lighting` — Lighting. Compare studio light, daylight and reflections.
+- `lighting-lab` — Lighting Lab. See how light and reflections shape a model.
+- `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
+- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
+- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
+- `lines-paths` — Lines & Paths. Follow animated curves and paths.
+- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
+- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
+- `video-recording` — Scene to MP4. Record and share a moving 3D model.
 
 ### Understand the world
 
@@ -748,13 +755,6 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-scene-mesh` — Scene Geometry. Explore the shape of nearby buildings.
 - `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
-
-### Developer tools
-
-- `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
-- `secondary-camera` — Secondary Camera (PiP). Add an independent camera inset to a 3D viewer.
-- `ar-record-playback` — AR Recording. Record an AR session and replay it anywhere.
-- `ar-rerun` — Rerun Debug. Stream pose and planes to the Rerun viewer.
 
 <!-- END GENERATED DEMOS -->
 
