@@ -185,12 +185,12 @@
     "softwareRequirements": [
       "Android SDK API 24+ (Android)",
       "iOS 18+ (iOS)",
-      "Kotlin 2.1.21",
+      "Kotlin 2.4.20",
       "Jetpack Compose (Android)",
       "SwiftUI (iOS)",
       "Google Filament 1.72.1 (Android)",
       "RealityKit (iOS)",
-      "ARCore 1.54.0 (Android AR)",
+      "ARCore 1.56.0 (Android AR)",
       "ARKit (iOS AR)"
     ],
     "keywords": [
