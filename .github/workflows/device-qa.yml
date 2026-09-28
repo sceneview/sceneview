@@ -283,9 +283,10 @@ jobs:
   # own boot. Non-blocking: SwiftShader emulator + Maestro timing is flaky and
   # this workflow is not a required PR check.
   #
-  # This job does NOT build the APK — it downloads the artifact produced by
-  # `build-android-apk` into the path qa-android-demos.sh expects, so the
-  # emulator job is install + Maestro only (#1652). The release-gate treats a
+  # This job downloads the artifact produced by `build-android-apk` into the
+  # path qa-android-demos.sh expects (#1652). When the store secrets are set
+  # that artifact is discarded for a KEYED rebuild (#2343), so the job still
+  # sets up the JDKs and Gradle cache. The release-gate treats a
   # red leg here as ADVISORY (WARN, not a hard block) — see the header block.
   android:
     name: Device QA — android (Maestro)
@@ -305,6 +306,15 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+
+      # The prebuilt artifact is keyless, so with the store secrets injected
+      # below qa-keys.sh deletes it and qa-android-demos.sh rebuilds a KEYED
+      # APK on this runner (#2343): this leg runs Gradle after all. Without
+      # this step the hosted runner has no JDK 22, and the `jvmToolchain(22)`
+      # of sceneview-compose / desktop-demo fails configuration before the
+      # first Maestro flow ("Cannot find a Java installation ...
+      # languageVersion=22", run 36486590219). Same setup as the `ar` leg.
+      - uses: ./.github/actions/setup-gradle
 
       - uses: actions/setup-node@v7
         with:
