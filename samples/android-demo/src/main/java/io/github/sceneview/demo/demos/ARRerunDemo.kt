@@ -737,6 +737,9 @@ private fun RerunLiveScreen(
     // debug session's trace, so the 3D view and the scan are the same data.
     var scan by remember { mutableStateOf<ScanCapture?>(null) }
     var finishing by remember { mutableStateOf(false) }
+    // Rerun v2: whether this phone runs ARCore's raw depth, set when the session is configured.
+    // With it a scan also fuses a dense surfel map (tier "depth"); without it, the sparse v1 scan.
+    var rawDepth by remember { mutableStateOf(false) }
     // QA only (`--es qa_state record`): the Record screen mid-scan, fed by the sample room's
     // log and photos, since the emulator cannot track. Its Stop saves that take like a real
     // scan — the same builder, bake and file — and opens it.
@@ -831,7 +834,7 @@ private fun RerunLiveScreen(
     // Record starts on the frame on screen, whose camera gives the scan its lens.
     val onStartScan = start@{
         val frame = latestFrame ?: return@start
-        val capture = ScanCapture.start(frame, scope) ?: return@start
+        val capture = ScanCapture.start(frame, scope, rawDepth) ?: return@start
         debugFullScreen = false
         debugSession.trace = capture.trace
         debugSession.goLive()
@@ -898,7 +901,9 @@ private fun RerunLiveScreen(
                         points = stats.mapPoints,
                         surfaces = stats.planes,
                         photos = debugSession.trace.imageCount,
+                        dense = scan?.denseCount ?: 0,
                     ),
+                    depthScan = scan?.rawDepth == true,
                     seconds = stats.duration,
                     photoLimitReached = scan?.isPhotoLimitReached == true,
                 )
@@ -1005,9 +1010,16 @@ private fun RerunLiveScreen(
                 cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
-                sessionConfiguration = { _: Session, config: Config ->
+                sessionConfiguration = { session: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                    // Rerun v2 tier B: ARCore's raw depth where the phone has it, never where it
+                    // does not — that phone keeps the sparse v1 scan, and says so.
+                    val depth = runCatching {
+                        session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY)
+                    }.getOrDefault(false)
+                    if (depth) config.depthMode = Config.DepthMode.RAW_DEPTH_ONLY
+                    rawDepth = depth
                 },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     if (frame.timestamp > 0L) cameraReady = true

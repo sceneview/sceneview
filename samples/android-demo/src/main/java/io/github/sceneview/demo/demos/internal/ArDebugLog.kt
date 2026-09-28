@@ -31,6 +31,12 @@ sealed class ArDebugEvent(val nanos: Long) {
     /** The camera image at this instant, as a path relative to the log (`frames/012.webp`). */
     class Image(nanos: Long, val path: String) : ArDebugEvent(nanos)
 
+    /**
+     * A `.svscan` v2 raw-depth keyframe fused: [added] surfels created, [kept] depth samples
+     * merged, [total] surfels in the dense map since the start (`depth_stats`).
+     */
+    class DepthStats(nanos: Long, val added: Int, val kept: Int, val total: Int) : ArDebugEvent(nanos)
+
     /** Applies this event to [trace]. */
     fun applyTo(trace: ArDebugTrace) {
         when (this) {
@@ -39,6 +45,7 @@ sealed class ArDebugEvent(val nanos: Long) {
             is Plane -> trace.addPlane(nanos, id, kind, polygon)
             is Anchor -> trace.addAnchor(nanos, id, pose)
             is Image -> trace.addImage(nanos, path)
+            is DepthStats -> trace.addDepthStats(nanos, added, kept, total)
         }
     }
 }
@@ -81,6 +88,11 @@ fun parseArDebugEvent(line: String): ArDebugEvent? {
         }
         "image" -> (obj["path"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
             ?.let { ArDebugEvent.Image(nanos, it) }
+        "depth_stats" -> {
+            fun count(key: String) = (obj[key] as? JsonPrimitive)?.content?.toIntOrNull()?.takeIf { it >= 0 }
+            val total = count("total") ?: return null
+            ArDebugEvent.DepthStats(nanos, count("new") ?: 0, count("kept") ?: 0, total)
+        }
         else -> null
     }
 }

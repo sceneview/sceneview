@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Demo (Android):** Rerun Record captures a dense coloured point cloud on phones with ARCore's Depth API (e.g. Pixel 9): raw depth is kept where ARCore is confident, back-projected and fused into 2 cm surfels, saved in the `.svscan` file as `dense/points.bin` (format v2, 12 bytes a point), drawn by the replay, and exported to `.ply` (with normals), `.glb` and `.rrd` (`world/dense`). Phones without depth record exactly as before, and older `.svscan` files still open.
