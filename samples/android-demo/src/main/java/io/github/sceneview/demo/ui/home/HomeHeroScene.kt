@@ -203,8 +203,10 @@ private fun HomeHeroStage(
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val fallbackEnvironment = rememberEnvironment(environmentLoader, isOpaque = false)
-    // The HDR is decoded and prefiltered off the main thread and lands when it lands; the
-    // flight starts under the plain environment. Skipped entirely on the light tier.
+    // The HDR lands when it lands; the flight starts under the plain environment. Skipped
+    // entirely on the light tier. Its decode and prefilter run on the main thread
+    // (`EnvironmentLoader.createHDREnvironment` is synchronous), so it is the costliest load
+    // here — which is why it is never started once Home is no longer resumed.
     // Each load below is composed only while loads are allowed or once it has landed:
     // leaving composition cancels a load still in flight before it reaches the engine.
     var hdrLanded by remember { mutableStateOf(false) }
@@ -255,8 +257,15 @@ private fun HomeHeroStage(
     }
     // One compiled material, two instances: the matte ground and the glowing disc. The
     // loader owns both and destroys them with the screen.
-    val terrainMaterial by produceState<Material?>(null, materialLoader, loadsAllowed) {
-        if (value == null && loadsAllowed) value = materialLoader.loadMaterial(HERO_TERRAIN_MATERIAL)
+    // Requested once, the first time loads are allowed, and loader-scoped: a compile already
+    // under way when Home pauses finishes and is kept, so it never runs twice.
+    var terrainMaterial by remember(materialLoader) { mutableStateOf<Material?>(null) }
+    var terrainMaterialRequested by remember(materialLoader) { mutableStateOf(false) }
+    LaunchedEffect(materialLoader, loadsAllowed) {
+        if (loadsAllowed && !terrainMaterialRequested) {
+            terrainMaterialRequested = true
+            materialLoader.loadMaterialAsync(HERO_TERRAIN_MATERIAL) { terrainMaterial = it }
+        }
     }
     val terrainInstance = remember(materialLoader, terrainMaterial) {
         terrainMaterial?.let { material ->
