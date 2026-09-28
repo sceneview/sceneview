@@ -154,6 +154,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
+        onArSessionRetry = { arSessionFailed = false; arCoreAvailability = null },
         arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_body_tracker_title),
         onBack = onBack,

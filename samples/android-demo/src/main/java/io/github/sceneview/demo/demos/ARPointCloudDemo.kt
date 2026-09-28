@@ -132,6 +132,7 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
+        onArSessionRetry = { arSessionFailed = false },
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_point_cloud_title),
         onBack = onBack,

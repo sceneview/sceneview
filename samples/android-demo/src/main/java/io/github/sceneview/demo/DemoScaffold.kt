@@ -109,6 +109,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ARCoreAvailabilityOverlay
+import io.github.sceneview.ar.ARCoreAvailabilityState
 import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -302,6 +305,10 @@ fun DemoScaffold(
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     bottomOverlayReservesScene: Boolean = false,
     arSessionFailed: Boolean = false,
+    // Re-mounts the demo's AR session from the failure card (#4062). With it the card is the
+    // SDK's own "Couldn't start AR" card and its Try again action — the one every other AR
+    // demo already shows — instead of a dead end that sent the user back to the catalog.
+    onArSessionRetry: (() -> Unit)? = null,
     arOverlaysEnabled: Boolean = true,
     dock: List<DockItem> = emptyList(),
     dockAccent: DockItem? = null,
@@ -617,11 +624,22 @@ fun DemoScaffold(
                                         .background(chrome.ground),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    io.github.sceneview.demo.common.DemoStatusCard(
-                                        text = stringResource(R.string.demo_ar_session_failed),
-                                        tone = io.github.sceneview.demo.common.DemoStatusTone.Blocked,
-                                        modifier = Modifier.padding(SceneViewTokens.Space.lg),
-                                    )
+                                    if (onArSessionRetry != null) {
+                                        val retry by androidx.compose.runtime.rememberUpdatedState<() -> Unit>(onArSessionRetry)
+                                        val state = remember {
+                                            ARCoreAvailabilityState(
+                                                availability = ARCoreAvailability.SessionFailed,
+                                                retry = { retry() },
+                                            )
+                                        }
+                                        ARCoreAvailabilityOverlay(state)
+                                    } else {
+                                        io.github.sceneview.demo.common.DemoStatusCard(
+                                            text = stringResource(R.string.demo_ar_session_failed),
+                                            tone = io.github.sceneview.demo.common.DemoStatusTone.Blocked,
+                                            modifier = Modifier.padding(SceneViewTokens.Space.lg),
+                                        )
+                                    }
                                 }
                             } else scene()
                         }

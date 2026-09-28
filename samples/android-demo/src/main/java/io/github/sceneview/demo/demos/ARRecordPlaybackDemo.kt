@@ -283,6 +283,11 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
         // A forced QA state keeps the Record step and its cards capturable: the emulator
         // never starts AR (#2754).
         arSessionFailed = showsCamera && take.sessionFailed && qa == null,
+        onArSessionRetry = {
+            take.sessionFailed = false
+            take.arCoreAvailability = null
+            take.cameraReady = false
+        },
         arOverlaysEnabled = !showsCamera || take.arCoreAvailability == null || qa != null,
         dock = listOf(
             DockItem(

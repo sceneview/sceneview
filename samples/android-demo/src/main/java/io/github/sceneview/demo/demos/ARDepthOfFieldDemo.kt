@@ -124,6 +124,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
+        onArSessionRetry = { arSessionFailed = false },
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_depth_of_field_title),
         onBack = onBack,

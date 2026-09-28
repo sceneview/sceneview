@@ -103,6 +103,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
+        onArSessionRetry = { arSessionFailed = false; arCoreAvailability = null },
         arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_plane_renderer_v2_title),
         onBack = onBack,

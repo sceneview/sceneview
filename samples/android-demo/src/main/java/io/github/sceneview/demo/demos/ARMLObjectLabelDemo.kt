@@ -208,6 +208,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
+        onArSessionRetry = { arSessionFailed = false },
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_ml_title),
         onBack = onBack,

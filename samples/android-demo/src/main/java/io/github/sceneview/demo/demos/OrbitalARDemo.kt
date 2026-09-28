@@ -823,6 +823,13 @@ fun OrbitalARDemo(onBack: () -> Unit) {
         onBack = onBack,
         assetSource = assetSource,
         arSessionFailed = arSessionFailed,
+        // A fresh session and a fresh camera watchdog, as on first entry (#4062).
+        onArSessionRetry = {
+            arSessionFailed = false
+            arCoreAvailability = null
+            cameraReady = false
+            sessionGeneration = 0
+        },
         topOverlay = {
             if (statusText != null) {
                 Surface(

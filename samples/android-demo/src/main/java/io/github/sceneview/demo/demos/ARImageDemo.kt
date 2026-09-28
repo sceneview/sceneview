@@ -147,6 +147,7 @@ fun ARImageDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
+        onArSessionRetry = { arSessionFailed = false; arCoreAvailability = null },
         arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_image_title),
         onBack = onBack,
