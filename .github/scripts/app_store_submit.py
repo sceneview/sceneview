@@ -26,12 +26,18 @@ file it works. That branch now has a test; see the suite's dispatch-path case.
 
     ASC_KEY_ID, ASC_ISSUER_ID   App Store Connect API credentials
     ASC_VERSION_STRING          versionString for the App Store record
-    ASC_EXPECTED_BUILD          CFBundleVersion THIS run uploaded (#2893 W1)
+    ASC_EXPECTED_BUILD          CFBundleVersion THIS run uploaded (#2893 W1), or
+                                the TestFlight build app-store-catch-up.yml reuses
+    ASC_SUPERSEDE               "true" = withdraw an OLDER version from review to
+                                make room for this one (opt-in, human decision)
     GITHUB_WORKSPACE            repo root — the job runs with
                                 `working-directory: samples/ios-demo`
 
 Exit codes are the step's verdict: a non-zero exit is a red step and a release
 that did NOT reach App Review. Do not add a bare `except` that swallows one.
+Exit 2 is the one exception: DEFERRED, because another version holds App Store
+Connect's single non-live slot. Callers grade it green with a notice, since
+app-store-catch-up.yml submits the latest release once the slot frees.
 """
 import os, sys, json, time, pathlib, jwt, requests
 
@@ -136,9 +142,14 @@ for attempt in range(1, POLL_ATTEMPTS + 1):
     # W2's classifier a 401 to misreport as bad credentials. A local
     # ES256 sign costs nothing.
     headers = asc_headers()
+    # With an expected build, ask Apple for that build number directly:
+    # app-store-catch-up.yml re-submits a build uploaded days earlier, which
+    # can sit below the 20 newest uploads. The macOS build carries the same
+    # number, so the platform is still checked client-side below.
     r = requests.get(
         f"{BASE}/builds?filter[app]={app_id}&filter[processingState]=VALID"
-        f"&sort=-uploadedDate&limit=20&include=preReleaseVersion",
+        + (f"&filter[version]={expected_build}" if expected_build else "")
+        + "&sort=-uploadedDate&limit=20&include=preReleaseVersion",
         headers=headers,
     )
     # W2 (#2893): the status code used to be ignored entirely — an
@@ -330,27 +341,39 @@ print(f"Target App Store versionString: {version_string}")
 EDITABLE_STATES = [
     "PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED",
 ]
-r = requests.get(
-    f"{BASE}/apps/{app_id}/appStoreVersions"
-    f"?filter[appStoreState]={','.join(EDITABLE_STATES + ['READY_FOR_REVIEW'])}"
-    f"&filter[platform]=IOS&include=appStoreVersionSubmission",
-    headers=headers,
-)
-versions = r.json().get("data", [])
-# Pick a version record that already targets our versionString,
-# otherwise fall back to the first editable one if any, otherwise
-# create a new record. Picking by versionString avoids the
-# previously-hardcoded "4.0.3" trap where any unrelated editable
-# version would get hijacked for an unrelated build.
-version_id = None
-matched_version = None
-for v in versions:
-    if v.get("attributes", {}).get("versionString") == version_string:
-        version_id = v["id"]
-        matched_version = v
-        print(f"Using matching version record: {version_id}")
-        break
-if not version_id:
+
+
+def _vtuple(vs):
+    """`4.42.0` → (4, 42, 0); anything unparsable sorts lowest."""
+    try:
+        return tuple(int(x) for x in str(vs).split("."))
+    except ValueError:
+        return ()
+
+
+def claim_editable_version():
+    """Return the id of the editable iOS record this release will use, or None.
+
+    A record already named after this release wins. Otherwise the one
+    editable record (Apple allows a single non-live version) is retargeted
+    to this release's versionString.
+    """
+    r = requests.get(
+        f"{BASE}/apps/{app_id}/appStoreVersions"
+        f"?filter[appStoreState]={','.join(EDITABLE_STATES + ['READY_FOR_REVIEW'])}"
+        f"&filter[platform]=IOS&include=appStoreVersionSubmission",
+        headers=headers,
+    )
+    versions = r.json().get("data", [])
+    # Pick a version record that already targets our versionString,
+    # otherwise fall back to the first editable one if any, otherwise
+    # create a new record. Picking by versionString avoids the
+    # previously-hardcoded "4.0.3" trap where any unrelated editable
+    # version would get hijacked for an unrelated build.
+    for v in versions:
+        if v.get("attributes", {}).get("versionString") == version_string:
+            print(f"Using matching version record: {v['id']}")
+            return v["id"]
     # No record for our versionString. Apple allows only ONE
     # version in an editable state at a time, so if a stale
     # PREPARE_FOR_SUBMISSION draft exists (e.g. a release whose
@@ -367,26 +390,108 @@ if not version_id:
          if v.get("attributes", {}).get("appStoreState") == state),
         None,
     )
-    if stale:
-        version_id = stale["id"]
-        matched_version = stale
-        stale_vs = stale.get("attributes", {}).get("versionString")
-        stale_state = stale.get("attributes", {}).get("appStoreState")
-        r = requests.patch(
-            f"{BASE}/appStoreVersions/{version_id}",
+    if not stale:
+        return None
+    stale_id = stale["id"]
+    stale_vs = stale.get("attributes", {}).get("versionString")
+    stale_state = stale.get("attributes", {}).get("appStoreState")
+    r = requests.patch(
+        f"{BASE}/appStoreVersions/{stale_id}",
+        headers=headers,
+        json={"data": {
+            "type": "appStoreVersions",
+            "id": stale_id,
+            "attributes": {"versionString": version_string},
+        }},
+    )
+    if r.status_code not in (200, 201):
+        print(f"::error::Could not retarget the {stale_state} version {stale_vs} ({stale_id}) "
+              f"to {version_string}: {r.status_code} {r.text[:300]}")
+        raise SystemExit(1)
+    print(f"Reused editable {stale_state} version {stale_id}: "
+          f"retargeted {stale_vs} → {version_string}")
+    return stale_id
+
+
+def find_slot_holder():
+    """(versionString, state) of the iOS version holding the non-live slot, or None."""
+    OCCUPYING_STATES = ",".join([
+        "WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_APPLE_RELEASE",
+        "PENDING_DEVELOPER_RELEASE", "PROCESSING_FOR_APP_STORE",
+        "WAITING_FOR_EXPORT_COMPLIANCE", "REJECTED", "METADATA_REJECTED",
+        "DEVELOPER_REJECTED", "INVALID_BINARY", "PENDING_CONTRACT",
+    ])
+    try:
+        probe = requests.get(
+            f"{BASE}/apps/{app_id}/appStoreVersions"
+            f"?filter[appStoreState]={OCCUPYING_STATES}&filter[platform]=IOS&limit=5",
             headers=headers,
-            json={"data": {
-                "type": "appStoreVersions",
-                "id": version_id,
-                "attributes": {"versionString": version_string},
-            }},
         )
-        if r.status_code not in (200, 201):
-            print(f"::error::Could not retarget the {stale_state} version {stale_vs} ({version_id}) "
-                  f"to {version_string}: {r.status_code} {r.text[:300]}")
+        if probe.status_code == 200:
+            for v in (probe.json() or {}).get("data", []):
+                a = v.get("attributes", {})
+                return a.get("versionString", "?"), a.get("appStoreState", "?")
+    except Exception as e:  # noqa: BLE001 — diagnosis must never mask the 409
+        print(f"::warning::Could not identify the blocking version: {e}")
+    return None
+
+
+def supersede(holder_vs, holder_state):
+    """Pull the OLDER version out of App Review so this release can take its place.
+
+    Opt-in only (ASC_SUPERSEDE=true, the `supersede` dispatch input of
+    app-store.yml / app-store-catch-up.yml): it withdraws a submission Apple
+    is about to review, which restarts that queue from zero for the newer
+    build. Cancelling is PATCH {canceled: true} on the open reviewSubmission —
+    there is no DELETE. The withdrawn record then becomes DEVELOPER_REJECTED,
+    which claim_editable_version() retargets to this release.
+    """
+    r = requests.get(
+        f"{BASE}/apps/{app_id}/reviewSubmissions"
+        f"?filter[platform]=IOS&filter[state]=WAITING_FOR_REVIEW,IN_REVIEW&limit=10",
+        headers=headers,
+    )
+    if r.status_code != 200:
+        print(f"::error::Supersede: could not list the open reviewSubmissions: "
+              f"{r.status_code} {r.text[:300]}")
+        raise SystemExit(1)
+    open_subs = (r.json() or {}).get("data", [])
+    if not open_subs:
+        print(f"::error::Supersede: {holder_vs} is {holder_state} but no open reviewSubmission "
+              "was found to cancel. Nothing was changed.")
+        raise SystemExit(1)
+    for sub in open_subs:
+        cancel = requests.patch(
+            f"{BASE}/reviewSubmissions/{sub['id']}",
+            headers=headers,
+            json={"data": {"type": "reviewSubmissions", "id": sub["id"],
+                           "attributes": {"canceled": True}}},
+        )
+        print(f"Supersede: canceling reviewSubmission {sub['id']} "
+              f"(was {sub.get('attributes', {}).get('state', '?')}) → {cancel.status_code}")
+        if cancel.status_code not in (200, 201):
+            print(f"::error::Supersede: Apple refused to withdraw {holder_vs} from review: "
+                  f"{cancel.text[:300]}")
             raise SystemExit(1)
-        print(f"Reused editable {stale_state} version {version_id}: "
-              f"retargeted {stale_vs} → {version_string}")
+    # The record leaves review asynchronously. Wait for it to turn editable
+    # (normally seconds), then claim it for this release.
+    for attempt in range(1, SUPERSEDE_POLLS + 1):
+        claimed = claim_editable_version()
+        if claimed:
+            print(f"::notice::Superseded {holder_vs} ({holder_state}) with {version_string}.")
+            return claimed
+        print(f"Supersede: {holder_vs} not editable yet (attempt {attempt}/{SUPERSEDE_POLLS})")
+        time.sleep(SUPERSEDE_POLL_S)
+    print(f"::error::Supersede: {holder_vs} was withdrawn from review but never became editable. "
+          "Check it in App Store Connect; the next catch-up run retries.")
+    raise SystemExit(1)
+
+
+SUPERSEDE_POLLS = 12
+SUPERSEDE_POLL_S = 15
+SUPERSEDE = (os.environ.get("ASC_SUPERSEDE") or "").strip().lower() == "true"
+
+version_id = claim_editable_version()
 if not version_id:
     payload = {
         "data": {
@@ -405,53 +510,47 @@ if not version_id:
         # 4.30.0's release run died here at 16:48 on 2026-08-12 while 4.29.0
         # was still in review — it went live at 20:39 the same day.
         #
-        # STOP HERE. Do not route around it. Step 5a below cancels every open
-        # reviewSubmission, and its OPEN_STATES includes IN_REVIEW: carrying on
-        # would pull the PREVIOUS release out of App Review to make room for
-        # this one. Deferring costs a re-run; continuing costs a release.
+        # STOP HERE unless ASC_SUPERSEDE says otherwise. Step 5a below cancels
+        # every open reviewSubmission, and its OPEN_STATES includes IN_REVIEW:
+        # carrying on would pull the PREVIOUS release out of App Review to make
+        # room for this one. Deferring costs a wait — app-store-catch-up.yml
+        # submits the latest release once the slot frees; continuing costs a
+        # release, so it is a human's call, made through the `supersede` input.
         #
         # Not every state can hold the slot, so name the one that does rather
         # than guess. A probe failure degrades to "could not determine" — the
         # 409 is the finding, the identification is the courtesy.
-        OCCUPYING_STATES = ",".join([
-            "WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_APPLE_RELEASE",
-            "PENDING_DEVELOPER_RELEASE", "PROCESSING_FOR_APP_STORE",
-            "WAITING_FOR_EXPORT_COMPLIANCE", "REJECTED", "METADATA_REJECTED",
-            "DEVELOPER_REJECTED", "INVALID_BINARY", "PENDING_CONTRACT",
-        ])
-        holder = ""
-        try:
-            probe = requests.get(
-                f"{BASE}/apps/{app_id}/appStoreVersions"
-                f"?filter[appStoreState]={OCCUPYING_STATES}&filter[platform]=IOS&limit=5",
-                headers=headers,
-            )
-            if probe.status_code == 200:
-                for v in (probe.json() or {}).get("data", []):
-                    a = v.get("attributes", {})
-                    holder = f"{a.get('versionString', '?')} is {a.get('appStoreState', '?')}"
-                    break
-        except Exception as e:  # noqa: BLE001 — diagnosis must never mask the 409
-            print(f"::warning::Could not identify the blocking version: {e}")
-        if not holder:
-            holder = "another version is in a non-live state (could not identify which)"
-        print(
-            f"::error::iOS submission for {version_string} DEFERRED, not failed: {holder}. "
-            "App Store Connect allows one non-live version at a time, so its version record "
-            "cannot be created yet. Re-run app-store.yml once that version is live (or reject "
-            "it in App Store Connect). Nothing was cancelled and no review was touched; "
-            "Maven Central and npm publish earlier in the release and are unaffected."
-        )
-        print(f"POST /v1/appStoreVersions → 409: {r.text[:400]}")
-        # Exit 2, not 1: this run is deferred by Apple's state machine, not
-        # broken. A distinct code lets app-store.yml grade it without parsing
-        # prose. It is still non-zero — nothing was submitted, and a green
-        # badge over an unsubmitted release is the false green this repo pays
-        # for most.
-        raise SystemExit(2)
-    r.raise_for_status()
-    version_id = r.json()["data"]["id"]
-    print(f"Created new version record: {version_id} ({version_string})")
+        slot = find_slot_holder()
+        holder_vs, holder_state = slot if slot else ("?", "?")
+        if (SUPERSEDE and holder_state in ("WAITING_FOR_REVIEW", "IN_REVIEW")
+                and _vtuple(holder_vs) and _vtuple(holder_vs) < _vtuple(version_string)):
+            version_id = supersede(holder_vs, holder_state)
+        else:
+            if slot and holder_vs == version_string:
+                why = (f"{version_string} is already {holder_state} — this release is with "
+                       "Apple, there is nothing left to submit")
+            elif slot:
+                why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
+                       f"version at a time. app-store-catch-up.yml submits {version_string} "
+                       "automatically once that version is live")
+                if SUPERSEDE:
+                    why += " (supersede was requested but only applies to an OLDER version "\
+                           "that is WAITING_FOR_REVIEW or IN_REVIEW)"
+            else:
+                why = ("another version is in a non-live state (could not identify which); "
+                       "app-store-catch-up.yml retries on its schedule")
+            print(f"::notice::iOS submission for {version_string} DEFERRED: {why}. Nothing was "
+                  "cancelled and no review was touched.")
+            print(f"POST /v1/appStoreVersions → 409: {r.text[:400]}")
+            # Exit 2: deferred by Apple's state machine, not broken. app-store.yml
+            # grades it as a green step with this notice, because the catch-up
+            # workflow owns the retry — a red badge that only asks a human to
+            # press "re-run" later is what kept iOS days behind (2026-09-28).
+            raise SystemExit(2)
+    else:
+        r.raise_for_status()
+        version_id = r.json()["data"]["id"]
+        print(f"Created new version record: {version_id} ({version_string})")
 
 # 4. Attach the build to the version
 payload = {"data": {"type": "builds", "id": build_id}}
