@@ -74,12 +74,15 @@ for theme in light dark; do
   mkdir -p "$OUT/screenshots/$theme"
   for id in "${IDS[@]}"; do
     xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-    xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
-    if [ "$id" != home ]; then
-      sleep 3
-      # `?qa_mode=1` freezes auto-rotation for a deterministic frame
-      # (DeepLinkRouter.swift), mirroring Android's `qa_mode` extra.
-      xcrun simctl openurl "$UDID" "sceneview://demo/$id?qa_mode=1"
+    if [ "$id" = home ]; then
+      xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
+    else
+      # Launch arguments, not `simctl openurl`: a URL raises SpringBoard's
+      # "Open in 'SceneView'?" alert, which the first CI run captured instead
+      # of the demo. `-demo <id>` routes on first frame (SceneViewDemoApp.swift,
+      # same path as capture-appstore-screenshots.sh); `-qa_mode 1` freezes
+      # auto-rotation, mirroring Android's `qa_mode` extra.
+      xcrun simctl launch "$UDID" "$BUNDLE_ID" -demo "$id" -qa_mode 1 >/dev/null
     fi
     sleep "$SETTLE"
     if xcrun simctl io "$UDID" screenshot "$OUT/screenshots/$theme/$id.png" >/dev/null 2>&1; then
