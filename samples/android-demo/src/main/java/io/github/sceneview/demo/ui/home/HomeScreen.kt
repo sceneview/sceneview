@@ -76,6 +76,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -660,8 +661,8 @@ private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "l
  */
 internal val FEATURED_SECTION_IDS = listOf(
     "ar-rerun", // Rerun AR replay — the flagship, reworked in 4.46
-    // The splat viewer takes the first row's second slot over its AR sibling only
-    // because it has a captured card; `ar-splat-room` still shows its icon tile.
+    // The splat viewer, then its AR sibling: the same scan, first on its own, then
+    // standing in a room.
     "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
     "ar-splat-room", // "Your scan, in your room" — new in 4.45
     "animation-physics", // reworked so every control shows its effect, 4.41
@@ -701,13 +702,23 @@ private fun HomeHeader(
         animationSpec = tween(SceneViewTokens.Duration.shortMillis),
         label = "headerOverlay",
     )
+    // The stage runs up under the status bar (see `HomeHeroStage`), so once the page has
+    // scrolled the overlay has to cover that strip too: painted only behind the row, it left
+    // the strip showing the stage — the top of the sun disc peeking above a white bar (#4066).
+    val statusBarPx = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
     // The wordmark row and the search row are not the same height, so the swap used to
     // step the grid underneath it. `animateContentSize` makes the header carry that
     // difference itself, on the same `motion-fade` the content crossfade uses.
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(overlay)
+            .drawBehind {
+                drawRect(
+                    color = overlay,
+                    topLeft = Offset(0f, -statusBarPx),
+                    size = Size(size.width, size.height + statusBarPx),
+                )
+            }
             .animateContentSize(animationSpec = motionFade()),
     ) {
         AnimatedContent(

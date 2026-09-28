@@ -25,6 +25,7 @@ does not load (#3438).
 | `damaged_helmet.webp` | The helmet the app actually loads | Cropped from `samples/android-demo/src/androidTest/assets/render-goldens/modelviewer_default.png`, i.e. a real capture of the demo on the pinned CI profile. |
 | `torus_knot.webp` | The Custom Geometry ribbon knot | Offline render of `TorusKnot.vertices()` at its default parameters (168 segments, 2.5 turns, 0.3 ripple) under the demo's own camera and tilt. |
 | `lines_paths_route.webp` | The Lines & Paths route | Offline render of `LinesPathsScene` — the eight control points, the Smooth route, the marker, the trail and the dashed ground track — under the demo's own camera. |
+| `raccoon_stump_scan.webp` | The raccoon-stump Gaussian splat both splat demos load | The `splat-preview` card below at q90: a crop of the real CI render. It feeds the generated `ar-splat-room` card (`"ar": true`), since the arm64 emulator cannot start an ARCore session to capture it (#4073). |
 
 The last two are rendered from the demos' own generator code rather than captured, so the
 card shows the exact curve the app computes rather than an invented knot or loop.
@@ -51,6 +52,7 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
+| `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
 told apart from the frame.

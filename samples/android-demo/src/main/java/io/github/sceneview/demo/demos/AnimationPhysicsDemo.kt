@@ -9,7 +9,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
-import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusCard
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.compose.animation.AnimatedVisibility
@@ -1473,13 +1473,10 @@ private fun PhysicsSection(
         // The scene is framed inside the band between the title row and these controls, so the
         // tray is never drawn under them.
         bottomOverlayReservesScene = true,
+        // The Tilt hint is not in this band: the band reserves the scene, so a pill that comes
+        // and goes here resized the viewport and the tray jumped (#4073). It floats over the
+        // scene instead — see the end of the `scene` slot.
         bottomOverlay = {
-            if (tiltEnabled) {
-                DemoStatusBanner(
-                    text = stringResource(R.string.demo_animation_physics_tilt_hint),
-                    tone = DemoStatusTone.Guidance,
-                )
-            }
             Row(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
@@ -1732,6 +1729,25 @@ private fun PhysicsSection(
                                 )
                             }
                         }
+                )
+            }
+
+            // Tilt hint, over the scene rather than in the reserved bottom band (#4073): it
+            // overlays the bottom of the viewport, just above the controls, so turning Tilt on
+            // or off never changes the size the tray is framed in. It carries no pointer input,
+            // so drags under it still reach the tilt layer.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = SceneViewTokens.Space.md),
+            ) {
+                DemoStatusCard(
+                    text = if (tiltEnabled) {
+                        stringResource(R.string.demo_animation_physics_tilt_hint)
+                    } else {
+                        null
+                    },
+                    tone = DemoStatusTone.Guidance,
                 )
             }
         }

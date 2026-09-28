@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app home:** once the page is scrolled, the hero's sun disc no longer shows through the status-bar strip (#4066). The "Your Scan, in Your Room" Featured card now has a real thumbnail instead of a placeholder icon, and the Real-World Scan card is cropped from the current splat render, so it is no longer washed out. Turning Physics Tilt on now shows its hint over the 3D view, so the view and the tray no longer jump (#4073).
