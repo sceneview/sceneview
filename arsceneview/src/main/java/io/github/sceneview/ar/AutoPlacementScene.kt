@@ -110,6 +110,18 @@ fun findAutoPlacementSurface(
     return UsableSurfacePolicy.rankFallback(candidates).firstOrNull()
 }
 
+/**
+ * The plane finding [AutoPlacementScene] asks ARCore for. Each flow looks only for the planes
+ * it can place on: a wall flow that is not asked for vertical planes can never find a wall
+ * (#4070), and a surface flow has no use for walls. Pure, so `AutoPlacementPlaneFindingTest`
+ * pins the contract on the JVM.
+ */
+internal fun autoPlacementPlaneFindingMode(surface: PlacementSurface): Config.PlaneFindingMode =
+    when (surface) {
+        PlacementSurface.SURFACE -> Config.PlaneFindingMode.HORIZONTAL
+        PlacementSurface.WALL -> Config.PlaneFindingMode.VERTICAL
+    }
+
 /** ARCore's +Y is the surface normal; -Z is gravity-up for upright wall content. */
 private fun orientedPlacementPose(pose: Pose, plane: Plane, camera: Pose): Pose {
     if (plane.type != Plane.Type.VERTICAL) return pose
@@ -190,11 +202,7 @@ fun AutoPlacementScene(
             materialLoader = materialLoader,
             playbackDataset = playbackDataset,
             planeRenderer = false,
-            planeFindingMode = if (surface == PlacementSurface.SURFACE) {
-                Config.PlaneFindingMode.HORIZONTAL
-            } else {
-                Config.PlaneFindingMode.VERTICAL
-            },
+            planeFindingMode = autoPlacementPlaneFindingMode(surface),
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
             onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
                 if (node == null) state.deselectPlacement() else state.selectPlacement()
