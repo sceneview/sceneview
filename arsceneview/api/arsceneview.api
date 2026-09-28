@@ -1107,6 +1107,7 @@ public final class io/github/sceneview/ar/arcore/ARSession : com/google/ar/core/
 	public static final field $stable I
 	public fun <init> (Landroid/content/Context;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;)V
 	public synthetic fun <init> (Landroid/content/Context;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
 	public fun configure (Lcom/google/ar/core/Config;)V
 	public final fun getDisplayHeight ()I
 	public final fun getDisplayRotation ()I
@@ -1116,6 +1117,7 @@ public final class io/github/sceneview/ar/arcore/ARSession : com/google/ar/core/
 	public final fun getOnConfigChanged ()Lkotlin/jvm/functions/Function2;
 	public final fun getOnPaused ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnResumed ()Lkotlin/jvm/functions/Function1;
+	public final fun isClosed ()Z
 	public final fun isResumed ()Z
 	public fun pause ()V
 	public fun resume ()V

@@ -52,6 +52,21 @@ class ARSession(
 
     var isResumed = false
 
+    private val closeGate = SessionCloseGate()
+
+    /**
+     * `true` once [close] has started (#4026).
+     *
+     * ARCore's `Session.close()` frees the native session but leaves the Java wrapper's handle
+     * set, so a method called on this object afterwards is a native use-after-free that kills
+     * the process with a signal: no Java exception, nothing a `try`/`catch` can stop. ARCore's
+     * reference says it plainly: "It is not safe to call methods on this session or other
+     * objects obtained from this session while the session is being closed and after the
+     * session is closed." Code that holds on to a session beyond its `ARSceneView` (a poll, a
+     * recorder, app state) must check this before every call.
+     */
+    val isClosed: Boolean get() = closeGate.isClosed
+
     var hasAugmentedImageDatabase = false
 
     /**
@@ -121,6 +136,7 @@ class ARSession(
     }
 
     override fun resume() {
+        check(!isClosed) { "Cannot resume a closed ARCore session (#4026)" }
         isResumed = true
         super.resume()
 
@@ -132,10 +148,29 @@ class ARSession(
         onResumed(this)
     }
 
-    override fun pause() = super.pause().also {
+    override fun pause() {
+        // A closed session has nothing left to pause, and pausing it would be a native call on
+        // freed memory (#4026).
+        if (isClosed) return
+        super.pause()
         isResumed = false
 
         onPaused(this)
+    }
+
+    /**
+     * Closes the session once (#4026). A second call is a no-op instead of a second
+     * `nativeCloseSession` on the same, already freed, native session.
+     *
+     * [isClosed] turns `true` before ARCore starts closing, so a reader that checks it never
+     * enters the session while it is being closed. The last [frame] is dropped with it: it was
+     * obtained from this session and must not be read any more.
+     */
+    override fun close() {
+        if (!closeGate.tryClose()) return
+        isResumed = false
+        frame = null
+        super.close()
     }
 
     /**
@@ -151,7 +186,7 @@ class ARSession(
      * @throws SessionPausedException if the session is currently paused.
      * @throws MissingGlContextException if there is no OpenGL context available.
      */
-    fun updateOrNull() = if(isResumed) {
+    fun updateOrNull() = if (isResumed && !isClosed) {
         super.update().takeIf {
             // Check if no frame or same timestamp, no drawing.
             it.timestamp != 0L //&& it.timestamp != frame?.timestamp
@@ -166,7 +201,7 @@ class ARSession(
         displayRotation = rotation
         displayWidth = widthPx
         displayHeight = heightPx
-        if (isResumed) {
+        if (isResumed && !isClosed) {
             super.setDisplayGeometry(displayRotation, widthPx, heightPx)
         }
     }
