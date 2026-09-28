@@ -1,10 +1,12 @@
 package io.github.sceneview.ar
 
+import com.google.ar.core.Config
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,6 +44,41 @@ class PlaneVisualizerV2Test {
         val interval = PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS
         assertFalse(isDepthRebuildDue(wallClockMs + interval - 1, wallClockMs))
         assertTrue(isDepthRebuildDue(wallClockMs + interval, wallClockMs))
+    }
+
+    // ── acquirePlaneDepthImage (#4104 review) ────────────────────────────────────────
+
+    private fun failIfCalled(): String = throw AssertionError("depth acquired on a depth-less session")
+
+    @Test
+    fun `a session with depth disabled is never asked for a depth image`() {
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.DISABLED, ::failIfCalled, ::failIfCalled))
+    }
+
+    @Test
+    fun `no depth image is acquired before the renderer reports the depth mode`() {
+        assertNull(acquirePlaneDepthImage(null, ::failIfCalled, ::failIfCalled))
+    }
+
+    @Test
+    fun `a throwing acquisition falls back instead of escaping`() {
+        // ARCore raises IllegalStateException when depth is off or degraded; escaping here made
+        // PlaneRendererV2.update's catch skip the whole plane update instead of drawing flat.
+        val degraded: () -> String = { throw IllegalStateException("depth mode is not enabled") }
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC, degraded, degraded))
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.RAW_DEPTH_ONLY, degraded, degraded))
+    }
+
+    @Test
+    fun `each depth mode reads its own depth image`() {
+        assertEquals(
+            "smoothed",
+            acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC, { "smoothed" }, { "raw" }),
+        )
+        assertEquals(
+            "raw",
+            acquirePlaneDepthImage(Config.DepthMode.RAW_DEPTH_ONLY, { "smoothed" }, { "raw" }),
+        )
     }
 
     // ── computeScanProgress / computeReflectionFadeIn ───────────────────────────────
