@@ -258,46 +258,76 @@ final class ViewerAssetTests: XCTestCase {
         return out
     }
 
-    /// Android turns the museum models `frontYaw = -30f` to open them
-    /// three-quarter, front to the left (#4166). iOS gets there with its
-    /// opening orbit instead: seen from an orbit of `a` toward +X, a model
-    /// looks turned by `-a`. Every Android `frontYaw` on a model iOS also
-    /// ships must land within 10° of that, on the same side.
-    func testMuseumModelsOpenThreeQuarterLikeAndroid() throws {
+    /// The viewer opens every model the way Android does: camera head-on and
+    /// `VIEWER_PITCH_DEGREES` above, each model turned by its own `frontYaw`.
+    /// Both are read from the Android sources, so a change on either side
+    /// fails here instead of drifting silently.
+    func testViewerOpensEachModelInAndroidsPose() throws {
+        XCTAssertEqual(ModelViewerDemo.openingAzimuth, 0, "Android's camera opens head-on (+Z).")
+        let pitch = try Self.androidViewerPitchDegrees()
+        XCTAssertEqual(ModelViewerDemo.openingElevation * 180 / .pi, pitch, accuracy: 0.001)
+
         let yaws = try Self.androidFrontYaws()
-        let iosTurn = -ModelViewerDemo.openingAzimuth * 180 / .pi
-        var compared = 0
-        for model in ModelViewerDemo.museumModels {
+        var shared = 0
+        for model in ModelViewerDemo.bundledModels + ModelViewerDemo.museumModels {
             guard let yaw = yaws[model.assetName] else { continue }
-            XCTAssertEqual(yaw.sign, iosTurn.sign, "\(model.displayName) opens facing the other side on Android.")
-            XCTAssertEqual(iosTurn, yaw, accuracy: 10, "\(model.displayName): Android turns it \(yaw)°, iOS \(iosTurn)°.")
-            compared += 1
+            XCTAssertEqual(model.frontYaw, yaw, "\(model.displayName): Android turns it \(yaw)°.")
+            shared += 1
         }
-        XCTAssertGreaterThanOrEqual(compared, 2, "Android's mammoth and rover `frontYaw` were not found.")
+        // Damaged Helmet, Flight Helmet, Lantern, Toy Car and the four museum models.
+        XCTAssertGreaterThanOrEqual(shared, 8, "Lost track of the Android model list.")
+        XCTAssertEqual(yaws["hd_woolly_mammoth"], -30, "Android's mammoth `frontYaw` not found.")
     }
 
-    /// `thumbnailStem` → `frontYaw` (degrees) for every `BundledViewerModel`
-    /// in the Android demo that sets one.
+    /// Android's `DemoMath.VIEWER_PITCH_DEGREES`.
+    static func androidViewerPitchDegrees(file: StaticString = #filePath) throws -> Float {
+        let kotlin = try String(contentsOf: androidDemoSources(file)
+            .appendingPathComponent("internal/DemoMath.kt"), encoding: .utf8)
+        let pattern = try NSRegularExpression(pattern: #"VIEWER_PITCH_DEGREES = ([0-9.]+)f"#)
+        guard let match = pattern.firstMatch(in: kotlin, range: NSRange(kotlin.startIndex..., in: kotlin)),
+              let text = Range(match.range(at: 1), in: kotlin),
+              let degrees = Float(kotlin[text]) else {
+            XCTFail("VIEWER_PITCH_DEGREES not found in DemoMath.kt")
+            return .nan
+        }
+        return degrees
+    }
+
+    /// Every `BundledViewerModel` in the Android demo → its `frontYaw` in
+    /// degrees (`0` when unset), keyed by `thumbnailStem` or, without one,
+    /// by the stem of its `models/<stem>.glb` asset — the iOS `assetName`.
     static func androidFrontYaws(file: StaticString = #filePath) throws -> [String: Float] {
-        let source = URL(fileURLWithPath: "\(file)")
+        let kotlin = try String(contentsOf: androidDemoSources(file)
+            .appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
+        let yaw = try NSRegularExpression(pattern: #"frontYaw = (-?[0-9.]+)f"#)
+        let stem = try NSRegularExpression(pattern: #"thumbnailStem = "([a-z0-9_]+)""#)
+        let asset = try NSRegularExpression(pattern: #"^\s*"models/([a-z0-9_]+)\.glb""#)
+        func first(_ re: NSRegularExpression, in text: String) -> String? {
+            guard let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let r = Range(m.range(at: 1), in: text) else { return nil }
+            return String(text[r])
+        }
+        var out: [String: Float] = [:]
+        // One chunk per constructor call, cut at the first ")" — the end of
+        // `R.string.x` never has one, and no argument nests a call — so a
+        // later field of the file cannot leak into an entry.
+        for chunk in kotlin.components(separatedBy: "BundledViewerModel(").dropFirst() {
+            guard let close = chunk.firstIndex(of: ")") else { continue }
+            let entry = String(chunk[..<close])
+            guard let key = first(stem, in: entry) ?? first(asset, in: entry) else { continue }
+            out[key] = first(yaw, in: entry).flatMap(Float.init) ?? 0
+        }
+        return out
+    }
+
+    /// `samples/android-demo/.../demo/demos`, read in place: simulator tests
+    /// run on the host file system.
+    static func androidDemoSources(_ file: StaticString) -> URL {
+        URL(fileURLWithPath: "\(file)")
             .deletingLastPathComponent()      // SceneViewDemoTests
             .deletingLastPathComponent()      // ios-demo
             .deletingLastPathComponent()      // samples
-            .appendingPathComponent("android-demo/src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt")
-        let kotlin = try String(contentsOf: source, encoding: .utf8)
-        let yaw = try NSRegularExpression(pattern: #"frontYaw = (-?[0-9.]+)f"#)
-        let stem = try NSRegularExpression(pattern: #"thumbnailStem = "([a-z0-9_]+)""#)
-        var out: [String: Float] = [:]
-        for entry in kotlin.components(separatedBy: "BundledViewerModel(").dropFirst() {
-            let range = NSRange(entry.startIndex..., in: entry)
-            guard let y = yaw.firstMatch(in: entry, range: range),
-                  let s = stem.firstMatch(in: entry, range: range),
-                  let yText = Range(y.range(at: 1), in: entry),
-                  let sText = Range(s.range(at: 1), in: entry),
-                  let degrees = Float(entry[yText]) else { continue }
-            out[String(entry[sText])] = degrees
-        }
-        return out
+            .appendingPathComponent("android-demo/src/main/java/io/github/sceneview/demo/demos")
     }
 
     /// A museum scan opens under the neutral Studio, never under the garden's

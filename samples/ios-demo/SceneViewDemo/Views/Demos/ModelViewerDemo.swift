@@ -9,9 +9,11 @@ import ARKit
 /// after the showcase redesign.
 ///
 /// **Stage.** A `#0B0F16` stage (`SceneViewTokens.Stage.background`), no
-/// auto-rotate: the model sits still on its fitted framing (12 % margin,
-/// `framingMargin(1.12)`) until the user orbits it. Under `qa_mode` the
-/// authored three-quarter pose is what a capture lands on.
+/// auto-rotate: the model sits still on its fitted framing
+/// (`framingMargin(0.91)`, sized to Android's) until the user orbits it. The
+/// camera opens in front of the model, azimuth 0 and 12° above it, as on
+/// Android; a model that reads better three-quarter is turned by its own
+/// `frontYaw`, not by the camera.
 ///
 /// **Dock.** Models · Lighting · Animate (only when the loaded entity has
 /// animation clips) · Recenter — Android's order — then the scaffold's
@@ -52,8 +54,10 @@ struct ModelViewerDemo: View {
                            description: "Wooden post, metal lantern"),
         BundledViewerModel(assetName: "khronos_toy_car", displayName: "Toy Car",
                            description: "Clearcoat car on velvet"),
+        // iOS-only and the App Store hero: head-on it is a grille, so it
+        // turns three-quarter by itself, like the museum models.
         BundledViewerModel(assetName: "cyberpunk_hovercar", displayName: "Cyberpunk Hovercar",
-                           description: "Dark gloss bodywork"),
+                           description: "Dark gloss bodywork", frontYaw: -30),
         BundledViewerModel(assetName: "animated_butterfly", displayName: "Butterfly",
                            description: "Monarch, wings in flight"),
     ]
@@ -74,13 +78,15 @@ struct ModelViewerDemo: View {
         BundledViewerModel(assetName: "hd_apollo11_interior", displayName: "Apollo 11 Interior",
                            description: "Inside the capsule, cut away · HD",
                            hdPackID: "apollo11-interior"),
+        // Head-on, the tusks hide the skeleton: it opens three-quarter, as its card shows it.
         BundledViewerModel(assetName: "hd_woolly_mammoth", displayName: "Woolly Mammoth",
                            description: "Full skeleton, 3.4 m tall · HD",
-                           hdPackID: "woolly-mammoth"),
+                           hdPackID: "woolly-mammoth", frontYaw: -30),
         // Shown static: the rover's rigging clips stay under Animate, paused.
+        // Three-quarter like the mammoth: head-on it is a wall of wheels.
         BundledViewerModel(assetName: "hd_perseverance", displayName: "Perseverance Rover",
                            description: "Mars 2020 rover, real size · HD",
-                           hdPackID: "perseverance", autoplaysAnimations: false),
+                           hdPackID: "perseverance", frontYaw: -30, autoplaysAnimations: false),
     ]
 
     /// The lighting a model opens under while the stage is still on the
@@ -184,21 +190,29 @@ struct ModelViewerDemo: View {
     /// model. Applied under `qa_mode` only.
     private static let storeHeroEnvironmentName = "studio_warm"
 
-    /// The camera's opening orbit: 36° off the content's front, toward +X,
-    /// so every model opens three-quarter with its front turned to the left
-    /// of the screen.
+    /// The camera's opening pose, Android's (`DemoMath.viewerFraming`): in
+    /// front of the model (+Z, azimuth 0) and `VIEWER_PITCH_DEGREES` = 12°
+    /// above it. A model that reads better three-quarter is turned by its own
+    /// ``BundledViewerModel/frontYaw``, as on Android, not by the camera.
+    /// Recenter returns to this same pose (`SceneView.recenterCamera`
+    /// restores the authored orbit angles).
     ///
-    /// Android opens the camera head-on and turns the Woolly Mammoth and the
-    /// Perseverance rover by `frontYaw = -30f` instead (#4166) — the same
-    /// three-quarter, front-left pose. iOS already opens every model there, so
-    /// the museum models take no extra turn: -30° on top of this orbit would
-    /// show them near profile. `ViewerAssetTests` reads Android's `frontYaw`
-    /// and holds the two within 10°.
-    static let openingAzimuth: Float = .pi / 5
+    /// `ViewerAssetTests` reads the Android constant and `frontYaw` values.
+    static let openingAzimuth: Float = 0
+    static let openingElevation: Float = 12 * .pi / 180
 
-    /// Fitted framing: the bounding sphere plus 12 % of air, which clears the
-    /// dock band at the bottom of the viewport.
-    private static let framingMargin: Float = 1.12
+    /// Fitted framing, sized to Android's. Android fits the front view of the
+    /// box to 65 % of the band between the chrome and 86 % of the width
+    /// (`DemoMath.VIEWER_FILL` / `VIEWER_HORIZONTAL_FILL`). The SceneView fit
+    /// sizes a sphere round the box instead, and at 1.12 drew every model
+    /// ~1.23x smaller than Android (Helmet 1.25, Toy Car 1.19, Mammoth 1.35,
+    /// Perseverance 1.17, Apollo 1.19, measured on the silhouettes of
+    /// side-by-side captures). 1.12 / 1.23 ≈ 0.91.
+    ///
+    /// Below 1 the sphere no longer fits the frame, so a long model can run
+    /// past the screen edges once orbited side-on. Android clips the same
+    /// way: it fits the front view only.
+    private static let framingMargin: Float = 0.91
     /// Under `qa_mode` the pose is frozen, so the store capture fills the frame.
     ///
     /// Tighter than `DynamicSkyDemo`'s 0.75 because the subjects differ in
@@ -591,7 +605,7 @@ struct ModelViewerDemo: View {
                 hdFrameWatch.joined(loadedNode.entity)
             }
             .cameraControls(.orbit)
-            .cameraOrbit(azimuth: Self.openingAzimuth)
+            .cameraOrbit(azimuth: Self.openingAzimuth, elevation: Self.openingElevation)
             .environment(sceneEnvironment)
             // `cameraDistanceOverride` — the `-camera_distance <float>` launch
             // arg (#2785) — wins over both when present, same as Android's
@@ -605,11 +619,11 @@ struct ModelViewerDemo: View {
                 // A render of the HD model itself, so the stage already shows
                 // what the download brings; the pill in the header says how far
                 // it is. The picker card's transparent render, stage-wide at
-                // 5:4 like Android's poster: the model stands on the stage.
+                // 5:4 like Android's poster, capped on iPad (`posterMaxWidth`).
                 Image(thumb)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: SceneViewTokens.Stage.posterMaxWidth)
                     .aspectRatio(SceneViewTokens.Layout.mediaAspect, contentMode: .fit)
                     .padding(.horizontal, SceneViewTokens.Space.lg)
                     .accessibilityLabel("\(posterModel.displayName), preview")
@@ -727,6 +741,15 @@ struct ModelViewerDemo: View {
             node.entity.scale = SIMD3(repeating: scale)
         } else {
             _ = node.scaleToUnits(0.6)
+        }
+        // Turned before centring: `centerOrigin` reads the world bounds, so
+        // the turned box is what lands on the origin and what the fit frames,
+        // as Android frames the turned AABB. A streamed file keeps its pose.
+        // Composed with the file's own root rotation, never written over it:
+        // a USDZ whose root prim carries a turn keeps it.
+        if let yaw = model?.frontYaw, yaw != 0 {
+            node.entity.orientation = simd_quatf(angle: yaw * .pi / 180, axis: [0, 1, 0])
+                * node.entity.orientation
         }
         _ = node.centerOrigin()
         playback = nil
