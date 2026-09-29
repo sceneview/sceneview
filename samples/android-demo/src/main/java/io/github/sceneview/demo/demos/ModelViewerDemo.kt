@@ -127,6 +127,7 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
+import io.github.sceneview.demo.filamentBackendDrainWait
 import io.github.sceneview.demo.rememberBackendDrainWait
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.VIEWER_MAX_ZOOM_FACTOR
@@ -520,9 +521,9 @@ private fun SingleModelSection(
         ViewerEnvironment("environments/night_sky_2k.hdr", "Night Sky"),
         ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),
     ) }
-    var requestedEnvironment by remember { mutableStateOf(viewerEnvironments.first()) }
-    // `true` while Studio is on because a Museum & Space model asked for it, not the user.
-    var museumLightingApplied by remember { mutableStateOf(false) }
+    // The lighting the user picked in the sheet; `null` = the default, which follows the model
+    // on stage (see `stageIsMuseumScan`).
+    var userEnvironment by remember { mutableStateOf<ViewerEnvironment?>(null) }
     var iblIntensity by remember { mutableStateOf(1f) }
     var showEnvironment by remember { mutableStateOf(false) }
     var recenterGeneration by remember { mutableStateOf(0) }
@@ -655,25 +656,6 @@ private fun SingleModelSection(
         ?.takeIf { streamedFileUrl == null }
         ?.let { hdStore?.manifest?.asset(it) }
     val hdAssetStatus by rememberHdAssetStatus(hdStore, hdAsset?.id)
-    // Museum & Space opens under Studio. The scans are pale and matte (the mammoth has no
-    // colour texture at all), so the garden's green canopy tints them and its sun blooms into
-    // a halo round the bones; the softbox shows them as the museum does, as iOS does. Only
-    // the default is swapped: a lighting the user picked stays, and leaving the shelf gives
-    // the garden back only if Studio was ours. A file the user opened, or a Surprise pick, is
-    // not a Museum scan even while a Museum entry is still the selection behind it: both ride
-    // `streamedFileUrl`, which a pick from the sheet clears. `openedModel` is no test here — a
-    // one-shot `val`, it stays set after the user picks a model from the sheet.
-    val isMuseumModel = selectedModel in MUSEUM_VIEWER_MODELS && streamedFileUrl == null
-    LaunchedEffect(isMuseumModel) {
-        val garden = viewerEnvironments.first()
-        if (isMuseumModel && requestedEnvironment == garden) {
-            requestedEnvironment = viewerEnvironments.first { it.assetPath == MUSEUM_ENVIRONMENT }
-            museumLightingApplied = true
-        } else if (!isMuseumModel && museumLightingApplied) {
-            requestedEnvironment = garden
-            museumLightingApplied = false
-        }
-    }
     val hdFileLocation = hdAsset?.takeIf { it.id in hdReadyIds }
         ?.let { android.net.Uri.fromFile(hdStore?.fileFor(it)).toString() }
     // A file that times out or has no framable bounds is dropped: the stand-in stays and the
@@ -725,6 +707,32 @@ private fun SingleModelSection(
                 ?.firstOrNull { android.net.Uri.fromFile(hdStore.fileFor(it)).toString() == loc }
         }
     }
+    // Museum & Space opens under Studio. The scans are pale and matte (the mammoth has no
+    // colour texture at all), so the garden's green canopy tints them and its sun blooms into
+    // a halo round the bones; the softbox shows them as the museum does, as iOS does. Only
+    // the default is swapped: a lighting the user picked stays.
+    // The default follows the model ON STAGE, not the pick (#4171): switched at the pick, the
+    // Apollo capsule held on stage while the Soldier loaded took the garden's warm light for
+    // seconds — the "yellow flash". It is derived here, in composition, so it changes in the
+    // very frame the replacement is handed over (an effect would lag it by one frame).
+    // A file the user opened, or a Surprise pick, is never a Museum scan. `null` while nothing is
+    // on stage (a Museum entry still downloading behind its poster): the last answer holds, so
+    // Museum → Museum never decodes the garden in between.
+    val stageIsMuseumScan: Boolean? = when {
+        activeModelInstance == null -> null
+        streamedModelInstance != null -> false
+        else -> hdAssetOnStage?.id?.let { id -> MUSEUM_VIEWER_MODELS.any { it.hdAssetId == id } } ?: false
+    }
+    // Plain holder, not state: its value is a pure function of what is on stage, so a discarded
+    // composition that wrote it leaves nothing wrong behind.
+    val stageMuseumLatch = remember { BooleanArray(1) }
+    val stageShowsMuseumScan = stageIsMuseumScan ?: stageMuseumLatch[0]
+    stageMuseumLatch[0] = stageShowsMuseumScan
+    val requestedEnvironment = userEnvironment ?: if (stageShowsMuseumScan) {
+        viewerEnvironments.first { it.assetPath == MUSEUM_ENVIRONMENT }
+    } else {
+        viewerEnvironments.first()
+    }
     // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
     // Apollo 11 scans) is shown at its real size.
     val modelScale = hdAssetOnStage?.scale ?: 1f
@@ -758,10 +766,39 @@ private fun SingleModelSection(
         else -> bundledModelInstance != null
     }
     androidx.compose.runtime.SideEffect { if (perfTargetReached) HdPackPerfProbe.instanceReady() }
-    val animationNames = remember(activeModelInstance) {
-        val animator = activeModelInstance?.animator ?: return@remember emptyList()
-        (0 until animator.animationCount).map { animator.getAnimationName(it).takeIf(String::isNotBlank) ?: "Clip ${it + 1}" }
+    // The dock's model actions (Animate and its bar) follow the model the user SEES (#4171). The
+    // instance is handed over in composition, but its first frame can sit behind the backend's
+    // material link for seconds on a slow GPU, and the screen keeps the previous model meanwhile:
+    // keyed on the hand-over, "Animate" showed over the Apollo capsule, which has no clip. A
+    // couple of frames with the new node, then a polled backend fence (the cover's own signal,
+    // #3799 — never awaited), and only then does the dock switch. Until then it keeps the clips of
+    // the model still on screen, so an HD file replacing its stand-in (same clips) never blinks
+    // the Animate item out and back. The names are copied, never read back from an instance that
+    // may have been destroyed since. `presentedInstance` is the same signal for the scan poster
+    // below: it stays up until the scan's first frame is on screen, never leaving an empty stage
+    // through the link. Compared by identity only.
+    var animationNames by remember { mutableStateOf(emptyList<String>()) }
+    var presentedInstance by remember { mutableStateOf<io.github.sceneview.model.ModelInstance?>(null) }
+    val presentedDrain = remember(activeModelInstance, engine) { filamentBackendDrainWait(engine) }
+    LaunchedEffect(presentedDrain) {
+        val staged = activeModelInstance
+        if (staged == null) {
+            animationNames = emptyList()
+            return@LaunchedEffect
+        }
+        repeat(MODEL_COVER_FRAMES) {
+            renderInvalidator.requestRender()
+            withFrameNanos { }
+        }
+        presentedDrain.start {
+            presentedInstance = staged
+            val animator = staged.animator
+            animationNames = (0 until animator.animationCount).map {
+                animator.getAnimationName(it).takeIf(String::isNotBlank) ?: "Clip ${it + 1}"
+            }
+        }
     }
+    val stagePresented = activeModelInstance != null && activeModelInstance === presentedInstance
     LaunchedEffect(activeModelInstance, selectedAnimation, animationPlaying) {
         val animator = activeModelInstance?.animator ?: return@LaunchedEffect
         // gltfio's Animator has no bounds check: querying a clip on a model
@@ -1262,7 +1299,10 @@ private fun SingleModelSection(
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
             // A Museum & Space scan has no bundled stand-in to take to AR (HD in AR waits for a
             // real-device proof), so the action is off rather than opening another model.
-        }, enabled = arSupported == true && (openedFile != null || selectedModel.assetPath != null)),
+            // It is also off while a pick is still loading behind the previous model (#4171):
+            // the screen shows one model, the action would open another.
+        }, enabled = arSupported == true && stageShowsSelection && stagePresented &&
+            (openedFile != null || selectedModel.assetPath != null)),
         chromeToggleOnTap = true,
         // The Lighting sheet is glass (#3827): the dock would show through it.
         dockHidden = environmentSheetOpen,
@@ -1433,8 +1473,9 @@ private fun SingleModelSection(
 
             // A Museum & Space scan with no model on the stage yet: its own render (the picker
             // card's image, made from the same GLB) stands in, under the pill that says how far
-            // the download is — never a spinner over an empty stage, never another model.
-            val poster = selectedModel.takeIf { activeModelInstance == null && it.assetPath == null }
+            // the download is — never a spinner over an empty stage, never another model. It stays
+            // until the scan's first frame is presented, not merely handed to the scene (#4171).
+            val poster = selectedModel.takeIf { !stagePresented && it.assetPath == null }
                 ?.let { ModelThumbnails.resourceFor(it.thumbnailName) }
             if (poster != null) {
                 Image(
@@ -1508,12 +1549,9 @@ private fun SingleModelSection(
     if (environmentSheetOpen) EnvironmentSheet(
         environments = viewerEnvironments,
         selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,
-        onSelect = { requestedEnvironment = it; museumLightingApplied = false },
+        onSelect = { userEnvironment = it },
         onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
-        onReset = {
-            requestedEnvironment = viewerEnvironments.first(); iblIntensity = 1f; showEnvironment = false
-            museumLightingApplied = false
-        },
+        onReset = { userEnvironment = null; iblIntensity = 1f; showEnvironment = false },
         onDismiss = { environmentSheetOpen = false },
         onCoveredHeightChange = { environmentSheetCover = it },
     )
