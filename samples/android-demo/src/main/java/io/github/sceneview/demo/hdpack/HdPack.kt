@@ -76,7 +76,7 @@ object HdPack {
     private val _loaded = MutableStateFlow<HdPackStore?>(null)
     @Volatile private var manifestFailed = false
 
-    /** `true` once the pack has been removed by the user; flips back on "Download now". */
+    /** `true` once the pack has been removed by the user; flips back on the whole-pack "Download now" (About), not on one model's pill. */
     val removedByUser = MutableStateFlow(false)
 
     /**
@@ -122,7 +122,9 @@ object HdPack {
      */
     fun downloadNow(context: Context, assetId: String? = null) {
         val store = store(context) ?: return
-        setRemoved(context, false)
+        // One model's pill fetches that model and nothing more: it does not turn the Wi-Fi
+        // prefetch back on after the user removed the pack. Only the whole-pack download does.
+        if (assetId == null) setRemoved(context, false)
         if (assetId != null && store.manifest.asset(assetId) != null) {
             val name = ASSET_WORK_PREFIX + assetId
             enqueue(context, name, NetworkType.CONNECTED, ExistingWorkPolicy.KEEP, setOf(assetId))
@@ -235,7 +237,9 @@ object HdPack {
         override suspend fun doWork(): Result {
             val store = store(applicationContext) ?: return Result.failure()
             return try {
-                store.downloadMissing(only = inputData.getStringArray(KEY_ONLY)?.toSet())
+                // A job queued by an earlier build carries no id list: it was the Wi-Fi prefetch, so
+                // it fetches what the prefetch fetches now, never the whole pack.
+                store.downloadMissing(only = inputData.getStringArray(KEY_ONLY)?.toSet() ?: PREFETCH_IDS)
                 Result.success()
             } catch (e: HdPackIntegrityException) {
                 Log.e(TAG, "HD pack file rejected, not retrying", e)

@@ -104,7 +104,7 @@ per-asset author is shown where `assets/catalog.json` records one.
 
 ## HD pack (downloaded after install)
 
-Not bundled: the app downloads these on Wi-Fi from the `hd-pack-v1` GitHub Release.
+Not bundled: each model downloads from the `hd-pack-v1` GitHub Release when the user asks for it; only the Flight Helmet is fetched ahead, on Wi-Fi.
 Listed from [`assets/hd-pack/android.json`](../../../../../assets/hd-pack/android.json).
 
 - `apollo11-exterior` — **[Apollo 11 Command Module](http://n2t.net/ark:/65665/nv9ce74610f-62de-46b6-904f-58abfecb555c)** by Smithsonian National Air and Space Museum — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (9.1 MB)

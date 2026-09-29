@@ -131,11 +131,10 @@ class HdPackStore(
     }
 
     /**
-     * The order files are fetched in: [first] (the model on screen), then the smallest first —
-     * a fresh install on Wi-Fi gets a model to show in seconds instead of after the biggest file.
+     * The order files are fetched in: smallest first, so a whole-pack download (About) has a
+     * model to show in seconds instead of after the biggest file.
      */
-    fun downloadOrder(first: String? = null): List<HdAsset> =
-        manifest.assets.sortedWith(compareBy<HdAsset>({ it.id != first }, { it.bytes }))
+    fun downloadOrder(): List<HdAsset> = manifest.assets.sortedBy { it.bytes }
 
     /** Deletes every file of the pack — the user's "Remove". Returns the bytes freed. */
     suspend fun removeAll(): Long = downloadLock.withLock {

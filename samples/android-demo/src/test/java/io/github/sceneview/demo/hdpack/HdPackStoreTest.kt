@@ -110,15 +110,13 @@ class HdPackStoreTest {
 
     // ── Order and progress ───────────────────────────────────────────────
 
-    @Test fun `the model on screen downloads first, then the smallest files`() {
+    @Test fun `a whole-pack download fetches the smallest files first`() {
         fun entry(id: String, bytes: Long) = asset.copy(id = id, bytes = bytes)
         val store = HdPackStore(
             HdPackManifest(1, listOf(entry("big", 30), entry("small", 10), entry("mid", 20))),
             tmp.newFolder(),
         )
         assertEquals(listOf("small", "mid", "big"), store.downloadOrder().map { it.id })
-        assertEquals(listOf("big", "small", "mid"), store.downloadOrder(first = "big").map { it.id })
-        assertEquals(listOf("small", "mid", "big"), store.downloadOrder(first = "unknown").map { it.id })
     }
 
     @Test fun `the download dialog quotes only the files still missing`() {
@@ -167,18 +165,33 @@ class HdPackStoreTest {
 
     @Test fun `a model's own download fetches that file and nothing else`() = runBlocking {
         MockWebServer().use { server ->
+            // One response only: a second request would find nothing enqueued and hang.
+            server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(payload)).build())
             server.start()
-            val other = asset.copy(id = "woolly-mammoth", title = "Woolly Mammoth")
+            // Smaller than the helmet, so smallest-first order would fetch it first if it were not skipped.
+            val otherPayload = ByteArray(1_000) { (it * 7 % 13).toByte() }
+            val otherSha = sha256(otherPayload)
+            val other = asset.copy(
+                id = "woolly-mammoth",
+                title = "Woolly Mammoth",
+                file = "$otherSha.glb",
+                sha256 = otherSha,
+                bytes = otherPayload.size.toLong(),
+            )
             val store = HdPackStore(
                 HdPackManifest(1, listOf(asset, other)),
                 tmp.newFolder("hd-pack"),
                 OkHttpClient(),
                 server.url("/").toString().trimEnd('/'),
             )
-            // Not in the set: no request reaches the server (none is enqueued, so one would hang).
-            store.downloadMissing(only = setOf("perseverance"))
-            assertEquals(0, server.requestCount)
-            assertTrue(store.readyIds.value.isEmpty())
+
+            store.downloadMissing(only = setOf(asset.id))
+
+            assertEquals(1, server.requestCount)
+            assertEquals("/$sha.glb", server.takeRequest(5, TimeUnit.SECONDS)!!.url.encodedPath)
+            assertEquals(setOf(asset.id), store.readyIds.value)
+            assertNull(store.readyFile(other.id))
+            assertFalse(store.isComplete)
         }
     }
 

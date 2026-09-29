@@ -805,7 +805,10 @@ def render_hd_pack_section(manifest_rel: str, to_root: str) -> list[str]:
     if not assets:
         return []
     lines = ["## HD pack (downloaded after install)", ""]
-    lines.append("Not bundled: the app downloads these on Wi-Fi from the `hd-pack-v1` GitHub Release.")
+    lines.append(
+        "Not bundled: each model downloads from the `hd-pack-v1` GitHub Release when the user "
+        "asks for it; only the Flight Helmet is fetched ahead, on Wi-Fi."
+    )
     lines.append(f"Listed from [`{manifest_rel}`]({to_root}{manifest_rel}).")
     lines.append("")
     for a in assets:
