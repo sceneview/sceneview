@@ -1,12 +1,12 @@
 {
-  "images": [
+  "images" : [
     {
-      "filename": "model_thumb_hd_woolly_mammoth.jpg",
-      "idiom": "universal"
+      "filename" : "model_thumb_hd_woolly_mammoth.heic",
+      "idiom" : "universal"
     }
   ],
-  "info": {
-    "author": "xcode",
-    "version": 1
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
   }
 }

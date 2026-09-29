@@ -228,6 +228,20 @@ the capsule's walls so the cabin shows. Perseverance is posed at the start of it
 the pose the viewer holds. The mammoth and the rover open turned by `frontYaw = -30°`, so their
 30° thumbnails are the very angle the viewer opens on (the camera turned rather than the model).
 
+### On iOS
+
+`samples/ios-demo/SceneViewDemo/Assets.xcassets/model_thumb_<asset>.imageset` uses
+the same files: a model shared with Android ships Android's WebP decoded with `dwebp` and
+re-encoded as HEIC with alpha (`sips -s format heic -s formatOptions 85`; an asset catalog
+takes no WebP). A HEIC source is a sixth of the PNG, but `actool` also keeps an ARGB
+fallback copy of each HEIF, so the compiled `Assets.car` grows by about 870 KB (+17 %)
+where PNG sources would cost about 200 KB more. The two iOS-only models, Cyberpunk Hovercar
+and Butterfly, have no GLB on Android: they are rendered from their USDZ by an offline
+SceneKit pass under the same `chinese_garden` light (exposure adaptation off, +0.7 EV), with
+the same 50 mm lens, 30°/18° view, trim and 80 % fit on a transparent 600×480 canvas. The
+Image Planes demo keeps its own opaque square pictures (`image_plane_*`): its unlit planes
+draw no alpha.
+
 ### Scene cards
 
 The sheet's "Scenes" row holds one card, the Park, in two files: the sheet shows the one this
