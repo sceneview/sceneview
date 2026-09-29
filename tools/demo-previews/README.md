@@ -233,7 +233,9 @@ the pose the viewer holds. The mammoth and the rover open turned by `frontYaw = 
 `samples/ios-demo/SceneViewDemo/Assets.xcassets/model_thumb_<asset>.imageset` uses
 the same files: a model shared with Android ships Android's WebP decoded with `dwebp` and
 re-encoded as HEIC with alpha (`sips -s format heic -s formatOptions 85`; an asset catalog
-takes no WebP, and HEIC is a sixth of the PNG). The two iOS-only models, Cyberpunk Hovercar
+takes no WebP). A HEIC source is a sixth of the PNG, but `actool` also keeps an ARGB
+fallback copy of each HEIF, so the compiled `Assets.car` grows by about 870 KB (+17 %)
+where PNG sources would cost about 200 KB more. The two iOS-only models, Cyberpunk Hovercar
 and Butterfly, have no GLB on Android: they are rendered from their USDZ by an offline
 SceneKit pass under the same `chinese_garden` light (exposure adaptation off, +0.7 EV), with
 the same 50 mm lens, 30°/18° view, trim and 80 % fit on a transparent 600×480 canvas. The
