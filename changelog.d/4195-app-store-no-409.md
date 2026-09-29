@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Tagging a release while an older iOS version waits for App Review no longer sends Apple a request it must refuse ([#4195](https://github.com/sceneview/sceneview/pull/4195)).** The deploy now checks which version is in review before creating a new one. The build still goes to TestFlight, the run passes and names the version it is waiting behind, and the catch-up job submits the latest release once that version is live. A draft or withdrawn version is still reused with the new build, and nothing is ever pulled out of review.
