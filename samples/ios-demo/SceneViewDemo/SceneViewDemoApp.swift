@@ -252,6 +252,8 @@ struct ContentView: View {
         #else
         .sheet(item: $presentedDemo) { link in
             DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
+                // Same floor as `ShowcaseTab`: a macOS sheet has no size of its own.
+                .frame(minWidth: 960, minHeight: 640)
         }
         #endif
     }

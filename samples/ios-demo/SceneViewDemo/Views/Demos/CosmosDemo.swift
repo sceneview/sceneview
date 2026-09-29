@@ -143,6 +143,8 @@ final class CosmosEngine {
     @ObservationIgnored private var shownScene: CosmosSceneKind?
     @ObservationIgnored private var lastTick: Date?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
+    /// Whether the built flow field faces a landscape viewport; it is rebuilt when that flips.
+    @ObservationIgnored private var flowLandscape: Bool?
 
     func install(in root: Entity) {
         world.name = "cosmos-world"
@@ -170,6 +172,7 @@ final class CosmosEngine {
         frameLink = nil
         loadTask?.cancel()
         loadTask = nil
+        for entities in built.values { entities.cancelChurn() }
         lastTick = nil
     }
 
@@ -228,6 +231,7 @@ final class CosmosEngine {
         // Quads face the camera of the scene's resting pose; its sway is a few degrees.
         let time = Self.qaTime[kind.rawValue]
         let view = GlowView(eye: camera(kind, time: time).eye, focal: focal)
+        let landscape = aspect > 1
         let started = Date()
         let layers = await Task.detached(priority: .userInitiated) {
             CosmosSceneLayers.build(kind, view: view, time: time)
@@ -238,6 +242,7 @@ final class CosmosEngine {
             entities.root.isEnabled = false
             world.addChild(entities.root)
             built[kind] = entities
+            if kind == .flow { flowLandscape = landscape }
         } catch {
             NSLog("[Cosmos] building \(kind) failed: \(error)")
         }
@@ -266,6 +271,13 @@ final class CosmosEngine {
                 ensureBuilt(next)
                 return
             }
+        }
+        if let flow = built[.flow], let landscape = flowLandscape, landscape != (aspect > 1) {
+            // The viewport turned across square: the flow's quads faced the other framing.
+            flow.root.removeFromParent()
+            built[.flow] = nil
+            flowLandscape = nil
+            if current == .flow { ensureBuilt(.flow) }
         }
         for (kind, other) in built { other.root.isEnabled = kind == current }
         guard let entities = built[current] else {
@@ -475,6 +487,13 @@ final class CosmosSceneEntities {
     /// The star's surface frames, keyed by churn step: 0 is the one built with the scene.
     private var churnFrames: [Int: TextureResource] = [:]
     private var churnBaking: Int?
+    private var churnTask: Task<Void, Never>?
+    /// The frame the dictionary was last pruned for.
+    private var churnFrom = 0
+    /// Where the surface is in its own clock; see `churn(time:intensity:)`.
+    private var surfaceTime: Float = 0
+    /// The scene time `churn` last saw: the surface clock advances by its increments.
+    private var churnClock: Float = 0
     private let churnTime: Float
 
     /// Seconds between two baked frames of the star's surface; the ball cross-fades between them.
@@ -577,33 +596,89 @@ final class CosmosSceneEntities {
     /// surface is re-baked every `churnStep` seconds in the background, and the ball
     /// cross-fades from one frame to the next. Frame 0 is the build's, so a frozen star and
     /// the first second of a live one show exactly what was built.
+    ///
+    /// The surface runs on its own clock, `surfaceTime`: it moves by the scene's elapsed time,
+    /// never faster, and only fades toward a frame that is baked. A late bake holds the
+    /// surface on its current frame, and it resumes the fade from there — it never skips a
+    /// frame nor leaps ahead within one. In Low Power Mode or at a serious thermal state the
+    /// surface holds too, and nothing is baked.
     private func churn(time: Float, intensity: Float) {
         guard let ball = balls.first, let first = churnFrames[0] else { return }
-        let step = Int(max(time, 0) / Self.churnStep)
-        let mix = max(time, 0) / Self.churnStep - Float(step)
-        // The newest frame at or before `step`, and the next one if it is ready.
-        let from = (0...step).reversed().first { churnFrames[$0] != nil } ?? 0
+        let target = max(time, 0)
+        if target < churnClock {
+            // The clock went back (the tour came round, the scene was picked again): only
+            // the build's frame is still on the way.
+            cancelChurn()
+            churnFrames = [0: first]
+            surfaceTime = 0
+            churnFrom = -1
+        }
+        var elapsed = target - churnClock
+        churnClock = target
+        if !Self.churnHeld {
+            // Fade toward frame `step + 1` only once it is there, one boundary at a time.
+            while elapsed > 0 {
+                let step = Self.churnFrame(surfaceTime)
+                guard churnFrames[step + 1] != nil else { break }
+                let move = min(elapsed, Float(step + 1) * Self.churnStep - surfaceTime)
+                guard move > 0 else { break }
+                surfaceTime += move
+                elapsed -= move
+            }
+        }
+        let from = Self.churnFrame(surfaceTime)
+        let mix = max(0, surfaceTime / Self.churnStep - Float(from))
         let a = churnFrames[from] ?? first
-        if from == step, let b = churnFrames[step + 1] {
+        if let b = churnFrames[from + 1] {
             ball.show(a, b, mix: mix, intensity: intensity)
         } else {
             ball.show(a, a, mix: 0, intensity: intensity)
         }
-        guard time > 0 else { return }
-        // Keep the frame on screen and the next two; bake the first one missing.
-        churnFrames = churnFrames.filter { $0.key == 0 || $0.key >= from }
-        guard churnBaking == nil,
-              let wanted = [step + 1, step + 2].first(where: { churnFrames[$0] == nil }) else { return }
+        if from != churnFrom {
+            // Keep the frame on screen and the ones after it.
+            churnFrom = from
+            churnFrames = churnFrames.filter { $0.key == 0 || $0.key >= from }
+        }
+        guard time > 0, !Self.churnHeld, churnBaking == nil,
+              let wanted = [from + 1, from + 2].first(where: { churnFrames[$0] == nil }) else { return }
         churnBaking = wanted
         let at = churnTime + Float(wanted) * Self.churnStep
-        Task { @MainActor [weak self] in
+        let width = Self.churnWidth
+        churnTask = Task { @MainActor [weak self] in
+            // Half the build's resolution: a frame is on screen for 1.5 s, mostly mid-fade.
             let image = await Task.detached(priority: .utility) {
-                Plasma.surface(.star, time: at, gain: CosmosSceneLayers.starPulse).image
+                Plasma.surface(.star, time: at, gain: CosmosSceneLayers.starPulse,
+                               width: width, height: width / 2).image
             }.value
-            guard let self else { return }
-            if let texture = try? await GlowEntity.texture(image) { self.churnFrames[wanted] = texture }
+            guard let self, !Task.isCancelled else { return }
+            let texture = try? await GlowEntity.texture(image)
+            guard !Task.isCancelled else { return }
+            if let texture { self.churnFrames[wanted] = texture }
             self.churnBaking = nil
+            self.churnTask = nil
         }
+    }
+
+    /// Stops the surface bake in flight; the next `update` starts it again.
+    func cancelChurn() {
+        churnTask?.cancel()
+        churnTask = nil
+        churnBaking = nil
+    }
+
+    /// Width of a churned surface frame; the build's frame 0 keeps the full 1024.
+    static let churnWidth = 512
+
+    /// The frame a surface time sits on or after; a time that landed on a boundary by
+    /// summation counts as that boundary's frame despite rounding.
+    private static func churnFrame(_ surfaceTime: Float) -> Int {
+        Int((surfaceTime / churnStep + 1e-4).rounded(.down))
+    }
+
+    /// Low Power Mode or a serious thermal state: the surface holds its frame, nothing is baked.
+    private static var churnHeld: Bool {
+        let info = ProcessInfo.processInfo
+        return info.isLowPowerModeEnabled || info.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     }
 }
 

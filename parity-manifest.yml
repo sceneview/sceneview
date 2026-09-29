@@ -673,9 +673,12 @@ demos:
       dash atlas through textureCoordinateTransform (dash colours quantized
       per octave to fit one 8192-texel atlas), stars twinkle through eight
       phase groups with one material each, and the star surface churns by
-      cross-fading plasma frames baked in the background every 1.5 s of
-      scene time. The Flow landscape quarter-turn is ported (not captured:
-      headless simulator cannot rotate). Remaining gaps: the flow nuclei do
+      cross-fading 512x256 plasma frames baked in the background every 1.5 s
+      of scene time (held in Low Power Mode or at a serious thermal state).
+      The Flow landscape quarter-turn is ported and rebuilt when the viewport
+      crosses square; captured in a macOS window, where only the brightest
+      light shows (the dim light is lost on macOS in Galaxy and Flow; cause
+      not yet traced). Remaining gaps: the flow nuclei do
       not churn, the galaxy is built in one pass, the Settings sheet has no
       "Settings" title (DemoChrome has no parameter for it), and the bloom is
       added in display space with a baked filmic roll-off standing in for

@@ -534,10 +534,15 @@ enum GlowBuilder {
                     classOf[key] = classOf.count
                 }
             }
-            if classOf.count <= maxRows || step <= 1 { break }
+            if classOf.count <= maxRows || step <= 0.125 { break }
             step /= 2
         }
-        let rows = max(classOf.count, 1)
+        // Past 8 octaves per class there is nothing left to merge by: clamp, never overflow.
+        let rows = min(max(classOf.count, 1), maxRows)
+        if classOf.count > maxRows {
+            classOf = classOf.filter { $0.value < maxRows }
+            for index in segmentClass.indices { segmentClass[index] = min(segmentClass[index], maxRows - 1) }
+        }
         let width = dashPeriod
         var image = GlowImage(width: width, height: rows * rowHeight, cell: rowHeight)
         var along = [Float](repeating: 0, count: width)
