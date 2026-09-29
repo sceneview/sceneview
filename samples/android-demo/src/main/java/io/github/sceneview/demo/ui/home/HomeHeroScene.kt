@@ -71,6 +71,13 @@ import kotlin.math.sin
 const val HOME_HERO_MODEL: String = "models/khronos_damaged_helmet.glb"
 
 private const val HERO_HDR = "environments/sunset_2k.hdr"
+
+/**
+ * Longest the textured helmet waits for the HDR before its entrance starts anyway. The HDR
+ * decodes off the main thread and can land after the helmet; starting the entrance first
+ * would show the helmet flat, then pop it to lit.
+ */
+private const val HERO_IBL_WAIT_NANOS = 1_500_000_000L
 private const val HERO_TERRAIN_MATERIAL = "materials/hero_terrain.filamat"
 
 /**
@@ -203,10 +210,11 @@ private fun HomeHeroStage(
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val fallbackEnvironment = rememberEnvironment(environmentLoader, isOpaque = false)
-    // The HDR lands when it lands; the flight starts under the plain environment. Skipped
-    // entirely on the light tier. Its decode and prefilter run on the main thread
-    // (`EnvironmentLoader.createHDREnvironment` is synchronous), so it is the costliest load
-    // here — which is why it is never started once Home is no longer resumed.
+    // The HDR lands when it lands; the terrain flight starts under the plain environment, and
+    // the helmet waits for it (at most HERO_IBL_WAIT_NANOS) so it never pops from flat to lit.
+    // Skipped entirely on the light tier. Its decode runs off the main thread but its upload and
+    // prefilter do not, so it is still the costliest load here — which is why it is never
+    // started once Home is no longer resumed.
     // Each load below is composed only while loads are allowed or once it has landed:
     // leaving composition cancels a load still in flight before it reaches the engine.
     var hdrLanded by remember { mutableStateOf(false) }
@@ -303,6 +311,7 @@ private fun HomeHeroStage(
     val helmetNode = remember { arrayOfNulls<ModelNodeImpl>(1) }
     val helmetBaseScale = remember { floatArrayOf(1f) }
     val entranceStart = remember { arrayOfNulls<Double>(1) }
+    val texturedAtNanos = remember { arrayOfNulls<Long>(1) }
     val terrainStart = remember { arrayOfNulls<Double>(1) }
 
     // Device tilt steers the gaze while the flight is live; the listener leaves with it.
@@ -364,7 +373,10 @@ private fun HomeHeroStage(
                     StartupMarker.mark("first_model_frame")
                     if (!modelLoader.isLoading) {
                         StartupMarker.mark("model_textured_frame")
-                        if (entranceStart[0] == null) entranceStart[0] = clock.seconds
+                        val texturedAt = texturedAtNanos[0] ?: nanos.also { texturedAtNanos[0] = it }
+                        // Enter lit: wait for the IBL on the cinematic tier, never past the ceiling.
+                        val lit = !tier.cinematic || hdrLanded || nanos - texturedAt >= HERO_IBL_WAIT_NANOS
+                        if (entranceStart[0] == null && lit) entranceStart[0] = clock.seconds
                     }
                 }
                 if (terrainNode[0] != null && terrainStart[0] == null) terrainStart[0] = clock.seconds
