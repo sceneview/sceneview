@@ -68,6 +68,7 @@ import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.TrayBallDrag
+import io.github.sceneview.demo.demos.internal.TrayFraming
 import io.github.sceneview.demo.demos.internal.TrayStage
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -280,9 +281,18 @@ fun RollingBallsDemo(onBack: () -> Unit) {
     val trayTouch: (MotionEvent) -> Boolean = trayTouch@{ event ->
         val pitch = pitchAnim.value
         val roll = rollAnim.value
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
+        val step = TrayBallDrag.pointerStep(
+            event.actionMasked,
+            event.getPointerId(event.actionIndex),
+            grip.pointerId,
+        )
+        when (step) {
+            TrayBallDrag.PointerStep.Begin -> {
+                // A new gesture never inherits a grab: a ball still held from a gesture whose end
+                // never arrived is set down first.
+                if (simulation.heldId != null) simulation.release(Position(0f, 0f, 0f))
                 grip.owner = TrayGrip.Owner.None
+                grip.pointerId = null
                 val ray = view.screenToRay(event.x, event.y) ?: return@trayTouch false
                 val origin = TrayBallDrag.toTrayFrame(pitch, roll, ray.origin)
                 val direction = TrayBallDrag.toTrayFrame(pitch, roll, ray.direction)
@@ -299,6 +309,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     val hit = TrayBallDrag.projectOnPlane(origin, direction, planeY)
                     val center = body.node.position
                     grip.owner = TrayGrip.Owner.Ball
+                    grip.pointerId = event.getPointerId(0)
                     grip.planeY = planeY
                     grip.offsetX = if (hit != null) center.x - hit.x else 0f
                     grip.offsetZ = if (hit != null) center.z - hit.z else 0f
@@ -310,6 +321,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     true
                 } else if (tiltEnabled) {
                     grip.owner = TrayGrip.Owner.Tilt
+                    grip.pointerId = event.getPointerId(0)
                     grip.lastX = event.x
                     grip.lastY = event.y
                     true
@@ -317,9 +329,12 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     false
                 }
             }
-            MotionEvent.ACTION_MOVE -> when (grip.owner) {
+            // The owning finger's own coordinates, never index 0: with a second finger down,
+            // index 0 may be the other one.
+            TrayBallDrag.PointerStep.Follow -> when (grip.owner) {
                 TrayGrip.Owner.Ball -> {
-                    val ray = view.screenToRay(event.x, event.y)
+                    val index = grip.pointerId?.let { event.findPointerIndex(it) } ?: -1
+                    val ray = if (index >= 0) view.screenToRay(event.getX(index), event.getY(index)) else null
                     val hit = ray?.let {
                         TrayBallDrag.projectOnPlane(
                             TrayBallDrag.toTrayFrame(pitch, roll, it.origin),
@@ -339,24 +354,31 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     true
                 }
                 TrayGrip.Owner.Tilt -> {
-                    val dx = event.x - grip.lastX
-                    val dy = event.y - grip.lastY
-                    grip.lastX = event.x
-                    grip.lastY = event.y
-                    if (dx != 0f || dy != 0f) hintDismissed = true
-                    applyTilt(
-                        pitch + dy * PHYSICS_TILT_DEGREES_PER_PIXEL,
-                        roll - dx * PHYSICS_TILT_DEGREES_PER_PIXEL,
-                    )
+                    val index = grip.pointerId?.let { event.findPointerIndex(it) } ?: -1
+                    if (index >= 0) {
+                        val dx = event.getX(index) - grip.lastX
+                        val dy = event.getY(index) - grip.lastY
+                        grip.lastX = event.getX(index)
+                        grip.lastY = event.getY(index)
+                        if (dx != 0f || dy != 0f) hintDismissed = true
+                        applyTilt(
+                            pitch + dy * PHYSICS_TILT_DEGREES_PER_PIXEL,
+                            roll - dx * PHYSICS_TILT_DEGREES_PER_PIXEL,
+                        )
+                    }
                     true
                 }
                 TrayGrip.Owner.None -> false
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            // The owning finger lifted — even with another finger still down — or the system
+            // cancelled the gesture: the grab ends there.
+            TrayBallDrag.PointerStep.End, TrayBallDrag.PointerStep.Cancel -> {
                 val owner = grip.owner
                 grip.owner = TrayGrip.Owner.None
+                grip.pointerId = null
                 if (owner == TrayGrip.Owner.Ball) {
-                    val (vx, vz) = if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    // A lift throws with the finger's speed; a cancel sets the ball down in place.
+                    val (vx, vz) = if (step == TrayBallDrag.PointerStep.End) {
                         grip.velocity.velocity(event.eventTime)
                     } else {
                         0f to 0f
@@ -366,8 +388,9 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                 }
                 owner != TrayGrip.Owner.None
             }
-            // A second finger while a ball or the tilt owns the gesture stays with that owner.
-            else -> grip.owner != TrayGrip.Owner.None
+            // A second finger while a ball or the tilt owns the gesture is ignored and the gesture
+            // stays with its owner; with nothing owned, the orbit gets it.
+            TrayBallDrag.PointerStep.Ignore -> grip.owner != TrayGrip.Owner.None
         }
     }
 
@@ -727,6 +750,9 @@ private class TrayGrip {
 
     var owner: Owner = Owner.None
 
+    /** Id of the finger that owns the grab; other fingers never move or release it. */
+    var pointerId: Int? = null
+
     /** Height, in the tray's frame, of the plane a held ball slides along. */
     var planeY: Float = 0f
 
@@ -800,28 +826,23 @@ private fun TrayGlassChip(
 }
 
 /**
- * The tray's camera for a viewport of [aspect]: the tray and the drop column above it fitted at
- * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down, with a stock orbit the user can drag.
+ * The tray's camera for a viewport of [aspect]: the table itself fitted at
+ * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down — [PHYSICS_FRAME_WIDTH_FILL] of the width, centred in
+ * the band between the title row and the controls — with a stock orbit the user can drag (#4180).
  */
 private fun trayCameraManipulator(aspect: Float): CameraGestureDetector.CameraManipulator {
-    val distance = io.github.sceneview.demo.fitOrbitRadius(
-        extentX = PHYSICS_FRAME_EXTENT.x,
-        extentY = PHYSICS_FRAME_EXTENT.y,
-        extentZ = PHYSICS_FRAME_EXTENT.z,
+    val half = PHYSICS_TABLE_SIZE / 2f
+    val shot = TrayFraming.fit(
+        min = Position(-half, PHYSICS_FLOOR - TrayStage.FELT_THICKNESS - TrayStage.BODY_HEIGHT, -half),
+        max = Position(half, PHYSICS_FLOOR + TrayStage.RIM_HEIGHT + TrayStage.INLAY_HEIGHT, half),
         aspect = aspect,
-        elevationDegrees = PHYSICS_CAMERA_PITCH_DEGREES,
-        fill = PHYSICS_FRAME_FILL,
-        azimuthInvariant = false,
+        pitchDegrees = PHYSICS_CAMERA_PITCH_DEGREES,
+        verticalFovDegrees = io.github.sceneview.verticalFovDegreesForFocalLength(PHYSICS_FOCAL_LENGTH_MM)
+            .toFloat(),
+        widthFill = PHYSICS_FRAME_WIDTH_FILL,
+        heightFill = PHYSICS_FRAME_HEIGHT_FILL,
     )
-    val pitch = Math.toRadians(PHYSICS_CAMERA_PITCH_DEGREES.toDouble())
-    return TrayCameraManipulator(
-        eye = Position(
-            PHYSICS_FRAME_TARGET.x,
-            PHYSICS_FRAME_TARGET.y + distance * sin(pitch).toFloat(),
-            PHYSICS_FRAME_TARGET.z + distance * cos(pitch).toFloat(),
-        ),
-        target = PHYSICS_FRAME_TARGET,
-    )
+    return TrayCameraManipulator(eye = shot.eye, target = shot.target)
 }
 
 /**
@@ -906,12 +927,6 @@ private const val PHYSICS_DROP_LAYER = 0.2f
 /** Outer footprint of the table: the tray plus its rim on both sides (#4180). */
 private const val PHYSICS_TABLE_SIZE = PHYSICS_TRAY_SIZE - PHYSICS_RAIL_THICKNESS + 2f * TrayStage.RIM_WIDTH
 
-/** What the camera frames: the whole table plus the drop column above it. */
-private val PHYSICS_FRAME_EXTENT = Position(PHYSICS_TABLE_SIZE + 0.05f, 0.75f, PHYSICS_TABLE_SIZE + 0.05f)
-
-/** Centre of [PHYSICS_FRAME_EXTENT]: from the floor to just above the drop height. */
-private val PHYSICS_FRAME_TARGET = Position(0f, PHYSICS_FLOOR + 0.35f, 0f)
-
 /**
  * Look-down of the opening frame: the whole felt reads, and so does a ball's bounce. Steeper than
  * the 32° it was before the finger drag (#4180): the more the felt faces the eye, the more screen
@@ -919,8 +934,18 @@ private val PHYSICS_FRAME_TARGET = Position(0f, PHYSICS_FLOOR + 0.35f, 0f)
  */
 private const val PHYSICS_CAMERA_PITCH_DEGREES = 40f
 
-/** Share of the viewport the framed volume fills. */
-private const val PHYSICS_FRAME_FILL = 0.92f
+/**
+ * Share of the viewport width the table spans in the opening shot (#4180). The drop column is no
+ * longer part of the fit: a dropped ball starts just above the felt and is in view at once, and
+ * reserving room for it left an empty band above a table that filled three quarters of the width.
+ */
+private const val PHYSICS_FRAME_WIDTH_FILL = 0.92f
+
+/** Most of the viewport height the table may span — the binding axis in landscape. */
+private const val PHYSICS_FRAME_HEIGHT_FILL = 0.84f
+
+/** SceneView's stock lens, which the demo's camera keeps. */
+private const val PHYSICS_FOCAL_LENGTH_MM = 28.0
 
 /** The orbit's polar range: never straight down, never level with or under the tray. */
 private const val PHYSICS_MIN_POLAR_DEGREES = 15f

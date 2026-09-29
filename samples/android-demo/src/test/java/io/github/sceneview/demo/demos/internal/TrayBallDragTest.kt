@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import android.view.MotionEvent
 import dev.romainguy.kotlin.math.Float3
 import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
@@ -108,6 +109,42 @@ class TrayBallDragTest {
         val (vx, vz) = tracker.velocity(80L + 300L)
         assertEquals(0f, vx, eps)
         assertEquals(0f, vz, eps)
+    }
+
+    @Test
+    fun aSecondFingerNeverTakesTheGrabOver() {
+        val owner = 0
+        assertEquals(TrayBallDrag.PointerStep.Begin, TrayBallDrag.pointerStep(MotionEvent.ACTION_DOWN, owner, null))
+        // The second finger lands: ignored while the first one holds the ball.
+        assertEquals(
+            TrayBallDrag.PointerStep.Ignore,
+            TrayBallDrag.pointerStep(MotionEvent.ACTION_POINTER_DOWN, 1, owner),
+        )
+        assertEquals(TrayBallDrag.PointerStep.Follow, TrayBallDrag.pointerStep(MotionEvent.ACTION_MOVE, owner, owner))
+        // The second finger lifts: the ball stays in the first finger's hand.
+        assertEquals(
+            TrayBallDrag.PointerStep.Ignore,
+            TrayBallDrag.pointerStep(MotionEvent.ACTION_POINTER_UP, 1, owner),
+        )
+        assertEquals(TrayBallDrag.PointerStep.End, TrayBallDrag.pointerStep(MotionEvent.ACTION_UP, owner, owner))
+    }
+
+    @Test
+    fun theOwningFingerLiftingReleasesEvenWithAnotherStillDown() {
+        val owner = 0
+        assertEquals(
+            TrayBallDrag.PointerStep.End,
+            TrayBallDrag.pointerStep(MotionEvent.ACTION_POINTER_UP, owner, owner),
+        )
+        // After the release the remaining finger moves and lifts with nothing owned.
+        assertEquals(TrayBallDrag.PointerStep.Ignore, TrayBallDrag.pointerStep(MotionEvent.ACTION_MOVE, 1, null))
+        assertEquals(TrayBallDrag.PointerStep.Ignore, TrayBallDrag.pointerStep(MotionEvent.ACTION_UP, 1, null))
+    }
+
+    @Test
+    fun aCancelSetsTheGrabDownWithoutAThrow() {
+        assertEquals(TrayBallDrag.PointerStep.Cancel, TrayBallDrag.pointerStep(MotionEvent.ACTION_CANCEL, 0, 0))
+        assertEquals(TrayBallDrag.PointerStep.Ignore, TrayBallDrag.pointerStep(MotionEvent.ACTION_CANCEL, 0, null))
     }
 
     @Test

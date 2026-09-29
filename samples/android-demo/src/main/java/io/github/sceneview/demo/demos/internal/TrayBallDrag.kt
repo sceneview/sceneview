@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import android.view.MotionEvent
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Float4
 import dev.romainguy.kotlin.math.rotation as rotationMatrix
@@ -19,7 +20,8 @@ import kotlin.math.sqrt
  *
  * - [pickBall] — which ball the finger landed on (the nearest one the ray passes within reach of);
  * - [projectOnPlane] — where the finger is on the horizontal plane the held ball slides along;
- * - [ThrowVelocityTracker] — how fast the finger was moving when it let go, so a flick throws.
+ * - [ThrowVelocityTracker] — how fast the finger was moving when it let go, so a flick throws;
+ * - [pointerStep] — which finger the grab belongs to, when several touch the screen.
  */
 object TrayBallDrag {
 
@@ -82,6 +84,45 @@ object TrayBallDrag {
         if (t <= 0f) return null
         return Float3(origin.x + direction.x * t, planeY, origin.z + direction.z * t)
     }
+
+    /** What a touch event means for the finger that owns the grab (a held ball or a tilt). */
+    enum class PointerStep {
+        /** The first finger went down: it may pick a ball or start a tilt. */
+        Begin,
+
+        /** The owning finger moved: follow it. */
+        Follow,
+
+        /** The owning finger lifted: let go, with its velocity. */
+        End,
+
+        /** The system took the gesture away: let go without a throw. */
+        Cancel,
+
+        /** Not the owning finger, or nothing is owned: leave the grab as it is. */
+        Ignore,
+    }
+
+    /**
+     * Routes one touch event of [actionMasked] against the grab owned by [ownerPointerId] (`null`
+     * when nothing is owned). [actionPointerId] is the id of the pointer the action is about — for
+     * `ACTION_POINTER_UP`, the finger that lifted.
+     *
+     * The grab belongs to the finger that started it: a second finger never takes the ball over
+     * (reading index 0 would snap it to whichever finger is listed first), and the owning finger
+     * lifting while another stays down releases it, instead of leaving it held with no finger on it.
+     */
+    fun pointerStep(actionMasked: Int, actionPointerId: Int, ownerPointerId: Int?): PointerStep =
+        when (actionMasked) {
+            MotionEvent.ACTION_DOWN -> PointerStep.Begin
+            MotionEvent.ACTION_MOVE -> if (ownerPointerId != null) PointerStep.Follow else PointerStep.Ignore
+            MotionEvent.ACTION_POINTER_UP ->
+                if (ownerPointerId != null && actionPointerId == ownerPointerId) PointerStep.End else PointerStep.Ignore
+            // The last finger up: if a grab is still owned, it is this finger's.
+            MotionEvent.ACTION_UP -> if (ownerPointerId != null) PointerStep.End else PointerStep.Ignore
+            MotionEvent.ACTION_CANCEL -> if (ownerPointerId != null) PointerStep.Cancel else PointerStep.Ignore
+            else -> PointerStep.Ignore
+        }
 
     /** Nearest non-negative distance along unit [d] at which the ray enters the sphere, if any. */
     private fun raySphere(origin: Float3, d: Float3, center: Float3, radius: Float): Float? {
