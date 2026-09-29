@@ -132,16 +132,22 @@ object HomeTestTags {
     fun sectionHeader(category: String): String =
         "home-section-" + category.lowercase().replace(Regex("[^a-z0-9]+"), "-")
 
-    /** Test tag of the "Featured" shelf header, right under the hero. */
+    /** Test tag of the "Featured" group header, right under the hero. */
     const val FEATURED_SECTION = "home-section-featured"
+
+    /** Test tag of one demo's row in the home list. */
+    fun row(demoId: String): String = "home-row-$demoId"
 }
 
 /**
- * The Showcase tab (design spec §2): one `LazyVerticalGrid`, no nested
- * scroll. Full-span header spacer, hero, the "Featured" shelf
- * ([FEATURED_SECTION_IDS], priority order), a [BrowseOnlineModelsCard] that opens
- * the online gallery and the chip row, then every demo as a [DemoMediaCard] in flat
- * editorial [DemoEntry.order], one section per category.
+ * The Showcase tab (design spec §2): one `LazyVerticalGrid`, one vertical scroll, no
+ * nested scroll. Full-span header spacer, hero, then a standard Material 3 list: the
+ * "Featured" group ([FEATURED_SECTION_IDS], priority order), a [BrowseOnlineRow] that
+ * opens the online gallery, the chip row, then every demo as a [DemoListRow] in flat
+ * editorial [DemoEntry.order], one grouped section per category. The 3D header is the
+ * one showpiece; what is under it looks like any well-made app, which is what the Home
+ * sets out to show — the scene drops into an ordinary app. One column on a phone,
+ * [homeListColumns] from `home-row-min-width` up.
  *
  * Under the grid, and not part of it, sits the live stage (#3948): the dusk flight of
  * [HomeHeroScene] over a sky this screen paints, from the top edge of the display to
@@ -223,10 +229,9 @@ fun HomeScreen(
     // selected the chip already names it, and a lone header above a filtered grid
     // is chrome repeating what the user just tapped.
     val showSections = remember(visible) { visible.map { it.category }.distinct().size > 1 }
-    // The run of cards each demo is laid out in, and its place there: a run restarts at
-    // every section header, a full-span item. Cards read their grid row out of it at
-    // layout time, once [gridCells] knows the column count, to end level (#4144).
-    val cardRuns = remember(visible, showSections) { cardRuns(visible, showSections) }
+    // Each row's place in its group: a group restarts at every section header, and the
+    // place decides which of the row's corners are the group's outer corners.
+    val groupPlaces = remember(visible, showSections) { groupPlaces(visible, showSections) }
 
     // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
     // featured page they feed (#3566). Derived from the demo's own declared
@@ -262,7 +267,7 @@ fun HomeScreen(
         }
     }
 
-    // The "Featured" shelf under the hero: the demos we push, in priority order.
+    // The "Featured" group under the hero: the demos we push, in priority order.
     val featuredShelf = remember(byId) { FEATURED_SECTION_IDS.mapNotNull { byId[it] } }
 
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
@@ -322,9 +327,7 @@ fun HomeScreen(
     val heroHeight = if (expanded) home.heroHeightExpanded else home.heroHeight
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    val gridCells = remember(expanded) {
-        CountingAdaptiveCells(if (expanded) home.gridMinCellExpanded else home.gridMinCell)
-    }
+    val columns = homeListColumns(LocalConfiguration.current.screenWidthDp)
 
     Box(modifier = modifier.fillMaxSize()) {
         // The stage: composed once, under the grid, alive as long as this screen is
@@ -347,14 +350,16 @@ fun HomeScreen(
 
         LazyVerticalGrid(
             state = gridState,
-            columns = gridCells,
+            columns = GridCells.Fixed(columns),
             contentPadding = PaddingValues(
                 start = home.contentPadding,
                 end = home.contentPadding,
                 bottom = home.gridBottomInset,
             ),
-            verticalArrangement = Arrangement.spacedBy(home.gridGutter),
-            horizontalArrangement = Arrangement.spacedBy(home.gridGutter),
+            // Rows of one group sit `home-row-gap` apart, so a group reads as one grey
+            // block; every full-span item below carries its own spacing minus this gap.
+            verticalArrangement = Arrangement.spacedBy(home.rowGap),
+            horizontalArrangement = Arrangement.spacedBy(home.rowGap),
             modifier = Modifier
                 .fillMaxSize()
                 .testTag(HomeTestTags.GRID),
@@ -362,7 +367,7 @@ fun HomeScreen(
             // The pinned header overlay covers this band; the spacer keeps the
             // hero from starting underneath it.
             item(key = "header-spacer", span = { GridItemSpan(maxLineSpan) }) {
-                Spacer(Modifier.height(home.headerHeight + home.heroTopGap - home.gridGutter))
+                Spacer(Modifier.height(home.headerHeight + home.heroTopGap - home.rowGap))
             }
             // While a query is typed the featured pager gives way so the results
             // start under the header and stay visible above the keyboard (#3308).
@@ -376,9 +381,9 @@ fun HomeScreen(
                     modifier = Modifier.testTag(HomeTestTags.HERO),
                 )
             }
-            // The "Featured" shelf: what we want seen first, right under the hero and
+            // The "Featured" group: what we want seen first, right under the hero and
             // above the catalogue, so the flagship samples never wait for a scroll to
-            // the section they are filed in. Its cards repeat in their own sections
+            // the section they are filed in. Its rows repeat in their own sections
             // below — the catalogue stays complete — under a distinct item key.
             if (!searching && featuredShelf.isNotEmpty()) {
                 item(key = "section-featured", span = { GridItemSpan(maxLineSpan) }) {
@@ -390,27 +395,29 @@ fun HomeScreen(
                             .cascadeIn(cascade.delayFor(cascadeIndex++)),
                     )
                 }
-                val shelfDelay = cascade.delayFor(cascadeIndex++)
-                item(key = "featured-shelf", span = { GridItemSpan(maxLineSpan) }) {
-                    FeaturedShelf(
-                        demos = featuredShelf,
-                        freshness = { freshnessById[it.id] ?: DemoFreshness.None },
-                        onDemoClick = onDemoClick,
-                        expanded = expanded,
-                        modifier = Modifier
-                            .animateItem()
-                            .bleedHorizontal(home.contentPadding)
-                            .cascadeIn(shelfDelay),
-                    )
+                featuredShelf.forEachIndexed { index, demo ->
+                    val rowDelay = cascade.delayFor(cascadeIndex++)
+                    item(key = "featured-${demo.id}") {
+                        DemoListRow(
+                            demo = demo,
+                            onClick = { onDemoClick(demo.id) },
+                            shape = rowShape(index, featuredShelf.size, columns),
+                            freshness = freshnessById[demo.id] ?: DemoFreshness.None,
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeIn(rowDelay),
+                        )
+                    }
                 }
             }
             if (!searching) {
                 item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
-                    BrowseOnlineModelsCard(
+                    BrowseOnlineRow(
                         onClick = onBrowseOnlineClick,
                         modifier = Modifier
                             .animateItem()
-                            .cascadeIn(cascade.delayFor(cascadeIndex++)),
+                            .cascadeIn(cascade.delayFor(cascadeIndex++))
+                            .padding(top = home.groupGap - home.rowGap),
                     )
                 }
             }
@@ -419,8 +426,8 @@ fun HomeScreen(
                     selected = selectedCategory,
                     onSelect = onCategoryChange,
                     modifier = Modifier.padding(
-                        top = home.chipRowTopGap - home.gridGutter,
-                        bottom = home.gridTopGap - home.gridGutter,
+                        top = home.chipRowTopGap - home.rowGap,
+                        bottom = home.gridTopGap - home.rowGap,
                     ),
                 )
             }
@@ -437,6 +444,9 @@ fun HomeScreen(
             var previousCategory: String? = null
             visible.forEach { demo ->
                 if (showSections && demo.category != previousCategory) {
+                    // The first header sits right under the chip row, which already
+                    // carries its own gap.
+                    val first = previousCategory == null
                     item(
                         key = "section-${demo.category}",
                         span = { GridItemSpan(maxLineSpan) },
@@ -444,6 +454,7 @@ fun HomeScreen(
                         SectionHeader(
                             title = stringResource(categoryDisplayNameRes(demo.category)),
                             testTag = HomeTestTags.sectionHeader(demo.category),
+                            topGap = if (first) SceneViewTokens.Space.sm else home.sectionHeaderTopGap,
                             modifier = Modifier
                                 .animateItem()
                                 .cascadeIn(cascade.delayFor(cascadeIndex++)),
@@ -453,11 +464,12 @@ fun HomeScreen(
                 previousCategory = demo.category
                 val cardDelay = cascade.delayFor(cascadeIndex++)
                 item(key = "demo-${demo.id}") {
-                    DemoMediaCard(
+                    val place = groupPlaces[demo.id]
+                    DemoListRow(
                         demo = demo,
                         onClick = { onDemoClick(demo.id) },
+                        shape = rowShape(place?.index ?: 0, place?.count ?: 1, columns),
                         freshness = freshnessById[demo.id] ?: DemoFreshness.None,
-                        rowPeers = { cardRuns[demo.id]?.rowOf(gridCells.columns).orEmpty() },
                         modifier = Modifier
                             .animateItem(
                                 fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
@@ -505,7 +517,12 @@ fun HomeScreen(
  * colour (see DESIGN.md).
  */
 @Composable
-private fun SectionHeader(title: String, testTag: String, modifier: Modifier = Modifier) {
+private fun SectionHeader(
+    title: String,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    topGap: Dp = SceneViewTokens.Home.sectionHeaderTopGap,
+) {
     val home = SceneViewTokens.Home
     Text(
         text = title,
@@ -515,8 +532,8 @@ private fun SectionHeader(title: String, testTag: String, modifier: Modifier = M
         modifier = modifier
             .fillMaxWidth()
             .padding(
-                top = home.sectionHeaderTopGap - home.gridGutter,
-                bottom = home.sectionHeaderBottomGap - home.gridGutter,
+                top = topGap - home.rowGap,
+                bottom = home.sectionHeaderBottomGap - home.rowGap,
             )
             .testTag(testTag),
     )
@@ -662,54 +679,33 @@ const val HERO_DEMO_ID = "model-viewer"
  */
 private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "lighting")
 
+/** A row's place in its group: [index] of [count]. */
+internal data class GroupPlace(val index: Int, val count: Int)
+
 /**
- * The "Featured" shelf right under the hero: the samples we push, in priority
+ * Splits [visible] into groups at each section header, as the list lays them out, and
+ * gives every demo its place in its group. Without sections the whole list is one group.
+ */
+internal fun groupPlaces(visible: List<DemoEntry>, showSections: Boolean): Map<String, GroupPlace> {
+    val groups = mutableListOf<MutableList<DemoEntry>>()
+    var category: String? = null
+    visible.forEach { demo ->
+        if (groups.isEmpty() || (showSections && demo.category != category)) groups += mutableListOf<DemoEntry>()
+        groups.last() += demo
+        category = demo.category
+    }
+    return groups.flatMap { group ->
+        group.mapIndexed { index, demo -> demo.id to GroupPlace(index, group.size) }
+    }.toMap()
+}
+
+/**
+ * The "Featured" group right under the hero: the samples we push, in priority
  * order — the flagship replay, then the newest and most recently reworked demos.
  * [HERO_DEMO_ID] is not repeated here; it is the hero itself. Older samples built
  * on earlier models stay in their sections, which are themselves in priority order
  * (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
  */
-/**
- * [GridCells.Adaptive] that also remembers how many columns its last measure produced, so
- * a card can find its grid row while it is being laid out. The grid computes the cells
- * before it measures any item in the same pass, so the count is current when read.
- */
-internal class CountingAdaptiveCells(private val minSize: Dp) : GridCells {
-    private val adaptive = GridCells.Adaptive(minSize)
-
-    /** Columns of the last measure; 1 before the first one. */
-    var columns: Int = 1
-        private set
-
-    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> =
-        with(adaptive) { calculateCrossAxisCellSizes(availableSize, spacing) }.also { columns = it.size }
-
-    override fun equals(other: Any?): Boolean = other is CountingAdaptiveCells && other.minSize == minSize
-
-    override fun hashCode(): Int = minSize.hashCode()
-}
-
-/** One demo's run of consecutive cards (between two full-span items) and its index in it. */
-internal class CardRun(private val run: List<DemoEntry>, private val index: Int) {
-    /** The cards sharing this demo's grid row when the grid has [columns] columns. */
-    fun rowOf(columns: Int): List<DemoEntry> {
-        val first = index / columns.coerceAtLeast(1) * columns.coerceAtLeast(1)
-        return run.subList(first, minOf(run.size, first + columns.coerceAtLeast(1)))
-    }
-}
-
-/** Splits [visible] into runs at each section header, as the grid lays them out. */
-internal fun cardRuns(visible: List<DemoEntry>, showSections: Boolean): Map<String, CardRun> {
-    val runs = mutableListOf<MutableList<DemoEntry>>()
-    var category: String? = null
-    visible.forEach { demo ->
-        if (runs.isEmpty() || (showSections && demo.category != category)) runs += mutableListOf<DemoEntry>()
-        runs.last() += demo
-        category = demo.category
-    }
-    return runs.flatMap { run -> run.mapIndexed { index, demo -> demo.id to CardRun(run, index) } }.toMap()
-}
-
 internal val FEATURED_SECTION_IDS = listOf(
     "ar-rerun", // Rerun AR replay — the flagship, reworked in 4.46
     // Record your room there, then stand it on your table here.

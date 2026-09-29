@@ -515,7 +515,7 @@ private fun IconTile(icon: ImageVector, accent: Color) {
  * an invitation, status is a caveat, and they must not look alike at a glance.
  */
 @Composable
-private fun FreshnessChip(
+internal fun FreshnessChip(
     freshness: DemoFreshness,
     accent: Color,
     modifier: Modifier = Modifier,
@@ -555,7 +555,7 @@ private fun FreshnessChip(
 }
 
 @Composable
-private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
+internal fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
     val label = when (status) {
         DemoStatus.KnownIssue -> stringResource(R.string.samples_chip_preview)
         DemoStatus.ComingSoon -> stringResource(R.string.samples_chip_soon)
