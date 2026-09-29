@@ -65,6 +65,9 @@ permissions:
 jobs:
   build:
     name: Build website + docs
+    # A data release (hd-pack-v1, assets-v1) must not redeploy the site from
+    # its tag's commit, which can be older than main. SDK releases are v*.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
