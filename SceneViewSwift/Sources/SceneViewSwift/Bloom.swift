@@ -8,10 +8,15 @@ import MetalPerformanceShaders
 
 /// Bloom settings for a ``SceneView`` — light bleeding out of the brightest pixels.
 ///
-/// Mirrors the fields SceneView Android sets on Filament's `View.bloomOptions`
-/// (`enabled`, `strength`, `levels`, `resolution`, `threshold`), so a scene is tuned with the same numbers on
-/// both platforms. Bloom is what turns bright unlit or emissive colours into glow: a pixel
-/// brighter than the threshold spills a soft halo onto its neighbours.
+/// Mirrors the fields SceneView Android sets on Filament's `View.bloomOptions` —
+/// `strength`, `levels`, `resolution` and `threshold` — so a scene is tuned with the same
+/// numbers on both platforms. ``thresholdLevel`` is iOS-only: Filament thresholds its HDR
+/// frame at `1.0`, while this pass sees the displayed frame (see below).
+///
+/// Bloom is what turns bright unlit or emissive colours into glow: a pixel brighter than
+/// the threshold spills a soft halo onto its neighbours. The pass measures brightness in
+/// **display space**, `0` (black) to `1` (white), after RealityKit's tone mapping — so the
+/// default threshold of `0.6` blooms what *looks* bright, however it got there.
 ///
 /// ```swift
 /// SceneView { root in /* emissive / unlit content */ }
@@ -24,7 +29,9 @@ import MetalPerformanceShaders
 /// `RealityViewCameraContent.renderingEffects.customPostProcessing`. RealityKit exposes no
 /// post-process hook on a `RealityView` before that release, so on iOS 18–25 the modifier
 /// is accepted and does nothing — the scene renders exactly as without it. There is no
-/// visionOS support: RealityKit does not allow custom post-processing there.
+/// visionOS support: RealityKit does not allow custom post-processing there. A frame in a
+/// format the pass does not handle — an extended-range (EDR) frame, for one — is passed
+/// through untouched: the worst case is a frame without glow.
 public struct BloomOptions: Equatable, Sendable {
 
     /// How much of the blurred highlight is added back onto the frame. `0` turns bloom off;
@@ -46,8 +53,9 @@ public struct BloomOptions: Equatable, Sendable {
     /// the whole frame softens.
     public var threshold: Bool
 
-    /// Brightness above which a pixel starts to bloom when ``threshold`` is on, in the colour
-    /// units of the frame RealityKit hands to the pass (`1.0` = white).
+    /// Brightness above which a pixel starts to bloom when ``threshold`` is on, in display
+    /// space: `0` is black, `1` is white; the default is `0.6`. iOS-only — Filament has no
+    /// such field and thresholds its HDR frame at `1.0`.
     public var thresholdLevel: Float
 
     public init(strength: Float = 0.1, levels: Int = 6, resolution: Int = 384, threshold: Bool = true,
@@ -68,6 +76,38 @@ public struct BloomOptions: Equatable, Sendable {
 // MARK: - The post-process pass
 
 #if os(iOS) || os(macOS)
+
+/// What the bloom pass does with a frame, decided from its formats and sizes alone.
+enum BloomFramePlan: Equatable {
+    /// Bloom it: MPS reads `readAs` and writes `writeAs` (raw views of an sRGB frame).
+    case bloom(readAs: MTLPixelFormat, writeAs: MTLPixelFormat)
+    /// Copy the frame to the target untouched — no glow, but a correct frame.
+    case passThrough
+    /// Neither is possible (source and target differ): leave the target alone.
+    case skip
+
+    /// The formats the pass blooms, and the raw format MPS reads and writes them through.
+    /// Anything else — extended-range `bgra10_xr` / EDR, packed or depth formats — is passed
+    /// through: MPS may not write it, and a display-space threshold means nothing above 1.
+    static func rawFormat(_ format: MTLPixelFormat) -> MTLPixelFormat? {
+        switch format {
+        case .bgra8Unorm, .bgra8Unorm_srgb: .bgra8Unorm
+        case .rgba8Unorm, .rgba8Unorm_srgb: .rgba8Unorm
+        case .rgba16Float: .rgba16Float
+        default: nil
+        }
+    }
+
+    static func decide(enabled: Bool,
+                       source: MTLPixelFormat, sourceSize: (width: Int, height: Int),
+                       target: MTLPixelFormat, targetSize: (width: Int, height: Int)) -> BloomFramePlan {
+        let sameShape = source == target && sourceSize == targetSize
+        guard enabled, sourceSize.width > 1, sourceSize.height > 1,
+              let read = rawFormat(source), let write = rawFormat(target), sourceSize == targetSize
+        else { return sameShape ? .passThrough : .skip }
+        return .bloom(readAs: read, writeAs: write)
+    }
+}
 
 /// The bloom pass handed to `RealityViewCameraContent.renderingEffects.customPostProcessing`.
 ///
@@ -123,6 +163,11 @@ final class BloomResources: @unchecked Sendable {
     private var full: MTLTexture?
     /// Same-format copy of an sRGB frame, so it can be read through a raw view.
     private var frameCopy: MTLTexture?
+    private var frameCopyView: MTLTexture?
+    /// Raw views of the drawables RealityKit renders into, which it cycles through: one view
+    /// per drawable instead of one per frame. A view keeps its drawable alive, so the cache is
+    /// dropped when it outgrows a swap chain (a resize brings new drawables).
+    private var targetViews: [ObjectIdentifier: MTLTexture] = [:]
     private var chainKey: (Int, Int, Int, Int) = (0, 0, 0, 0)
 
     func prepare(device: MTLDevice) {
@@ -141,20 +186,25 @@ final class BloomResources: @unchecked Sendable {
     func encode(commandBuffer: MTLCommandBuffer, source: MTLTexture, target: MTLTexture) {
         let options = self.options
         if device == nil { prepare(device: commandBuffer.device) }
-        guard options.isEnabled, supported,
+        let plan = BloomFramePlan.decide(
+            enabled: options.isEnabled && supported,
+            source: source.pixelFormat, sourceSize: (source.width, source.height),
+            target: target.pixelFormat, targetSize: (target.width, target.height))
+        guard case .bloom(let readAs, let writeAs) = plan,
               let scale, let blur, let brightPass, let sum, let composite,
-              let output = Self.rawView(target),
-              let frame = rawFrame(source, commandBuffer: commandBuffer)
+              let output = targetView(target, as: writeAs),
+              let frame = rawFrame(source, as: readAs, commandBuffer: commandBuffer)
         else {
-            passThrough(commandBuffer: commandBuffer, source: source, target: target)
+            if plan != .skip { passThrough(commandBuffer: commandBuffer, source: source, target: target) }
             return
         }
+        let original = source
         let source = frame
         let levels = max(1, min(options.levels, 8))
         let firstHeight = min(max(options.resolution, 64), 2048, max(source.height / 2, 1))
         guard ensureChain(width: source.width, height: source.height, firstHeight: firstHeight, levels: levels),
               let full else {
-            passThrough(commandBuffer: commandBuffer, source: source, target: target)
+            passThrough(commandBuffer: commandBuffer, source: original, target: target)
             return
         }
 
@@ -200,37 +250,36 @@ final class BloomResources: @unchecked Sendable {
 
     /// MPS writes from compute kernels, and an sRGB texture is not shader-writable. So the pass
     /// reads and writes raw (non-sRGB) views of the frame: the glow is measured and added in
-    /// display space — what looks bright is what blooms. `nil` when no such view can be made.
-    private static func rawView(_ texture: MTLTexture) -> MTLTexture? {
-        let raw: MTLPixelFormat
-        switch texture.pixelFormat {
-        case .bgra8Unorm_srgb: raw = .bgra8Unorm
-        case .rgba8Unorm_srgb: raw = .rgba8Unorm
-        case .bgra10_xr_srgb: raw = .bgra10_xr
-        case .bgr10_xr_srgb: raw = .bgr10_xr
-        default: return texture
-        }
-        guard texture.usage.contains(.pixelFormatView) else { return nil }
-        return texture.makeTextureView(pixelFormat: raw)
+    /// display space — what looks bright is what blooms.
+    private func targetView(_ texture: MTLTexture, as raw: MTLPixelFormat) -> MTLTexture? {
+        if texture.pixelFormat == raw { return texture.usage.contains(.shaderWrite) ? texture : nil }
+        let key = ObjectIdentifier(texture)
+        if let view = targetViews[key], view.pixelFormat == raw { return view }
+        guard texture.usage.contains(.pixelFormatView),
+              let view = texture.makeTextureView(pixelFormat: raw) else { return nil }
+        if targetViews.count >= 8 { targetViews.removeAll() }
+        targetViews[key] = view
+        return view
     }
 
     /// A raw view of the frame. RealityKit's source texture does not allow views, so an sRGB
     /// frame is first copied, byte for byte, into a same-format texture that does.
-    private func rawFrame(_ source: MTLTexture, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
-        if let view = Self.rawView(source) { return view }
+    private func rawFrame(_ source: MTLTexture, as raw: MTLPixelFormat, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        if source.pixelFormat == raw { return source }
         guard let device else { return nil }
         if frameCopy?.width != source.width || frameCopy?.height != source.height
-            || frameCopy?.pixelFormat != source.pixelFormat {
+            || frameCopy?.pixelFormat != source.pixelFormat || frameCopyView?.pixelFormat != raw {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: source.pixelFormat, width: source.width, height: source.height, mipmapped: false)
             descriptor.usage = [.shaderRead, .pixelFormatView]
             descriptor.storageMode = .private
             frameCopy = device.makeTexture(descriptor: descriptor)
+            frameCopyView = frameCopy?.makeTextureView(pixelFormat: raw)
         }
-        guard let frameCopy, let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
+        guard let frameCopy, let frameCopyView, let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
         blit.copy(from: source, to: frameCopy)
         blit.endEncoding()
-        return Self.rawView(frameCopy)
+        return frameCopyView
     }
 
     private func ensureChain(width: Int, height: Int, firstHeight: Int, levels: Int) -> Bool {
@@ -268,8 +317,12 @@ final class BloomResources: @unchecked Sendable {
         return true
     }
 
+    /// A blit copy only works between textures of one format and size; anything else is left
+    /// alone rather than risk a Metal validation trap.
     private func passThrough(commandBuffer: MTLCommandBuffer, source: MTLTexture, target: MTLTexture) {
-        guard let blit = commandBuffer.makeBlitCommandEncoder() else { return }
+        guard source.pixelFormat == target.pixelFormat, source.width == target.width,
+              source.height == target.height,
+              let blit = commandBuffer.makeBlitCommandEncoder() else { return }
         blit.copy(from: source, to: target)
         blit.endEncoding()
     }

@@ -230,6 +230,8 @@ enum GlowBuilder {
         var surface: SIMD3<Float>
         var rim: SIMD3<Float>
         var rimPower: Float
+        /// The plasma's `PlasmaLook.exposure`; 0 keeps the plain `filmic` roll-off.
+        var exposure: Float = 0
     }
 
     /// A disc just in front of a sphere centred at the origin and seen from `distance` along
@@ -261,7 +263,16 @@ enum GlowBuilder {
                 let clamped = min(s, 1)
                 let limbLight = 1 - max(1 - clamped * clamped, 0).squareRoot()
                 let radiance = limb.surface * (0.5 * limbLight) + limb.rim * pow(limbLight, limb.rimPower)
-                image.set(x, y, filmic(radiance) * coverage, alpha: coverage)
+                let shown: SIMD3<Float>
+                if limb.exposure > 0 {
+                    // The disc adds onto the sphere's already tone-mapped texture: add only
+                    // what the limb light brings on top of the average surface under it.
+                    let base = limb.surface * 0.75
+                    shown = shoulder(base + radiance, exposure: limb.exposure) - shoulder(base, exposure: limb.exposure)
+                } else {
+                    shown = filmic(radiance)
+                }
+                image.set(x, y, shown * coverage, alpha: coverage)
             }
         }
         return GlowLayer(quads: quads, image: image)
@@ -397,6 +408,17 @@ enum GlowBuilder {
         return c + (SIMD3(repeating: peak) - c) * w
     }
 
+    /// Filament's filmic curve as it renders the star on Android: a per-channel exposure and
+    /// shoulder, then a partial roll towards white. The surface stays a pale, textured blue
+    /// instead of clipping to flat white the way `filmic` alone lets it.
+    static func shoulder(_ c: SIMD3<Float>, exposure: Float) -> SIMD3<Float> {
+        let e = SIMD3<Float>(1 - exp(-max(c.x, 0) * exposure),
+                             1 - exp(-max(c.y, 0) * exposure),
+                             1 - exp(-max(c.z, 0) * exposure))
+        let peak = max(e.x, e.y, e.z)
+        return e + (SIMD3(repeating: peak) - e) * (smoothstepf(0.2, 0.9, peak) * 0.5)
+    }
+
     fileprivate static func smoothstepf(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
         let t = min(max((x - e0) / (e1 - e0), 0), 1)
         return t * t * (3 - 2 * t)
@@ -413,9 +435,12 @@ struct PlasmaLook: Sendable {
     var rimPower: Float
     var noiseScale: Float
     var flow: Float
+    /// Above 0, the surface goes through `GlowBuilder.shoulder` at this exposure instead of
+    /// `filmic` — for a surface bright enough to clip.
+    var exposure: Float = 0
 
     static let star = PlasmaLook(deep: [0.09, 0.42, 0.95], hot: [0.26, 0.8, 1.7], rim: [0.3, 0.9, 2.2],
-                                 rimPower: 3, noiseScale: 9, flow: 0.22)
+                                 rimPower: 3, noiseScale: 9, flow: 0.22, exposure: 1.9)
     static let nucleus = PlasmaLook(deep: [0.004, 0.008, 0.02], hot: [0.03, 0.07, 0.16], rim: [0.25, 0.6, 1.6],
                                     rimPower: 3, noiseScale: 4, flow: 0.2)
 }
@@ -455,7 +480,9 @@ enum Plasma {
                         ridge = ridge * ridge * ridge * ridge
                         let heat = smoothstep(0.3, 0.75, n)
                         let radiance = simd_mix(look.deep, look.hot, SIMD3(repeating: heat)) + look.hot * (ridge * 0.9)
-                        let shown = GlowBuilder.filmic(radiance * scale)
+                        let shown = look.exposure > 0
+                            ? GlowBuilder.shoulder(radiance * scale, exposure: look.exposure)
+                            : GlowBuilder.filmic(radiance * scale)
                         let i = (y * width + x) * 4
                         pixels[i] = shown.x
                         pixels[i + 1] = shown.y
@@ -638,42 +665,29 @@ final class GlowEntity {
     }
 
     static func texture(_ image: GlowImage) async throws -> TextureResource {
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let queue = device.makeCommandQueue(),
-              let commandBuffer = queue.makeCommandBuffer()
-        else { throw GlowError.noMetal }
+        guard let metal = GlowMetal.shared else { throw GlowError.noMetal }
+        // Float32 → float16 with vImage, off the main thread: the flow's atlas is 50 MB.
+        let staging = try await Task.detached(priority: .userInitiated) {
+            try GlowStaging(image, device: metal.device)
+        }.value
+        guard let commandBuffer = metal.queue.makeCommandBuffer() else { throw GlowError.noMetal }
         // No mip chain: sprites are sized to at least `minPixels` on screen already, and a
         // mip would average a one-pixel star with its cell's dark margin and dim it ~8x.
-        let mips = 1
         let descriptor = LowLevelTexture.Descriptor(
             pixelFormat: .rgba16Float,
             width: image.width,
             height: image.height,
-            mipmapLevelCount: mips,
+            mipmapLevelCount: 1,
             textureUsage: [.shaderRead]
         )
         let texture = try LowLevelTexture(descriptor: descriptor)
-
-        // Float32 → float16 with vImage, then one blit.
-        let count = image.pixels.count
-        guard let buffer = device.makeBuffer(length: count * 2, options: .storageModeShared) else {
-            throw GlowError.noMetal
-        }
-        image.pixels.withUnsafeBufferPointer { source in
-            var src = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: source.baseAddress!),
-                                    height: 1, width: vImagePixelCount(count), rowBytes: count * 4)
-            var dst = vImage_Buffer(data: buffer.contents(), height: 1,
-                                    width: vImagePixelCount(count), rowBytes: count * 2)
-            vImageConvert_PlanarFtoPlanar16F(&src, &dst, 0)
-        }
         let target = texture.replace(using: commandBuffer)
         guard let blit = commandBuffer.makeBlitCommandEncoder() else { throw GlowError.noMetal }
-        blit.copy(from: buffer, sourceOffset: 0, sourceBytesPerRow: image.width * 8,
+        blit.copy(from: staging.buffer, sourceOffset: 0, sourceBytesPerRow: image.width * 8,
                   sourceBytesPerImage: image.width * image.height * 8,
                   sourceSize: MTLSize(width: image.width, height: image.height, depth: 1),
                   to: target, destinationSlice: 0, destinationLevel: 0,
                   destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
-        if mips > 1 { blit.generateMipmaps(for: target) }
         blit.endEncoding()
         commandBuffer.commit()
         return try await TextureResource(from: texture)
@@ -682,6 +696,42 @@ final class GlowEntity {
     enum GlowError: Error { case noMetal }
 
     fileprivate static let linear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+}
+
+/// The one Metal device and command queue every atlas upload goes through.
+final class GlowMetal: @unchecked Sendable {
+    let device: MTLDevice
+    let queue: MTLCommandQueue
+
+    static let shared: GlowMetal? = {
+        guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { return nil }
+        return GlowMetal(device: device, queue: queue)
+    }()
+
+    private init(device: MTLDevice, queue: MTLCommandQueue) {
+        self.device = device
+        self.queue = queue
+    }
+}
+
+/// An atlas converted to float16 in a shared Metal buffer, ready to blit.
+struct GlowStaging: @unchecked Sendable {
+    let buffer: MTLBuffer
+
+    init(_ image: GlowImage, device: MTLDevice) throws {
+        let count = image.pixels.count
+        guard let buffer = device.makeBuffer(length: count * 2, options: .storageModeShared) else {
+            throw GlowEntity.GlowError.noMetal
+        }
+        image.pixels.withUnsafeBufferPointer { source in
+            var src = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: source.baseAddress!),
+                                    height: 1, width: vImagePixelCount(count), rowBytes: count * 4)
+            var dst = vImage_Buffer(data: buffer.contents(), height: 1,
+                                    width: vImagePixelCount(count), rowBytes: count * 2)
+            vImageConvert_PlanarFtoPlanar16F(&src, &dst, 0)
+        }
+        self.buffer = buffer
+    }
 }
 
 /// A plasma ball: an opaque sphere wearing `Plasma.surface`, occluding what is behind it.

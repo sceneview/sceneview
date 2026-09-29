@@ -40,7 +40,7 @@ struct CosmosDemo: View {
                 .cameraPose(CosmosEngine.fixedCamera)
                 .bloom(BloomOptions(strength: engine.bloom, levels: 7, resolution: 512, threshold: true))
                 if !engine.ready {
-                    VStack(spacing: 12) {
+                    VStack(spacing: SceneViewTokens.Space.md) {
                         ProgressView().tint(.white)
                         Text("Lighting up the cosmos")
                             .font(.callout)
@@ -73,11 +73,12 @@ struct CosmosDemo: View {
             },
             accessory: { DemoHint(engine.scene.caption) }
         ) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
                 LabeledSlider(label: "Bloom", value: $engine.bloom, range: 0...1, decimals: 2)
                 Toggle("Tour the scenes", isOn: $engine.touring)
                 Toggle("Animate", isOn: $engine.animating)
             }
+            .tint(SceneViewTheme.primary)
         }
     }
 
@@ -102,7 +103,7 @@ private extension CosmosSceneKind {
 // MARK: - Engine
 
 /// Owns the RealityKit side of the demo: the four scenes (built on first use, off the main
-/// thread) and the 60 Hz tick that animates them.
+/// thread) and the per-refresh tick that animates them.
 @MainActor
 @Observable
 final class CosmosEngine {
@@ -134,7 +135,7 @@ final class CosmosEngine {
     @ObservationIgnored private var starField: GlowEntity?
     @ObservationIgnored private var built: [CosmosSceneKind: CosmosSceneEntities] = [:]
     @ObservationIgnored private var building: Set<CosmosSceneKind> = []
-    @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var frameLink: CosmosFrameLink?
     @ObservationIgnored private var sceneTime: Float = 0
     @ObservationIgnored private var shownScene: CosmosSceneKind?
     @ObservationIgnored private var lastTick: Date?
@@ -152,19 +153,21 @@ final class CosmosEngine {
         ensureBuilt(kind)
     }
 
+    /// Ticks once per display refresh — up to 120 Hz on ProMotion — and resumes loading
+    /// whatever a previous `stop()` interrupted.
     func start() {
-        guard timer == nil else { return }
-        let t = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+        if frameLink == nil {
+            frameLink = CosmosFrameLink { [weak self] in self?.tick() }
         }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+        if world.parent != nil { startLoading() }
     }
 
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        frameLink?.invalidate()
+        frameLink = nil
         loadTask?.cancel()
+        loadTask = nil
+        lastTick = nil
     }
 
     /// Pixels per world unit at distance 1 for SceneView's 60° vertical field of view.
@@ -183,19 +186,24 @@ final class CosmosEngine {
         loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let program = await GlowEntity.additiveProgram()
-                self.programs = CosmosPrograms(additive: program, alpha: await GlowEntity.alphaProgram())
-                let focal = self.focal
-                let layer = await Task.detached(priority: .userInitiated) {
-                    // The sky surrounds the orbit: every star faces the origin.
-                    GlowBuilder.sprites(CosmosMeshes.starField(), view: GlowView(eye: .zero, focal: focal),
-                                        minPixels: 1.4) { -$0 }
-                }.value
-                let field = try await GlowEntity(layer, program: program)
-                self.world.addChild(field.entity)
-                self.starField = field
-                // The selected scene first, then the others so a switch is instant.
-                let order = [self.scene] + CosmosSceneKind.allCases.filter { $0 != self.scene }
+                if self.programs == nil {
+                    let program = await GlowEntity.additiveProgram()
+                    self.programs = CosmosPrograms(additive: program, alpha: await GlowEntity.alphaProgram())
+                }
+                if self.starField == nil, let program = self.programs?.additive {
+                    let focal = self.focal
+                    let layer = await Task.detached(priority: .userInitiated) {
+                        // The sky surrounds the orbit: every star faces the origin.
+                        GlowBuilder.sprites(CosmosMeshes.starField(), view: GlowView(eye: .zero, focal: focal),
+                                            minPixels: 1.4) { -$0 }
+                    }.value
+                    let field = try await GlowEntity(layer, program: program)
+                    self.world.addChild(field.entity)
+                    self.starField = field
+                }
+                // The selected scene first, then the light ones so a switch is instant. The
+                // star — a plasma surface computed on the CPU — waits until it is wanted.
+                let order = [self.scene] + CosmosSceneKind.allCases.filter { $0 != self.scene && $0 != .star }
                 for kind in order where !Task.isCancelled {
                     await self.build(kind)
                 }
@@ -247,14 +255,25 @@ final class CosmosEngine {
             // Clamp a long hitch (backgrounding) so the scene does not jump ahead.
             sceneTime += min(max(dt, 0), 0.1)
         }
-        if touring && !frozen && sceneTime > Self.tourSeconds {
-            let next = CosmosSceneKind.allCases[(current.rawValue + 1) % CosmosSceneKind.allCases.count]
-            scene = next
-            ensureBuilt(next)
+        let next = CosmosSceneKind.allCases[(current.rawValue + 1) % CosmosSceneKind.allCases.count]
+        if touring && !frozen {
+            // Build the tour's next scene a few seconds ahead, so it is ready on cue.
+            if sceneTime > Self.tourSeconds - 6 { ensureBuilt(next) }
+            if sceneTime > Self.tourSeconds {
+                scene = next
+                ensureBuilt(next)
+                return
+            }
+        }
+        for (kind, other) in built { other.root.isEnabled = kind == current }
+        guard let entities = built[current] else {
+            // Still being built: the loading hint stays up over the empty sky, and the
+            // scene's clock waits so its reveal plays once it lands.
+            if ready { ready = false }
+            sceneTime = 0
+            ensureBuilt(current)
             return
         }
-        guard let entities = built[current] else { return }
-        for (kind, other) in built { other.root.isEnabled = kind == current }
         if !ready { ready = true }
 
         let time = frozen ? Self.qaTime[current.rawValue] : sceneTime
@@ -363,7 +382,8 @@ struct CosmosSceneLayers: Sendable {
             let surface = Plasma.surface(.star, time: time, gain: starPulse)
             let look = PlasmaLook.star
             let limb = GlowBuilder.Limb(radius: 1, surface: surface.mean * starPulse,
-                                        rim: look.rim * starPulse, rimPower: look.rimPower)
+                                        rim: look.rim * starPulse, rimPower: look.rimPower,
+                                        exposure: look.exposure)
             // The loops turn with the star: widen them for the eye as the turned star sees it.
             let spunView = GlowView(eye: starOrientation(time).inverse.act(view.eye), focal: view.focal)
             return CosmosSceneLayers(
@@ -510,5 +530,30 @@ final class CosmosSceneEntities {
             guard simd_length(toEye) > 1e-4 else { continue }
             limb.glow.entity.orientation = simd_quatf(from: SIMD3(0, 0, 1), to: simd_normalize(toEye))
         }
+    }
+}
+
+/// Calls `tick` once per display refresh, following ProMotion's rate.
+@MainActor
+final class CosmosFrameLink {
+    private let target: Target
+    private let link: CADisplayLink
+
+    init(_ tick: @escaping @MainActor () -> Void) {
+        target = Target(tick)
+        link = CADisplayLink(target: target, selector: #selector(Target.step))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+    }
+
+    func invalidate() { link.invalidate() }
+
+    /// `CADisplayLink` needs an Objective-C target; it retains it, not the other way round.
+    /// The link fires on the main run loop it was added to.
+    @MainActor
+    private final class Target: NSObject {
+        private let tick: @MainActor () -> Void
+        init(_ tick: @escaping @MainActor () -> Void) { self.tick = tick }
+        @objc func step() { tick() }
     }
 }
