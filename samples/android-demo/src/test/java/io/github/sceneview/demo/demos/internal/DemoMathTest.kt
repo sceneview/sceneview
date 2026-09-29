@@ -359,7 +359,13 @@ class DemoMathTest {
 
         assertEquals(
             listOf(
-                ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.45f, scale = 2.00f, fallbackYaw = 180f),
+                ParkSlot(
+                    uid = "d841c3bcc5324daebee50f45619e05fc",
+                    x = 0.0f,
+                    z = -0.45f,
+                    scale = 2.00f,
+                    fallbackYaw = 180f,
+                ),
                 ParkSlot(uid = "378cd6e6f505493aa8e22f68db1cabec", x = -0.05f, z = 0.35f, scale = 0.70f, yaw = 90f),
                 ParkSlot(uid = "6881aa1e84b047d79860fa9297e05e22", x = 0.55f, z = 0.25f, scale = 1.10f),
                 ParkSlot(uid = "42cb7fad10ba44ecbc9ae9cf5fdd63b6", x = -0.62f, z = 0.42f, scale = 0.45f),
