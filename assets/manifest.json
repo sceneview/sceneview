@@ -636,9 +636,9 @@
       "scope": "web",
       "sha256": "c272098089d78c5cd9fd9f24ff50ee8acf8d932c55f2d55fc10adb6c8998966b",
       "size": 11778688,
-      "source": "",
-      "license": "",
-      "author": ""
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
+      "license": "CC-BY-4.0",
+      "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)"
     },
     {
       "path": "website-static/models/platforms/CasioKeyboard.glb",
@@ -708,9 +708,9 @@
       "scope": "web",
       "sha256": "17cfdc79ec9e38fadb28db159734c5f9592ca423977b546e5057e350ba29ff13",
       "size": 4083912,
-      "source": "",
-      "license": "",
-      "author": ""
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp",
+      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
     },
     {
       "path": "website-static/models/platforms/KindredLol.glb",
@@ -780,9 +780,9 @@
       "scope": "web",
       "sha256": "e1d7cb190382111e5a5b37b51e9a7f007f7eb2ab1b6185e0188e8d0a0d1265a7",
       "size": 7833592,
-      "source": "",
-      "license": "",
-      "author": ""
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe",
+      "license": "CC-BY-4.0",
+      "author": "Shopify"
     },
     {
       "path": "website-static/models/platforms/SunglassesKhronos.glb",
@@ -816,9 +816,9 @@
       "scope": "web",
       "sha256": "67202c74a1a33377771f162dc7fad612a6c9bd51ee15124c488e9851d9ac5266",
       "size": 3149844,
-      "source": "",
-      "license": "",
-      "author": ""
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa",
+      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
     },
     {
       "path": "website-static/models/platforms/WaterBottle.glb",
