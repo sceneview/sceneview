@@ -17,6 +17,7 @@
 		B7E400000000000000000003 /* RerunGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000003 /* RerunGeometry.swift */; };
 		B7E400000000000000000004 /* RerunReplaySession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000004 /* RerunReplaySession.swift */; };
 		B7E400000000000000000005 /* RerunReplayStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000005 /* RerunReplayStage.swift */; };
+		5A1A70000000000000000006 /* RerunRealityKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000006 /* RerunRealityKit.swift */; };
 		B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000006 /* RerunReplayChrome.swift */; };
 		B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000007 /* RerunShowcaseDemo.swift */; };
 		B7E400000000000000000008 /* RerunExportScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000008 /* RerunExportScene.swift */; };
@@ -36,6 +37,11 @@
 		B7E400000000000000000017 /* RerunCaptureRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */; };
 		B7E400000000000000000018 /* shiba.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000018 /* shiba.usdz */; };
 		B7E400000000000000000019 /* shiba.glb in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000019 /* shiba.glb */; };
+		5A1A70000000000000000001 /* SplatScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000001 /* SplatScan.swift */; };
+		5A1A70000000000000000002 /* SplatPreviewDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000002 /* SplatPreviewDemo.swift */; };
+		5A1A70000000000000000003 /* SplatPreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000003 /* SplatPreviewScene.swift */; };
+		5A1A70000000000000000004 /* SplatScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000004 /* SplatScanTests.swift */; };
+		5A1A70000000000000000005 /* raccoon_family.spz in Resources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000005 /* raccoon_family.spz */; };
 		B7E40000000000000000001A /* showcase in Resources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000001A /* showcase */; };
 		2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */; };
 		B10000000000000000003585 /* ViewerAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000003584 /* ViewerAssetTests.swift */; };
@@ -259,6 +265,7 @@
 		B7E500000000000000000003 /* RerunGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunGeometry.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunGeometry.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000004 /* RerunReplaySession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplaySession.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplaySession.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000005 /* RerunReplayStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayStage.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000006 /* RerunRealityKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRealityKit.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRealityKit.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000006 /* RerunReplayChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayChrome.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayChrome.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000007 /* RerunShowcaseDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunShowcaseDemo.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000008 /* RerunExportScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunExportScene.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunExportScene.swift; sourceTree = SOURCE_ROOT; };
@@ -278,6 +285,11 @@
 		B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunCaptureRecorderTests.swift; path = SceneViewDemoTests/RerunCaptureRecorderTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000018 /* shiba.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = shiba.usdz; sourceTree = "<group>"; };
 		B7E500000000000000000019 /* shiba.glb */ = {isa = PBXFileReference; lastKnownFileType = file; name = shiba.glb; path = ../android-demo/src/main/assets/models/shiba.glb; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000001 /* SplatScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatScan.swift; sourceTree = "<group>"; };
+		5A1A71000000000000000002 /* SplatPreviewDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatPreviewDemo.swift; sourceTree = "<group>"; };
+		5A1A71000000000000000003 /* SplatPreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SplatPreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SplatPreviewScene.swift; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000004 /* SplatScanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SplatScanTests.swift; path = SceneViewDemoTests/SplatScanTests.swift; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000005 /* raccoon_family.spz */ = {isa = PBXFileReference; lastKnownFileType = file; name = raccoon_family.spz; path = ../android-demo/src/main/assets/splats/raccoon_family.spz; sourceTree = SOURCE_ROOT; };
 		B7E50000000000000000001A /* showcase */ = {isa = PBXFileReference; lastKnownFileType = folder; name = showcase; path = ../android-demo/src/main/assets/rerun/showcase; sourceTree = SOURCE_ROOT; };
 		9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilterTests.swift; path = SceneViewDemoTests/HomeFilterTests.swift; sourceTree = SOURCE_ROOT; };
 		B10000000000000000003584 /* ViewerAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerAssetTests.swift; path = SceneViewDemoTests/ViewerAssetTests.swift; sourceTree = SOURCE_ROOT; };
@@ -513,6 +525,7 @@
 				B7E500000000000000000003 /* RerunGeometry.swift */,
 				B7E500000000000000000004 /* RerunReplaySession.swift */,
 				B7E500000000000000000005 /* RerunReplayStage.swift */,
+				5A1A71000000000000000006 /* RerunRealityKit.swift */,
 				B7E500000000000000000006 /* RerunReplayChrome.swift */,
 				B7E500000000000000000007 /* RerunShowcaseDemo.swift */,
 				B7E500000000000000000008 /* RerunExportScene.swift */,
@@ -596,6 +609,7 @@
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
+				5A1A71000000000000000004 /* SplatScanTests.swift */,
 				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
 				B10000000000000000003584 /* ViewerAssetTests.swift */,
 				A20000000000000000003158 /* ReflectionProbesDemoTests.swift */,
@@ -703,6 +717,9 @@
 				C20000000000000000000014 /* LightTypesDemo.swift */,
 				C20000000000000000000015 /* DynamicSkyDemo.swift */,
 				C20000000000000000000017 /* RollingBallsDemo.swift */,
+				5A1A71000000000000000001 /* SplatScan.swift */,
+				5A1A71000000000000000002 /* SplatPreviewDemo.swift */,
+				5A1A71000000000000000005 /* raccoon_family.spz */,
 				C20000000000000000000062 /* DoublePendulumDemo.swift */,
 				C0600000000000000000C061 /* CosmosDemo.swift */,
 				C0600000000000000000C062 /* CosmosMeshes.swift */,
@@ -943,6 +960,7 @@
 			files = (
 				B7E400000000000000000018 /* shiba.usdz in Resources */,
 				B7E400000000000000000019 /* shiba.glb in Resources */,
+				5A1A70000000000000000005 /* raccoon_family.spz in Resources */,
 				B7E40000000000000000001A /* showcase in Resources */,
 				A10000010000000000000002 /* Assets.xcassets in Resources */,
 				F50000000000000000000001 /* bell.wav in Resources */,
@@ -1074,6 +1092,7 @@
 				B7E400000000000000000003 /* RerunGeometry.swift in Sources */,
 				B7E400000000000000000004 /* RerunReplaySession.swift in Sources */,
 				B7E400000000000000000005 /* RerunReplayStage.swift in Sources */,
+				5A1A70000000000000000006 /* RerunRealityKit.swift in Sources */,
 				B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */,
 				B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */,
 				B7E400000000000000000008 /* RerunExportScene.swift in Sources */,
@@ -1113,6 +1132,8 @@
 				C10000000000000000000014 /* LightTypesDemo.swift in Sources */,
 				C10000000000000000000015 /* DynamicSkyDemo.swift in Sources */,
 				C10000000000000000000017 /* RollingBallsDemo.swift in Sources */,
+				5A1A70000000000000000001 /* SplatScan.swift in Sources */,
+				5A1A70000000000000000002 /* SplatPreviewDemo.swift in Sources */,
 				C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */,
 				C0500000000000000000C051 /* CosmosDemo.swift in Sources */,
 				C0500000000000000000C052 /* CosmosMeshes.swift in Sources */,
@@ -1212,6 +1233,7 @@
 				7F3779F3EAE0CB8A8E2163A8 /* MovableLightScene.swift in Sources */,
 				C6718D6992125E496CA5E387 /* MultiModelScene.swift in Sources */,
 				BEA1469B6B63E6A1C636864B /* RollingBallsScene.swift in Sources */,
+				5A1A70000000000000000003 /* SplatPreviewScene.swift in Sources */,
 				D5304A7821A99E09C8746927 /* ReflectionProbesScene.swift in Sources */,
 				922DE8B725A90B5B9D794809 /* SceneGalleryScene.swift in Sources */,
 				DD3FF7C0836D9DD90C767D6D /* ShapeExtrudeScene.swift in Sources */,
@@ -1237,6 +1259,7 @@
 				B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */,
 				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
+				5A1A70000000000000000004 /* SplatScanTests.swift in Sources */,
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,

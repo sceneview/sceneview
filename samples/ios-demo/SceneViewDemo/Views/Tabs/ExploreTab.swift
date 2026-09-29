@@ -216,8 +216,18 @@ struct ExploreTab: View {
                         // (#3789); if every feed is empty and we're not still
                         // loading, the bundled curated carousel follows so the tab
                         // is never blank (#2645 / #2700).
+                        //
+                        // Above the rail, Android's `ExploreStage`: the first
+                        // trending model as a full-width hero, which the rail
+                        // then leaves out.
+                        exploreStage
                         if let kind = trendingRailKind {
-                            galleryFeedSection(kind: kind, models: feedsByKind[kind] ?? [])
+                            let models = (feedsByKind[kind] ?? []).filter { $0.cardKey != heroModel?.cardKey }
+                            // The hero took the feed's only model: nothing left to
+                            // rail, and "empty" would be wrong — Android hides it.
+                            if !(models.isEmpty && heroModel != nil) {
+                                galleryFeedSection(kind: kind, models: models)
+                            }
                         }
                         if feedsUnreachable && !isLoadingFeeds {
                             let failure = ExploreSearchFailure.unreachable(selectedSource.id.displayName)
@@ -354,6 +364,39 @@ struct ExploreTab: View {
         sources.sources.first { $0.id == model.sourceId } ?? selectedSource
     }
 
+    // MARK: - Hero stage
+
+    /// Android's `hero`: the first Trending model, else the first model of any
+    /// of the source's feeds.
+    private var heroModel: GalleryModel? {
+        feedsByKind[.trending]?.first
+            ?? selectedSource.feedKinds.lazy.compactMap { feedsByKind[$0]?.first }.first
+    }
+
+    /// Android's `ExploreStage`: the hero once a feed has a model, a
+    /// hero-sized loading ground while the first feed is on its way. A failed
+    /// or empty feed says so under the rail heading instead (#3789).
+    @ViewBuilder
+    private var exploreStage: some View {
+        if let hero = heroModel {
+            SpatialHeroCard(model: hero,
+                            isTrending: feedsByKind[.trending]?.first?.cardKey == hero.cardKey,
+                            transitionNamespace: heroNamespace) {
+                viewingModel = hero
+                #if os(iOS)
+                SceneViewHaptic.shared.light()
+                #endif
+            }
+        } else if isLoadingFeeds {
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous)
+                .fill(SceneViewTokens.HomeColor.surfaceContainerHigh)
+                .frame(maxWidth: .infinity)
+                .frame(height: SceneViewTokens.Layout.heroStageHeight)
+                .overlay { ProgressView() }
+                .accessibilityIdentifier("explore-stage-loading")
+        }
+    }
+
     // MARK: - Source picker
 
     /// "Browse by source" — Android's `CompactBrowseRail`: the heading with the
@@ -377,22 +420,24 @@ struct ExploreTab: View {
         .accessibilityIdentifier("explore-browse-by-source")
     }
 
-    /// Source-picker chip row (#2645 / #2700): one chip per available `ModelSource`
-    /// (Sketchfab | Icosa Gallery | Poly Haven), the selected one highlighted.
+    /// Source picker (#2645 / #2700): one segment per available `ModelSource`
+    /// (Sketchfab | Icosa Gallery | Poly Haven). Android draws a connected
+    /// button group (`ConnectedChoiceRow`); its native iOS counterpart is the
+    /// segmented control.
     private var sourcePickerRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(sources.sources, id: \.id) { source in
-                    SourceChip(
-                        title: source.id.displayName,
-                        isOn: source.id == selectedSource.id
-                    ) {
-                        selectSource(source)
-                    }
-                }
+        Picker("Source", selection: Binding(
+            get: { selectedSource.id },
+            set: { id in
+                if let source = sources.sources.first(where: { $0.id == id }) { selectSource(source) }
+            }
+        )) {
+            ForEach(sources.sources, id: \.id) { source in
+                Text(source.id.displayName).tag(source.id)
             }
         }
-        .scrollClipDisabled()
+        .pickerStyle(.segmented)
+        .controlSize(.large)
+        .accessibilityIdentifier("explore-source-picker")
     }
 
     /// Switch the active source, resetting browse + search state so the previous
@@ -1047,37 +1092,80 @@ private struct FilterChip: View {
     }
 }
 
-// MARK: - Source chip (Sketchfab | Icosa Gallery | Poly Haven picker)
+// MARK: - Spatial hero (Android's `SpatialHero`)
 
-/// One chip in the source-picker row (#2645 / #2700). The selected source is
-/// filled; the others are tinted-outline.
-private struct SourceChip: View {
-    let title: String
-    let isOn: Bool
-    let onTap: () -> Void
+/// The Explore hero: the first trending model's image (or, when the source
+/// has no trending feed, its first model), full width, under a bottom scrim
+/// that carries its source, its name and "View in 3D". A still image on
+/// purpose, like Android — the 3D starts when the viewer opens.
+private struct SpatialHeroCard: View {
+    let model: GalleryModel
+    /// False when the hero comes from a fallback feed, so VoiceOver does not
+    /// call it trending.
+    let isTrending: Bool
+    var transitionNamespace: Namespace.ID? = nil
+    let onViewIn3D: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            Text(title)
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                // The home filter chips' tokens (`chip-*`). The selected chip
-                // was white on the accent tint, which in dark is #A4C1FF —
-                // 1.8:1 (#3790). `chip-selected-text` on `chip-selected-bg`
-                // is 17.1:1 light / 10.5:1 dark.
-                .background(
-                    isOn ? SceneViewTokens.HomeColor.chipSelectedBackground
-                        : SceneViewTokens.HomeColor.chipBackground,
-                    in: Capsule()
-                )
-                .foregroundStyle(
-                    isOn ? SceneViewTokens.HomeColor.chipSelectedText
-                        : SceneViewTokens.HomeColor.chipText
-                )
+        ZStack(alignment: .bottomLeading) {
+            // The picture fills the ground as an overlay, so its own aspect ratio can
+            // never widen the card past the screen.
+            SceneViewTokens.HomeColor.surfaceContainerHigh
+                .overlay {
+                    // Full width, so ask for a large thumbnail, not the card-sized default.
+                    AsyncImage(url: model.preferredThumbnailURL(minWidth: 1024, maxWidth: 2048)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        case .empty:
+                            ProgressView()
+                        default:
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                        }
+                    }
+                }
+                .clipped()
+                .accessibilityHidden(true)
+            LinearGradient(colors: [SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                                    SceneViewTokens.SpatialGalleryColor.stageScrimEnd],
+                           startPoint: .top, endPoint: .bottom)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+                Text(model.sourceId.displayName)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, SceneViewTokens.Space.sm)
+                    .padding(.vertical, SceneViewTokens.Space.xs)
+                    .background(SceneViewTokens.SpatialGalleryColor.glassSurfaceDark, in: Capsule())
+                Text(model.name)
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                Button(action: onViewIn3D) {
+                    Label("View in 3D", systemImage: "cube")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, SceneViewTokens.Space.xs)
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .tint(SceneViewTokens.HomeColor.primary)
+                .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+                .accessibilityIdentifier("explore-hero-view-in-3d")
+            }
+            .padding(SceneViewTokens.Space.lg)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(title) source, \(isOn ? "selected" : "not selected")")
+        .frame(maxWidth: .infinity)
+        .frame(height: SceneViewTokens.Layout.heroStageHeight)
+        .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous))
+        .modifier(MatchedSourceModifier(id: "gallery-hero-\(model.cardKey)", namespace: transitionNamespace))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(isTrending
+            ? "\(model.name), trending on \(model.sourceId.displayName)"
+            : "\(model.name), from \(model.sourceId.displayName)")
+        .accessibilityIdentifier("explore-hero")
     }
 }
 
@@ -1087,12 +1175,16 @@ private struct SourceChip: View {
 /// only on iOS, so the Mac build keeps its own window chrome.
 private struct OpaqueNavigationBar: ViewModifier {
     let visible: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         #if os(iOS)
+        // The bar keeps the app's appearance: left alone, it takes the style of the
+        // dark picture scrolled under it and paints a black bar in light mode.
         content
             .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
             .toolbarBackground(visible ? .visible : .automatic, for: .navigationBar)
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
         #else
         content
         #endif

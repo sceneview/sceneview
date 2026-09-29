@@ -83,7 +83,7 @@ Assets bundled: **35**.
   Camera frames and plane photos (WebP) of the same Pixel 9 recording, packed for `ARRerunDemo`
 - `rerun/showcase/showcase-session.jsonl` — **[showcase-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (1.4 MB)  
   Replay of a room recorded on a Pixel 9, camera path and points reconstructed with COLMAP — `ARRerunDemo`
-- `splats/raccoon_family.spz` — **[Raccoon family (SPZ sample capture)](https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz)** by Niantic Labs — MIT (3.3 MB)  
+- `splats/raccoon_family.spz` — **[Raccoon family (SPZ sample capture)](https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz)** by Niantic Labs — [MIT](https://github.com/nianticlabs/spz/blob/main/LICENSE) (3.3 MB)  
   Real phone capture shipped with the SPZ format; cropped to the subject (932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`
 - `textures/sceneview_logo.png` — **[sceneview_logo.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (45 KB)  
   SceneView brand mark, exported from `branding/exports/logo/logo-1024.png`

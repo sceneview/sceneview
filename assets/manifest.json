@@ -31,7 +31,7 @@
       "needs": [
         "android"
       ],
-      "_why": "the iOS demo bundles ../android-demo/src/main/assets/models/shiba.glb"
+      "_why": "the iOS demo bundles ../android-demo/src/main/assets/models/shiba.glb and ../android-demo/src/main/assets/splats/raccoon_family.spz"
     },
     "tv": {
       "dirs": [

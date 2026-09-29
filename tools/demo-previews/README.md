@@ -152,6 +152,12 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 same seven balls as the Android card. Crop: 603, 1377, 1121. One capture per appearance
 (`preview_rolling_balls_dark.jpg` for dark): the stage is the themed stage sky, as on Android.
 
+`preview_splat_preview` is the same kind of capture of `splat-preview`, launched with
+`-demo splat-preview`: the opening shot of the whole scan. It is not the Android card on
+purpose — iOS draws the capture as solid dots, not gaussian splats, so the card shows what the
+iOS screen shows. Crop: 603, 1042, 1206. One capture per appearance
+(`preview_splat_preview_dark.jpg` for dark): the stage is the themed stage sky.
+
 The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
 same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their
 crops are in that capture's pixels. Same 5:4 crop, 800×640 JPEG q85, one universal JPEG.

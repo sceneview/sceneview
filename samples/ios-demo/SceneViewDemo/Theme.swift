@@ -142,6 +142,10 @@ enum SceneViewTokens {
     enum SpatialGalleryColor {
         static let stageScrimStart = Color.clear
         static let stageScrimEnd = Color.black.opacity(0.90)
+        /// `glass-surface`, dark value — the source pill on the Explore hero. It sits on the
+        /// media scrim, never on a page, so it keeps the dark value in both themes (Android's
+        /// `SpatialGalleryColor.glassSurfaceDark`).
+        static let glassSurfaceDark = Color.white.opacity(0.05)
     }
 
     /// `DESIGN.md` — Liquid Glass, the "button glass" row, as the demo chrome uses it.
@@ -629,6 +633,8 @@ enum SceneViewTokens {
         static let selectedOutlineWidth: CGFloat = 2
         /// `media-aspect` — 5:4 home card media.
         static let mediaAspect: CGFloat = 1.25
+        /// `hero-stage-height` — the Explore hero stage.
+        static let heroStageHeight: CGFloat = 360
         /// Width of the leading-edge strip that listens for the demo host's
         /// swipe-to-dismiss. Narrow on purpose: the rest of the screen belongs
         /// to the scene's own orbit / pan gestures.
