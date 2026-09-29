@@ -293,6 +293,9 @@ struct ShowcaseTab: View {
             #else
             .sheet(item: $fullScreenScene) { scene in
                 DemoCover(scene: scene) { fullScreenScene = nil }
+                    // A macOS sheet sizes to its content's ideal size, and a 3D stage
+                    // has none: without a floor the demo opened as a 390×100 strip.
+                    .frame(minWidth: 960, minHeight: 640)
             }
             #endif
         }

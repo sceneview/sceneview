@@ -35,6 +35,9 @@ struct GlowQuads: Sendable {
     /// For ribbons: one key per segment (six indices), ascending — the head value from which
     /// the segment is drawn. Empty for sprites.
     var revealKeys: [Float] = []
+    /// For twinkling sprites: how many indices each phase group spans, in draw order. Each
+    /// group gets its own material, so its tint can flicker out of step with the others.
+    var groups: [Int] = []
 
     static let stride = 5
 
@@ -75,6 +78,12 @@ struct GlowImage: Sendable {
 struct GlowLayer: Sendable {
     var quads: GlowQuads
     var image: GlowImage
+    /// Sprites: `cosmos_sprite.mat`'s `twinkle`, the depth of each group's flicker, already
+    /// baked into the atlas as a `1 + twinkle` headroom.
+    var twinkle: Float = 0
+    /// Dashed ribbons: the texture repeats along `u`, one dash cycle per unit, and scrolls by
+    /// `dashSpeed / 2π` cycles a second.
+    var dashSpeed: Float?
 }
 
 /// Where the camera looks from while a scene is on screen, used to face quads and ribbons
@@ -88,6 +97,9 @@ struct GlowView: Sendable {
 enum GlowBuilder {
 
     // MARK: Sprites (cosmos_sprite.mat, cosmos_dust.mat)
+
+    /// Twinkling sprites flicker in this many phase groups, each a material of its own.
+    static let twinkleGroups = 8
 
     /// How a sprite's light falls off from its centre.
     enum SpriteProfile: Sendable {
@@ -112,12 +124,15 @@ enum GlowBuilder {
     /// - Parameters:
     ///   - facing: the direction a sprite at `center` looks along (towards the viewer).
     ///   - gain: radiance multiplier baked into the atlas (a tint can only scale down).
+    ///   - twinkle: the shader's `1 + twinkle · sin(2.7 t + 2π phase)` flicker. Sprites are
+    ///     split into `twinkleGroups` groups by phase, drawn with one material each.
     static func sprites(_ mesh: GlowMesh, view: GlowView, minPixels: Float, gain: Float = 1,
-                        profile: SpriteProfile = .glow,
+                        profile: SpriteProfile = .glow, twinkle: Float = 0,
                         facing: (SIMD3<Float>) -> SIMD3<Float>) -> GlowLayer {
         let s = mesh.stride
         let count = mesh.vertexCount / 4
         let cell = 16
+        let gain = gain * (1 + twinkle)
 
         // Pass 1: each sprite's quad and the cell of its colour.
         var corners: [SIMD3<Float>] = []
@@ -193,11 +208,21 @@ enum GlowBuilder {
             }
         }
 
-        // Pass 3: the quads.
+        // Pass 3: the quads, grouped by twinkle phase.
         var quads = GlowQuads()
         quads.vertices.reserveCapacity(count * 4 * GlowQuads.stride)
         quads.indices.reserveCapacity(count * 6)
-        for sprite in 0..<count {
+        var order = Array(0..<count)
+        if twinkle > 0 {
+            let groups = twinkleGroups
+            let groupOf = (0..<count).map { sprite in
+                let phase = mesh.vertices[sprite * 4 * s + 10]
+                return min(max(Int((phase - floor(phase)) * Float(groups)), 0), groups - 1)
+            }
+            order.sort { (groupOf[$0], $0) < (groupOf[$1], $1) }
+            quads.groups = (0..<groups).map { group in groupOf.lazy.filter { $0 == group }.count * 6 }
+        }
+        for sprite in order {
             let index = spriteCell[sprite]
             let column = index % columns
             let row = index / columns
@@ -212,7 +237,7 @@ enum GlowBuilder {
             quads.vertex(corners[sprite * 4 + 3], u0, v0)
             quads.indices.append(contentsOf: [base, base + 1, base + 2, base, base + 2, base + 3])
         }
-        return GlowLayer(quads: quads, image: image)
+        return GlowLayer(quads: quads, image: image, twinkle: twinkle)
     }
 
     /// A radiance channel on a log2 scale in 1/16-octave steps; `Int32.min` for black.
@@ -234,8 +259,8 @@ enum GlowBuilder {
         var surface: SIMD3<Float>
         var rim: SIMD3<Float>
         var rimPower: Float
-        /// The plasma's `PlasmaLook.exposure`; 0 keeps the plain `filmic` roll-off.
-        var exposure: Float = 0
+        /// The plasma's `PlasmaLook.exposure`; zero keeps the plain `filmic` roll-off.
+        var exposure: SIMD3<Float> = .zero
     }
 
     /// A disc just in front of a sphere centred at the origin and seen from `distance` along
@@ -268,7 +293,7 @@ enum GlowBuilder {
                 let limbLight = 1 - max(1 - clamped * clamped, 0).squareRoot()
                 let radiance = limb.surface * (0.5 * limbLight) + limb.rim * pow(limbLight, limb.rimPower)
                 let shown: SIMD3<Float>
-                if limb.exposure > 0 {
+                if limb.exposure.x > 0 {
                     // The disc adds onto the sphere's already tone-mapped texture: add only
                     // what the limb light brings on top of the average surface under it.
                     let base = limb.surface * 0.75
@@ -277,6 +302,37 @@ enum GlowBuilder {
                     shown = filmic(radiance)
                 }
                 image.set(x, y, shown * coverage, alpha: coverage)
+            }
+        }
+        return GlowLayer(quads: quads, image: image)
+    }
+
+    /// The wide blue glow around a bright ball: on Android it is the HDR bloom of the star,
+    /// which a display-space pass cannot rebuild from a frame that tops out at white. A quad
+    /// through the ball's centre, facing +Z (turn it towards the eye), `extent` silhouette
+    /// radii wide; the ball in front hides its middle. `falloff(r)` is the added radiance at
+    /// `r` silhouette radii from the centre.
+    static func corona(radius: Float, distance: Float, extent: Float, resolution cell: Int,
+                       falloff: (Float) -> SIMD3<Float>) -> GlowLayer {
+        var image = GlowImage(width: cell, height: cell, cell: cell)
+        var quads = GlowQuads()
+        let silhouette = radius / max(1 - (radius * radius) / (distance * distance), 1e-3).squareRoot()
+        let size = silhouette * extent
+        quads.vertex(SIMD3(-size, -size, 0), 0, 1)
+        quads.vertex(SIMD3(size, -size, 0), 1, 1)
+        quads.vertex(SIMD3(size, size, 0), 1, 0)
+        quads.vertex(SIMD3(-size, size, 0), 0, 0)
+        quads.indices = [0, 1, 2, 0, 2, 3]
+        for y in 0..<cell {
+            for x in 0..<cell {
+                let px = (-1 + 2 * (Float(x) + 0.5) / Float(cell)) * extent
+                let py = (-1 + 2 * (Float(y) + 0.5) / Float(cell)) * extent
+                let r = (px * px + py * py).squareRoot()
+                // Fade to nothing at the quad's edge so its square never shows.
+                let edge = 1 - smoothstepf(extent * 0.8, extent, r)
+                let rgb = falloff(r) * edge
+                // Alpha 1: the additive blend scales colour by alpha, which would square the falloff.
+                image.set(x, y, rgb, alpha: 1)
             }
         }
         return GlowLayer(quads: quads, image: image)
@@ -395,6 +451,157 @@ enum GlowBuilder {
         return GlowLayer(quads: quads, image: image)
     }
 
+    /// Texels per dash cycle in a dashed atlas row.
+    private static let dashPeriod = 64
+
+    /// Like `ribbons`, but the dashes travel. A dash is the same shape wherever it is — only its
+    /// colour changes — so the atlas holds one dash cycle per colour class, repeating along `u`,
+    /// and every segment maps its arc to `u` in dash cycles. Scrolling the material's texture
+    /// coordinates by `−time · speed / 2π` then moves every dash along its stroke, as
+    /// `cosmos_ribbon.mat` does with `arc · freq − time · speed`.
+    ///
+    /// Each segment is its own quad, in the row of its colour at its midpoint: colours are
+    /// rounded to 1/16 of an octave per channel — coarser if a stroke set has more colours than
+    /// the atlas has rows.
+    static func dashedRibbons(_ mesh: GlowMesh, view: GlowView, minPixels: Float,
+                              dash: Dash, tailTaper: Float) -> GlowLayer {
+        let s = mesh.stride
+        let total = mesh.vertexCount / 2
+        var starts: [Int] = []
+        for point in 0..<total where mesh.vertices[point * 2 * s + 12] == 0 {
+            starts.append(point)
+        }
+        starts.append(total)
+        let strokes = starts.count - 1
+
+        // Pass 1: every point's two edges, `u` and radiance.
+        var left = [SIMD3<Float>](repeating: .zero, count: total)
+        var right = [SIMD3<Float>](repeating: .zero, count: total)
+        var u = [Float](repeating: 0, count: total)
+        var radiance = [SIMD3<Float>](repeating: .zero, count: total)
+        var segments: [(key: Float, point: Int)] = []
+        for stroke in 0..<strokes {
+            let first = starts[stroke]
+            let n = starts[stroke + 1] - first
+            let seed = mesh.vertices[first * 2 * s + 13]
+            let reach = 0.8 + 0.4 * seed
+            for i in 0..<n {
+                let point = first + i
+                let v = point * 2 * s
+                let p = SIMD3(mesh.vertices[v], mesh.vertices[v + 1], mesh.vertices[v + 2])
+                let color = SIMD3(mesh.vertices[v + 3], mesh.vertices[v + 4], mesh.vertices[v + 5])
+                let tangent = SIMD3(mesh.vertices[v + 7], mesh.vertices[v + 8], mesh.vertices[v + 9])
+                var halfWidth = mesh.vertices[v + 11]
+                let t = mesh.vertices[v + 12]
+                let arc = mesh.vertices[v + 14]
+
+                let toEye = view.eye - p
+                let depth = max(simd_length(toEye), 1e-3)
+                var side = simd_cross(tangent, toEye)
+                let sideLength = simd_length(side)
+                side = sideLength > 1e-6 ? side / sideLength : .zero
+                let halfWidthPx = halfWidth * view.focal / depth
+                var energy: Float = 1
+                if halfWidthPx < minPixels {
+                    energy = halfWidthPx / minPixels
+                    halfWidth = minPixels * depth / view.focal
+                }
+                left[point] = p - side * halfWidth
+                right[point] = p + side * halfWidth
+                u[point] = arc * dash.freq / (2 * .pi) + seed
+                let taper = 1 + (1 - smoothstepf(0.55, 1, t) - 1) * tailTaper
+                radiance[point] = color * (taper * energy)
+                if i < n - 1 { segments.append((t / reach, point)) }
+            }
+        }
+
+        // Pass 2: colour classes, as fine as the atlas height allows.
+        let rowHeight = 6
+        // 8192 texels: devices take 16384, but the Simulator's Metal aborts above 8192.
+        let maxRows = 8192 / rowHeight
+        var step: Float = 16
+        var classOf: [SIMD3<Int32>: Int] = [:]
+        var segmentClass = [Int](repeating: 0, count: segments.count)
+        while true {
+            classOf.removeAll(keepingCapacity: true)
+            for (index, segment) in segments.enumerated() {
+                let mid = (radiance[segment.point] + radiance[segment.point + 1]) * 0.5
+                let key = SIMD3(quantize(mid.x, steps: step), quantize(mid.y, steps: step), quantize(mid.z, steps: step))
+                if let row = classOf[key] {
+                    segmentClass[index] = row
+                } else {
+                    segmentClass[index] = classOf.count
+                    classOf[key] = classOf.count
+                }
+            }
+            if classOf.count <= maxRows || step <= 0.125 { break }
+            step /= 2
+        }
+        // Past 8 octaves per class there is nothing left to merge by: clamp, never overflow.
+        let rows = min(max(classOf.count, 1), maxRows)
+        if classOf.count > maxRows {
+            classOf = classOf.filter { $0.value < maxRows }
+            for index in segmentClass.indices { segmentClass[index] = min(segmentClass[index], maxRows - 1) }
+        }
+        let width = dashPeriod
+        var image = GlowImage(width: width, height: rows * rowHeight, cell: rowHeight)
+        var along = [Float](repeating: 0, count: width)
+        for x in 0..<width {
+            let wave = 0.5 + 0.5 * sin(2 * .pi * (Float(x) + 0.5) / Float(width))
+            let w2 = wave * wave
+            let w4 = w2 * w2
+            along[x] = dash.base + dash.amp * w4 * w4
+        }
+        var across = [Float](repeating: 0, count: rowHeight)
+        for y in 0..<rowHeight {
+            let a = -1 + 2 * Float(y) / Float(rowHeight - 1)
+            across[y] = exp(-a * a * 4.5) * (1 - a * a)
+        }
+        for (key, row) in classOf {
+            let color = SIMD3<Float>(dequantize(key.x, steps: step), dequantize(key.y, steps: step),
+                                     dequantize(key.z, steps: step))
+            for y in 0..<rowHeight {
+                for x in 0..<width {
+                    let level: Float = along[x] * across[y]
+                    image.set(x, row * rowHeight + y, filmic(color * level), alpha: across[y])
+                }
+            }
+        }
+
+        // Pass 3: one quad per segment, drawn in reveal order.
+        var order = Array(segments.indices)
+        order.sort { segments[$0].key < segments[$1].key }
+        var quads = GlowQuads()
+        quads.vertices.reserveCapacity(segments.count * 4 * GlowQuads.stride)
+        quads.indices.reserveCapacity(segments.count * 6)
+        quads.revealKeys.reserveCapacity(segments.count)
+        for index in order {
+            let a = segments[index].point
+            let b = a + 1
+            let row = segmentClass[index]
+            let v0 = (Float(row * rowHeight) + 0.5) / Float(image.height)
+            let v1 = (Float(row * rowHeight + rowHeight) - 0.5) / Float(image.height)
+            let base = UInt32(quads.vertices.count / GlowQuads.stride)
+            quads.vertex(left[a], u[a], v0)
+            quads.vertex(right[a], u[a], v1)
+            quads.vertex(left[b], u[b], v0)
+            quads.vertex(right[b], u[b], v1)
+            quads.indices.append(contentsOf: [base, base + 1, base + 2, base + 1, base + 3, base + 2])
+            quads.revealKeys.append(segments[index].key)
+        }
+        NSLog("[Cosmos] dashed ribbons: %d segments, %d colour classes at 1/%.0f octave",
+              segments.count, rows, step)
+        return GlowLayer(quads: quads, image: image, dashSpeed: dash.speed)
+    }
+
+    private static func quantize(_ value: Float, steps: Float) -> Int32 {
+        value > 1e-6 ? Int32((log2(value) * steps).rounded()) : .min
+    }
+
+    private static func dequantize(_ step: Int32, steps: Float) -> Float {
+        step == .min ? 0 : exp2(Float(step) / steps)
+    }
+
     /// Right and up vectors of a plane facing along `normal`.
     private static func basis(_ normal: SIMD3<Float>) -> (SIMD3<Float>, SIMD3<Float>) {
         let n = simd_normalize(normal)
@@ -413,14 +620,15 @@ enum GlowBuilder {
     }
 
     /// Filament's filmic curve as it renders the star on Android: a per-channel exposure and
-    /// shoulder, then a partial roll towards white. The surface stays a pale, textured blue
-    /// instead of clipping to flat white the way `filmic` alone lets it.
-    static func shoulder(_ c: SIMD3<Float>, exposure: Float) -> SIMD3<Float> {
-        let e = SIMD3<Float>(1 - exp(-max(c.x, 0) * exposure),
-                             1 - exp(-max(c.y, 0) * exposure),
-                             1 - exp(-max(c.z, 0) * exposure))
+    /// shoulder, then a roll towards white of the brightest filaments only. The surface keeps
+    /// its blue cells and white-hot ridges instead of clipping to flat white the way `filmic`
+    /// alone lets it. The exposures were fitted to the Android capture's cell and ridge colours.
+    static func shoulder(_ c: SIMD3<Float>, exposure: SIMD3<Float>) -> SIMD3<Float> {
+        let e = SIMD3<Float>(1 - exp(-max(c.x, 0) * exposure.x),
+                             1 - exp(-max(c.y, 0) * exposure.y),
+                             1 - exp(-max(c.z, 0) * exposure.z))
         let peak = max(e.x, e.y, e.z)
-        return e + (SIMD3(repeating: peak) - e) * (smoothstepf(0.2, 0.9, peak) * 0.5)
+        return e + (SIMD3(repeating: peak) - e) * (smoothstepf(0.85, 1, peak) * 0.5)
     }
 
     fileprivate static func smoothstepf(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
@@ -439,12 +647,12 @@ struct PlasmaLook: Sendable {
     var rimPower: Float
     var noiseScale: Float
     var flow: Float
-    /// Above 0, the surface goes through `GlowBuilder.shoulder` at this exposure instead of
-    /// `filmic` — for a surface bright enough to clip.
-    var exposure: Float = 0
+    /// Non-zero, the surface goes through `GlowBuilder.shoulder` at these per-channel
+    /// exposures instead of `filmic` — for a surface bright enough to clip.
+    var exposure: SIMD3<Float> = .zero
 
     static let star = PlasmaLook(deep: [0.09, 0.42, 0.95], hot: [0.26, 0.8, 1.7], rim: [0.3, 0.9, 2.2],
-                                 rimPower: 3, noiseScale: 9, flow: 0.22, exposure: 1.9)
+                                 rimPower: 3, noiseScale: 9, flow: 0.22, exposure: [2.6, 1.8, 2.5])
     static let nucleus = PlasmaLook(deep: [0.004, 0.008, 0.02], hot: [0.03, 0.07, 0.16], rim: [0.25, 0.6, 1.6],
                                     rimPower: 3, noiseScale: 4, flow: 0.2)
 }
@@ -484,7 +692,7 @@ enum Plasma {
                         ridge = ridge * ridge * ridge * ridge
                         let heat = smoothstep(0.3, 0.75, n)
                         let radiance = simd_mix(look.deep, look.hot, SIMD3(repeating: heat)) + look.hot * (ridge * 0.9)
-                        let shown = look.exposure > 0
+                        let shown = look.exposure.x > 0
                             ? GlowBuilder.shoulder(radiance * scale, exposure: look.exposure)
                             : GlowBuilder.filmic(radiance * scale)
                         let i = (y * width + x) * 4
@@ -554,12 +762,17 @@ enum Plasma {
 @MainActor
 final class GlowEntity {
     let entity: ModelEntity
-    private var material: UnlitMaterial
+    /// One material per twinkle group (a single one for everything else).
+    private var materials: [UnlitMaterial]
     private let mesh: LowLevelMesh
     private let revealKeys: [Float]
     private let bounds: BoundingBox
+    private let twinkle: Float
+    private let dashSpeed: Float?
     private var drawnSegments = -1
     private var tint: Float = -1
+    private var tints: [Float]
+    private var scroll: Float = -1
 
     init(_ layer: GlowLayer, program: UnlitMaterial.Program) async throws {
         let texture = try await Self.texture(layer.image)
@@ -568,17 +781,22 @@ final class GlowEntity {
         sampler.minFilter = .linear
         sampler.magFilter = .linear
         sampler.mipFilter = .linear
-        sampler.sAddressMode = .clampToEdge
+        // Dashed ribbons repeat one dash cycle along u.
+        sampler.sAddressMode = layer.dashSpeed == nil ? .clampToEdge : .repeat
         sampler.tAddressMode = .clampToEdge
         material.color = .init(tint: .white, texture: .init(texture, sampler: .init(sampler)))
         material.blending = .transparent(opacity: .init(floatLiteral: 1))
         material.writesDepth = false
         material.faceCulling = .none
-        self.material = material
+        let groups = max(layer.quads.groups.count, 1)
+        materials = Array(repeating: material, count: groups)
+        tints = Array(repeating: -1, count: groups)
+        twinkle = layer.twinkle
+        dashSpeed = layer.dashSpeed
         revealKeys = layer.quads.revealKeys
         bounds = BoundingBox(min: layer.quads.boundsMin, max: layer.quads.boundsMax)
         mesh = try Self.upload(layer.quads)
-        entity = ModelEntity(mesh: try await MeshResource(from: mesh), materials: [material])
+        entity = ModelEntity(mesh: try await MeshResource(from: mesh), materials: materials)
     }
 
     /// Scales the whole layer's radiance, 0...1.
@@ -586,10 +804,46 @@ final class GlowEntity {
         let clamped = min(max(value, 0), 1)
         guard abs(clamped - tint) > 1e-4 else { return }
         tint = clamped
-        // A linear tint, so 0.5 halves the radiance instead of dimming it by sRGB's curve.
-        let v = CGFloat(clamped)
-        material.color.tint = GlowEntity.linearTint(v)
-        entity.model?.materials = [material]
+        for index in materials.indices { applyTint(clamped, to: index) }
+        entity.model?.materials = materials
+    }
+
+    /// Scales the layer's radiance, 0...1, with each twinkle group flickering at `time` as
+    /// `cosmos_sprite.mat` does: `1 + twinkle · sin(2.7 t + 2π phase)`, over the baked headroom.
+    func setIntensity(_ value: Float, time: Float) {
+        guard twinkle > 0, materials.count > 1 else { return setIntensity(value) }
+        let clamped = min(max(value, 0), 1)
+        var changed = false
+        for index in materials.indices {
+            let phase = (Float(index) + 0.5) / Float(materials.count)
+            let flicker = (1 + twinkle * sin(time * 2.7 + phase * 2 * .pi)) / (1 + twinkle)
+            let value = clamped * flicker
+            guard abs(value - tints[index]) > 1e-4 else { continue }
+            applyTint(value, to: index)
+            changed = true
+        }
+        tint = -1
+        if changed { entity.model?.materials = materials }
+    }
+
+    /// Moves a dashed ribbon's dashes to where they are at `time`.
+    func scrollDashes(time: Float) {
+        guard let dashSpeed else { return }
+        let cycles = time * dashSpeed / (2 * .pi)
+        let offset = -(cycles - floor(cycles))
+        guard abs(offset - scroll) > 1e-5 else { return }
+        scroll = offset
+        for index in materials.indices {
+            materials[index].textureCoordinateTransform = .init(offset: SIMD2(offset, 0))
+        }
+        entity.model?.materials = materials
+    }
+
+    /// A linear tint, so 0.5 halves the radiance instead of dimming it by sRGB's curve.
+    private func applyTint(_ value: Float, to index: Int) {
+        tints[index] = value
+        let v = CGFloat(value)
+        materials[index].color.tint = GlowEntity.linearTint(v)
     }
 
     /// For an alpha-blended layer (dust): how much of its alpha applies, 0...1.
@@ -597,8 +851,10 @@ final class GlowEntity {
         let clamped = min(max(value, 0), 1)
         guard abs(clamped - tint) > 1e-4 else { return }
         tint = clamped
-        material.blending = .transparent(opacity: .init(floatLiteral: clamped))
-        entity.model?.materials = [material]
+        for index in materials.indices {
+            materials[index].blending = .transparent(opacity: .init(floatLiteral: clamped))
+        }
+        entity.model?.materials = materials
     }
 
     /// Draws after every layer with a lower `order` in the same scene, whatever their depth —
@@ -658,13 +914,22 @@ final class GlowEntity {
         mesh.withUnsafeMutableIndices { target in
             quads.indices.withUnsafeBytes { target.copyMemory(from: $0) }
         }
-        mesh.parts.replaceAll([
-            LowLevelMesh.Part(
-                indexCount: quads.indices.count,
-                topology: .triangle,
-                bounds: BoundingBox(min: quads.boundsMin, max: quads.boundsMax)
-            ),
-        ])
+        let bounds = BoundingBox(min: quads.boundsMin, max: quads.boundsMax)
+        if quads.groups.count > 1 {
+            // One part per twinkle group, each drawn with its own material.
+            var offset = 0
+            var parts: [LowLevelMesh.Part] = []
+            for (group, count) in quads.groups.enumerated() where count > 0 {
+                parts.append(LowLevelMesh.Part(indexOffset: offset * MemoryLayout<UInt32>.stride, indexCount: count,
+                                               topology: .triangle, materialIndex: group, bounds: bounds))
+                offset += count
+            }
+            mesh.parts.replaceAll(parts)
+        } else {
+            mesh.parts.replaceAll([
+                LowLevelMesh.Part(indexCount: quads.indices.count, topology: .triangle, bounds: bounds),
+            ])
+        }
         return mesh
     }
 
@@ -749,31 +1014,75 @@ struct GlowStaging: @unchecked Sendable {
 }
 
 /// A plasma ball: an opaque sphere wearing `Plasma.surface`, occluding what is behind it.
+///
+/// With a `churn` program it can also cross-fade to a later surface: a hair-larger additive
+/// sphere carries the next frame, and the two tints trade places — `a · (1 − f) + b · f`.
 @MainActor
 final class PlasmaEntity {
     let entity: ModelEntity
     private var material: UnlitMaterial
-    private var tint: Float = -1
+    private var overlay: ModelEntity?
+    private var overlayMaterial: UnlitMaterial?
+    private var shown: (a: ObjectIdentifier?, b: ObjectIdentifier?) = (nil, nil)
+    private var tints: SIMD2<Float> = [-1, -1]
 
-    init(texture: TextureResource, radius: Float) {
+    init(texture: TextureResource, radius: Float, churn program: UnlitMaterial.Program? = nil) {
         var material = UnlitMaterial(applyPostProcessToneMap: true)
-        let sampler = MTLSamplerDescriptor()
-        sampler.minFilter = .linear
-        sampler.magFilter = .linear
-        sampler.sAddressMode = .repeat
-        sampler.tAddressMode = .clampToEdge
-        material.color = .init(tint: .white, texture: .init(texture, sampler: .init(sampler)))
+        material.color = .init(tint: .white, texture: .init(texture, sampler: Self.sampler))
         self.material = material
         entity = ModelEntity(mesh: .generateSphere(radius: radius), materials: [material])
+        if let program {
+            var fade = UnlitMaterial(program: program)
+            fade.color = .init(tint: .black, texture: .init(texture, sampler: Self.sampler))
+            fade.blending = .transparent(opacity: .init(floatLiteral: 1))
+            fade.writesDepth = false
+            let sphere = ModelEntity(mesh: .generateSphere(radius: radius * 1.0005), materials: [fade])
+            entity.addChild(sphere)
+            overlay = sphere
+            overlayMaterial = fade
+        }
     }
 
     /// Scales the surface radiance, 0...1.
     func setIntensity(_ value: Float) {
         let clamped = min(max(value, 0), 1)
-        guard abs(clamped - tint) > 1e-4 else { return }
-        tint = clamped
-        let v = CGFloat(clamped)
-        material.color.tint = GlowEntity.linearTint(v)
+        guard abs(clamped - tints.x) > 1e-4 else { return }
+        tints.x = clamped
+        material.color.tint = Self.tint(clamped)
         entity.model?.materials = [material]
+    }
+
+    /// Shows `a` blended towards `b` by `mix`, at `value` overall (needs a `churn` program).
+    func show(_ a: TextureResource, _ b: TextureResource, mix: Float, intensity value: Float) {
+        guard let overlay, var fade = overlayMaterial else { return }
+        let clamped = min(max(value, 0), 1)
+        let f = min(max(mix, 0), 1)
+        let ids = (ObjectIdentifier(a), ObjectIdentifier(b))
+        let target = SIMD2(clamped * (1 - f), clamped * f)
+        if ids.0 != shown.a || abs(target.x - tints.x) > 1e-4 {
+            material.color = .init(tint: Self.tint(target.x), texture: .init(a, sampler: Self.sampler))
+            entity.model?.materials = [material]
+        }
+        if ids.1 != shown.b || abs(target.y - tints.y) > 1e-4 {
+            fade.color = .init(tint: Self.tint(target.y), texture: .init(b, sampler: Self.sampler))
+            overlay.model?.materials = [fade]
+            overlayMaterial = fade
+        }
+        shown = (ids.0, ids.1)
+        tints = target
+    }
+
+    private static let sampler: MaterialParameters.Texture.Sampler = {
+        let descriptor = MTLSamplerDescriptor()
+        descriptor.minFilter = .linear
+        descriptor.magFilter = .linear
+        descriptor.sAddressMode = .repeat
+        descriptor.tAddressMode = .clampToEdge
+        return .init(descriptor)
+    }()
+
+    private static func tint(_ value: Float) -> UIColor {
+        let v = CGFloat(value)
+        return GlowEntity.linearTint(v)
     }
 }

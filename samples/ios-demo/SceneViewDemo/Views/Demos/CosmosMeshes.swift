@@ -833,10 +833,11 @@ enum CosmosFraming {
         let deg = Float.pi / 180
         let elevation = (10 + 2 * sin(time * 0.08)) * deg
         let yaw = (4 * sin(time * 0.1)) * deg
-        // Android also rolls the camera a quarter turn on a landscape viewport; SceneView's
-        // camera here has no roll, so a landscape viewport simply comes in closer.
-        let halfWidth = flowCoverMargin * CosmosMeshes.flowHalfWidth
-        let halfHeight = flowCoverMargin * CosmosMeshes.flowHalfHeight
+        // On a landscape viewport the camera is rolled a quarter turn (`CosmosEngine.camera`):
+        // in the camera's own frame, the rolled field is simply a wider-than-tall one.
+        let rolled = aspect > 1
+        let halfWidth = flowCoverMargin * (rolled ? CosmosMeshes.flowHalfHeight : CosmosMeshes.flowHalfWidth)
+        let halfHeight = flowCoverMargin * (rolled ? CosmosMeshes.flowHalfWidth : CosmosMeshes.flowHalfHeight)
         var near: Float = 0.3
         var far = fitDistance(halfWidth, halfHeight, aspect: aspect) * 2
         for _ in 0..<24 {

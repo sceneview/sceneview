@@ -693,12 +693,21 @@ demos:
     parity: diverges
     evidence: >-
       Same meshes, seeds, cameras, captions and dock. No custom shader on iOS
-      (UnlitMaterial additive quads, camera-facing on the CPU): the ribbon
-      dashes are baked at build time (they do not travel), the plasma surface
-      is a texture baked once (it turns, it does not churn), stars do not
-      twinkle, the galaxy is built in one pass, the Flow landscape
-      quarter-turn is not ported, and the bloom is added in display space
-      with a baked filmic roll-off standing in for Filament's tone map
+      (UnlitMaterial additive quads, camera-facing on the CPU). Motion is
+      rebuilt without a shader: ribbon dashes travel by scrolling a repeating
+      dash atlas through textureCoordinateTransform (dash colours quantized
+      per octave to fit one 8192-texel atlas), stars twinkle through eight
+      phase groups with one material each, and the star surface churns by
+      cross-fading 512x256 plasma frames baked in the background every 1.5 s
+      of scene time (held in Low Power Mode or at a serious thermal state).
+      The Flow landscape quarter-turn is ported and rebuilt when the viewport
+      crosses square; captured in a macOS window, where only the brightest
+      light shows (the dim light is lost on macOS in Galaxy and Flow; cause
+      not yet traced). Remaining gaps: the flow nuclei do
+      not churn, the galaxy is built in one pass, the Settings sheet has no
+      "Settings" title (DemoChrome has no parameter for it), and the bloom is
+      added in display space with a baked filmic roll-off standing in for
+      Filament's tone map
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working
