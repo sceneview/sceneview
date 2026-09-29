@@ -104,6 +104,7 @@ import io.github.sceneview.demo.demos.internal.checkSurpriseSize
 import io.github.sceneview.demo.demos.internal.drawFullyOpaqueMaskedMaterials
 import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_LAWN_RADIUS
 import io.github.sceneview.demo.demos.internal.PARK_SLOTS
 import io.github.sceneview.demo.demos.internal.ParkSlot
 import io.github.sceneview.demo.demos.internal.parkCamera
@@ -123,11 +124,15 @@ import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabService
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Size
+import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.ui.LabeledSlider
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
@@ -1396,12 +1401,30 @@ private const val SURPRISE_ATTEMPTS = 2
 /** The pool's largest file is 5.2 MB: past this, the network is the problem, not the file. */
 private const val SURPRISE_DOWNLOAD_TIMEOUT_MS = 15_000L
 
+/** The Park's garden: Poly Haven's "Chinese Garden" (CC0), the viewer's first environment too. */
+private const val PARK_ENVIRONMENT = "environments/chinese_garden_2k.hdr"
+
+/** The lawn is a disc this thick, in metres: enough to show an edge, too thin to read as a step. */
+private const val PARK_LAWN_THICKNESS = 0.05f
+
+/**
+ * Mown grass. This is the base colour that RENDERS as a natural lawn green (about #587839 on
+ * screen), not the lawn's colour: the garden's diffuse light is yellow-green with little blue in
+ * it, and the Filmic tone mapper's toe crushes a dark channel further, so #335222 came out as a
+ * saturated lime (#3B7208) with no blue left. The blue here is what survives that. iOS needs a
+ * different value for the same on-screen green (RealityKit lights and tone-maps the same HDR
+ * brighter and cooler): the two are matched on screen, not in code (#4103). A 3D material, not UI
+ * chrome, so it is not a DESIGN.md token.
+ */
+private val PARK_LAWN_COLOR = Color(0xFF435646)
+
 // ─── Multi-Model section ──────────────────────────────────────────────────────
 // Formerly MultiModelDemo (id `multi-model`).
 //
-// Composes a themed "Park" scene from the 4 glTF assets in [SampleAssets]' `park`
-// category: one hero at the back of the formation and three smaller ones in a
-// front row.
+// Composes a "Park" scene from the 4 glTF assets in [SampleAssets]' `park` category:
+// a pair of oaks at the back, a bench in front of them, a street lamp and a fern, on a
+// round lawn in a garden (#4103). Until #4103 it was four unrelated tree scans at four
+// unrelated sizes in the grey softbox studio, which read as a product shoot, not a park.
 //
 // The layout is positional and fixed ([PARK_SLOTS]); WHICH model stands in each slot
 // is the registry's call ([ParkSlot.uid]). Nothing here names a species: the
@@ -1413,8 +1436,8 @@ private const val SURPRISE_DOWNLOAD_TIMEOUT_MS = 15_000L
 // a dog, with no bench and no dog on screen (#2933).
 //
 // ⚠️ WHAT loads depends on the build. With a Sketchfab API key the resolver streams
-// the `park` category — four photoreal scanned oaks. Without one it substitutes each
-// slug's BUNDLED fallback: a lantern, a lantern, a shiba, a soldier. Same demo id,
+// the `park` category — oaks, bench, lamp and fern. Without one it substitutes each
+// slug's BUNDLED fallback: a soldier, the sheen chair, a lantern and a shiba. Same demo id,
 // same layout, completely different picture — worth knowing before reading a
 // screenshot of this section as evidence of anything (#2913). The chip label names
 // the CATALOGUE ENTRY, not the geometry, so on a fallback build it still reads
@@ -1423,8 +1446,9 @@ private const val SURPRISE_DOWNLOAD_TIMEOUT_MS = 15_000L
 // off whether a key is configured, because a keyed build whose download fails lands
 // on the same stand-ins.
 //
-// Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that unifies
-// the four assets into one cohesive open-air display.
+// Lighting and backdrop come from `chinese_garden_2k.hdr`: trees, a pond and a pavilion
+// under daylight, so the park stands in a garden and is lit like one. The lawn and one
+// contact shadow per model put the four of them on the same ground.
 //
 // Framing fits the whole formation (#3923): the camera is placed per viewport
 // from the formation's layout bounds, before any model loads — see [parkCamera].
@@ -1481,8 +1505,13 @@ private fun MultiModelSection(
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val context = LocalContext.current
+    // Mown grass: fully rough and non-metallic, so the garden's sky does not glint off it.
+    val lawnMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(PARK_LAWN_COLOR, metallic = 0f, roughness = 1f, reflectance = 0.2f)
+    }
 
     // Resolve each slot's slug by uid (stable across registry re-ordering). Falling
     // back to the slug at the same index in the category if an explicit uid is
@@ -1531,14 +1560,13 @@ private fun MultiModelSection(
         rememberFileModelInstance(modelLoader, files[3]),
     )
 
-    // Warm dusk HDR — `studio_warm_2k.hdr` gives a golden-hour wash that
-    // unifies the four very different materials. Skybox enabled so the warm tint
-    // is visible behind the display, not just rim-lighting the models on a black
-    // void. Falls back to the default neutral environment while the HDR is still
-    // loading.
+    // A garden, drawn as the skybox and lighting the models: the park reads as outdoors
+    // because it is lit by an outdoor sky (#4103). It used to be `studio_warm_2k.hdr`, the
+    // grey softbox studio, whose ceiling light hung over the trees. Falls back to the default
+    // neutral environment while the HDR is still loading.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
-        "environments/studio_warm_2k.hdr",
+        PARK_ENVIRONMENT,
         createSkybox = true,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
@@ -1595,7 +1623,7 @@ private fun MultiModelSection(
             // (the registry's own name), never from a hardcoded noun — the
             // registry decides what stands in each slot, so it decides the label
             // too. Horizontally scrolling because
-            // catalogue names run long ("Skovfogedegen Oak") and four of them do not
+            // catalogue names run long ("Simple Park Bench") and four of them do not
             // fit a portrait phone width without clipping. `OverflowChipRow` fades
             // the overflowing edge so the off-screen chip is discoverable (#2944).
             OverflowChipRow {
@@ -1695,8 +1723,19 @@ private fun MultiModelSection(
                 // Indexed off PARK_SLOTS rather than four named locals, so visibility, loaded
                 // instance and layout can only ever be read for the SAME slot (#2933).
                 val displays = PARK_SLOTS.mapIndexed { index, slot ->
-                    Display(visible[index], instances[index], slot)
+                    val isFallback = files[index]?.let(SketchfabAssetResolver::isBundledFallback) == true
+                    Display(visible[index], instances[index], slot, if (isFallback) slot.fallbackYaw else 0f)
                 }
+                // The lawn: a flat disc whose top face is the ground plane every model stands
+                // on. It is drawn from the first frame, so the scrim lifts onto a park that is
+                // already laid out rather than onto models floating in the garden.
+                CylinderNode(
+                    radius = PARK_LAWN_RADIUS,
+                    height = PARK_LAWN_THICKNESS,
+                    sideCount = 72,
+                    materialInstance = lawnMaterial,
+                    position = Position(y = -PARK_HEIGHT / 2f - PARK_LAWN_THICKNESS / 2f),
+                )
                 // `key(index)` + `isVisible`, never a skipped call site (#2939). `ModelNode`
                 // holds `remember(engine, modelInstance)`, and its `DisposableEffect(node)`
                 // runs `node.destroy()`, which calls `engine.safeDestroyEntity` on entities
@@ -1717,6 +1756,16 @@ private fun MultiModelSection(
                             // Rotation math lives in DemoMath.rotateAroundCentre so it can be
                             // JVM-unit-tested without firing up Filament / Compose.
                             val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
+                            // Grounds the model on the lawn: a soft pool under its footprint,
+                            // hidden with it. Just above the lawn so the two never z-fight.
+                            if (d.show) {
+                                ContactShadow(
+                                    size = Size(x = d.slot.scale * 0.8f, y = 0f, z = d.slot.scale * 0.8f),
+                                    context = ContactShadowContext.Floor,
+                                    normal = Direction(y = 1f),
+                                    position = Position(x = rx, y = -PARK_HEIGHT / 2f + 0.002f, z = rz),
+                                )
+                            }
                             ModelNode(
                                 modelInstance = d.instance,
                                 isVisible = d.show,
@@ -1736,7 +1785,7 @@ private fun MultiModelSection(
                                 // and is now honoured.)
                                 centerOrigin = Position(0f, -1f, 0f),
                                 position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
-                                rotation = Rotation(y = -sceneYaw),
+                                rotation = Rotation(y = d.slot.yaw + d.extraYaw - sceneYaw),
                             )
                         }
                     }
@@ -1779,6 +1828,8 @@ private data class Display(
     val show: Boolean,
     val instance: io.github.sceneview.model.ModelInstance?,
     val slot: ParkSlot,
+    /** [ParkSlot.fallbackYaw] when the slot shows its bundled stand-in, else 0. */
+    val extraYaw: Float,
 )
 
 /**

@@ -214,17 +214,18 @@ the same model before it ships.
 The sheet's "Scenes" row holds one card, the Park, in two files: the sheet shows the one this
 build will load (`SketchfabConfig.apiKey`), so the card is what the scene opens on (#4039).
 
-- `model_picker_park.webp`: a **keyless** debug build, so the bundled fallback models only
-  (lantern, lantern, shiba, soldier). Emulator capture (Pixel_7a, 1080×2400) of
-  `--es demo multi-model --ef camera_distance 6.5`, window x 0–1080, y 780–1644, resized to
-  600×480.
+- `model_picker_park.webp`: the bundled fallback models only (soldier, sheen chair, lantern,
+  shiba), what a **keyless** build loads. Emulator capture (Pixel_7a, 1080×2400) of
+  `--es demo multi-model --ez qa_mode true` (orbit frozen) after `pm clear` with Wi-Fi and data
+  off, so a keyed build falls back too. Window x 0–1080, y 790–1654, resized to 600×480 and
+  encoded with `cwebp -q 85`.
 - `model_picker_park_streamed.webp`: a **keyed** debug build, so the four streamed `park`
-  registry models. Same capture with `--ez qa_mode true` (orbit frozen), window x 0–1080,
-  y 832–1696, resized to 600×480 and encoded with `cwebp -q 85`. The image shows CC-BY 4.0
-  models, credited where the app credits them, under "Park (Multi-model)" in the Credits
-  sheet: "Oak Trees" by bumstrum, "Stylized Tree" by yonimantz09, "Mighty Oak Trees" by
-  Jagobo and "Skovfogedegen Oak" by rigsters (`SampleAssets.kt`). Re-capture it when the
-  `park` category changes.
+  registry models. Same capture online, window x 0–1080, y 880–1744, same resize and encoding.
+  The image shows CC-BY 4.0 models, credited where the app credits them, under "Park
+  (Multi-model)" in the Credits sheet: "Oak Trees" by bumstrum, "Simple Park Bench" by Planetrix23,
+  "Street Lamp" by bez_glaza and "Plant Bush" by Batuhan13 (`SampleAssets.kt`).
+
+Re-capture both when the `park` category or the Park's lawn changes.
 
 The Scene Gallery card (`model_picker_gallery.webp`, a collage of four bundled fallbacks) left
 with the Scene Gallery in #4039.

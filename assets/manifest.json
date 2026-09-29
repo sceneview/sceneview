@@ -263,6 +263,15 @@
       "author": "Poly Haven"
     },
     {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/chinese_garden.hdr",
+      "scope": "ios",
+      "sha256": "0ebefc734b593f4845739360d778c5e1cd854b873cf4008ff4a92dceabf82314",
+      "size": 1783624,
+      "source": "https://polyhaven.com/a/chinese_garden",
+      "license": "CC0-1.0",
+      "author": "Sergej Majboroda"
+    },
+    {
       "path": "samples/ios-demo/SceneViewDemo/Environments/night_sky.hdr",
       "scope": "ios",
       "sha256": "35b5ef6d664b9d32db5ef852f52f97b4227a0dca1830e9c8bdb3af5dc2f169cf",

@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 41,
+  "total": 42,
   "sections": [
     {
       "title": "3D models",
@@ -333,6 +333,16 @@
           "sourceUrl": "https://polyhaven.com",
           "size": 4374736,
           "note": "Poly Haven publishes its whole library under CC0-1.0"
+        },
+        {
+          "file": "Environments/chinese_garden.hdr",
+          "name": "Chinese Garden",
+          "author": "Sergej Majboroda",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://polyhaven.com/a/chinese_garden",
+          "size": 1783624,
+          "note": ""
         },
         {
           "file": "Environments/night_sky.hdr",

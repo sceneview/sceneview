@@ -196,6 +196,7 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
             // gallery
             "PBR Low-Poly Fox",      // khronos_fox
             "Desk Lamp",             // khronos_lantern
+            "Street Lamp",           // khronos_lantern (park)
             // animation — an animated humanoid for a robot / mech (#3007)
             "Retro TV Robot", "Catfish Mech", "Walking Robot", "Enforcer Mk1",
             // park — the one tree_scene consumer that IS trees
