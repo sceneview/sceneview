@@ -1,12 +1,20 @@
-#if os(iOS)
+#if os(iOS) && targetEnvironment(simulator)
 import RealityKit
 import SwiftUI
 import UIKit
 
 /// Keeps a `RealityView`'s Metal render surface the size of the view after a resize (#4182).
 ///
-/// On iOS 26 the `ARView` that backs a SwiftUI `RealityView` follows its new frame when the
-/// device rotates, but the Metal view inside it does not: it keeps the frame and the
+/// **Simulator only.** The bug has only ever been seen in the iOS 26 Simulator. On a real
+/// iPhone (iPhone SE 3, iOS 26.6.1) RealityKit resizes the surface itself, and writing the
+/// surface's frame and drawable size from here during the rotation leaves RealityKit with
+/// the portrait projection: the landscape scene is stretched about 3x horizontally
+/// ((portrait height / landscape height)², the old aspect over the new one). So this file,
+/// and the code in ``SceneView`` that uses it, is compiled for the simulator only; device
+/// builds keep RealityKit's own resize untouched.
+///
+/// In the iOS 26 Simulator, the `ARView` that backs a SwiftUI `RealityView` follows its new
+/// frame when the device rotates, but the Metal view inside it does not: it keeps the frame and the
 /// drawable size it was created with. RealityKit then renders a landscape viewport into the
 /// portrait-sized drawable, so after portrait → landscape only the left, portrait-wide strip
 /// of the screen shows the scene and the rest stays black. Launching straight into landscape

@@ -779,7 +779,7 @@ private final class SceneEntities: ObservableObject {
     let perspCamera = PerspectiveCamera()
     #endif
 
-    #if os(iOS)
+    #if os(iOS) && targetEnvironment(simulator)
     /// A projection refresh in flight after a render-surface resize (#4182): the scene-update
     /// subscription that restores the camera's near plane, and the value it restores.
     var projectionRefresh: (subscription: any Cancellable, baseNear: Float)?
@@ -1413,9 +1413,12 @@ private struct SceneViewRepresentation: View {
         // horizontally if the framing assumed a square viewport.
         GeometryReader { proxy in
             realityView
-                #if os(iOS)
-                // RealityKit leaves the render surface at its launch size after a
-                // rotation, so the scene only fills a portrait-wide strip (#4182).
+                #if os(iOS) && targetEnvironment(simulator)
+                // In the iOS Simulator, RealityKit leaves the render surface at its launch
+                // size after a rotation, so the scene only fills a portrait-wide strip
+                // (#4182). A real iPhone resizes it on its own, and writing the surface
+                // there freezes a portrait projection (horizontal stretch), so this is
+                // compiled for the simulator only.
                 .background(RenderSurfaceResizer(size: proxy.size) {
                     refreshProjectionAfterSurfaceResize()
                 })
@@ -1437,7 +1440,7 @@ private struct SceneViewRepresentation: View {
         }
     }
 
-    #if os(iOS)
+    #if os(iOS) && targetEnvironment(simulator)
     /// Makes RealityKit re-derive the camera projection once ``RenderSurfaceResizer`` has
     /// resized the render surface (#4182).
     ///
