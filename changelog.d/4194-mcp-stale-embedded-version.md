@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **`sceneview-mcp` no longer hands assistants an 8-release-stale SDK version ([#4194](https://github.com/sceneview/sceneview/issues/4194)).** The published npm package's embedded `llms.txt` recommended SceneView 4.41.0 while the SDK was at 4.49.0: `release.yml` only republishes `sceneview-mcp` when `mcp/package.json`'s version changes, and nothing had bumped it since 4.1.0 across the SDK's 4.42.0→4.49.0 releases. Bumped to 4.1.1 (MCP stays on its own independent release track) so the next tag republishes with the current SDK version.
