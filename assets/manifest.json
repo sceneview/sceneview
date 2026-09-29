@@ -516,15 +516,6 @@
       "author": "Karol Miklas"
     },
     {
-      "path": "samples/ios-demo/SceneViewDemo/Models/porsche_911_turbo.usdz",
-      "scope": "ios",
-      "sha256": "1a095acd3d56dab712f627ebce3f518d7bc84139e6e3414d4db4841b97b49198",
-      "size": 12351092,
-      "source": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",
-      "license": "CC-BY-4.0",
-      "author": "Lionsharp Studios"
-    },
-    {
       "path": "samples/ios-demo/SceneViewDemo/Models/ps5_dualsense.usdz",
       "scope": "ios",
       "sha256": "36a7990e81db956fa86f58c0c7fb85097ff3c368175c038c20b0979e6f1b00c0",
