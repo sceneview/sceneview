@@ -670,6 +670,9 @@ private fun StudioSection(
         comparisonCamera.lookAt(Position(0f))
     }
     val firstFrame = rememberFirstFrameState(engine)
+    // The studio backdrop and its IBL are the demo's picture, not a later refinement of it:
+    // the cover stays up until both have landed (#4174).
+    firstFrame.holdUntil(landed = studioEnvironment != null)
 
     // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
     // `Node.name` carries the material id — the picker hands back the picked Node, not an
@@ -1344,7 +1347,7 @@ private fun OcclusionSection(
                 environmentLoader = environmentLoader,
                 // Studio IBL, no skybox: the occluded region has to read as *gone*, and it
                 // can only do that against a background the hidden half melts into.
-                environment = rememberModelDemoEnvironment(environmentLoader),
+                environment = rememberModelDemoEnvironment(environmentLoader, firstFrame),
                 // Static camera — the section is about depth ordering at a fixed viewpoint.
                 // eye x == target x == 0, so the occluder's edge (world x = 0) projects to
                 // the screen centre: a clean vertical cut down the helmet's middle (#2304).

@@ -2053,6 +2053,8 @@ private fun MultiModelSection(
     }
 
     val firstFrame = rememberFirstFrameState(engine)
+    // The cover waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = hdrEnvironment != null)
 
     DemoScaffold(
         title = stringResource(R.string.demo_multi_model_title),

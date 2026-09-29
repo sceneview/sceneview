@@ -182,6 +182,8 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     val envelopeCenter = pivot
     val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState(engine)
+    // The cover waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = hdrEnvironment != null)
 
     DemoScaffold(
         title = stringResource(R.string.demo_double_pendulum_title),

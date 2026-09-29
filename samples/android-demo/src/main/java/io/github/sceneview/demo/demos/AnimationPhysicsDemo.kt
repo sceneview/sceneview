@@ -750,6 +750,8 @@ private fun AnimationSection(onBack: () -> Unit) {
     )
 
     val firstFrame = rememberFirstFrameState(engine)
+    // The cover waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = hdrEnvironment != null)
 
     // ── Who keeps this screen awake (#3718) ──────────────────────────────────────────────
     //
