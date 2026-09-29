@@ -1,11 +1,15 @@
 package io.github.sceneview.environment
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.rememberEnvironment
+import kotlinx.coroutines.CancellationException
+
+private const val TAG = "EnvironmentPresets"
 
 /**
  * Pre-defined HDR environment asset locations bundled with SceneView.
@@ -62,14 +66,19 @@ fun rememberHDREnvironment(
         key1 = environmentLoader,
         key2 = assetFileLocation
     ) {
-        // The HDR decode + IBL prefilter runs on the GPU (main thread) through Filament.
-        // createHDREnvironment handles this internally.
-        value = runCatching {
-            environmentLoader.createHDREnvironment(
-                assetFileLocation = assetFileLocation,
+        // loadHDREnvironment reads and decodes the HDR off the main thread, then runs only the
+        // Filament upload + IBL prefilter on Main — a 2k equirect no longer stalls composition.
+        value = try {
+            environmentLoader.loadHDREnvironment(
+                url = assetFileLocation,
                 createSkybox = createSkybox
             )
-        }.getOrNull()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+            Log.w(TAG, "Failed to load HDR environment $assetFileLocation", error)
+            null
+        }
     }.value
     // `produceState` only cancels the producer coroutine on a key change — it never destroys the
     // previously produced [Environment]. Keying a [DisposableEffect] on the produced value fires

@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +49,7 @@ import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.Environment
+import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.node.FogNode
@@ -190,14 +193,11 @@ fun LightingLabDemo(onBack: () -> Unit) {
     val keyMarkerMaterial = rememberUnlitMaterialInstance(materialLoader, KEY_MARKER_COLOR)
 
     // ── Environments ─────────────────────────────────────────────────────────────────────────
-    // Built synchronously in composition, on the main thread, and destroyed by an explicit
-    // DisposableEffect — the same contract every environment-owning demo uses.
-    val benchEnvironment: Environment? = remember(environmentLoader) {
-        environmentLoader.createHDREnvironment(assetFileLocation = BENCH_ENVIRONMENT_FILE)
-    }
-    DisposableEffect(benchEnvironment) {
-        onDispose { benchEnvironment?.let { environmentLoader.destroyEnvironment(it) } }
-    }
+    // Loaded asynchronously: the HDR file read and decode run off the main thread, only the
+    // Filament upload and prefilter run on it, and the neutral fallback lights the bench until
+    // the studio lands. `rememberHDREnvironment` destroys the environment on leave.
+    val benchEnvironment: Environment? =
+        rememberHDREnvironment(environmentLoader, BENCH_ENVIRONMENT_FILE)
     /**
      * The local probe's IBL — built the first time the probe is switched on, never before, and
      * without a skybox.
@@ -219,18 +219,14 @@ fun LightingLabDemo(onBack: () -> Unit) {
      * but the allocations above still happen at composition, because they are what *builds* the
      * environment rather than what draws it.
      */
-    val probeEnvironment: Environment? = remember(environmentLoader, probeEnvironmentRequested) {
-        if (!probeEnvironmentRequested) {
-            null
-        } else {
-            environmentLoader.createHDREnvironment(
-                assetFileLocation = LightingStage.PROBE_ENVIRONMENT_FILE,
-                createSkybox = false,
-            )
-        }
-    }
-    DisposableEffect(probeEnvironment) {
-        onDispose { probeEnvironment?.let { environmentLoader.destroyEnvironment(it) } }
+    val probeEnvironment: Environment? = if (probeEnvironmentRequested) {
+        rememberHDREnvironment(
+            environmentLoader,
+            LightingStage.PROBE_ENVIRONMENT_FILE,
+            createSkybox = false,
+        )
+    } else {
+        null
     }
     val fallbackEnvironment = remember(environmentLoader) { createEnvironment(environmentLoader) }
     DisposableEffect(fallbackEnvironment) {
