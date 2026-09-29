@@ -309,14 +309,15 @@ final class MaterialWall {
     /// eye stays well outside Android's 3 × radius floor.
     static let focusDistance: Float = 1.25
     /// Label chip scale: metres per SwiftUI point. The wall view shows about 207 pt per
-    /// metre, so a 13 pt caption reads at about 13 pt, and a chip (``chipWidth``) is
-    /// 0.56 m wide — inside the 0.6 m ball spacing with a gap between neighbours, as on
-    /// Android.
-    private static let metresPerPoint: Float = 0.0048
-    /// Chip width in points — Android's caption width (a third of 94 % of a 402 pt screen,
+    /// metre, so a 13 pt caption reads at about 11 pt, Android's `labelSmall`. A two-line
+    /// chip (about 39 pt) then hangs 0.16 m, which with ``labelGap`` stays inside the 0.2 m
+    /// between a ball and the one below it, keeping a gap there as Android does; at a
+    /// larger scale the lower ball hides the chip's bottom edge.
+    private static let metresPerPoint: Float = 0.0042
+    /// Widest chip in points — Android's caption width (a third of 94 % of a 402 pt screen,
     /// less `Space.xs` either side), so the same names wrap onto two lines.
     private static let chipWidth: CGFloat = 116
-    private static let labelGap: Float = 0.035
+    private static let labelGap: Float = 0.02
     private static let namePrefix = "material-ball-"
 
     // Albedos are physical data, as on Android: gold, copper, chromium and aluminium are the
@@ -356,12 +357,12 @@ final class MaterialWall {
                            + "transmission lobe, so it does not bend what is behind it.",
                        color: rgb(0x7B90A8), metallic: 0, roughness: 0.05, reflectance: 0.6,
                        trait: .transparency, traitAmount: 0.5),
-        // Primary × 1.5, Android's preset (#4065). The ball is not drawn with this colour
-        // on iOS: `material(_:)` emits what Android renders it as, see its `.emissive` case.
+        // Android's preset is Primary × 1.5 (#4065). iOS keeps the 1.5 strength and emits
+        // what Android renders it as instead of Primary: see `material(_:)`'s `.emissive` case.
         StudioMaterial(id: "glow", name: "Neon sign — emissive",
                        note: "Emission owes nothing to the environment — it still lights at night.",
                        color: rgb(0x161B22), metallic: 0, roughness: 0.6, reflectance: 0.35,
-                       trait: .emissive, traitAmount: 1.5, traitColor: rgb(0x005BC1)),
+                       trait: .emissive, traitAmount: 1.5),
     ]
 
     static var rows: Int { (library.count + columns - 1) / columns }
@@ -514,7 +515,8 @@ final class MaterialWall {
 
     /// Android's caption pill (`MaterialsDemo.kt`): the page surface with on-surface text —
     /// white and dark text in light, dark and light text in dark — `Radius.sm` corners,
-    /// `Space.xs` padding, a fixed width, and at most two centred lines.
+    /// `Space.xs` padding, at most two centred lines. A chip hugs its text up to
+    /// ``chipWidth``, the width the renderer proposes, where longer names wrap.
     private static func chipImage(_ text: String, dark: Bool) -> CGImage? {
         // Keep the dash with the word before it, so a two-line name breaks after the dash
         // ("Car paint —" / "clearcoat") as Android's does, not before it.
@@ -525,7 +527,6 @@ final class MaterialWall {
             .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
             .padding(SceneViewTokens.Space.xs)
-            .frame(width: chipWidth)
             .background(SceneViewTokens.HomeColor.surface,
                         in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
             // Android's pills sit on the grey studio; the iOS stage is the pale themed
