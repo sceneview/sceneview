@@ -1406,6 +1406,13 @@ private struct SceneViewRepresentation: View {
         // horizontally if the framing assumed a square viewport.
         GeometryReader { proxy in
             realityView
+                #if os(iOS)
+                // RealityKit leaves the render surface at its launch size after a
+                // rotation, so the scene only fills a portrait-wide strip (#4182).
+                .background(RenderSurfaceResizer(size: proxy.size) {
+                    refreshProjectionAfterSurfaceResize()
+                })
+                #endif
                 .onChange(of: proxy.size) { _, newSize in
                     updateViewportAspect(newSize)
                 }
@@ -1422,6 +1429,25 @@ private struct SceneViewRepresentation: View {
                 }
         }
     }
+
+    #if os(iOS)
+    /// Makes RealityKit re-derive the camera projection once ``RenderSurfaceResizer`` has
+    /// resized the render surface (#4182). The projection only follows the new surface
+    /// when the camera component is written again, so the field of view is nudged by a
+    /// thousandth of a degree and restored on the next main-queue turn — unless a camera
+    /// gesture or the fit pass wrote a new value in between.
+    private func refreshProjectionAfterSurfaceResize() {
+        let camera = entities.perspCamera
+        let fov = camera.camera.fieldOfViewInDegrees
+        let nudged = fov + 0.001
+        camera.camera.fieldOfViewInDegrees = nudged
+        DispatchQueue.main.async {
+            if camera.camera.fieldOfViewInDegrees == nudged {
+                camera.camera.fieldOfViewInDegrees = fov
+            }
+        }
+    }
+    #endif
 
     /// Records the viewport aspect ratio from a layout size. Re-frames the
     /// content on the next `update:` tick if the aspect changed materially
