@@ -84,6 +84,8 @@ import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.theme.SceneViewTokens.Type
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -281,14 +283,15 @@ internal fun RoomDollhouseScreen(
                     onClick = { if (inRoom) previewChosen = true else orbit.recenter() },
                     selected = !inRoom,
                 ),
-                DockItem(
-                    icon = Icons.Outlined.Straighten,
-                    label = if (realSize) DollhouseCopy.MINIATURE else DollhouseCopy.REAL_SIZE,
-                    caption = if (realSize) DollhouseCopy.MINIATURE else DollhouseCopy.REAL_SIZE,
-                    onClick = ::toggleRealSize,
-                    enabled = canAdjust,
-                    selected = realSize,
-                ).takeIf { inRoom },
+                DollhouseCopy.scaleToggle(realSize).let { toggle ->
+                    DockItem(
+                        icon = Icons.Outlined.Straighten,
+                        label = toggle.label,
+                        onClick = ::toggleRealSize,
+                        enabled = canAdjust,
+                        selected = toggle.selected,
+                    )
+                }.takeIf { inRoom },
                 DockItem(
                     icon = Icons.Outlined.RestartAlt,
                     label = stringResource(R.string.ar_dock_reset_label),
@@ -378,6 +381,7 @@ internal fun RoomDollhouseScreen(
                 // places again — coming back to AR opened on a camera that never placed the room.
                 DisposableEffect(media) { onDispose { ar = ar.leftAr() } }
                 val scale = if (realSize) 1f else room.fit.scale
+                val orientation = remember(room) { RoomDollhouse.orientation(room) }
                 AutoPlacementScene(
                     assetReady = armed,
                     modifier = Modifier.fillMaxSize(),
@@ -390,18 +394,26 @@ internal fun RoomDollhouseScreen(
                     onTrackingFailureChanged = { trackingFailure = it },
                 ) { placement ->
                     AutoPlacementNode(placement, state, onInvalidMove = { invalidMove = it }) {
-                        DollhouseModel(
-                            media = media,
-                            room = room,
-                            engine = engine,
-                            materialLoader = materialLoader,
-                            // The AR stage is media: the dark palette reads over any camera feed.
-                            palette = chrome.debug,
-                            base = chrome.card,
-                            scale = scale,
-                            styleScale = scale,
-                            pickable = true,
-                        )
+                        // The side the recording started from faces the user; at real size the
+                        // room reaches away from where the miniature stood instead of being
+                        // centred on it, around the camera (DollhouseOrientation).
+                        Node(
+                            position = Position(z = orientation.offsetZ(realSize, scale)),
+                            rotation = Rotation(y = orientation.yawDegrees),
+                        ) {
+                            DollhouseModel(
+                                media = media,
+                                room = room,
+                                engine = engine,
+                                materialLoader = materialLoader,
+                                // The AR stage is media: the dark palette reads over any camera feed.
+                                palette = chrome.debug,
+                                base = chrome.card,
+                                scale = scale,
+                                styleScale = scale,
+                                pickable = true,
+                            )
+                        }
                     }
                 }
                 ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING && !state.hasCameraFrame, availability)

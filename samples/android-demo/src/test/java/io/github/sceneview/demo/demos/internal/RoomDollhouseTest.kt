@@ -313,6 +313,53 @@ class RoomDollhouseTest {
     }
 
     @Test
+    fun `the lit scale toggle and the pill above the dock name the same scale`() {
+        val fit = DollhouseFit(0f, 0f, 0f, width = 4f, height = 2.5f, depth = 3f, denominator = 12)
+        for (realSize in listOf(false, true)) {
+            val toggle = DollhouseCopy.scaleToggle(realSize)
+            // One name whatever the state: a toggle, lit when on, like every dock toggle.
+            assertEquals(DollhouseCopy.REAL_SIZE, toggle.label)
+            assertEquals(realSize, toggle.selected)
+            // Lit exactly when the pill says real size; unlit, the pill names the miniature's scale.
+            assertEquals(toggle.selected, DollhouseCopy.peek("Room", fit, realSize).endsWith(toggle.label))
+        }
+        assertEquals("Room · 1:12", DollhouseCopy.peek("Room", fit, DollhouseCopy.scaleToggle(false).selected))
+    }
+
+    @Test
+    fun `the side the recording started from faces the user`() {
+        // The path starts at (-1, 0, 0), a metre to -X of the room's middle.
+        val room = requireNotNull(RoomDollhouse.room(room()))
+        val o = RoomDollhouse.orientation(room)
+        val yaw = Math.toRadians(o.yawDegrees.toDouble())
+        val dx = room.frame.trail[0] - room.fit.centerX
+        val dz = room.frame.trail[2] - room.fit.centerZ
+        // Turned about +Y, the start lies straight towards +Z — the user.
+        assertEquals(0.0, dx * kotlin.math.cos(yaw) + dz * kotlin.math.sin(yaw), 1e-4)
+        assertTrue(-dx * kotlin.math.sin(yaw) + dz * kotlin.math.cos(yaw) > 0.0)
+    }
+
+    @Test
+    fun `at real size the room reaches away from where the miniature stood, not around it`() {
+        val room = requireNotNull(RoomDollhouse.room(room()))
+        val o = RoomDollhouse.orientation(room)
+        // The 4 × 3 m room is turned a quarter: its 4 m side runs towards the user, 2 m each way.
+        assertEquals(2f, o.front, 0.05f)
+        // The miniature stays centred where the user aimed; at real size its near side sits there.
+        assertEquals(0f, o.offsetZ(realSize = false, scale = room.fit.scale), 0f)
+        assertEquals(-o.front, o.offsetZ(realSize = true, scale = 1f), 0f)
+    }
+
+    @Test
+    fun `a path starting in the middle of the room names no side, and the room keeps its axes`() {
+        val fit = DollhouseFit(0f, 0f, 0f, width = 4f, height = 2.5f, depth = 3f, denominator = 12)
+        val frame = ArDebugFrame(0f, floatArrayOf(0.1f, 0f, 0.1f), null, FloatArray(0), FloatArray(0), emptyList(), emptyList())
+        val o = RoomDollhouse.orientation(DollhouseRoom(frame, fit))
+        assertEquals(0f, o.yawDegrees, 0f)
+        assertEquals(1.5f, o.front, 1e-5f)
+    }
+
+    @Test
     fun `a pinch reads as the scale the room now stands at`() {
         val fit = DollhouseFit(0f, 0f, 0f, width = 4f, height = 2.5f, depth = 3f, denominator = 12)
         assertEquals("1:12", DollhouseCopy.pinched(fit, 1f, realSize = false))

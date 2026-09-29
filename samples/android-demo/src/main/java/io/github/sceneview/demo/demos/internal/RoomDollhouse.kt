@@ -1,9 +1,12 @@
 package io.github.sceneview.demo.demos.internal
 
 import java.util.Locale
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /*
  * "Your room, as a dollhouse" (#4075): a room recorded with the Rerun demo, cut open and stood on
@@ -272,6 +275,31 @@ object RoomDollhouse {
         return floatArrayOf(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1)
     }
 
+    /**
+     * How the [room] is turned and where it stands around the anchor (see [DollhouseOrientation]).
+     *
+     * The side the recording started from — where the path walked begins, the doorway more often
+     * than not — is turned towards +Z, the side of the anchor that faces the user (ARCore's hit
+     * pose on a plane points +Z roughly at the device). A path that starts within
+     * [ENTRANCE_MIN_M] of the room's middle names no side, and the room keeps its own axes.
+     */
+    fun orientation(room: DollhouseRoom): DollhouseOrientation {
+        val fit = room.fit
+        val trail = room.frame.trail
+        val yaw = if (trail.size >= 3) {
+            val dx = trail[0] - fit.centerX
+            val dz = trail[2] - fit.centerZ
+            // A turn of `yaw` about +Y takes (sin a, cos a) to (sin(a + yaw), cos(a + yaw)).
+            if (hypot(dx, dz) >= ENTRANCE_MIN_M) -atan2(dx, dz) else 0f
+        } else 0f
+        // The fit's box, turned: how far its nearest side now reaches towards the user.
+        val hw = fit.width / 2f
+        val hd = fit.depth / 2f
+        val front = listOf(-hw to -hd, hw to -hd, hw to hd, -hw to hd)
+            .maxOf { (x, z) -> -x * sin(yaw) + z * cos(yaw) }
+        return DollhouseOrientation(yawDegrees = Math.toDegrees(yaw.toDouble()).toFloat(), front = front)
+    }
+
     /** The convex hull of [points] (x, z), counter-clockwise from the lowest x (monotone chain). */
     internal fun convexHull(points: List<Pair<Float, Float>>): List<Pair<Float, Float>> {
         val sorted = points.distinct().sortedWith(compareBy({ it.first }, { it.second }))
@@ -307,6 +335,24 @@ object RoomDollhouse {
     private const val POINT_RADIUS_PIXELS = 2.4f
     private const val MIN_SCALE = 0.001f
     private const val MIN_HEIGHT_M = 0.1f
+
+    /** A path starting nearer the room's middle than this names no side to walk in from. */
+    const val ENTRANCE_MIN_M = 0.3f
+}
+
+/**
+ * How the room stands around the anchor, in the anchor's frame (+Y up, +Z towards the user): its
+ * floor's middle turned [yawDegrees] about +Y, so the side the recording started from faces the
+ * user. [front] is how far that side then reaches towards the user, in the room's metres.
+ *
+ * The miniature stands centred on the anchor, where the user aimed. At real size the room is
+ * pushed back by [front] (see [offsetZ]): its near side sits on the anchor and the room reaches
+ * away from the user, floor on the surface the miniature stood on — a room to look into, not one
+ * centred on the anchor, half a metre away, whose walls and floor cut through the camera.
+ */
+data class DollhouseOrientation(val yawDegrees: Float, val front: Float) {
+    /** How far along Z the turned room is drawn at [scale]: 0 for the miniature, `-front` at real size. */
+    fun offsetZ(realSize: Boolean, scale: Float): Float = if (realSize) -front * scale else 0f
 }
 
 /** What the dollhouse screen shows, decided from what is known — see [dollhouseStage]. */
@@ -400,6 +446,9 @@ data class DollhouseArControl(
     }
 }
 
+/** The dock's scale toggle as it reads: [label] on it, lit when [selected]. */
+data class DollhouseScaleToggle(val label: String, val selected: Boolean)
+
 /** The dollhouse screen's words, in one place (English, like the rest of the Rerun demo). */
 object DollhouseCopy {
     const val VIEW_IN_AR = "View in AR"
@@ -423,7 +472,6 @@ object DollhouseCopy {
     const val RECORD = "Record your room"
 
     const val REAL_SIZE = "Real size"
-    const val MINIATURE = "Miniature"
     const val RESET = "Reset"
     const val VIEW_3D = "3D"
     const val VIEW_AR = "AR"
@@ -441,6 +489,14 @@ object DollhouseCopy {
     /** `Room · Sep 28, 2:32 PM · 1:20`. */
     fun peek(title: String, fit: DollhouseFit, realSize: Boolean): String =
         "$title · ${if (realSize) REAL_SIZE else fit.label}"
+
+    /**
+     * The dock's scale toggle: always named [REAL_SIZE] and lit while the room stands at real
+     * size, like every dock toggle — so the lit item and the pill above the dock ([peek]) always
+     * name the same scale. It used to be named after the scale a tap would switch *to* yet lit
+     * for the one shown, and read "Miniature", lit, under a pill saying "Real size".
+     */
+    fun scaleToggle(realSize: Boolean): DollhouseScaleToggle = DollhouseScaleToggle(REAL_SIZE, selected = realSize)
 
     /**
      * What a kept recording holds, read from its figures: `3 surfaces · 1,240 points`, or
