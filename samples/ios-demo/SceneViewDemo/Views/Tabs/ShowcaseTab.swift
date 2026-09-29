@@ -159,17 +159,7 @@ struct ShowcaseTab: View {
                             .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
                             .accessibilityIdentifier("home-section-featured")
                             .staggeredReveal(position: 1, revealed: catalogueRevealed)
-                        LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                            ForEach(Array(featured.enumerated()), id: \.element.sceneId) { index, demo in
-                                let sourceId = "featured-\(demo.sceneId)"
-                                DemoMediaCard(demo: demo) { open(demo, from: sourceId) }
-                                    #if os(iOS)
-                                    .matchedTransitionSource(id: sourceId, in: cardNamespace)
-                                    #endif
-                                    .accessibilityIdentifier("home-featured-\(demo.sceneId)")
-                                    .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
-                            }
-                        }
+                        featuredShelf
                     }
 
                     CategoryChipRow(selected: $selectedSection)
@@ -327,6 +317,42 @@ struct ShowcaseTab: View {
 
     /// The header sits on the stage's sky: white type and light status-bar icons.
     private var overStage: Bool { !scrolled && !searching && !searchOpen }
+
+    /// The "Featured" shelf under the hero — Android's `FeaturedShelf` (#4144):
+    /// the demos we push as a swipeable row of 4:5 portrait cards, the editorial
+    /// row of a store's front page rather than two more cells of the grid.
+    ///
+    /// Each card is `featured-card-width` wide, so the next one peeks at the
+    /// trailing edge and says "swipe"; a fling settles on a card's leading edge.
+    /// The row bleeds out of the page inset and carries it as a content margin,
+    /// like the chip row, so cards scroll to the screen edge. The cards end
+    /// level, and each picture lags its card by `featured-parallax`.
+    private var featuredShelf: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: SceneViewTokens.Home.gridGutter) {
+                ForEach(Array(featured.enumerated()), id: \.element.sceneId) { index, demo in
+                    let sourceId = "featured-\(demo.sceneId)"
+                    DemoMediaCard(demo: demo, featuredWidth: featuredCardWidth) { open(demo, from: sourceId) }
+                        #if os(iOS)
+                        .matchedTransitionSource(id: sourceId, in: cardNamespace)
+                        #endif
+                        .accessibilityIdentifier("home-featured-\(demo.sceneId)")
+                        .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
+                }
+            }
+            .levelledRow()
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.viewAligned)
+        .contentMargins(.horizontal, SceneViewTokens.Home.contentPadding, for: .scrollContent)
+        // The light `shadow-md` reaches below and beside each card.
+        .scrollClipDisabled()
+        .padding(.horizontal, -SceneViewTokens.Home.contentPadding)
+    }
+
+    private var featuredCardWidth: CGFloat {
+        expanded ? SceneViewTokens.Home.featuredCardWidthExpanded : SceneViewTokens.Home.featuredCardWidth
+    }
 
     /// Every visible demo under its section header. Headers are drawn only
     /// when more than one section is on screen: with a single chip selected,

@@ -158,6 +158,12 @@ Contrast of `card-glass`, composited over the worst uniform ground: light, over 
 is at 90 % and not lower because light pictures do reach dark mode: at 85 % the Animation
 card's light-grey stage took its caption to 4.4:1.
 
+iOS draws the same card in SwiftUI (`DemoMediaCard.swift`, tokens in `Theme.swift`): the
+blur is `.blur(radius:)` with the Skia radius converted to a sigma (`0.57735 · r + 0.5`), the
+melt a `LinearGradient` mask, the parallax a `.visualEffect` on the shelf's scroll frame.
+Its dark `chip-text` / `on-surface-dim` is #a4abb7 like Android's: the older iOS #9ca3af
+gave 4.16:1 over a white picture under the 90 % glass.
+
 ### Demo App About (Android)
 
 The About tab carries **exactly one emphasised surface**: the support card. Everything

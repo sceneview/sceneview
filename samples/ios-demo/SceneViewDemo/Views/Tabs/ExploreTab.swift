@@ -241,6 +241,10 @@ struct ExploreTab: View {
     /// When `true`, the Sketchfab feeds filter to `animated=true` (skeletal rigs).
     /// Ignored by the CC sources, which don't expose the flag.
     @State private var animatedOnly = false
+    /// The "Try a demo" row (`trySampleSection`), built once.
+    @State private var tryDemos: [DemoItem] = []
+    /// The demo opened from that row, shown in the home's `DemoCover`.
+    @State private var trialDemo: DemoItem?
 
     // Search query + state machine (#3586). The four states the results area can
     // be in — browse feeds, loading, no results, unreachable catalog — live in
@@ -317,7 +321,7 @@ struct ExploreTab: View {
                     if selectedSource.id == .sketchfab && keyRejected {
                         sketchfabDisabledBanner
                     }
-                    // "Try a sample" + the Animated filter belong to the browse
+                    // "Try a demo" + the Animated filter belong to the browse
                     // experience — hidden while searching. The Animated filter is
                     // meaningful only for Sketchfab; the CC sources hide it.
                     if !isSearching {
@@ -418,6 +422,15 @@ struct ExploreTab: View {
             .navigationDestination(item: $selectedModel) { model in
                 ModelViewerScreen(model: model)
             }
+            #if os(iOS)
+            .fullScreenCover(item: $trialDemo) { demo in
+                DemoCover(scene: demo) { trialDemo = nil }
+            }
+            #else
+            .sheet(item: $trialDemo) { demo in
+                DemoCover(scene: demo) { trialDemo = nil }
+            }
+            #endif
             .navigationDestination(item: $viewingModel) { model in
                 GalleryModelViewerScreen(model: model, source: source(for: model))
                     // iOS 18 zoom navigation transition — the source thumbnail
@@ -678,40 +691,52 @@ struct ExploreTab: View {
         #endif
     }
 
-    // MARK: - "Try a sample" section (home-feed mix — samples + models)
+    // MARK: - "Try a demo" section (home-feed mix — demos + models)
 
-    /// 6 curated sample demos surfaced on Explore so the home feed shows what
-    /// SceneView can do beyond just downloaded models. Tap navigates to the demo's
-    /// own screen, which renders through SceneView (same path as the Scenes tab).
+    /// Explore's "Try a demo" row — Android's `curatedSamplesForExplore()`, in the
+    /// same order: the home's own `DemoMediaCard` (its captured preview under
+    /// the frosted caption, #3993 / #4144), `sampleCardWidth` wide, ending level
+    /// with the row's tallest caption. `animation` is the iOS half of Android's
+    /// `animation-physics`. A demo the home keeps off its grid
+    /// (`HomeCatalogue.hiddenFromHome`) is skipped here too. A tap opens the
+    /// demo in the same full-screen host as the home (`DemoCover`).
     private var trySampleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Try a sample")
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            Text("Try a demo")
                 .font(.title2.weight(.bold))
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    SamplePromoCard(title: "PBR Materials", subtitle: "Metallic + roughness spectrum", icon: "paintpalette.fill", gradient: [.purple.opacity(0.35), .pink.opacity(0.18)]) {
-                        AnyView(MaterialsDemo())
-                    }
-                    SamplePromoCard(title: "Lighting", subtitle: "Directional · point · spot", icon: "lightbulb.fill", gradient: [.yellow.opacity(0.30), .orange.opacity(0.18)]) {
-                        AnyView(LightingDemo())
-                    }
-                    SamplePromoCard(title: "Rolling Balls", subtitle: "Drop, tilt and knock over a tray of balls", icon: "circle.hexagongrid.fill", gradient: [.green.opacity(0.30), .teal.opacity(0.18)]) {
-                        AnyView(RollingBallsDemo())
-                    }
-                    SamplePromoCard(title: "Dynamic Sky", subtitle: "Time-of-day sun simulation", icon: "sun.horizon.fill", gradient: [.blue.opacity(0.30), .cyan.opacity(0.18)]) {
-                        AnyView(DynamicSkyDemo())
-                    }
-                    SamplePromoCard(title: "3D Text", subtitle: "Extruded fonts with style", icon: "textformat", gradient: [.indigo.opacity(0.30), .purple.opacity(0.18)]) {
-                        AnyView(TextDemo())
-                    }
-                    SamplePromoCard(title: "Scene Gallery", subtitle: "Themed Sketchfab bundles streamed on demand", icon: "square.grid.3x3.fill", gradient: [.red.opacity(0.28), .orange.opacity(0.15)]) {
-                        AnyView(SceneGalleryDemo())
+                HStack(alignment: .top, spacing: SceneViewTokens.Space.sm) {
+                    ForEach(tryDemos, id: \.sceneId) { demo in
+                        DemoMediaCard(demo: demo) {
+                            #if os(iOS)
+                            SceneViewHaptic.shared.light()
+                            #endif
+                            trialDemo = demo
+                        }
+                        .frame(width: SceneViewTokens.Home.sampleCardWidth)
+                        .accessibilityIdentifier("explore-try-\(demo.sceneId)")
                     }
                 }
-                .padding(.bottom, 4)
+                .levelledRow()
+                .padding(.horizontal, SceneViewTokens.Space.xs)
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.viewAligned)
             .scrollClipDisabled()
         }
+        .onAppear {
+            if tryDemos.isEmpty { tryDemos = Self.makeTryDemos() }
+        }
+    }
+
+    /// The demos of the "Try a demo" row, in Android's order.
+    private static func makeTryDemos() -> [DemoItem] {
+        let ids = ["model-viewer", "geometry", "lighting", "ar-placement", "materials", "animation"]
+        let byId = Dictionary(GeneratedScenes.all().map { ($0.sceneId, $0) },
+                              uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { byId[$0] }
+            .filter { HomeCatalogue.isOnHome($0.sceneId) && $0.status.isAvailable }
     }
 
     /// Horizontal row of filter chips above the feed carousels.
@@ -1167,55 +1192,6 @@ private struct MatchedSourceModifier: ViewModifier {
 // showcase SceneView's renderer. Single tap → viewer that shows the preview
 // state first — matches the Android UX in `GalleryModelViewerScreen.kt` (#1203,
 // renamed from `SketchfabModelViewerScreen.kt` in #2645 / #2685).
-
-// MARK: - Sample promo card (compact entry-point to a Scenes tab demo)
-
-/// Compact card surfaced in the Explore home feed's "Try a sample" carousel.
-/// Tapping pushes the demo destination onto the local NavigationStack — exactly
-/// what the Samples tab would do, so the demo renders through SceneView.
-private struct SamplePromoCard: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let gradient: [Color]
-    let destination: () -> AnyView
-
-    var body: some View {
-        NavigationLink {
-            destination()
-                .navigationTitle(title)
-                .navigationBarTitleInline()
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .bottomLeading) {
-                    LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                        .frame(width: 200, height: 130)
-                    Image(systemName: icon)
-                        .font(.system(size: 44, weight: .semibold))
-                        .foregroundStyle(.tint)
-                        .padding(14)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: 200, alignment: .leading)
-                .padding(.top, 8)
-                .padding(.horizontal, 4)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(title), sample demo. \(subtitle)")
-    }
-}
 
 // MARK: - Filter chip (toggleable Animated / etc.)
 
