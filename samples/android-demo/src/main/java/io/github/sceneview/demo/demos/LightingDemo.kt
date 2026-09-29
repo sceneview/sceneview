@@ -127,9 +127,10 @@ import kotlin.math.abs
  * Every Filament call here runs on the composition (main) thread, as the JNI contract requires:
  * the model comes from `rememberModelInstance`, and the HDR environment is built inside a
  * `remember` keyed on the asset path. That build is *synchronous* on purpose — the asynchronous
- * `rememberHDREnvironment` returns null while it decodes, which on an environment **swap** means
- * a frame or two of the neutral fallback, i.e. a black sky flashing between two HDRs. A ~200 ms
- * hitch on a deliberate tap reads as loading; a black flash reads as a bug.
+ * `rememberHDREnvironment` decodes off the main thread but returns null until the environment
+ * lands, which on an environment **swap** means several frames of the neutral fallback, i.e. a
+ * black sky flashing between two HDRs. A short hitch on a deliberate tap reads as loading; a
+ * black flash reads as a bug.
  *
  * The Sun rig's clock is the one exception to "one HDR at a time": while it runs, the hour
  * crosses all three skies every cycle, so the three are built once — the one on screen first, the

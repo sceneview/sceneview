@@ -5,7 +5,10 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.zip.CRC32
 
 /**
  * The off-main-thread HDR decode behind `EnvironmentLoader.loadHDREnvironment`: it must produce
@@ -83,5 +86,70 @@ class RgbeDecoderTest {
         assertNull(RgbeDecoder.decode("#?RADIANCE\n\n-Y 1 -X 1\n".toByteArray() + ByteArray(4)))
         // Truncated pixel data.
         assertNull(RgbeDecoder.decode(header(4, 4) + ByteArray(8)))
+    }
+
+    @Test
+    fun `dimensions beyond Filament's limits or the JVM decode ceiling are refused before allocating`() {
+        // A few header bytes claiming a huge image must not allocate its float buffer.
+        assertNull(RgbeDecoder.decode(header(70_000, 1) + ByteArray(4)))
+        assertNull(RgbeDecoder.decode(header(20_000, 20_000) + ByteArray(4)))
+        // Within Filament's limits but above the JVM ceiling: HDRLoader decodes it natively.
+        assertNull(RgbeDecoder.decode(header(16_384, 8_192) + ByteArray(4)))
+        // Dimensions that overflow an Int.
+        assertNull(RgbeDecoder.decode("#?RADIANCE\n\n-Y 99999999999 +X 8\n".toByteArray() + ByteArray(4)))
+        // Plausible dimensions, far too few bytes for the scanlines: refused up front.
+        assertNull(RgbeDecoder.decode(header(8_192, 4_096) + byteArrayOf(2, 2, 32, 0)))
+    }
+
+    @Test
+    fun `an RLE scanline whose width bytes disagree with the header is refused`() {
+        val width = 8
+        val out = ByteArrayOutputStream()
+        out.write(header(width, 2))
+        repeat(2) { row ->
+            // The second scanline claims a width of 9.
+            out.write(byteArrayOf(2, 2, 0, (width + row).toByte()))
+            repeat(4) { out.write(byteArrayOf((128 + width).toByte(), 136.toByte())) }
+        }
+        assertNull(RgbeDecoder.decode(out.toByteArray()))
+    }
+
+    @Test
+    fun `an RLE file whose later scanline loses the magic is refused, as Filament does`() {
+        val width = 8
+        val out = ByteArrayOutputStream()
+        out.write(header(width, 2))
+        out.write(byteArrayOf(2, 2, 0, width.toByte()))
+        repeat(4) { out.write(byteArrayOf((128 + width).toByte(), 136.toByte())) }
+        // RLE is decided once from the first scanline, so a flat second scanline is malformed.
+        out.write(ByteArray(width * 4) { 136.toByte() })
+        assertNull(RgbeDecoder.decode(out.toByteArray()))
+    }
+
+    @Test
+    fun `the cancellation hook runs during the decode and aborts it`() {
+        val bytes = header(1, 64) + ByteArray(64 * 4) { 136.toByte() }
+        var calls = 0
+        assertNotNull(RgbeDecoder.decode(bytes) { calls++ })
+        assertEquals(2, calls)
+        val thrown = runCatching { RgbeDecoder.decode(bytes) { throw IllegalStateException("cancelled") } }
+        assertEquals("cancelled", thrown.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `neutral_hdr decodes to the floats Filament's HDRDecoder produces`() {
+        // Fingerprint of Filament v1.72.1 imageio HDRDecoder's output for the bundled
+        // neutral.hdr (1024x512, RLE): CRC32 of the little-endian float bytes, row 0 first.
+        val image = checkNotNull(RgbeDecoder.decode(File("src/main/environments/neutral.hdr").readBytes()))
+        assertEquals(1024, image.width)
+        assertEquals(512, image.height)
+        val floats = FloatArray(image.width * image.height * 3).also { image.pixels.get(it) }
+        val bytes = ByteBuffer.allocate(floats.size * Float.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        bytes.asFloatBuffer().put(floats)
+        val crc = CRC32().apply { update(bytes.array()) }.value
+        assertEquals(0x8daf7ac4L, crc)
+        assertEquals(0.626953125f, floats[0], 0f)
+        assertEquals(0.18212890625f, floats[(256 * 1024 + 512) * 3], 0f)
+        assertEquals(0.4697265625f, floats[(511 * 1024 + 1023) * 3], 0f)
     }
 }

@@ -204,10 +204,10 @@ fun LightingLabDemo(onBack: () -> Unit) {
      *
      * Both halves of that are #3554. This screen was the only demo in the catalogue that built
      * **two** 2 048² HDR environments at once, and it built the second one eagerly even though
-     * the probe it feeds starts off. `createHDREnvironment` is not a file read: each call decodes
-     * the HDR to a float equirect texture, renders it to a cubemap, then runs the specular
-     * prefilter over a full mip chain — so the default frame was paying for a second cubemap
-     * pyramid that nothing sampled.
+     * the probe it feeds starts off. An HDR environment is not a file read: each load decodes the
+     * HDR to a float equirect (off the main thread), uploads it, renders it to a cubemap, then
+     * runs the specular prefilter over a full mip chain on the GPU — so the default frame was
+     * paying for a second cubemap pyramid that nothing sampled.
      *
      * `createSkybox = false` is the other half, and it is free: [ReflectionProbeNode] only ever
      * reads `environment.indirectLight`, so the skybox this used to build could never be drawn.
@@ -216,8 +216,8 @@ fun LightingLabDemo(onBack: () -> Unit) {
      *
      * On the `demo-render-goldens` leg that matters more than it looks: SwiftShader presents no
      * frame at all there (`softwareRenderer=true`), so nothing on this screen is ever rasterised —
-     * but the allocations above still happen at composition, because they are what *builds* the
-     * environment rather than what draws it.
+     * but the allocations above still happen as soon as the load lands, because they are what
+     * *builds* the environment rather than what draws it.
      */
     val probeEnvironment: Environment? = if (probeEnvironmentRequested) {
         rememberHDREnvironment(
