@@ -7,7 +7,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -64,12 +66,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.model.model
+import io.github.sceneview.Aabb
 import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
@@ -90,7 +95,7 @@ import io.github.sceneview.demo.hdpack.HdPackDownloadDialog
 import io.github.sceneview.demo.hdpack.HdPackPerfProbe
 import io.github.sceneview.demo.hdpack.HdPackStatus
 import io.github.sceneview.demo.hdpack.hdPackSize
-import io.github.sceneview.demo.hdpack.rememberHdPackStatus
+import io.github.sceneview.demo.hdpack.rememberHdAssetStatus
 import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -99,6 +104,7 @@ import io.github.sceneview.demo.ui.viewer.BundledViewerModel
 import io.github.sceneview.demo.ui.viewer.AnimationBar
 import io.github.sceneview.demo.ui.viewer.EnvironmentSheet
 import io.github.sceneview.demo.ui.viewer.ModelPickerSheet
+import io.github.sceneview.demo.ui.viewer.ModelThumbnails
 import io.github.sceneview.demo.ui.viewer.ViewerScene
 import io.github.sceneview.demo.ui.viewer.ModelUnitSheet
 import io.github.sceneview.demo.OpenedModelIntent
@@ -136,6 +142,7 @@ import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.rememberEngine
@@ -143,7 +150,7 @@ import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.ui.LabeledSlider
-import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import java.util.Locale
@@ -250,6 +257,54 @@ private val BUNDLED_VIEWER_MODELS = listOf(
     // while its picker card showed a face (#3828).
     BundledViewerModel("models/threejs_soldier.glb", "Soldier", R.string.demo_model_desc_soldier, frontYaw = 180f),
 )
+
+/**
+ * The Models sheet's "Museum & Space" shelf (2026-09-29): museum scans from the HD pack,
+ * downloaded after install, shown at their real size. Names and ids are shared with the iOS demo.
+ *
+ * None has a bundled stand-in — the APK ships nothing close to a space capsule or a mammoth, and
+ * a helmet in their place would read as the wrong model. Until the file is in, the stage shows the
+ * card's own render (made from the same GLB) under the download pill.
+ */
+private val MUSEUM_VIEWER_MODELS = listOf(
+    BundledViewerModel(
+        assetPath = null,
+        displayName = "Apollo 11 Command Module",
+        description = R.string.demo_model_desc_apollo11_exterior,
+        hdAssetId = "apollo11-exterior",
+        thumbnailStem = "hd_apollo11_exterior",
+    ),
+    BundledViewerModel(
+        assetPath = null,
+        displayName = "Apollo 11 Interior",
+        description = R.string.demo_model_desc_apollo11_interior,
+        hdAssetId = "apollo11-interior",
+        thumbnailStem = "hd_apollo11_interior",
+    ),
+    BundledViewerModel(
+        assetPath = null,
+        displayName = "Woolly Mammoth",
+        description = R.string.demo_model_desc_woolly_mammoth,
+        // Head-on, the tusks hide the skeleton: it opens three-quarter, as its card shows it.
+        frontYaw = -30f,
+        hdAssetId = "woolly-mammoth",
+        thumbnailStem = "hd_woolly_mammoth",
+    ),
+    // 23 mechanism clips (arm, mast, wheels…): a rig, not a performance. It opens still, and
+    // three-quarter like the mammoth — head-on it is a wall of wheels.
+    BundledViewerModel(
+        assetPath = null,
+        displayName = "Perseverance Rover",
+        description = R.string.demo_model_desc_perseverance,
+        frontYaw = -30f,
+        hdAssetId = "perseverance",
+        thumbnailStem = "hd_perseverance",
+        autoplayAnimations = false,
+    ),
+)
+
+/** The lighting a Museum & Space model opens under: the viewer's "Studio" softbox. */
+private const val MUSEUM_ENVIRONMENT = "environments/studio_warm_2k.hdr"
 
 /** The section a scene card of the Models sheet opens. */
 private fun ViewerScene.mode(): ModelViewerMode = when (this) {
@@ -463,6 +518,8 @@ private fun SingleModelSection(
         ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),
     ) }
     var requestedEnvironment by remember { mutableStateOf(viewerEnvironments.first()) }
+    // `true` while Studio is on because a Museum & Space model asked for it, not the user.
+    var museumLightingApplied by remember { mutableStateOf(false) }
     var iblIntensity by remember { mutableStateOf(1f) }
     var showEnvironment by remember { mutableStateOf(false) }
     var recenterGeneration by remember { mutableStateOf(0) }
@@ -566,30 +623,52 @@ private fun SingleModelSection(
     val streamedModelInstance = streamedModel?.instance
     // The bundled hero — assets/models/khronos_damaged_helmet.glb. Loaded
     // eagerly so the first frame after launch shows the hero shot.
-    val bundledModelInstance = rememberModelInstance(modelLoader, selectedModel.assetPath)
+    // A Museum & Space entry has no bundled stand-in: nothing to load until its HD file is in.
+    // Called unconditionally, for the reason above (#1464): a null path is a value, not a
+    // missing call.
+    val bundledModelInstance = rememberBundledModelInstance(modelLoader, selectedModel.assetPath)
 
     // HD pack (2026-09-29). An HD entry shows its bundled stand-in at once and swaps to the
     // downloaded file when it is on disk — read from `filesDir`, never re-fetched. It rides the
     // same loader as the streamed models, so the swap waits for its textures and the stand-in
     // stays up meanwhile: no untextured frame, no black stage.
     val hdStore = rememberHdPackStore()
-    val hdStatus by rememberHdPackStatus(hdStore)
     val hdReadyIds by remember(hdStore) {
         hdStore?.readyIds ?: kotlinx.coroutines.flow.MutableStateFlow(emptySet<String>())
     }.collectAsState()
     val hdAsset = selectedModel.hdAssetId
         ?.takeIf { openedModel == null && streamedFileUrl == null }
         ?.let { hdStore?.manifest?.asset(it) }
+    val hdAssetStatus by rememberHdAssetStatus(hdStore, hdAsset?.id)
+    // Museum & Space opens under Studio. The scans are pale and matte (the mammoth has no
+    // colour texture at all), so the garden's green canopy tints them and its sun blooms into
+    // a halo round the bones; the softbox shows them as the museum does, as iOS does. Only
+    // the default is swapped: a lighting the user picked stays, and leaving the shelf gives
+    // the garden back only if Studio was ours.
+    val isMuseumModel = selectedModel in MUSEUM_VIEWER_MODELS
+    LaunchedEffect(isMuseumModel) {
+        val garden = viewerEnvironments.first()
+        if (isMuseumModel && requestedEnvironment == garden) {
+            requestedEnvironment = viewerEnvironments.first { it.assetPath == MUSEUM_ENVIRONMENT }
+            museumLightingApplied = true
+        } else if (!isMuseumModel && museumLightingApplied) {
+            requestedEnvironment = garden
+            museumLightingApplied = false
+        }
+    }
     val hdFileLocation = hdAsset?.takeIf { it.id in hdReadyIds }
         ?.let { android.net.Uri.fromFile(hdStore?.fileFor(it)).toString() }
     // A file that times out or has no framable bounds is dropped: the stand-in stays and the
     // pill turns to "HD · download failed" (tap = retry) instead of spinning forever.
     var hdRejectedLocation by remember { mutableStateOf<String?>(null) }
     val hdLoadFailed = hdFileLocation != null && hdFileLocation == hdRejectedLocation
+    // HD scans run to ~300 MB each once decoded: the previous one is released before the next
+    // is read, never held alongside it. The stand-in (or the poster) covers the load.
     val hdModel = rememberStreamedModelInstance(
         modelLoader,
         hdFileLocation?.takeIf { !hdLoadFailed },
         wakeRenderLoop = renderInvalidator::requestRender,
+        releasePreviousFirst = true,
         onRejected = { hdRejectedLocation = it },
     )
     val hdShown = hdFileLocation != null && !hdLoadFailed && hdModel?.location == hdFileLocation
@@ -600,6 +679,25 @@ private fun SingleModelSection(
     // helmet whenever the streamed instance is null (no Surprise tap yet,
     // streamed load still in flight, or streamed load failed).
     val activeModelInstance = streamedModelInstance ?: hdModel?.instance ?: bundledModelInstance
+    // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
+    // Apollo 11 scans) is shown at its real size. Read from the file actually presented, not
+    // from the selection, which changes before its file is on screen.
+    val modelScale = remember(activeModelInstance, hdStore) {
+        val location = hdModel?.location
+            ?.takeIf { streamedModelInstance == null && activeModelInstance === hdModel?.instance }
+        location?.let { loc ->
+            hdStore?.manifest?.assets
+                ?.firstOrNull { android.net.Uri.fromFile(hdStore.fileFor(it)).toString() == loc }
+                ?.scale
+        } ?: 1f
+    }
+    // A model whose clips are a rig rather than a performance (Perseverance) opens still; every
+    // other one plays its first clip, as before. Each new model starts from its first clip.
+    LaunchedEffect(activeModelInstance) {
+        selectedAnimation = 0
+        animationProgress = 0f
+        animationPlaying = streamedModelInstance != null || selectedModel.autoplayAnimations
+    }
     // Debug builds log how long a pick takes to reach a finished frame (HD pack QA).
     val perfTargetReached = when {
         streamedFileUrl != null -> false
@@ -617,6 +715,12 @@ private fun SingleModelSection(
         // without animations is a native null dereference, not an exception.
         if (selectedAnimation !in 0 until animator.animationCount) return@LaunchedEffect
         val duration = animator.getAnimationDuration(selectedAnimation).takeIf { it > 0f } ?: return@LaunchedEffect
+        // Paused: hold the clip's current pose (its first frame on a model that opens still).
+        if (!animationPlaying) {
+            animator.applyAnimation(selectedAnimation, animationProgress * duration)
+            animator.updateBoneMatrices()
+            return@LaunchedEffect
+        }
         var start = 0L
         while (animationPlaying) {
             withFrameNanos { now ->
@@ -641,9 +745,23 @@ private fun SingleModelSection(
     // The helmet's root node already carries the +90° X quaternion that stands it upright under
     // glTF +Y-up/+Z-front, so its world AABB is right as loaded; an extra -90° X here tipped it
     // crown-forward. The camera always looks from +Z, 12° above (the Khronos sample-viewer home).
-    val bounds = remember(activeModelInstance) {
+    // Measured in world units: an HD model shown at its real size (`modelScale`) is framed at it.
+    // A bundled model turned by `frontYaw` is framed by the footprint of the TURNED box: at -30°
+    // the mammoth's tusks reached past the screen edge when framed by its unturned AABB.
+    val frontYaw = if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+    val bounds = remember(activeModelInstance, modelScale, frontYaw) {
         val instance = activeModelInstance ?: return@remember null
         runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+            ?.let { box ->
+                val half = box.halfExtent * modelScale
+                val yawRadians = Math.toRadians(frontYaw.toDouble())
+                val cos = kotlin.math.abs(kotlin.math.cos(yawRadians)).toFloat()
+                val sin = kotlin.math.abs(kotlin.math.sin(yawRadians)).toFloat()
+                Aabb(
+                    box.center * modelScale,
+                    Position(cos * half.x + sin * half.z, half.y, sin * half.x + cos * half.z),
+                )
+            }
     }
     val modelCenter = bounds?.center ?: Position(0f, 0f, 0f)
     // Live auto-fit distance, written by the scene block (which knows the chrome insets) so the
@@ -986,14 +1104,20 @@ private fun SingleModelSection(
             // running asks to download now, with the size stated first. It stays on "loading"
             // until the HD model is in the scene, and leaves then.
             if (hdPillShown && hdAsset != null) {
-                val status = hdStatus
+                // The pill narrates THIS model's file and job: each model downloads on its own tap,
+                // one file at a time, so while another one is on the wire this one is queued.
+                val status = hdAssetStatus
                 val hdFailed = hdLoadFailed || (hdFileLocation == null && status == HdPackStatus.Failed)
-                val hdPillBusy = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading)
+                val hdPillBusy = !hdFailed && (
+                    hdFileLocation != null || status is HdPackStatus.Downloading || status == HdPackStatus.Queued
+                    )
+                val ownFraction = (status as? HdPackStatus.Downloading)?.fraction
                 val hdLabel = when {
                     hdFailed -> stringResource(R.string.hd_pill_failed)
                     hdFileLocation != null -> stringResource(R.string.hd_pill_loading)
+                    status == HdPackStatus.Queued -> stringResource(R.string.hd_pill_queued)
                     status is HdPackStatus.Downloading ->
-                        stringResource(R.string.hd_pill_downloading, (status.fraction * 100).toInt())
+                        stringResource(R.string.hd_pill_downloading, ((ownFraction ?: 0f) * 100).toInt())
                     status == HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pill_waiting_wifi)
                     status == HdPackStatus.WaitingForNetwork -> stringResource(R.string.hd_pill_waiting_network)
                     // The size of this model's own file, not of the whole pack.
@@ -1010,7 +1134,7 @@ private fun SingleModelSection(
                         if (hdLoadFailed) hdRejectedLocation = null else hdDialogOpen = true
                     },
                     loading = hdPillBusy,
-                    progress = (hdStatus as? HdPackStatus.Downloading)?.fraction?.takeIf { hdFileLocation == null },
+                    progress = ownFraction?.takeIf { hdFileLocation == null },
                     // What the pill says, then what a tap does when it opens the download dialog.
                     contentDescription = stringResource(R.string.glass_pill_subject_label, hdAsset.title, hdLabel)
                         .let { if (hdPillBusy || hdLoadFailed) it else stringResource(R.string.hd_pill_hint, it) },
@@ -1070,9 +1194,11 @@ private fun SingleModelSection(
             // An HD entry goes to AR as the HD file once it is the model on screen.
             // AR always gets the bundled stand-in, HD entries included: HD in AR waits for a
             // real-device proof (same decision on iOS).
-            val model = openedModel?.location ?: selectedModel.assetPath
+            val model = openedModel?.location ?: selectedModel.assetPath ?: return@DockItem
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
-        }, enabled = arSupported == true),
+            // A Museum & Space scan has no bundled stand-in to take to AR (HD in AR waits for a
+            // real-device proof), so the action is off rather than opening another model.
+        }, enabled = arSupported == true && (openedModel != null || selectedModel.assetPath != null)),
         chromeToggleOnTap = true,
         // The Lighting sheet is glass (#3827): the dock would show through it.
         dockHidden = environmentSheetOpen,
@@ -1218,10 +1344,13 @@ private fun SingleModelSection(
                     // rather than a clean model-only spin.
                     // A bundled asset authored facing -Z turns to face the camera first (#3828);
                     // a streamed or opened file is shown as authored.
-                    val yaw = modelYaw + if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+                    val yaw = modelYaw + frontYaw
                     val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, yaw)
                     ModelNode(
                         modelInstance = instance,
+                        // `autoAnimate` plays EVERY clip at once: a model that opens still
+                        // (Perseverance, 23 rig clips) must not start them behind the bar's back.
+                        autoAnimate = streamedModelInstance != null || selectedModel.autoplayAnimations,
                         // No `scaleToUnits` — the model renders at its true glTF size and the
                         // camera adapts to it (#1439). The settle spring drops the model in
                         // from slightly below its resting pose.
@@ -1231,14 +1360,35 @@ private fun SingleModelSection(
                             modelCenter.z - rz,
                         ),
                         rotation = Rotation(y = yaw),
+                        // Real-world size of an HD file authored in other units (Apollo 11: cm).
+                        // `modelCenter` is already scaled, so the spin pivot stays put.
+                        scale = Scale(modelScale),
                     )
                 }
             }
 
-            LoadingScrim(
-                loading = activeModelInstance == null,
-                label = stringResource(R.string.demo_model_viewer_loading),
-            )
+            // A Museum & Space scan with no model on the stage yet: its own render (the picker
+            // card's image, made from the same GLB) stands in, under the pill that says how far
+            // the download is — never a spinner over an empty stage, never another model.
+            val poster = selectedModel.takeIf { activeModelInstance == null && it.assetPath == null }
+                ?.let { ModelThumbnails.resourceFor(it.thumbnailName) }
+            if (poster != null) {
+                Image(
+                    painter = painterResource(poster),
+                    contentDescription = selectedModel.displayName,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(horizontal = SceneViewTokens.Space.lg)
+                        .aspectRatio(SceneViewTokens.Layout.mediaAspect),
+                )
+            } else {
+                LoadingScrim(
+                    loading = activeModelInstance == null,
+                    label = stringResource(R.string.demo_model_viewer_loading),
+                )
+            }
         }
     }
     if (modelSheetOpen) ModelPickerSheet(
@@ -1253,11 +1403,13 @@ private fun SingleModelSection(
         },
         onScene = { cancelSurprise(); modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
+        museumModels = MUSEUM_VIEWER_MODELS.takeIf { hdStore != null }.orEmpty(),
     )
     if (hdDialogOpen && hdStore != null) {
         HdPackDownloadDialog(
-            totalBytes = hdStore.manifest.totalBytes,
-            onConfirm = { hdDialogOpen = false; HdPack.downloadNow(context) },
+            // This model's own file: a Museum pill never downloads the rest of the pack.
+            totalBytes = hdAsset?.bytes ?: hdStore.manifest.missingBytes(hdReadyIds),
+            onConfirm = { hdDialogOpen = false; HdPack.downloadNow(context, assetId = hdAsset?.id) },
             onDismiss = { hdDialogOpen = false },
         )
     }
@@ -1291,8 +1443,12 @@ private fun SingleModelSection(
     if (environmentSheetOpen) EnvironmentSheet(
         environments = viewerEnvironments,
         selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,
-        onSelect = { requestedEnvironment = it }, onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
-        onReset = { requestedEnvironment = viewerEnvironments.first(); iblIntensity = 1f; showEnvironment = false },
+        onSelect = { requestedEnvironment = it; museumLightingApplied = false },
+        onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
+        onReset = {
+            requestedEnvironment = viewerEnvironments.first(); iblIntensity = 1f; showEnvironment = false
+            museumLightingApplied = false
+        },
         onDismiss = { environmentSheetOpen = false },
         onCoveredHeightChange = { environmentSheetCover = it },
     )
@@ -1327,15 +1483,23 @@ private fun rememberStreamedModelInstance(
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     streamedFileUrl: String?,
     wakeRenderLoop: () -> Unit,
+    releasePreviousFirst: Boolean = false,
     onRejected: (location: String) -> Unit = {},
 ): StreamedModel? {
     val rejected = androidx.compose.runtime.rememberUpdatedState(onRejected)
     // One `produceState` in a stable slot, whatever the URL (#1464). It keeps its last value
-    // across a key change, so the model on screen stays there while the next one loads.
+    // across a key change, so the model on screen stays there while the next one loads —
+    // unless [releasePreviousFirst], for files too big to hold two of.
     val presented = produceState<StreamedModel?>(initialValue = null, modelLoader, streamedFileUrl) {
         val location = streamedFileUrl ?: run {
             value = null
             return@produceState
+        }
+        if (releasePreviousFirst && value != null) {
+            value = null
+            // Two frames: the first recomposes without the model and runs the DisposableEffect
+            // below, which destroys it; only then is the next file read.
+            repeat(2) { withFrameNanos { } }
         }
         var loaded: io.github.sceneview.model.ModelInstance? = null
         try {
@@ -1377,6 +1541,37 @@ private fun rememberStreamedModelInstance(
         onDispose { presented?.let { modelLoader.destroyModel(it.instance.model) } }
     }
     return if (streamedFileUrl == null) null else presented
+}
+
+/**
+ * The bundled model at [assetPath] (under `assets/`), or `null` for an entry with no bundled
+ * file (Museum & Space). Same load as `rememberModelInstance`, but it takes a nullable path so
+ * the call stays in one slot whatever the entry: switching from a Museum model to a bundled one
+ * never makes the `produceState` appear or disappear (#1464). A new path keeps the previous
+ * model until the next is ready; a null path releases it.
+ */
+@Composable
+private fun rememberBundledModelInstance(
+    modelLoader: io.github.sceneview.loaders.ModelLoader,
+    assetPath: String?,
+): io.github.sceneview.model.ModelInstance? {
+    val context = LocalContext.current
+    val instance = produceState<io.github.sceneview.model.ModelInstance?>(null, modelLoader, assetPath) {
+        val path = assetPath ?: run {
+            value = null
+            return@produceState
+        }
+        // File bytes on IO, Filament back on Main (produceState's context).
+        val buffer = withContext(Dispatchers.IO) {
+            runCatching { context.assets.readBuffer(path) }.getOrNull()
+        } ?: return@produceState
+        value = runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
+    }.value
+    // `produceState` has no per-key disposal: destroy the previous model once replaced (#2459).
+    androidx.compose.runtime.DisposableEffect(instance) {
+        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
+    }
+    return instance
 }
 
 /** A streamed model on screen and the location it was loaded from. */
@@ -1918,6 +2113,7 @@ private fun MultiModelSection(
         onSelect = { modelSheetOpen = false; onOpenModel(it) },
         onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
+        museumModels = MUSEUM_VIEWER_MODELS.takeIf { rememberHdPackStore() != null }.orEmpty(),
     )
 }
 

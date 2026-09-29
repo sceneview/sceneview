@@ -483,6 +483,10 @@ def license_url(lic: str) -> str:
         "CC-BY-NC-SA-4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "Apache-2.0": "https://www.apache.org/licenses/LICENSE-2.0",
         "SCEA Shared Source License": "https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/LICENSES/SCEA.txt",
+        # HD pack (2026-09-29): NASA 3D Resources models are not copyrighted, but NASA's media
+        # guidelines forbid logos and any implied endorsement — the licence string says both.
+        "NASA Media Usage Guidelines (no endorsement implied; insignia removed)":
+            "https://www.nasa.gov/nasa-brand-center/images-and-media/",
     }
     return table.get(lic, "")
 
@@ -801,7 +805,10 @@ def render_hd_pack_section(manifest_rel: str, to_root: str) -> list[str]:
     if not assets:
         return []
     lines = ["## HD pack (downloaded after install)", ""]
-    lines.append("Not bundled: the app downloads these on Wi-Fi from the `hd-pack-v1` GitHub Release.")
+    lines.append(
+        "Not bundled: each model downloads from the `hd-pack-v1` GitHub Release when the user "
+        "asks for it; only the Flight Helmet is fetched ahead, on Wi-Fi."
+    )
     lines.append(f"Listed from [`{manifest_rel}`]({to_root}{manifest_rel}).")
     lines.append("")
     for a in assets:

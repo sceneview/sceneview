@@ -11,6 +11,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,9 @@ sealed interface HdPackStatus {
     data class Downloading(val fraction: Float) : HdPackStatus
     data object WaitingForWifi : HdPackStatus
     data object WaitingForNetwork : HdPackStatus
+
+    /** One model's job is running, but another model's file is on the wire first. */
+    data object Queued : HdPackStatus
     data object NotDownloaded : HdPackStatus
     data object Failed : HdPackStatus
 }
@@ -42,25 +46,37 @@ sealed interface HdPackStatus {
  * jobs that fill it.
  *
  * - [schedulePrefetch] runs on every launch. It queues one unique job constrained to an
- *   unmetered network, so a fresh install downloads the pack the first time it sees Wi-Fi and
- *   never on mobile data. It does nothing once the pack is complete or after the user removed it.
+ *   unmetered network for [PREFETCH_IDS] only (Flight Helmet), so a fresh install gets that model
+ *   the first time it sees Wi-Fi and never on mobile data. Every other model downloads only when
+ *   the user taps its pill. It does nothing once those files are in or after the user removed the pack.
  * - [downloadNow] is the user's explicit "Download now": any network, the size having been shown
- *   first by the caller.
+ *   first by the caller. With an asset id it fetches that one model (the viewer pill); without,
+ *   every missing file (About).
  * - [remove] cancels the job, deletes the files and remembers the choice, so the next launch
  *   does not quietly download it again.
  */
 object HdPack {
     private const val TAG = "HdPack"
-    private const val UNIQUE_WORK = "hd-pack-download"
+    /** The pre-per-model job, which fetched the whole pack on Wi-Fi: cancelled on launch. */
+    private const val LEGACY_WORK = "hd-pack-download"
+    private const val PREFETCH_WORK = "hd-pack-prefetch"
+    private const val ALL_WORK = "hd-pack-all"
+    private const val ASSET_WORK_PREFIX = "hd-pack-asset-"
+    private const val TAG_PACK = "hd-pack"
+    private const val TAG_ASSET_PREFIX = "hd-pack-asset:"
     private const val PREFS = "hd_pack"
     private const val PREF_REMOVED = "removed_by_user"
     private const val DIR_NAME = "hd-pack"
     private const val MAX_ATTEMPTS = 8
+    private const val KEY_ONLY = "only"
+
+    /** What the Wi-Fi prefetch fetches on its own. Every other model waits for its pill's tap. */
+    val PREFETCH_IDS: Set<String> = setOf("flight-helmet")
 
     private val _loaded = MutableStateFlow<HdPackStore?>(null)
     @Volatile private var manifestFailed = false
 
-    /** `true` once the pack has been removed by the user; flips back on "Download now". */
+    /** `true` once the pack has been removed by the user; flips back on the whole-pack "Download now" (About), not on one model's pill. */
     val removedByUser = MutableStateFlow(false)
 
     /**
@@ -90,36 +106,85 @@ object HdPack {
         }
     }
 
-    /** Queues the Wi-Fi-only prefetch unless the pack is complete or the user removed it. */
+    /** Queues the Wi-Fi-only prefetch of [PREFETCH_IDS] unless they are in or the user removed the pack. */
     fun schedulePrefetch(context: Context) {
         val store = store(context) ?: return
-        if (store.isComplete || removedByUser.value) return
-        enqueue(context, NetworkType.UNMETERED, ExistingWorkPolicy.KEEP)
+        // A job queued by an earlier build would still fetch the whole pack on Wi-Fi.
+        WorkManager.getInstance(context).cancelUniqueWork(LEGACY_WORK)
+        val prefetch = PREFETCH_IDS.filterTo(mutableSetOf()) { store.manifest.asset(it) != null }
+        if (prefetch.isEmpty() || store.isReady(prefetch) || removedByUser.value) return
+        enqueue(context, PREFETCH_WORK, NetworkType.UNMETERED, ExistingWorkPolicy.KEEP, prefetch)
     }
 
-    /** The user's "Download now" — any network. */
-    fun downloadNow(context: Context) {
-        store(context) ?: return
-        setRemoved(context, false)
-        enqueue(context, NetworkType.CONNECTED, ExistingWorkPolicy.REPLACE)
+    /**
+     * The user's "Download now" — any network. With [assetId], that one model only (a second tap
+     * while it is queued keeps the job already there); without, every missing file.
+     */
+    fun downloadNow(context: Context, assetId: String? = null) {
+        val store = store(context) ?: return
+        // One model's pill fetches that model and nothing more: it does not turn the Wi-Fi
+        // prefetch back on after the user removed the pack. Only the whole-pack download does.
+        if (assetId == null) setRemoved(context, false)
+        if (assetId != null && store.manifest.asset(assetId) != null) {
+            val name = ASSET_WORK_PREFIX + assetId
+            enqueue(context, name, NetworkType.CONNECTED, ExistingWorkPolicy.KEEP, setOf(assetId))
+        } else {
+            val all = store.manifest.assets.mapTo(mutableSetOf()) { it.id }
+            enqueue(context, ALL_WORK, NetworkType.CONNECTED, ExistingWorkPolicy.REPLACE, all)
+        }
     }
 
     /** Cancels any download, deletes the pack and remembers the choice. Returns the bytes freed. */
     suspend fun remove(context: Context): Long {
         val store = store(context) ?: return 0L
         setRemoved(context, true)
-        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK)
+        WorkManager.getInstance(context).cancelAllWorkByTag(TAG_PACK)
+        WorkManager.getInstance(context).cancelUniqueWork(LEGACY_WORK)
         return store.removeAll()
     }
 
-    /** Live [HdPackStatus] of the whole pack. */
+    /** Live [HdPackStatus] of the whole pack (About → App). */
     fun status(context: Context, store: HdPackStore): Flow<HdPackStatus> = combine(
         store.readyIds,
         store.transfer,
-        WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(UNIQUE_WORK),
+        WorkManager.getInstance(context).getWorkInfosByTagFlow(TAG_PACK),
     ) { ready, transfer, infos ->
-        val latest = infos.firstOrNull { !it.state.isFinished } ?: infos.lastOrNull()
-        statusOf(ready.size == store.manifest.assets.size, transfer, latest)
+        statusOf(ready.size == store.manifest.assets.size, transfer, relevantJob(infos))
+    }
+
+    /** Live [HdPackStatus] of one model's file — what its viewer pill narrates. */
+    fun assetStatus(context: Context, store: HdPackStore, assetId: String): Flow<HdPackStatus> = combine(
+        store.readyIds,
+        store.transfer,
+        WorkManager.getInstance(context).getWorkInfosByTagFlow(TAG_ASSET_PREFIX + assetId),
+    ) { ready, transfer, infos ->
+        assetStatusOf(assetId, ready, transfer, relevantJob(infos))
+    }
+
+    /** The job that speaks for a set: a running one, else a pending one, else one that gave up. */
+    private fun relevantJob(infos: List<WorkInfo>): WorkInfo? =
+        infos.firstOrNull { it.state == WorkInfo.State.RUNNING }
+            ?: infos.firstOrNull { !it.state.isFinished }
+            ?: infos.firstOrNull { it.state == WorkInfo.State.FAILED }
+
+    /**
+     * One model's status. [work] is the job covering it (see [relevantJob]). A running job whose
+     * file is not the one on the wire is waiting for the store's lock behind another model.
+     */
+    internal fun assetStatusOf(
+        assetId: String,
+        ready: Set<String>,
+        transfer: HdTransfer?,
+        work: WorkInfo?,
+    ): HdPackStatus = when {
+        assetId in ready -> HdPackStatus.Ready
+        transfer?.assetId == assetId -> HdPackStatus.Downloading(transfer.fractionOf(assetId) ?: 0f)
+        work == null -> HdPackStatus.NotDownloaded
+        work.state == WorkInfo.State.FAILED -> HdPackStatus.Failed
+        work.state.isFinished -> HdPackStatus.NotDownloaded
+        work.state == WorkInfo.State.RUNNING -> HdPackStatus.Queued
+        work.constraints.requiredNetworkType == NetworkType.UNMETERED -> HdPackStatus.WaitingForWifi
+        else -> HdPackStatus.WaitingForNetwork
     }
 
     /** [work] is the unique job still pending, else the last one that finished. */
@@ -134,8 +199,17 @@ object HdPack {
         else -> HdPackStatus.WaitingForNetwork
     }
 
-    private fun enqueue(context: Context, network: NetworkType, policy: ExistingWorkPolicy) {
+    private fun enqueue(
+        context: Context,
+        name: String,
+        network: NetworkType,
+        policy: ExistingWorkPolicy,
+        ids: Set<String>,
+    ) {
         val request = OneTimeWorkRequestBuilder<HdPackWorker>()
+            .setInputData(workDataOf(KEY_ONLY to ids.toTypedArray()))
+            .addTag(TAG_PACK)
+            .apply { ids.forEach { addTag(TAG_ASSET_PREFIX + it) } }
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(network)
@@ -143,7 +217,7 @@ object HdPack {
                     .build(),
             )
             .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_WORK, policy, request)
+        WorkManager.getInstance(context).enqueueUniqueWork(name, policy, request)
     }
 
     private fun setRemoved(context: Context, removed: Boolean) {
@@ -155,7 +229,7 @@ object HdPack {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /**
-     * Downloads what is missing. A network failure retries with WorkManager's backoff; a file that
+     * Downloads the files its job was queued for. A network failure retries with WorkManager's backoff; a file that
      * does not match its manifest hash fails at once (its `.part` is already deleted), since
      * fetching the same bytes again would only fail again.
      */
@@ -163,7 +237,9 @@ object HdPack {
         override suspend fun doWork(): Result {
             val store = store(applicationContext) ?: return Result.failure()
             return try {
-                store.downloadMissing()
+                // A job queued by an earlier build carries no id list: it was the Wi-Fi prefetch, so
+                // it fetches what the prefetch fetches now, never the whole pack.
+                store.downloadMissing(only = inputData.getStringArray(KEY_ONLY)?.toSet() ?: PREFETCH_IDS)
                 Result.success()
             } catch (e: HdPackIntegrityException) {
                 Log.e(TAG, "HD pack file rejected, not retrying", e)

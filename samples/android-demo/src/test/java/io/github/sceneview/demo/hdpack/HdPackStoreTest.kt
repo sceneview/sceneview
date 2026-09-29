@@ -79,6 +79,68 @@ class HdPackStoreTest {
         assertParseFails("""{"version":1,"assets":[$entry,$entry]}""")
     }
 
+    @Test fun `the bundled manifest lists the museum scans at real-world scale`() {
+        val parsed = HdPackManifest.parse(File(repoRoot(), "assets/hd-pack/android.json").readText())
+        // The ids iOS matches 1:1 — renaming one orphans the other platform's entry.
+        assertEquals(
+            listOf("flight-helmet", "apollo11-exterior", "apollo11-interior", "woolly-mammoth", "perseverance"),
+            parsed.assets.map { it.id },
+        )
+        // The Smithsonian Apollo scans are authored in centimetres.
+        assertEquals(0.01f, parsed.asset("apollo11-exterior")!!.scale)
+        assertEquals(0.01f, parsed.asset("apollo11-interior")!!.scale)
+        assertEquals(1f, parsed.asset("woolly-mammoth")!!.scale)
+        assertEquals(1f, parsed.asset("perseverance")!!.scale)
+        // An entry with no scale is in metres already.
+        assertEquals(1f, parsed.asset("flight-helmet")!!.scale)
+        for (asset in parsed.assets) {
+            assertTrue("${asset.id} has no credit", asset.author.isNotBlank() && asset.license.isNotBlank())
+            assertTrue("${asset.id} source is not a link", asset.source.startsWith("http"))
+        }
+    }
+
+    @Test fun `a zero or negative scale is refused`() {
+        for (scale in listOf("0", "-1", "0.0")) {
+            assertParseFails(
+                """{"version":1,"assets":[{"id":"a","title":"A","file":"$sha.glb","sha256":"$sha",""" +
+                    """"bytes":1,"scale":$scale,"license":"CC0-1.0","author":"x","source":"y"}]}""",
+            )
+        }
+    }
+
+    // ── Order and progress ───────────────────────────────────────────────
+
+    @Test fun `a whole-pack download fetches the smallest files first`() {
+        fun entry(id: String, bytes: Long) = asset.copy(id = id, bytes = bytes)
+        val store = HdPackStore(
+            HdPackManifest(1, listOf(entry("big", 30), entry("small", 10), entry("mid", 20))),
+            tmp.newFolder(),
+        )
+        assertEquals(listOf("small", "mid", "big"), store.downloadOrder().map { it.id })
+    }
+
+    @Test fun `the download dialog quotes only the files still missing`() {
+        fun entry(id: String, bytes: Long) = asset.copy(id = id, bytes = bytes)
+        val manifest = HdPackManifest(1, listOf(entry("helmet", 48), entry("apollo", 9), entry("rover", 5)))
+        assertEquals(62L, manifest.missingBytes(emptySet()))
+        assertEquals(14L, manifest.missingBytes(setOf("helmet")))
+        assertEquals(0L, manifest.missingBytes(setOf("helmet", "apollo", "rover")))
+    }
+
+    @Test fun `the pill reads its own file's progress, not the pack's`() {
+        val transfer = HdTransfer(
+            doneBytes = 60,
+            totalBytes = 100,
+            assetId = "mammoth",
+            assetDoneBytes = 10,
+            assetBytes = 40,
+        )
+        assertEquals(0.6f, transfer.fraction)
+        assertEquals(0.25f, transfer.fractionOf("mammoth"))
+        // Another file is on the wire: this one is queued, not at 60 %.
+        assertNull(transfer.fractionOf("perseverance"))
+    }
+
     // ── Download ─────────────────────────────────────────────────────────
 
     @Test fun `a download is verified then renamed into place`() = runBlocking {
@@ -99,6 +161,44 @@ class HdPackStoreTest {
             assertNull(store.transfer.value)
             assertEquals("/$sha.glb", server.takeRequest(5, TimeUnit.SECONDS)!!.url.encodedPath)
         }
+    }
+
+    @Test fun `a model's own download fetches that file and nothing else`() = runBlocking {
+        MockWebServer().use { server ->
+            // One response only: a second request would find nothing enqueued and hang.
+            server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(payload)).build())
+            server.start()
+            // Smaller than the helmet, so smallest-first order would fetch it first if it were not skipped.
+            val otherPayload = ByteArray(1_000) { (it * 7 % 13).toByte() }
+            val otherSha = sha256(otherPayload)
+            val other = asset.copy(
+                id = "woolly-mammoth",
+                title = "Woolly Mammoth",
+                file = "$otherSha.glb",
+                sha256 = otherSha,
+                bytes = otherPayload.size.toLong(),
+            )
+            val store = HdPackStore(
+                HdPackManifest(1, listOf(asset, other)),
+                tmp.newFolder("hd-pack"),
+                OkHttpClient(),
+                server.url("/").toString().trimEnd('/'),
+            )
+
+            store.downloadMissing(only = setOf(asset.id))
+
+            assertEquals(1, server.requestCount)
+            assertEquals("/$sha.glb", server.takeRequest(5, TimeUnit.SECONDS)!!.url.encodedPath)
+            assertEquals(setOf(asset.id), store.readyIds.value)
+            assertNull(store.readyFile(other.id))
+            assertFalse(store.isComplete)
+        }
+    }
+
+    @Test fun `the Wi-Fi prefetch is the Flight Helmet alone`() {
+        assertEquals(setOf("flight-helmet"), HdPack.PREFETCH_IDS)
+        val bundled = HdPackManifest.parse(File(repoRoot(), "assets/hd-pack/android.json").readText())
+        assertTrue(HdPack.PREFETCH_IDS.all { bundled.asset(it) != null })
     }
 
     @Test fun `an interrupted download resumes from the part file`() = runBlocking {
@@ -231,6 +331,44 @@ class HdPackStoreTest {
         assertEquals(
             HdPackStatus.Ready,
             HdPack.statusOf(true, null, work(WorkInfo.State.FAILED, NetworkType.CONNECTED)),
+        )
+    }
+
+    @Test fun `a model's pill reads its own file and its own job`() {
+        val id = "apollo11-interior"
+        val running = work(WorkInfo.State.RUNNING, NetworkType.CONNECTED)
+        assertEquals(HdPackStatus.Ready, HdPack.assetStatusOf(id, setOf(id), null, running))
+        assertEquals(HdPackStatus.NotDownloaded, HdPack.assetStatusOf(id, emptySet(), null, null))
+        assertEquals(
+            HdPackStatus.Downloading(0.5f),
+            HdPack.assetStatusOf(id, emptySet(), HdTransfer(10, 100, id, 5, 10), running),
+        )
+        // Its job runs, but another model's file is on the wire: queued, not "downloading 0 %".
+        assertEquals(
+            HdPackStatus.Queued,
+            HdPack.assetStatusOf(id, emptySet(), HdTransfer(10, 100, "woolly-mammoth", 5, 10), running),
+        )
+        // Another model downloading does not move a pill nobody tapped.
+        assertEquals(
+            HdPackStatus.NotDownloaded,
+            HdPack.assetStatusOf(id, emptySet(), HdTransfer(10, 100, "woolly-mammoth", 5, 10), null),
+        )
+        assertEquals(
+            HdPackStatus.WaitingForNetwork,
+            HdPack.assetStatusOf(id, emptySet(), null, work(WorkInfo.State.ENQUEUED, NetworkType.CONNECTED)),
+        )
+        assertEquals(
+            HdPackStatus.WaitingForWifi,
+            HdPack.assetStatusOf(
+                "flight-helmet",
+                emptySet(),
+                null,
+                work(WorkInfo.State.ENQUEUED, NetworkType.UNMETERED),
+            ),
+        )
+        assertEquals(
+            HdPackStatus.Failed,
+            HdPack.assetStatusOf(id, emptySet(), null, work(WorkInfo.State.FAILED, NetworkType.CONNECTED)),
         )
     }
 

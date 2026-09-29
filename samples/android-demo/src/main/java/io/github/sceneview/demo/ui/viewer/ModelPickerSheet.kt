@@ -54,26 +54,37 @@ import io.github.sceneview.demo.ui.home.outlineSubtle
  * @param hdAssetId id of an HD pack asset (`assets/hd-pack/android.json`). The entry then opens
  *   that model once it is on the device, and [assetPath] is only its bundled stand-in, shown
  *   instantly while the HD file downloads or loads.
+ *   `null` for an HD entry the APK has nothing close to (the Museum & Space shelf): the stage then
+ *   shows its [thumbnailStem] render, never an unrelated model, until the HD file is in.
  * @param thumbnailStem [ModelThumbnails] key when it is not the stem of [assetPath].
+ * @param autoplayAnimations `false` for a model whose clips are not a performance but a rig —
+ *   Perseverance's 23 mechanism clips: it opens still, and the animation bar still plays them.
  */
 data class BundledViewerModel(
-    val assetPath: String,
+    val assetPath: String?,
     val displayName: String,
     @StringRes val description: Int? = null,
     val frontYaw: Float = 0f,
     val hdAssetId: String? = null,
     val thumbnailStem: String? = null,
+    val autoplayAnimations: Boolean = true,
 ) {
-    val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.')
+    init {
+        require(assetPath != null || (hdAssetId != null && thumbnailStem != null)) {
+            "$displayName: an entry with no bundled model must be an HD entry with a thumbnail"
+        }
+    }
+
+    val assetName: String? get() = assetPath?.substringAfterLast('/')?.substringBeforeLast('.')
 
     /** Identity in the picker: an HD entry shares its stand-in's [assetPath] with another card. */
-    val key: String get() = hdAssetId?.let { "hd:$it" } ?: assetPath
+    val key: String get() = hdAssetId?.let { "hd:$it" } ?: assetPath.orEmpty()
 
     /**
      * Thumbnail stem ([ModelThumbnails]): [thumbnailStem] when set — an HD card pictures its HD
      * model, not the stand-in at [assetPath] — else the asset's own stem.
      */
-    val thumbnailName: String get() = thumbnailStem ?: assetName
+    val thumbnailName: String get() = thumbnailStem ?: assetName.orEmpty()
 }
 
 /**
@@ -116,6 +127,8 @@ enum class ViewerScene(
  * @param selectedKey [BundledViewerModel.key] of the model on screen, outlined; `null` outside
  *   the single-model section.
  * @param currentScene the scene on screen, outlined; `null` in the single-model section.
+ * @param museumModels the "Museum & Space" shelf — HD pack scans, downloaded after install —
+ *   shown after [models]; empty hides the section.
  */
 @Composable
 fun ModelPickerSheet(
@@ -125,6 +138,7 @@ fun ModelPickerSheet(
     onSelect: (BundledViewerModel) -> Unit,
     onScene: (ViewerScene) -> Unit,
     onDismiss: () -> Unit,
+    museumModels: List<BundledViewerModel> = emptyList(),
 ) {
     // Fully expanded from the start (`skipPartiallyExpanded`). The grid is a plain Column of
     // Rows rather than a LazyVerticalGrid: a lazy grid inside a sheet needs a bounded height, and
@@ -168,35 +182,52 @@ fun ModelPickerSheet(
                 }
             }
             PickerSectionHeader(R.string.demo_model_picker_models, top = SceneViewTokens.Space.lg)
-            Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
-                models.chunked(2).forEach { row ->
-                    CardRow(row) { model ->
-                        PickerCard(
-                            title = model.displayName,
-                            subtitle = model.description?.let { stringResource(it) },
-                            selected = model.key == selectedKey,
-                            onClick = { onSelect(model) },
-                        ) {
-                            // A transparent render of the exact GLB this card opens, on the card's
-                            // own fill — so it sits right in both themes.
-                            ModelThumbnails.resourceFor(model.thumbnailName)?.let {
-                                Image(
-                                    painter = painterResource(it),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            } ?: Icon(
-                                Icons.Outlined.ViewInAr,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-                        }
-                    }
-                }
+            ModelGrid(models, selectedKey, onSelect)
+            // HD pack (2026-09-29): museum scans downloaded after install. Their own shelf, after
+            // the bundled models, so a card that needs a download is never mistaken for one that
+            // opens at once — each card's caption says so.
+            if (museumModels.isNotEmpty()) {
+                PickerSectionHeader(R.string.demo_model_picker_museum, top = SceneViewTokens.Space.lg)
+                ModelGrid(museumModels, selectedKey, onSelect)
             }
             Spacer(Modifier.navigationBarsPadding().height(SceneViewTokens.Space.md))
+        }
+    }
+}
+
+/** Model cards, two per row; the card showing on screen is outlined. */
+@Composable
+private fun ModelGrid(
+    models: List<BundledViewerModel>,
+    selectedKey: String?,
+    onSelect: (BundledViewerModel) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+        models.chunked(2).forEach { row ->
+            CardRow(row) { model ->
+                PickerCard(
+                    title = model.displayName,
+                    subtitle = model.description?.let { stringResource(it) },
+                    selected = model.key == selectedKey,
+                    onClick = { onSelect(model) },
+                ) {
+                    // A transparent render of the exact GLB this card opens, on the card's
+                    // own fill — so it sits right in both themes.
+                    ModelThumbnails.resourceFor(model.thumbnailName)?.let {
+                        Image(
+                            painter = painterResource(it),
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } ?: Icon(
+                        Icons.Outlined.ViewInAr,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+            }
         }
     }
 }

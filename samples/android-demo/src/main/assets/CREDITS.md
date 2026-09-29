@@ -104,8 +104,12 @@ per-asset author is shown where `assets/catalog.json` records one.
 
 ## HD pack (downloaded after install)
 
-Not bundled: the app downloads these on Wi-Fi from the `hd-pack-v1` GitHub Release.
+Not bundled: each model downloads from the `hd-pack-v1` GitHub Release when the user asks for it; only the Flight Helmet is fetched ahead, on Wi-Fi.
 Listed from [`assets/hd-pack/android.json`](../../../../../assets/hd-pack/android.json).
 
+- `apollo11-exterior` — **[Apollo 11 Command Module](http://n2t.net/ark:/65665/nv9ce74610f-62de-46b6-904f-58abfecb555c)** by Smithsonian National Air and Space Museum — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (9.1 MB)
+- `apollo11-interior` — **[Apollo 11 Interior](http://n2t.net/ark:/65665/nv9ce74610f-62de-46b6-904f-58abfecb555c)** by Smithsonian National Air and Space Museum — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (19.5 MB)
 - `flight-helmet` — **[Flight Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet)** by Gary Hsu (Microsoft) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (48.4 MB)
+- `perseverance` — **[Perseverance Rover](https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Mars%202020%20Perseverance%20Rover)** by NASA/JPL-Caltech — [NASA Media Usage Guidelines (no endorsement implied; insignia removed)](https://www.nasa.gov/nasa-brand-center/images-and-media/) (4.9 MB)
+- `woolly-mammoth` — **[Woolly Mammoth](http://n2t.net/ark:/65665/3a0f8f423-9320-45fc-93c0-6f5cabd957bf)** by Smithsonian National Museum of Natural History — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (5.1 MB)
 

@@ -10,6 +10,50 @@
       "license": "CC0-1.0",
       "author": "Gary Hsu (Microsoft)",
       "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet"
+    },
+    {
+      "id": "apollo11-exterior",
+      "title": "Apollo 11 Command Module",
+      "file": "1b9a4fc68dc6deeda318a5f369ae6bfaca9d79a2a87a8e4cd2330ec3af07488f.glb",
+      "sha256": "1b9a4fc68dc6deeda318a5f369ae6bfaca9d79a2a87a8e4cd2330ec3af07488f",
+      "bytes": 9051960,
+      "scale": 0.01,
+      "license": "CC0-1.0",
+      "author": "Smithsonian National Air and Space Museum",
+      "source": "http://n2t.net/ark:/65665/nv9ce74610f-62de-46b6-904f-58abfecb555c"
+    },
+    {
+      "id": "apollo11-interior",
+      "title": "Apollo 11 Interior",
+      "file": "41a32eee628daca033e2b3ab852fc17fc7f8c31f2a61f3bb2c4f49ecb0ccb80c.glb",
+      "sha256": "41a32eee628daca033e2b3ab852fc17fc7f8c31f2a61f3bb2c4f49ecb0ccb80c",
+      "bytes": 19464224,
+      "scale": 0.01,
+      "license": "CC0-1.0",
+      "author": "Smithsonian National Air and Space Museum",
+      "source": "http://n2t.net/ark:/65665/nv9ce74610f-62de-46b6-904f-58abfecb555c"
+    },
+    {
+      "id": "woolly-mammoth",
+      "title": "Woolly Mammoth",
+      "file": "08148f9b06ad9f520f192ff48129fdeb5ae536d35dd51c30f1ae1725a33ca437.glb",
+      "sha256": "08148f9b06ad9f520f192ff48129fdeb5ae536d35dd51c30f1ae1725a33ca437",
+      "bytes": 5072312,
+      "scale": 1.0,
+      "license": "CC0-1.0",
+      "author": "Smithsonian National Museum of Natural History",
+      "source": "http://n2t.net/ark:/65665/3a0f8f423-9320-45fc-93c0-6f5cabd957bf"
+    },
+    {
+      "id": "perseverance",
+      "title": "Perseverance Rover",
+      "file": "4b7b92a4da6488879376c4cbb567a7657b8fd263a112dc26ce6e15234dd982d5.glb",
+      "sha256": "4b7b92a4da6488879376c4cbb567a7657b8fd263a112dc26ce6e15234dd982d5",
+      "bytes": 4897056,
+      "scale": 1.0,
+      "license": "NASA Media Usage Guidelines (no endorsement implied; insignia removed)",
+      "author": "NASA/JPL-Caltech",
+      "source": "https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Mars%202020%20Perseverance%20Rover"
     }
   ]
 }
