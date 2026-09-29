@@ -53,7 +53,6 @@ struct MaterialsDemo: View {
             stage
                 .onAppear {
                     viewport = proxy.size
-                    if qaMode { sweeping = false }
                     heldPose = wallPose(phase: MaterialWall.staticSweepPhase)
                 }
                 .onChange(of: proxy.size) { _, size in
@@ -82,7 +81,8 @@ struct MaterialsDemo: View {
         ZStack {
             LinearGradient(colors: [SceneViewTokens.Stage.skyHorizon, SceneViewTokens.Stage.skyGround],
                            startPoint: .top, endPoint: .bottom)
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !sweeping || focused != nil)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 30,
+                                    paused: !sweeping || focused != nil || qaMode)) { context in
                 SceneView { root in
                     wall.install(in: root, dark: colorScheme == .dark)
                 }
@@ -117,8 +117,11 @@ struct MaterialsDemo: View {
         return wallPose(phase: phase(at: date))
     }
 
+    /// Sweep phase at `date`. QA mode keeps Animate on, as Android does, but holds the camera
+    /// on Android's still frame so the capture is deterministic.
     private func phase(at date: Date) -> Double {
-        sweepStartPhase + date.timeIntervalSince(sweepStart) / MaterialWall.sweepPeriod
+        if qaMode { return MaterialWall.staticSweepPhase }
+        return sweepStartPhase + date.timeIntervalSince(sweepStart) / MaterialWall.sweepPeriod
     }
 
     private func currentPhase() -> Double {
@@ -187,12 +190,15 @@ struct MaterialsDemo: View {
         wall.reset(except: index)
     }
 
+    /// Back to the opening state: all nine presets, the sweep running from Android's still
+    /// frame.
     private func showWall() {
         focused = nil
         wall.reset(except: nil)
         heldPose = wallPose(phase: MaterialWall.staticSweepPhase)
         sweepStartPhase = MaterialWall.staticSweepPhase
-        sweeping = false
+        sweepStart = Date()
+        sweeping = true
     }
 
     private func pushFocusedMaterial() {
@@ -215,7 +221,7 @@ struct MaterialsDemo: View {
                 Text(material.name)
                     .font(SceneViewTokens.TypeScale.card)
                 Text(material.note)
-                    .font(.subheadline)
+                    .font(SceneViewTokens.TypeScale.body)
                     .fixedSize(horizontal: false, vertical: true)
                 LabeledSlider(label: "Metallic", value: $metallic, range: 0...1)
                 LabeledSlider(label: "Roughness", value: $roughness, range: 0...1)
@@ -224,16 +230,16 @@ struct MaterialsDemo: View {
                 Text("Nine materials, one sphere each. Metals mirror the room; dielectrics keep "
                      + "their own color under a small highlight; the last row adds a coat, a sheen, "
                      + "transparency and light of its own. Tap a sphere to fly onto it and tune it.")
-                    .font(.subheadline)
+                    .font(SceneViewTokens.TypeScale.body)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(MaterialWall.library.indices, id: \.self) { index in
                     let material = MaterialWall.library[index]
                     Button {
                         focus(index)
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
                             Text(material.name).font(SceneViewTokens.TypeScale.bodySemibold)
-                            Text(material.summary()).font(.caption)
+                            Text(material.summary()).font(SceneViewTokens.TypeScale.captionRegular)
                                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -247,7 +253,8 @@ struct MaterialsDemo: View {
 
 // MARK: - The wall
 
-/// One preset — Android's `StudioMaterial`, same values.
+/// One preset — Android's `StudioMaterial`, same values except the crystal (see
+/// ``MaterialWall/library``).
 struct StudioMaterial: Sendable {
     enum Trait: Sendable { case none, clearcoat, sheen, transparency, emissive }
 
@@ -284,24 +291,42 @@ struct StudioMaterial: Sendable {
 @MainActor
 final class MaterialWall {
     private var balls: [ModelEntity] = []
+    /// The ball the sliders retuned, kept so a rebuilt wall (theme switch) keeps the tuning.
+    private var tuning: (index: Int, metallic: Float, roughness: Float)?
 
     // Android's `MaterialStudio` constants.
     static let columns = 3
     static let ballRadius: Float = 0.2
     static let ballSpacing: Float = 0.6
-    static let focusDistance: Float = 1.25
     static let sweepDegrees: Double = 24
     static let sweepPeriod: Double = 14
     /// The still frame QA mode and Reset land on — Android's `STATIC_SWEEP_PHASE`.
     static let staticSweepPhase: Double = 0.375
-    /// Label chip scale: metres per SwiftUI point, so a 13 pt caption reads at about 13 pt
-    /// on the wall view, and a chip (112 pt at most) stays inside the 0.6 m ball spacing.
-    private static let metresPerPoint: Float = 0.005
+    /// Where the tap-to-focus camera stops. Android derives its dolly distance from the
+    /// Inspect hero ball it hands over to; iOS has no Inspect stage, so this is chosen on
+    /// the 60° lens instead: the 0.4 m ball fills about 28 % of the frame height
+    /// (0.4 / (2 × 1.25 × tan 30°)), its neighbours stay just in view at the edges, and the
+    /// eye stays well outside Android's 3 × radius floor.
+    static let focusDistance: Float = 1.25
+    /// Label chip scale: metres per SwiftUI point. The wall view shows about 207 pt per
+    /// metre, so a 13 pt caption reads at about 13 pt, and a chip (``chipWidth``) is
+    /// 0.56 m wide — inside the 0.6 m ball spacing with a gap between neighbours, as on
+    /// Android.
+    private static let metresPerPoint: Float = 0.0048
+    /// Chip width in points — Android's caption width (a third of 94 % of a 402 pt screen,
+    /// less `Space.xs` either side), so the same names wrap onto two lines.
+    private static let chipWidth: CGFloat = 116
     private static let labelGap: Float = 0.035
     private static let namePrefix = "material-ball-"
 
     // Albedos are physical data, as on Android: gold, copper, chromium and aluminium are the
     // metals' measured reflectance; the brand-tinted ones come from `SceneViewColors`.
+    // One deliberate difference: the crystal. Android's is a near-white (#EFF6FF) dielectric
+    // whose transmission lobe refracts — and so darkens and bends — the studio behind it.
+    // RealityKit has no transmission, and a near-white ball that only lets the pale stage
+    // through renders as a flat white disc. The iOS crystal is therefore a cool grey-blue
+    // glass at 50 % opacity: the tint stands in for the absorption refraction gives, and the
+    // clear coat keeps the sharp reflections that say "glass".
     static let library: [StudioMaterial] = [
         StudioMaterial(id: "chrome", name: "Polished chrome",
                        note: "A metal at roughness 0.02 reflects the studio almost perfectly.",
@@ -329,12 +354,14 @@ final class MaterialWall {
         StudioMaterial(id: "crystal", name: "Crystal — transparency",
                        note: "A clear, glossy dielectric you can see through. RealityKit has no "
                            + "transmission lobe, so it does not bend what is behind it.",
-                       color: rgb(0xEFF6FF), metallic: 0, roughness: 0.05, reflectance: 0.6,
-                       trait: .transparency, traitAmount: 0.75),
+                       color: rgb(0x7B90A8), metallic: 0, roughness: 0.05, reflectance: 0.6,
+                       trait: .transparency, traitAmount: 0.5),
+        // Primary × 1.5, as on Android (#4065): a paler tint such as TintLight tone-maps to
+        // plain white, while a saturated one at a modest strength still reads as coloured light.
         StudioMaterial(id: "glow", name: "Neon sign — emissive",
                        note: "Emission owes nothing to the environment — it still lights at night.",
                        color: rgb(0x161B22), metallic: 0, roughness: 0.6, reflectance: 0.35,
-                       trait: .emissive, traitAmount: 1.5, traitColor: rgb(0xA4C1FF)),
+                       trait: .emissive, traitAmount: 1.5, traitColor: rgb(0x005BC1)),
     ]
 
     static var rows: Int { (library.count + columns - 1) / columns }
@@ -347,14 +374,21 @@ final class MaterialWall {
         return SIMD3(Float(column) * ballSpacing - xOffset, yOffset - Float(row) * ballSpacing, 0)
     }
 
-    /// Width and height of the wall, labels included (a two-line label hangs ~0.14 m).
+    /// Width and height of the wall, labels included.
     static var extent: SIMD2<Float> {
         SIMD2(Float(columns - 1) * ballSpacing + 2 * ballRadius + 0.1,
-              Float(rows - 1) * ballSpacing + 2 * ballRadius + labelGap + 0.14)
+              Float(rows - 1) * ballSpacing + 2 * ballRadius + labelGap + labelReserve)
     }
 
     /// Vertical centre of ``extent``: the labels hang below the last row.
-    static var extentCentreY: Float { -(labelGap + 0.14) / 2 }
+    static var extentCentreY: Float { -(labelGap + labelReserve) / 2 }
+
+    /// Height of the tallest chip, in metres, measured on the chips themselves rather than
+    /// guessed, so a bottom-row label never reaches into the dock.
+    static let labelReserve: Float = library
+        .compactMap { chipImage($0.name, dark: false) }
+        .map { Float($0.height) / chipScale * metresPerPoint }
+        .max() ?? 0.2
 
     static func sweepYawDegrees(phase: Double) -> Float {
         Float(-sweepDegrees * cos(2 * .pi * phase))
@@ -375,8 +409,10 @@ final class MaterialWall {
         balls = []
         for (index, preset) in Self.library.enumerated() {
             let position = Self.position(of: index)
+            let tuned = tuning.flatMap { $0.index == index ? $0 : nil }
             let ball = ModelEntity(mesh: .generateSphere(radius: Self.ballRadius),
-                                   materials: [Self.material(preset)])
+                                   materials: [Self.material(preset, metallic: tuned?.metallic,
+                                                             roughness: tuned?.roughness)])
             ball.name = Self.namePrefix + String(index)
             ball.position = position
             ball.generateCollisionShapes(recursive: false)
@@ -391,6 +427,8 @@ final class MaterialWall {
     }
 
     func update(_ index: Int, metallic: Float, roughness: Float) {
+        guard Self.library.indices.contains(index) else { return }
+        tuning = (index, metallic, roughness)
         guard balls.indices.contains(index) else { return }
         balls[index].model?.materials = [Self.material(Self.library[index],
                                                       metallic: metallic, roughness: roughness)]
@@ -399,6 +437,7 @@ final class MaterialWall {
     /// Restores every ball but `kept` to its preset, so a tuned ball does not stay tuned after
     /// the viewer moved on.
     func reset(except kept: Int?) {
+        if let tuning, tuning.index != kept { self.tuning = nil }
         for index in balls.indices where index != kept {
             balls[index].model?.materials = [Self.material(Self.library[index])]
         }
@@ -438,26 +477,11 @@ final class MaterialWall {
     /// scene; here the chip is rendered once to a texture and hung on the wall, so it moves
     /// with the camera like the ball it names.
     private static func label(_ text: String, dark: Bool) -> Entity? {
-        let chip = Text(text)
-            .font(SceneViewTokens.TypeScale.caption)
-            .multilineTextAlignment(.center)
-            .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-            .padding(.horizontal, SceneViewTokens.Space.sm)
-            .padding(.vertical, SceneViewTokens.Space.xs)
-            .frame(maxWidth: 112)
-            .background(SceneViewTokens.HomeColor.surfaceContainer,
-                        in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xs, style: .continuous))
-            .fixedSize(horizontal: false, vertical: true)
-            .environment(\.colorScheme, dark ? .dark : .light)
-        let renderer = ImageRenderer(content: chip)
-        renderer.scale = 3
-        guard let image = renderer.cgImage,
+        guard let image = chipImage(text, dark: dark),
               let texture = try? TextureResource(image: image, withName: nil,
                                                  options: .init(semantic: .color)) else { return nil }
-        let widthPoints = Float(image.width) / 3
-        let heightPoints = Float(image.height) / 3
-        let width = widthPoints * metresPerPoint
-        let height = heightPoints * metresPerPoint
+        let width = Float(image.width) / chipScale * metresPerPoint
+        let height = Float(image.height) / chipScale * metresPerPoint
         var material = UnlitMaterial(applyPostProcessToneMap: false)
         material.color = .init(tint: .white, texture: .init(texture))
         material.blending = .transparent(opacity: .init(floatLiteral: 1))
@@ -467,6 +491,38 @@ final class MaterialWall {
         let anchor = Entity()
         anchor.addChild(plane)
         return anchor
+    }
+
+    /// Render scale of the chip textures (pixels per point).
+    private static let chipScale: Float = 3
+
+    /// Android's caption pill (`MaterialsDemo.kt`): the page surface with on-surface text —
+    /// white and dark text in light, dark and light text in dark — `Radius.sm` corners,
+    /// `Space.xs` padding, a fixed width, and at most two centred lines.
+    private static func chipImage(_ text: String, dark: Bool) -> CGImage? {
+        // Keep the dash with the word before it, so a two-line name breaks after the dash
+        // ("Car paint —" / "clearcoat") as Android's does, not before it.
+        let chip = Text(text.replacingOccurrences(of: " — ", with: "\u{00A0}— "))
+            .font(SceneViewTokens.TypeScale.caption)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+            .padding(SceneViewTokens.Space.xs)
+            .frame(width: chipWidth)
+            .background(SceneViewTokens.HomeColor.surface,
+                        in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
+            // Android's pills sit on the grey studio; the iOS stage is the pale themed
+            // gradient, so a hairline keeps a white pill from dissolving into it.
+            .overlay(
+                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous)
+                    .strokeBorder(SceneViewTokens.HomeColor.outline, lineWidth: 1)
+            )
+            .environment(\.colorScheme, dark ? .dark : .light)
+        let renderer = ImageRenderer(content: chip)
+        renderer.scale = CGFloat(chipScale)
+        renderer.proposedSize = ProposedViewSize(width: chipWidth, height: nil)
+        return renderer.cgImage
     }
 
     // MARK: Colour helpers
