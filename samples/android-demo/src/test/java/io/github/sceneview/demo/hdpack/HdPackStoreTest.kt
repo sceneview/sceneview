@@ -1,8 +1,10 @@
 package io.github.sceneview.demo.hdpack
 
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.NetworkType
 import androidx.work.WorkInfo
+import androidx.work.workDataOf
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -199,6 +201,17 @@ class HdPackStoreTest {
         assertEquals(setOf("flight-helmet"), HdPack.PREFETCH_IDS)
         val bundled = HdPackManifest.parse(File(repoRoot(), "assets/hd-pack/android.json").readText())
         assertTrue(HdPack.PREFETCH_IDS.all { bundled.asset(it) != null })
+    }
+
+    @Test fun `a job carries its own ids to the worker`() {
+        val ids = setOf("woolly-mammoth", "perseverance")
+        assertEquals(ids, HdPack.idsToFetch(HdPack.inputFor(ids)))
+    }
+
+    @Test fun `a legacy job with no id list fetches the prefetch set, never the whole pack`() {
+        // The pre-per-model `hd-pack-download` job was queued with no input at all.
+        assertEquals(HdPack.PREFETCH_IDS, HdPack.idsToFetch(Data.EMPTY))
+        assertEquals(HdPack.PREFETCH_IDS, HdPack.idsToFetch(workDataOf("unrelated" to "x")))
     }
 
     @Test fun `an interrupted download resumes from the part file`() = runBlocking {

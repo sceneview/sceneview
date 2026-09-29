@@ -644,8 +644,9 @@ private fun SingleModelSection(
     // colour texture at all), so the garden's green canopy tints them and its sun blooms into
     // a halo round the bones; the softbox shows them as the museum does, as iOS does. Only
     // the default is swapped: a lighting the user picked stays, and leaving the shelf gives
-    // the garden back only if Studio was ours.
-    val isMuseumModel = selectedModel in MUSEUM_VIEWER_MODELS
+    // the garden back only if Studio was ours. A file the user opened, or a Surprise pick, is
+    // not a Museum scan even while a Museum entry is still the selection behind it.
+    val isMuseumModel = selectedModel in MUSEUM_VIEWER_MODELS && openedModel == null && streamedFileUrl == null
     LaunchedEffect(isMuseumModel) {
         val garden = viewerEnvironments.first()
         if (isMuseumModel && requestedEnvironment == garden) {
@@ -664,11 +665,15 @@ private fun SingleModelSection(
     val hdLoadFailed = hdFileLocation != null && hdFileLocation == hdRejectedLocation
     // HD scans run to ~300 MB each once decoded: the previous one is released before the next
     // is read, never held alongside it. The stand-in (or the poster) covers the load.
+    // Leaving a scan for a bundled model is the other way round: the scan stays up until that
+    // model is ready. Released first, it left the stage empty through the whole decode and
+    // material link — seconds of black on a slow GPU (Apollo 11 → Toy Car).
     val hdModel = rememberStreamedModelInstance(
         modelLoader,
         hdFileLocation?.takeIf { !hdLoadFailed },
         wakeRenderLoop = renderInvalidator::requestRender,
         releasePreviousFirst = true,
+        holdPrevious = selectedModel.assetPath != null && bundledModelInstance == null,
         onRejected = { hdRejectedLocation = it },
     )
     val hdShown = hdFileLocation != null && !hdLoadFailed && hdModel?.location == hdFileLocation
@@ -693,7 +698,9 @@ private fun SingleModelSection(
     }
     // A model whose clips are a rig rather than a performance (Perseverance) opens still; every
     // other one plays its first clip, as before. Each new model starts from its first clip.
-    LaunchedEffect(activeModelInstance) {
+    // Keyed on the model the user picked, not on the instance on stage: an HD file replacing its
+    // stand-in is the same model, so it must not restart playback the user paused.
+    LaunchedEffect(selectedModel, streamedModel?.location) {
         selectedAnimation = 0
         animationProgress = 0f
         animationPlaying = streamedModelInstance != null || selectedModel.autoplayAnimations
@@ -748,7 +755,11 @@ private fun SingleModelSection(
     // Measured in world units: an HD model shown at its real size (`modelScale`) is framed at it.
     // A bundled model turned by `frontYaw` is framed by the footprint of the TURNED box: at -30°
     // the mammoth's tusks reached past the screen edge when framed by its unturned AABB.
-    val frontYaw = if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+    // Keyed on the instance on stage, not on the pick: the model still up while the next one
+    // loads keeps its own turn instead of taking the next model's for a few frames.
+    val frontYaw = remember(activeModelInstance) {
+        if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+    }
     val bounds = remember(activeModelInstance, modelScale, frontYaw) {
         val instance = activeModelInstance ?: return@remember null
         runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
@@ -1477,6 +1488,9 @@ private fun SingleModelSection(
  * then the previous model stays on screen, and a file that fails either test is reported to
  * [onRejected] and never shown. The result carries the location it was loaded from, so the
  * caller can tell the new model from the previous one.
+ *
+ * With [holdPrevious], a null [streamedFileUrl] keeps the model presented until the flag drops
+ * (the caller's replacement is ready) instead of releasing it at once.
  */
 @Composable
 private fun rememberStreamedModelInstance(
@@ -1484,15 +1498,18 @@ private fun rememberStreamedModelInstance(
     streamedFileUrl: String?,
     wakeRenderLoop: () -> Unit,
     releasePreviousFirst: Boolean = false,
+    holdPrevious: Boolean = false,
     onRejected: (location: String) -> Unit = {},
 ): StreamedModel? {
     val rejected = androidx.compose.runtime.rememberUpdatedState(onRejected)
+    // Only a key while there is no URL: flipping it must never re-read a file being shown.
+    val holding = streamedFileUrl == null && holdPrevious
     // One `produceState` in a stable slot, whatever the URL (#1464). It keeps its last value
     // across a key change, so the model on screen stays there while the next one loads —
     // unless [releasePreviousFirst], for files too big to hold two of.
-    val presented = produceState<StreamedModel?>(initialValue = null, modelLoader, streamedFileUrl) {
+    val presented = produceState<StreamedModel?>(initialValue = null, modelLoader, streamedFileUrl, holding) {
         val location = streamedFileUrl ?: run {
-            value = null
+            if (!holding) value = null
             return@produceState
         }
         if (releasePreviousFirst && value != null) {
@@ -1540,7 +1557,7 @@ private fun rememberStreamedModelInstance(
     androidx.compose.runtime.DisposableEffect(presented) {
         onDispose { presented?.let { modelLoader.destroyModel(it.instance.model) } }
     }
-    return if (streamedFileUrl == null) null else presented
+    return if (streamedFileUrl == null && !holding) null else presented
 }
 
 /**

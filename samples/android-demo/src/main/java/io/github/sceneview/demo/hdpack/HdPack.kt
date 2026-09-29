@@ -5,11 +5,13 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import kotlinx.coroutines.flow.Flow
@@ -143,11 +145,17 @@ object HdPack {
         return store.removeAll()
     }
 
-    /** Live [HdPackStatus] of the whole pack (About → App). */
+    /**
+     * Live [HdPackStatus] of the whole pack (About → App). It reads the pack's own jobs only — the
+     * whole-pack download and the Wi-Fi prefetch — so one model's failed pill does not turn the
+     * whole pack to "Failed".
+     */
     fun status(context: Context, store: HdPackStore): Flow<HdPackStatus> = combine(
         store.readyIds,
         store.transfer,
-        WorkManager.getInstance(context).getWorkInfosByTagFlow(TAG_PACK),
+        WorkManager.getInstance(context).getWorkInfosFlow(
+            WorkQuery.fromUniqueWorkNames(listOf(ALL_WORK, PREFETCH_WORK)),
+        ),
     ) { ready, transfer, infos ->
         statusOf(ready.size == store.manifest.assets.size, transfer, relevantJob(infos))
     }
@@ -207,7 +215,7 @@ object HdPack {
         ids: Set<String>,
     ) {
         val request = OneTimeWorkRequestBuilder<HdPackWorker>()
-            .setInputData(workDataOf(KEY_ONLY to ids.toTypedArray()))
+            .setInputData(inputFor(ids))
             .addTag(TAG_PACK)
             .apply { ids.forEach { addTag(TAG_ASSET_PREFIX + it) } }
             .setConstraints(
@@ -219,6 +227,15 @@ object HdPack {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(name, policy, request)
     }
+
+    /** The worker input carrying the ids a job fetches. */
+    internal fun inputFor(ids: Set<String>): Data = workDataOf(KEY_ONLY to ids.toTypedArray())
+
+    /**
+     * The ids a job fetches. A job queued by an earlier build carries no id list: it was the Wi-Fi
+     * prefetch, so it fetches what the prefetch fetches now ([PREFETCH_IDS]), never the whole pack.
+     */
+    internal fun idsToFetch(input: Data): Set<String> = input.getStringArray(KEY_ONLY)?.toSet() ?: PREFETCH_IDS
 
     private fun setRemoved(context: Context, removed: Boolean) {
         removedByUser.value = removed
@@ -237,9 +254,7 @@ object HdPack {
         override suspend fun doWork(): Result {
             val store = store(applicationContext) ?: return Result.failure()
             return try {
-                // A job queued by an earlier build carries no id list: it was the Wi-Fi prefetch, so
-                // it fetches what the prefetch fetches now, never the whole pack.
-                store.downloadMissing(only = inputData.getStringArray(KEY_ONLY)?.toSet() ?: PREFETCH_IDS)
+                store.downloadMissing(only = idsToFetch(inputData))
                 Result.success()
             } catch (e: HdPackIntegrityException) {
                 Log.e(TAG, "HD pack file rejected, not retrying", e)
