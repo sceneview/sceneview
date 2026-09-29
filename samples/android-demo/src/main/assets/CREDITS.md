@@ -12,7 +12,8 @@ Generated from [`assets/catalog.json`](../../../../../assets/catalog.json) and t
 contents of `samples/android-demo/src/main/assets` by
 [`.claude/scripts/generate-credits.py`](../../../../../.claude/scripts/generate-credits.py).
 Re-run that script after adding, removing or re-compressing a bundled asset;
-`ci.yml` → `repo-hygiene` fails if this file and the assets disagree.
+`ci.yml` → `build` (step "Check asset credits") fails if this file and the
+assets disagree.
 
 Assets bundled: **31**.
 

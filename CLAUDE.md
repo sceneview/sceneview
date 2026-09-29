@@ -41,6 +41,10 @@ Full API reference: [`llms.txt`](./llms.txt).
   exactly **one AVD**, `Pixel_7a` on `emulator-5554` — every other AVD (the tablet
   rigs, the x86_64-under-Rosetta probe of #2758) was deleted. If it is missing, that
   same script recreates it; `--seed-snapshot` re-seeds the warm `qa-clean` snapshot.
+- **Demo and website 3D assets are not in git.** `assets/manifest.json` lists them;
+  `tools/fetch-assets.sh` fetches them from the `assets-v1` release (Gradle and Xcode run
+  it on every build). A new model needs `--register` and its upload to `assets-v1` before
+  merging, or every build fails on it. Sparse checkouts must include `assets` and `tools`.
 - **Major version `4` is frozen.** `5.0.0` is a deliberate milestone, never automatic.
   Never sync `mcp/` or the Flutter/RN *consumed* dependency to `VERSION_NAME` — both
   are independent tracks.

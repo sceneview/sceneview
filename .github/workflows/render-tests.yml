@@ -142,6 +142,7 @@ jobs:
               - 'sceneview-core/**'
               - 'arsceneview/**'
               - 'samples/android-demo/**'
+              - 'assets/manifest.json'
               - 'samples/common/**'
               - '.github/actions/setup-gradle/**'
               - 'gradle/**'
@@ -152,6 +153,7 @@ jobs:
               - *shared
               - 'SceneViewSwift/**'
               - 'samples/ios-demo/**'
+              - 'assets/manifest.json'
             web:
               - *shared
               - 'samples/web-demo/**'
@@ -270,6 +272,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -416,6 +422,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -579,6 +589,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -665,6 +679,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer

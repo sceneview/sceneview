@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Docs: version numbers match what the SDK builds against.** `AGENTS.md` now quotes SceneView 4.48.0 and Kotlin 2.4.20 instead of 4.37.0 and 2.4.10. The Android XR pages, `llms.txt` and the iOS cheatsheet now give `androidx.xr.arcore` as `1.0.0-beta02`, the version the SDK pins, instead of alpha builds. `llms-full.txt` names the right Compose and Android versions. `llms.txt` no longer says `sceneview-compose` is unpublished: it has been on Maven Central since 4.27.0.

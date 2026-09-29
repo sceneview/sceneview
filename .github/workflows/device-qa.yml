@@ -46,6 +46,11 @@ name: Device QA
 # so the emulator jobs become install + Maestro only — faster, and the build
 # no longer fights the emulator for cores.
 #
+# Exception (#2343, #4149): when the store keys are injected, qa-keys.sh
+# deletes the keyless artifact and `qa-android-demos.sh` rebuilds a KEYED APK
+# on the emulator runner. Both emulator legs therefore run setup-gradle (JDK 22
+# for the `jvmToolchain(22)` modules) and budget 45 min for the rebuild.
+#
 # RELEASE-GATE POLICY FOR continue-on-error LEGS (#1651)
 # ------------------------------------------------------
 # The `android` and `ar` jobs are `continue-on-error: true` — a red leg does
@@ -110,6 +115,7 @@ on:
       - '.github/workflows/device-qa.yml'
       - '.maestro/**'
       - 'samples/android-demo/**'
+      - 'assets/manifest.json'
       - 'samples/web-demo/**'
       # NOTE: `samples/ios-demo/**` is deliberately NOT listed — the iOS leg
       # is nightly-only (see the FOUR-LEG SPLIT block above, #1601).
@@ -185,6 +191,7 @@ jobs:
               - '.claude/scripts/sideload-arcore.sh'
               - '.maestro/**'
               - 'samples/android-demo/**'
+              - 'assets/manifest.json'
             web:
               - *shared
               - 'samples/web-demo/**'
@@ -260,6 +267,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -283,9 +294,10 @@ jobs:
   # own boot. Non-blocking: SwiftShader emulator + Maestro timing is flaky and
   # this workflow is not a required PR check.
   #
-  # This job does NOT build the APK — it downloads the artifact produced by
-  # `build-android-apk` into the path qa-android-demos.sh expects, so the
-  # emulator job is install + Maestro only (#1652). The release-gate treats a
+  # This job downloads the artifact produced by `build-android-apk` into the
+  # path qa-android-demos.sh expects (#1652). When the store secrets are set
+  # that artifact is discarded for a KEYED rebuild (#2343), so the job still
+  # sets up the JDKs and Gradle cache. The release-gate treats a
   # red leg here as ADVISORY (WARN, not a hard block) — see the header block.
   android:
     name: Device QA — android (Maestro)
@@ -295,16 +307,31 @@ jobs:
     # ANCESTOR to have succeeded, and `changes` is skipped on dispatch and on
     # the nightly — the implicit check would skip this leg exactly there.
     if: ${{ !cancelled() && needs.build-android-apk.result == 'success' }}
-    # 35 min: with the APK prebuilt the heavy work is emulator boot + the
-    # Maestro flow. The PER-FLOW `timeout` inside maestro.sh still aborts a
+    # 45 min, same as the `ar` leg: with the store keys set, the keyed Gradle
+    # rebuild (#2343) runs before the emulator boot and the Maestro flow, and a
+    # cold cache must not get the job cancelled (continue-on-error does not
+    # absorb a timeout, #1643). The PER-FLOW `timeout` inside maestro.sh still aborts a
     # genuine hang fast (Maestro 15 min) — see #1560/#3141. This job runs
     # `--fast` (one category = one flow), so its wall clock is unchanged by the
     # per-flow split; only the non-`--fast` catalog path gains a budget per
     # category.
-    timeout-minutes: 35
+    timeout-minutes: 45
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
+
+      # The prebuilt artifact is keyless, so with the store secrets injected
+      # below qa-keys.sh deletes it and qa-android-demos.sh rebuilds a KEYED
+      # APK on this runner (#2343): this leg runs Gradle after all. Without
+      # this step the hosted runner has no JDK 22, and the `jvmToolchain(22)`
+      # of sceneview-compose / desktop-demo fails configuration before the
+      # first Maestro flow ("Cannot find a Java installation ...
+      # languageVersion=22", run 36486590219). Same setup as the `ar` leg.
+      - uses: ./.github/actions/setup-gradle
 
       - uses: actions/setup-node@v7
         with:
@@ -377,7 +404,7 @@ jobs:
             # then goes red even though web/ar/build passed (#1643). Bare
             # `adb wait-for-device` in particular blocks forever if the emulator
             # never comes online. Internal bounds (150s + 1500s + ~120s boot
-            # poll ≈ 29 min) always fire before `timeout-minutes: 35`.
+            # poll ≈ 29 min) always fire before `timeout-minutes: 45`.
             timeout 150 adb wait-for-device || { echo "::warning::android leg — emulator never came online"; exit 1; }
             attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
             # --fast: one representative category, keeps the emulator job lean.
@@ -418,6 +445,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -510,6 +541,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       - name: Select Xcode
         # DEVELOPER_DIR (Apple-canonical), NOT `sudo xcode-select -s`: the sudo
