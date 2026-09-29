@@ -115,6 +115,7 @@ on:
       - '.github/workflows/device-qa.yml'
       - '.maestro/**'
       - 'samples/android-demo/**'
+      - 'assets/manifest.json'
       - 'samples/web-demo/**'
       # NOTE: `samples/ios-demo/**` is deliberately NOT listed — the iOS leg
       # is nightly-only (see the FOUR-LEG SPLIT block above, #1601).
@@ -190,6 +191,7 @@ jobs:
               - '.claude/scripts/sideload-arcore.sh'
               - '.maestro/**'
               - 'samples/android-demo/**'
+              - 'assets/manifest.json'
             web:
               - *shared
               - 'samples/web-demo/**'
@@ -265,6 +267,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -313,6 +319,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       # The prebuilt artifact is keyless, so with the store secrets injected
       # below qa-keys.sh deletes it and qa-android-demos.sh rebuilds a KEYED
@@ -435,6 +445,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -527,6 +541,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       - name: Select Xcode
         # DEVELOPER_DIR (Apple-canonical), NOT `sudo xcode-select -s`: the sudo

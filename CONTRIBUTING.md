@@ -11,6 +11,9 @@ Thanks for your interest in contributing! This guide covers everything you need 
 - **JDK 17** (for Android/KMP modules)
 - **Android Studio** (latest stable recommended)
 - **Xcode 16+** (for SceneViewSwift / iOS work only — Swift 6 and the iOS 18 floor)
+- **bash, python3 and curl** on the `PATH` — every demo and website build runs
+  `tools/fetch-assets.sh` (see [Assets](#assets)). On macOS they come with the
+  Command Line Tools (`xcode-select --install`); on Windows, build from WSL.
 - Optional but recommended: Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
   for agent-driven QA. Bootstrap in one shot:
   ```bash
@@ -28,6 +31,30 @@ cd sceneview
 ```
 
 Open the project in Android Studio. Gradle sync will pull all dependencies automatically.
+
+### Assets
+
+The demo apps' models and HDR environments and the website's platform models are not in
+git. They live in the `assets-v1` GitHub Release, listed with their sha256 in
+[`assets/manifest.json`](assets/manifest.json). After cloning, run once:
+
+```bash
+bash tools/fetch-assets.sh
+```
+
+Files are downloaded once into `~/.cache/sceneview-assets/` (shared by every clone and
+worktree, override with `SCENEVIEW_ASSETS_CACHE`), verified, then cloned (APFS / reflink)
+or copied into place. The Android and TV demo builds and the iOS demo's first build phase
+run the same script, so a plain build also works. `--scope android|ios|tv|web` limits
+the fetch, `--check` verifies what is in place. A sparse checkout must include `assets/`
+and `tools/`.
+
+To add or replace an asset, put the file at its path and run
+`bash tools/fetch-assets.sh --register <path>`: it updates the manifest and prints the
+`gh release upload` command for any blob the release does not have yet — a maintainer
+runs it before the PR merges. The file itself stays out of git (see `.gitignore`). Until
+it is registered, the fetch — and therefore the demo build — fails on it: a file only
+your machine has would be missing from every other build.
 
 ### Build
 
