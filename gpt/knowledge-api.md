@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.48.0)
+  Source of truth: /llms.txt  (SceneView 4.49.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.48.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.49.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -3235,16 +3235,16 @@ See #1731.
 
 SceneView ships an opt-in layer for **ARCore for Jetpack XR** (`androidx.xr.arcore`) — the runtime that powers hand tracking and face tracking on Android XR headsets and glasses. It is **separate** from mobile ARCore (`com.google.ar.core`) and only meaningful on devices that expose the Jetpack XR Perception runtime.
 
-**Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-alpha14` and subject to breaking changes. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
+**Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-beta02` (pre-stable) and may still change. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
 
-**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)) — `XrFaceNode` face-tracking node + `ar-xr-face` demo.
+**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-beta02"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)) — `XrFaceNode` face-tracking node + `ar-xr-face` demo.
 
 **Opt-in dependency** (consumers add this themselves; `arsceneview/` declares it `compileOnly`):
 
 ```kotlin
 // app/build.gradle.kts — only if you target Android XR
 dependencies {
-    implementation(libs.androidx.xr.arcore)   // androidx.xr.arcore:arcore:1.0.0-alpha14
+    implementation(libs.androidx.xr.arcore)   // androidx.xr.arcore:arcore:1.0.0-beta02
 }
 ```
 
@@ -3273,7 +3273,7 @@ SceneView(modifier = Modifier.fillMaxSize()) {
 - `true` when the consumer has declared `androidx.xr.arcore:arcore` (or any artifact pulling `androidx.xr.runtime`) on the runtime classpath — i.e. the consumer has explicitly opted into the XR path.
 - `false` on a default `arsceneview/` consumer (no XR dep on classpath).
 
-Classpath presence is the foundation gate; the device-capability check (XR headset vs mobile phone) is layered on top by Slices 2 / 3 via the upstream `androidx.xr.runtime.Session.create(activity)` outcome.
+Classpath presence is the foundation gate; the device-capability check (XR headset vs mobile phone) is layered on top by Slices 2 / 3 via the upstream `androidx.xr.runtime.Session.create(context)` outcome (a suspend call returning a `SessionCreateResult`; `SessionCreateUnsupportedDevice` on a phone).
 
 Mobile ARCore tracking (`AugmentedFaceNode`, `AugmentedImageNode`, `AnchorNode`, etc.) keeps working unchanged on phones — the Jetpack XR layer is strictly additive.
 
@@ -3281,7 +3281,7 @@ Mobile ARCore tracking (`AugmentedFaceNode`, `AugmentedImageNode`, `AnchorNode`,
 
 `XrHandNode` mirrors a hand tracked by ARCore for Jetpack XR (`androidx.xr.arcore.Hand`) as a SceneView scene-graph node — the Jetpack XR sibling of `AugmentedFaceNode`. It exposes one child node per skeleton joint (~26 joints: wrist, palm, and 4–5 joints per finger); attach a `SphereNode` per joint and a `LineNode` per bone to render a hand skeleton, or anchor a model to a single joint.
 
-**Preview API.** Every `XrHandNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+**Preview API.** Every `XrHandNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is pre-stable — opt in with `@OptIn(XrPreviewApi::class)`.
 
 Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
 
@@ -3320,7 +3320,7 @@ Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on 
 
 It exposes one child node per named anchor region (`XrFaceRegion`: `CENTER`, `NOSE_TIP`, `FOREHEAD_LEFT`, `FOREHEAD_RIGHT`) whose transform follows the live pose — anchor glasses to `NOSE_TIP`, a hat above the forehead — plus the decoded dense mesh (`XrFaceMeshData`: vertex / normal / index buffers) so a consumer can upload its own `MeshNode` skin overlay. `XrFaceNode` creates no Filament mesh resource itself; building geometry stays a deliberate, main-thread step the consumer owns.
 
-**Preview API.** Every `XrFaceNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+**Preview API.** Every `XrFaceNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is pre-stable — opt in with `@OptIn(XrPreviewApi::class)`.
 
 Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
 
@@ -4326,9 +4326,9 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose` — **not published yet**. 4.26.0 is the latest
-release on Maven Central and does NOT contain this module; it ships in the next release.
-Do not emit a version coordinate for it — every released version resolves to 404.
+`io.github.sceneview:sceneview-compose:4.49.0` — on Maven Central since 4.27.0, released
+in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
+emit a version below 4.27.0 for it.
 
 **SCOPE — read before using.** This module is the *viewer subset* and will not grow past
 it: load a model, orbit it, light it, tap it. It is NOT a portable version of the full
@@ -4424,7 +4424,7 @@ public only because both bridges are separate modules. Not `@objc`, so not reach
 Kotlin.
 
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
-— Compose Multiplatform 1.11.1 publishes no such variant.
+— Compose Multiplatform 1.12.0 publishes no such variant.
 
 ### The whole public API
 
@@ -4531,7 +4531,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.48.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.49.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -5155,7 +5155,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.48.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.49.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -5196,6 +5196,7 @@ View modifiers (chainable):
 .onCameraChanged(_ handler: @escaping (SceneCameraPose) -> Void) -> SceneView  // v4.27.0+ — fires after EVERY camera change: drag, pinch, auto-rotate step, fit-to-bounds re-frame, and a clamped .cameraPose write
 .cameraGesturesEnabled(_ enabled: Bool) -> SceneView        // v4.27.0+ — freezes drag/pinch. NOT .cameraControls(.none), which hands the camera to Apple and disables .cameraPose too
 .onEntityTapHit(_ handler: @escaping (SceneTapHit) -> Void) -> SceneView  // v4.27.0+ — tap + world position. Distinct BASE name on purpose: a `hit:` label overload made every existing `.onEntityTapped { entity in }` ambiguous
+.bloom(_ options: BloomOptions) -> SceneView               // bloom pass (strength, levels, resolution, threshold, thresholdLevel; resolution = first blur level height in px, default 384 like Filament) — mirrors Android View.bloomOptions. iOS / macOS 26+ only (RealityKit customPostProcessing); a no-op on iOS 18–25 and visionOS. Attached whenever the modifier is present (even at strength 0); every change applies live. Works in display space 0–1 after tone mapping: thresholdLevel (iOS-only, default 0.6) is how bright a pixel must look to bloom. An EDR / extended-range frame is passed through without glow
 ```
 
 **Two-way camera (v4.27.0+).** `.cameraPose(_:)` writes, `.onCameraChanged(_:)` reads

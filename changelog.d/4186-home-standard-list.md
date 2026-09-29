@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Android demo: the Home reads like any app under its 3D header ([#4186](https://github.com/sceneview/sceneview/pull/4186)).** The tall Featured carousel and the large square picture cards gave way to one vertical list of compact grey rows: a small thumbnail, a title and a one-line description, grouped by section like a phone's settings, with the New and Updated tags beside the title. The 3D header is unchanged, every demo keeps its place and its section, and the list stays readable in light and dark and at large font sizes.

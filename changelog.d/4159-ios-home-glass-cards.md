@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **iOS demo app home: cards are pictures first, as on Android.** Each catalogue card is a square picture that melts into a frosted caption made from its own blurred image. Cards side by side end level, on the home grid and in Explore's new "Try a demo" row. The Featured section becomes a swipeable shelf of tall 4:5 cards, with a full-bleed picture, a floating caption and a light parallax. Light and dark.

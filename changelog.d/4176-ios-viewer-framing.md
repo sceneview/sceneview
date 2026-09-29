@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **iOS demo — Model Viewer**: models open in the same pose and at the same size as on Android. The camera starts in front of the model and 12° above it, not 36° to the side and 30° above, and the fit is tighter, so a model fills the stage as much as it does on Android. The Woolly Mammoth and the Perseverance rover turn -30° on their own to show a three-quarter view, as on Android. So does the Hovercar, which is iOS-only. Recenter returns to this pose. The HD preview no longer stretches across an iPad screen.

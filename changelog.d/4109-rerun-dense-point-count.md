@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo (Android):** A dense Rerun scan now shows the same point count in the "Your sessions" list and in its replay as the scan HUD showed while recording (e.g. 186k, not 12k). The dense cloud was always saved in full; the list and the replay were counting ARCore's sparse feature points, which stop at 12,000. Scans saved before this fix read the right number from their file.
