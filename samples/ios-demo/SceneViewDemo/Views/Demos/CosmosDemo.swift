@@ -38,7 +38,7 @@ struct CosmosDemo: View {
                 .autoCenterContent(false)
                 .cameraGesturesEnabled(false)
                 .cameraPose(CosmosEngine.fixedCamera)
-                .bloom(BloomOptions(strength: engine.bloom, levels: 7, threshold: true))
+                .bloom(BloomOptions(strength: engine.bloom, levels: 7, resolution: 512, threshold: true))
                 if !engine.ready {
                     VStack(spacing: 12) {
                         ProgressView().tint(.white)
@@ -328,9 +328,13 @@ struct CosmosSceneLayers: Sendable {
     /// The flow nuclei: the first four vortices, and their radii.
     static let nucleusRadii: [Float] = [0.1, 0.075, 0.06, 0.08]
 
-    /// A ribbon's steady brightness: the shader's `base` plus the mean of its `dashAmp × pulse⁸`
-    /// travelling dashes (the mean of `((1 + sin)/2)⁸` is C(16,8)/2¹⁶ ≈ 0.196).
-    private static func body(base: Float, dashAmp: Float) -> Float { base + dashAmp * 0.196 }
+    /// Each ribbon set's `base`, `dashAmp`, `dashFreq` and `dashSpeed`, as Android sets them.
+    static let prominenceDash = GlowBuilder.Dash(base: 0.6, amp: 1.6, freq: 2 * .pi * 3.5, speed: 1.6)
+    static let burstDash = GlowBuilder.Dash(base: 0.75, amp: 0.5, freq: 2 * .pi * 3, speed: 7)
+    static let flowDash = GlowBuilder.Dash(base: 0.5, amp: 1.3, freq: 2 * .pi * 5, speed: 2.5)
+    /// The flow's thousands of faint strokes lean on Android's HDR bloom haze, which the
+    /// display-space pass here spreads less: they are lifted to the same on-screen brightness.
+    static let flowGain: Float = 1.3
 
     /// The star turns 4°/s about its axis, tilted 12° towards the viewer — Android's
     /// `Rotation(y = 4t, x = 12)`.
@@ -366,7 +370,7 @@ struct CosmosSceneLayers: Sendable {
                 main: GlowBuilder.sprites(CosmosMeshes.starHalo(), view: view, minPixels: 1.1,
                                           gain: haloPulse, facing: facing),
                 strokes: GlowBuilder.ribbons(CosmosMeshes.prominences(), view: spunView, minPixels: 1.0,
-                                             body: body(base: 0.6, dashAmp: 1.6), tailTaper: 0.2),
+                                             dash: prominenceDash, time: time, tailTaper: 0.2),
                 plasma: surface.image,
                 spheres: [CosmosSphere(center: .zero, radius: 1,
                                        limb: GlowBuilder.limb(limb, distance: simd_length(view.eye), resolution: 256))]
@@ -376,11 +380,11 @@ struct CosmosSceneLayers: Sendable {
                 main: GlowBuilder.sprites(CosmosMeshes.burstCore(), view: view, minPixels: 1.1,
                                           gain: flashPeak, facing: facing),
                 strokes: GlowBuilder.ribbons(CosmosMeshes.burst(), view: view, minPixels: 1.0,
-                                             body: body(base: 0.75, dashAmp: 0.5), tailTaper: 0.35),
+                                             dash: burstDash, time: time, tailTaper: 0.35),
                 dust: GlowBuilder.sprites(CosmosMeshes.burstSparks(), view: view, minPixels: 1.6,
                                           facing: facing),
                 halo: GlowBuilder.ribbons(CosmosMeshes.burst(), view: view, minPixels: 1.0,
-                                          body: haloPeak, tailTaper: 0.35, halo: haloWidth)
+                                          dash: .steady(haloPeak), time: time, tailTaper: 0.35, halo: haloWidth)
             )
         case .flow:
             let surface = Plasma.surface(.nucleus, time: time, width: 256, height: 128)
@@ -394,7 +398,7 @@ struct CosmosSceneLayers: Sendable {
             return CosmosSceneLayers(
                 main: GlowBuilder.sprites(CosmosMeshes.flowBackdrop(), view: view, minPixels: 1.1, facing: facing),
                 strokes: GlowBuilder.ribbons(CosmosMeshes.flowField(), view: view, minPixels: 1.0,
-                                             body: body(base: 0.5, dashAmp: 1.3), tailTaper: 0),
+                                             dash: flowDash.scaled(flowGain), time: time, tailTaper: 0),
                 dust: GlowBuilder.sprites(CosmosMeshes.flowDust(), view: view, minPixels: 1.3, facing: facing),
                 plasma: surface.image,
                 spheres: spheres

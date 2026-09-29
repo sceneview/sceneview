@@ -9,7 +9,7 @@ import MetalPerformanceShaders
 /// Bloom settings for a ``SceneView`` — light bleeding out of the brightest pixels.
 ///
 /// Mirrors the fields SceneView Android sets on Filament's `View.bloomOptions`
-/// (`enabled`, `strength`, `levels`, `threshold`), so a scene is tuned with the same numbers on
+/// (`enabled`, `strength`, `levels`, `resolution`, `threshold`), so a scene is tuned with the same numbers on
 /// both platforms. Bloom is what turns bright unlit or emissive colours into glow: a pixel
 /// brighter than the threshold spills a soft halo onto its neighbours.
 ///
@@ -35,6 +35,12 @@ public struct BloomOptions: Equatable, Sendable {
     /// glow wider. Clamped to `1...8`. Same meaning as Filament's `levels`.
     public var levels: Int
 
+    /// Height, in pixels, of the first blur level; its width follows the frame's aspect ratio.
+    /// Lower spreads the glow into broader, smoother halos, higher keeps it tight around small
+    /// highlights. Same meaning and default as Filament's `resolution`; clamped to `64...2048`
+    /// and never above half the frame height.
+    public var resolution: Int
+
     /// When `true` (the default), only the part of a pixel above ``thresholdLevel`` blooms —
     /// the Filament `threshold = true` behaviour. When `false`, every pixel contributes and
     /// the whole frame softens.
@@ -44,9 +50,11 @@ public struct BloomOptions: Equatable, Sendable {
     /// units of the frame RealityKit hands to the pass (`1.0` = white).
     public var thresholdLevel: Float
 
-    public init(strength: Float = 0.1, levels: Int = 6, threshold: Bool = true, thresholdLevel: Float = 0.6) {
+    public init(strength: Float = 0.1, levels: Int = 6, resolution: Int = 384, threshold: Bool = true,
+                thresholdLevel: Float = 0.6) {
         self.strength = strength
         self.levels = levels
+        self.resolution = resolution
         self.threshold = threshold
         self.thresholdLevel = thresholdLevel
     }
@@ -65,7 +73,7 @@ public struct BloomOptions: Equatable, Sendable {
 ///
 /// Built from Metal Performance Shaders kernels only — no shader source is compiled, so the
 /// SDK needs neither the Metal Toolchain at build time nor a runtime compile: a half-size
-/// bright pass (`MPSImageBilinearScale`, then `MPSImageAdd` with a bias of minus the threshold,
+/// bright pass at ``BloomOptions/resolution`` (`MPSImageBilinearScale`, then `MPSImageAdd` with a bias of minus the threshold,
 /// clamped at zero), a chain of `levels` half-size copies each softened by `MPSImageGaussianBlur`, summed
 /// back up level by level, and added onto the frame with `MPSImageAdd`. RealityKit hands the pass
 /// an sRGB frame, which MPS cannot write, so the glow is measured and added in display space.
@@ -115,7 +123,7 @@ final class BloomResources: @unchecked Sendable {
     private var full: MTLTexture?
     /// Same-format copy of an sRGB frame, so it can be read through a raw view.
     private var frameCopy: MTLTexture?
-    private var chainKey: (Int, Int, Int) = (0, 0, 0)
+    private var chainKey: (Int, Int, Int, Int) = (0, 0, 0, 0)
 
     func prepare(device: MTLDevice) {
         guard self.device == nil else { return }
@@ -143,12 +151,14 @@ final class BloomResources: @unchecked Sendable {
         }
         let source = frame
         let levels = max(1, min(options.levels, 8))
-        guard ensureChain(width: source.width, height: source.height, levels: levels), let full else {
+        let firstHeight = min(max(options.resolution, 64), 2048, max(source.height / 2, 1))
+        guard ensureChain(width: source.width, height: source.height, firstHeight: firstHeight, levels: levels),
+              let full else {
             passThrough(commandBuffer: commandBuffer, source: source, target: target)
             return
         }
 
-        // Frame → half size, then keep only what exceeds the threshold: max(c − t, 0).
+        // Frame → first level, then keep only what exceeds the threshold: max(c − t, 0).
         scale.encode(commandBuffer: commandBuffer, sourceTexture: source, destinationTexture: upsampled[0])
         brightPass.primaryScale = 1
         brightPass.secondaryScale = 0
@@ -223,8 +233,8 @@ final class BloomResources: @unchecked Sendable {
         return Self.rawView(frameCopy)
     }
 
-    private func ensureChain(width: Int, height: Int, levels: Int) -> Bool {
-        if chainKey == (width, height, levels), level.count == levels { return true }
+    private func ensureChain(width: Int, height: Int, firstHeight: Int, levels: Int) -> Bool {
+        if chainKey == (width, height, firstHeight, levels), level.count == levels { return true }
         guard let device else { return false }
         func make(_ w: Int, _ h: Int) -> MTLTexture? {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(
@@ -237,8 +247,8 @@ final class BloomResources: @unchecked Sendable {
         var blurred: [MTLTexture] = []
         var summed: [MTLTexture] = []
         var upsampled: [MTLTexture] = []
-        var w = width / 2
-        var h = height / 2
+        var h = firstHeight
+        var w = max(width * firstHeight / max(height, 1), 1)
         for _ in 0..<levels {
             guard let a = make(w, h), let b = make(w, h), let c = make(w, h), let d = make(w, h) else { return false }
             level.append(a)
@@ -254,7 +264,7 @@ final class BloomResources: @unchecked Sendable {
         self.summed = summed
         self.upsampled = upsampled
         self.full = full
-        chainKey = (width, height, levels)
+        chainKey = (width, height, firstHeight, levels)
         return true
     }
 

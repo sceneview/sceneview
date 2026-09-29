@@ -34,8 +34,10 @@ struct GlowQuads: Sendable {
 
     static let stride = 5
 
+    /// `v` counts rows from the image's top, as `GlowImage` stores them; RealityKit's texture
+    /// coordinates start at the bottom, so it is flipped here, once for every builder.
     fileprivate mutating func vertex(_ p: SIMD3<Float>, _ u: Float, _ v: Float) {
-        vertices.append(contentsOf: [p.x, p.y, p.z, u, v])
+        vertices.append(contentsOf: [p.x, p.y, p.z, u, 1 - v])
         boundsMin = simd_min(boundsMin, p)
         boundsMax = simd_max(boundsMax, p)
     }
@@ -259,7 +261,7 @@ enum GlowBuilder {
                 let clamped = min(s, 1)
                 let limbLight = 1 - max(1 - clamped * clamped, 0).squareRoot()
                 let radiance = limb.surface * (0.5 * limbLight) + limb.rim * pow(limbLight, limb.rimPower)
-                image.set(x, y, radiance * coverage, alpha: coverage)
+                image.set(x, y, filmic(radiance) * coverage, alpha: coverage)
             }
         }
         return GlowLayer(quads: quads, image: image)
@@ -267,14 +269,37 @@ enum GlowBuilder {
 
     // MARK: Ribbons (cosmos_ribbon.mat)
 
+    /// How bright a stroke is along its length: `cosmos_ribbon.mat`'s steady `base` plus its
+    /// travelling dashes, `amp · (½ + ½ sin(arc · freq − time · speed + seed · 2π))⁸`.
+    struct Dash: Sendable {
+        var base: Float
+        var amp: Float = 0
+        var freq: Float = 0
+        var speed: Float = 0
+
+        static func steady(_ value: Float) -> Dash { Dash(base: value) }
+
+        /// The same dashes, `gain` times brighter.
+        func scaled(_ gain: Float) -> Dash { Dash(base: base * gain, amp: amp * gain, freq: freq, speed: speed) }
+
+        func value(arc: Float, time: Float, seed: Float) -> Float {
+            guard amp > 0 else { return base }
+            let wave = 0.5 + 0.5 * sin(arc * freq - time * speed + seed * 2 * .pi)
+            let w2 = wave * wave
+            let w4 = w2 * w2
+            return base + amp * w4 * w4
+        }
+    }
+
     /// Widens each stroke of `mesh` across the line of sight from `view.eye` and paints one
-    /// atlas row per stroke. `body` is the stroke's steady brightness (the shader's `base`
-    /// plus the average of its dash pulse); `tailTaper` dims the far end like the shader.
+    /// atlas row per stroke. `dash` is the stroke's brightness along its arc, frozen at `time`
+    /// (the dashes stand still: the atlas is painted once); `tailTaper` dims the far end like
+    /// the shader.
     ///
     /// With `halo`, the stroke is instead widened `halo` times with a soft falloff: a baked
     /// light spill around the line that stands in for bloom where no post-process runs.
     static func ribbons(_ mesh: GlowMesh, view: GlowView, minPixels: Float,
-                        body: Float, tailTaper: Float, halo: Float? = nil) -> GlowLayer {
+                        dash: Dash, time: Float, tailTaper: Float, halo: Float? = nil) -> GlowLayer {
         let s = mesh.stride
         let total = mesh.vertexCount / 2
         // Split the flat point list back into strokes: t restarts at 0 on each new stroke.
@@ -286,14 +311,18 @@ enum GlowBuilder {
         let strokes = starts.count - 1
         let longest = (0..<strokes).map { starts[$0 + 1] - starts[$0] }.max() ?? 2
         let rowHeight = 8
-        var image = GlowImage(width: longest, height: strokes * rowHeight, cell: rowHeight)
+        // Rows wrap into side-by-side columns: Metal caps a texture side at 8192 texels.
+        let perColumn = min(max(strokes, 1), 8192 / rowHeight)
+        let columns = (strokes + perColumn - 1) / perColumn
+        var image = GlowImage(width: longest * max(columns, 1), height: perColumn * rowHeight, cell: rowHeight)
         var quads = GlowQuads()
         var segments: [(key: Float, a: UInt32)] = []
 
         for stroke in 0..<strokes {
             let first = starts[stroke]
             let n = starts[stroke + 1] - first
-            let row = stroke * rowHeight
+            let row = (stroke % perColumn) * rowHeight
+            let column = (stroke / perColumn) * longest
             let v0 = (Float(row) + 0.5) / Float(image.height)
             let v1 = (Float(row + rowHeight) - 0.5) / Float(image.height)
             let seed = mesh.vertices[first * 2 * s + 13]
@@ -306,6 +335,7 @@ enum GlowBuilder {
                 let tangent = SIMD3(mesh.vertices[v + 7], mesh.vertices[v + 8], mesh.vertices[v + 9])
                 var halfWidth = mesh.vertices[v + 11]
                 let t = mesh.vertices[v + 12]
+                let arc = mesh.vertices[v + 14]
 
                 let toEye = view.eye - p
                 let depth = max(simd_length(toEye), 1e-3)
@@ -319,18 +349,19 @@ enum GlowBuilder {
                     halfWidth = minPixels * depth / view.focal
                 }
                 if let halo { halfWidth *= halo }
-                let u = (Float(i) + 0.5) / Float(image.width)
+                let u = (Float(column + i) + 0.5) / Float(image.width)
                 quads.vertex(p - side * halfWidth, u, v0)
                 quads.vertex(p + side * halfWidth, u, v1)
 
                 let taper = 1 + (1 - smoothstepf(0.55, 1, t) - 1) * tailTaper
+                let body = dash.value(arc: arc, time: time, seed: seed)
                 let radiance = color * (body * taper * energy)
                 for y in 0..<rowHeight {
                     let across = -1 + 2 * Float(y) / Float(rowHeight - 1)
                     let profile = halo == nil
                         ? exp(-across * across * 4.5) * (1 - across * across)
                         : exp(-across * across * 6) * (1 - across * across)
-                    image.set(i, row + y, radiance * profile, alpha: profile)
+                    image.set(column + i, row + y, filmic(radiance * profile), alpha: profile)
                 }
                 if i < n - 1 {
                     segments.append((t / reach, firstVertex + UInt32(i * 2)))
@@ -357,7 +388,16 @@ enum GlowBuilder {
         return (right, simd_cross(n, right))
     }
 
-    private static func smoothstepf(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
+    /// Rolls bright colours towards white the way Filament's filmic tone map does on Android;
+    /// RealityKit's keeps them saturated, which turns the white-hot star cyan. Applied to the
+    /// baked radiance, so it only sees one texel's light, not the sum on screen.
+    static func filmic(_ c: SIMD3<Float>) -> SIMD3<Float> {
+        let peak = max(c.x, c.y, c.z)
+        let w = smoothstepf(0.35, 1.6, peak) * 0.6
+        return c + (SIMD3(repeating: peak) - c) * w
+    }
+
+    fileprivate static func smoothstepf(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
         let t = min(max((x - e0) / (e1 - e0), 0), 1)
         return t * t * (3 - 2 * t)
     }
@@ -415,10 +455,11 @@ enum Plasma {
                         ridge = ridge * ridge * ridge * ridge
                         let heat = smoothstep(0.3, 0.75, n)
                         let radiance = simd_mix(look.deep, look.hot, SIMD3(repeating: heat)) + look.hot * (ridge * 0.9)
+                        let shown = GlowBuilder.filmic(radiance * scale)
                         let i = (y * width + x) * 4
-                        pixels[i] = radiance.x * scale
-                        pixels[i + 1] = radiance.y * scale
-                        pixels[i + 2] = radiance.z * scale
+                        pixels[i] = shown.x
+                        pixels[i + 1] = shown.y
+                        pixels[i + 2] = shown.z
                         pixels[i + 3] = 1
                         sum += SIMD4(radiance, 1)
                     }

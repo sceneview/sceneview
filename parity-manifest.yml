@@ -668,11 +668,12 @@ demos:
     parity: diverges
     evidence: >-
       Same meshes, seeds, cameras, captions and dock. No custom shader on iOS
-      (UnlitMaterial additive quads, camera-facing on the CPU): the ribbons
-      show a steady body instead of travelling dashes, the plasma surface is
-      a texture baked once (it turns, it does not churn), stars do not
-      twinkle, the galaxy is built in one pass, and the bloom is added in
-      display space
+      (UnlitMaterial additive quads, camera-facing on the CPU): the ribbon
+      dashes are baked at build time (they do not travel), the plasma surface
+      is a texture baked once (it turns, it does not churn), stars do not
+      twinkle, the galaxy is built in one pass, the Flow landscape
+      quarter-turn is not ported, and the bloom is added in display space
+      with a baked filmic roll-off standing in for Filament's tone map
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working
