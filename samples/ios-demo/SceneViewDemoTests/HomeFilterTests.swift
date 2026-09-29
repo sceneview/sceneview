@@ -125,4 +125,36 @@ final class DemoFreshnessTests: XCTestCase {
     }
 }
 
+/// Home list rows (#4186) — Android's `HomeListRowTest`.
+final class HomeListRowTests: XCTestCase {
+
+    func testOneColumnGroupRoundsOnlyItsOuterCorners() {
+        let first = HomeRowCorners(index: 0, count: 3, columns: 1)
+        let middle = HomeRowCorners(index: 1, count: 3, columns: 1)
+        let last = HomeRowCorners(index: 2, count: 3, columns: 1)
+        XCTAssertEqual(first, HomeRowCorners(topLeading: true, topTrailing: true, bottomTrailing: false, bottomLeading: false))
+        XCTAssertEqual(middle, HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: false, bottomLeading: false))
+        XCTAssertEqual(last, HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: true, bottomLeading: true))
+        XCTAssertEqual(HomeRowCorners(index: 0, count: 1, columns: 1), .lone)
+    }
+
+    func testShortLastLineEndsInAStep() {
+        // 5 rows, 2 across: the last line holds one row, so the row above the
+        // step owns the block's bottom-trailing corner.
+        XCTAssertEqual(HomeRowCorners(index: 1, count: 5, columns: 2),
+                       HomeRowCorners(topLeading: false, topTrailing: true, bottomTrailing: false, bottomLeading: false))
+        XCTAssertEqual(HomeRowCorners(index: 3, count: 5, columns: 2),
+                       HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: true, bottomLeading: false))
+        XCTAssertEqual(HomeRowCorners(index: 4, count: 5, columns: 2),
+                       HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: true, bottomLeading: true))
+    }
+
+    func testListColumnsFollowTheMinimumRowWidth() {
+        XCTAssertEqual(homeListColumns(width: 0), 1)
+        XCTAssertEqual(homeListColumns(width: 353), 1)   // iPhone 17 Pro
+        XCTAssertEqual(homeListColumns(width: 682), 2)   // 340 · 2 + one seam
+        XCTAssertEqual(homeListColumns(width: 1_024), 3) // 3 × 340 + 2 seams
+    }
+}
+
 #endif

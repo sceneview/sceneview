@@ -180,9 +180,12 @@ Contrast of `card-glass`, composited over the worst uniform ground: light, over 
 is at 90 % and not lower because light pictures do reach dark mode: at 85 % the Animation
 card's light-grey stage took its caption to 4.4:1.
 
-iOS still draws the previous Home — picture cards and a swipeable 4:5 "Featured" shelf
-(`DemoMediaCard.swift`, `ShowcaseTab.swift`, tokens in `Theme.swift`) — until it mirrors the
-list above.
+iOS draws the same list in SwiftUI (`HomeListRow.swift`, `ShowcaseTab.swift`, `home-row-*`
+tokens in `Theme.swift`): the same groups in the same order, the same corners
+(`HomeRowCorners`, unit-tested with Android's cases), one column on an iPhone and 340 pt
+columns on an iPad. The press is `on-surface` at 10 % over the row, a list cell's
+highlight, no scale. Row text follows Dynamic Type up to `accessibility2`. The Explore tab's
+"Try a demo" row keeps the picture card (`DemoMediaCard.swift`).
 
 ### Demo App About (Android)
 
