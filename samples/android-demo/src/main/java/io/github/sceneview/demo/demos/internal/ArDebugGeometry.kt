@@ -139,14 +139,18 @@ enum class DebugGroup { Stage, Trail, Points, Planes, Anchors }
  * Sizes, in screen pixels, turned into metres through [metresPerPixel] — the world size of one
  * pixel at the orbit target's distance.
  */
-data class ArDebugStyle(val metresPerPixel: Float) {
+data class ArDebugStyle(
+    val metresPerPixel: Float,
+    /** How much thicker the camera path is drawn than its default, bounds included. */
+    val trailWeight: Float = 1f,
+) {
     private fun px(pixels: Float, minMetres: Float, maxMetres: Float) =
         (pixels * metresPerPixel).coerceIn(minMetres, maxMetres)
 
     val mapPointRadius get() = px(2.4f, 0.004f, 0.05f)
     val livePointRadius get() = px(3.8f, 0.006f, 0.07f)
-    val trailRadius get() = px(2.2f, 0.004f, 0.05f)
-    val trailHeadRadius get() = px(3.4f, 0.006f, 0.08f)
+    val trailRadius get() = px(2.2f * trailWeight, 0.004f * trailWeight, 0.05f * trailWeight)
+    val trailHeadRadius get() = px(3.4f * trailWeight, 0.006f * trailWeight, 0.08f * trailWeight)
     val frustumEdge get() = px(1.3f, 0.002f, 0.03f)
     val keyframeEdge get() = px(0.9f, 0.0015f, 0.02f)
     val outlineHalfWidth get() = px(1.3f, 0.002f, 0.03f)
