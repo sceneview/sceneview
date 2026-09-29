@@ -62,17 +62,35 @@ struct MultiModelDemo: View {
     /// Anchor under which every model lives. Stored so we can attach / detach
     /// individual entities without rebuilding the entire scene.
     @State private var sceneAnchor: AnchorEntity?
-    /// Bumped when a slot lands late AND grows the park, while the camera is still
-    /// the auto-framed one; fed to `.recenterCamera(_:)` so the camera re-fits the
-    /// whole park (#4103). See `noteLanding(previousExtents:)`.
+    /// Bumped when a slot lands AND grows the park past what the camera was last
+    /// fitted to, while the camera is still the auto-framed one; fed to
+    /// `.recenterCamera(_:)` so the camera re-fits the whole park (#4103). See
+    /// `noteLanding()`.
     @State private var reframeToken = 0
-    /// When the last slot landed, to tell a late arrival from one inside the
-    /// auto-framing's settle window.
-    @State private var lastLanding: Date?
+    /// The park extents the camera was last fitted to: set by the first landing,
+    /// then by every re-fit. Each landing is measured against THIS, not against
+    /// the landing before it, so a small step (the bench over the fern) cannot
+    /// reset the baseline and hide the big one that follows (the oaks).
+    @State private var fittedExtents: SIMD3<Float>?
     /// Set by the first orbit drag or pinch on the viewport. From then on the
-    /// camera is the user's: `.recenterCamera(_:)` resets the orbit angles and
-    /// the zoom, so a late landing must never fire it again.
+    /// camera is the user's: `.recenterCamera(_:)` resets the zoom, so a landing
+    /// must never fire it again. This demo has no Recenter action (no dock, no
+    /// `onReset`), so nothing hands the camera back: the flag lives as long as
+    /// the demo screen does.
     @State private var userMovedCamera = false
+    /// The azimuth a re-fit restores. `.recenterCamera(_:)` returns the orbit to
+    /// the authored `.cameraOrbit(azimuth:)`, so a re-fit sets that to where the
+    /// "Spin scene" turntable has got to; left at `0`, every re-fit snapped the
+    /// spinning park back to its front view.
+    @State private var reframeAzimuth: Float = 0
+    /// Latest orbit azimuth from `.onCameraChanged`. A reference box, not
+    /// `@State`: the callback runs inside RealityKit's update pass, where
+    /// mutating state this `SceneView` depends on would re-enter the update.
+    @State private var liveCamera = LiveCamera()
+
+    private final class LiveCamera {
+        var azimuth: Float = 0
+    }
 
     private struct ParkSlot {
         let slug: SketchfabSlug?
@@ -202,9 +220,13 @@ struct MultiModelDemo: View {
             // Shallower than the 30° default so the formation is seen from
             // near its own eye level — a 30° top-down pitch spent the bottom
             // half of a portrait frame on empty ground (#2896).
-            .cameraOrbit(azimuth: 0, elevation: .pi / 10)
+            // `reframeAzimuth` is `0` on entry; only a re-fit moves it (see
+            // `noteLanding()`), since the SDK seeds this pose once and reads it
+            // again only on a recenter.
+            .cameraOrbit(azimuth: reframeAzimuth, elevation: .pi / 10)
             // A model that lands after the fit latched re-arms it (#4103).
             .recenterCamera(reframeToken)
+            .onCameraChanged { [liveCamera] pose in liveCamera.azimuth = pose.azimuth }
             // Observes, never drives: the SDK's own orbit drag and pinch still
             // move the camera; these only record that the user took it over.
             .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in
@@ -355,9 +377,8 @@ struct MultiModelDemo: View {
             holder.position = slot.position
             holder.orientation = simd_quatf(angle: slot.yaw, axis: SIMD3<Float>(0, 1, 0))
             holder.addChild(node.entity)
-            let previousExtents = parkExtents()
             loadedEntities[slug.uid] = holder
-            noteLanding(previousExtents: previousExtents)
+            noteLanding()
             syncVisibility()
         } catch {
             // Per-slot failure — log and move on so the rest of the park
@@ -369,29 +390,35 @@ struct MultiModelDemo: View {
     /// The SDK's auto-framing latches once the scene's bounds hold still for
     /// 2.5 s (`framingStableHoldSeconds`) and does not re-fit on its own after
     /// that. Slots stream in over seconds to a minute, so a slot landing after
-    /// such a gap could stand outside a frame fitted to the ones before it: on
-    /// a first run, the oaks above a frame fitted to the fern and the bench.
+    /// the latch could stand outside a frame fitted to the ones before it: on a
+    /// first run, the oaks above a frame fitted to the fern and the bench.
     ///
-    /// `.recenterCamera(_:)` is not free, though: it also resets the orbit
-    /// angles and the zoom. So a late landing re-arms the fit only when all
-    /// three hold:
-    ///  - it lands more than 2 s after the previous one (closer landings are
-    ///    still inside the settle window and need nothing);
-    ///  - it grows the park by more than `reframeGrowth` on some axis — the
-    ///    oaks over a fern-and-bench park do, a fern under the oaks does not;
-    ///  - the user has not orbited or zoomed yet. Once they have, the camera is
-    ///    theirs and a landing never snaps it back.
+    /// So a landing re-arms the fit when both hold:
+    ///  - it grows the park by more than `reframeGrowth` on some axis over
+    ///    `fittedExtents`, the park the camera was last fitted to — the oaks
+    ///    over a fern-and-bench park do, a fern under the oaks does not. Timing
+    ///    does not matter: a re-arm inside the SDK's own settle window only
+    ///    restarts a fit that was going to happen anyway;
+    ///  - the user has not orbited or zoomed yet. `.recenterCamera(_:)` also
+    ///    resets the zoom, so once they have, the camera is theirs and a
+    ///    landing never snaps it back.
+    ///
+    /// The re-fit keeps the turntable's current azimuth (`reframeAzimuth`).
     @MainActor
-    private func noteLanding(previousExtents: SIMD3<Float>?) {
-        let now = Date()
-        defer { lastLanding = now }
-        guard let lastLanding, now.timeIntervalSince(lastLanding) > 2.0 else { return }
-        guard !userMovedCamera else { return }
-        guard let previousExtents, let extents = parkExtents() else { return }
-        let grows = (0..<3).contains { axis in
-            extents[axis] > previousExtents[axis] * Self.reframeGrowth
+    private func noteLanding() {
+        guard let extents = parkExtents() else { return }
+        guard let fitted = fittedExtents else {
+            fittedExtents = extents
+            return
         }
-        if grows { reframeToken += 1 }
+        guard !userMovedCamera else { return }
+        let grows = (0..<3).contains { axis in
+            extents[axis] > fitted[axis] * Self.reframeGrowth
+        }
+        guard grows else { return }
+        fittedExtents = extents
+        reframeAzimuth = liveCamera.azimuth
+        reframeToken += 1
     }
 
     /// How much one axis of the park's bounds must grow for a late landing to

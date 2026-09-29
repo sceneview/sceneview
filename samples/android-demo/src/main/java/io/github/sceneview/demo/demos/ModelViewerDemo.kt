@@ -1623,7 +1623,7 @@ private fun MultiModelSection(
             // (the registry's own name), never from a hardcoded noun — the
             // registry decides what stands in each slot, so it decides the label
             // too. Horizontally scrolling because
-            // catalogue names run long ("Skovfogedegen Oak") and four of them do not
+            // catalogue names run long ("Simple Park Bench") and four of them do not
             // fit a portrait phone width without clipping. `OverflowChipRow` fades
             // the overflowing edge so the off-screen chip is discoverable (#2944).
             OverflowChipRow {
