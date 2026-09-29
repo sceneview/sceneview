@@ -202,6 +202,13 @@ struct ModelPickerCard: View {
     let selected: Bool
     let action: () -> Void
 
+    // Card text follows Dynamic Type like the Home cards (`DemoMediaCard`):
+    // the token sizes are the default-size values, scaled with the text style
+    // of the same size.
+    @ScaledMetric(relativeTo: .headline) private var titleSize = SceneViewTokens.TypeScale.cardSize
+    @ScaledMetric(relativeTo: .footnote) private var captionSize = SceneViewTokens.TypeScale.captionSize
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
     }
@@ -224,16 +231,22 @@ struct ModelPickerCard: View {
                 .clipped()
 
                 VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                    // The full name, never "Apollo 11 Comma…": at the default
+                    // size it is 219 pt against ~150 pt of text on a phone, too
+                    // long for one line even at 0.85, so the title wraps to a
+                    // second line and only shrinks past that.
                     Text(model.displayName)
-                        .font(SceneViewTokens.TypeScale.card)
+                        .font(.system(size: titleSize, weight: .semibold))
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .minimumScaleFactor(0.85)
                         .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let description = model.description {
                         Text(description)
-                            .font(SceneViewTokens.TypeScale.captionRegular)
+                            .font(.system(size: captionSize, weight: .regular))
                             .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

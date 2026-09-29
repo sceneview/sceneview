@@ -154,24 +154,65 @@ final class ViewerAssetTests: XCTestCase {
     }
 
     /// Every picker card carries its one line, and a model Android also ships
-    /// reads Android's `demo_model_desc_*` string word for word.
-    func testPickerDescriptionsMatchAndroid() {
-        let android: [String: String] = [
-            "khronos_damaged_helmet": "Scuffed metal and glass",
-            "khronos_flight_helmet": "Leather, brass and glass · HD",
-            "khronos_lantern": "Wooden post, metal lantern",
-            "khronos_toy_car": "Clearcoat car on velvet",
-            "hd_apollo11_exterior": "Columbia, as flown in 1969 · HD",
-            "hd_apollo11_interior": "Inside the capsule, cut away · HD",
-            "hd_woolly_mammoth": "Full skeleton, 3.4 m tall · HD",
-            "hd_perseverance": "Mars 2020 rover, real size · HD",
+    /// reads Android's `demo_model_desc_*` string word for word. The strings
+    /// are read from the Android sources, so a change on either side fails
+    /// here instead of drifting silently.
+    func testPickerDescriptionsMatchAndroid() throws {
+        let android = try Self.androidModelDescriptions()
+        // iOS asset name → Android `demo_model_desc_<key>`.
+        let keys: [String: String] = [
+            "khronos_damaged_helmet": "damaged_helmet",
+            "khronos_flight_helmet": "flight_helmet",
+            "khronos_lantern": "lantern",
+            "khronos_toy_car": "toy_car",
+            "hd_apollo11_exterior": "apollo11_exterior",
+            "hd_apollo11_interior": "apollo11_interior",
+            "hd_woolly_mammoth": "woolly_mammoth",
+            "hd_perseverance": "perseverance",
         ]
+        // The HD-pack lines reach Android's sources with #4166; until then only
+        // the Khronos ones are there. Once any HD line exists, all must.
+        let bundledKeys: Set = ["damaged_helmet", "lantern", "toy_car"]
+        let hdKeys = Set(keys.values).subtracting(bundledKeys)
+        let androidHasHD = hdKeys.contains { android[$0] != nil }
+        var compared = 0
         for model in models + ModelViewerDemo.museumModels {
             XCTAssertFalse((model.description ?? "").isEmpty, "\(model.displayName) has no picker description.")
-            if let expected = android[model.assetName] {
-                XCTAssertEqual(model.description, expected, "\(model.displayName) drifted from Android.")
+            guard let key = keys[model.assetName] else { continue }
+            guard let expected = android[key] else {
+                XCTAssertFalse(bundledKeys.contains(key) || androidHasHD,
+                               "Android has no demo_model_desc_\(key) for \(model.displayName).")
+                continue
+            }
+            XCTAssertEqual(model.description, expected, "\(model.displayName) drifted from Android.")
+            compared += 1
+        }
+        XCTAssertGreaterThanOrEqual(compared, bundledKeys.count)
+    }
+
+    /// `demo_model_desc_*` from the Android demo's string resources, keyed
+    /// without the prefix. Simulator tests run on the host file system, so the
+    /// sources are read in place from the checkout.
+    static func androidModelDescriptions(file: StaticString = #filePath) throws -> [String: String] {
+        let values = URL(fileURLWithPath: "\(file)")
+            .deletingLastPathComponent()      // SceneViewDemoTests
+            .deletingLastPathComponent()      // ios-demo
+            .deletingLastPathComponent()      // samples
+            .appendingPathComponent("android-demo/src/main/res/values")
+        let pattern = try NSRegularExpression(
+            pattern: #"<string name="demo_model_desc_([a-z0-9_]+)">([^<]*)</string>"#)
+        var out: [String: String] = [:]
+        for name in ["strings_demo_model_viewer.xml", "strings_hd_pack.xml"] {
+            let xml = try String(contentsOf: values.appendingPathComponent(name), encoding: .utf8)
+            for match in pattern.matches(in: xml, range: NSRange(xml.startIndex..., in: xml)) {
+                guard let key = Range(match.range(at: 1), in: xml),
+                      let text = Range(match.range(at: 2), in: xml) else { continue }
+                out[String(xml[key])] = String(xml[text])
+                    .replacingOccurrences(of: #"\'"#, with: "'")
+                    .replacingOccurrences(of: "&amp;", with: "&")
             }
         }
+        return out
     }
 
     /// A museum scan opens under the neutral Studio, never under the garden's
@@ -186,6 +227,104 @@ final class ViewerAssetTests: XCTestCase {
             XCTAssertEqual(ModelViewerDemo.openingEnvironment(for: model), ModelViewerDemo.defaultEnvironment,
                            "\(model.displayName)")
         }
+    }
+}
+
+/// The Model Viewer's lighting sequences (``ViewerLighting``), same rule as
+/// Android's `LaunchedEffect(isMuseumModel)` (#4166): Studio replaces the
+/// default garden for a museum scan, and only Studio the app put there is
+/// taken back when the shelf is left.
+@MainActor
+final class ViewerLightingTests: XCTestCase {
+    private var garden: ViewerEnvironment { ModelViewerDemo.defaultEnvironment }
+    private var bundled: BundledViewerModel { ModelViewerDemo.bundledModels[0] }
+    private var museum: BundledViewerModel { ModelViewerDemo.museumModels[0] }
+    private var otherMuseum: BundledViewerModel { ModelViewerDemo.museumModels[1] }
+    private func env(_ asset: String) -> ViewerEnvironment {
+        ModelViewerDemo.environments.first { $0.assetName == asset }!
+    }
+
+    func testMuseumAndBundledRoundTripWithoutAPick() {
+        var lighting = ViewerLighting()
+        XCTAssertEqual(lighting.environment, garden)
+        lighting.select(museum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+        lighting.select(otherMuseum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"), "museum to museum keeps Studio")
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden, "leaving the shelf gives the garden back")
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    func testUserPickSticksAcrossModels() {
+        var lighting = ViewerLighting()
+        lighting.pick(env("sunset"))
+        lighting.select(museum)
+        XCTAssertEqual(lighting.environment, env("sunset"), "a picked lighting is never overridden")
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("sunset"))
+    }
+
+    func testPickOnTheShelfSticksWhenLeaving() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.pick(env("studio"))
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("studio"))
+        // Picking Studio itself is the user's choice too: it stays.
+        lighting.pick(env("studio_warm"))
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+    }
+
+    func testPickingTheGardenBackLetsTheShelfSwapAgain() {
+        // Android's rule keys on "still the garden", not on who chose it.
+        var lighting = ViewerLighting()
+        lighting.pick(garden)
+        lighting.select(museum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+    }
+
+    func testResetReturnsToTheModelsOpeningLighting() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.pick(env("night_sky"))
+        lighting.reset(for: museum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden, "Studio from a reset is still the app's")
+
+        lighting.pick(env("sunset"))
+        lighting.reset(for: bundled)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    func testResetWithASurpriseModelOnStageUsesTheGarden() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.reset(for: nil)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    func testGlobalResetIsFirstRun() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.pick(env("sunset"))
+        lighting.resetAll()
+        XCTAssertEqual(lighting.environment, garden)
+        XCTAssertFalse(lighting.museumApplied)
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    /// `qa_mode` sets the store stage as a pick: no model switch drops it.
+    func testStoreStageSurvivesModelSwitches() {
+        var lighting = ViewerLighting()
+        lighting.pick(env("studio_warm"))
+        lighting.select(museum)
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
     }
 }
 

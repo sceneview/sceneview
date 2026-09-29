@@ -83,7 +83,8 @@ struct ModelViewerDemo: View {
                            hdPackID: "perseverance", autoplaysAnimations: false),
     ]
 
-    /// The lighting a model opens under while the user has not picked one.
+    /// The lighting a model opens under while the stage is still on the
+    /// default — applied through ``ViewerLighting``.
     ///
     /// A museum scan is a record of an object's real colours, so it opens
     /// under **Studio** (`studio_warm`, the grey softbox studio — mean
@@ -220,12 +221,12 @@ struct ModelViewerDemo: View {
     @State private var showExplore = false
     @State private var showAR = false
 
-    @State private var environment: ViewerEnvironment = ModelViewerDemo.defaultEnvironment
+    /// Which HDR lights the stage, and whether the app or the user chose it —
+    /// see ``ViewerLighting``. Changed only through ``relight(_:)``.
+    @State private var lighting = ViewerLighting()
+    private var environment: ViewerEnvironment { lighting.environment }
     @State private var iblIntensity: Float = 1
     @State private var showSkybox = ModelViewerDemo.defaultEnvironment.authoredAsPlace
-    /// The user picked a lighting in the sheet: switching models keeps it
-    /// instead of applying ``openingEnvironment(for:)``. Reset forgets it.
-    @State private var environmentPicked = false
 
     /// Raw storage for ``SkyboxPreference`` — `@AppStorage` cannot hold the enum directly.
     @AppStorage("viewer_skybox_preference") private var skyboxPreferenceRaw: Int = SkyboxPreference.auto.rawValue
@@ -323,14 +324,12 @@ struct ModelViewerDemo: View {
         return items
     }
 
-    /// Opens `model` under its ``openingEnvironment(for:)`` unless the user
-    /// picked a lighting in the sheet, which then sticks across models.
-    private func applyOpeningLighting(for model: BundledViewerModel) {
-        guard !environmentPicked else { return }
-        let opening = Self.openingEnvironment(for: model)
-        guard opening != environment else { return }
-        environment = opening
-        showSkybox = defaultSkybox(for: opening)
+    /// Applies one ``ViewerLighting`` step; a new environment brings its own
+    /// backdrop default (or the remembered explicit choice).
+    private func relight(_ change: (inout ViewerLighting) -> Void) {
+        let before = lighting.environment
+        change(&lighting)
+        if lighting.environment != before { showSkybox = defaultSkybox(for: lighting.environment) }
     }
 
     /// Raw `-camera_distance <float>` launch-arg override, written by
@@ -464,7 +463,7 @@ struct ModelViewerDemo: View {
                         onSelect: { model in
                             sheet = nil
                             selectedModel = model
-                            applyOpeningLighting(for: model)
+                            relight { $0.select(model) }
                             Task { await loadBundled(model) }
                         },
                         onSurprise: {
@@ -483,19 +482,17 @@ struct ModelViewerDemo: View {
                         intensity: $iblIntensity,
                         showSkybox: skyboxBinding,
                         onSelect: { picked in
-                            environmentPicked = true
-                            environment = picked
+                            lighting.pick(picked)
                             showSkybox = defaultSkybox(for: picked)
                         },
                         onReset: {
                             // Reset also forgets the remembered choice, back to auto,
-                            // and returns to the lighting this model opens under.
+                            // and returns to the lighting the model on stage opens
+                            // under — a Surprise model (streamed) gets the garden.
                             skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
-                            environmentPicked = false
-                            let opening = Self.openingEnvironment(for: selectedModel)
-                            environment = opening
+                            lighting.reset(for: streamedUid == nil ? selectedModel : nil)
                             iblIntensity = 1
-                            showSkybox = opening.authoredAsPlace
+                            showSkybox = environment.authoredAsPlace
                         }
                     )
                 }
@@ -534,7 +531,9 @@ struct ModelViewerDemo: View {
                     selectedModel = hero
                 }
                 if let stage = Self.environments.first(where: { $0.assetName == Self.storeHeroEnvironmentName }) {
-                    environment = stage
+                    // Set as the user would pick it, so switching models
+                    // (museum or not) never swaps the store stage out.
+                    lighting.pick(stage)
                     showSkybox = true
                 }
             } else {
@@ -547,7 +546,7 @@ struct ModelViewerDemo: View {
             #endif
             // A museum model opened directly (deep link, QA launch arg) gets its
             // Studio lighting too; the first-run model keeps the store/garden stage.
-            if Self.museumModels.contains(selectedModel) { applyOpeningLighting(for: selectedModel) }
+            relight { $0.select(selectedModel) }
             await loadBundled(selectedModel)
         }
         .onChange(of: hdPack.states) { _, _ in
@@ -750,8 +749,7 @@ struct ModelViewerDemo: View {
     private func resetAll() {
         recenterGeneration += 1
         skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
-        environmentPicked = false
-        environment = Self.defaultEnvironment
+        lighting.resetAll()
         iblIntensity = 1
         showSkybox = Self.defaultEnvironment.authoredAsPlace
         selectedModel = Self.bundledModels[0]
@@ -1009,5 +1007,57 @@ final class HDFirstFrameWatch {
     private func tick() {
         updates += 1
         if updates >= 2 { finish() }
+    }
+}
+
+/// The Model Viewer's lighting as a value, so its sequences are unit-tested
+/// (`ViewerLightingTests`) rather than living in view `@State`.
+///
+/// Same rule as Android's `LaunchedEffect(isMuseumModel)` (#4166): a Museum &
+/// Space model swaps the lighting to **Studio** only while it is still the
+/// default Chinese Garden, and leaving the shelf gives the garden back only if
+/// Studio was put there by the app. A lighting the user picks — or the
+/// `qa_mode` store stage — is never overridden.
+@MainActor
+struct ViewerLighting {
+    private(set) var environment: ViewerEnvironment
+    /// `true` while Studio is on stage because the app put it there.
+    private(set) var museumApplied = false
+
+    init(environment: ViewerEnvironment = ModelViewerDemo.defaultEnvironment) {
+        self.environment = environment
+    }
+
+    /// A model goes on stage. `nil` is a streamed (Surprise me) model, which is
+    /// never a museum scan.
+    mutating func select(_ model: BundledViewerModel?) {
+        let isMuseum = model.map { ModelViewerDemo.museumModels.contains($0) } ?? false
+        if isMuseum, let model, environment == ModelViewerDemo.defaultEnvironment {
+            environment = ModelViewerDemo.openingEnvironment(for: model)
+            museumApplied = true
+        } else if !isMuseum, museumApplied {
+            environment = ModelViewerDemo.defaultEnvironment
+            museumApplied = false
+        }
+    }
+
+    /// The user picks a lighting in the sheet: it sticks across models.
+    mutating func pick(_ picked: ViewerEnvironment) {
+        environment = picked
+        museumApplied = false
+    }
+
+    /// "Reset lighting" in the sheet: back to the lighting `model` opens under
+    /// (Studio for a museum scan, the garden otherwise; `nil`, a streamed
+    /// model, gets the garden).
+    mutating func reset(for model: BundledViewerModel?) {
+        environment = ModelViewerDemo.defaultEnvironment
+        museumApplied = false
+        select(model)
+    }
+
+    /// The demo's global reset: first-run lighting.
+    mutating func resetAll() {
+        self = ViewerLighting()
     }
 }
