@@ -144,12 +144,14 @@ object StageFade {
 @Composable
 fun SceneScope.LightingStageFloor() {
     val floorMaterial = rememberFloorMaterial(materialLoader)
-    val insetMaterial = rememberFloorMaterial(materialLoader)
-    remember(insetMaterial) {
-        insetMaterial.setPolygonOffset(
-            LightingStage.SHADOW_FLOOR_DEPTH_OFFSET,
-            LightingStage.SHADOW_FLOOR_DEPTH_OFFSET,
-        )
+    val insetInstance = rememberFloorMaterial(materialLoader)
+    val insetMaterial = remember(insetInstance) {
+        insetInstance.apply {
+            setPolygonOffset(
+                LightingStage.SHADOW_FLOOR_DEPTH_OFFSET,
+                LightingStage.SHADOW_FLOOR_DEPTH_OFFSET,
+            )
+        }
     }
     CubeNode(
         size = Size(LightingStage.FLOOR_SIZE, LightingStage.FLOOR_THICKNESS, LightingStage.FLOOR_SIZE),
