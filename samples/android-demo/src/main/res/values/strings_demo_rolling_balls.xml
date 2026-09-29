@@ -11,12 +11,13 @@
     <string name="demo_rolling_balls_ball_rubber">Rubber</string>
     <string name="demo_rolling_balls_ball_steel">Steel</string>
     <string name="demo_rolling_balls_ball_foam">Foam</string>
-    <string name="demo_rolling_balls_explainer">PhysicsBody.step supplies gravity and the floor bounce; this sample adds mass-weighted sphere impulses at a fixed 120 Hz step. Rubber bounces, steel is heavy and barely bounces, foam is light and soaks up the hit. Reset replays the same opening shot.</string>
+    <string name="demo_rolling_balls_explainer">PhysicsBody.step supplies gravity and the floor bounce; this sample adds mass-weighted sphere impulses at a fixed 120 Hz step. Rubber bounces, steel is heavy and barely bounces, foam is light and soaks up the hit. Drag a ball to carry it across the felt; let go mid-swipe to throw it — the held ball shoves the others aside. Reset replays the same opening shot.</string>
     <string name="demo_rolling_balls_tilt_label">Tilt the tray</string>
     <string name="demo_rolling_balls_tilt_drag">Tilt</string>
     <string name="demo_rolling_balls_tilt_level">Level</string>
     <string name="demo_rolling_balls_tilt_pitch">Pitch · toward you</string>
     <string name="demo_rolling_balls_tilt_roll">Roll · left and right</string>
-    <string name="demo_rolling_balls_tilt_hint">Tilt is on · drag the scene to tip the tray and the balls roll downhill. Turn it off to orbit the camera again.</string>
+    <string name="demo_rolling_balls_tilt_hint">Drag a ball to throw it · drag the table to tip it</string>
+    <string name="demo_rolling_balls_orbit_hint">Drag a ball to throw it · drag the table to turn around it</string>
     <string name="demo_rolling_balls_tilt_explainer">The tray hangs off one pivot node and the gravity vector is rotated into its frame, so the floor plane and rails stay flat in the simulation while the balls accelerate down the slope.</string>
 </resources>

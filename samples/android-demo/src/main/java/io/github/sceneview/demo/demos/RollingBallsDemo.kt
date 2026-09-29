@@ -1,11 +1,11 @@
 package io.github.sceneview.demo.demos
 
+import android.view.MotionEvent
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,14 +49,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import com.google.android.filament.LightManager
+import com.google.android.filament.MaterialInstance
 import dev.romainguy.kotlin.math.Float4
 import dev.romainguy.kotlin.math.rotation as rotationMatrix
 import dev.romainguy.kotlin.math.transpose
 import io.github.sceneview.FrameRatePolicy
+import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
@@ -66,18 +67,20 @@ import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
+import io.github.sceneview.demo.demos.internal.TrayBallDrag
+import io.github.sceneview.demo.demos.internal.TrayStage
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
-import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.math.Transform
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.node.FloorProvider
 import io.github.sceneview.node.PhysicsBody
 import io.github.sceneview.node.SphereNode as SphereNodeImpl
@@ -89,6 +92,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
+import io.github.sceneview.utils.screenToRay
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlin.math.cos
@@ -125,8 +129,8 @@ private enum class BallKind(
     val metallic: Float,
     val roughness: Float,
 ) {
-    Rubber(R.string.demo_rolling_balls_ball_rubber, 0.075f, 0.82f, 0.99f, 1f, SceneViewColors.Primary, 0f, 0.6f),
-    Steel(R.string.demo_rolling_balls_ball_steel, 0.06f, 0.35f, 0.997f, 4f, SceneViewColors.TintLight, 1f, 0.22f),
+    Rubber(R.string.demo_rolling_balls_ball_rubber, 0.075f, 0.82f, 0.99f, 1f, SceneViewColors.Primary, 0f, 0.38f),
+    Steel(R.string.demo_rolling_balls_ball_steel, 0.06f, 0.35f, 0.997f, 4f, TrayStage.STEEL_COLOR, 1f, 0.12f),
     Foam(R.string.demo_rolling_balls_ball_foam, 0.085f, 0.2f, 0.96f, 0.3f, SceneViewColors.TintSoft, 0f, 0.95f),
 }
 
@@ -193,11 +197,14 @@ fun RollingBallsDemo(onBack: () -> Unit) {
     }
 
     // ── Tray tilt (#3621) ────────────────────────────────────────────────────
-    // `tiltEnabled` swaps what a one-finger drag over the viewport does: OFF it orbits the camera,
-    // ON it tips the tray. The toggle raises a transparent pointer-input layer above the SceneView
-    // that consumes the drag, so the orbit is untouched when it is off. The angles survive the
-    // toggle — tilting, turning tilt off to re-frame, then back on is a normal thing to do.
-    var tiltEnabled by remember { mutableStateOf(false) }
+    // `tiltEnabled` swaps what a one-finger drag over the table does: ON it tips the tray, OFF it
+    // orbits the camera. A drag that starts on a ball always picks the ball up (#4180) — see
+    // `trayTouch` below. On by default (#4180): tipping the table is the first thing to try, and
+    // the camera already frames the whole tray. The angles survive the toggle — tilting, turning
+    // tilt off to re-frame, then back on is a normal thing to do.
+    var tiltEnabled by remember { mutableStateOf(true) }
+    // The gesture hint shows until the first drag of the current mode, and again when Tilt flips.
+    var hintDismissed by remember { mutableStateOf(false) }
     val pitchAnim = remember { Animatable(0f) }
     val rollAnim = remember { Animatable(0f) }
     val tiltScope = rememberCoroutineScope()
@@ -263,6 +270,107 @@ fun RollingBallsDemo(onBack: () -> Unit) {
     val firstFrame = rememberFirstFrameState(engine)
     val counts = stringResource(R.string.demo_rolling_balls_counts, liveBodyCount, collisions)
 
+    // ── One finger on the table (#4180) ──────────────────────────────────────
+    // Routed through the SceneView's raw touch callback rather than a Compose layer over it, so
+    // one gesture can pick its owner on touch-down: a ball under the finger is picked up and
+    // follows it across the felt, released with the finger's speed; anywhere else the drag tips
+    // the tray (Tilt on) or falls through to the camera orbit (Tilt off). Returning `true` keeps
+    // the gesture away from the orbit for as long as a ball or the tilt owns it.
+    val grip = remember { TrayGrip() }
+    val trayTouch: (MotionEvent) -> Boolean = trayTouch@{ event ->
+        val pitch = pitchAnim.value
+        val roll = rollAnim.value
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                grip.owner = TrayGrip.Owner.None
+                val ray = view.screenToRay(event.x, event.y) ?: return@trayTouch false
+                val origin = TrayBallDrag.toTrayFrame(pitch, roll, ray.origin)
+                val direction = TrayBallDrag.toTrayFrame(pitch, roll, ray.direction)
+                val picked = TrayBallDrag.pickBall(
+                    origin,
+                    direction,
+                    simulation.bodies.map { (id, body) ->
+                        TrayBallDrag.Candidate(id, body.node.position, body.radius)
+                    },
+                )
+                val body = picked?.let { simulation.bodies[it] }
+                if (picked != null && body != null) {
+                    val planeY = PHYSICS_FLOOR + body.radius + TrayBallDrag.HOLD_LIFT
+                    val hit = TrayBallDrag.projectOnPlane(origin, direction, planeY)
+                    val center = body.node.position
+                    grip.owner = TrayGrip.Owner.Ball
+                    grip.planeY = planeY
+                    grip.offsetX = if (hit != null) center.x - hit.x else 0f
+                    grip.offsetZ = if (hit != null) center.z - hit.z else 0f
+                    grip.velocity.clear()
+                    grip.velocity.add(event.eventTime, center.x, center.z)
+                    simulation.hold(picked, Position(center.x, planeY, center.z))
+                    hintDismissed = true
+                    wake()
+                    true
+                } else if (tiltEnabled) {
+                    grip.owner = TrayGrip.Owner.Tilt
+                    grip.lastX = event.x
+                    grip.lastY = event.y
+                    true
+                } else {
+                    false
+                }
+            }
+            MotionEvent.ACTION_MOVE -> when (grip.owner) {
+                TrayGrip.Owner.Ball -> {
+                    val ray = view.screenToRay(event.x, event.y)
+                    val hit = ray?.let {
+                        TrayBallDrag.projectOnPlane(
+                            TrayBallDrag.toTrayFrame(pitch, roll, it.origin),
+                            TrayBallDrag.toTrayFrame(pitch, roll, it.direction),
+                            grip.planeY,
+                        )
+                    }
+                    if (hit != null) {
+                        val x = hit.x + grip.offsetX
+                        val z = hit.z + grip.offsetZ
+                        grip.velocity.add(event.eventTime, x, z)
+                        val (vx, vz) = grip.velocity.velocity(event.eventTime)
+                        simulation.moveHeld(Position(x, grip.planeY, z), Position(vx, 0f, vz))
+                        simulation.restartSettle()
+                        simulationMoving = true
+                    }
+                    true
+                }
+                TrayGrip.Owner.Tilt -> {
+                    val dx = event.x - grip.lastX
+                    val dy = event.y - grip.lastY
+                    grip.lastX = event.x
+                    grip.lastY = event.y
+                    if (dx != 0f || dy != 0f) hintDismissed = true
+                    applyTilt(
+                        pitch + dy * PHYSICS_TILT_DEGREES_PER_PIXEL,
+                        roll - dx * PHYSICS_TILT_DEGREES_PER_PIXEL,
+                    )
+                    true
+                }
+                TrayGrip.Owner.None -> false
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val owner = grip.owner
+                grip.owner = TrayGrip.Owner.None
+                if (owner == TrayGrip.Owner.Ball) {
+                    val (vx, vz) = if (event.actionMasked == MotionEvent.ACTION_UP) {
+                        grip.velocity.velocity(event.eventTime)
+                    } else {
+                        0f to 0f
+                    }
+                    simulation.release(Position(vx, 0f, vz))
+                    wake()
+                }
+                owner != TrayGrip.Owner.None
+            }
+            // A second finger while a ball or the tilt owns the gesture stays with that owner.
+            else -> grip.owner != TrayGrip.Owner.None
+        }
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_rolling_balls_title),
         onBack = onBack,
@@ -322,7 +430,10 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     selected = tiltEnabled,
                     icon = Icons.Rounded.ScreenRotationAlt,
                     toggle = true,
-                    onClick = { tiltEnabled = !tiltEnabled },
+                    onClick = {
+                        tiltEnabled = !tiltEnabled
+                        hintDismissed = false
+                    },
                 )
                 GlassActionPill(
                     icon = Icons.Outlined.RestartAlt,
@@ -424,25 +535,32 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                 },
                 cameraManipulator = cameraManipulator,
                 renderInvalidator = renderInvalidator,
+                onTouchEvent = { event, _ -> trayTouch(event) },
             ) {
+                // Key light: high and to the front-left, so every ball throws a short shadow
+                // towards the back-right of the felt — the cue that tells a ball resting on the
+                // table from one in the air, and the one that follows a ball in the hand.
                 LightNode(
                     type = LightManager.Type.DIRECTIONAL,
-                    direction = io.github.sceneview.math.Direction(-0.3f, -1f, -0.5f),
-                    apply = { intensity(5_000f) },
+                    direction = io.github.sceneview.math.Direction(-0.35f, -1f, -0.45f),
+                    apply = {
+                        intensity(6_000f)
+                        castShadows(true)
+                    },
                 )
-                // Allocated once with the opening theme's floor, then recoloured in place: the
-                // activity survives a light/dark switch, and keying the instance on the colour
-                // would destroy it before the tray node lets go of it.
-                val initialFloor = remember { sky.floor }
-                val trayMaterial = rememberMaterialInstance(
-                    materialLoader, initialFloor, metallic = 0f, roughness = 0.8f,
+                val feltMaterial = rememberMaterialInstance(
+                    materialLoader, TrayStage.FELT_COLOR,
+                    metallic = 0f, roughness = TrayStage.FELT_ROUGHNESS,
+                    reflectance = TrayStage.FELT_REFLECTANCE,
                 )
-                LaunchedEffect(trayMaterial, sky.floor) {
-                    trayMaterial.setColor(sky.floor)
-                    renderInvalidator.requestRender()
-                }
-                val railMaterial = rememberMaterialInstance(
-                    materialLoader, SceneViewColors.AccentDeep, metallic = 0f, roughness = 0.5f,
+                val rimMaterial = rememberMaterialInstance(
+                    materialLoader, TrayStage.RIM_COLOR,
+                    metallic = 0f, roughness = TrayStage.RIM_ROUGHNESS,
+                    reflectance = TrayStage.RIM_REFLECTANCE,
+                )
+                val inlayMaterial = rememberMaterialInstance(
+                    materialLoader, TrayStage.INLAY_COLOR,
+                    metallic = 1f, roughness = TrayStage.INLAY_ROUGHNESS,
                 )
                 val rubberMaterial = rememberMaterialInstance(
                     materialLoader, BallKind.Rubber.color,
@@ -457,30 +575,15 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     metallic = BallKind.Foam.metallic, roughness = BallKind.Foam.roughness,
                 )
 
-                // Tilt pivot (#3621) — the floor, the rails and every ball hang off this node, so
-                // the tray rotates as one rigid rig while the simulation stays in its own flat
-                // frame. The light stays at the scene root: the room does not tip with the tray.
+                // Tilt pivot (#3621) — the table and every ball hang off this node, so the tray
+                // rotates as one rigid rig while the simulation stays in its own flat frame. The
+                // light stays at the scene root: the room does not tip with the tray.
                 Node(rotation = Rotation(x = pitchAnim.value, z = rollAnim.value)) {
-                    // Ground plane — Size(x, y = 0, z) is a HORIZONTAL floor.
-                    PlaneNode(
-                        materialInstance = trayMaterial,
-                        size = Size(x = PHYSICS_TRAY_SIZE, y = 0f, z = PHYSICS_TRAY_SIZE),
-                        position = Position(y = PHYSICS_FLOOR),
+                    TrayTable(
+                        feltMaterial = feltMaterial,
+                        rimMaterial = rimMaterial,
+                        inlayMaterial = inlayMaterial,
                     )
-                    // Visible rails mark the bounds the collision response uses.
-                    val half = PHYSICS_TRAY_SIZE / 2f
-                    for (side in listOf(-1f, 1f)) {
-                        CubeNode(
-                            size = Size(PHYSICS_RAIL_THICKNESS, PHYSICS_RAIL_HEIGHT, PHYSICS_TRAY_SIZE),
-                            position = Position(side * half, PHYSICS_FLOOR + PHYSICS_RAIL_HEIGHT / 2f, 0f),
-                            materialInstance = railMaterial,
-                        )
-                        CubeNode(
-                            size = Size(PHYSICS_TRAY_SIZE, PHYSICS_RAIL_HEIGHT, PHYSICS_RAIL_THICKNESS),
-                            position = Position(0f, PHYSICS_FLOOR + PHYSICS_RAIL_HEIGHT / 2f, side * half),
-                            materialInstance = railMaterial,
-                        )
-                    }
 
                     for (ball in balls) {
                         key(ball.id) {
@@ -493,7 +596,10 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                                     BallKind.Foam -> foamMaterial
                                 },
                                 position = ball.start,
-                                apply = { nodeRef = this },
+                                apply = {
+                                    isShadowCaster = true
+                                    nodeRef = this
+                                },
                             )
                             nodeRef?.let { node ->
                                 DisposableEffect(node, simulation) {
@@ -520,45 +626,119 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Tilt drag layer — present only while Tilt is on, so with it off every pointer event
-            // reaches the SceneView and the camera orbits. Dragging DOWN tips the near edge down,
-            // so the balls roll towards the viewer; dragging RIGHT drops the right edge.
-            if (tiltEnabled) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                applyTilt(
-                                    pitchAnim.value + dragAmount.y * PHYSICS_TILT_DEGREES_PER_PIXEL,
-                                    rollAnim.value - dragAmount.x * PHYSICS_TILT_DEGREES_PER_PIXEL,
-                                )
-                            }
-                        }
-                )
-            }
-
-            // Tilt hint, over the scene rather than in the reserved bottom band (#4073): it
-            // overlays the bottom of the viewport, just above the controls, so turning Tilt on
-            // or off never changes the size the tray is framed in. It carries no pointer input,
-            // so drags under it still reach the tilt layer.
+            // Gesture hint, over the scene rather than in the reserved bottom band (#4073): it
+            // overlays the bottom of the viewport, just above the controls, so it never changes
+            // the size the tray is framed in. It names what a drag does in the current mode and
+            // leaves once the user has done it; flipping Tilt brings it back for the new mode.
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = SceneViewTokens.Space.md),
             ) {
                 DemoStatusCard(
-                    text = if (tiltEnabled) {
-                        stringResource(R.string.demo_rolling_balls_tilt_hint)
-                    } else {
-                        null
+                    text = when {
+                        hintDismissed -> null
+                        tiltEnabled -> stringResource(R.string.demo_rolling_balls_tilt_hint)
+                        else -> stringResource(R.string.demo_rolling_balls_orbit_hint)
                     },
                     tone = DemoStatusTone.Guidance,
                 )
             }
         }
     }
+}
+
+/**
+ * The table (#4180): a felt bed whose top face is the simulation floor, a lacquered rim whose inner
+ * face is where the collision rails stop a ball, a brass line along the top of the rim, and a
+ * wooden body under it all — built in the tray's frame, so it tips with the pivot it is composed in.
+ *
+ * The rim casts, the felt receives: the rim throws its shadow across the felt edge and the balls
+ * throw theirs onto the felt, which is what seats them on it.
+ */
+@Composable
+private fun SceneScope.TrayTable(
+    feltMaterial: MaterialInstance,
+    rimMaterial: MaterialInstance,
+    inlayMaterial: MaterialInstance,
+) {
+    val half = PHYSICS_TRAY_SIZE / 2f
+    // The rails stop a ball's surface half a rail-thickness inside the tray edge; the rim's inner
+    // face sits exactly there, so a ball comes to rest touching the wood it is seen hitting.
+    val inner = half - PHYSICS_RAIL_THICKNESS / 2f
+    val outer = inner + TrayStage.RIM_WIDTH
+    val rimCenter = (inner + outer) / 2f
+    val feltBottom = PHYSICS_FLOOR - TrayStage.FELT_THICKNESS
+    val rimBottom = feltBottom
+    val rimTop = PHYSICS_FLOOR + TrayStage.RIM_HEIGHT
+    val rimHeight = rimTop - rimBottom
+    val rimY = (rimTop + rimBottom) / 2f
+    val caster: CubeNodeImpl.() -> Unit = { isShadowCaster = true }
+
+    // Felt bed.
+    CubeNode(
+        size = Size(2f * inner, TrayStage.FELT_THICKNESS, 2f * inner),
+        position = Position(0f, PHYSICS_FLOOR - TrayStage.FELT_THICKNESS / 2f, 0f),
+        materialInstance = feltMaterial,
+    )
+    // Wooden body under the felt and the rim.
+    CubeNode(
+        size = Size(2f * outer, TrayStage.BODY_HEIGHT, 2f * outer),
+        position = Position(0f, feltBottom - TrayStage.BODY_HEIGHT / 2f, 0f),
+        materialInstance = rimMaterial,
+    )
+    for (side in listOf(-1f, 1f)) {
+        // The two rims along Z run the full outer length and close the corners; the two along X
+        // fit between them.
+        CubeNode(
+            size = Size(TrayStage.RIM_WIDTH, rimHeight, 2f * outer),
+            position = Position(side * rimCenter, rimY, 0f),
+            materialInstance = rimMaterial,
+            apply = caster,
+        )
+        CubeNode(
+            size = Size(2f * inner, rimHeight, TrayStage.RIM_WIDTH),
+            position = Position(0f, rimY, side * rimCenter),
+            materialInstance = rimMaterial,
+            apply = caster,
+        )
+        // Brass inlay: one closed line along the middle of the rim's top.
+        val inlayY = rimTop + TrayStage.INLAY_HEIGHT / 2f
+        CubeNode(
+            size = Size(TrayStage.INLAY_WIDTH, TrayStage.INLAY_HEIGHT, 2f * rimCenter + TrayStage.INLAY_WIDTH),
+            position = Position(side * rimCenter, inlayY, 0f),
+            materialInstance = inlayMaterial,
+        )
+        CubeNode(
+            size = Size(2f * rimCenter - TrayStage.INLAY_WIDTH, TrayStage.INLAY_HEIGHT, TrayStage.INLAY_WIDTH),
+            position = Position(0f, inlayY, side * rimCenter),
+            materialInstance = inlayMaterial,
+        )
+    }
+}
+
+/**
+ * Who owns the finger currently on the table (#4180): a ball it picked up, the tray tilt, or
+ * nobody — in which case the gesture belongs to the camera orbit. Decided once, on touch-down,
+ * and kept until the finger lifts.
+ */
+private class TrayGrip {
+    enum class Owner { None, Ball, Tilt }
+
+    var owner: Owner = Owner.None
+
+    /** Height, in the tray's frame, of the plane a held ball slides along. */
+    var planeY: Float = 0f
+
+    /** Ball centre minus the point under the finger at grab time: the ball never jumps. */
+    var offsetX: Float = 0f
+    var offsetZ: Float = 0f
+
+    /** Last pointer position of a tilt drag, in pixels. */
+    var lastX: Float = 0f
+    var lastY: Float = 0f
+
+    val velocity = TrayBallDrag.ThrowVelocityTracker()
 }
 
 /**
@@ -716,7 +896,6 @@ private const val PHYSICS_STEP_NANOS = 8_333_333L
 /** Side of the square tray, rail to rail. */
 private const val PHYSICS_TRAY_SIZE = 1.6f
 private const val PHYSICS_RAIL_THICKNESS = 0.03f
-private const val PHYSICS_RAIL_HEIGHT = 0.16f
 
 /** Height a dropped ball starts from — inside the frame, so the fall itself is seen. */
 private const val PHYSICS_DROP_HEIGHT = 0.2f
@@ -724,14 +903,21 @@ private const val PHYSICS_DROP_HEIGHT = 0.2f
 /** Extra height per five balls of one multi-ball drop, so a Drop 10 does not spawn overlapping. */
 private const val PHYSICS_DROP_LAYER = 0.2f
 
-/** What the camera frames: the tray plus the drop column above it. */
-private val PHYSICS_FRAME_EXTENT = Position(PHYSICS_TRAY_SIZE + 0.1f, 0.75f, PHYSICS_TRAY_SIZE + 0.1f)
+/** Outer footprint of the table: the tray plus its rim on both sides (#4180). */
+private const val PHYSICS_TABLE_SIZE = PHYSICS_TRAY_SIZE - PHYSICS_RAIL_THICKNESS + 2f * TrayStage.RIM_WIDTH
+
+/** What the camera frames: the whole table plus the drop column above it. */
+private val PHYSICS_FRAME_EXTENT = Position(PHYSICS_TABLE_SIZE + 0.05f, 0.75f, PHYSICS_TABLE_SIZE + 0.05f)
 
 /** Centre of [PHYSICS_FRAME_EXTENT]: from the floor to just above the drop height. */
 private val PHYSICS_FRAME_TARGET = Position(0f, PHYSICS_FLOOR + 0.35f, 0f)
 
-/** Look-down of the opening frame: the whole tray floor reads, and so does a ball's bounce. */
-private const val PHYSICS_CAMERA_PITCH_DEGREES = 32f
+/**
+ * Look-down of the opening frame: the whole felt reads, and so does a ball's bounce. Steeper than
+ * the 32° it was before the finger drag (#4180): the more the felt faces the eye, the more screen
+ * a centimetre of table gets, so a ball follows the finger as precisely at the back as at the front.
+ */
+private const val PHYSICS_CAMERA_PITCH_DEGREES = 40f
 
 /** Share of the viewport the framed volume fills. */
 private const val PHYSICS_FRAME_FILL = 0.92f
@@ -883,6 +1069,46 @@ private class DemoCollisionReplay {
     fun remove(id: Int) {
         bodies.remove(id)
         kinds.remove(id)
+        if (id == heldId) heldId = null
+    }
+
+    // ── A ball in the hand (#4180) ───────────────────────────────────────────
+    // The held ball is kinematic: each step puts it where the finger is and gives it the finger's
+    // velocity, and it takes part in contacts with an infinite mass, so it shoves the balls it is
+    // dragged through without ever being pushed off the finger.
+
+    /** The ball the finger is holding, if any. */
+    var heldId: Int? = null
+        private set
+    private var heldTarget: Position = Position(0f)
+    private var heldVelocity: Position = Position(0f)
+
+    /** Picks up ball [id], carried at [target] (tray frame) until [release]. */
+    fun hold(id: Int, target: Position) {
+        if (id !in bodies) return
+        heldId = id
+        heldVelocity = Position(0f)
+        heldTarget = clampToTray(id, target)
+    }
+
+    /** Moves the held ball to [target], kept inside the rails, travelling at [velocity]. */
+    fun moveHeld(target: Position, velocity: Position) {
+        val id = heldId ?: return
+        heldTarget = clampToTray(id, target)
+        heldVelocity = velocity
+    }
+
+    /** Lets go of the held ball with [velocity]: it drops the hold lift and rolls on. */
+    fun release(velocity: Position) {
+        val id = heldId ?: return
+        heldId = null
+        bodies[id]?.velocity = velocity
+    }
+
+    private fun clampToTray(id: Int, p: Position): Position {
+        val radius = bodies[id]?.radius ?: return p
+        val bound = PHYSICS_TRAY_SIZE / 2f - PHYSICS_RAIL_THICKNESS / 2f - radius
+        return Position(p.x.coerceIn(-bound, bound), p.y, p.z.coerceIn(-bound, bound))
     }
 
     /** Reset starts the impact count over along with the opening shot. */
@@ -903,7 +1129,9 @@ private class DemoCollisionReplay {
             step()
             accumulatedNanos -= PHYSICS_STEP_NANOS
         }
-        settle.update(nanos, moved = takeMotionSinceLastFrame())
+        // A held ball keeps the screen live even while the finger pauses: it can move again at
+        // any moment, and the next touch event must not wait for an on-demand frame.
+        settle.update(nanos, moved = takeMotionSinceLastFrame() || heldId != null)
     }
 
     /**
@@ -931,6 +1159,11 @@ private class DemoCollisionReplay {
     private fun step() {
         for ((id, body) in bodies) {
             body.gravity = gravity
+            if (id == heldId) {
+                body.node.position = heldTarget
+                body.velocity = heldVelocity
+                continue
+            }
             val before = body.velocity
             body.step(PHYSICS_STEP_NANOS, 0L)
             val p = body.node.position
@@ -964,7 +1197,9 @@ private class DemoCollisionReplay {
         // population produce the same sequence of impacts on every reset.
         for ((aId, a) in bodies) {
             for ((bId, b) in bodies) {
-                if (bId > aId && resolvePair(a, kindOf(aId), b, kindOf(bId))) collisions++
+                if (bId > aId && resolvePair(a, kindOf(aId), aId == heldId, b, kindOf(bId), bId == heldId)) {
+                    collisions++
+                }
             }
         }
     }
@@ -974,7 +1209,14 @@ private class DemoCollisionReplay {
      * the contact normal: the lighter ball gives way and takes the larger share of the velocity
      * change. Returns `true` when the pair met hard enough to count as an impact.
      */
-    private fun resolvePair(a: PhysicsBody, aKind: BallKind, b: PhysicsBody, bKind: BallKind): Boolean {
+    private fun resolvePair(
+        a: PhysicsBody,
+        aKind: BallKind,
+        aHeld: Boolean,
+        b: PhysicsBody,
+        bKind: BallKind,
+        bHeld: Boolean,
+    ): Boolean {
         val pa = a.node.position
         val pb = b.node.position
         val dx = pb.x - pa.x
@@ -987,8 +1229,9 @@ private class DemoCollisionReplay {
         val nx = if (distance > 0.00001f) dx / distance else 1f
         val ny = if (distance > 0.00001f) dy / distance else 0f
         val nz = if (distance > 0.00001f) dz / distance else 0f
-        val inverseA = 1f / aKind.mass
-        val inverseB = 1f / bKind.mass
+        // A held ball has an infinite mass: it is where the finger puts it.
+        val inverseA = if (aHeld) 0f else 1f / aKind.mass
+        val inverseB = if (bHeld) 0f else 1f / bKind.mass
         val inverseSum = inverseA + inverseB
         val overlap = diameter - distance
         val shiftA = overlap * inverseA / inverseSum
