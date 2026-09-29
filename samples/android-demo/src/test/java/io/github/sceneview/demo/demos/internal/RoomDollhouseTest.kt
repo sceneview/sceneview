@@ -1,7 +1,11 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.ar.AutoPlacementState
+import io.github.sceneview.ar.FrameEffect
+import io.github.sceneview.ar.FrameInput
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -309,12 +313,213 @@ class RoomDollhouseTest {
     }
 
     @Test
+    fun `the lit scale toggle and the pill above the dock name the same scale`() {
+        val fit = DollhouseFit(0f, 0f, 0f, width = 4f, height = 2.5f, depth = 3f, denominator = 12)
+        for (realSize in listOf(false, true)) {
+            val toggle = DollhouseCopy.scaleToggle(realSize)
+            // One name whatever the state: a toggle, lit when on, like every dock toggle.
+            assertEquals(DollhouseCopy.REAL_SIZE, toggle.label)
+            assertEquals(realSize, toggle.selected)
+            // Lit exactly when the pill says real size; unlit, the pill names the miniature's scale.
+            assertEquals(toggle.selected, DollhouseCopy.peek("Room", fit, realSize).endsWith(toggle.label))
+        }
+        assertEquals("Room · 1:12", DollhouseCopy.peek("Room", fit, DollhouseCopy.scaleToggle(false).selected))
+    }
+
+    @Test
+    fun `the side the recording started from faces the user`() {
+        // The path starts at (-1, 0, 0), a metre to -X of the room's middle.
+        val room = requireNotNull(RoomDollhouse.room(room()))
+        val o = RoomDollhouse.orientation(room)
+        val yaw = Math.toRadians(o.yawDegrees.toDouble())
+        val dx = room.frame.trail[0] - room.fit.centerX
+        val dz = room.frame.trail[2] - room.fit.centerZ
+        // Turned about +Y, the start lies straight towards +Z — the user.
+        assertEquals(0.0, dx * kotlin.math.cos(yaw) + dz * kotlin.math.sin(yaw), 1e-4)
+        assertTrue(-dx * kotlin.math.sin(yaw) + dz * kotlin.math.cos(yaw) > 0.0)
+    }
+
+    @Test
+    fun `at real size the room reaches away from where the miniature stood, not around it`() {
+        val room = requireNotNull(RoomDollhouse.room(room()))
+        val o = RoomDollhouse.orientation(room)
+        // The 4 × 3 m room is turned a quarter: its 4 m side runs towards the user, 2 m each way.
+        assertEquals(2f, o.front, 0.05f)
+        // The miniature stays centred where the user aimed; at real size its near side sits there.
+        assertEquals(0f, o.offsetZ(realSize = false, scale = room.fit.scale), 0f)
+        assertEquals(-o.front, o.offsetZ(realSize = true, scale = 1f), 0f)
+    }
+
+    @Test
+    fun `a path starting in the middle of the room names no side, and the room keeps its axes`() {
+        val fit = DollhouseFit(0f, 0f, 0f, width = 4f, height = 2.5f, depth = 3f, denominator = 12)
+        val frame = ArDebugFrame(
+            0f, floatArrayOf(0.1f, 0f, 0.1f), null, FloatArray(0), FloatArray(0), emptyList(), emptyList(),
+        )
+        val o = RoomDollhouse.orientation(DollhouseRoom(frame, fit))
+        assertEquals(0f, o.yawDegrees, 0f)
+        assertEquals(1.5f, o.front, 1e-5f)
+    }
+
+    @Test
     fun `a pinch reads as the scale the room now stands at`() {
         val fit = DollhouseFit(0f, 0f, 0f, width = 4f, height = 2.5f, depth = 3f, denominator = 12)
         assertEquals("1:12", DollhouseCopy.pinched(fit, 1f, realSize = false))
         assertEquals("1:6", DollhouseCopy.pinched(fit, 2f, realSize = false))
         assertEquals("1:48", DollhouseCopy.pinched(fit, 0.25f, realSize = false))
         assertEquals("50% of real size", DollhouseCopy.pinched(fit, 0.5f, realSize = true))
+    }
+
+    @Test
+    fun `a recording that kept no surface says so rather than standing an empty plinth`() {
+        assertEquals(DollhouseStage.NoSurfaces, stage(hasSurfaces = false))
+        assertEquals(DollhouseStage.NoSurfaces, stage(hasSurfaces = false, arAvailable = false))
+        // Still read first, and a failure is a failure.
+        assertEquals(DollhouseStage.Loading, stage(opened = false, hasSurfaces = false))
+        assertEquals(DollhouseStage.Failed, stage(opened = false, openFailed = true, hasSurfaces = false))
+    }
+
+    // ─── Surfaces: what a real recording kept ────────────────────────────────────────────────
+
+    @Test
+    fun `a path and photos alone are no room`() {
+        val pathOnly = ArDebugFrame(
+            time = 5f, trail = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f), camera = null, mapPoints = FloatArray(0),
+            livePoints = FloatArray(0), planes = emptyList(), anchors = emptyList(),
+        )
+        assertFalse(RoomDollhouse.hasSurfaces(pathOnly))
+        assertFalse(RoomDollhouse.hasSurfaces(session("bare", 1).copy(planes = 0, points = 0)))
+        assertFalse(RoomDollhouse.hasSurfaces(session("noise", 1).copy(planes = 0, points = 29)))
+    }
+
+    @Test
+    fun `a plane or enough points make a room`() {
+        assertTrue(RoomDollhouse.hasSurfaces(room()))
+        assertTrue(RoomDollhouse.hasSurfaces(session("plane", 1).copy(planes = 1, points = 0)))
+        assertTrue(RoomDollhouse.hasSurfaces(session("cloud", 1).copy(planes = 0, points = 30)))
+    }
+
+    @Test
+    fun `without a request a recording with surfaces opens before a newer bare path`() {
+        val sessions = listOf(
+            session("bare", 300).copy(planes = 0, points = 0),
+            session("room", 200),
+        )
+        assertEquals("room", RoomDollhouse.pickSession(sessions)?.id)
+        // Asked for by name, the bare one still opens — and says it has no surfaces.
+        assertEquals("bare", RoomDollhouse.pickSession(sessions, requestedId = "bare")?.id)
+    }
+
+    @Test
+    fun `with only bare paths the newest recording opens`() {
+        val sessions = listOf(
+            session("a", 100).copy(planes = 0, points = 0),
+            session("b", 200).copy(planes = 0, points = 0),
+        )
+        assertEquals("b", RoomDollhouse.pickSession(sessions)?.id)
+    }
+
+    @Test
+    fun `the recordings to pick from are listed newest first`() {
+        val sessions = listOf(session("mid", 200), session("old", 100), session("new", 300, RerunSessionSource.Scan))
+        assertEquals(listOf("new", "mid", "old"), RoomDollhouse.choices(sessions).map { it.id })
+    }
+
+    @Test
+    fun `each recording says how many surfaces it kept`() {
+        assertEquals("No surfaces", DollhouseCopy.surfaces(planes = 0, points = 12))
+        assertEquals("3 surfaces · 1,240 points", DollhouseCopy.surfaces(planes = 3, points = 1240))
+        assertEquals("1 surface · 40 points", DollhouseCopy.surfaces(planes = 1, points = 40))
+    }
+
+    // ─── Reset, and coming back to AR ────────────────────────────────────────────────────────
+
+    @Test
+    fun `a dismissed placement state never places again - why each AR view gets a fresh one`() {
+        // What an AR view leaving the composition does to its state (AutoPlacementScene's
+        // DisposableEffect). The dollhouse used to keep that same state for the next AR view.
+        val stale = AutoPlacementState()
+        stale.dismiss()
+        stale.requestPlacement()
+        val frame = FrameInput(nowMillis = 1_000L, tracking = true, surfaceAvailable = true)
+        assertEquals(FrameEffect.NONE, stale.onFrame(frame))
+        assertFalse(stale.hasPlacement)
+
+        val fresh = AutoPlacementState()
+        fresh.requestPlacement()
+        assertEquals(FrameEffect.PLACE, fresh.onFrame(frame))
+    }
+
+    @Test
+    fun `resetting the placement alone stands the room right back where it was`() {
+        // The old Reset: the next frame with a surface under the aim places again, at once.
+        val state = AutoPlacementState()
+        state.requestPlacement()
+        val frame = FrameInput(nowMillis = 1_000L, tracking = true, surfaceAvailable = true)
+        assertEquals(FrameEffect.PLACE, state.onFrame(frame))
+        state.resetPlacement(1_100L)
+        assertEquals(FrameEffect.PLACE, state.onFrame(frame.copy(nowMillis = 1_116L)))
+    }
+
+    @Test
+    fun `reset takes a fresh placement state, back to 1 to 12, and holds before standing again`() {
+        val placed = DollhouseArControl().toggleRealSize()
+        assertTrue(placed.realSize)
+        val reset = placed.reset(nowMillis = 10_000L)
+        assertEquals(placed.generation + 1, reset.generation)
+        assertEquals(placed.sceneKey, reset.sceneKey) // the camera keeps running
+        assertFalse(reset.realSize)
+        assertFalse(reset.armed(10_000L))
+        assertFalse(reset.armed(10_000L + DollhouseArControl.RESET_HOLD_MS - 1))
+        assertTrue(reset.armed(10_000L + DollhouseArControl.RESET_HOLD_MS))
+    }
+
+    @Test
+    fun `two resets in a row are two fresh states`() {
+        val once = DollhouseArControl().reset(1_000L)
+        val twice = once.reset(1_200L)
+        assertTrue(twice.generation > once.generation)
+        assertFalse(twice.armed(1_200L + DollhouseArControl.RESET_HOLD_MS - 1))
+    }
+
+    @Test
+    fun `leaving AR takes a fresh state for the way back, with no hold`() {
+        val control = DollhouseArControl().reset(1_000L).toggleRealSize()
+        val back = control.leftAr()
+        assertEquals(control.generation + 1, back.generation)
+        assertFalse(back.realSize)
+        assertTrue(back.armed(0L))
+    }
+
+    @Test
+    fun `restarting the session rebuilds the AR view with a fresh state`() {
+        val control = DollhouseArControl()
+        val restarted = control.restart()
+        assertEquals(control.sceneKey + 1, restarted.sceneKey)
+        assertEquals(control.generation + 1, restarted.generation)
+        assertTrue(restarted.armed(0L))
+    }
+
+    @Test
+    fun `the contact shadow ring is pushed out from the plinth, at the height asked`() {
+        val square = floatArrayOf(-1f, 0f, -1f, 1f, 0f, -1f, 1f, 0f, 1f, -1f, 0f, 1f)
+        val ring = RoomDollhouse.expand(square, margin = 0.5f, y = -0.1f)
+        assertEquals(12, ring.size)
+        for (i in 0 until 4) {
+            val x = ring[i * 3]
+            val z = ring[i * 3 + 2]
+            // Each corner moves 0.5 m straight out from the middle.
+            assertEquals(kotlin.math.sqrt(2f) + 0.5f, kotlin.math.sqrt(x * x + z * z), 1e-4f)
+            assertEquals(-0.1f, ring[i * 3 + 1], 0f)
+        }
+    }
+
+    @Test
+    fun `the plinth keeps one thickness on the table at any scale`() {
+        for (denominator in listOf(10, 12, 20)) {
+            val scale = 1f / denominator
+            assertEquals(RoomDollhouse.PLINTH_ON_TABLE_M, RoomDollhouse.plinthThickness(scale) * scale, 1e-6f)
+        }
     }
 
     private fun stage(
@@ -324,7 +529,8 @@ class RoomDollhouseTest {
         openFailed: Boolean = false,
         arAvailable: Boolean = true,
         previewChosen: Boolean = false,
-    ) = dollhouseStage(sessionsKnown, hasSession, opened, openFailed, arAvailable, previewChosen)
+        hasSurfaces: Boolean = true,
+    ) = dollhouseStage(sessionsKnown, hasSession, opened, openFailed, arAvailable, previewChosen, hasSurfaces)
 
     private fun requireFit(fit: DollhouseFit?): DollhouseFit {
         assertNotNull("expected the room to stand", fit)
