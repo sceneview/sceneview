@@ -34,6 +34,13 @@ data class RerunExportScene(
     val photos: List<Keyframe> = emptyList(),
     /** What the camera saw over time: which of [points] each point-cloud observation held. */
     val pointObservations: List<PointObservation> = emptyList(),
+    /**
+     * A `.svscan` v2's dense cloud (Rerun v2, tiers `lidar` / `depth`): surfels of [denseVoxelM]
+     * with colours and unit normals, world space. `null` for a v1 or sparse-tier capture — which
+     * then exports exactly as before.
+     */
+    val dense: DenseCloud? = null,
+    val denseVoxelM: Float = DenseFusion.VOXEL_M,
 ) {
     /** One point-cloud observation at [time] (seconds): [points] are indices into [RerunExportScene.points]. */
     data class PointObservation(val time: Double, val points: List<Int>)

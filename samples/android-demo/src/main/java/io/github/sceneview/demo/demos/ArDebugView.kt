@@ -168,18 +168,24 @@ internal class ArDebugRecorder {
         trace.addPose(nanos, display)
 
         val capture = scan?.takeIf { it.trace === trace }
+        capture?.recordDepthStats(nanos)
         val pointsDue = pointsGate.isDue(nanos)
         val photoDue = capture?.wantsPhoto(display) == true
-        // One camera image per frame at most, shared by the colours and the photo.
-        val image = if (capture != null && (pointsDue || photoDue)) capture.acquire(frame) else null
+        // A new raw-depth image (Rerun v2 dense map), when the scan has depth and is free to fuse.
+        val depth = capture?.acquireDepth(frame)
+        // One camera image per frame at most, shared by the colours, the photo and the depth.
+        val needsImage = pointsDue || photoDue || depth != null
+        val image = if (needsImage) capture?.acquire(frame) else null
         try {
             if (pointsDue) {
                 pointsGate.mark(nanos)
                 recordPoints(trace, nanos, frame, capture, image)
             }
             if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
+            if (capture != null && depth != null && image != null) capture.fuseDepth(depth, image)
         } finally {
             image?.close()
+            depth?.close()
         }
 
         if (planesGate.isDue(nanos)) {
@@ -307,6 +313,8 @@ internal class DebugLayerNode(
     private var ownedIndexBuffer: IndexBuffer = indexBuffer
     private var vertexCapacity = INITIAL_CAPACITY
     private var indexCapacity = INITIAL_CAPACITY
+    private var uploadedIndices = 3
+    private var shownIndices = 3
 
     init {
         // The buffers are uninitialised until the first upload: draw one degenerate triangle.
@@ -351,6 +359,8 @@ internal class DebugLayerNode(
             renderableManager.setGeometryAt(
                 renderableInstance, 0, PrimitiveType.TRIANGLES, vertexTarget, indexTarget, 0, indexCount,
             )
+            uploadedIndices = indexCount
+            shownIndices = indexCount
         } catch (t: Throwable) {
             newVertexBuffer?.let { engine.safeDestroyVertexBuffer(it) }
             newIndexBuffer?.let { engine.safeDestroyIndexBuffer(it) }
@@ -366,6 +376,19 @@ internal class DebugLayerNode(
             ownedIndexBuffer = newIndexBuffer
             indexCapacity = newIndexBuffer.indexCount
         }
+    }
+
+    /**
+     * Draws only the first [count] indices of the last [upload] — a prefix of its triangles, with
+     * no re-upload: how the replay reveals a dense cloud as it grew. Clamped to what was uploaded.
+     */
+    fun showIndices(count: Int) {
+        val shown = (count - count % 3).coerceIn(3, uploadedIndices)
+        if (shown == shownIndices) return
+        shownIndices = shown
+        renderableManager.setGeometryAt(
+            renderableInstance, 0, PrimitiveType.TRIANGLES, ownedVertexBuffer, ownedIndexBuffer, 0, shown,
+        )
     }
 
     override fun destroy() {
