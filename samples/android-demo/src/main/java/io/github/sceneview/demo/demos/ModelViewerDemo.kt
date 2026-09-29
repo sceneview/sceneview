@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.BottomSheetDefaults
@@ -43,6 +44,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.BackHandler
 import io.github.sceneview.environment.Environment
 import androidx.compose.runtime.getValue
@@ -83,6 +85,13 @@ import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.hdpack.HdPack
+import io.github.sceneview.demo.hdpack.HdPackDownloadDialog
+import io.github.sceneview.demo.hdpack.HdPackPerfProbe
+import io.github.sceneview.demo.hdpack.HdPackStatus
+import io.github.sceneview.demo.hdpack.hdPackSize
+import io.github.sceneview.demo.hdpack.rememberHdPackStatus
+import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
@@ -222,6 +231,16 @@ fun ModelViewerDemo(onBack: () -> Unit) {
  */
 private val BUNDLED_VIEWER_MODELS = listOf(
     BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet", R.string.demo_model_desc_damaged_helmet),
+    // HD pack (2026-09-29): the full-resolution Khronos Flight Helmet, downloaded after install.
+    // Its stand-in is the bundled Damaged Helmet — the nearest thing the APK ships, another
+    // helmet at the same scale — shown instantly while the HD file downloads or loads.
+    BundledViewerModel(
+        "models/khronos_damaged_helmet.glb",
+        "Flight Helmet",
+        R.string.demo_model_desc_flight_helmet,
+        hdAssetId = "flight-helmet",
+        thumbnailStem = "khronos_flight_helmet",
+    ),
     BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa", R.string.demo_model_desc_velvet_sofa),
     BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair", R.string.demo_model_desc_sheen_chair),
     BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish", R.string.demo_model_desc_olive_dish),
@@ -549,10 +568,45 @@ private fun SingleModelSection(
     // eagerly so the first frame after launch shows the hero shot.
     val bundledModelInstance = rememberModelInstance(modelLoader, selectedModel.assetPath)
 
+    // HD pack (2026-09-29). An HD entry shows its bundled stand-in at once and swaps to the
+    // downloaded file when it is on disk — read from `filesDir`, never re-fetched. It rides the
+    // same loader as the streamed models, so the swap waits for its textures and the stand-in
+    // stays up meanwhile: no untextured frame, no black stage.
+    val hdStore = rememberHdPackStore()
+    val hdStatus by rememberHdPackStatus(hdStore)
+    val hdReadyIds by remember(hdStore) {
+        hdStore?.readyIds ?: kotlinx.coroutines.flow.MutableStateFlow(emptySet<String>())
+    }.collectAsState()
+    val hdAsset = selectedModel.hdAssetId
+        ?.takeIf { openedModel == null && streamedFileUrl == null }
+        ?.let { hdStore?.manifest?.asset(it) }
+    val hdFileLocation = hdAsset?.takeIf { it.id in hdReadyIds }
+        ?.let { android.net.Uri.fromFile(hdStore?.fileFor(it)).toString() }
+    // A file that times out or has no framable bounds is dropped: the stand-in stays and the
+    // pill turns to "HD · download failed" (tap = retry) instead of spinning forever.
+    var hdRejectedLocation by remember { mutableStateOf<String?>(null) }
+    val hdLoadFailed = hdFileLocation != null && hdFileLocation == hdRejectedLocation
+    val hdModel = rememberStreamedModelInstance(
+        modelLoader,
+        hdFileLocation?.takeIf { !hdLoadFailed },
+        wakeRenderLoop = renderInvalidator::requestRender,
+        onRejected = { hdRejectedLocation = it },
+    )
+    val hdShown = hdFileLocation != null && !hdLoadFailed && hdModel?.location == hdFileLocation
+    val hdPillShown = hdAsset != null && !hdShown
+    var hdDialogOpen by remember { mutableStateOf(false) }
+
     // The instance actually rendered this frame. Falls back to the bundled
     // helmet whenever the streamed instance is null (no Surprise tap yet,
     // streamed load still in flight, or streamed load failed).
-    val activeModelInstance = streamedModelInstance ?: bundledModelInstance
+    val activeModelInstance = streamedModelInstance ?: hdModel?.instance ?: bundledModelInstance
+    // Debug builds log how long a pick takes to reach a finished frame (HD pack QA).
+    val perfTargetReached = when {
+        streamedFileUrl != null -> false
+        hdFileLocation != null -> hdShown
+        else -> bundledModelInstance != null
+    }
+    androidx.compose.runtime.SideEffect { if (perfTargetReached) HdPackPerfProbe.instanceReady() }
     val animationNames = remember(activeModelInstance) {
         val animator = activeModelInstance?.animator ?: return@remember emptyList()
         (0 until animator.animationCount).map { animator.getAnimationName(it).takeIf(String::isNotBlank) ?: "Clip ${it + 1}" }
@@ -663,6 +717,7 @@ private fun SingleModelSection(
     val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, modelDrain, renderInvalidator) {
         { nanos ->
             firstFrame.onFrame(nanos)
+            HdPackPerfProbe.onFrame { runCatching { modelLoader.progress >= 1f }.getOrDefault(true) }
             if (hasModelRef.get() && modelFramesSeen.value < MODEL_COVER_FRAMES &&
                 runCatching { modelLoader.progress >= 1f }.getOrDefault(true)
             ) {
@@ -894,7 +949,7 @@ private fun SingleModelSection(
         // in and out with the standard M3 enter/exit instead of appearing and vanishing
         // between frames (#3406). An `AnimatedVisibility` that is not visible measures
         // zero, so the scaffold's measured bottom band is unchanged while it is closed.
-        bottomOverlay = if (hasSketchfabKey || animationNames.isNotEmpty()) {{
+        bottomOverlay = if (hasSketchfabKey || animationNames.isNotEmpty() || hdPillShown) {{
             // #3585 — "Surprise me" was reachable only from the third row of a sheet the
             // user had to open first, and it is the one action of this viewer that makes
             // people keep tapping. A glass pill floating over the scene re-rolls without
@@ -925,6 +980,41 @@ private fun SingleModelSection(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
+            }
+            // HD pack: while an HD entry shows its stand-in, the pill names the HD model and says
+            // how far along it is ("Flight Helmet · downloading 34 %"). Tapping it when nothing is
+            // running asks to download now, with the size stated first. It stays on "loading"
+            // until the HD model is in the scene, and leaves then.
+            if (hdPillShown && hdAsset != null) {
+                val status = hdStatus
+                val hdFailed = hdLoadFailed || (hdFileLocation == null && status == HdPackStatus.Failed)
+                val hdPillBusy = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading)
+                val hdLabel = when {
+                    hdFailed -> stringResource(R.string.hd_pill_failed)
+                    hdFileLocation != null -> stringResource(R.string.hd_pill_loading)
+                    status is HdPackStatus.Downloading ->
+                        stringResource(R.string.hd_pill_downloading, (status.fraction * 100).toInt())
+                    status == HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pill_waiting_wifi)
+                    status == HdPackStatus.WaitingForNetwork -> stringResource(R.string.hd_pill_waiting_network)
+                    // The size of this model's own file, not of the whole pack.
+                    else -> stringResource(R.string.hd_pill_download, hdPackSize(context, hdAsset.bytes))
+                }
+                GlassActionPill(
+                    icon = Icons.Outlined.HighQuality,
+                    // Names what the tap gets — the stand-in on screen is another model.
+                    subject = hdAsset.title,
+                    label = hdLabel,
+                    onClick = {
+                        // A file on disk that failed to load retries the load; anything else
+                        // asks to download now, size first.
+                        if (hdLoadFailed) hdRejectedLocation = null else hdDialogOpen = true
+                    },
+                    loading = hdPillBusy,
+                    progress = (hdStatus as? HdPackStatus.Downloading)?.fraction?.takeIf { hdFileLocation == null },
+                    // What the pill says, then what a tap does when it opens the download dialog.
+                    contentDescription = stringResource(R.string.glass_pill_subject_label, hdAsset.title, hdLabel)
+                        .let { if (hdPillBusy || hdLoadFailed) it else stringResource(R.string.hd_pill_hint, it) },
+                )
             }
             if (hasSketchfabKey) {
                 GlassActionPill(
@@ -977,6 +1067,9 @@ private fun SingleModelSection(
             // unconditionally: a match against the curated catalogue uses ITS OWN name instead,
             // and this value is consumed once then cleared.
             DemoSettings.requestedModelDisplayName = openedModel?.displayName ?: selectedModel.displayName
+            // An HD entry goes to AR as the HD file once it is the model on screen.
+            // AR always gets the bundled stand-in, HD entries included: HD in AR waits for a
+            // real-device proof (same decision on iOS).
             val model = openedModel?.location ?: selectedModel.assetPath
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),
@@ -1152,12 +1245,22 @@ private fun SingleModelSection(
         models = BUNDLED_VIEWER_MODELS,
         // A streamed or opened model is not one of the cards: outline none rather than the
         // bundled model it replaced.
-        selectedPath = selectedModel.assetPath.takeIf { streamedFileUrl == null },
+        selectedKey = selectedModel.key.takeIf { streamedFileUrl == null },
         currentScene = null,
-        onSelect = { cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false },
+        onSelect = {
+            HdPackPerfProbe.start(it.key)
+            cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false
+        },
         onScene = { cancelSurprise(); modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
     )
+    if (hdDialogOpen && hdStore != null) {
+        HdPackDownloadDialog(
+            totalBytes = hdStore.manifest.totalBytes,
+            onConfirm = { hdDialogOpen = false; HdPack.downloadNow(context) },
+            onDismiss = { hdDialogOpen = false },
+        )
+    }
     if (unitSheetOpen && unitSuggestion != null) {
         val extents = bounds?.extents
         ModelUnitSheet(
@@ -1810,7 +1913,7 @@ private fun MultiModelSection(
     // offer the Damaged Helmet alone). A card opens that model on the single-model stage.
     if (modelSheetOpen) ModelPickerSheet(
         models = BUNDLED_VIEWER_MODELS,
-        selectedPath = null,
+        selectedKey = null,
         currentScene = ViewerScene.Park,
         onSelect = { modelSheetOpen = false; onOpenModel(it) },
         onScene = { modelSheetOpen = false; onModeChange(it.mode()) },

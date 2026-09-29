@@ -40,9 +40,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 
@@ -212,6 +215,9 @@ fun GlassPill(
  *
  * [contentDescription] is the accessible name and defaults to [label]; pass the
  * longer phrase when the visible label is a shortened one.
+ *
+ * [subject], when set, leads the label as "subject · label" and is the part that
+ * ellipsizes at large font scales: the status in [label] always stays whole.
  */
 @Composable
 fun GlassActionPill(
@@ -222,7 +228,10 @@ fun GlassActionPill(
     enabled: Boolean = true,
     loading: Boolean = false,
     progress: Float? = null,
-    contentDescription: String = label,
+    subject: String? = null,
+    contentDescription: String = subject?.let {
+        stringResource(R.string.glass_pill_subject_label, it, label)
+    } ?: label,
 ) {
     val accessibleName = contentDescription
     val interaction = remember { MutableInteractionSource() }
@@ -278,6 +287,23 @@ fun GlassActionPill(
             }
         }
         Spacer(Modifier.size(SceneViewTokens.Space.sm))
+        if (subject != null) {
+            Text(
+                text = subject,
+                // Takes only the width it needs, and gives it up first when the pill is too narrow.
+                modifier = Modifier.weight(1f, fill = false),
+                style = MaterialTheme.typography.labelLarge,
+                color = SceneViewTokens.Glass.onGlass,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.glass_pill_subject_separator),
+                style = MaterialTheme.typography.labelLarge,
+                color = SceneViewTokens.Glass.onGlass,
+                maxLines = 1,
+            )
+        }
         // While loading, the label is the narration of the step in flight (#3825).
         NarrationText(
             text = label,

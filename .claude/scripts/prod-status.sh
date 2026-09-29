@@ -37,7 +37,9 @@ row "npm:@sceneview-sdk/react-native" "$(npmv @sceneview-sdk/react-native)"
 
 row "pub.dev:flutter_sceneview" "$(curl -sf https://pub.dev/api/packages/flutter_sceneview | python3 -c 'import sys,json;print(json.load(sys.stdin)["latest"]["version"])' 2>/dev/null || echo none)"
 
-row "github:release" "$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null | sed 's/^v//')"
+# SDK releases only: the repo also hosts content releases (`assets-v1`, `hd-pack-v1`) that
+# are newer than some SDK tags and would otherwise be read as the version in prod.
+row "github:release" "$(gh release list --limit 30 --exclude-drafts --json tagName --jq '[.[] | select(.tagName | test("^v[0-9]"))][0].tagName' 2>/dev/null | sed 's/^v//')"
 
 # Play: the public page. The version string Play serves is the release name of
 # the PUBLISHED production release — exactly the thing a visitor sees.

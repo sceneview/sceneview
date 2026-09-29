@@ -185,12 +185,20 @@ enum SceneViewTokens {
     /// `type-title 22/600`, `type-card 17/600`, `type-body 15/400`,
     /// `type-caption 13/500`.
     enum TypeScale {
+        /// Default-size point sizes, for text that scales them with Dynamic
+        /// Type (`@ScaledMetric`) — the home card captions.
+        static let titleSize: CGFloat = 22
+        static let cardSize: CGFloat = 17
+        static let bodySize: CGFloat = 15
+        static let captionSize: CGFloat = 13
+        static let trackingTight: CGFloat = -0.02
+
         static let display = Font.system(size: 32, weight: .bold)
         static let displayTracking: CGFloat = -0.02 * 32
-        static let title = Font.system(size: 22, weight: .semibold)
-        static let titleTracking: CGFloat = -0.02 * 22
-        static let card = Font.system(size: 17, weight: .semibold)
-        static let body = Font.system(size: 15, weight: .regular)
+        static let title = Font.system(size: titleSize, weight: .semibold)
+        static let titleTracking: CGFloat = trackingTight * titleSize
+        static let card = Font.system(size: cardSize, weight: .semibold)
+        static let body = Font.system(size: bodySize, weight: .regular)
         static let bodyMedium = Font.system(size: 15, weight: .medium)
         static let bodySemibold = Font.system(size: 15, weight: .semibold)
         static let caption = Font.system(size: 13, weight: .medium)
@@ -247,10 +255,15 @@ enum SceneViewTokens {
             light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
             dark: Color(red: 0x22 / 255, green: 0x28 / 255, blue: 0x31 / 255)
         )
-        /// `chip-text` = `on-surface-dim` — #3D4654 / #9CA3AF.
+        /// `chip-text` = `on-surface-dim` — #3D4654 / #A4ABB7.
+        ///
+        /// Dark was #9CA3AF, the value `DESIGN.md` retired with the surface-ramp
+        /// lift (Android's `onSurfaceVariant` moved with it). Over the dark
+        /// `card-glass` composited on a white picture it measured 4.16:1; #A4ABB7
+        /// holds 4.55:1 there.
         static let chipText = Color(
             light: Color(red: 0x3D / 255, green: 0x46 / 255, blue: 0x54 / 255),
-            dark: Color(red: 0x9C / 255, green: 0xA3 / 255, blue: 0xAF / 255)
+            dark: Color(red: 0xA4 / 255, green: 0xAB / 255, blue: 0xB7 / 255)
         )
         /// DESIGN.md `chip-selected-bg` in light; `primary` in dark.
         ///
@@ -358,19 +371,19 @@ enum SceneViewTokens {
             light: .white,
             dark: Color(red: 0x0D / 255, green: 0x11 / 255, blue: 0x17 / 255)
         )
-        /// DESIGN.md Surfaces, `surface-container` — #FFFFFF / #22293E.
+        /// DESIGN.md Surfaces, `surface-container` — #FFFFFF / #232A39.
         /// A lighter fill supplies dark elevation without a black shadow.
         ///
         /// Dark was #161C2C: 1.11:1 on `surface`, so every card, tile and row
         /// dissolved into the page and the screen read as one flat sheet.
-        /// #22293E clears 1.25:1, the floor at which a container's background
-        /// is actually visible. (On a near-black page the flare term of the
-        /// WCAG ratio puts that floor at L* >= 15.1 — nothing darker can reach
-        /// it, whatever the page is set to.)
-        static let surfaceContainer = Color(
-            light: .white,
-            dark: Color(red: 0x22 / 255, green: 0x29 / 255, blue: 0x3E / 255)
-        )
+        /// #232A39 (1.32:1, the DESIGN.md and Android value; iOS briefly
+        /// carried #22293E, 1.31:1) clears 1.25:1, the floor at which a
+        /// container's background is actually visible. (On a near-black page
+        /// the flare term of the WCAG ratio puts that floor at L* >= 15.1 —
+        /// nothing darker can reach it, whatever the page is set to.)
+        static let surfaceContainer = Color(light: surfaceContainerLight, dark: surfaceContainerDark)
+        private static let surfaceContainerLight = Color.white
+        private static let surfaceContainerDark = Color(red: 0x23 / 255, green: 0x2A / 255, blue: 0x39 / 255)
         /// Derived from DESIGN.md dark `glass-surface`: 5 % white composited
         /// over `surface-container`, rounded to #2F3549. Kept opaque so artwork
         /// cannot bleed through floating status chips or the search field.
@@ -381,8 +394,25 @@ enum SceneViewTokens {
             light: .white,
             dark: Color(red: 0x2F / 255, green: 0x35 / 255, blue: 0x49 / 255)
         )
-        /// Legacy light appearance only; dark uses `header-overlay` at 100 %.
-        static let headerOverlayAlpha: Double = 0.94
+        /// DESIGN.md `header-overlay`: `surface` at 100 % in both modes. Light
+        /// was 0.94; under the full-bleed Featured cards the 6 % see-through
+        /// read as an overlap bug behind the wordmark and the status bar.
+        static let headerOverlayAlpha: Double = 1
+
+        /// `card-glass` — the frosted caption of a home card: `surface-container`
+        /// at **80 %** in light and **90 %** in dark (the `glass-sheet` value),
+        /// laid over a blurred copy of the card's own picture, so each caption is
+        /// tinted by what it shows. Android's `cardGlassAlphaLight/Dark` (#4144).
+        ///
+        /// The blur averages the picture, so the worst ground is a uniform one:
+        /// light over black holds `on-surface` 10.6:1 and `on-surface-dim`
+        /// 5.9:1; dark over white 9.5:1 and 4.55:1. At 72 % a dark picture turned
+        /// the light glass a muddy grey; at 85 % the Animation card's light-grey
+        /// stage took the dark caption under AA.
+        static let cardGlass = Color(
+            light: surfaceContainerLight.opacity(0.80),
+            dark: surfaceContainerDark.opacity(0.90)
+        )
     }
 
     /// Home screen geometry (`home-*` tokens).
@@ -425,6 +455,39 @@ enum SceneViewTokens {
         static let heroSkyHorizon: CGFloat = 0.44
         /// Where the sun sits across the stage, as a fraction of its width.
         static let heroSunX: CGFloat = 0.31
+
+        /// `card-media-aspect` — a catalogue card's picture is square: the
+        /// caption no longer sits in a box of its own under it (#4144).
+        static let cardMediaAspect: CGFloat = 1
+        /// `card-glass-blur` — 28 pt, the blur of the picture copy under a card
+        /// caption. Compose passes it as a `RenderEffect` radius, which Skia turns
+        /// into a Gaussian sigma of `0.577 × radius + 0.5`; SwiftUI's `blur(radius:)`
+        /// takes the sigma itself, hence ``cardGlassBlurSigma``.
+        static let cardGlassBlur: CGFloat = 28
+        static let cardGlassBlurSigma: CGFloat = cardGlassBlur * 0.57735 + 0.5
+        /// `card-glass-melt` — the band over which the sharp picture dissolves
+        /// into the frosted caption (the fade spans twice this, centred on the
+        /// caption's top).
+        static let cardGlassMelt: CGFloat = 28
+        /// `featured-card-width` — one "Featured" card; the next one peeks.
+        static let featuredCardWidth: CGFloat = 280
+        static let featuredCardWidthExpanded: CGFloat = 340
+        /// `featured-media-aspect` — width / height of a "Featured" card, 4:5.
+        /// A minimum height: a long caption may grow the card.
+        static let featuredMediaAspect: CGFloat = 0.8
+        /// `featured-parallax` — fraction of a Featured card's travel its picture
+        /// lags behind it while the shelf is swiped, clamped to the overscan.
+        static let featuredParallax: CGFloat = 0.08
+        /// How much larger than its card a Featured picture is drawn, so the
+        /// parallax never shows an edge (6 %).
+        static let featuredMediaOverscan: CGFloat = 1.06
+        /// Where a Featured card's glass starts, as a fraction of the card's
+        /// height, until the caption has been measured — about a two-line
+        /// title and subtitle on a 4:5 card — so the first frame has its glass.
+        static let featuredCaptionTopEstimate: CGFloat = 0.6
+        /// Explore's "Try a demo" card — Android's `SAMPLE_CARD_WIDTH`
+        /// (`hero-stage-height` 360 less `space-3xl` 64).
+        static let sampleCardWidth: CGFloat = 296
         /// Fraction of the band's scroll travel the sky and the flight lag behind.
         static let heroParallax: CGFloat = 0.35
     }
@@ -495,6 +558,20 @@ enum SceneViewTokens {
         static let lg: CGFloat = 24
         static let xl: CGFloat = 32
         static let x2l: CGFloat = 48
+    }
+
+    /// `DESIGN.md` — Shadows, light mode (dark draws a hairline instead).
+    /// Each is two CSS box-shadows; a CSS blur is twice a SwiftUI radius.
+    enum Shadow {
+        struct Layer {
+            let opacity: Double
+            let radius: CGFloat
+            let y: CGFloat
+        }
+        /// `shadow-sm` — 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06).
+        static let sm = [Layer(opacity: 0.08, radius: 1.5, y: 1), Layer(opacity: 0.06, radius: 1, y: 1)]
+        /// `shadow-md` — 0 4px 12px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06).
+        static let md = [Layer(opacity: 0.10, radius: 6, y: 4), Layer(opacity: 0.06, radius: 2, y: 2)]
     }
 
     /// `DESIGN.md` — Corner radius scale (`radius-*`).

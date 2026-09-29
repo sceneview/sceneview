@@ -6,6 +6,9 @@
      `samples/android-demo/demo-fragments/README.md`. -->
 <resources>
     <string name="app_name">SceneView Demo</string>
+    <!-- GlassActionPill with a subject: "<subject> · <label>". The separator keeps its spaces. -->
+    <string name="glass_pill_subject_separator">" · "</string>
+    <string name="glass_pill_subject_label">%1$s · %2$s</string>
     <!-- Home-screen label (owner decision, 2026-09-27). "SceneView Demo" is cut
          to "SceneView …" in the Pixel launcher; "SceneView" fits in full. The
          viewer app is "3D AR Viewer" on the home screen, so the two no longer

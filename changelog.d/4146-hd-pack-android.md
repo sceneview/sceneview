@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Demo: HD pack (Android).** The Model Viewer gains a full-resolution **Flight Helmet** (Khronos, CC0, 48 MB) that downloads once on Wi-Fi after install, resumes if interrupted and is checked against its SHA-256 before use. The bundled Damaged Helmet shows instantly in its place, and a pill tracks the download until the viewer switches to the HD model. About → App gets an "HD scenes" row with Download now and Remove.

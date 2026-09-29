@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- AR is optional — app works without it -->
     <uses-feature
@@ -19,6 +20,14 @@
          button can vibrate (#1901 phase 1). When absent, every haptic call
          becomes a silent no-op + one Log.d. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The HD pack downloads with WorkManager (hdpack/HdPack.kt), whose library manifest merges
+         FOREGROUND_SERVICE for its SystemForegroundService. The pack never runs as a foreground
+         service (no setForeground), so neither the permission nor the service ships. WAKE_LOCK
+         and RECEIVE_BOOT_COMPLETED stay: WorkManager holds a wake lock while a job runs and
+         reschedules pending jobs after a reboot. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
     <!-- Required by the Streetscape Geometry / Geospatial demos (3 of 35). ARCore
          throws FineLocationPermissionNotGrantedException if Geospatial mode is
          enabled without this permission — the demo composable requests it at
@@ -74,6 +83,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SceneViewDemo">
+
+        <!-- WorkManager's foreground-service host: the HD pack never calls setForeground, so it
+             ships without it (see the FOREGROUND_SERVICE removal above). -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            tools:node="remove" />
 
         <!-- ARCore metadata — optional -->
         <meta-data

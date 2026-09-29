@@ -121,6 +121,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Clean up any feedback recording stranded in the cache by a prior run.
         sweepStaleFeedbackMedia(this)
+        // HD pack: queue the Wi-Fi-only download of the demo's full-resolution models. A no-op
+        // once they are on the device or after the user removed them in About. Off the main
+        // thread: it reads the bundled manifest and checks the files on disk.
+        lifecycleScope.launch(Dispatchers.IO) {
+            io.github.sceneview.demo.hdpack.HdPack.schedulePrefetch(this@MainActivity)
+        }
         // `--es update_qa available|cancel|fail` (debug builds only) swaps Play for Google's
         // fake update manager, so the real prompt flow can be driven on an emulator — a
         // sideloaded build never sees a real Play update. The fake is process-scoped, like
