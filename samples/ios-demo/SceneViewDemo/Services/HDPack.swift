@@ -35,6 +35,11 @@ struct HDPackAsset: Decodable, Identifiable, Hashable, Sendable {
     let license: String
     let author: String
     let source: String
+    /// Metres per authored unit, shared with Android's manifest. Set, the
+    /// file goes on stage at its true size instead of the viewer's
+    /// normalised 0.6 m: `0.01` for the centimetre-authored Smithsonian
+    /// Apollo scans, `1` for a file already in metres.
+    var scale: Float? = nil
 
     /// Where the release serves this file.
     var remoteURL: URL { HDPackManifest.releaseBase.appendingPathComponent(file) }

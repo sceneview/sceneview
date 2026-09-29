@@ -57,27 +57,68 @@ final class ViewerAssetTests: XCTestCase {
     /// stand-in instead, so the stage is never empty offline.
     func testEveryBundledModelShipsItsUSDZ() {
         for model in models {
+            let resource = model.bundledResourceName ?? "<none>"
             XCTAssertNotNil(
-                Bundle.main.url(forResource: model.bundledResourceName, withExtension: "usdz"),
-                "\(model.displayName) is listed in the picker but \(model.bundledResourceName).usdz is not in the bundle."
+                Bundle.main.url(forResource: resource, withExtension: "usdz"),
+                "\(model.displayName) is listed in the picker but \(resource).usdz is not in the bundle."
             )
         }
     }
 
     /// Every HD pack model names a stand-in and an id the bundled manifest knows.
     /// "View in AR" never reaches for the HD file (#4147): every model places
-    /// a USDZ that ships in the bundle.
+    /// a USDZ that ships in the bundle, and an HD-only model offers no AR.
     func testEveryARModelResolvesToABundledResource() {
         for model in ModelViewerDemo.bundledModels {
+            let resource = model.arResourceName ?? "<none>"
             XCTAssertNotNil(
-                Bundle.main.url(forResource: model.arResourceName, withExtension: "usdz"),
-                "\(model.displayName) would open AR on \(model.arResourceName).usdz, which is not in the bundle."
+                Bundle.main.url(forResource: resource, withExtension: "usdz"),
+                "\(model.displayName) would open AR on \(resource).usdz, which is not in the bundle."
             )
+        }
+        for model in ModelViewerDemo.museumModels {
+            XCTAssertNil(model.arResourceName, "\(model.displayName) is HD-only: View in AR must stay off.")
         }
     }
 
+    // MARK: Museum & Space (HD-only)
+
+    /// Same ids, order and titles as Android's "Museum & Space" section; the
+    /// pill copy comes from the manifest title, so both must agree.
+    func testMuseumSectionMatchesTheSharedContract() {
+        let manifest = HDPackManifest.loadBundled()
+        let museum = ModelViewerDemo.museumModels
+        XCTAssertEqual(museum.map(\.hdPackID),
+                       ["apollo11-exterior", "apollo11-interior", "woolly-mammoth", "perseverance"])
+        XCTAssertEqual(museum.map(\.displayName),
+                       ["Apollo 11 Command Module", "Apollo 11 Interior", "Woolly Mammoth", "Perseverance Rover"])
+        for model in museum {
+            XCTAssertTrue(model.isHDOnly, "\(model.displayName) must have no bundled stand-in.")
+            let asset = manifest.asset(id: model.hdPackID ?? "")
+            XCTAssertNotNil(asset, "\(model.displayName): \(model.hdPackID ?? "nil") is absent from ios.json.")
+            XCTAssertEqual(asset?.title, model.displayName, "Pill title and picker tile must match.")
+            XCTAssertEqual(asset.map { ($0.file as NSString).pathExtension }, "usdz")
+            XCTAssertNotNil(asset?.scale, "\(model.displayName) must go on stage at real-world size.")
+        }
+        // Smithsonian Apollo scans are in centimetres; the rest in metres.
+        XCTAssertEqual(museum.map { manifest.asset(id: $0.hdPackID ?? "")?.scale }, [0.01, 0.01, 1, 1])
+        // The rover's 23 rigging clips never start on their own.
+        XCTAssertEqual(museum.map(\.autoplaysAnimations), [true, true, true, false])
+    }
+
+    #if canImport(UIKit)
+    /// Picker tile and stage poster (before download) are the same render.
+    func testEveryMuseumModelResolvesAThumbnail() {
+        for model in ModelViewerDemo.museumModels {
+            XCTAssertNotNil(model.thumbnailName, "\(model.displayName) has no model_thumb_\(model.assetName) imageset.")
+        }
+    }
+    #endif
+
     func testEveryHDPackModelResolvesInTheManifest() {
         let manifest = HDPackManifest.loadBundled()
+        // The bundled grid's HD models always have a stand-in; only the
+        // Museum & Space section is HD-only (tested above).
         for model in models where model.hdPackID != nil {
             XCTAssertNotNil(model.standInAssetName, "\(model.displayName) has no bundled stand-in.")
             XCTAssertNotNil(manifest.asset(id: model.hdPackID!),

@@ -13,16 +13,24 @@ struct BundledViewerModel: Identifiable, Equatable {
     /// the bundle but downloaded once; `nil` for a bundled USDZ.
     var hdPackID: String? = nil
     /// The bundled USDZ shown instantly while the HD asset is not on disk.
-    /// Required when ``hdPackID`` is set.
+    /// `nil` for an HD-only model (Museum & Space): its thumbnail stands in.
     var standInAssetName: String? = nil
+    /// `false` for a model shown static: its clips stay listed under Animate
+    /// but do not start on their own (Perseverance ships 23 rigging clips).
+    var autoplaysAnimations: Bool = true
     var id: String { assetName }
 
+    /// No bundled USDZ at all: the model exists only once the HD pack has it.
+    var isHDOnly: Bool { hdPackID != nil && standInAssetName == nil }
+
     /// The bundled resource to load when the HD asset is not available.
-    var bundledResourceName: String { standInAssetName ?? assetName }
+    /// `nil` for an HD-only model.
+    var bundledResourceName: String? { isHDOnly ? nil : (standInAssetName ?? assetName) }
 
     /// What "View in AR" places. Always a bundled USDZ: the HD file is not
     /// used in AR until a real-device run proves it (follow-up to #4147).
-    var arResourceName: String { bundledResourceName }
+    /// `nil` for an HD-only model, which "View in AR" does not offer.
+    var arResourceName: String? { bundledResourceName }
 
     /// Asset-catalog thumbnail, or `nil` when none was generated for this model.
     var thumbnailName: String? {
@@ -70,6 +78,8 @@ struct ViewerEnvironment: Identifiable, Equatable {
 
 struct ModelPickerSheet: View {
     let models: [BundledViewerModel]
+    /// The "Museum & Space" section: HD pack models with no bundled copy.
+    var museum: [BundledViewerModel] = []
     let selected: BundledViewerModel
     let surpriseAvailable: Bool
     let surpriseLoading: Bool
@@ -128,47 +138,64 @@ struct ModelPickerSheet: View {
                     .padding(.horizontal, SceneViewTokens.Space.md)
                 }
 
-                LazyVGrid(columns: columns, spacing: SceneViewTokens.Space.sm) {
-                    ForEach(models) { model in
-                        Button {
-                            onSelect(model)
-                        } label: {
-                            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
-                                ZStack {
-                                    SceneViewTokens.HomeColor.chipBackground
-                                    if let thumb = model.thumbnailName {
-                                        Image(thumb).resizable().scaledToFill()
-                                    } else {
-                                        Image(systemName: "cube.transparent")
-                                            .font(.title2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .aspectRatio(1, contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
-                                Text(model.displayName)
-                                    .font(SceneViewTokens.TypeScale.caption)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                            }
-                            .padding(SceneViewTokens.Space.sm)
-                            .background(
-                                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-                                    .strokeBorder(SceneViewTheme.primary,
-                                                  lineWidth: model == selected ? SceneViewTokens.Layout.selectedOutlineWidth : 0)
-                            )
-                        }
-                        .buttonStyle(PressScaleButtonStyle())
-                        .accessibilityLabel(model.displayName)
-                        .accessibilityAddTraits(model == selected ? .isSelected : [])
-                    }
+                modelGrid(models)
+
+                if !museum.isEmpty {
+                    // HD pack models with no bundled copy, same card as the
+                    // grid above; Android's picker has the same section, same order.
+                    Text("Museum & Space")
+                        .font(SceneViewTokens.TypeScale.card)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, SceneViewTokens.Space.md)
+                        .padding(.top, SceneViewTokens.Space.sm)
+                        .accessibilityAddTraits(.isHeader)
+                    modelGrid(museum)
                 }
-                .padding(.horizontal, SceneViewTokens.Space.md)
 
                 ViewerSheetRow(title: "Browse online models…", subtitle: nil, loading: false, action: onBrowse)
             }
             .padding(.vertical, SceneViewTokens.Space.md)
         }
+    }
+
+    private func modelGrid(_ items: [BundledViewerModel]) -> some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            ForEach(items) { model in
+                Button {
+                    onSelect(model)
+                } label: {
+                    VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                        ZStack {
+                            SceneViewTokens.HomeColor.chipBackground
+                            if let thumb = model.thumbnailName {
+                                Image(thumb).resizable().scaledToFill()
+                            } else {
+                                Image(systemName: "cube.transparent")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .aspectRatio(1, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
+                        Text(model.displayName)
+                            .font(SceneViewTokens.TypeScale.caption)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    .padding(SceneViewTokens.Space.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                            .strokeBorder(SceneViewTheme.primary,
+                                          lineWidth: model == selected ? SceneViewTokens.Layout.selectedOutlineWidth : 0)
+                    )
+                }
+                .buttonStyle(PressScaleButtonStyle())
+                .accessibilityLabel(model.displayName)
+                .accessibilityAddTraits(model == selected ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, SceneViewTokens.Space.md)
     }
 }
 

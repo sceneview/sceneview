@@ -27,6 +27,55 @@ final class HDPackTests: XCTestCase {
         XCTAssertNotNil(manifest.asset(id: "flight-helmet"))
     }
 
+    /// HD content v1: the pack lists the Flight Helmet then Museum & Space, in
+    /// Android's order, every id and hash once.
+    func testBundledManifestListsHDContentV1() {
+        let manifest = HDPackManifest.loadBundled()
+        XCTAssertEqual(manifest.assets.map(\.id),
+                       ["flight-helmet", "apollo11-exterior", "apollo11-interior", "woolly-mammoth", "perseverance"])
+        XCTAssertEqual(Set(manifest.assets.map(\.sha256)).count, manifest.assets.count, "A file is listed twice.")
+        XCTAssertTrue(manifest.assets.allSatisfy { $0.file.hasSuffix(".usdz") }, "RealityKit loads USDZ only.")
+        XCTAssertEqual(manifest.asset(id: "apollo11-interior")?.bytes, 38_346_109)
+        XCTAssertEqual(manifest.asset(id: "perseverance")?.author, "NASA/JPL-Caltech")
+        XCTAssertEqual(manifest.asset(id: "woolly-mammoth")?.license, "CC0-1.0")
+        // The Flight Helmet stays normalised to the viewer's 0.6 m (#4147).
+        XCTAssertNil(manifest.asset(id: "flight-helmet")?.scale)
+    }
+
+    /// The decoder takes the shared schema as is: extra keys (Android's
+    /// notes, a future field) are ignored, a missing required key fails the
+    /// whole manifest instead of listing a half-described file.
+    func testManifestDecodingToleratesExtraKeysAndRejectsMissingOnes() throws {
+        let entry = """
+        {"id":"x","title":"X","file":"\(String(repeating: "a", count: 64)).usdz","sha256":"\(String(repeating: "a", count: 64))",
+         "bytes":1200000,"license":"CC0-1.0","author":"A","source":"https://example.org","scale":0.01,"poster":"x.webp"}
+        """
+        let ok = try JSONDecoder().decode(HDPackManifest.self,
+                                          from: Data(#"{"version":1,"notes":"n","assets":[\#(entry)]}"#.utf8))
+        XCTAssertEqual(ok.assets.first?.id, "x")
+        XCTAssertEqual(ok.assets.first?.scale, 0.01)
+        XCTAssertEqual(ok.totalBytes, 1_200_000)
+        XCTAssertEqual(HDPackFormat.size(ok.totalBytes), "1\u{00A0}MB")
+        let noHash = entry.replacingOccurrences(of: #""sha256":"\#(String(repeating: "a", count: 64))","#, with: "")
+        XCTAssertThrowsError(try JSONDecoder().decode(HDPackManifest.self,
+                                                      from: Data(#"{"version":1,"assets":[\#(noHash)]}"#.utf8)))
+    }
+
+    @MainActor
+    func testMuseumPillCopy() {
+        let manifest = HDPackManifest.loadBundled()
+        let expected: [(String, String)] = [
+            ("apollo11-exterior", "Apollo 11 Command Module · download 14\u{00A0}MB"),
+            ("apollo11-interior", "Apollo 11 Interior · download 38\u{00A0}MB"),
+            ("woolly-mammoth", "Woolly Mammoth · download 7\u{00A0}MB"),
+            ("perseverance", "Perseverance Rover · download 18\u{00A0}MB"),
+        ]
+        for (id, label) in expected {
+            guard let asset = manifest.asset(id: id) else { return XCTFail("\(id) missing from ios.json") }
+            XCTAssertEqual(HDPackPill.label(title: asset.title, state: .missing, bytes: asset.bytes), label)
+        }
+    }
+
     func testInstallRejectsAChecksumMismatch() throws {
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data("not the helmet".utf8).write(to: temp)
