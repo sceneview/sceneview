@@ -26,6 +26,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.Buffer
 
+/** `Texture.Builder.levels` value Filament clamps to the full mip chain, as HDRLoader does. */
+private const val ALL_MIP_LEVELS = 0xff
+
 /**
  * Utility for decoding an HDR file or consuming KTX1 files and producing Filament textures, IBLs,
  * and sky boxes.
@@ -86,15 +89,68 @@ class EnvironmentLoader(
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true
     ): Environment? {
-        // Since we directly destroy the texture we call the `use` function and so don't pass lifecycle
-        // to createTexture because it can be destroyed immediately.
-        val textureCubemap = HDRLoader.createTexture(
+        // HDRLoader decodes and uploads in a single JNI call, so this overload has to run its
+        // decode on the calling (main) thread. [loadHDREnvironment] decodes off it instead.
+        val equirect = HDRLoader.createTexture(
             engine = engine,
             buffer = buffer,
             options = textureOptions
-        )?.use(engine) { hdrTexture ->
+        ) ?: return null
+        return prefilterHDREnvironment(
+            equirect = equirect,
+            indirectLightSpecularFilter = indirectLightSpecularFilter,
+            indirectLightApply = indirectLightApply,
+            createSkybox = createSkybox
+        )
+    }
+
+    /**
+     * Uploads an already decoded HDR [image] as an equirect texture, then prefilters it.
+     *
+     * Filament calls only — the decode already happened, off the main thread, in
+     * [loadHDREnvironment]. The texture matches `HDRLoader.createTexture`'s: full mip chain,
+     * [HDRLoader.Options.desiredFormat], mipmaps generated for the equirect-to-cubemap pass.
+     */
+    private fun createHDREnvironmentFromImage(
+        image: RgbeImage,
+        indirectLightSpecularFilter: Boolean,
+        indirectLightApply: IndirectLight.Builder.() -> Unit,
+        textureOptions: HDRLoader.Options,
+        createSkybox: Boolean
+    ): Environment? {
+        val equirect = Texture.Builder()
+            .width(image.width)
+            .height(image.height)
+            .levels(ALL_MIP_LEVELS)
+            .sampler(Texture.Sampler.SAMPLER_2D)
+            .format(textureOptions.desiredFormat)
+            .build(engine)
+        equirect.setImage(
+            engine,
+            0,
+            Texture.PixelBufferDescriptor(image.pixels, Texture.Format.RGB, Texture.Type.FLOAT)
+        )
+        equirect.generateMipmaps(engine)
+        return prefilterHDREnvironment(
+            equirect = equirect,
+            indirectLightSpecularFilter = indirectLightSpecularFilter,
+            indirectLightApply = indirectLightApply,
+            createSkybox = createSkybox
+        )
+    }
+
+    /** Prefilters a 2D HDR [equirect] into an IBL (and skybox), consuming the equirect. */
+    private fun prefilterHDREnvironment(
+        equirect: Texture,
+        indirectLightSpecularFilter: Boolean,
+        indirectLightApply: IndirectLight.Builder.() -> Unit,
+        createSkybox: Boolean
+    ): Environment {
+        // Since we directly destroy the texture we call the `use` function and so don't pass lifecycle
+        // to createTexture because it can be destroyed immediately.
+        val textureCubemap = equirect.use(engine) { hdrTexture ->
             iblPrefilter.equirectangularToCubemap(equirect = hdrTexture)
-        } ?: return null
+        }
 
         val reflections = if (indirectLightSpecularFilter) {
             iblPrefilter.specularFilter(textureCubemap).also {
@@ -225,7 +281,11 @@ class EnvironmentLoader(
      *
      * Consumes the content of an HDR file and produces an [IndirectLight] and a [Skybox].
      *
-     * @param url The HDR File url.
+     * Prefer this over the synchronous `createHDREnvironment` overloads from UI code: the file
+     * read and the RGBE decode run off the main thread, and only the Filament calls (texture
+     * upload, cubemap and specular prefilter) run on [Dispatchers.Main].
+     *
+     * @param url The HDR File url, or a relative asset file location (`environments/sky_2k.hdr`).
      * @param indirectLightSpecularFilter Generates a prefiltered indirect light cubemap.
      * SpecularFilter is a GPU based implementation of the specular probe pre-integration filter.
      * ** Launch the heavier computation. Expect 100-200ms on the GPU.**
@@ -245,17 +305,33 @@ class EnvironmentLoader(
         indirectLightApply: IndirectLight.Builder.() -> Unit = {},
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
-    ): Environment? = context.loadFileBuffer(url)?.let { buffer ->
+    ): Environment? {
+        val buffer = context.loadFileBuffer(url) ?: return null
+        // The RGBE decode is pure CPU work: run it off the main thread. A file the Kotlin decoder
+        // does not support falls back to HDRLoader, which decodes on Main with the upload.
+        val image = withContext(Dispatchers.Default) {
+            runCatching { RgbeDecoder.decode(buffer) }.getOrNull()
+        }
         // Filament asserts on JNI thread mismatch — build on Main, mirroring
         // MaterialLoader.loadMaterial / ModelLoader.loadModel.
-        withContext(Dispatchers.Main) {
-            createHDREnvironment(
-                buffer = buffer,
-                indirectLightSpecularFilter = indirectLightSpecularFilter,
-                indirectLightApply = indirectLightApply,
-                textureOptions = textureOptions,
-                createSkybox = createSkybox
-            )
+        return withContext(Dispatchers.Main) {
+            if (image != null) {
+                createHDREnvironmentFromImage(
+                    image = image,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
+            } else {
+                createHDREnvironment(
+                    buffer = buffer,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
+            }
         }
     }
 
@@ -421,17 +497,33 @@ class EnvironmentLoader(
         indirectLightApply: IndirectLight.Builder.() -> Unit = {},
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
-    ): Environment? = context.loadFileBuffer(url)?.let { buffer ->
+    ): Environment? {
+        val buffer = context.loadFileBuffer(url) ?: return null
+        // The RGBE decode is pure CPU work: run it off the main thread. A file the Kotlin decoder
+        // does not support falls back to HDRLoader, which decodes on Main with the upload.
+        val image = withContext(Dispatchers.Default) {
+            runCatching { RgbeDecoder.decode(buffer) }.getOrNull()
+        }
         // Filament asserts on JNI thread mismatch — build on Main, mirroring
         // MaterialLoader.loadMaterial / ModelLoader.loadModel.
-        withContext(Dispatchers.Main) {
-            createHDREnvironment(
-                buffer = buffer,
-                indirectLightSpecularFilter = indirectLightSpecularFilter,
-                indirectLightApply = indirectLightApply,
-                textureOptions = textureOptions,
-                createSkybox = createSkybox
-            )
+        return withContext(Dispatchers.Main) {
+            if (image != null) {
+                createHDREnvironmentFromImage(
+                    image = image,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
+            } else {
+                createHDREnvironment(
+                    buffer = buffer,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
+            }
         }
     }
 
