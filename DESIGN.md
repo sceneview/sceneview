@@ -764,7 +764,7 @@ describing it.
 - Ground: a 96dp `ar-scrim` disc with the `ar-scrim-border` hairline and `shadow-lg`; the
   cue's one plain sentence underneath in the same ground (`on-ar-scrim`, `type-body` at
   `weight-medium`, centred), 8dp gap, `radius-md`, padding 16dp × 10dp, max width 280dp so
-  it wraps to two lines on a phone. The same sentence is the accessible name, announced
+  it wraps to at most three lines on a phone. The same sentence is the accessible name, announced
   politely. It replaced a one-word caption ("Scan", "Look back") that left first-time users
   guessing: the 3D AR Model Viewer app and Apple's overlay both write the instruction out.
 - One glyph per cue, strokes in `on-ar-scrim`, accents in the dark-scheme `primary` and
