@@ -51,14 +51,29 @@ import io.github.sceneview.demo.ui.home.outlineSubtle
  * @param frontYaw yaw, in degrees, that turns the asset's front toward the viewer's camera. The
  *   viewer looks from +Z (the glTF front); an asset authored facing -Z needs 180 or the picker's
  *   thumbnail and the viewer disagree about which side of the model is shown (#3828).
+ * @param hdAssetId id of an HD pack asset (`assets/hd-pack/android.json`). The entry then opens
+ *   that model once it is on the device, and [assetPath] is only its bundled stand-in, shown
+ *   instantly while the HD file downloads or loads.
+ * @param thumbnailStem [ModelThumbnails] key when it is not the stem of [assetPath].
  */
 data class BundledViewerModel(
     val assetPath: String,
     val displayName: String,
     @StringRes val description: Int? = null,
     val frontYaw: Float = 0f,
+    val hdAssetId: String? = null,
+    val thumbnailStem: String? = null,
 ) {
     val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.')
+
+    /** Identity in the picker: an HD entry shares its stand-in's [assetPath] with another card. */
+    val key: String get() = hdAssetId?.let { "hd:$it" } ?: assetPath
+
+    /**
+     * Thumbnail stem ([ModelThumbnails]): [thumbnailStem] when set — an HD card pictures its HD
+     * model, not the stand-in at [assetPath] — else the asset's own stem.
+     */
+    val thumbnailName: String get() = thumbnailStem ?: assetName
 }
 
 /**
@@ -98,13 +113,14 @@ enum class ViewerScene(
  * There is no "Surprise me" here any more. The viewer's floating pill is the one entry point — two
  * copies of the same action, one of them inside a sheet, was the confusion the issue reports.
  *
- * @param selectedPath the model on screen, outlined; `null` outside the single-model section.
+ * @param selectedKey [BundledViewerModel.key] of the model on screen, outlined; `null` outside
+ *   the single-model section.
  * @param currentScene the scene on screen, outlined; `null` in the single-model section.
  */
 @Composable
 fun ModelPickerSheet(
     models: List<BundledViewerModel>,
-    selectedPath: String?,
+    selectedKey: String?,
     currentScene: ViewerScene?,
     onSelect: (BundledViewerModel) -> Unit,
     onScene: (ViewerScene) -> Unit,
@@ -158,12 +174,12 @@ fun ModelPickerSheet(
                         PickerCard(
                             title = model.displayName,
                             subtitle = model.description?.let { stringResource(it) },
-                            selected = model.assetPath == selectedPath,
+                            selected = model.key == selectedKey,
                             onClick = { onSelect(model) },
                         ) {
                             // A transparent render of the exact GLB this card opens, on the card's
                             // own fill — so it sits right in both themes.
-                            ModelThumbnails.resourceFor(model.assetName)?.let {
+                            ModelThumbnails.resourceFor(model.thumbnailName)?.let {
                                 Image(
                                     painter = painterResource(it),
                                     contentDescription = null,

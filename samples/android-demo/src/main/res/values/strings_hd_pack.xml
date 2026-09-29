@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- About → App: the HD pack row. %1$s is the pack size ("48 MB"). Copy shared with iOS. -->
+    <string name="hd_pack_settings_title">HD scenes · %1$s</string>
+    <string name="hd_pack_settings_ready">Downloaded</string>
+    <string name="hd_pack_settings_waiting_wifi">Waiting for Wi-Fi</string>
+    <string name="hd_pack_settings_waiting_network">Waiting for a network</string>
+    <string name="hd_pack_settings_not_downloaded">Not downloaded</string>
+    <string name="hd_pack_settings_failed">Download failed</string>
+    <string name="hd_pack_settings_downloading">Downloading %1$d %%</string>
+    <string name="hd_pack_action_download">Download now</string>
+    <string name="hd_pack_action_remove">Remove</string>
+    <string name="hd_pack_removed">HD scenes removed · %1$s freed</string>
+
+    <!-- "Download now" always states the size before anything is fetched. -->
+    <string name="hd_pack_dialog_title">Download HD scenes?</string>
+    <string name="hd_pack_dialog_body">Full-resolution models, %1$s. They stay on this device until you remove them in About.</string>
+    <!-- Appended to the body only on a metered network. -->
+    <string name="hd_pack_dialog_metered_note">This uses mobile data.</string>
+    <string name="hd_pack_dialog_confirm">Download</string>
+    <string name="hd_pack_dialog_cancel">Cancel</string>
+
+    <!-- The viewer pill while an HD model shows its bundled stand-in: "<model name> · <status>".
+         The name comes from the pack manifest; these are the status halves. Copy shared with iOS. -->
+    <string name="hd_pill_downloading">downloading %1$d %%</string>
+    <string name="hd_pill_waiting_wifi">waiting for Wi-Fi</string>
+    <string name="hd_pill_waiting_network">waiting for a network</string>
+    <string name="hd_pill_download">download %1$s</string>
+    <string name="hd_pill_loading">loading</string>
+    <string name="hd_pill_failed">download failed</string>
+    <!-- Accessible name of the pill when a tap opens the download dialog. %1$s is the visible text. -->
+    <string name="hd_pill_hint">%1$s. Tap to download it now.</string>
+
+    <!-- Credits sheet: HD pack entries. %1$s author, %2$s licence. -->
+    <string name="credits_hd_section">HD scenes (downloaded)</string>
+    <string name="credits_hd_row_subtitle">by %1$s — %2$s</string>
+    <string name="credits_hd_row_open_cd">Open the source page</string>
+
+    <string name="demo_model_desc_flight_helmet">Leather, brass and glass · HD</string>
+</resources>

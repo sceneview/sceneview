@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.sketchfab.SampleAssets
-import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.demo.hdpack.rememberHdPackStore
 
 /**
  * Modal bottom sheet listing every streamed Sketchfab model the demo app
@@ -85,6 +85,8 @@ fun CreditsSheet(onDismiss: () -> Unit) {
             ).show()
         }
     }
+
+    val hdPackAssets = rememberHdPackStore()?.manifest?.assets.orEmpty()
 
     DemoModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -151,7 +153,35 @@ fun CreditsSheet(onDismiss: () -> Unit) {
                     )
                 }
                 items(slugs, key = { it.sketchfabUrl }) { slug ->
-                    CreditsRow(slug = slug, onOpen = { openUrl(slug.sketchfabUrl) })
+                    CreditsRow(
+                        title = slug.displayName,
+                        // "by <Author> — CC-BY 4.0"
+                        subtitle = stringResource(R.string.credits_row_subtitle, slug.author),
+                        onOpen = { openUrl(slug.sketchfabUrl) },
+                    )
+                }
+            }
+
+            // HD pack (2026-09-29): the downloaded models, credited from the same manifest the
+            // download reads, so an asset added to the pack is credited here without a second list.
+            val hdAssets = hdPackAssets
+            if (hdAssets.isNotEmpty()) {
+                item(key = "category-hd-pack") {
+                    Text(
+                        text = stringResource(R.string.credits_hd_section),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                items(hdAssets, key = { "hd-" + it.id }) { asset ->
+                    CreditsRow(
+                        title = asset.title,
+                        subtitle = stringResource(R.string.credits_hd_row_subtitle, asset.author, asset.license),
+                        onOpen = { openUrl(asset.source) },
+                        openDescription = stringResource(R.string.credits_hd_row_open_cd),
+                    )
                 }
             }
 
@@ -169,7 +199,12 @@ fun CreditsSheet(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun CreditsRow(slug: SketchfabSlug, onOpen: () -> Unit) {
+private fun CreditsRow(
+    title: String,
+    subtitle: String,
+    onOpen: () -> Unit,
+    openDescription: String = stringResource(R.string.credits_row_open_cd),
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -201,24 +236,20 @@ private fun CreditsRow(slug: SketchfabSlug, onOpen: () -> Unit) {
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = slug.displayName,
+                    text = title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    // "by <Author> — CC-BY 4.0"
-                    text = stringResource(
-                        R.string.credits_row_subtitle,
-                        slug.author,
-                    ),
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(
                 Icons.AutoMirrored.Filled.OpenInNew,
-                contentDescription = stringResource(R.string.credits_row_open_cd),
+                contentDescription = openDescription,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )
