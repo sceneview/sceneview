@@ -806,8 +806,10 @@ enum CosmosFraming {
     }
 
     /// Camera orbit (distance, elevation, yaw) for `scene` at `time` seconds; the camera
-    /// always looks at the origin.
-    static func pose(_ scene: CosmosSceneKind, time: Float, aspect: Float) -> (distance: Float, elevation: Float, yaw: Float) {
+    /// always looks at the origin. `rolled` says whether the flow field is turned a quarter for a
+    /// landscape viewport; it defaults to the viewport's own orientation.
+    static func pose(_ scene: CosmosSceneKind, time: Float, aspect: Float,
+                     rolled: Bool? = nil) -> (distance: Float, elevation: Float, yaw: Float) {
         let deg = Float.pi / 180
         switch scene {
         case .galaxy:
@@ -819,7 +821,7 @@ enum CosmosFraming {
         case .burst:
             return (fitDistance(1.6, 1.6, aspect: aspect), (8 + 4 * sin(time * 0.13)) * deg, (16 * sin(time * 0.1)) * deg)
         case .flow:
-            return flowPose(time: time, aspect: aspect)
+            return flowPose(time: time, aspect: aspect, rolled: rolled ?? (aspect > 1))
         }
     }
 
@@ -829,13 +831,13 @@ enum CosmosFraming {
     /// The flow field has an edge, so unlike the other scenes it must overfill the viewport:
     /// the camera comes in until all four viewport corners land on the field. The largest such
     /// distance is found by bisection — the corner footprint grows with distance.
-    private static func flowPose(time: Float, aspect: Float) -> (distance: Float, elevation: Float, yaw: Float) {
+    private static func flowPose(time: Float, aspect: Float,
+                                 rolled: Bool) -> (distance: Float, elevation: Float, yaw: Float) {
         let deg = Float.pi / 180
         let elevation = (10 + 2 * sin(time * 0.08)) * deg
         let yaw = (4 * sin(time * 0.1)) * deg
         // On a landscape viewport the camera is rolled a quarter turn (`CosmosEngine.camera`):
         // in the camera's own frame, the rolled field is simply a wider-than-tall one.
-        let rolled = aspect > 1
         let halfWidth = flowCoverMargin * (rolled ? CosmosMeshes.flowHalfHeight : CosmosMeshes.flowHalfWidth)
         let halfHeight = flowCoverMargin * (rolled ? CosmosMeshes.flowHalfWidth : CosmosMeshes.flowHalfHeight)
         var near: Float = 0.3

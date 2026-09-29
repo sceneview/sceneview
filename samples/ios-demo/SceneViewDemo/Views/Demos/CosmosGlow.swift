@@ -540,6 +540,7 @@ enum GlowBuilder {
         // Past 8 octaves per class there is nothing left to merge by: clamp, never overflow.
         let rows = min(max(classOf.count, 1), maxRows)
         if classOf.count > maxRows {
+            NSLog("[Cosmos] dash atlas clamped: %d colour classes folded into %d rows", classOf.count, maxRows)
             classOf = classOf.filter { $0.value < maxRows }
             for index in segmentClass.indices { segmentClass[index] = min(segmentClass[index], maxRows - 1) }
         }

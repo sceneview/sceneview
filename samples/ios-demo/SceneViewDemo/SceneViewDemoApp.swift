@@ -249,7 +249,7 @@ struct ContentView: View {
         .fullScreenCover(item: $presentedDemo) { link in
             DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
         }
-        #else
+        #elseif os(macOS)
         .sheet(item: $presentedDemo) { link in
             DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
                 // Same floor as `ShowcaseTab`: a macOS sheet has no size of its own.

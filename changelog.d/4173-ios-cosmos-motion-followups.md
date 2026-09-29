@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: Cosmos Flow survives a rotation.** Turning the device on the Flow scene no longer blanks the field and replays its reveal: the new orientation is built while the old one stays on screen, then swapped in without restarting the scene clock or the tour. The star's background plasma bake can no longer run twice at once after a reset, the power and thermal state are read from their notifications instead of on every frame, and the macOS-only sheet size floor no longer applies to other platforms.

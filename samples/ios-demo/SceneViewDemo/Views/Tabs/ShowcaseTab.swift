@@ -290,7 +290,7 @@ struct ShowcaseTab: View {
                     // open and on close.
                     .interactiveDismissDisabled()
             }
-            #else
+            #elseif os(macOS)
             .sheet(item: $fullScreenScene) { scene in
                 DemoCover(scene: scene) { fullScreenScene = nil }
                     // A macOS sheet sizes to its content's ideal size, and a 3D stage
