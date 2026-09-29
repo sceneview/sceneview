@@ -8,7 +8,9 @@ import ARKit
 /// Full-screen 3D model viewer — the iOS twin of Android's `ModelViewerDemo.kt`
 /// after the showcase redesign.
 ///
-/// **Stage.** A `#0B0F16` stage (`SceneViewTokens.Stage.background`), no
+/// **Stage.** A `#0B0F16` stage (`SceneViewTokens.Stage.background`) in
+/// light and dark, with the HDR lighting the model but not drawn behind it
+/// (``showsEnvironmentByDefault``, Android's `ViewerBackdrop`), no
 /// auto-rotate: the model sits still on its fitted framing
 /// (`framingMargin(0.91)`, sized to Android's) until the user orbits it. The
 /// camera opens in front of the model, azimuth 0 and 12° above it, as on
@@ -24,7 +26,8 @@ import ARKit
 /// **Sheets.** Models — the bundled USDZ grid (transparent 5:4 `model_thumb_*`
 /// renders, Android's own where the model is shared) plus the "Surprise me" Sketchfab row (hidden without an API
 /// key) and "Browse online models"; Environment — the bundled HDRs with their
-/// `env_thumb_*` tiles, an IBL intensity slider and a skybox toggle.
+/// `env_thumb_*` tiles, an IBL intensity slider and a "Show environment"
+/// switch, off by default.
 ///
 /// Honours the umbrella's hard rules: no Sketchfab WebView, local file URLs
 /// only, something useful renders offline (the bundled hero).
@@ -129,39 +132,31 @@ struct ModelViewerDemo: View {
     /// "Seascape", an iOS-only tile, takes its second place. The rest is
     /// Android's order — Chinese Garden first, then Studio before Interior.
     static let environments: [ViewerEnvironment] = [
-        ViewerEnvironment(assetName: "chinese_garden", displayName: "Chinese Garden", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "sunset", displayName: "Seascape", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio", authoredAsPlace: false),
-        ViewerEnvironment(assetName: "studio", displayName: "Interior", authoredAsPlace: false),
-        ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night", authoredAsPlace: true),
+        ViewerEnvironment(assetName: "chinese_garden", displayName: "Chinese Garden"),
+        ViewerEnvironment(assetName: "sunset", displayName: "Seascape"),
+        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio"),
+        ViewerEnvironment(assetName: "studio", displayName: "Interior"),
+        ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy"),
+        ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky"),
+        ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night"),
     ]
 
-    /// The environment a first run lands on.
-    ///
-    /// #3583 asked for the environment backdrop to be visible by default "sans le
-    /// forcer". A studio rig has no backdrop worth drawing — it is four softbox
-    /// panels in a void — so shipping `studio` first meant the smart default below
-    /// always resolved to "hidden" and nobody ever saw an environment. Landing on a
-    /// place instead makes the default self-explanatory: the garden you can see is
-    /// the sky lighting the model. Same first-run environment as Android, whose
-    /// viewer opens on the first tile, Chinese Garden (#4103); the user can pick a
-    /// studio (or switch the backdrop off) at any time.
+    /// The environment a first run lands on — the lighting, not the backdrop.
+    /// Same first-run environment as Android, whose viewer opens on the first
+    /// tile, Chinese Garden (#4103).
     static let defaultEnvironment: ViewerEnvironment =
         environments.first { $0.assetName == "chinese_garden" } ?? environments[0]
 
-    /// Remembered answer to "should the backdrop be drawn?", persisted across launches.
+    /// Whether the viewer draws its HDR as the backdrop before the user asks.
     ///
-    /// `auto` is the smart default (#3583): the backdrop follows the picked
-    /// environment — drawn for one authored as a place, hidden for a studio rig, so
-    /// choosing Seascape actually shows you the sea instead of only its reflection.
-    /// The moment the user touches the "Show environment" switch the answer stops
-    /// being inferred and their choice sticks for every environment and every launch,
-    /// which is the "sans le forcer" half of the ask. "Reset" returns to `auto`.
-    private enum SkyboxPreference: Int {
-        case auto = 0, alwaysOn = 1, alwaysOff = 2
-    }
+    /// No, as on Android (`showEnvironment` starts `false`, #4179): the HDR
+    /// lights the model through image-based lighting and the model stands on
+    /// the navy `stage-background` stage, in both themes. The sheet's "Show
+    /// environment" switch draws it; the choice holds across environment
+    /// picks, like Android's, and Reset turns it off again. This replaces the
+    /// per-environment default of #3583, which drew Chinese Garden behind every
+    /// model on iOS while Android showed the stage.
+    static let showsEnvironmentByDefault = false
 
     /// The subject App Store slot 1 is meant to show. The interactive default
     /// is `bundledModels[0]` (Damaged Helmet) — the Khronos reference model a
@@ -254,14 +249,12 @@ struct ModelViewerDemo: View {
     @State private var showAR = false
 
     /// Which HDR lights the stage, and whether the app or the user chose it —
-    /// see ``ViewerLighting``. Changed only through ``relight(_:)``.
+    /// see ``ViewerLighting``. A new environment relights the model and leaves
+    /// the backdrop switch alone, as on Android.
     @State private var lighting = ViewerLighting()
     private var environment: ViewerEnvironment { lighting.environment }
     @State private var iblIntensity: Float = 1
-    @State private var showSkybox = ModelViewerDemo.defaultEnvironment.authoredAsPlace
-
-    /// Raw storage for ``SkyboxPreference`` — `@AppStorage` cannot hold the enum directly.
-    @AppStorage("viewer_skybox_preference") private var skyboxPreferenceRaw: Int = SkyboxPreference.auto.rawValue
+    @State private var showSkybox = ModelViewerDemo.showsEnvironmentByDefault
 
     @State private var animationNames: [String] = []
     @State private var animationBarOpen = false
@@ -306,29 +299,6 @@ struct ModelViewerDemo: View {
         #endif
     }
 
-    /// The backdrop state a given environment should land on, honouring a
-    /// remembered explicit choice over the per-environment default.
-    private func defaultSkybox(for environment: ViewerEnvironment) -> Bool {
-        switch SkyboxPreference(rawValue: skyboxPreferenceRaw) ?? .auto {
-        case .alwaysOn: return true
-        case .alwaysOff: return false
-        case .auto: return environment.authoredAsPlace
-        }
-    }
-
-    /// The sheet's "Show environment" switch. Reading is plain state; *writing* is
-    /// the user speaking, so it also promotes the preference out of `auto`.
-    private var skyboxBinding: Binding<Bool> {
-        Binding(
-            get: { showSkybox },
-            set: { newValue in
-                showSkybox = newValue
-                skyboxPreferenceRaw = (newValue ? SkyboxPreference.alwaysOn
-                                                : SkyboxPreference.alwaysOff).rawValue
-            }
-        )
-    }
-
     private var sceneEnvironment: SceneEnvironment {
         SceneEnvironment.custom(
             name: environment.displayName,
@@ -354,14 +324,6 @@ struct ModelViewerDemo: View {
         }
         items.append(DockItem(icon: "scope", label: "Recenter") { recenter() })
         return items
-    }
-
-    /// Applies one ``ViewerLighting`` step; a new environment brings its own
-    /// backdrop default (or the remembered explicit choice).
-    private func relight(_ change: (inout ViewerLighting) -> Void) {
-        let before = lighting.environment
-        change(&lighting)
-        if lighting.environment != before { showSkybox = defaultSkybox(for: lighting.environment) }
     }
 
     /// Raw `-camera_distance <float>` launch-arg override, written by
@@ -495,7 +457,7 @@ struct ModelViewerDemo: View {
                         onSelect: { model in
                             sheet = nil
                             selectedModel = model
-                            relight { $0.select(model) }
+                            lighting.select(model)
                             Task { await loadBundled(model) }
                         },
                         onSurprise: {
@@ -512,19 +474,17 @@ struct ModelViewerDemo: View {
                         environments: Self.environments,
                         selected: environment,
                         intensity: $iblIntensity,
-                        showSkybox: skyboxBinding,
+                        showSkybox: $showSkybox,
                         onSelect: { picked in
                             lighting.pick(picked)
-                            showSkybox = defaultSkybox(for: picked)
                         },
                         onReset: {
-                            // Reset also forgets the remembered choice, back to auto,
-                            // and returns to the lighting the model on stage opens
-                            // under — a Surprise model (streamed) gets the garden.
-                            skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
+                            // Back to the lighting the model on stage opens under
+                            // — a Surprise model (streamed) gets the garden — and
+                            // to the navy stage, as Android's Reset does.
                             lighting.reset(for: streamedUid == nil ? selectedModel : nil)
                             iblIntensity = 1
-                            showSkybox = environment.authoredAsPlace
+                            showSkybox = Self.showsEnvironmentByDefault
                         }
                     )
                 }
@@ -568,17 +528,13 @@ struct ModelViewerDemo: View {
                     lighting.pick(stage)
                     showSkybox = true
                 }
-            } else {
-                // Honour a remembered explicit choice from a previous launch;
-                // otherwise fall back to the picked environment's own default.
-                showSkybox = defaultSkybox(for: environment)
             }
             #if DEBUG
             if let picked = Self.launchArgModel { selectedModel = picked }
             #endif
             // A museum model opened directly (deep link, QA launch arg) gets its
             // Studio lighting too; the first-run model keeps the store/garden stage.
-            relight { $0.select(selectedModel) }
+            lighting.select(selectedModel)
             await loadBundled(selectedModel)
         }
         .onChange(of: hdPack.states) { _, _ in
@@ -810,10 +766,9 @@ struct ModelViewerDemo: View {
 
     private func resetAll() {
         recenterGeneration += 1
-        skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
         lighting.resetAll()
         iblIntensity = 1
-        showSkybox = Self.defaultEnvironment.authoredAsPlace
+        showSkybox = Self.showsEnvironmentByDefault
         selectedModel = Self.bundledModels[0]
         Task { await loadBundled(selectedModel) }
     }

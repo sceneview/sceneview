@@ -57,19 +57,6 @@ struct ViewerEnvironment: Identifiable, Equatable {
     let assetName: String
     let displayName: String
 
-    /// Was this HDR authored as a *place* you could stand in, or as a lighting rig?
-    ///
-    /// The distinction is visible in the `env_thumb_*` chrome balls: `studio` and
-    /// `studio_warm` reflect softbox panels — they are light sources, and drawing
-    /// their skybox puts the model in a grey equipment room. `sunset`,
-    /// `outdoor_cloudy`, `night_sky` and `rooftop_night` reflect a horizon, a field,
-    /// the Milky Way and a city skyline — hiding those throws away the thing you
-    /// just picked, which is what #3583 is about.
-    ///
-    /// This drives the *default* backdrop state only. An explicit toggle by the user
-    /// always wins and is remembered — see `skyboxOverride` in `ModelViewerDemo`.
-    let authoredAsPlace: Bool
-
     var id: String { assetName }
 
     var thumbnailName: String? {

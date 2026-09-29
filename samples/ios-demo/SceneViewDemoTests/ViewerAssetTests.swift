@@ -180,20 +180,13 @@ final class ViewerAssetTests: XCTestCase {
         )
     }
 
-    /// The #3583 smart default: a studio rig is a light source, so its backdrop
-    /// stays hidden; an environment authored as a place is meant to be seen.
-    func testOnlyStudioRigsHideTheirBackdropByDefault() {
-        let hidden = environments.filter { !$0.authoredAsPlace }.map(\.assetName)
-        XCTAssertEqual(hidden, ["studio_warm", "studio"])
-    }
-
-    /// A first run must land on an environment whose backdrop is worth drawing,
-    /// otherwise "show the environment by default" (#3583) resolves to nothing:
-    /// the smart default above would hide the backdrop of a studio rig forever.
-    func testFirstRunEnvironmentIsAPlace() {
-        let first = environments.first { $0.assetName == "chinese_garden" }
-        XCTAssertNotNil(first, "the first-run environment left the catalog")
-        XCTAssertEqual(first?.authoredAsPlace, true)
+    /// The viewer opens on the navy stage, the HDR lighting the model but not
+    /// drawn behind it, as Android's does since #4179. The Android value is
+    /// read from its source, so a change on either side fails here.
+    func testEnvironmentBackdropStartsHiddenLikeAndroid() throws {
+        XCTAssertFalse(ModelViewerDemo.showsEnvironmentByDefault)
+        XCTAssertEqual(try Self.androidShowsEnvironmentByDefault(),
+                       ModelViewerDemo.showsEnvironmentByDefault)
     }
 
     /// Every picker card carries its one line, and a model Android also ships
@@ -277,6 +270,20 @@ final class ViewerAssetTests: XCTestCase {
         // Damaged Helmet, Flight Helmet, Lantern, Toy Car and the four museum models.
         XCTAssertGreaterThanOrEqual(shared, 8, "Lost track of the Android model list.")
         XCTAssertEqual(yaws["hd_woolly_mammoth"], -30, "Android's mammoth `frontYaw` not found.")
+    }
+
+    /// The initial value of Android's `showEnvironment` in `ModelViewerDemo.kt`.
+    static func androidShowsEnvironmentByDefault(file: StaticString = #filePath) throws -> Bool {
+        let kotlin = try String(contentsOf: androidDemoSources(file)
+            .appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
+        let pattern = try NSRegularExpression(
+            pattern: #"var showEnvironment by remember \{ mutableStateOf\((true|false)\) \}"#)
+        guard let match = pattern.firstMatch(in: kotlin, range: NSRange(kotlin.startIndex..., in: kotlin)),
+              let text = Range(match.range(at: 1), in: kotlin) else {
+            XCTFail("`showEnvironment` not found in ModelViewerDemo.kt")
+            return true
+        }
+        return kotlin[text] == "true"
     }
 
     /// Android's `DemoMath.VIEWER_PITCH_DEGREES`.
