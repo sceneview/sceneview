@@ -2,6 +2,7 @@ package io.github.sceneview.loaders
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.RawRes
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
@@ -19,15 +20,21 @@ import io.github.sceneview.texture.use
 import io.github.sceneview.utils.loadFileBuffer
 import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.whenBackendIdle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.Buffer
+import java.nio.ByteBuffer
 
 /** `Texture.Builder.levels` value Filament clamps to the full mip chain, as HDRLoader does. */
 private const val ALL_MIP_LEVELS = 0xff
+private const val TAG = "EnvironmentLoader"
 
 /**
  * Utility for decoding an HDR file or consuming KTX1 files and producing Filament textures, IBLs,
@@ -138,6 +145,79 @@ class EnvironmentLoader(
             indirectLightApply = indirectLightApply,
             createSkybox = createSkybox
         )
+    }
+
+    /**
+     * Reads and decodes the HDR at [url] off the main thread, then builds the environment on
+     * Main — the shared body of [loadHDREnvironment] and the HDR `loadKTX1Environment(url)`.
+     *
+     * The Main block runs to completion even if the caller is cancelled meanwhile, so a
+     * half-built environment never leaks: a cancelled caller gets the built environment
+     * destroyed and the cancellation rethrown.
+     */
+    private suspend fun loadHDREnvironmentOffMain(
+        url: String,
+        indirectLightSpecularFilter: Boolean,
+        indirectLightApply: IndirectLight.Builder.() -> Unit,
+        textureOptions: HDRLoader.Options,
+        createSkybox: Boolean
+    ): Environment? {
+        val buffer = context.loadFileBuffer(url) ?: return null
+        // The RGBE decode is pure CPU work: run it off the main thread. A file the Kotlin decoder
+        // does not support falls back to HDRLoader, which decodes on Main with the upload.
+        val image = withContext(Dispatchers.Default) { decodeRgbeOrNull(buffer) }
+        currentCoroutineContext().ensureActive()
+        var environment: Environment? = null
+        try {
+            // Filament asserts on JNI thread mismatch — build on Main, mirroring
+            // MaterialLoader.loadMaterial / ModelLoader.loadModel.
+            withContext(Dispatchers.Main + NonCancellable) {
+                environment = if (image != null) {
+                    createHDREnvironmentFromImage(
+                        image = image,
+                        indirectLightSpecularFilter = indirectLightSpecularFilter,
+                        indirectLightApply = indirectLightApply,
+                        textureOptions = textureOptions,
+                        createSkybox = createSkybox
+                    )
+                } else {
+                    createHDREnvironment(
+                        buffer = buffer,
+                        indirectLightSpecularFilter = indirectLightSpecularFilter,
+                        indirectLightApply = indirectLightApply,
+                        textureOptions = textureOptions,
+                        createSkybox = createSkybox
+                    )
+                }
+            }
+            currentCoroutineContext().ensureActive()
+        } catch (cancellation: CancellationException) {
+            environment?.let { built ->
+                withContext(Dispatchers.Main + NonCancellable) { destroyEnvironment(built) }
+            }
+            throw cancellation
+        }
+        return environment
+    }
+
+    /**
+     * [RgbeDecoder.decode] on the calling dispatcher, checking for cancellation as it goes;
+     * `null` (so `HDRLoader` takes over) when the decoder cannot read the file.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun decodeRgbeOrNull(buffer: ByteBuffer): RgbeImage? {
+        val callerContext = currentCoroutineContext()
+        return try {
+            RgbeDecoder.decode(buffer) { callerContext.ensureActive() }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "RGBE decode failed, falling back to HDRLoader", error)
+            null
+        } catch (outOfMemory: OutOfMemoryError) {
+            Log.w(TAG, "RGBE decode out of memory, falling back to HDRLoader", outOfMemory)
+            null
+        }
     }
 
     /** Prefilters a 2D HDR [equirect] into an IBL (and skybox), consuming the equirect. */
@@ -306,35 +386,13 @@ class EnvironmentLoader(
         indirectLightApply: IndirectLight.Builder.() -> Unit = {},
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
-    ): Environment? {
-        val buffer = context.loadFileBuffer(url) ?: return null
-        // The RGBE decode is pure CPU work: run it off the main thread. A file the Kotlin decoder
-        // does not support falls back to HDRLoader, which decodes on Main with the upload.
-        val image = withContext(Dispatchers.Default) {
-            runCatching { RgbeDecoder.decode(buffer) }.getOrNull()
-        }
-        // Filament asserts on JNI thread mismatch — build on Main, mirroring
-        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
-        return withContext(Dispatchers.Main) {
-            if (image != null) {
-                createHDREnvironmentFromImage(
-                    image = image,
-                    indirectLightSpecularFilter = indirectLightSpecularFilter,
-                    indirectLightApply = indirectLightApply,
-                    textureOptions = textureOptions,
-                    createSkybox = createSkybox
-                )
-            } else {
-                createHDREnvironment(
-                    buffer = buffer,
-                    indirectLightSpecularFilter = indirectLightSpecularFilter,
-                    indirectLightApply = indirectLightApply,
-                    textureOptions = textureOptions,
-                    createSkybox = createSkybox
-                )
-            }
-        }
-    }
+    ): Environment? = loadHDREnvironmentOffMain(
+        url = url,
+        indirectLightSpecularFilter = indirectLightSpecularFilter,
+        indirectLightApply = indirectLightApply,
+        textureOptions = textureOptions,
+        createSkybox = createSkybox
+    )
 
     /**
      * Utility for producing environment resources from precompiled cmgen generated KTX files.
@@ -498,35 +556,13 @@ class EnvironmentLoader(
         indirectLightApply: IndirectLight.Builder.() -> Unit = {},
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
-    ): Environment? {
-        val buffer = context.loadFileBuffer(url) ?: return null
-        // The RGBE decode is pure CPU work: run it off the main thread. A file the Kotlin decoder
-        // does not support falls back to HDRLoader, which decodes on Main with the upload.
-        val image = withContext(Dispatchers.Default) {
-            runCatching { RgbeDecoder.decode(buffer) }.getOrNull()
-        }
-        // Filament asserts on JNI thread mismatch — build on Main, mirroring
-        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
-        return withContext(Dispatchers.Main) {
-            if (image != null) {
-                createHDREnvironmentFromImage(
-                    image = image,
-                    indirectLightSpecularFilter = indirectLightSpecularFilter,
-                    indirectLightApply = indirectLightApply,
-                    textureOptions = textureOptions,
-                    createSkybox = createSkybox
-                )
-            } else {
-                createHDREnvironment(
-                    buffer = buffer,
-                    indirectLightSpecularFilter = indirectLightSpecularFilter,
-                    indirectLightApply = indirectLightApply,
-                    textureOptions = textureOptions,
-                    createSkybox = createSkybox
-                )
-            }
-        }
-    }
+    ): Environment? = loadHDREnvironmentOffMain(
+        url = url,
+        indirectLightSpecularFilter = indirectLightSpecularFilter,
+        indirectLightApply = indirectLightApply,
+        textureOptions = textureOptions,
+        createSkybox = createSkybox
+    )
 
     fun destroyEnvironment(environment: Environment) {
         environment.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
