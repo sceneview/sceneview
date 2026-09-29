@@ -697,9 +697,6 @@ private fun SingleModelSection(
         if (!animationPlaying) {
             animator.applyAnimation(selectedAnimation, animationProgress * duration)
             animator.updateBoneMatrices()
-            // The OnDemand loop sleeps once nothing moves: a static model swapped in here would
-            // otherwise keep the previous model's frame on the SurfaceView until the next touch.
-            renderInvalidator.requestRender()
             return@LaunchedEffect
         }
         var start = 0L
@@ -727,10 +724,22 @@ private fun SingleModelSection(
     // glTF +Y-up/+Z-front, so its world AABB is right as loaded; an extra -90° X here tipped it
     // crown-forward. The camera always looks from +Z, 12° above (the Khronos sample-viewer home).
     // Measured in world units: an HD model shown at its real size (`modelScale`) is framed at it.
-    val bounds = remember(activeModelInstance, modelScale) {
+    // A bundled model turned by `frontYaw` is framed by the footprint of the TURNED box: at -30°
+    // the mammoth's tusks reached past the screen edge when framed by its unturned AABB.
+    val frontYaw = if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+    val bounds = remember(activeModelInstance, modelScale, frontYaw) {
         val instance = activeModelInstance ?: return@remember null
         runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
-            ?.let { Aabb(it.center * modelScale, it.halfExtent * modelScale) }
+            ?.let { box ->
+                val half = box.halfExtent * modelScale
+                val yawRadians = Math.toRadians(frontYaw.toDouble())
+                val cos = kotlin.math.abs(kotlin.math.cos(yawRadians)).toFloat()
+                val sin = kotlin.math.abs(kotlin.math.sin(yawRadians)).toFloat()
+                Aabb(
+                    box.center * modelScale,
+                    Position(cos * half.x + sin * half.z, half.y, sin * half.x + cos * half.z),
+                )
+            }
     }
     val modelCenter = bounds?.center ?: Position(0f, 0f, 0f)
     // Live auto-fit distance, written by the scene block (which knows the chrome insets) so the
@@ -1312,7 +1321,7 @@ private fun SingleModelSection(
                     // rather than a clean model-only spin.
                     // A bundled asset authored facing -Z turns to face the camera first (#3828);
                     // a streamed or opened file is shown as authored.
-                    val yaw = modelYaw + if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+                    val yaw = modelYaw + frontYaw
                     val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, yaw)
                     ModelNode(
                         modelInstance = instance,
