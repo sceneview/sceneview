@@ -44,7 +44,9 @@ Rules for the two GENERATED files:
   - Flag entries with missing required fields so they get fixed upstream.
 
 `--check` regenerates in memory and compares against the committed files
-without writing. It is a hard CI gate (`ci.yml` → `repo-hygiene`): CREDITS.md
+without writing. It is a hard CI gate (`ci.yml` → `build`, step "Check asset
+credits"; the `repo-hygiene` job that first ran it was deleted by #3244 and the
+gate ran nowhere until #4151): CREDITS.md
 is what discharges the attribution clause of every model's license, so a model
 added to catalog.json but never credited is a compliance gap, not a cosmetic
 one. Deterministic regenerate-and-compare has no false-positive risk, so it
@@ -652,7 +654,8 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
     lines.append(f"contents of `{scope['assets_dir']}` by")
     lines.append(f"[`.claude/scripts/generate-credits.py`]({to_root}.claude/scripts/generate-credits.py).")
     lines.append("Re-run that script after adding, removing or re-compressing a bundled asset;")
-    lines.append("`ci.yml` → `repo-hygiene` fails if this file and the assets disagree.")
+    lines.append("`ci.yml` → `build` (step \"Check asset credits\") fails if this file and the")
+    lines.append("assets disagree.")
     lines.append("")
     total = len(credited) + len(blanket)
     lines.append(f"Assets bundled: **{total}**.")

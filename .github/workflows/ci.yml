@@ -243,6 +243,16 @@ jobs:
               - 'assets/manifest.json'
               - 'tools/fetch-assets.sh'
               - '.github/actions/fetch-assets/**'
+              # The credits gate in `build` (generate-credits.py --check): its
+              # inputs and every file it generates or mirrors.
+              - 'assets/catalog.json'
+              - 'assets/CREDITS.md'
+              - 'assets/audio/CREDITS.md'
+              - '.claude/scripts/generate-credits.py'
+              - 'samples/ios-demo/SceneViewDemo/Resources/BundledCredits.json'
+              - 'samples/ios-demo/SceneViewDemo/Audio/CREDITS.md'
+              - 'samples/web-demo/site/credits.json'
+              - 'samples/web-demo/site/audio/CREDITS.md'
             # `web` gates the Gradle Kotlin/JS build of the sceneview-web
             # library plus the desktop-demo compile (#2540) that lives in the
             # same job. samples/web-demo is a plain static site (no Gradle
@@ -499,6 +509,16 @@ jobs:
       # again instead of going through `tools/fetch-assets.sh --register`.
       - name: Check binary assets
         run: bash tools/fetch-assets.sh --check --scope android --scope tv
+
+      # Every generated CREDITS file (assets/CREDITS.md, the APK's CREDITS.md,
+      # the iOS and web demos' credits JSON) must match what
+      # generate-credits.py renders from assets/catalog.json and the bundled
+      # files, and every bundled file must be credited. Ran in no workflow from
+      # #3244 (which deleted `repo-hygiene`) until #4151. It reads manifest
+      # entries whether or not they are fetched, so the result does not depend
+      # on the scopes materialised above.
+      - name: Check asset credits
+        run: python3 .claude/scripts/generate-credits.py --check
 
       # The release BUNDLE is a different packaging path from the debug APK:
       # R8 rewrites the Kotlin metadata resources and AGP 9's pre-bundle step
