@@ -88,7 +88,8 @@ enum HDAssetState: Equatable, Sendable {
 /// the same rounding Android uses for its own file size.
 enum HDPackFormat {
     static func size(_ bytes: Int64) -> String {
-        "\(max(1, Int((Double(bytes) / 1_000_000).rounded()))) MB"
+        // No-break space: "52 MB" never splits across two lines.
+        "\(max(1, Int((Double(bytes) / 1_000_000).rounded())))\u{00A0}MB"
     }
 }
 

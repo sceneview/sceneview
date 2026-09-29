@@ -54,7 +54,7 @@ final class HDPackTests: XCTestCase {
         XCTAssertEqual(HDPackPill.label(for: .downloading(0.349), bytes: 51_704_895), "HD · downloading 34 %")
         XCTAssertEqual(HDPackPill.label(for: .waitingForWiFi, bytes: 51_704_895), "HD · waiting for Wi-Fi")
         XCTAssertEqual(HDPackPill.label(for: .waitingForNetwork, bytes: 51_704_895), "HD · waiting for a network")
-        XCTAssertEqual(HDPackPill.label(for: .missing, bytes: 51_704_895), "HD · download 52 MB")
+        XCTAssertEqual(HDPackPill.label(for: .missing, bytes: 51_704_895), "HD · download 52\u{00A0}MB")
         XCTAssertEqual(HDPackPill.label(for: .ready, loading: true, bytes: 51_704_895), "HD · loading")
         XCTAssertEqual(HDPackPill.label(for: .failed, bytes: 51_704_895), "HD · download failed")
         XCTAssertNil(HDPackPill.label(for: .ready, bytes: 51_704_895))
@@ -75,7 +75,7 @@ final class HDPackTests: XCTestCase {
     @MainActor
     func testDialogMentionsMobileDataOnlyOnAnExpensiveNetwork() {
         let wifi = HDPackDownloadDialog.message(bytes: 51_704_895, expensive: false)
-        XCTAssertEqual(wifi, "Full-resolution models, 52 MB. They stay on this device until you remove them in About.")
+        XCTAssertEqual(wifi, "Full-resolution models, 52\u{00A0}MB. They stay on this device until you remove them in About.")
         XCTAssertEqual(HDPackDownloadDialog.message(bytes: 51_704_895, expensive: true), wifi + " This uses mobile data.")
     }
 }

@@ -155,15 +155,19 @@ struct HDPackSettingsRow: View {
                 Text("HD scenes · \(HDPackFormat.size(store.totalBytes))")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 if let statusLine {
                     Text(statusLine)
                         .font(.caption)
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                         .monospacedDigit()
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("hdPackStatus")
                 }
             }
+            .layoutPriority(1)
             .accessibilityElement(children: .combine)
             .animation(.easeInOut(duration: 0.2), value: statusLine)
 
@@ -206,8 +210,10 @@ struct HDPackSettingsRow: View {
             Button { confirmDownload = true } label: {
                 Text("Download now")
                     .font(SceneViewTokens.TypeScale.captionSemibold)
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
-                    .padding(.horizontal, SceneViewTokens.Space.md)
+                    .padding(.horizontal, SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
                     .frame(minHeight: SceneViewTokens.Glass.pillHeight)
                     .background(SceneViewTokens.HomeColor.primary, in: Capsule())
             }
