@@ -1,0 +1,109 @@
+// cosmos_ribbon.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Additive, camera-facing light strokes for the Cosmos demo: the particle tracks of
+//             the burst and the streamlines of the flow field. `PrimitiveType.LINES` rasterises
+//             at exactly one device pixel on every mobile backend (see LinesPathsDemo), which
+//             is too thin to glow and aliases as it moves; a ribbon is a triangle strip whose
+//             two rows share the curve point and are pushed apart in the vertex stage,
+//             perpendicular to both the tangent and the view ray, so it always faces the camera.
+// Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
+// Vertex layout (one interleaved buffer, built by CosmosMeshes):
+//   position — float3, the curve point in model space (both rows carry the same point).
+//   color    — float4, linear HDR radiance; alpha unused.
+//   custom0  — float4 (tangent.xyz, side = -1 or +1).
+//   custom1  — float4 (half width in model units, t along the curve in [0,1], per-curve seed
+//              in [0,1], arc length from the curve start in model units).
+// Parameters:
+//   time       — float, seconds; drives the travelling dashes.
+//   intensity  — float, global radiance multiplier.
+//   widthScale — float, global width multiplier.
+//   minPixels  — float, smallest on-screen half width in pixels (energy-preserving, as in
+//                cosmos_sprite.mat) so a far stroke dims instead of breaking into dots.
+//   head       — float, how far along every curve (in t) the stroke is drawn: the burst grows it
+//                from 0 to 1; the flow field keeps it above 1 so everything is drawn.
+//   headGlow   — float, extra radiance right behind the head (the hot tip of a track).
+//   base       — float, radiance of the stroke body.
+//   dashAmp    — float, radiance of the travelling pulses (0 = none).
+//   dashFreq   — float, pulses per model unit of arc length (times 2π).
+//   dashSpeed  — float, how fast the pulses travel.
+//   fade       — float [0,1], master fade (the burst's afterglow).
+//   tailTaper  — float [0,1], how much the stroke dims toward its far end.
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+material {
+    "name" : "Cosmos Ribbon",
+    "parameters" : [
+        { "type" : "float", "name" : "time" },
+        { "type" : "float", "name" : "intensity" },
+        { "type" : "float", "name" : "widthScale" },
+        { "type" : "float", "name" : "minPixels" },
+        { "type" : "float", "name" : "head" },
+        { "type" : "float", "name" : "headGlow" },
+        { "type" : "float", "name" : "base" },
+        { "type" : "float", "name" : "dashAmp" },
+        { "type" : "float", "name" : "dashFreq" },
+        { "type" : "float", "name" : "dashSpeed" },
+        { "type" : "float", "name" : "fade" },
+        { "type" : "float", "name" : "tailTaper" }
+    ],
+    "requires" : [ "position", "color", "custom0", "custom1" ],
+    "variables" : [ "stroke", "energy" ],
+    "shadingModel" : "unlit",
+    "blending" : "add",
+    "depthWrite" : false,
+    "depthCulling" : true,
+    "doubleSided" : true,
+    "culling" : "none"
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float4 c0 = getCustom0();
+        highp float4 c1 = getCustom1();
+        highp float3 point = material.worldPosition.xyz;
+        highp mat4 viewFromWorld = getViewFromWorldMatrix();
+        highp mat4 clipFromView = getClipFromViewMatrix();
+        highp float depth = max(-mulMat4x4Float3(viewFromWorld, point).z, 1e-3);
+        highp float focal = clipFromView[1][1] * 0.5 * getResolution().y;
+
+        highp float3 tangent = mat3(getWorldFromModelMatrix()) * c0.xyz;
+        highp float3 toEye = getWorldCameraPosition() - point;
+        highp float3 side = cross(tangent, toEye);
+        highp float sideLength = length(side);
+        side = sideLength > 1e-6 ? side / sideLength : float3(0.0);
+
+        highp float halfWidth = c1.x * materialParams.widthScale;
+        highp float halfWidthPx = halfWidth * focal / depth;
+        float energy = 1.0;
+        if (halfWidthPx < materialParams.minPixels) {
+            energy = halfWidthPx / materialParams.minPixels;
+            halfWidth = materialParams.minPixels * depth / focal;
+        }
+        material.worldPosition.xyz = point + side * (c0.w * halfWidth);
+        material.stroke = float4(c0.w, c1.y, c1.z, c1.w);
+        material.energy = float4(energy, 0.0, 0.0, 0.0);
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        float across = variable_stroke.x;
+        float t = variable_stroke.y;
+        float seed = variable_stroke.z;
+        float s = variable_stroke.w;
+
+        // Soft round profile across the stroke: a bright core and a feathered edge.
+        float profile = exp(-across * across * 4.5) * (1.0 - across * across);
+
+        // Each curve's head runs a little ahead of or behind the others, so the burst does not
+        // expand as one perfect sphere.
+        float head = materialParams.head * (0.8 + 0.4 * seed);
+        float drawn = step(t, head);
+        float tip = materialParams.headGlow * exp(-max(head - t, 0.0) * 16.0);
+        float pulse = 0.5 + 0.5 * sin(s * materialParams.dashFreq - materialParams.time * materialParams.dashSpeed + seed * 6.2831);
+        pulse = pulse * pulse * pulse * pulse * pulse * pulse * pulse * pulse;
+        float body = materialParams.base + tip + materialParams.dashAmp * pulse;
+        float taper = mix(1.0, 1.0 - smoothstep(0.55, 1.0, t), materialParams.tailTaper);
+
+        float k = drawn * body * taper * profile * variable_energy.x * materialParams.fade * materialParams.intensity;
+        material.baseColor = float4(getColor().rgb * k, 1.0);
+    }
+}

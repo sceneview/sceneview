@@ -334,3 +334,15 @@ __pycache__/
 # fast path whenever this file exists, so every release was graded against one
 # 2026-07-12 run instead of dispatching its own.
 device-qa-report.json
+
+# ── Binary 3D assets (assets/manifest.json) ───────────────
+# Materialised by `bash tools/fetch-assets.sh` from the `assets-v1` GitHub Release;
+# never committed. A new file here goes through `tools/fetch-assets.sh --register`.
+/samples/android-demo/src/main/assets/models/*.glb
+/samples/android-demo/src/main/assets/environments/*.hdr
+/samples/android-demo/src/main/assets/splats/*.spz
+/samples/android-demo/src/main/assets/splats/*.ply
+/samples/android-tv-demo/src/main/assets/models/*.glb
+/samples/ios-demo/SceneViewDemo/Models/*.usdz
+/samples/ios-demo/SceneViewDemo/Environments/*.hdr
+/website-static/models/platforms/*.glb

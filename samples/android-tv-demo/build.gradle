@@ -83,3 +83,26 @@ dependencies {
     // actually exists in src/main/assets/. Prevents regressing the session-34 fix.
     testImplementation "junit:junit:4.13.2"
 }
+
+// ─── Binary 3D assets (assets/manifest.json) ─────────────────────────────
+//
+// The TV demo's models are not in git: they live on the `assets-v1` GitHub
+// Release and `tools/fetch-assets.sh` materialises them under src/main/assets/.
+// preBuild (every variant) and the unit tests, which read those files from the
+// source tree, depend on this task, so a build never packages an APK without
+// its models. No outputs declared on purpose: it always runs, and the script is
+// a hash check once the shared cache (~/.cache/sceneview-assets) is warm.
+def fetchAssets = tasks.register("fetchAssets", Exec) {
+    description = "Materialises the TV demo's binary assets listed in assets/manifest.json."
+    group = "build"
+    workingDir rootProject.projectDir
+    // The TV app also packages ../android-demo/src/main/assets (`sourceSets`
+    // above), so it needs the android scope too.
+    commandLine "bash", rootProject.file("tools/fetch-assets.sh").absolutePath, "--scope", "tv", "--scope", "android"
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(fetchAssets)
+}
+tasks.withType(Test).configureEach {
+    dependsOn(fetchAssets)
+}

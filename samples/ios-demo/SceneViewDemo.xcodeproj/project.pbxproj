@@ -209,6 +209,7 @@
 		E10000000000000000000005 /* studio_warm.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000005 /* studio_warm.hdr */; };
 		E10000000000000000000006 /* autumn_field.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000006 /* autumn_field.hdr */; };
 		E10000000000000000000007 /* night_sky.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000007 /* night_sky.hdr */; };
+		E10000000000000000000008 /* chinese_garden.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000008 /* chinese_garden.hdr */; };
 		ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */; };
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
 		F00000000000000000000077 /* LabeledSliderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000076 /* LabeledSliderTests.swift */; };
@@ -421,6 +422,7 @@
 		E20000000000000000000005 /* studio_warm.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = studio_warm.hdr; sourceTree = "<group>"; };
 		E20000000000000000000006 /* autumn_field.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = autumn_field.hdr; sourceTree = "<group>"; };
 		E20000000000000000000007 /* night_sky.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = night_sky.hdr; sourceTree = "<group>"; };
+		E20000000000000000000008 /* chinese_garden.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = chinese_garden.hdr; sourceTree = "<group>"; };
 		E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovableLightDemo.swift; path = SceneViewDemo/Views/Demos/MovableLightDemo.swift; sourceTree = SOURCE_ROOT; };
 		F3DDC7D4F688438DB5EBE4ED /* DemoScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScene.swift; path = SceneViewDemo/Utilities/DemoScene.swift; sourceTree = SOURCE_ROOT; };
 		85C649EB882E1792036DA612 /* AnimationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AnimationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/AnimationScene.swift; sourceTree = SOURCE_ROOT; };
@@ -784,6 +786,7 @@
 				E20000000000000000000005 /* studio_warm.hdr */,
 				E20000000000000000000006 /* autumn_field.hdr */,
 				E20000000000000000000007 /* night_sky.hdr */,
+				E20000000000000000000008 /* chinese_garden.hdr */,
 			);
 			path = Environments;
 			sourceTree = "<group>";
@@ -821,6 +824,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70000010000000000000003 /* Build configuration list for PBXNativeTarget "SceneViewDemo" */;
 			buildPhases = (
+				A60000010000000000000005 /* Fetch assets */,
 				A60000010000000000000004 /* Collate iOS demos */,
 				A60000010000000000000003 /* Validate store secrets */,
 				A60000010000000000000001 /* Sources */,
@@ -970,6 +974,7 @@
 				E10000000000000000000005 /* studio_warm.hdr in Resources */,
 				E10000000000000000000006 /* autumn_field.hdr in Resources */,
 				E10000000000000000000007 /* night_sky.hdr in Resources */,
+				E10000000000000000000008 /* chinese_garden.hdr in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -983,6 +988,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A60000010000000000000005 /* Fetch assets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../assets/manifest.json",
+			);
+			name = "Fetch assets";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Models/ and Environments/ are not in git: they live on the `assets-v1`\n# GitHub Release, listed in assets/manifest.json. Materialise them before\n# Copy Bundle Resources so every build (Xcode, xcodebuild, fastlane, CI)\n# embeds the same bytes, or fails here instead of shipping without models.\n# Once ~/.cache/sceneview-assets is warm this is an offline hash check.\nset -eu\nbash \"${SRCROOT}/../../tools/fetch-assets.sh\" --scope ios\n";
+			showEnvVarsInLog = 0;
+		};
 		A60000010000000000000004 /* Collate iOS demos */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 0;

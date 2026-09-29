@@ -18,8 +18,8 @@ import kotlin.math.sqrt
  * to the functions here to validate, measure and centre the mesh.
  *
  * Preview status: the buffer layout mirrors `androidx.xr.arcore.Face`
- * (`1.0.0-alpha14`); the upstream is alpha and may change the vertex stride or
- * the index winding. See
+ * (SceneView's pin: `jetpackXrArCore` in SceneView's own version catalog); the
+ * upstream is pre-stable and may change the vertex stride or the index winding. See
  * [arsceneview/docs/JETPACK-XR-INTEGRATION.md](https://github.com/sceneview/sceneview/blob/main/arsceneview/docs/JETPACK-XR-INTEGRATION.md).
  */
 
@@ -43,7 +43,7 @@ import kotlin.math.sqrt
  * Each entry's [upstreamName] is the matching upstream `FaceMeshRegion`
  * constant name (or `null` for [CENTER], which is read from `meshCenterPose`
  * rather than the region-pose map) — [XrFaceNode] uses it to match poses by
- * name so the mapping survives the alpha SDK renaming a region.
+ * name so the mapping survives the pre-stable SDK renaming a region.
  *
  * @property upstreamName Name of the upstream `FaceMeshRegion` constant this
  *                        region maps to, or `null` when it is sourced from
@@ -68,7 +68,7 @@ enum class XrFaceRegion(val upstreamName: String?) {
  * vertex array, an optional flat normal array and a triangle index array.
  *
  * Holds only primitive arrays and [Position] — no `androidx.xr.arcore` types —
- * so [XrFaceNode] decodes the alpha SDK buffers into this and every downstream
+ * so [XrFaceNode] decodes the pre-stable SDK buffers into this and every downstream
  * consumer (geometry upload, the JVM tests) works on a runtime-free value.
  *
  * @property vertices Flat XYZ vertex positions: `vertices[3*i .. 3*i+2]` is
@@ -134,7 +134,7 @@ object XrFaceMesh {
     /**
      * Validates that a decoded [mesh] has a self-consistent buffer layout —
      * the gate [XrFaceNode] applies before uploading anything to Filament so a
-     * malformed alpha-SDK frame is dropped rather than crashing the renderer.
+     * malformed upstream frame is dropped rather than crashing the renderer.
      *
      * A mesh is valid when:
      *  - the vertex array length is a multiple of [VERTEX_STRIDE];

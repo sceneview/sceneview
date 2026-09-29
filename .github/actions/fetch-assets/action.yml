@@ -1,0 +1,34 @@
+name: Fetch binary assets
+description: |
+  Materialises the binary 3D assets listed in assets/manifest.json (demo models,
+  HDR environments, website models) at their paths, from the `assets-v1` GitHub
+  Release, through tools/fetch-assets.sh. The download cache is restored and saved
+  with actions/cache, keyed on the scopes and the manifest hash, so a job only
+  downloads what changed. Every job that builds a demo app or deploys the
+  website runs this right after its checkout: a job that skipped it would ship
+  without models. (The Gradle and Xcode builds also fetch on their own; this step
+  is what makes them hit the cache instead of the network.)
+
+inputs:
+  scopes:
+    description: Space-separated scopes to materialise — any of android, ios, tv, web.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore the asset cache
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/sceneview-assets
+        key: sceneview-assets-${{ runner.os }}-${{ inputs.scopes }}-${{ hashFiles('assets/manifest.json') }}
+        restore-keys: |
+          sceneview-assets-${{ runner.os }}-${{ inputs.scopes }}-
+    - name: Materialise ${{ inputs.scopes }} assets
+      shell: bash
+      env:
+        SCOPES: ${{ inputs.scopes }}
+      run: |
+        args=()
+        for s in $SCOPES; do args+=(--scope "$s"); done
+        bash tools/fetch-assets.sh "${args[@]}"

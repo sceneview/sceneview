@@ -1,14 +1,16 @@
 import SwiftUI
 import RealityKit
+import Metal
 import SceneViewSwift
 
-/// Composes a themed "Park" scene from the 4 glTF assets in ``SampleAssets``'
-/// `park` category: one hero at the back of the formation and three smaller
-/// ones in a front row.
+/// Composes a "Park" scene from the 4 models in ``SampleAssets``' `park`
+/// category: a pair of oaks at the back, a bench in front of them, a street
+/// lamp and a fern, on a round lawn in a garden (#4103).
 ///
 /// Mirrors the Android Multi-Model section (`samples/android-demo/.../ModelViewerDemo.kt`):
-/// same four `park` slugs, same visibility chips and "Spin scene" toggle. The
-/// arrangement is a quick tabletop diorama centred around `z = -1.5 m`.
+/// same four `park` slugs, same layout and sizes (`ParkFraming.kt`), same garden
+/// HDR, same visibility chips and "Spin scene" toggle. The park is centred
+/// around `z = -1.5 m`; the scene's auto-framing does the rest.
 ///
 /// The layout is positional and fixed; WHICH model stands in each slot is the
 /// registry's call. Nothing here names a species: each chip reads its label off
@@ -34,8 +36,8 @@ import SceneViewSwift
 /// ⚠️ That swap is also why this demo is deliberately absent from the App Store
 /// screenshot set (#2896). The bundled stand-ins are intentionally distinct
 /// silhouettes rather than four copies of one hero (#2355), so a keyless build
-/// composes a retro piano, a butterfly and a phoenix — a scene no keyless user
-/// sees as the documented park diorama. The substitution itself is by design;
+/// composes a tree island, a piano, a lantern and a shiba — a scene no keyless
+/// user sees as the documented park. The substitution itself is by design;
 /// what it is not is a listing screenshot.
 struct MultiModelDemo: View {
     /// One flag per SLOT, not per species — index `i` pairs with `Self.slots[i]`.
@@ -60,11 +62,43 @@ struct MultiModelDemo: View {
     /// Anchor under which every model lives. Stored so we can attach / detach
     /// individual entities without rebuilding the entire scene.
     @State private var sceneAnchor: AnchorEntity?
+    /// Bumped when a slot lands AND grows the park past what the camera was last
+    /// fitted to, while the camera is still the auto-framed one; fed to
+    /// `.recenterCamera(_:)` so the camera re-fits the whole park (#4103). See
+    /// `noteLanding()`.
+    @State private var reframeToken = 0
+    /// The park extents the camera was last fitted to: set by the first landing,
+    /// then by every re-fit. Each landing is measured against THIS, not against
+    /// the landing before it, so a small step (the bench over the fern) cannot
+    /// reset the baseline and hide the big one that follows (the oaks).
+    @State private var fittedExtents: SIMD3<Float>?
+    /// Set by the first orbit drag or pinch on the viewport. From then on the
+    /// camera is the user's: `.recenterCamera(_:)` resets the zoom, so a landing
+    /// must never fire it again. This demo has no Recenter action (no dock, no
+    /// `onReset`), so nothing hands the camera back: the flag lives as long as
+    /// the demo screen does.
+    @State private var userMovedCamera = false
+    /// The azimuth a re-fit restores. `.recenterCamera(_:)` returns the orbit to
+    /// the authored `.cameraOrbit(azimuth:)`, so a re-fit sets that to where the
+    /// "Spin scene" turntable has got to; left at `0`, every re-fit snapped the
+    /// spinning park back to its front view.
+    @State private var reframeAzimuth: Float = 0
+    /// Latest orbit azimuth from `.onCameraChanged`. A reference box, not
+    /// `@State`: the callback runs inside RealityKit's update pass, where
+    /// mutating state this `SceneView` depends on would re-enter the update.
+    @State private var liveCamera = LiveCamera()
+
+    private final class LiveCamera {
+        var azimuth: Float = 0
+    }
 
     private struct ParkSlot {
         let slug: SketchfabSlug?
         let position: SIMD3<Float>
         let scale: Float
+        /// Turn on the vertical axis, in radians, so a model authored side-on
+        /// (the bench) faces the camera.
+        let yaw: Float
         /// Zero-based place in the formation, used for the positional fallback label.
         let index: Int
 
@@ -88,29 +122,23 @@ struct MultiModelDemo: View {
         // Layout only — where a model stands and how big it is drawn. What stands
         // there is whatever `uid` resolves to in the registry.
         //
-        // The formation is deliberately COMPACT (#2896). Auto-framing fits the
-        // union bounding sphere, so lateral spread is what decides how large
-        // each model renders: the old ±0.55 m spread made the union roughly
-        // twice the largest model, and every slot came out small in a tall
-        // portrait frame with empty ground all around it.
-        let layout: [(uid: String, position: SIMD3<Float>, scale: Float)] = [
-            // Back-centre, towering. Scale chosen so the hero's silhouette dominates
-            // the backdrop without occluding the front row.
-            ("d841c3bcc5324daebee50f45619e05fc", .init(x: 0.0,  y: 0.0, z: -1.55), 1.8),
-            // Front-centre.
-            ("6d1aeea748f147789004bc03e1930d32", .init(x: 0.0,  y: 0.0, z: -1.35), 0.65),
-            // Front-left, tucked against the centre slot rather than a third of
-            // a metre away from it.
-            ("4f6ab5594a8a415aba3f958682b9ced5", .init(x: -0.34, y: 0.0, z: -1.35), 0.40),
-            // Front-right and raised, so the smallest slot reads as perched
-            // instead of getting lost against the ground.
-            ("fd582b0d4a8c4af1a1b5c4f21a481c93", .init(x: 0.34, y: 0.22, z: -1.35), 0.15),
+        // The same slots as Android's `PARK_SLOTS` (#4103), moved back to
+        // `z = -1.5`: one corner of a park at one consistent scale, each size the
+        // model's LARGEST axis (height for the oaks and the lamp, width for the
+        // bench and the fern). `position.y` is the ground: every model is
+        // bottom-aligned onto the lawn in `loadSlot`.
+        let layout: [(uid: String, position: SIMD3<Float>, scale: Float, yaw: Float)] = [
+            ("d841c3bcc5324daebee50f45619e05fc", .init(x: 0.0, y: 0.0, z: -1.95), 2.00, 0),
+            ("378cd6e6f505493aa8e22f68db1cabec", .init(x: -0.05, y: 0.0, z: -1.15), 0.70, .pi / 2),
+            ("6881aa1e84b047d79860fa9297e05e22", .init(x: 0.55, y: 0.0, z: -1.25), 1.10, 0),
+            ("42cb7fad10ba44ecbc9ae9cf5fdd63b6", .init(x: -0.62, y: 0.0, z: -1.08), 0.45, 0),
         ]
         return layout.enumerated().map { index, entry in
             ParkSlot(
                 slug: SampleAssets.byUID[entry.uid] ?? (park.indices.contains(index) ? park[index] : nil),
                 position: entry.position,
                 scale: entry.scale,
+                yaw: entry.yaw,
                 index: index
             )
         }
@@ -154,6 +182,12 @@ struct MultiModelDemo: View {
             SceneView { root in
                 // Stash a single sub-anchor so we can spin the whole formation
                 // without re-laying out the SceneView every frame.
+                // The lawn is NOT added here: `syncVisibility` attaches it with the
+                // first model that lands (#4103). Drawn from the first frame, it
+                // was all the auto-framing saw while the models streamed; its
+                // bounds held still for the 2.5 s settle window, the fit latched
+                // on a 2.2 m disc, and the 2 m oaks then grew out of the top of
+                // the frame.
                 let anchor = AnchorEntity()
                 root.addChild(anchor)
                 Task { @MainActor in
@@ -171,24 +205,36 @@ struct MultiModelDemo: View {
             // renders nothing at all — no model, no skybox — and never
             // recovers, so turning the toggle off blanked the viewport.
             .autoRotate(speed: (spinScene && !qaMode) ? 0.2 : 0.0)
-            // The formation is built from curated PBR models; without an IBL
-            // their metallic/rough response has nothing to reflect and the whole
-            // scene reads as flat silhouettes (#2114). `.studio` stays here
-            // rather than following ModelViewerDemo to `.warm`: a composed scene
-            // wants a room around it, and this HDR is a plant-filled interior —
-            // whereas a single hero wants the seamless backdrop of a photo
-            // studio. The two demos deliberately diverge (#2896).
-            .environment(.studio)
-            // The park formation spreads across ~1.2 m, so its bounding sphere
-            // is much larger than any single model — the default 15 % of air on
-            // top of that left every model tiny. Tighten to a near-exact sphere
-            // fit; the scene auto-rotates, so going below ~0.95 would clip the
-            // outermost slot at some azimuths (#2896).
-            .framingMargin(0.95)
+            // A garden, drawn as the skybox and lighting the models, so the park
+            // reads as outdoors because an outdoor sky lights it (#4103) — the
+            // same Poly Haven "Chinese Garden" as Android. It used to be
+            // `.studio`, a plant-filled living room with a white softbox.
+            .environment(Self.gardenEnvironment)
+            // The fit inscribes the bounds' space diagonal in a sphere, and the
+            // park is a 2.2 m disc under 2 m of oak: that sphere (radius ~1.9 m)
+            // is far wider than anything the camera sees side-on, which is never
+            // more than the lawn's 2.2 m at any azimuth. 0.95 left the park in a
+            // third of a portrait frame (#4103); at 0.75 the widest azimuth
+            // still clears the frame edge while the scene spins (#2896).
+            .framingMargin(0.75)
             // Shallower than the 30° default so the formation is seen from
             // near its own eye level — a 30° top-down pitch spent the bottom
             // half of a portrait frame on empty ground (#2896).
-            .cameraOrbit(azimuth: 0, elevation: .pi / 10)
+            // `reframeAzimuth` is `0` on entry; only a re-fit moves it (see
+            // `noteLanding()`), since the SDK seeds this pose once and reads it
+            // again only on a recenter.
+            .cameraOrbit(azimuth: reframeAzimuth, elevation: .pi / 10)
+            // A model that lands after the fit latched re-arms it (#4103).
+            .recenterCamera(reframeToken)
+            .onCameraChanged { [liveCamera] pose in liveCamera.azimuth = pose.azimuth }
+            // Observes, never drives: the SDK's own orbit drag and pinch still
+            // move the camera; these only record that the user took it over.
+            .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in
+                userMovedCamera = true
+            })
+            .simultaneousGesture(MagnifyGesture().onChanged { _ in
+                userMovedCamera = true
+            })
             .ignoresSafeArea()
 
             if loadedEntities.isEmpty && loadError == nil {
@@ -214,7 +260,7 @@ struct MultiModelDemo: View {
             Text("Visibility")
                 .font(.subheadline.weight(.semibold))
             // Horizontally scrolling for the same reason the Gallery chips are:
-            // catalogue names run long ("Skovfogedegen Oak") and four of them do
+            // catalogue names run long ("Street Lamp", "Simple Park Bench") and four of them do
             // not fit an iPhone's sheet width without truncating.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -308,12 +354,31 @@ struct MultiModelDemo: View {
             resolvedURLs[slug.uid] = url
             let node = try await ModelNode.load(contentsOf: url)
             _ = node.scaleToUnits(slot.scale)
-            _ = node.centerOrigin()
-            node.entity.position = slot.position
+            // Bottom-aligned, like Android's `centerOrigin = Position(0, -1, 0)`:
+            // the model's bounding-box floor on its origin, so every slot stands
+            // on the lawn. `centerOrigin()` centred it instead, and the position
+            // assignment that followed replaced even that — each model hung
+            // from its authored pivot at whatever height that put it.
+            _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
+            node.entity.components.set(GroundingShadowComponent(castsShadow: true))
+            // Only a Sketchfab export carries the miswired opacity (see
+            // `cutOutTexturedOpacity`); the bundled stand-ins keep their
+            // authored blending.
+            if !SketchfabAssetResolver.isBundledFallback(url) {
+                Self.cutOutTexturedOpacity(node.entity)
+            }
             if slug.hasBakedAnimation && node.animationCount > 0 {
                 node.playAllAnimations()
             }
-            loadedEntities[slug.uid] = node.entity
+            // A holder carries the slot's place and turn, so the grounding offset
+            // above stays on the model and the turn happens about the model's
+            // footprint rather than its authored pivot.
+            let holder = Entity()
+            holder.position = slot.position
+            holder.orientation = simd_quatf(angle: slot.yaw, axis: SIMD3<Float>(0, 1, 0))
+            holder.addChild(node.entity)
+            loadedEntities[slug.uid] = holder
+            noteLanding()
             syncVisibility()
         } catch {
             // Per-slot failure — log and move on so the rest of the park
@@ -322,11 +387,144 @@ struct MultiModelDemo: View {
         }
     }
 
+    /// The SDK's auto-framing latches once the scene's bounds hold still for
+    /// 2.5 s (`framingStableHoldSeconds`) and does not re-fit on its own after
+    /// that. Slots stream in over seconds to a minute, so a slot landing after
+    /// the latch could stand outside a frame fitted to the ones before it: on a
+    /// first run, the oaks above a frame fitted to the fern and the bench.
+    ///
+    /// So a landing re-arms the fit when both hold:
+    ///  - it grows the park by more than `reframeGrowth` on some axis over
+    ///    `fittedExtents`, the park the camera was last fitted to — the oaks
+    ///    over a fern-and-bench park do, a fern under the oaks does not. Timing
+    ///    does not matter: a re-arm inside the SDK's own settle window only
+    ///    restarts a fit that was going to happen anyway;
+    ///  - the user has not orbited or zoomed yet. `.recenterCamera(_:)` also
+    ///    resets the zoom, so once they have, the camera is theirs and a
+    ///    landing never snaps it back.
+    ///
+    /// The re-fit keeps the turntable's current azimuth (`reframeAzimuth`).
+    @MainActor
+    private func noteLanding() {
+        guard let extents = parkExtents() else { return }
+        guard let fitted = fittedExtents else {
+            fittedExtents = extents
+            return
+        }
+        guard !userMovedCamera else { return }
+        let grows = (0..<3).contains { axis in
+            extents[axis] > fitted[axis] * Self.reframeGrowth
+        }
+        guard grows else { return }
+        fittedExtents = extents
+        reframeAzimuth = liveCamera.azimuth
+        reframeToken += 1
+    }
+
+    /// How much one axis of the park's bounds must grow for a late landing to
+    /// re-fit the camera.
+    private static let reframeGrowth: Float = 1.25
+
+    /// Extents of what the auto-framing fits — the lawn plus every visible
+    /// landed slot, in the anchor's space — or `nil` before anything landed.
+    /// Computed from the slot holders rather than read off the anchor, so it
+    /// holds even before `syncVisibility` has attached them.
+    @MainActor
+    private func parkExtents() -> SIMD3<Float>? {
+        var lower = SIMD3<Float>(-1.1, -0.05, -2.6)   // the lawn, see `makeLawn`
+        var upper = SIMD3<Float>(1.1, 0.0, -0.4)
+        var any = false
+        for slot in Self.slots {
+            guard let slug = slot.slug, let holder = loadedEntities[slug.uid],
+                  !visible.indices.contains(slot.index) || visible[slot.index] else { continue }
+            let local = holder.visualBounds(relativeTo: holder)
+            guard !local.isEmpty else { continue }
+            let matrix = holder.transform.matrix
+            for corner in 0..<8 {
+                let point = SIMD3<Float>(
+                    corner & 1 == 0 ? local.min.x : local.max.x,
+                    corner & 2 == 0 ? local.min.y : local.max.y,
+                    corner & 4 == 0 ? local.min.z : local.max.z
+                )
+                let world = matrix * SIMD4<Float>(point, 1)
+                lower = simd_min(lower, SIMD3<Float>(world.x, world.y, world.z))
+                upper = simd_max(upper, SIMD3<Float>(world.x, world.y, world.z))
+            }
+            any = true
+        }
+        return any ? upper - lower : nil
+    }
+
+    /// Sketchfab's USDZ exports wire leaf opacity to the base-colour texture's
+    /// alpha (`tex_base.outputs:a`) and drop the glTF `MASK` mode. RealityKit
+    /// samples that texture's red channel instead, about 0.4 over the whole
+    /// card, so every leaf card showed as a pale translucent square. Reading
+    /// the alpha channel and thresholding it gives back the cut-out the glTF
+    /// authored. Uniform opacity (a lamp's glass) is left blended. Streamed
+    /// files only: the bundled stand-ins were converted separately and their
+    /// opacity is authored as meant.
+    private static func cutOutTexturedOpacity(_ entity: Entity) {
+        if var model = entity.components[ModelComponent.self] {
+            var changed = false
+            model.materials = model.materials.map { material in
+                guard var pbr = material as? PhysicallyBasedMaterial,
+                      case .transparent(let opacity) = pbr.blending,
+                      var texture = opacity.texture else { return material }
+                texture.swizzle = MTLTextureSwizzleChannels(red: .alpha, green: .alpha, blue: .alpha, alpha: .alpha)
+                pbr.blending = .transparent(opacity: .init(scale: opacity.scale, texture: texture))
+                pbr.opacityThreshold = 0.5
+                changed = true
+                return pbr
+            }
+            if changed { entity.components.set(model) }
+        }
+        for child in entity.children { cutOutTexturedOpacity(child) }
+    }
+
+    /// Poly Haven's "Chinese Garden" (CC0), bundled as `chinese_garden.hdr`.
+    private static let gardenEnvironment = SceneEnvironment.custom(
+        name: "Chinese Garden",
+        hdrFile: "chinese_garden.hdr"
+    )
+
+    /// How `syncVisibility` finds the lawn it attached.
+    private static let lawnName = "park-lawn"
+
+    /// The lawn every slot stands on: a thin disc whose top face is `y = 0`,
+    /// centred under the park, the same 1.1 m radius as Android's
+    /// `PARK_LAWN_RADIUS`. Kept tight because it counts here: the scene's
+    /// auto-framing fits everything under the content root, and a wider disc
+    /// would shrink every model to make room for grass.
+    private static func makeLawn() -> Entity {
+        let thickness: Float = 0.05
+        let lawn = ModelEntity(
+            mesh: .generateCylinder(height: thickness, radius: 1.1),
+            materials: [SimpleMaterial(color: lawnColor, roughness: 1.0, isMetallic: false)]
+        )
+        lawn.name = lawnName
+        lawn.position = SIMD3<Float>(0, -thickness / 2, -1.5)
+        lawn.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: true))
+        return lawn
+    }
+
+    /// Mown grass. The base colour that RENDERS as a natural lawn green (about
+    /// #536A46 on screen; Android's lawn shows about #587839) (#4103). Not the
+    /// same value as Android's `PARK_LAWN_COLOR`: RealityKit lights and
+    /// tone-maps the garden HDR much brighter and cooler than Filament, so
+    /// Android's #335222 came out here as a pale sage (#7AA566). The two are
+    /// matched on screen, not in code. A 3D material, not UI chrome, so it is
+    /// not a DESIGN.md token.
+    private static let lawnColor = UIColor(red: 0x23 / 255.0, green: 0x3B / 255.0, blue: 0x0F / 255.0, alpha: 1)
+
     /// Re-attach / detach entities based on the four visibility toggles.
     /// Cheap because RealityKit only does an add / remove on the anchor.
     @MainActor
     private func syncVisibility() {
         guard let anchor = sceneAnchor else { return }
+        // The lawn comes with the first model, never before (see `sceneContent`).
+        if !loadedEntities.isEmpty, anchor.findEntity(named: Self.lawnName) == nil {
+            anchor.addChild(Self.makeLawn())
+        }
         for slot in Self.slots {
             guard let slug = slot.slug, let entity = loadedEntities[slug.uid] else { continue }
             // `visible` is sized from `slots` at init and never resized, so this guard is

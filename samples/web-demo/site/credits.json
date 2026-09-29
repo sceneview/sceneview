@@ -42,7 +42,7 @@
         {
           "file": "models/chronograph_watch.glb",
           "name": "Chronograph Watch (web demo)",
-          "author": "KhronosGroup",
+          "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)",
           "license": "CC-BY-4.0",
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch",
