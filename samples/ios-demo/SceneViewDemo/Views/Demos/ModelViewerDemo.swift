@@ -177,8 +177,10 @@ struct ModelViewerDemo: View {
     /// swaps to it the moment the store reports it ready.
     @ObservedObject private var hdPack = HDPackStore.shared
     @State private var pendingHDID: String?
-    /// The HD file is on disk and being loaded onto the stage ("HD · loading").
+    /// The HD file is on disk and being loaded onto the stage
+    /// ("Flight Helmet · loading"), until its first frame is drawn.
     @State private var hdLoading = false
+    @State private var hdFrameWatch = HDFirstFrameWatch()
     /// The pill's "download 52 MB" / "download failed" tap: size-first dialog.
     @State private var confirmHD = false
 
@@ -343,11 +345,12 @@ struct ModelViewerDemo: View {
             onReset: resetAll,
             accessory: { floatingBand },
             status: {
-                if let pendingHDID {
+                if let pendingHDID, let hdAsset = hdPack.manifest.asset(id: pendingHDID) {
                     HDPackPill(
+                        title: hdAsset.title,
                         state: hdPack.state(for: pendingHDID),
                         loading: hdLoading,
-                        bytes: hdPack.manifest.asset(id: pendingHDID)?.bytes ?? 0,
+                        bytes: hdAsset.bytes,
                         onDownload: { confirmHD = true }
                     )
                 }
@@ -468,6 +471,7 @@ struct ModelViewerDemo: View {
             SceneView { root in
                 guard let loadedNode else { return }
                 root.addChild(loadedNode.entity)
+                hdFrameWatch.joined(loadedNode.entity)
             }
             .cameraControls(.orbit)
             .cameraOrbit(azimuth: .pi / 5)
@@ -517,15 +521,37 @@ struct ModelViewerDemo: View {
         #if DEBUG
         let started = Date()
         #endif
+        hdFrameWatch.cancel()
         do {
             if let id = model.hdPackID, let url = hdPack.localURL(for: id) {
                 pendingHDID = id
                 hdLoading = true
-                defer { hdLoading = false }
-                let node = try await ModelNode.load(contentsOf: url)
+                let node: ModelNode
+                do {
+                    node = try await ModelNode.load(contentsOf: url)
+                } catch {
+                    hdLoading = false
+                    throw error
+                }
+                // The pill stays on "loading" until the HD entity is drawn,
+                // not when the load call returns (see HDFirstFrameWatch).
+                let entity = node.entity
+                hdFrameWatch.expect(entity) {
+                    hdLoading = false
+                    pendingHDID = nil
+                    #if DEBUG
+                    print(String(format: "[ModelViewer] first HD frame of %@ after %.0f ms, footprint %.0f MB",
+                                 model.assetName, Date().timeIntervalSince(started) * 1000,
+                                 Double(MemoryFootprint.current()) / 1_048_576))
+                    #endif
+                }
                 install(node)
-                pendingHDID = nil
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(15))
+                    if hdFrameWatch.isWaiting(for: entity) { hdFrameWatch.finish() }
+                }
             } else {
+                hdLoading = false
                 let node = try await ModelNode.load(model.bundledResourceName)
                 install(node)
                 pendingHDID = model.hdPackID
@@ -533,7 +559,7 @@ struct ModelViewerDemo: View {
             #if DEBUG
             // Guardrail for the HD pack: load time and footprint per model.
             print(String(format: "[ModelViewer] loaded %@%@ in %.0f ms, footprint %.0f MB",
-                         model.assetName, pendingHDID == nil ? "" : " (stand-in)",
+                         model.assetName, model.hdPackID != nil && !hdLoading ? " (stand-in)" : "",
                          Date().timeIntervalSince(started) * 1000,
                          Double(MemoryFootprint.current()) / 1_048_576))
             #endif
@@ -625,6 +651,8 @@ struct ModelViewerDemo: View {
                 let node = try? await ModelNode.load(contentsOf: downloaded),
                 SurpriseModelCheck.isCoherent(node.entity)
             else { continue }
+            hdFrameWatch.cancel()
+            hdLoading = false
             install(node)
             pendingHDID = nil
             streamedUid = pick.uid
@@ -748,5 +776,63 @@ enum SurpriseModelCheck {
 
     private static func overlaps(_ a: BoundingBox, _ b: BoundingBox) -> Bool {
         all(a.min .<= b.max) && all(b.min .<= a.max)
+    }
+}
+
+// MARK: - HD first frame
+
+/// Holds the HD pill on "loading" until RealityKit has actually drawn the HD
+/// entity. `ModelNode.load` returns before the renderer has uploaded the
+/// textures; on the simulator the stand-in frame stayed on screen 3–5 s after
+/// the pill had already cleared, which read as "nothing is happening".
+///
+/// The first scene update after the entity joins the scene precedes the frame
+/// that uploads its resources; the second one comes after that frame, so it
+/// marks the swap as visible. A timeout in the caller covers a scene that
+/// stops ticking.
+@MainActor
+final class HDFirstFrameWatch {
+    private weak var expected: Entity?
+    private var onDrawn: (@MainActor () -> Void)?
+    private var stopUpdates: (() -> Void)?
+    private var updates = 0
+
+    /// Waits for `entity`; nothing happens until it joins the scene.
+    func expect(_ entity: Entity, onDrawn: @escaping @MainActor () -> Void) {
+        cancel()
+        expected = entity
+        self.onDrawn = onDrawn
+    }
+
+    /// Called from the scene content closure with every entity it adds.
+    func joined(_ entity: Entity) {
+        guard entity === expected, stopUpdates == nil else { return }
+        guard let scene = entity.scene else { finish(); return }
+        updates = 0
+        let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        stopUpdates = { subscription.cancel() }
+    }
+
+    /// Whether the watch still waits for `entity` (used by the timeout).
+    func isWaiting(for entity: Entity) -> Bool { expected === entity }
+
+    func finish() {
+        let done = onDrawn
+        cancel()
+        done?()
+    }
+
+    func cancel() {
+        stopUpdates?()
+        stopUpdates = nil
+        expected = nil
+        onDrawn = nil
+    }
+
+    private func tick() {
+        updates += 1
+        if updates >= 2 { finish() }
     }
 }

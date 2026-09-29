@@ -5,31 +5,40 @@ import SwiftUI
 
 // MARK: - Status pill
 
-/// "HD · downloading 34 %" — shown in a demo's status slot while its bundled
-/// stand-in is on stage and the HD asset is not there yet.
+/// "Flight Helmet · downloading 34 %" — shown in a demo's status slot while
+/// its bundled stand-in is on stage and the HD asset is not there yet.
 ///
 /// Same family as ``AssetSourcePill`` (dot, `caption2` medium, glass capsule).
 /// Nothing is shown once the HD asset is on stage: the swap is the
-/// confirmation. "Download 52 MB" and "download failed" are tappable: they
+/// confirmation. "download 52 MB" and "download failed" are tappable: they
 /// open the same size-first dialog as the About row.
 struct HDPackPill: View {
+    /// What the download gets you: the manifest entry's `title`. The stand-in
+    /// on stage is a different model, so the pill names the one replacing it.
+    let title: String
     let state: HDAssetState
     /// The HD file is on disk and being loaded onto the stage.
     var loading = false
     var bytes: Int64 = 0
     var onDownload: (() -> Void)?
 
-    /// The pill copy. Static so the tests can pin it without SwiftUI.
-    static func label(for state: HDAssetState, loading: Bool = false, bytes: Int64) -> String? {
-        if loading { return "HD · loading" }
+    /// The status half of the pill ("download 52 MB"), without the title.
+    /// Static so the tests can pin it without SwiftUI.
+    static func status(for state: HDAssetState, loading: Bool = false, bytes: Int64) -> String? {
+        if loading { return "loading" }
         switch state {
         case .ready: return nil
-        case .waitingForWiFi: return "HD · waiting for Wi-Fi"
-        case .waitingForNetwork: return "HD · waiting for a network"
-        case .downloading(let fraction): return "HD · downloading \(Int((fraction * 100).rounded(.down))) %"
-        case .failed: return "HD · download failed"
-        case .missing: return "HD · download \(HDPackFormat.size(bytes))"
+        case .waitingForWiFi: return "waiting for Wi-Fi"
+        case .waitingForNetwork: return "waiting for a network"
+        case .downloading(let fraction): return "downloading \(Int((fraction * 100).rounded(.down))) %"
+        case .failed: return "download failed"
+        case .missing: return "download \(HDPackFormat.size(bytes))"
         }
+    }
+
+    /// The whole pill copy, e.g. "Flight Helmet · download 52 MB".
+    static func label(title: String, state: HDAssetState, loading: Bool = false, bytes: Int64) -> String? {
+        status(for: state, loading: loading, bytes: bytes).map { "\(title) · \($0)" }
     }
 
     private var isTappable: Bool {
@@ -40,26 +49,41 @@ struct HDPackPill: View {
     private var tint: Color {
         if loading { return .accentColor }
         switch state {
-        case .downloading: return .accentColor
+        case .downloading, .missing: return .accentColor
         case .failed: return SceneViewTokens.HomeColor.danger
         default: return .secondary
         }
     }
 
     var body: some View {
-        if let label = Self.label(for: state, loading: loading, bytes: bytes) {
+        if let status = Self.status(for: state, loading: loading, bytes: bytes) {
+            let label = "\(title) · \(status)"
             let pill = HStack(spacing: SceneViewTokens.Space.xs) {
-                Circle()
-                    .fill(tint)
-                    .frame(width: SceneViewTokens.Space.sm, height: SceneViewTokens.Space.sm)
-                Text(label)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .monospacedDigit()
+                // One glyph per state: the dot while something is under way,
+                // the action icon (trailing) when a tap is expected. Keeps the
+                // longest copy ("… · download 52 MB") beside the demo title.
+                if !isTappable {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: SceneViewTokens.Space.sm, height: SceneViewTokens.Space.sm)
+                }
+                // Large Dynamic Type: the title truncates, the status never does.
+                HStack(spacing: 0) {
+                    Text(title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(" · \(status)")
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
+                        .layoutPriority(1)
+                }
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.primary)
                 if isTappable {
                     Image(systemName: state == .failed ? "arrow.clockwise" : "arrow.down.circle")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(tint)
                 }
             }
             .padding(.horizontal, SceneViewTokens.Space.sm)

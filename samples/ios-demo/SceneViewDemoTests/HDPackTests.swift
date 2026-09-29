@@ -51,13 +51,17 @@ final class HDPackTests: XCTestCase {
 
     @MainActor
     func testPillCopy() {
-        XCTAssertEqual(HDPackPill.label(for: .downloading(0.349), bytes: 51_704_895), "HD · downloading 34 %")
-        XCTAssertEqual(HDPackPill.label(for: .waitingForWiFi, bytes: 51_704_895), "HD · waiting for Wi-Fi")
-        XCTAssertEqual(HDPackPill.label(for: .waitingForNetwork, bytes: 51_704_895), "HD · waiting for a network")
-        XCTAssertEqual(HDPackPill.label(for: .missing, bytes: 51_704_895), "HD · download 52\u{00A0}MB")
-        XCTAssertEqual(HDPackPill.label(for: .ready, loading: true, bytes: 51_704_895), "HD · loading")
-        XCTAssertEqual(HDPackPill.label(for: .failed, bytes: 51_704_895), "HD · download failed")
-        XCTAssertNil(HDPackPill.label(for: .ready, bytes: 51_704_895))
+        // The pill names what the download gets you, from the manifest title.
+        XCTAssertEqual(HDPackManifest.loadBundled().asset(id: "flight-helmet")?.title, "Flight Helmet")
+        let t = "Flight Helmet"
+        let b: Int64 = 51_704_895
+        XCTAssertEqual(HDPackPill.label(title: t, state: .downloading(0.349), bytes: b), "Flight Helmet · downloading 34 %")
+        XCTAssertEqual(HDPackPill.label(title: t, state: .waitingForWiFi, bytes: b), "Flight Helmet · waiting for Wi-Fi")
+        XCTAssertEqual(HDPackPill.label(title: t, state: .waitingForNetwork, bytes: b), "Flight Helmet · waiting for a network")
+        XCTAssertEqual(HDPackPill.label(title: t, state: .missing, bytes: b), "Flight Helmet · download 52\u{00A0}MB")
+        XCTAssertEqual(HDPackPill.label(title: t, state: .ready, loading: true, bytes: b), "Flight Helmet · loading")
+        XCTAssertEqual(HDPackPill.label(title: t, state: .failed, bytes: b), "Flight Helmet · download failed")
+        XCTAssertNil(HDPackPill.label(title: t, state: .ready, bytes: b))
     }
 
     @MainActor

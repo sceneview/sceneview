@@ -79,6 +79,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     /// Read here, outside the chrome's pinned dark scheme, so the AR ground
     /// resolves against the user's real appearance as `DESIGN.md` specifies.
     @Environment(\.colorScheme) private var colorScheme
+    /// Read above the chrome's `...xxLarge` clamp: the user's real setting.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     public init(
@@ -238,12 +240,22 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                             .accessibilityLabel("Disable QA mode")
                     }
                 }
+                // At the default size the title gives way first (it can
+                // shrink to 80 %) so a status such as the HD pill keeps its
+                // full text. With larger Dynamic Type the title is served
+                // first and the status truncates instead of the title.
+                .layoutPriority(dynamicTypeSize > .large ? 2 : 0)
             }
 
             Spacer(minLength: 0)
 
+            // Priority over the Spacer (below the title): a status that can
+            // truncate (the HD pill's model name) takes its full width before
+            // the row splits what is left, and only truncates once the row is
+            // truly full.
             status
                 .padding(.trailing, Self.touchSlop)
+                .layoutPriority(1)
         }
         .padding(.horizontal, Metrics.margin - Self.touchSlop)
     }
