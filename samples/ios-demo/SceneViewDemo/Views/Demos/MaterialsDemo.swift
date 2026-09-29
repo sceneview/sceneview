@@ -356,8 +356,8 @@ final class MaterialWall {
                            + "transmission lobe, so it does not bend what is behind it.",
                        color: rgb(0x7B90A8), metallic: 0, roughness: 0.05, reflectance: 0.6,
                        trait: .transparency, traitAmount: 0.5),
-        // Primary × 1.5, as on Android (#4065): a paler tint such as TintLight tone-maps to
-        // plain white, while a saturated one at a modest strength still reads as coloured light.
+        // Primary × 1.5, Android's preset (#4065). The ball is not drawn with this colour
+        // on iOS: `material(_:)` emits what Android renders it as, see its `.emissive` case.
         StudioMaterial(id: "glow", name: "Neon sign — emissive",
                        note: "Emission owes nothing to the environment — it still lights at night.",
                        color: rgb(0x161B22), metallic: 0, roughness: 0.6, reflectance: 0.35,
@@ -445,6 +445,14 @@ final class MaterialWall {
 
     // MARK: Materials
 
+    /// The emission that makes RealityKit draw the glow sphere at the pixels Android shows
+    /// (see the `.emissive` case below), and the preset strength it stands for. Tuned by
+    /// capture: RealityKit's own tone curve compresses the top end, so the emitted colour
+    /// sits slightly above the target and the intensity above 1.
+    private static let glowRenderedColor = rgb(0x7CE0FF)
+    private static let glowRenderedIntensity: Float = 1.4
+    private static let glowReferenceStrength: Float = 1.5
+
     static func material(_ preset: StudioMaterial, metallic: Float? = nil,
                          roughness: Float? = nil) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
@@ -465,8 +473,16 @@ final class MaterialWall {
             material.clearcoatRoughness = .init(floatLiteral: 0.02)
             material.blending = .transparent(opacity: .init(floatLiteral: 1 - preset.traitAmount))
         case .emissive:
-            material.emissiveColor = .init(color: color(preset.traitColor))
-            material.emissiveIntensity = preset.traitAmount
+            // Match Android's rendered pixels, not its constant. Android emits Primary
+            // (#005BC1) × 1.5, and Filament's tone mapping and bloom push it to a flat
+            // light cyan: (135, 215, 238) at the centre and the rim, in both themes
+            // (emulator-5554 capture, #4175). RealityKit has no Filament tone mapping, so
+            // the same constant renders as a dark saturated blue that reads as car paint.
+            // iOS therefore emits a light cyan tuned until its rendered pixels match those,
+            // and the preset's strength (1.5, still the figure the summary prints) scales it.
+            material.emissiveColor = .init(color: color(Self.glowRenderedColor))
+            material.emissiveIntensity = preset.traitAmount / Self.glowReferenceStrength
+                * Self.glowRenderedIntensity
         }
         return material
     }

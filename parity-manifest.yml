@@ -840,8 +840,9 @@ demos:
     evidence: >-
       Gallery wall matches since #4175 (nine procedural presets, sweep,
       tap to focus); left: no Inspect or Occlusion mode and no HDR switch,
-      crystal is transparency not transmission (no RealityKit lobe,
-      MaterialsDemo.swift:29-31); 3 separate cards
+      a pale themed stage instead of Android's blurred grey studio
+      (MaterialsDemo.swift:106-110), crystal is transparency not
+      transmission (no RealityKit lobe, :29-31); 3 separate cards
   - id: model-viewer
     androidStatus: Working
     iosStatus: working
