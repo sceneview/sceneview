@@ -154,7 +154,8 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
         }
         val mapPoints = points.indices.filter { points[it].isFinite() }
         val dense = denseCloud()
-        if (poses.isEmpty() && mapPoints.isEmpty() && dense == null && planeEvents.none { it.polygon.size >= 3 }) {
+        val hasPoints = mapPoints.isNotEmpty() || dense != null
+        if (poses.isEmpty() && !hasPoints && planeEvents.none { it.polygon.size >= 3 }) {
             rrdFail(Failure.NothingToReplay())
         }
         // The session starts at 0 on the writer's timeline (seconds since the first event).

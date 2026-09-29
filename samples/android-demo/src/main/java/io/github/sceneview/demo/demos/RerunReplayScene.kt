@@ -79,6 +79,12 @@ internal class RerunReplayMedia(
         return if (index < 0) null else thumbnails[trace.imagePath(index)]
     }
 
+    /**
+     * The points drawn at [time]: the dense cloud's surfels found by then, which stand in for
+     * the sparse map, or the feature points without a dense cloud ([ArDebugTrace.pointCountAt]).
+     */
+    fun pointCountAt(time: Float): Int = trace.pointCountAt(time, dense?.cloud?.count ?: 0)
+
     /** Photo [path] from the archive, `null` when the manifest does not index it. */
     fun decode(path: String, options: BitmapFactory.Options? = null): Bitmap? {
         val span = manifest.media[path] ?: return null
@@ -385,9 +391,7 @@ internal class ReplayLayers(
      */
     private fun syncDense(frame: ArDebugFrame, shown: Boolean) {
         val node = denseNode ?: return
-        val total = media.dense?.cloud?.count ?: 0
-        val atTime = media.trace.denseCountAt(frame.time)
-        val count = if (atTime < 0) total else minOf(atTime, total)
+        val count = media.pointCountAt(frame.time)
         node.isVisible = shown && count > 0
         if (node.isVisible) node.showIndices(minOf(count, DenseSurfels.MAX_SURFELS) * INDICES_PER_SURFEL)
     }

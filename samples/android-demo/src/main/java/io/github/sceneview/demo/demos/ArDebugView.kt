@@ -720,7 +720,9 @@ internal fun ArDebugSceneView(
                 if (frame.anchors != anchors) anchors = frame.anchors
                 if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
                     clock.statsAtNanos = frameTimeNanos
-                    session.stats = ArDebugStats.of(frame, trace.duration)
+                    // A replay with a dense cloud counts its surfels, as the sessions list does.
+                    val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
+                    session.stats = ArDebugStats.of(frame, trace.duration, points)
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.

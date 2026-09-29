@@ -13,7 +13,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -23,6 +26,9 @@ import java.nio.ByteOrder
  * export of a v2 scan carries the dense points — never a `.ply` of `element vertex 0`.
  */
 class RerunScanV2Test {
+    @get:Rule
+    val folder = TemporaryFolder()
+
     private val showcase = FakeRerunImageCodec.showcase()
     private val events = parseArDebugLog(String(showcase.log).lineSequence())
     private val lens = ReplayManifest.parse(String(showcase.manifest))!!.lens
@@ -183,6 +189,49 @@ class RerunScanV2Test {
         val sparse = RerunRrdReader.recording(withoutDense, FakeRerunImageCodec).pack.open()!!
         assertEquals(1, sparse.manifest.version)
         assertNull(sparse.manifest.dense)
+    }
+
+    @Test
+    fun `a dense scan's points are its dense cloud in the sessions list, as the scan HUD counted them`() {
+        val store = RerunSessionStore(folder.newFolder("sessions"))
+        val dense = store.save(build(depthDevice, cloud(3_000)), "Dense room", RerunSessionSource.Recorded, 1_000L)
+        assertEquals(3_000, dense.points)
+        // A sparse scan still counts ARCore's feature points.
+        val sparsePack = build(sparseDevice, null)
+        val sparseTrace = sparsePack.open()!!.trace
+        val sparse = store.save(sparsePack, "Sparse room", RerunSessionSource.Recorded, 2_000L)
+        assertEquals(sparseTrace.frameAt(sparseTrace.duration).mapPointCount, sparse.points)
+        val listed = store.list().associate { it.id to it.points }
+        assertEquals(mapOf(dense.id to 3_000, sparse.id to sparse.points), listed)
+    }
+
+    @Test
+    fun `a dense scan kept with its sparse count lists its dense cloud`() {
+        // What a build before this fix wrote: the sparse map's 12k in session.json, 186k in the cloud.
+        val store = RerunSessionStore(folder.newFolder("sessions"))
+        val saved = store.save(build(depthDevice, cloud(3_000)), "Dense room", RerunSessionSource.Recorded, 1_000L)
+        File(store.directoryOf(saved.id), RerunSessionStore.INFO).writeText(saved.copy(points = 12_000).toJson())
+        assertEquals(3_000, store.list().single().points)
+    }
+
+    @Test
+    fun `a replay counts the dense surfels found by then, capped at the cloud, and feature points without one`() {
+        val trace = ArDebugTrace.of(
+            listOf(
+                ArDebugEvent.CameraPose(0L, DebugPose(0f, 0f, 0f)),
+                ArDebugEvent.Points(500_000_000L, floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f), null),
+                ArDebugEvent.DepthStats(2_000_000_000L, 900, 900, 900),
+                ArDebugEvent.DepthStats(3_000_000_000L, 100, 100, 1_000),
+            ),
+        )
+        assertEquals(0, trace.pointCountAt(1f, denseTotal = 950))
+        assertEquals(900, trace.pointCountAt(2.5f, denseTotal = 950))
+        assertEquals(950, trace.pointCountAt(9f, denseTotal = 950))
+        assertEquals(2, trace.pointCountAt(9f))
+        assertEquals(0, trace.pointCountAt(0.1f))
+        // A cloud with no depth stats on its timeline (an imported .rrd) is drawn, and counted, whole.
+        val showcaseTrace = showcase.open()!!.trace
+        assertEquals(3_000, showcaseTrace.pointCountAt(0f, denseTotal = 3_000))
     }
 
     private fun headerEnd(data: ByteArray): Int {

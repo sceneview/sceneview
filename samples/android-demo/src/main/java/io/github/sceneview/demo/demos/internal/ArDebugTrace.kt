@@ -412,6 +412,18 @@ class ArDebugTrace {
         return if (i < 0) 0 else depthTotals[i]
     }
 
+    /**
+     * The points a view of this trace shows at [time]: with a dense cloud of [denseTotal] surfels
+     * (a `.svscan` v2), the surfels found by then — all of them on a timeline without depth stats —
+     * which stand in for ARCore's feature points; without one, the feature-point map. The one
+     * figure the scan HUD, the replay HUD and the sessions list count, so they never disagree.
+     */
+    fun pointCountAt(time: Float, denseTotal: Int = 0): Int {
+        if (denseTotal <= 0) return upperBound(pointFirstSeen, pointCount, time.coerceIn(0f, duration))
+        val atTime = denseCountAt(time)
+        return if (atTime < 0) denseTotal else minOf(atTime, denseTotal)
+    }
+
     /** The whole scene as it stood at [time] (clamped to the trace). */
     fun frameAt(time: Float): ArDebugFrame {
         val t = time.coerceIn(0f, duration)
