@@ -18,6 +18,7 @@ internal class RgbeImage(val width: Int, val height: Int, val pixels: FloatBuffe
  * multi-hundred-millisecond main-thread stall. This decoder touches no Filament object, so it
  * can run on any dispatcher; only the texture upload that follows has to be on the main thread.
  *
+ * Its output is bit-identical to Filament's own `imageio` HDRDecoder, which `HDRLoader` runs.
  * It reads what [HDRLoader][com.google.android.filament.utils.HDRLoader] reads: flat and
  * new-style run-length encoded scanlines, in the standard `-Y <h> +X <w>` orientation. Anything
  * else returns `null` so the caller can fall back to the native loader.
@@ -29,6 +30,7 @@ internal object RgbeDecoder {
     private const val RLE_RUN_FLAG = 128
     private const val EXPONENT_BIAS = 128 + 8
     private const val CHANNELS = 4
+    private const val MANTISSA_CENTER = 0.5f
 
     /** Decodes [buffer] from its current position without moving it; `null` if unsupported. */
     fun decode(buffer: ByteBuffer): RgbeImage? {
@@ -113,10 +115,11 @@ internal object RgbeDecoder {
                 row[out + 2] = 0f
                 continue
             }
+            // Filament's imageio HDRDecoder: (mantissa + 0.5) * 2^(e - 136), in float.
             val scale = Math.scalb(1f, e - EXPONENT_BIAS)
-            row[out] = (scanline[x * CHANNELS].toInt() and 0xff) * scale
-            row[out + 1] = (scanline[x * CHANNELS + 1].toInt() and 0xff) * scale
-            row[out + 2] = (scanline[x * CHANNELS + 2].toInt() and 0xff) * scale
+            row[out] = ((scanline[x * CHANNELS].toInt() and 0xff) + MANTISSA_CENTER) * scale
+            row[out + 1] = ((scanline[x * CHANNELS + 1].toInt() and 0xff) + MANTISSA_CENTER) * scale
+            row[out + 2] = ((scanline[x * CHANNELS + 2].toInt() and 0xff) + MANTISSA_CENTER) * scale
         }
     }
 
