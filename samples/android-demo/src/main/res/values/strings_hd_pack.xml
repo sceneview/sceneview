@@ -28,7 +28,8 @@
     <string name="hd_pill_download">download %1$s</string>
     <string name="hd_pill_loading">loading</string>
     <string name="hd_pill_failed">download failed</string>
-    <string name="hd_pill_hint">%1$s is not on this device yet. Tap to download it now.</string>
+    <!-- Accessible name of the pill when a tap opens the download dialog. %1$s is the visible text. -->
+    <string name="hd_pill_hint">%1$s. Tap to download it now.</string>
 
     <!-- Credits sheet: HD pack entries. %1$s author, %2$s licence. -->
     <string name="credits_hd_section">HD scenes (downloaded)</string>

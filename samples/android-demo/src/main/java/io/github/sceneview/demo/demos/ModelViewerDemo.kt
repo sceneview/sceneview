@@ -983,6 +983,7 @@ private fun SingleModelSection(
             if (hdPillShown && hdAsset != null) {
                 val status = hdStatus
                 val hdFailed = hdLoadFailed || (hdFileLocation == null && status == HdPackStatus.Failed)
+                val hdPillBusy = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading)
                 val hdLabel = when {
                     hdFailed -> stringResource(R.string.hd_pill_failed)
                     hdFileLocation != null -> stringResource(R.string.hd_pill_loading)
@@ -1003,13 +1004,11 @@ private fun SingleModelSection(
                         // asks to download now, size first.
                         if (hdLoadFailed) hdRejectedLocation = null else hdDialogOpen = true
                     },
-                    loading = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading),
+                    loading = hdPillBusy,
                     progress = (hdStatus as? HdPackStatus.Downloading)?.fraction?.takeIf { hdFileLocation == null },
-                    contentDescription = if (hdFileLocation == null) {
-                        stringResource(R.string.hd_pill_hint, hdAsset.title)
-                    } else {
-                        stringResource(R.string.glass_pill_subject_label, hdAsset.title, hdLabel)
-                    },
+                    // What the pill says, then what a tap does when it opens the download dialog.
+                    contentDescription = stringResource(R.string.glass_pill_subject_label, hdAsset.title, hdLabel)
+                        .let { if (hdPillBusy || hdLoadFailed) it else stringResource(R.string.hd_pill_hint, it) },
                 )
             }
             if (hasSketchfabKey) {
