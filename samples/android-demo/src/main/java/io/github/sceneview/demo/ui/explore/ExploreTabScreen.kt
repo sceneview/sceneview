@@ -528,10 +528,12 @@ private fun ExploreBody(
                     ) {
                         items(curatedSamples, key = { it.id }) { sample ->
                             // The home grid's own card (#3993): the demo's captured
-                            // preview, not a category icon on a gradient.
+                            // preview, not a category icon on a gradient. The whole row
+                            // sets each caption's floor, so the carousel ends level.
                             DemoMediaCard(
                                 demo = sample,
                                 onClick = { onSampleClick(sample) },
+                                rowPeers = { curatedSamples },
                                 modifier = Modifier.width(SAMPLE_CARD_WIDTH),
                             )
                         }
