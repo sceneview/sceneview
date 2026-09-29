@@ -45,6 +45,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.BackHandler
@@ -111,7 +112,9 @@ import io.github.sceneview.demo.OpenedModelIntent
 import io.github.sceneview.core.threemf.ModelUnitGuess
 import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
+import io.github.sceneview.demo.ui.viewer.ViewerLighting
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.StageFade
 import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
 import io.github.sceneview.demo.demos.internal.SurprisePrefetch
 import io.github.sceneview.demo.demos.internal.SurpriseRolls
@@ -517,9 +520,11 @@ private fun SingleModelSection(
         ViewerEnvironment("environments/night_sky_2k.hdr", "Night Sky"),
         ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),
     ) }
-    var requestedEnvironment by remember { mutableStateOf(viewerEnvironments.first()) }
-    // `true` while Studio is on because a Museum & Space model asked for it, not the user.
-    var museumLightingApplied by remember { mutableStateOf(false) }
+    val gardenEnvironment = viewerEnvironments.first()
+    val museumEnvironment = remember { viewerEnvironments.first { it.assetPath == MUSEUM_ENVIRONMENT } }
+    // The lighting on stage, and whether Studio is on because a Museum & Space model asked for it.
+    var lighting by remember { mutableStateOf(ViewerLighting(gardenEnvironment)) }
+    val requestedEnvironment = lighting.environment
     var iblIntensity by remember { mutableStateOf(1f) }
     var showEnvironment by remember { mutableStateOf(false) }
     var recenterGeneration by remember { mutableStateOf(0) }
@@ -647,14 +652,7 @@ private fun SingleModelSection(
     // the garden back only if Studio was ours.
     val isMuseumModel = selectedModel in MUSEUM_VIEWER_MODELS
     LaunchedEffect(isMuseumModel) {
-        val garden = viewerEnvironments.first()
-        if (isMuseumModel && requestedEnvironment == garden) {
-            requestedEnvironment = viewerEnvironments.first { it.assetPath == MUSEUM_ENVIRONMENT }
-            museumLightingApplied = true
-        } else if (!isMuseumModel && museumLightingApplied) {
-            requestedEnvironment = garden
-            museumLightingApplied = false
-        }
+        lighting = lighting.select(isMuseumModel, gardenEnvironment, museumEnvironment)
     }
     val hdFileLocation = hdAsset?.takeIf { it.id in hdReadyIds }
         ?.let { android.net.Uri.fromFile(hdStore?.fileFor(it)).toString() }
@@ -878,6 +876,18 @@ private fun SingleModelSection(
         // again — so dimming it reaches the engine and nothing else. Under `OnDemand` the new
         // ambient would sit there with no frame coming to show it (#3718).
         renderInvalidator.requestRender()
+    }
+    // With the environment hidden, the model stands on the stage colour, as on iOS — not on the
+    // renderer's black clear, which covered the Box's `Stage.background` edge to edge. Same
+    // backdrop as the Lighting demos (`StageFade.stageBackdrop`). `copy` shares the environment's
+    // Filament handles and is never itself destroyed; only the backdrop is ours to free.
+    val stageBackdrop = remember(engine) { StageFade.stageBackdrop(engine) }
+    DisposableEffect(stageBackdrop) {
+        onDispose { engine.destroySkybox(stageBackdrop) }
+    }
+    val stagedEnvironment = remember(viewerEnvironment, showEnvironment, stageBackdrop) {
+        if (showEnvironment && loadedEnvironment != null) viewerEnvironment
+        else viewerEnvironment.copy(skybox = stageBackdrop)
     }
     // The arrival (#3406) — camera fly-in and model settle, started together and gated on
     // the frame that actually SHOWS the model. Keying these on `bounds` alone (what the
@@ -1325,7 +1335,7 @@ private fun SingleModelSection(
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
-                environment = viewerEnvironment,
+                environment = stagedEnvironment,
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
                 cameraNode = cameraNode,
@@ -1443,11 +1453,14 @@ private fun SingleModelSection(
     if (environmentSheetOpen) EnvironmentSheet(
         environments = viewerEnvironments,
         selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,
-        onSelect = { requestedEnvironment = it; museumLightingApplied = false },
+        onSelect = { lighting = lighting.pick(it) },
         onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
+        // Back to the lighting the model on stage opens under — Studio for a Museum & Space
+        // scan — as on iOS. `LaunchedEffect(isMuseumModel)` does not re-run here: the model
+        // did not change, so the reset has to apply the opening rule itself.
         onReset = {
-            requestedEnvironment = viewerEnvironments.first(); iblIntensity = 1f; showEnvironment = false
-            museumLightingApplied = false
+            lighting = lighting.reset(isMuseumModel, gardenEnvironment, museumEnvironment)
+            iblIntensity = 1f; showEnvironment = false
         },
         onDismiss = { environmentSheetOpen = false },
         onCoveredHeightChange = { environmentSheetCover = it },
