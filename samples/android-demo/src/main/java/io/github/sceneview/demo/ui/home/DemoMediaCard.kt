@@ -44,7 +44,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,10 +86,6 @@ import io.github.sceneview.sample.ui.DemoCategoryAccent
  * card is tinted by what it shows. 20 dp radius; light lifts it with `shadow-sm`, dark
  * keeps the 1 dp `outline-subtle`.
  *
- * [featured] is the "Featured" shelf's variant ([FeaturedShelf]): a 4:5 portrait card,
- * picture full-bleed, the same frosted caption floating on its lower part, `type-title`,
- * `radius-xl`, `shadow-md`, and the picture drifting by [mediaShift] as the shelf moves.
- *
  * A status chip sits on the media only for [DemoStatus.ComingSoon] /
  * [DemoStatus.KnownIssue], and [DemoStatus.InReview] behind
  * [IN_REVIEW_BADGE_VISIBLE]. Press scales the card to 0.98 on the one app spring.
@@ -106,12 +101,10 @@ fun DemoMediaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     freshness: DemoFreshness = DemoFreshness.None,
-    featured: Boolean = false,
-    mediaShift: () -> Float = { 0f },
     /** Where the picture is anchored when it is cropped — see [FEATURED_MEDIA_ALIGNMENT]. */
     mediaAlignment: Alignment = Alignment.Center,
     /**
-     * The demos laid out beside this one — its grid row, or a whole carousel. Their
+     * The demos laid out beside this one — its grid row. Their
      * captions set this card's caption floor, so cards side by side end level. Read at
      * layout time.
      */
@@ -129,43 +122,11 @@ fun DemoMediaCard(
         onClick = onClick,
         modifier = modifier,
         freshness = freshness,
-        featured = featured,
-        mediaShift = mediaShift,
         mediaAlignment = mediaAlignment,
         captionPeers = {
             rowPeers().map { resources.getString(it.titleRes) to resources.getString(it.subtitleRes) }
         },
     )
-}
-
-/**
- * The row under the home grid that opens the online model gallery
- * (`ExploreTabScreen`): a globe glyph, the title and a one-line subtitle on
- * `surface-container-high`.
- */
-@Composable
-fun BrowseOnlineModelsCard(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Row(
-            Modifier.padding(SceneViewTokens.Space.md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
-        ) {
-            Icon(Icons.Filled.Language, contentDescription = null)
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.home_browse_title), style = SceneViewTokens.Type.card)
-                Text(stringResource(R.string.home_browse_subtitle), style = SceneViewTokens.Type.body)
-            }
-        }
-    }
 }
 
 @Composable
@@ -179,10 +140,6 @@ private fun MediaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     freshness: DemoFreshness = DemoFreshness.None,
-    /** A "Featured" card: portrait, picture full-bleed, caption floating on it. */
-    featured: Boolean = false,
-    /** Horizontal lag of the picture inside the card, in px — the shelf's parallax. */
-    mediaShift: () -> Float = { 0f },
     /** Where the picture is anchored when it is cropped to the card. */
     mediaAlignment: Alignment = Alignment.Center,
     /** Title and subtitle of the cards beside this one; see [DemoMediaCard]'s `rowPeers`. */
@@ -200,7 +157,7 @@ private fun MediaCard(
     )
     val home = SceneViewTokens.Home
     val dark = isSystemInDarkTheme()
-    val shape = RoundedCornerShape(if (featured) SceneViewTokens.Radius.xl else home.cardRadius)
+    val shape = RoundedCornerShape(home.cardRadius)
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -215,47 +172,33 @@ private fun MediaCard(
             ),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        // Light lifts the card off the page with `shadow-sm` (`shadow-md` for a featured
-        // one); dark keeps the 1 dp `outline-subtle` a shadow cannot draw on a dark page.
-        shadowElevation = when {
-            dark -> 0.dp
-            featured -> SceneViewTokens.Elevation.md
-            else -> SceneViewTokens.Elevation.sm
-        },
+        // Light lifts the card off the page with `shadow-sm`; dark keeps the 1 dp
+        // `outline-subtle` a shadow cannot draw on a dark page.
+        shadowElevation = if (dark) 0.dp else SceneViewTokens.Elevation.sm,
         border = if (dark) BorderStroke(home.cardOutlineWidth, outlineSubtle()) else null,
     ) {
         // Where the caption starts, read at draw time only: the glass is drawn from there
         // down, so a caption that grows (a long subtitle, a 1.5 font scale) takes its glass
         // with it and nothing re-lays out.
         var captionTop by remember { mutableFloatStateOf(Float.NaN) }
-        val aspect = if (featured) home.featuredMediaAspect else home.cardMediaAspect
+        val aspect = home.cardMediaAspect
         val melt = with(LocalDensity.current) { home.cardGlassMelt.toPx() }
         val glass = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardGlassAlpha())
-        val captionInset = if (featured) {
-            home.heroPadding - SceneViewTokens.Space.xs
-        } else {
-            home.cardTextPaddingHorizontal
-        }
-        val titleStyle = if (featured) SceneViewTokens.Type.title else SceneViewTokens.Type.card
-        val subtitleStyle = (if (featured) SceneViewTokens.Type.body else SceneViewTokens.Type.caption)
-            .copy(fontWeight = FontWeight.Normal)
+        val captionInset = home.cardTextPaddingHorizontal
+        val titleStyle = SceneViewTokens.Type.card
+        val subtitleStyle = SceneViewTokens.Type.caption.copy(fontWeight = FontWeight.Normal)
         val measurer = rememberTextMeasurer()
         val textGap = SceneViewTokens.Space.xs
         Box(modifier = Modifier.fillMaxWidth()) {
-            // 1. The picture, sharp — full-bleed on a featured card, the top of a grid card.
+            // 1. The picture, sharp, at the top of the card.
             Box(
                 modifier = Modifier
-                    .then(
-                        if (featured) {
-                            Modifier.matchParentSize()
-                        } else {
-                            Modifier.fillMaxWidth().heightFromWidth(aspect)
-                        },
-                    )
+                    .fillMaxWidth()
+                    .heightFromWidth(aspect)
                     .clipToBounds(),
             ) {
                 if (preview != null) {
-                    MediaImage(preview, mediaShift, featured, mediaAlignment)
+                    MediaImage(preview, mediaAlignment)
                 } else {
                     IconTile(icon = icon, accent = accent)
                 }
@@ -264,18 +207,7 @@ private fun MediaCard(
             //    image it describes, faded in over `card-glass-melt` so the sharp picture
             //    dissolves into the glass instead of stopping at an edge.
             if (preview != null && FROSTED_BLUR_SUPPORTED) {
-                if (featured) {
-                    // The picture fills the card: the copy is the same picture, same crop.
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .frosted { meltBrush(captionTop, melt, Color.Black) },
-                    ) {
-                        MediaImage(preview, mediaShift, featured, mediaAlignment)
-                    }
-                } else {
-                    GridFrostedCopy(preview, aspect, melt, mediaAlignment)
-                }
+                GridFrostedCopy(preview, aspect, melt, mediaAlignment)
             }
             // 3. The glass tint — what the caption's contrast is measured against.
             Box(
@@ -283,20 +215,10 @@ private fun MediaCard(
                     .matchParentSize()
                     .drawBehind { drawRect(meltBrush(captionTop, melt, glass)) },
             )
-            // Sizing column: the picture's height, then the caption — pulled up over the
-            // picture's melt band on a grid card, pinned to the bottom of a featured one.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(if (featured) Modifier.heightFromWidth(aspect, atLeast = true) else Modifier),
-            ) {
-                Spacer(
-                    if (featured) {
-                        Modifier.weight(1f)
-                    } else {
-                        Modifier.fillMaxWidth().heightFromWidth(aspect, minus = home.cardGlassMelt)
-                    },
-                )
+            // Sizing column: the picture's height, then the caption, pulled up over the
+            // picture's melt band.
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Spacer(Modifier.fillMaxWidth().heightFromWidth(aspect, minus = home.cardGlassMelt))
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -305,7 +227,7 @@ private fun MediaCard(
                             top = home.cardGlassMelt,
                             start = captionInset,
                             end = captionInset,
-                            bottom = if (featured) captionInset else home.cardTextPaddingBottom,
+                            bottom = home.cardTextPaddingBottom,
                         )
                         // Cards side by side share one caption height, so a row lines up
                         // without cutting a word: the tallest peer's text sets the floor.
@@ -333,7 +255,7 @@ private fun MediaCard(
                     status = status,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(if (featured) SceneViewTokens.Space.md else SceneViewTokens.Space.sm),
+                        .padding(SceneViewTokens.Space.sm),
                 )
             }
             if (freshness != DemoFreshness.None) {
@@ -342,7 +264,7 @@ private fun MediaCard(
                     accent = accent,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(if (featured) SceneViewTokens.Space.md else SceneViewTokens.Space.sm),
+                        .padding(SceneViewTokens.Space.sm),
                 )
             }
         }
@@ -382,10 +304,10 @@ private fun BoxScope.GridFrostedCopy(preview: Painter, aspect: Float, melt: Floa
             },
         ) {
             Box(Modifier.fillMaxWidth().weight(1f)) {
-                MediaImage(preview, { 0f }, featured = false, alignment = alignment)
+                MediaImage(preview, alignment)
             }
             Box(Modifier.fillMaxWidth().weight(1f).graphicsLayer { scaleY = -1f }) {
-                MediaImage(preview, { 0f }, featured = false, alignment = alignment)
+                MediaImage(preview, alignment)
             }
         }
     }
@@ -404,54 +326,26 @@ private fun Modifier.frosted(mask: DrawScope.() -> Brush): Modifier = this
     }
     .blur(SceneViewTokens.Home.cardGlassBlur, BlurredEdgeTreatment.Rectangle)
 
-/**
- * Height from the incoming width — `width / aspect`, less [minus]: exact, or a floor when
- * [atLeast] (a featured card's caption may outgrow its 4:5 and grow the card).
- */
-private fun Modifier.heightFromWidth(aspect: Float, minus: Dp = 0.dp, atLeast: Boolean = false): Modifier =
+/** Exact height from the incoming width: `width / aspect`, less [minus]. */
+private fun Modifier.heightFromWidth(aspect: Float, minus: Dp = 0.dp): Modifier =
     layout { measurable, constraints ->
         val height = (constraints.maxWidth / aspect - minus.toPx()).roundToInt()
             .coerceIn(0, constraints.maxHeight)
-        val placeable = measurable.measure(
-            if (atLeast) {
-                constraints.copy(minHeight = height)
-            } else {
-                Constraints.fixed(constraints.maxWidth, height)
-            },
-        )
+        val placeable = measurable.measure(Constraints.fixed(constraints.maxWidth, height))
         layout(placeable.width, placeable.height) { placeable.place(0, 0) }
     }
 
-/**
- * The card's picture, cropped to fill. On a featured card it is drawn a little larger than
- * the card and slides by `shift` as the shelf is swiped — parallax, read at draw time.
- */
+/** The card's picture, cropped to fill. */
 @Composable
-private fun MediaImage(painter: Painter, shift: () -> Float, featured: Boolean, alignment: Alignment) {
+private fun MediaImage(painter: Painter, alignment: Alignment) {
     Image(
         painter = painter,
         contentDescription = null,
         contentScale = ContentScale.Crop,
         alignment = alignment,
-        modifier = Modifier
-            .fillMaxSize()
-            .then(
-                if (featured) {
-                    Modifier.graphicsLayer {
-                        scaleX = FEATURED_MEDIA_OVERSCAN
-                        scaleY = FEATURED_MEDIA_OVERSCAN
-                        val slack = size.width * (FEATURED_MEDIA_OVERSCAN - 1f) / 2f
-                        translationX = shift().coerceIn(-slack, slack)
-                    }
-                } else {
-                    Modifier
-                },
-            ),
+        modifier = Modifier.fillMaxSize(),
     )
 }
-
-/** How much larger than its card a featured picture is drawn, so the parallax never shows an edge. */
-private const val FEATURED_MEDIA_OVERSCAN = 1.06f
 
 /**
  * `RenderEffect` blur exists from API 31. Below it `Modifier.blur` is a no-op and a sharp
@@ -515,7 +409,7 @@ private fun IconTile(icon: ImageVector, accent: Color) {
  * an invitation, status is a caveat, and they must not look alike at a glance.
  */
 @Composable
-private fun FreshnessChip(
+internal fun FreshnessChip(
     freshness: DemoFreshness,
     accent: Color,
     modifier: Modifier = Modifier,
@@ -555,7 +449,7 @@ private fun FreshnessChip(
 }
 
 @Composable
-private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
+internal fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
     val label = when (status) {
         DemoStatus.KnownIssue -> stringResource(R.string.samples_chip_preview)
         DemoStatus.ComingSoon -> stringResource(R.string.samples_chip_soon)

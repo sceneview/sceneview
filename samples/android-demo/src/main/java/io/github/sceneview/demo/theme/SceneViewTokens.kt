@@ -348,8 +348,6 @@ object SceneViewTokens {
         val searchFieldHeight = 48.dp
         val contentPadding = 20.dp
         val gridGutter = 12.dp
-        val gridMinCell = 156.dp
-        val gridMinCellExpanded = 220.dp
         val heroHeight = 320.dp
         val heroHeightExpanded = 400.dp
         val heroPadding = 24.dp
@@ -364,20 +362,19 @@ object SceneViewTokens {
         val gridTopGap = 20.dp
         val gridBottomInset = 32.dp
         /**
-         * Space above a catalogue section header (#2239) — `space-2xl`. Large enough
-         * that the header reads as belonging to what follows rather than floating
-         * between two card rows.
+         * Space above a catalogue section header (#2239) — `space-lg`. Enough that the
+         * header reads as belonging to the group under it rather than to the one above.
          */
-        val sectionHeaderTopGap = 32.dp
-        /** Space between a section header and its first card row — `space-sm`. */
-        val sectionHeaderBottomGap = 16.dp
+        val sectionHeaderTopGap = 24.dp
+        /** Space between a section header and its group of rows. */
+        val sectionHeaderBottomGap = 12.dp
         val cardRadius = 20.dp
         val cardTextPaddingTop = 12.dp
         val cardTextPaddingHorizontal = 14.dp
         val cardTextPaddingBottom = 14.dp
         val cardOutlineWidth = 1.dp
         val iconTileGlyph = 40.dp
-        /** Width from which the hero grows and the grid uses [gridMinCellExpanded]. */
+        /** Width from which the hero grows to [heroHeightExpanded]. */
         const val expandedWidthDp = 600
         const val heroScrimStart = 0.5f
 
@@ -405,18 +402,41 @@ object SceneViewTokens {
          */
         val cardGlassMelt = 28.dp
 
-        /** `featured-card-width` — one "Featured" card; the next one peeks at the edge. */
-        val featuredCardWidth = 280.dp
-        val featuredCardWidthExpanded = 340.dp
 
-        /** `featured-media-aspect` — a "Featured" card is portrait, 4:5, its picture full-bleed. */
-        const val featuredMediaAspect = 0.8f
+        // ── Home list (`home-row-*` in DESIGN.md) ─────────────────────────────
+        // Under the 3D header the Home is a standard Material 3 list: grouped two-line
+        // rows on neutral grey tiles, one vertical scroll, no carousel.
 
-        /**
-         * Fraction of a "Featured" card's horizontal travel its picture lags behind the card
-         * while the shelf is swiped — the depth cue of a store's editorial row.
-         */
-        const val featuredParallax = 0.08f
+        /** `home-row-thumb` — the leading square of a row: the demo's capture or a glyph. */
+        val rowThumb = 56.dp
+
+        /** Glyph inside a `home-row-thumb` that has no capture. */
+        val rowThumbGlyph = 28.dp
+
+        /** `home-row-min-height` — the M3 two-line list item with a 56 dp leading image. */
+        val rowMinHeight = 72.dp
+
+        /** Row insets: `space-md` across (also the thumb-to-text gap), `space-sm` down. */
+        val rowPaddingHorizontal = 16.dp
+        val rowPaddingVertical = 8.dp
+
+        /** Title-to-subtitle gap inside a row. */
+        val rowTextGap = 2.dp
+
+        /** `home-row-gap` — the seam of page between two rows of one group. */
+        val rowGap = 2.dp
+
+        /** `home-row-radius-outer` — a group's four outer corners (`radius-md`). */
+        val rowRadiusOuter = 16.dp
+
+        /** `home-row-radius-inner` — every corner a row shares with a neighbour. */
+        val rowRadiusInner = 4.dp
+
+        /** `home-row-min-width` — from two of these across, the list goes multi-column. */
+        val rowMinWidth = 340.dp
+
+        /** Gap between two groups that have no section header between them. */
+        val groupGap = 16.dp
     }
 
     /**

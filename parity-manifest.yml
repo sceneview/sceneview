@@ -1354,17 +1354,22 @@ shell:
       - samples/ios-demo/SceneViewDemo/Views/Home/HomeFilter.swift
     contract: >-
       Header (search + What's new), 3-page featured pager (Models live,
-      Materials, Lighting, + What's-new page), Featured shelf
-      (FEATURED_SECTION_IDS, Rerun first), Browse-online card, 5 chips,
-      section headers, cards by order with New/Updated chips
+      Materials, Lighting, + What's-new page), then a standard grouped list
+      on surface-container-high: "Featured" section (FEATURED_SECTION_IDS,
+      Rerun first), Browse-online row, 5 chips, section headers, one 72dp
+      two-line row per demo (56dp thumb, New/Updated chip on the title
+      line), 2dp seams, outer corners 16dp / inner 4dp, one column on a
+      phone
     parity: diverges
     evidence: >-
-      Featured shelf, 5 section chips and section headers match since #3907
-      (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); the shelf skips
+      Featured order, 5 section chips and section headers match since #3907
+      (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); Featured skips
       ar-splat-room (#4075), which has no iOS screen. Still diverges:
-      single HomeHero instead of the pager, no What's new, Browse-online card
-      last instead of under the shelf, and six broken demos are kept off the
-      home (HomeCatalogue.hiddenFromHome)
+      Android replaced the horizontal Featured carousel and the picture
+      cards with the grouped list (home-standard-tiles), iOS still draws
+      them; single HomeHero instead of the pager, no What's new,
+      Browse-online card last instead of under Featured, and six broken
+      demos are kept off the home (HomeCatalogue.hiddenFromHome)
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt

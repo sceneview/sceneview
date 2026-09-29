@@ -122,51 +122,67 @@ the surface ramp above, not the M3 tonal ramp.
 | `card-glass` | `surface-container` (#ffffff) at 80 % over the card's own picture blurred 28dp — at 72 % a dark picture turned it a muddy grey | `surface-container` at 90 % (the `glass-sheet` value), same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
 | `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
-Catalogue **section headers** (the full-span label above each group of demo cards)
-use `on-surface` at `titleMedium` / `weight-semibold` — no colour of their own, because
-a header that tints itself competes with the cards it introduces. Geometry:
+**Under the 3D header, the Home is a standard app list.** The live header is the one
+showpiece; everything below it is the grouped two-line list of any well-made Material 3
+app (Play Store, Google Photos settings), which is what the Home sets out to prove — the
+3D header drops into an ordinary app, light and fast. One vertical scroll, no carousel:
+the "Featured" group, the "Browse online models" row, the category chips, then one group
+per category.
+
+A **row** is a `home-row-thumb` square of the demo's own capture (`radius-sm`; the demo's
+glyph on `surface-container-highest` while no capture exists), the title in `type-body`
+semibold, the subtitle in `type-caption` regular (`on-surface-variant`), and the "New" /
+"Updated" / status chips on the title line so the subtitle keeps the row's full width. Rows
+sit on `home-row-bg` and a group is one grey block: rows `home-row-gap` apart, the block's
+four outer corners at `home-row-radius-outer`, every shared corner at
+`home-row-radius-inner`. No shadow, no outline, in either theme — the tone carries it. The
+press is the platform ripple, no scale. Titles and subtitles are never truncated; the row
+grows.
 
 | Token | Value | Usage |
 |---|---|---|
-| `section-header-top-gap` | 32px (`space-xl`) | Above a section header |
-| `section-header-bottom-gap` | 16px (`space-md`) | Header to its first card row |
+| `home-row-bg` | `surface-container-high` (#f1f3f5 / #2C3546) | A list row's tile — the same grey as a chip |
+| `home-row-thumb` | 56dp, `radius-sm` | Leading picture of a row; its glyph fallback draws a 28dp icon |
+| `home-row-min-height` | 72dp | The M3 two-line list item with a 56dp leading image |
+| `home-row-padding` | 16dp across (`space-md`, also thumb-to-text), 8dp down (`space-sm`) | Row insets |
+| `home-row-gap` | 2dp | Seam of page between two rows of one group |
+| `home-row-radius-outer` | 16dp (`radius-md`) | A group's outer corners, and a lone row's |
+| `home-row-radius-inner` | 4dp | Corners a row shares with a neighbour |
+| `home-row-min-width` | 340dp | From two of these across the content width, the list lays out in columns (a tablet) |
+| `home-group-gap` | 16dp (`space-md`) | Between two groups with no header between them ("Featured" and "Browse online") |
+
+Catalogue **section headers** (the full-span label above each group of rows) use
+`on-surface` at `titleMedium` / `weight-semibold` — no colour of their own, because a
+header that tints itself competes with the rows it introduces. Geometry:
+
+| Token | Value | Usage |
+|---|---|---|
+| `section-header-top-gap` | 24px (`space-lg`); 8px (`space-sm`) for the first one, right under the chips | Above a section header |
+| `section-header-bottom-gap` | 12px | Header to its group |
 
 A header is drawn only when more than one section is visible: with a single category
 filtered, the chip already names it.
 
-**Home cards are pictures first.** A catalogue card is a square picture whose lower edge
-*melts* into a frosted caption: the caption's ground is a blurred copy of the same picture
-under `card-glass`, faded in over `card-glass-melt`, so there is no line between image and
-text and each card is tinted by what it shows. No white box, no border in light (`shadow-sm`
-lifts it), the 1 dp `outline-subtle` in dark. Titles and subtitles are never truncated; the
-caption grows and takes its glass with it. The "Featured" shelf under the hero uses the same
-card as a swipeable row of 4:5 portraits — picture full-bleed, the frosted caption floating
-on its lower part, `type-title`, `radius-xl`, `shadow-md` in light — the next card peeking at
-the edge, a fling settling on a card, and each picture lagging its card slightly as the row
-moves.
+**The picture card** (`DemoMediaCard`) is no longer on the Home; the Explore tab keeps it.
+A card is a square picture whose lower edge *melts* into a frosted caption: the caption's
+ground is a blurred copy of the same picture under `card-glass`, faded in over
+`card-glass-melt`, so there is no line between image and text. No white box, no border in
+light (`shadow-sm` lifts it), the 1 dp `outline-subtle` in dark.
 
 | Token | Value | Usage |
 |---|---|---|
-| `card-media-aspect` | 1 : 1 | Catalogue card picture |
+| `card-media-aspect` | 1 : 1 | Card picture |
 | `card-glass-blur` | 28dp | Blur of the picture copy under a card caption |
 | `card-glass-melt` | 28dp | Band over which the sharp picture fades into the glass (the fade spans twice this, centred on the caption's top) |
-| `featured-card-width` | 280dp (340dp from 600dp wide) | One "Featured" card |
-| `featured-media-aspect` | 4 : 5 | "Featured" card, minimum height; the caption may grow it |
-| `featured-parallax` | 0.08, clamped to a 6 % overscan | Picture lag behind its card while the shelf is swiped |
 
 Contrast of `card-glass`, composited over the worst uniform ground: light, over black —
 `on-surface` 10.6:1, `on-surface-variant` 5.9:1; dark, over white — 9.6:1 and 4.56:1. Dark
 is at 90 % and not lower because light pictures do reach dark mode: at 85 % the Animation
 card's light-grey stage took its caption to 4.4:1.
 
-iOS draws the same card in SwiftUI (`DemoMediaCard.swift`, tokens in `Theme.swift`). The
-blur takes the Skia radius converted to a sigma (`0.57735 · r + 0.5`). A grid card's picture
-never moves, so its frosted band is rendered once to a bitmap (Core Image) and cached; the
-Featured card blurs live because its picture slides under the parallax (`.visualEffect`,
-zero at each card's rest position, the last card's included). The caption follows Dynamic
-Type up to `accessibility2`, about Android's 2.0 font-scale ceiling. Its dark `chip-text` /
-`on-surface-dim` is #a4abb7 like Android's: the older iOS #9ca3af gave 4.16:1 over a white
-picture under the 90 % glass.
+iOS still draws the previous Home — picture cards and a swipeable 4:5 "Featured" shelf
+(`DemoMediaCard.swift`, `ShowcaseTab.swift`, tokens in `Theme.swift`) — until it mirrors the
+list above.
 
 ### Demo App About (Android)
 
