@@ -551,9 +551,12 @@ private fun SingleModelSection(
     val openedModel = remember { DemoSettings.openedModel.also { DemoSettings.openedModel = null } }
     var streamedFileUrl by remember { mutableStateOf<String?>(openedModel?.location) }
     // The opened file while it is the model on stage. `openedModel` is the one-shot handoff and
-    // never changes; this drops to null once a pick from the sheet or a Surprise roll replaces the
-    // file, so the title, the source chip and the AR handoff follow the model actually shown.
+    // never changes; this drops to null once a pick from the sheet or a Surprise roll has put its
+    // replacement on stage, so the title, the source chip and the AR handoff follow the model
+    // actually shown.
     var openedFile by remember { mutableStateOf(openedModel) }
+    // Set by a pick while the opened file is shown: the instance that was on stage at that moment.
+    var openedFileLeavingInstance by remember { mutableStateOf<LeavingStage?>(null) }
     // Scale question for a unit-less file (#3543). STL / OBJ / PLY record no unit, so the loader
     // reads them in millimetres; `loadedUnit` is the reading currently on screen, and taking the
     // offer re-converts the same staged bytes at the other one.
@@ -633,7 +636,11 @@ private fun SingleModelSection(
     // A Museum & Space entry has no bundled stand-in: nothing to load until its HD file is in.
     // Called unconditionally, for the reason above (#1464): a null path is a value, not a
     // missing call.
-    val bundledModel = rememberBundledModel(modelLoader, selectedModel.assetPath)
+    val bundledModel = rememberBundledModel(
+        modelLoader,
+        selectedModel.assetPath,
+        wakeRenderLoop = renderInvalidator::requestRender,
+    )
     val bundledModelInstance = bundledModel?.instance
 
     // HD pack (2026-09-29). An HD entry shows its bundled stand-in at once and swaps to the
@@ -696,6 +703,18 @@ private fun SingleModelSection(
     // helmet whenever the streamed instance is null (no Surprise tap yet,
     // streamed load still in flight, or streamed load failed).
     val activeModelInstance = streamedModelInstance ?: hdModel?.instance ?: bundledModelInstance
+    // The opened file leaves `openedFile` when its replacement is on stage, not when it is picked:
+    // a Surprise roll takes seconds to download and decode, and the file stays on screen meanwhile
+    // under its own title, source chip and AR handoff. A pick records the instance on stage;
+    // the first different one to be presented is the replacement. A unit re-open swaps the
+    // instance too, but records nothing: it is still the opened file.
+    LaunchedEffect(activeModelInstance, openedFileLeavingInstance) {
+        val leaving = openedFileLeavingInstance ?: return@LaunchedEffect
+        if (activeModelInstance !== leaving.instance) {
+            openedFile = null
+            openedFileLeavingInstance = null
+        }
+    }
     // The HD file on stage, when the instance presented is one. Read from the file actually
     // presented, not from the selection, which changes before its file is on screen.
     val hdAssetOnStage = remember(activeModelInstance, hdStore) {
@@ -1012,8 +1031,8 @@ private fun SingleModelSection(
                 // The same file twice keeps the instance already on screen: nothing to decode.
                 surpriseStage = if (pick.second == streamedFileUrl) null else SurpriseStage.Decoding
                 surprisePick = pick
+                if (openedFile != null) openedFileLeavingInstance = LeavingStage(activeModelInstance)
                 streamedFileUrl = pick.second
-                openedFile = null
                 // Warm the next roll while this model is looked at.
                 surprisePrefetch.warm(scope, service)
             }
@@ -1444,7 +1463,8 @@ private fun SingleModelSection(
         currentScene = null,
         onSelect = {
             HdPackPerfProbe.start(it.key)
-            cancelSurprise(); onSelectModel(it); streamedFileUrl = null; openedFile = null; modelSheetOpen = false
+            if (openedFile != null) openedFileLeavingInstance = LeavingStage(activeModelInstance)
+            cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false
         },
         onScene = { cancelSurprise(); modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
@@ -1602,11 +1622,18 @@ private fun rememberStreamedModelInstance(
  * model until the next is ready; a null path releases it. The result names the path it was
  * loaded from, so the caller can tell the previous model from the next one; a load that failed
  * reports its path with no instance.
+ *
+ * A model is reported only once it can draw: gltfio has finished its texture upload and one
+ * frame has gone by. A caller holding a previous model until this one is reported (the HD scan
+ * held until the next bundled model is ready, #4171) therefore never leaves the stage empty —
+ * reported straight after `createModelInstance`, the Soldier took over while its upload was still
+ * running and the stage stayed black for seconds.
  */
 @Composable
 private fun rememberBundledModel(
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     assetPath: String?,
+    wakeRenderLoop: () -> Unit,
 ): BundledModel? {
     val context = LocalContext.current
     val loaded = produceState<BundledModel?>(null, modelLoader, assetPath) {
@@ -1618,7 +1645,28 @@ private fun rememberBundledModel(
         val buffer = withContext(Dispatchers.IO) {
             runCatching { context.assets.readBuffer(path) }.getOrNull()
         }
-        value = BundledModel(path, buffer?.let { runCatching { modelLoader.createModelInstance(it) }.getOrNull() })
+        var created: io.github.sceneview.model.ModelInstance? = null
+        try {
+            created = buffer?.let { runCatching { modelLoader.createModelInstance(it) }.getOrNull() }
+            if (created != null) {
+                // The frame loop pumps the upload (`ModelLoader.updateLoad`) only while it runs,
+                // and a model not in the scene yet does not wake an on-demand loop: ask for frames
+                // until the upload is done, as the streamed loader does (#4034).
+                withTimeoutOrNull(STREAMED_TEXTURES_TIMEOUT_MS) {
+                    while (modelLoader.isLoading) {
+                        wakeRenderLoop()
+                        delay(SURPRISE_POLL_MS)
+                    }
+                }
+                wakeRenderLoop()
+                withFrameNanos { }
+            }
+            value = BundledModel(path, created)
+            created = null
+        } finally {
+            // Cancelled before it was reported (the user picked again): it never reached the screen.
+            created?.let { modelLoader.destroyModel(it.model) }
+        }
     }.value
     // `produceState` has no per-key disposal: destroy the previous model once replaced (#2459).
     androidx.compose.runtime.DisposableEffect(loaded) {
@@ -1629,6 +1677,9 @@ private fun rememberBundledModel(
 
 /** A bundled model and the asset path it was loaded from; [instance] is `null` when it failed. */
 private class BundledModel(val assetPath: String, val instance: io.github.sceneview.model.ModelInstance?)
+
+/** The instance on stage when a pick asked the opened file to leave; `null` when there was none. */
+private class LeavingStage(val instance: io.github.sceneview.model.ModelInstance?)
 
 /** A streamed model on screen and the location it was loaded from. */
 private class StreamedModel(val location: String, val instance: io.github.sceneview.model.ModelInstance)

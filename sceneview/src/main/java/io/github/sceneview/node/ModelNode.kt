@@ -11,7 +11,6 @@ import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.max
 import com.google.android.filament.Box
 import io.github.sceneview.Entity
-import io.github.sceneview.onLocalTransformTransactionCommitted
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.loaders.MaterialLoader
@@ -538,9 +537,6 @@ open class ModelNode(
                 applyAnimations(frameTimeNanos)
                 animator.updateBoneMatrices()
             } finally {
-                // Each applyAnimation() committed a local transform transaction, which may have
-                // reordered the TransformManager array under every cached handle (Engine.kt).
-                if (wasAnimating) engine.onLocalTransformTransactionCommitted()
                 // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
                 // into the Filament TransformManager, bypassing the Node setters that normally
                 // invalidate the caches. Invalidate the sub-nodes explicitly on any frame an

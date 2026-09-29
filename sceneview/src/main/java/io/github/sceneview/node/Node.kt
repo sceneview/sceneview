@@ -47,7 +47,7 @@ import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
 import io.github.sceneview.markTransformOrderUnsorted
-import io.github.sceneview.transformGeneration
+import io.github.sceneview.transformState
 import io.github.sceneview.safeRecycleEntity
 
 /**
@@ -637,7 +637,10 @@ open class Node protected constructor(
 
     var parentInstance: EntityInstance?
         get() {
-            val currentGeneration = engine.transformGeneration()
+            val state = engine.transformState()
+            // Unsorted: the next transaction commit may reindex it, never keep it (Engine.kt).
+            if (state.unsorted) return parentEntity?.let { transformManager.getInstance(it) }
+            val currentGeneration = state.generation
             if (!_parentInstanceValid || _parentInstanceGeneration != currentGeneration) {
                 _parentInstance = parentEntity?.let { transformManager.getInstance(it) }
                 _parentInstanceValid = true
@@ -956,12 +959,22 @@ open class Node protected constructor(
      * [io.github.sceneview.loaders.ModelLoader.destroyModel], which bypasses [destroy] entirely
      * — so comparing the snapshotted generation against the current one on every read detects a
      * stale handle in O(1) and forces a fresh, correct lookup.
+     *
+     * The other reindexing path is a transaction commit (gltfio's animator commits one on every
+     * `applyAnimation`), which re-sorts the array whenever a destroy or a reparent left a child
+     * ahead of its parent. Until the frame loop sorts it
+     * ([io.github.sceneview.sortTransformsIfUnsorted]), this getter does not cache at all.
      */
     private var _transformInstance: EntityInstance = 0
     private var _transformInstanceGeneration = -1
     val transformInstance: EntityInstance
         get() {
-            val currentGeneration = engine.transformGeneration()
+            val state = engine.transformState()
+            // While a child may sit before its parent, any transaction commit — gltfio's animator
+            // commits one per applyAnimation(), wherever it is called from — can reindex this
+            // entity: resolve fresh on every read until the frame loop sorts (Engine.kt).
+            if (state.unsorted) return transformManager.getInstance(entity)
+            val currentGeneration = state.generation
             if (_transformInstance == 0 || _transformInstanceGeneration != currentGeneration) {
                 _transformInstance = transformManager.getInstance(entity)
                 _transformInstanceGeneration = currentGeneration
