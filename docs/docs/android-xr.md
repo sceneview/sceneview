@@ -254,7 +254,8 @@ class XrActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         lifecycleScope.launch {
-            when (val result = Session.create(this@XrActivity)) {
+            // Name the `context` argument: a bare Activity resolves to a deprecated overload
+            when (val result = Session.create(context = this@XrActivity)) {
                 is SessionCreateSuccess -> {
                     val session = result.session
                     // Check spatial capabilities
