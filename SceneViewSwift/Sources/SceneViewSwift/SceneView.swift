@@ -1,6 +1,7 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import SwiftUI
 import RealityKit
+import Combine
 
 /// A SwiftUI view for rendering 3D content using RealityKit.
 ///
@@ -778,6 +779,12 @@ private final class SceneEntities: ObservableObject {
     let perspCamera = PerspectiveCamera()
     #endif
 
+    #if os(iOS)
+    /// A projection refresh in flight after a render-surface resize (#4182): the scene-update
+    /// subscription that restores the camera's near plane, and the value it restores.
+    var projectionRefresh: (subscription: any Cancellable, baseNear: Float)?
+    #endif
+
     deinit {
         // Real teardown path for per-entity gesture handlers (#2038).
         // A `NodeGesture` handler closure that captures the node it is
@@ -1432,20 +1439,37 @@ private struct SceneViewRepresentation: View {
 
     #if os(iOS)
     /// Makes RealityKit re-derive the camera projection once ``RenderSurfaceResizer`` has
-    /// resized the render surface (#4182). The projection only follows the new surface
-    /// when the camera component is written again, so the field of view is nudged by a
-    /// thousandth of a degree and restored on the next main-queue turn — unless a camera
-    /// gesture or the fit pass wrote a new value in between.
+    /// resized the render surface (#4182).
+    ///
+    /// The projection only follows the new surface when the camera component changes, so
+    /// the near plane is moved by one part in ten thousand, which nothing on screen can
+    /// show. It is restored on the **third** scene update after the nudge. RealityKit
+    /// emits one update per frame, before rendering it, so at least two frames render
+    /// with the nudged value. A revert on the next main-queue turn could land before any
+    /// frame, leaving a net no-op. The near plane is used, not the field of view, because
+    /// `applyCamera()` resets the field of view to its baseline whenever SwiftUI runs
+    /// `update:`, which a rotation does. SceneView never writes the near plane.
     private func refreshProjectionAfterSurfaceResize() {
+        let entities = self.entities
         let camera = entities.perspCamera
-        let fov = camera.camera.fieldOfViewInDegrees
-        let nudged = fov + 0.001
-        camera.camera.fieldOfViewInDegrees = nudged
-        DispatchQueue.main.async {
-            if camera.camera.fieldOfViewInDegrees == nudged {
-                camera.camera.fieldOfViewInDegrees = fov
+        guard let scene = camera.scene else { return }
+        // A resize while an earlier refresh is pending keeps that refresh's base value, so
+        // back-to-back rotations can never leave the near plane drifted.
+        let baseNear = entities.projectionRefresh?.baseNear ?? camera.camera.near
+        entities.projectionRefresh?.subscription.cancel()
+        let nudged = baseNear * 1.0001
+        camera.camera.near = nudged
+        var updates = 0
+        let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak entities] _ in
+            updates += 1
+            guard updates >= 3, let entities else { return }
+            if entities.perspCamera.camera.near == nudged {
+                entities.perspCamera.camera.near = baseNear
             }
+            entities.projectionRefresh?.subscription.cancel()
+            entities.projectionRefresh = nil
         }
+        entities.projectionRefresh = (subscription, baseNear)
     }
     #endif
 
