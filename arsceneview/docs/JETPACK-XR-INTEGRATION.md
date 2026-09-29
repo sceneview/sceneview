@@ -33,7 +33,7 @@ runtime actually delivers:
 | Anchors              | Stable                               | Stable                                   |
 | Depth                | Stable                               | Stable                                   |
 | Augmented faces      | Front-camera, stable                 | Headset, alpha (`Face` perception)       |
-| Augmented images     | Stable                               | Not in alpha14                           |
+| Augmented images     | Stable                               | `AugmentedImage`, not wrapped yet        |
 | **Hand tracking**    | Not available                        | **Headset, alpha (`Hand` perception)**   |
 | Body tracking        | Not available                        | Not available                            |
 | Geospatial / Earth   | Stable                               | Roadmap                                  |
@@ -100,8 +100,8 @@ subpackage. NO new Gradle module.**
 
 - New subpackage: `arsceneview/src/main/java/io/github/sceneview/ar/xr/`.
 - New `compileOnly` dep in `arsceneview/build.gradle`:
-  `compileOnly("androidx.xr.arcore:arcore:1.0.0-alpha14")` (+ transitive
-  `androidx.xr.runtime`).
+  `compileOnly libs.androidx.xr.arcore` (+ transitive `androidx.xr.runtime`;
+  version pinned as `jetpackXrArCore` in `gradle/libs.versions.toml`).
 - Public API gated on a runtime availability check
   (`XrFeatures.isAvailable(context)`) so a non-XR phone never touches
   the XR classes at runtime — no `ClassNotFoundException` on phones.
@@ -116,7 +116,8 @@ subpackage. NO new Gradle module.**
 
 ### Threading
 
-Jetpack XR `Session.create(activity)` is a `suspend` coroutine and the
+Jetpack XR `Session.create(context)` is a `suspend` function returning a
+`SessionCreateResult`, and the
 perception state flows are `kotlinx.coroutines.flow.StateFlow`s. That
 plays well with Compose. The Filament JNI rule from `CLAUDE.md` still
 applies — node geometry/material creation happens on the main thread,
@@ -124,8 +125,9 @@ the XR `StateFlow` is collected on the main dispatcher.
 
 ### Preview-status guardrail
 
-`androidx.xr.arcore` is **`1.0.0-alpha14`** at the time of writing
-(2026-05-21). It is preview, subject to breaking changes. Every public
+`androidx.xr.arcore` is pinned as `jetpackXrArCore` in
+`gradle/libs.versions.toml` (the single source of truth for its version). It
+is preview, subject to breaking changes. Every public
 SceneView API that wraps it MUST:
 
 1. Carry a `@RequiresOptIn(message = "Jetpack XR API is preview")`
@@ -189,7 +191,7 @@ object XrFeatures {
      * runtime.
      *
      * Device-level capability (XR headset vs mobile phone) is layered on
-     * top by Slices 2 / 3 via the upstream `Session.create(activity)`
+     * top by Slices 2 / 3 via the upstream `Session.create(context)`
      * outcome.
      */
     fun isAvailable(context: android.content.Context): Boolean

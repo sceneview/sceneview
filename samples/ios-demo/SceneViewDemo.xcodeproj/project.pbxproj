@@ -810,6 +810,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70000010000000000000003 /* Build configuration list for PBXNativeTarget "SceneViewDemo" */;
 			buildPhases = (
+				A60000010000000000000005 /* Fetch assets */,
 				A60000010000000000000004 /* Collate iOS demos */,
 				A60000010000000000000003 /* Validate store secrets */,
 				A60000010000000000000001 /* Sources */,
@@ -972,6 +973,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A60000010000000000000005 /* Fetch assets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../assets/manifest.json",
+			);
+			name = "Fetch assets";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Models/ and Environments/ are not in git: they live on the `assets-v1`\n# GitHub Release, listed in assets/manifest.json. Materialise them before\n# Copy Bundle Resources so every build (Xcode, xcodebuild, fastlane, CI)\n# embeds the same bytes, or fails here instead of shipping without models.\n# Once ~/.cache/sceneview-assets is warm this is an offline hash check.\nset -eu\nbash \"${SRCROOT}/../../tools/fetch-assets.sh\" --scope ios\n";
+			showEnvVarsInLog = 0;
+		};
 		A60000010000000000000004 /* Collate iOS demos */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 0;
