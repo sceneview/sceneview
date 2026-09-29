@@ -3,6 +3,7 @@ package io.github.sceneview.loaders
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.util.Arrays
 
 /**
  * A decoded Radiance `.hdr` image: [width] × [height] linear RGB floats, row 0 first, in a
@@ -57,8 +58,24 @@ internal object RgbeDecoder {
     /** Scanlines decoded between two [decode] `checkCancelled` calls. */
     private const val CANCEL_CHECK_LINES = 32
 
-    /** `2^(e - 136)` for every exponent byte — the same float `ldexp` gives Filament. */
-    private val EXPONENT_SCALE = FloatArray(BYTE_MASK + 1) { e -> Math.scalb(1f, e - EXPONENT_BIAS) }
+    /** Scanlines buffered in a `FloatArray` between two bulk copies into the direct buffer. */
+    private const val ROWS_PER_PUT = 16
+
+    private val EMPTY_BYTES = ByteArray(0)
+
+    /**
+     * Every RGBE channel value, indexed by `exponent shl 8 or mantissa`: Filament's
+     * `(mantissa + 0.5) * 2^(e - 136)` in float, computed with the same operations, and 0 for
+     * `e == 0`. One lookup per channel keeps the per-pixel loop short on an interpreted
+     * (debuggable) runtime as well as a compiled one; 256 KiB, built on first use.
+     */
+    private val CHANNEL_VALUES = FloatArray((BYTE_MASK + 1) shl BYTE_BITS).also { table ->
+        for (e in 1..BYTE_MASK) {
+            val scale = Math.scalb(1f, e - EXPONENT_BIAS)
+            val row = e shl BYTE_BITS
+            for (m in 0..BYTE_MASK) table[row or m] = (m + MANTISSA_CENTER) * scale
+        }
+    }
 
     /**
      * Decodes [buffer] from its current position without moving it; `null` if unsupported.
@@ -108,24 +125,31 @@ internal object RgbeDecoder {
         val pixels = ByteBuffer.allocateDirect((pixelCount * RGB * Float.SIZE_BYTES).toInt())
             .order(ByteOrder.nativeOrder())
             .asFloatBuffer()
-        val scanline = ByteArray(w * CHANNELS)
-        val row = FloatArray(w * RGB)
+        // Planar RLE scanline: all R bytes, then G, then B, then E — so every run is one bulk
+        // `fill` or `arraycopy` instead of a per-byte loop.
+        val scanline = if (rle) ByteArray(w * CHANNELS) else EMPTY_BYTES
+        val rows = FloatArray(w * RGB * minOf(ROWS_PER_PUT, h))
+        var rowsInBatch = 0
         for (y in 0 until h) {
             if (y % CANCEL_CHECK_LINES == 0) checkCancelled()
+            val out = rowsInBatch * w * RGB
             if (rle) {
                 if (!isRleHeader(bytes, pos, end, w)) return null
                 pos += CHANNELS
                 for (channel in 0 until CHANNELS) {
-                    pos = readRleChannel(bytes, pos, end, w, channel, scanline)
+                    pos = readRleChannel(bytes, pos, end, w, channel * w, scanline)
                     if (pos < 0) return null
                 }
+                unpackPlanar(scanline, w, rows, out)
             } else {
                 if (pos + w * CHANNELS > end) return null
-                System.arraycopy(bytes, pos, scanline, 0, w * CHANNELS)
+                unpackInterleaved(bytes, pos, w, rows, out)
                 pos += w * CHANNELS
             }
-            unpackScanline(scanline, w, row)
-            pixels.put(row)
+            if (++rowsInBatch == ROWS_PER_PUT || y == h - 1) {
+                pixels.put(rows, 0, rowsInBatch * w * RGB)
+                rowsInBatch = 0
+            }
         }
         pixels.rewind()
         return RgbeImage(w, h, pixels)
@@ -140,51 +164,71 @@ internal object RgbeDecoder {
         return lineWidth == width
     }
 
-    /** Reads one RLE [channel] of a scanline into [scanline]; the new offset, or -1 if malformed. */
+    /**
+     * Reads one RLE channel of a scanline into `scanline[base until base + width]`; the new
+     * offset, or -1 if malformed.
+     */
     @Suppress("LongParameterList")
     private fun readRleChannel(
         bytes: ByteArray,
         start: Int,
         end: Int,
         width: Int,
-        channel: Int,
+        base: Int,
         scanline: ByteArray
     ): Int {
         var pos = start
-        var x = 0
-        while (x < width) {
+        var out = base
+        val limit = base + width
+        while (out < limit) {
             if (pos >= end) return -1
             var count = bytes[pos++].toInt() and BYTE_MASK
             if (count > RLE_RUN_FLAG) {
                 count -= RLE_RUN_FLAG
-                if (count > width - x || pos >= end) return -1
-                val value = bytes[pos++]
-                repeat(count) { scanline[(x + it) * CHANNELS + channel] = value }
+                if (count > limit - out || pos >= end) return -1
+                Arrays.fill(scanline, out, out + count, bytes[pos++])
             } else {
-                if (count == 0 || count > width - x || pos + count > end) return -1
-                repeat(count) { scanline[(x + it) * CHANNELS + channel] = bytes[pos++] }
+                if (count == 0 || count > limit - out || pos + count > end) return -1
+                System.arraycopy(bytes, pos, scanline, out, count)
+                pos += count
             }
-            x += count
+            out += count
         }
         return pos
     }
 
-    /** Converts one RGBE [scanline] to linear RGB floats in [row]. */
-    private fun unpackScanline(scanline: ByteArray, width: Int, row: FloatArray) {
-        for (x in 0 until width) {
-            val e = scanline[x * CHANNELS + 3].toInt() and BYTE_MASK
-            val out = x * RGB
-            if (e == 0) {
-                row[out] = 0f
-                row[out + 1] = 0f
-                row[out + 2] = 0f
-                continue
-            }
-            // Filament's imageio HDRDecoder: (mantissa + 0.5) * 2^(e - 136), in float.
-            val scale = EXPONENT_SCALE[e]
-            row[out] = ((scanline[x * CHANNELS].toInt() and BYTE_MASK) + MANTISSA_CENTER) * scale
-            row[out + 1] = ((scanline[x * CHANNELS + 1].toInt() and BYTE_MASK) + MANTISSA_CENTER) * scale
-            row[out + 2] = ((scanline[x * CHANNELS + 2].toInt() and BYTE_MASK) + MANTISSA_CENTER) * scale
+    /**
+     * Converts one planar RGBE [scanline] (R plane, G, B, E) to linear RGB floats in [rows]
+     * from [out], through [CHANNEL_VALUES].
+     */
+    private fun unpackPlanar(scanline: ByteArray, width: Int, rows: FloatArray, out: Int) {
+        val values = CHANNEL_VALUES
+        var r = 0
+        var g = width
+        var b = 2 * width
+        var e = 3 * width
+        var o = out
+        val rEnd = width
+        while (r < rEnd) {
+            val row = (scanline[e++].toInt() and BYTE_MASK) shl BYTE_BITS
+            rows[o++] = values[row or (scanline[r++].toInt() and BYTE_MASK)]
+            rows[o++] = values[row or (scanline[g++].toInt() and BYTE_MASK)]
+            rows[o++] = values[row or (scanline[b++].toInt() and BYTE_MASK)]
+        }
+    }
+
+    /** [unpackPlanar] for a flat file: interleaved RGBE pixels straight from [bytes] at [start]. */
+    private fun unpackInterleaved(bytes: ByteArray, start: Int, width: Int, rows: FloatArray, out: Int) {
+        val values = CHANNEL_VALUES
+        var i = start
+        var o = out
+        val iEnd = start + width * CHANNELS
+        while (i < iEnd) {
+            val row = (bytes[i + 3].toInt() and BYTE_MASK) shl BYTE_BITS
+            rows[o++] = values[row or (bytes[i].toInt() and BYTE_MASK)]
+            rows[o++] = values[row or (bytes[i + 1].toInt() and BYTE_MASK)]
+            rows[o++] = values[row or (bytes[i + 2].toInt() and BYTE_MASK)]
+            i += CHANNELS
         }
     }
 
