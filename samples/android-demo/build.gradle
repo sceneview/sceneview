@@ -45,6 +45,15 @@ if (sketchfabApiKey.isEmpty()) {
     sketchfabApiKey = loadFromLocalProperties("sketchfab.api.key")
 }
 
+// `-PdemoPlainDebug=true`: build the debug variant as the plain public demo —
+// application id `io.github.sceneview.demo`, label "SceneView", store icon —
+// instead of the side-by-side QA app (see the `debug` build type). Only
+// build-apks.yml needs it, for the APK attached to GitHub Releases; local and QA
+// builds leave it unset and get the `.qa` app.
+def demoPlainDebug = providers.gradleProperty("demoPlainDebug")
+        .map { it.toBoolean() }
+        .getOrElse(false)
+
 android {
     namespace = "io.github.sceneview.demo"
 
@@ -64,7 +73,7 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.47.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.48.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -91,6 +100,27 @@ android {
     }
 
     buildTypes {
+        // A debug build is a separate app that installs next to the Play Store
+        // one instead of replacing it: `io.github.sceneview.demo.qa`, labelled
+        // "SV QA" with a badged launcher icon (src/qaLauncher/res, wired in
+        // `sourceSets` below), so a test build is recognisable at a glance and can
+        // be uninstalled without touching the store install. Only the applicationId
+        // moves — the Kotlin namespace (and so every class name) stays
+        // `io.github.sceneview.demo`, which means a component is
+        // `io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity`:
+        // the `<pkg>/.MainActivity` shorthand would resolve against the `.qa` id.
+        //
+        // `-PdemoPlainDebug=true` turns all of that off (id, version suffix, label,
+        // icon): the debug APK is then `io.github.sceneview.demo`, "SceneView",
+        // store icon. build-apks.yml passes it, because the debug APK it attaches to
+        // a GitHub Release is the one the public downloads (tools/try-demo.sh
+        // --download, docs/docs/try.md) — that one must stay the plain demo.
+        debug {
+            if (!demoPlainDebug) {
+                applicationIdSuffix ".qa"
+                versionNameSuffix "-qa"
+            }
+        }
         release {
             minifyEnabled = true
             shrinkResources = true
@@ -98,6 +128,16 @@ android {
             def keystoreFile = System.getenv("SCENEVIEW_DEMO_KEYSTORE_FILE")
             if (keystoreFile != null) {
                 signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    sourceSets {
+        debug {
+            // QA launcher label + badged icon, overriding the store ones in
+            // src/main/res — see the `debug` build type above.
+            if (!demoPlainDebug) {
+                res.srcDir 'src/qaLauncher/res'
             }
         }
     }

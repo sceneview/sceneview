@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 13+ themed-icon layer of the QA build, derived from the store one: the store
+    icon's monochrome layer IS ic_launcher_foreground (mipmap-anydpi-v33 in src/main), and
+    so is this one - the same drawable, scaled to 74 % and raised, with the QA badge laid
+    under it. A change to ic_launcher_foreground reaches the themed QA icon untouched.
+
+    Why the cube moves: the system tints this layer with one colour and keeps only its
+    alpha, so the colour badge cannot sit over the cube as it does in the full-colour icon
+    (the lettering would merge with the cube behind it). Raised and shrunk, the cube ends
+    at y 59 and the outlined badge (ic_launcher_qa_badge_monochrome) starts at y 65 -
+    clear air between them. Fraction insets scale with whatever size the launcher draws
+    the icon at, unlike dp insets.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <inset
+            android:drawable="@drawable/ic_launcher_foreground"
+            android:insetLeft="13%"
+            android:insetRight="13%"
+            android:insetTop="0%"
+            android:insetBottom="26%" />
+    </item>
+    <item android:drawable="@drawable/ic_launcher_qa_badge_monochrome" />
+</layer-list>

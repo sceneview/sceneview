@@ -56,7 +56,7 @@
 #
 # AR demos require the ARCore-friendly emulator from
 # `.claude/scripts/setup-ar-emulator.sh`.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 - runFlow: 3d-basics.yaml
 - runFlow: lighting.yaml

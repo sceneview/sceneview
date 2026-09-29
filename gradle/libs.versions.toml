@@ -12,9 +12,9 @@ fragmentKtx = "1.9.0"
 
 # Compose
 composeBom = "2026.09.00"
-composeMaterial3Expressive = "1.5.0-alpha28"
+composeMaterial3Expressive = "1.5.0-alpha29"
 activityCompose = "1.13.0"
-navigationCompose = "2.10.1"
+navigationCompose = "2.10.2"
 lifecycleRuntimeCompose = "2.10.0"
 
 # Kotlin Libraries
@@ -146,7 +146,7 @@ androidxTestRules = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 androidxTestUiAutomator = "2.4.0"
 robolectric = "4.16.1"
-roborazzi = "1.74.0"
+roborazzi = "1.75.0"
 
 # Code Quality
 # detekt 2.0.0-alpha.0 (Sep 2025) is the first release built against Kotlin 2.x

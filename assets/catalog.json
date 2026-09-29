@@ -784,44 +784,6 @@
       "cameraDistance": 4.0
     },
     {
-      "id": "porsche_911_turbo",
-      "name": "1975 Porsche 911 (930) Turbo",
-      "source": "sketchfab",
-      "sourceId": "8568d9d14a994b9cae59499f0dbed21e",
-      "sourceUrl": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",
-      "author": "Lionsharp Studios",
-      "license": "CC-BY-4.0",
-      "formats": {
-        "glb": {
-          "file": "models/glb/porsche_911_turbo.glb",
-          "size": "21MB"
-        },
-        "usdz": {
-          "file": "models/usdz/porsche_911_turbo.usdz",
-          "size": "12MB"
-        }
-      },
-      "tags": [
-        "porsche",
-        "911",
-        "turbo",
-        "classic",
-        "vehicle",
-        "german",
-        "hype"
-      ],
-      "usedIn": [
-        "android-demo",
-        "ios-demo",
-        "web-demo",
-        "website",
-        "flutter",
-        "react-native"
-      ],
-      "defaultScale": 0.5,
-      "cameraDistance": 4.0
-    },
-    {
       "id": "ps5_dualsense",
       "name": "PlayStation 5 DualSense",
       "source": "sketchfab",

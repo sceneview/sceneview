@@ -30,7 +30,7 @@
     <string name="demo_animation_physics_speed">Speed</string>
     <string name="demo_animation_physics_loop">Loop</string>
     <string name="demo_animation_physics_once">Once</string>
-    <string name="demo_animation_physics_ibl">IBL intensity</string>
+    <string name="demo_animation_physics_ibl">Brightness</string>
     <string name="demo_animation_physics_camera_hero">Turntable</string>
     <string name="demo_animation_physics_camera_reveal">Reveal</string>
     <string name="demo_animation_physics_camera_vertigo">Vertigo</string>

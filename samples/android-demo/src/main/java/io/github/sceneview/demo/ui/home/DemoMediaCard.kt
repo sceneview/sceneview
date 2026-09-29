@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -34,13 +33,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -97,11 +94,9 @@ fun DemoMediaCard(
 }
 
 /**
- * The closing grid item — same anatomy as a demo card — that opens the online
- * model gallery (`ExploreTabScreen`). Its media is a 2 × 2 collage of the
- * bundled model thumbnails under the hero's scrim, with a globe badge in the
- * corner: it reads as "more models" next to the captured previews instead of a
- * flat icon tile (#3308).
+ * The row under the home grid that opens the online model gallery
+ * (`ExploreTabScreen`): a globe glyph, the title and a one-line subtitle on
+ * `surface-container-high`.
  */
 @Composable
 fun BrowseOnlineModelsCard(
@@ -122,61 +117,7 @@ fun BrowseOnlineModelsCard(
             Icon(Icons.Filled.Language, contentDescription = null)
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.home_browse_title), style = SceneViewTokens.Type.card)
-                Text("Discover models from online collections", style = SceneViewTokens.Type.body)
-            }
-        }
-    }
-}
-
-/** Four bundled model thumbnails, scrimmed like the hero, with a globe badge. */
-@Composable
-private fun BrowseOnlineCollage() {
-    val thumbs = listOf(
-        R.drawable.model_thumb_khronos_damaged_helmet,
-        R.drawable.model_thumb_khronos_toy_car,
-        R.drawable.model_thumb_shiba,
-        R.drawable.model_thumb_khronos_lantern,
-    )
-    Box(modifier = Modifier.fillMaxSize().background(heroField())) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            thumbs.chunked(2).forEach { row ->
-                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    row.forEach { res ->
-                        Image(
-                            painter = painterResource(res),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.weight(1f).fillMaxSize(),
-                        )
-                    }
-                }
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        SceneViewTokens.Home.heroScrimStart to SceneViewTokens.SpatialGalleryColor.stageScrimStart,
-                        1f to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
-                    ),
-                ),
-        )
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
-                .size(SceneViewTokens.Home.browseBadgeSize),
-            shape = CircleShape,
-            color = SceneViewTokens.HomeColor.heroPillBackground,
-            contentColor = SceneViewTokens.HomeColor.heroPillText,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Filled.Language,
-                    contentDescription = null,
-                    modifier = Modifier.size(SceneViewTokens.Home.browseBadgeGlyph),
-                )
+                Text(stringResource(R.string.home_browse_subtitle), style = SceneViewTokens.Type.body)
             }
         }
     }

@@ -30,8 +30,10 @@ set -uo pipefail
 APK="${1:?usage: ci-preview-android.sh <apk> <out-dir> [demo-ids]}"
 OUT="${2:?usage: ci-preview-android.sh <apk> <out-dir> [demo-ids]}"
 IDS_RAW="${3:-home,model-viewer}"
-PKG="io.github.sceneview.demo"
-ACTIVITY="$PKG/.MainActivity"
+# The debug APK is its own app next to the Play Store one (`applicationIdSuffix
+# ".qa"`); the class keeps the demo namespace, hence the fully qualified name.
+PKG="io.github.sceneview.demo.qa"
+ACTIVITY="$PKG/io.github.sceneview.demo.MainActivity"
 SETTLE="${PREVIEW_SETTLE_SECONDS:-20}"
 
 # Every adb call goes through this: 60 s is far above any healthy call here.

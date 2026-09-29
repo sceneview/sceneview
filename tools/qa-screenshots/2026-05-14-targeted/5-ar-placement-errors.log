@@ -1,1 +1,0 @@
-05-14 17:06:19.461 29684 29684 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 29684 (.sceneview.demo), pid 29684 (.sceneview.demo)

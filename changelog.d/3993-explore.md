@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo (Android):** Browse online models no longer spins forever when a catalog is slow or unreachable — each feed and search gives up after 12 s and shows a "Couldn't reach …" card with a Try again button, in light and dark. The row of the app's own demos below it, formerly "Built with SceneView" with generic icons, is now "Try a demo" and shows each demo's captured preview.

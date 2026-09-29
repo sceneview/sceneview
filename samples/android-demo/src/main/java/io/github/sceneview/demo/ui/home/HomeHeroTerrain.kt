@@ -1,5 +1,11 @@
 package io.github.sceneview.demo.ui.home
 
+import io.github.sceneview.math.Direction
+import io.github.sceneview.math.normalToTangent
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import java.nio.IntBuffer
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -22,7 +28,8 @@ import kotlin.math.sqrt
  * a low-poly flight game. That is the look; it also means no textures, no UVs, and one
  * draw call for the whole landscape through `hero_terrain.filamat`.
  *
- * Nothing here touches Filament; [HomeHeroScene] turns the arrays into a `Geometry`.
+ * Nothing here touches Filament: [packForUpload] readies the arrays off the main thread and
+ * [HomeHeroScene] only hands them to a vertex and an index buffer.
  * See `HomeHeroTerrainTest`.
  */
 internal data class HeroTerrainSpec(
@@ -157,6 +164,80 @@ internal fun buildHeroTerrain(spec: HeroTerrainSpec): HeroTerrainMesh {
     }
     return HeroTerrainMesh(positions, normals, colors, indices)
 }
+
+/**
+ * [HeroTerrainMesh] packed exactly the way Filament uploads it: direct, native-order buffers,
+ * the tangent frame already derived from the face normals, the bounds already measured.
+ *
+ * Built off the main thread with the mesh, so all that is left on it is two buffer objects
+ * and three `setBufferAt` copies. Going through `Geometry.Builder` instead did this packing on
+ * the main thread — one `Float3`, `Quaternion` and `FloatArray` per vertex, ~54 000 vertices —
+ * and it landed there *while the user was leaving the home screen*: tapping the hero's Open
+ * during the flight's first seconds stalled the navigation for half a second, on top of the
+ * viewer's own start (Home → Models stall).
+ *
+ * The layout matches `Geometry`'s: buffer 0 = POSITION float3, 1 = TANGENTS float4
+ * (normalized), 2 = COLOR float4 (normalized). Buffers are fresh and never written again, so
+ * Filament's asynchronous copy can never read a half-overwritten one.
+ */
+internal class HeroTerrainBuffers(
+    val vertexCount: Int,
+    val positions: FloatBuffer,
+    val tangents: FloatBuffer,
+    val colors: FloatBuffer,
+    val indices: IntBuffer,
+    /** Axis-aligned bounds as centre and half extent, x y z each. */
+    val center: FloatArray,
+    val halfExtent: FloatArray,
+) {
+    val indexCount: Int get() = indices.limit()
+}
+
+internal fun HeroTerrainMesh.packForUpload(): HeroTerrainBuffers {
+    val count = vertexCount
+    val tangents = directFloats(count * 4)
+    // Flat shading: the three vertices of a face share its normal, so the frame is derived
+    // once per face and reused — a third of the work `Geometry` would do.
+    var frame = FloatArray(4)
+    for (v in 0 until count) {
+        val nx = normals[v * 3]
+        val ny = normals[v * 3 + 1]
+        val nz = normals[v * 3 + 2]
+        val sameAsPrevious = v > 0 &&
+            nx == normals[v * 3 - 3] && ny == normals[v * 3 - 2] && nz == normals[v * 3 - 1]
+        if (!sameAsPrevious) {
+            val q = normalToTangent(Direction(nx, ny, nz))
+            frame = floatArrayOf(q.x, q.y, q.z, q.w)
+        }
+        tangents.put(frame)
+    }
+    tangents.flip()
+    val min = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
+    val max = floatArrayOf(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
+    for (i in 0 until count) {
+        for (axis in 0 until 3) {
+            val value = positions[i * 3 + axis]
+            if (value < min[axis]) min[axis] = value
+            if (value > max[axis]) max[axis] = value
+        }
+    }
+    return HeroTerrainBuffers(
+        vertexCount = count,
+        positions = directFloats(positions.size).put(positions).also { it.flip() },
+        tangents = tangents,
+        colors = directFloats(colors.size).put(colors).also { it.flip() },
+        indices = ByteBuffer.allocateDirect(indices.size * Int.SIZE_BYTES)
+            .order(ByteOrder.nativeOrder())
+            .asIntBuffer()
+            .put(indices)
+            .also { it.flip() },
+        center = FloatArray(3) { (min[it] + max[it]) / 2f },
+        halfExtent = FloatArray(3) { (max[it] - min[it]) / 2f },
+    )
+}
+
+private fun directFloats(count: Int): FloatBuffer =
+    ByteBuffer.allocateDirect(count * Float.SIZE_BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer()
 
 /** Deterministic ±6 % per face, so two builds of the same spec are byte-identical. */
 private fun faceJitter(face: Int): Float {

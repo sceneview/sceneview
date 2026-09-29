@@ -41,7 +41,7 @@ def _android_cli_bin():
 # Pin the serial when multiple devices are attached. `android screen capture`
 # has no --device flag in v0.7; the layout subcommand does.
 ANDROID_SERIAL = os.environ.get("ANDROID_SERIAL", "")
-PACKAGE = "io.github.sceneview.demo"
+PACKAGE = "io.github.sceneview.demo.qa"  # debug build: applicationIdSuffix ".qa" (#4138)
 ACTIVITY = "io.github.sceneview.demo.MainActivity"
 SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "android")
 

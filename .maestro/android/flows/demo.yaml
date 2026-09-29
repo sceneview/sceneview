@@ -48,7 +48,7 @@
 #   - Assert the app process is still foregrounded afterwards. A crash would
 #     drop us out of the app; `assertVisible` on any app element then fails the
 #     flow. A FATAL/ANR sweep of logcat is done once, globally, by catalog.yaml.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 # NOTE: deliberately NO `env:` default for CAMERA_DISTANCE here. A default
 # declared in THIS subflow's own `env:` block MASKS the value the caller passes
 # via `runFlow → env:` — that inverted precedence is exactly what silently
@@ -64,7 +64,7 @@ appId: io.github.sceneview.demo
 # `--ez`) freezes animation for a deterministic screenshot. `stopApp: true`
 # guarantees a cold start so the new extras are read in onCreate.
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:
@@ -145,7 +145,7 @@ appId: io.github.sceneview.demo
 # launcher / a system dialog — the back button's content description would not
 # be present. This is the per-demo crash gate.
 - assertVisible:
-    id: "io.github.sceneview.demo:id/decor_content_parent"
+    id: "io.github.sceneview.demo.qa:id/decor_content_parent"
     optional: true
 # Belt-and-braces: the demo scaffold always renders a "Navigate back" button.
 # Its presence proves the demo Activity is still foregrounded and composed.
@@ -180,7 +180,7 @@ appId: io.github.sceneview.demo
     commands:
       # Near framing — a small camera distance zooms IN on the model.
       - launchApp:
-          appId: io.github.sceneview.demo
+          appId: io.github.sceneview.demo.qa
           clearState: false
           stopApp: true
           arguments:
@@ -243,7 +243,7 @@ appId: io.github.sceneview.demo
       # within DeepLinkRouter.CAMERA_DISTANCE_MAX (100 m); the model shrinks
       # but stays framed, proving the orbit-radius override took effect.
       - launchApp:
-          appId: io.github.sceneview.demo
+          appId: io.github.sceneview.demo.qa
           clearState: false
           stopApp: true
           arguments:

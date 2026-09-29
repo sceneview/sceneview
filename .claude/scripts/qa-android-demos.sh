@@ -74,8 +74,12 @@ fi
 # through this shell function instead of PATH.
 adb() { "$ADB" "$@"; }
 
-PACKAGE="io.github.sceneview.demo"
-ACTIVITY=".MainActivity"
+# The debug APK installs as its own app next to the Play Store one
+# (`applicationIdSuffix ".qa"`), so this never touches a store install. Only the
+# application id moved: the class keeps the demo namespace and is spelled in
+# full, because `<pkg>/.MainActivity` would resolve against the `.qa` id.
+PACKAGE="io.github.sceneview.demo.qa"
+ACTIVITY="io.github.sceneview.demo.MainActivity"
 APK="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
 
 INSTALL=false

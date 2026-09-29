@@ -68,7 +68,6 @@ enum BundledAssetCredits {
         "Models/lamborghini_countach.usdz": .init(name: "2021 Lamborghini Countach LPI 800-4", author: "Lexyc16", license: "CC-BY-NC 4.0"),
         "Models/nike_air_jordan.usdz": .init(name: "Nike Air Jordan", author: "Ar41k", license: "CC-BY 4.0"),
         "Models/ferrari_f40.usdz": .init(name: "Ferrari F40", author: "Black Snow", license: "CC-BY 4.0"),
-        "Models/porsche_911_turbo.usdz": .init(name: "1975 Porsche 911 (930) Turbo", author: "Lionsharp Studios", license: "CC-BY 4.0"),
         "Models/ps5_dualsense.usdz": .init(name: "PlayStation 5 DualSense", author: "AHarmlessPotato", license: "CC-BY 4.0"),
         "Models/tesla_cybertruck.usdz": .init(name: "Tesla Cybertruck", author: "hashikemu", license: "CC-BY 4.0"),
         "Models/mercedes_a45_amg.usdz": .init(name: "Mercedes-Benz A45 AMG 2018", author: "Lexyc16", license: "CC-BY-NC 4.0"),

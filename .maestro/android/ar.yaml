@@ -30,7 +30,7 @@
 #
 # Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
 # mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 # The AR View tab's LIVE session (consumer entry, not a deep-linked demo) —
 # launcher → Start AR Camera → automatic-placement overlay → back-arrow exit.
@@ -96,7 +96,7 @@ appId: io.github.sceneview.demo
       DEMO_NAME: Measure
 # Measurement has one explicit commit action; tapping the camera never adds points.
 - launchApp:
-    appId: io.github.sceneview.demo
+    appId: io.github.sceneview.demo.qa
     clearState: false
     stopApp: true
     arguments:

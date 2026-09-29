@@ -1,0 +1,182 @@
+name: App Store catch-up
+
+# Makes the latest GitHub release end up submitted to Apple without a human.
+#
+# App Store Connect allows ONE non-live iOS version at a time. A tag whose
+# deploy runs while the previous version is still in review gets a 409 and
+# defers (app_store_submit.py, exit 75). Before this workflow, nothing ever
+# retried a deferred release: iOS sat at 4.40.0 for days while Android shipped
+# 4.47.0, with Apple approving every submission in 20 to 36 hours (2026-09-28).
+#
+# Every 3 hours, `probe` (ubuntu, ~1 min) reads App Store Connect and GitHub
+# and decides, through .github/scripts/app_store_catchup.py:
+#   none     live is up to date, the release is already with Apple, an older
+#            version is still in review (wait), or a deploy is running.
+#   submit   a VALID iOS build of the release is on TestFlight: `submit`
+#            re-submits it from ubuntu — no Xcode, no rebuild.
+#   rebuild  no usable build: `rebuild` dispatches app-store.yml on the tag
+#            (macOS archive + upload + submit). Capped per tag.
+#
+# `supersede` (manual dispatch only, off by default) withdraws an OLDER
+# version from App Review to put the latest release in its place. That
+# restarts Apple's queue for the newer build: a human's call, never scheduled.
+#
+# Same App Store Connect secrets as app-store.yml; no new secret.
+
+on:
+  schedule:
+    - cron: '23 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      supersede:
+        description: "Withdraw an OLDER iOS version from App Review and submit the latest release in its place"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: app-store-catch-up
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe App Store Connect
+    if: github.repository == 'sceneview/sceneview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      action: ${{ steps.decide.outputs.action }}
+      version: ${{ steps.decide.outputs.version }}
+      build: ${{ steps.decide.outputs.build }}
+      supersede: ${{ steps.decide.outputs.supersede }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows/requirements
+
+      - name: Test the decision logic
+        run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_*.py'
+
+      - name: Install pinned App Store Connect deps
+        run: |
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          "$RUNNER_TEMP/asc-venv/bin/pip" install -r .github/workflows/requirements/app-store.txt --quiet
+
+      - name: Decide
+        id: decide
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CATCHUP_SUPERSEDE: ${{ inputs.supersede }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_API_KEY" ]; then
+            echo "::notice::App Store Connect secrets not configured — nothing to probe."
+            echo "action=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          "$RUNNER_TEMP/asc-venv/bin/python3" .github/scripts/app_store_catchup.py
+
+  submit:
+    name: Submit ${{ needs.probe.outputs.version }} (TestFlight build ${{ needs.probe.outputs.build }})
+    needs: probe
+    if: needs.probe.outputs.action == 'submit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Same group as app-store.yml: never two submitters against one app record.
+    concurrency:
+      group: app-store-deploy
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: samples/ios-demo
+    steps:
+      # The tag, not main: whatsNew, the listing text and the screenshots the
+      # submit step syncs must be the release's own.
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/v${{ needs.probe.outputs.version }}
+
+      # The submit program, though, is main's: a tag cut before this workflow
+      # existed carries an app_store_submit.py that cannot reuse a withdrawn
+      # version nor supersede one. Overlay main's copy (and the screenshot
+      # module it imports) on the tag's tree.
+      - uses: actions/checkout@v7
+        with:
+          path: .catchup-main
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows/requirements
+            .claude/scripts/store-sync
+
+      - name: Use main's submit program
+        working-directory: ${{ github.workspace }}
+        run: |
+          cp .catchup-main/.github/scripts/app_store_submit.py "$RUNNER_TEMP/app_store_submit.py"
+          rm -rf .claude/scripts/store-sync
+          cp -R .catchup-main/.claude/scripts/store-sync .claude/scripts/store-sync
+
+      - name: Stage App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          mkdir -p ~/.private_keys
+          echo "$ASC_API_KEY" > ~/.private_keys/"AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 ~/.private_keys/"AuthKey_${ASC_KEY_ID}.p8"
+
+      - name: Submit for App Store review
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_VERSION_STRING: v${{ needs.probe.outputs.version }}
+          ASC_EXPECTED_BUILD: ${{ needs.probe.outputs.build }}
+          ASC_SUPERSEDE: ${{ needs.probe.outputs.supersede }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          "$RUNNER_TEMP/asc-venv/bin/pip" install -r "$GITHUB_WORKSPACE/.catchup-main/.github/workflows/requirements/app-store.txt" --quiet
+          set +e
+          "$RUNNER_TEMP/asc-venv/bin/python3" "$RUNNER_TEMP/app_store_submit.py"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo "::notice::Deferred by App Store Connect — the next catch-up run retries."
+            exit 0
+          fi
+          exit "$rc"
+
+      - name: Remove the API key
+        if: always()
+        run: rm -rf ~/.private_keys
+
+  rebuild:
+    name: Dispatch app-store.yml on v${{ needs.probe.outputs.version }}
+    needs: probe
+    if: needs.probe.outputs.action == 'rebuild'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the macOS build and submission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.probe.outputs.version }}
+          SUPERSEDE: ${{ needs.probe.outputs.supersede }}
+        run: |
+          # `supersede` only when asked: a tag cut before the input existed
+          # rejects an unknown input, and false is its default anyway.
+          extra=()
+          [ "$SUPERSEDE" = "true" ] && extra=(-f supersede=true)
+          gh workflow run app-store.yml -R "$GITHUB_REPOSITORY" --ref "v$VERSION" \
+            -f submit_for_review=true "${extra[@]}"
+          echo "::notice::Dispatched app-store.yml on v$VERSION (supersede=$SUPERSEDE)."

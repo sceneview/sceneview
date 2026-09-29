@@ -10,7 +10,7 @@
 # which ALIAS_INITIAL_TAB lands on that mode, so the NodeEditingOverlay affordances
 # keep their own QA leg.
 #
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 - runFlow:
     file: flows/demo.yaml

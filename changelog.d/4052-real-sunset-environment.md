@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: the Model Viewer's "Sunset" lighting is a real sunset, and every lighting tile shows the light you get ([#4052](https://github.com/sceneview/sceneview/issues/4052)).** "Sunset" now uses Poly Haven's "The Sky Is On Fire" (CC0) instead of an overcast seascape, in the Model Viewer, Lighting and Material Studio alike. The seven tiles are rendered from their own HDRs, and the two studios are named for what they are: "Studio" (the softbox studio) and "Interior" (a sunlit room).

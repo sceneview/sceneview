@@ -270,7 +270,9 @@ case "$SHARD_COUNT" in ''|*[!0-9]*) SHARD_COUNT=6 ;; esac
 [[ "$SHARD_COUNT" -lt 1 ]] && SHARD_COUNT=1
 
 DEVICE_SUMMARY="/sdcard/Download/SceneView/ar-qa-summary.json"
-PKG="io.github.sceneview.demo"
+# Debug build = its own app next to the Play Store one (`applicationIdSuffix
+# ".qa"`); its instrumentation package is that id + `.test` (AGP default).
+PKG="io.github.sceneview.demo.qa"
 ANY_SHARD_NONZERO=0
 SHARDS_PULLED=0
 MISSING_SHARDS=""
@@ -295,7 +297,7 @@ while [[ "$shard" -lt "$SHARD_COUNT" ]]; do
     -e class io.github.sceneview.demo.ar.ARReplayHarnessTest \
     -e ar_shard_index "$shard" \
     -e ar_shard_count "$SHARD_COUNT" \
-    io.github.sceneview.demo.test/androidx.test.runner.AndroidJUnitRunner \
+    "$PKG.test/androidx.test.runner.AndroidJUnitRunner" \
     2>&1 | tee -a "$INSTR_FILE"
   shard_status=${PIPESTATUS[0]}
   set -e
