@@ -13,8 +13,9 @@ import ARKit
 /// `framingMargin(1.12)`) until the user orbits it. Under `qa_mode` the
 /// authored three-quarter pose is what a capture lands on.
 ///
-/// **Dock.** Recenter · Environment · Models · Animate (only when the loaded
-/// entity has animation clips) · accent "View in AR", enabled when ARKit world
+/// **Dock.** Models · Lighting · Animate (only when the loaded entity has
+/// animation clips) · Recenter — Android's order — then the scaffold's
+/// Settings and the accent "View in AR", enabled when ARKit world
 /// tracking is available, which presents the existing `ARPlacementDemo` armed
 /// with the selected bundled model.
 ///
@@ -35,17 +36,26 @@ struct ModelViewerDemo: View {
     /// added here without its `model_thumb_<asset>` tile fails the suite
     /// instead of silently regressing to the blank-cube placeholder (#3584).
     static let bundledModels: [BundledViewerModel] = [
-        BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet"),
+        BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet",
+                           description: "Scuffed metal and glass"),
         // HD pack: 52 MB, full 2K textures, downloaded once. The bundled
         // Damaged Helmet stands in until the file is on disk — same choice
         // as Android.
         BundledViewerModel(assetName: "khronos_flight_helmet", displayName: "Flight Helmet",
+                           description: "Leather, brass and glass · HD",
                            hdPackID: "flight-helmet", standInAssetName: "khronos_damaged_helmet"),
-        BundledViewerModel(assetName: "khronos_fox", displayName: "Fox"),
-        BundledViewerModel(assetName: "khronos_lantern", displayName: "Lantern"),
-        BundledViewerModel(assetName: "khronos_toy_car", displayName: "Toy Car"),
-        BundledViewerModel(assetName: "cyberpunk_hovercar", displayName: "Cyberpunk Hovercar"),
-        BundledViewerModel(assetName: "animated_butterfly", displayName: "Butterfly"),
+        // Fox, Hovercar and Butterfly are iOS-only tiles: Android has no
+        // description to copy, so theirs are written in the same register.
+        BundledViewerModel(assetName: "khronos_fox", displayName: "Fox",
+                           description: "Survey, walk and run clips"),
+        BundledViewerModel(assetName: "khronos_lantern", displayName: "Lantern",
+                           description: "Wooden post, metal lantern"),
+        BundledViewerModel(assetName: "khronos_toy_car", displayName: "Toy Car",
+                           description: "Clearcoat car on velvet"),
+        BundledViewerModel(assetName: "cyberpunk_hovercar", displayName: "Cyberpunk Hovercar",
+                           description: "Dark gloss bodywork"),
+        BundledViewerModel(assetName: "animated_butterfly", displayName: "Butterfly",
+                           description: "Monarch, wings in flight"),
     ]
 
     /// "Museum & Space": HD pack models with no bundled copy, in Android's
@@ -59,15 +69,35 @@ struct ModelViewerDemo: View {
     /// proves it (see #4147).
     static let museumModels: [BundledViewerModel] = [
         BundledViewerModel(assetName: "hd_apollo11_exterior", displayName: "Apollo 11 Command Module",
+                           description: "Columbia, as flown in 1969 · HD",
                            hdPackID: "apollo11-exterior"),
         BundledViewerModel(assetName: "hd_apollo11_interior", displayName: "Apollo 11 Interior",
+                           description: "Inside the capsule, cut away · HD",
                            hdPackID: "apollo11-interior"),
         BundledViewerModel(assetName: "hd_woolly_mammoth", displayName: "Woolly Mammoth",
+                           description: "Full skeleton, 3.4 m tall · HD",
                            hdPackID: "woolly-mammoth"),
         // Shown static: the rover's rigging clips stay under Animate, paused.
         BundledViewerModel(assetName: "hd_perseverance", displayName: "Perseverance Rover",
+                           description: "Mars 2020 rover, real size · HD",
                            hdPackID: "perseverance", autoplaysAnimations: false),
     ]
+
+    /// The lighting a model opens under while the user has not picked one.
+    ///
+    /// A museum scan is a record of an object's real colours, so it opens
+    /// under **Studio** (`studio_warm`, the grey softbox studio — mean
+    /// RGB 139/140/145, no cast), as on Android. Chinese Garden, the viewer's
+    /// first-run sky, is green-dominant and tinted the Apollo interior green.
+    /// Everything else opens under ``defaultEnvironment``.
+    static func openingEnvironment(for model: BundledViewerModel) -> ViewerEnvironment {
+        guard museumModels.contains(model),
+              let studio = environments.first(where: { $0.assetName == museumEnvironmentName })
+        else { return defaultEnvironment }
+        return studio
+    }
+
+    static let museumEnvironmentName = "studio_warm"
 
     #if DEBUG
     /// `-viewer_model <assetName>` (DEBUG, QA captures): opens the viewer on
@@ -111,7 +141,7 @@ struct ModelViewerDemo: View {
     /// the sky lighting the model. Same first-run environment as Android, whose
     /// viewer opens on the first tile, Chinese Garden (#4103); the user can pick a
     /// studio (or switch the backdrop off) at any time.
-    private static let defaultEnvironment: ViewerEnvironment =
+    static let defaultEnvironment: ViewerEnvironment =
         environments.first { $0.assetName == "chinese_garden" } ?? environments[0]
 
     /// Remembered answer to "should the backdrop be drawn?", persisted across launches.
@@ -193,6 +223,9 @@ struct ModelViewerDemo: View {
     @State private var environment: ViewerEnvironment = ModelViewerDemo.defaultEnvironment
     @State private var iblIntensity: Float = 1
     @State private var showSkybox = ModelViewerDemo.defaultEnvironment.authoredAsPlace
+    /// The user picked a lighting in the sheet: switching models keeps it
+    /// instead of applying ``openingEnvironment(for:)``. Reset forgets it.
+    @State private var environmentPicked = false
 
     /// Raw storage for ``SkyboxPreference`` — `@AppStorage` cannot hold the enum directly.
     @AppStorage("viewer_skybox_preference") private var skyboxPreferenceRaw: Int = SkyboxPreference.auto.rawValue
@@ -272,18 +305,32 @@ struct ModelViewerDemo: View {
         )
     }
 
+    /// Android's order (#3402): *what* am I looking at (Models), *how* is it
+    /// lit (Lighting), play it (Animate, only with clips), then put the
+    /// camera back (Recenter). The scaffold appends Settings and the AR
+    /// accent. The dock is this demo's own array — no other demo shares it.
     private var dock: [DockItem] {
         var items = [
-            DockItem(icon: "scope", label: "Recenter") { recenterGeneration += 1 },
-            DockItem(icon: "sun.max", label: "Environment", caption: "Lighting") { sheet = .environment },
             DockItem(icon: "cube.transparent", label: "Models") { sheet = .models },
+            DockItem(icon: "sun.max", label: "Environment", caption: "Lighting") { sheet = .environment },
         ]
         if !animationNames.isEmpty {
             items.append(DockItem(icon: "play.circle", label: "Animate", selected: animationBarOpen) {
                 withAnimation(SceneViewTokens.Spring.animation) { animationBarOpen.toggle() }
             })
         }
+        items.append(DockItem(icon: "scope", label: "Recenter") { recenterGeneration += 1 })
         return items
+    }
+
+    /// Opens `model` under its ``openingEnvironment(for:)`` unless the user
+    /// picked a lighting in the sheet, which then sticks across models.
+    private func applyOpeningLighting(for model: BundledViewerModel) {
+        guard !environmentPicked else { return }
+        let opening = Self.openingEnvironment(for: model)
+        guard opening != environment else { return }
+        environment = opening
+        showSkybox = defaultSkybox(for: opening)
     }
 
     /// Raw `-camera_distance <float>` launch-arg override, written by
@@ -417,6 +464,7 @@ struct ModelViewerDemo: View {
                         onSelect: { model in
                             sheet = nil
                             selectedModel = model
+                            applyOpeningLighting(for: model)
                             Task { await loadBundled(model) }
                         },
                         onSurprise: {
@@ -435,15 +483,19 @@ struct ModelViewerDemo: View {
                         intensity: $iblIntensity,
                         showSkybox: skyboxBinding,
                         onSelect: { picked in
+                            environmentPicked = true
                             environment = picked
                             showSkybox = defaultSkybox(for: picked)
                         },
                         onReset: {
-                            // Reset also forgets the remembered choice, back to auto.
+                            // Reset also forgets the remembered choice, back to auto,
+                            // and returns to the lighting this model opens under.
                             skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
-                            environment = Self.defaultEnvironment
+                            environmentPicked = false
+                            let opening = Self.openingEnvironment(for: selectedModel)
+                            environment = opening
                             iblIntensity = 1
-                            showSkybox = Self.defaultEnvironment.authoredAsPlace
+                            showSkybox = opening.authoredAsPlace
                         }
                     )
                 }
@@ -493,6 +545,9 @@ struct ModelViewerDemo: View {
             #if DEBUG
             if let picked = Self.launchArgModel { selectedModel = picked }
             #endif
+            // A museum model opened directly (deep link, QA launch arg) gets its
+            // Studio lighting too; the first-run model keeps the store/garden stage.
+            if Self.museumModels.contains(selectedModel) { applyOpeningLighting(for: selectedModel) }
             await loadBundled(selectedModel)
         }
         .onChange(of: hdPack.states) { _, _ in
@@ -695,6 +750,7 @@ struct ModelViewerDemo: View {
     private func resetAll() {
         recenterGeneration += 1
         skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
+        environmentPicked = false
         environment = Self.defaultEnvironment
         iblIntensity = 1
         showSkybox = Self.defaultEnvironment.authoredAsPlace

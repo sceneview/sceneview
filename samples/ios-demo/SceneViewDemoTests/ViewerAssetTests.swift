@@ -152,6 +152,41 @@ final class ViewerAssetTests: XCTestCase {
         XCTAssertNotNil(first, "the first-run environment left the catalog")
         XCTAssertEqual(first?.authoredAsPlace, true)
     }
+
+    /// Every picker card carries its one line, and a model Android also ships
+    /// reads Android's `demo_model_desc_*` string word for word.
+    func testPickerDescriptionsMatchAndroid() {
+        let android: [String: String] = [
+            "khronos_damaged_helmet": "Scuffed metal and glass",
+            "khronos_flight_helmet": "Leather, brass and glass · HD",
+            "khronos_lantern": "Wooden post, metal lantern",
+            "khronos_toy_car": "Clearcoat car on velvet",
+            "hd_apollo11_exterior": "Columbia, as flown in 1969 · HD",
+            "hd_apollo11_interior": "Inside the capsule, cut away · HD",
+            "hd_woolly_mammoth": "Full skeleton, 3.4 m tall · HD",
+            "hd_perseverance": "Mars 2020 rover, real size · HD",
+        ]
+        for model in models + ModelViewerDemo.museumModels {
+            XCTAssertFalse((model.description ?? "").isEmpty, "\(model.displayName) has no picker description.")
+            if let expected = android[model.assetName] {
+                XCTAssertEqual(model.description, expected, "\(model.displayName) drifted from Android.")
+            }
+        }
+    }
+
+    /// A museum scan opens under the neutral Studio, never under the garden's
+    /// green; every other model keeps the first-run environment.
+    func testMuseumModelsOpenUnderStudio() {
+        for model in ModelViewerDemo.museumModels {
+            let env = ModelViewerDemo.openingEnvironment(for: model)
+            XCTAssertEqual(env.assetName, "studio_warm", "\(model.displayName)")
+            XCTAssertEqual(env.displayName, "Studio")
+        }
+        for model in models {
+            XCTAssertEqual(ModelViewerDemo.openingEnvironment(for: model), ModelViewerDemo.defaultEnvironment,
+                           "\(model.displayName)")
+        }
+    }
 }
 
 /// Pins the Surprise-me coherence check (#4012): a broken USDZ conversion —
