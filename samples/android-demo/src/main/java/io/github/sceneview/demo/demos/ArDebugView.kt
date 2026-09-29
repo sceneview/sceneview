@@ -86,6 +86,7 @@ import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
 import io.github.sceneview.demo.theme.DebugPalette
@@ -138,8 +139,10 @@ import kotlin.math.roundToInt
  * pass: it adds the points' colours and the photos.
  */
 internal class ArDebugRecorder {
-    private var lastPointsNanos = Long.MIN_VALUE
-    private var lastPlanesNanos = Long.MIN_VALUE
+    // Gates, not `Long.MIN_VALUE` timestamps: `now - Long.MIN_VALUE` overflows negative, and a
+    // real-device scan recorded no point and no plane at all (#4095).
+    private val pointsGate = IntervalGate(POINTS_INTERVAL_NS)
+    private val planesGate = IntervalGate(PLANES_INTERVAL_NS)
     private val planeIds = HashMap<Plane, Int>()
     private val livePlanes = HashSet<Plane>()
     private val anchorIds = HashMap<Anchor, Int>()
@@ -165,13 +168,13 @@ internal class ArDebugRecorder {
         trace.addPose(nanos, display)
 
         val capture = scan?.takeIf { it.trace === trace }
-        val pointsDue = nanos - lastPointsNanos >= POINTS_INTERVAL_NS
+        val pointsDue = pointsGate.isDue(nanos)
         val photoDue = capture?.wantsPhoto(display) == true
         // One camera image per frame at most, shared by the colours and the photo.
         val image = if (capture != null && (pointsDue || photoDue)) capture.acquire(frame) else null
         try {
             if (pointsDue) {
-                lastPointsNanos = nanos
+                pointsGate.mark(nanos)
                 recordPoints(trace, nanos, frame, capture, image)
             }
             if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
@@ -179,8 +182,8 @@ internal class ArDebugRecorder {
             image?.close()
         }
 
-        if (nanos - lastPlanesNanos >= PLANES_INTERVAL_NS) {
-            lastPlanesNanos = nanos
+        if (planesGate.isDue(nanos)) {
+            planesGate.mark(nanos)
             recordPlanes(trace, nanos, session)
         }
 
@@ -248,8 +251,8 @@ internal class ArDebugRecorder {
 
     private fun reset(trace: ArDebugTrace) {
         recordedFor = trace
-        lastPointsNanos = Long.MIN_VALUE
-        lastPlanesNanos = Long.MIN_VALUE
+        pointsGate.reset()
+        planesGate.reset()
         planeIds.clear()
         livePlanes.clear()
         anchorIds.clear()

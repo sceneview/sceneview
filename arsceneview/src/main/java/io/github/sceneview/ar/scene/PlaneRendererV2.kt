@@ -4,6 +4,7 @@ import android.util.Size
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Scene
+import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
@@ -223,6 +224,7 @@ class PlaneRendererV2(
         }
 
     private var frame: Frame? = null
+    private var depthMode: Config.DepthMode? = null
 
     override fun update(session: Session, frame: Frame) {
         if (isEnabled) {
@@ -234,6 +236,10 @@ class PlaneRendererV2(
                 try {
                     val updatedPlanes = frame.getUpdatedPlanes()
                     val camera = frame.camera
+                    // The effective mode, read back from the session: `ArSession.configure`
+                    // downgrades an unsupported request to DISABLED, and a DISABLED session
+                    // must never be asked for a depth image (#4104 review).
+                    depthMode = session.config.depthMode
                     @Suppress("DEPRECATION")
                     if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL) {
                         updatedPlanes.forEach { renderPlane(it, frame = frame, camera = camera) }
@@ -331,6 +337,7 @@ class PlaneRendererV2(
             // so the depth-driven rebuild can pull from this frame's depth image. Either
             // argument may be null — the visualizer falls back to the flat polygon then.
             planeVisualizer.setFrame(frame, camera)
+            planeVisualizer.depthMode = depthMode
             planeVisualizer.updatePlane()
         }
     }
