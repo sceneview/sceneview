@@ -99,25 +99,21 @@ final class DemoFreshnessTests: XCTestCase {
         XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.20.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
     }
 
-    /// The declarations mirrored from the Android fragments (`sinceVersion` /
-    /// `updatedIn` in `RollingBallsFragment.kt`, `AnimationPhysicsFragment.kt`
-    /// — `animation` is its iOS half in `parity-manifest.yml`). Update both
-    /// sides together.
-    func testSceneDeclarationsMirrorAndroid() {
-        let byId = Dictionary(GeneratedScenes.all().map { ($0.sceneId, $0) },
-                              uniquingKeysWith: { first, _ in first })
-        XCTAssertEqual(byId["rolling-balls"]?.sinceVersion, "4.48.0")
-        XCTAssertEqual(byId["animation"]?.updatedIn, "4.48.0")
-        XCTAssertEqual(byId["model-viewer"]?.updatedIn, "4.35.0")
-        XCTAssertEqual(byId["materials"]?.updatedIn, "4.35.0")
-        XCTAssertEqual(byId["ar-rerun"]?.updatedIn, "4.46.0")
-        // At 4.48 that is exactly Android's pair of chips.
-        let fresh = byId.values
-            .map { ($0.sceneId, DemoFreshness.of($0, buildVersion: "4.48.0")) }
-            .filter { $0.1 != .none }
-            .sorted { $0.0 < $1.0 }
-        XCTAssertEqual(fresh.map(\.0), ["animation", "rolling-balls"])
-        XCTAssertEqual(fresh.map(\.1), [.updated, .new])
+    /// Every scene declaration earns its chip in the build it names. The values
+    /// themselves are checked against the Android fragments, through
+    /// `parity-manifest.yml`, by `collate-ios-demos.sh` on every build: a
+    /// declaration that drifts from Android fails the build, not this test.
+    func testEverySceneDeclarationEarnsItsChipInItsOwnVersion() {
+        let declared = GeneratedScenes.all().filter { $0.sinceVersion != nil || $0.updatedIn != nil }
+        XCTAssertFalse(declared.isEmpty)
+        for item in declared {
+            if let since = item.sinceVersion {
+                XCTAssertEqual(DemoFreshness.of(item, buildVersion: since), .new, item.sceneId)
+            }
+            if let updated = item.updatedIn, item.sinceVersion == nil {
+                XCTAssertEqual(DemoFreshness.of(item, buildVersion: updated), .updated, item.sceneId)
+            }
+        }
     }
 
     /// Materials streams its subject: listed on a keyed build's home, as on

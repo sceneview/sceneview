@@ -420,10 +420,13 @@ final class DemoRegistryGuardTests: XCTestCase {
     }
 
     /// A hidden id must still resolve: hiding takes a demo off the home, never
-    /// out of the catalogue or the deep-link gate.
+    /// out of the catalogue or the deep-link gate. Covers both lists — always
+    /// hidden, and hidden on a build without a Sketchfab key.
     func testHiddenFromHomeIdsStayRegistered() {
         let ids = Set(GeneratedScenes.all().map(\.sceneId))
-        for id in HomeCatalogue.hiddenFromHome.keys {
+        let hidden = Set(HomeCatalogue.hiddenFromHome.keys)
+            .union(HomeCatalogue.hiddenWithoutSketchfabKey.keys)
+        for id in hidden {
             XCTAssertTrue(ids.contains(id), "Hidden id '\(id)' has no *Scene.swift file")
             XCTAssertTrue(GeneratedScenes.allowedIds.contains(id), "Hidden id '\(id)' lost its deep link")
         }

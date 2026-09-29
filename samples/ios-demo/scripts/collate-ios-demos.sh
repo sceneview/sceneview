@@ -22,6 +22,8 @@
 #                                  Android `DemoEntry.sinceVersion`; drives the "New" chip
 #   // @updatedIn    <x.y.z>     (optional) version of the demo's last notable rework —
 #                                  mirrors Android `DemoEntry.updatedIn`; drives "Updated"
+#                                  Both are checked against the Android fragments through
+#                                  parity-manifest.yml (step 1b); a mismatch fails the build.
 #   // @androidOnlyReason <text>   (optional, #2804) one-line reason this is PERMANENTLY
 #                                  Android-only (no ARKit/RealityKit equivalent) — only valid
 #                                  with @available false. Swaps the card's "Coming soon" for an
@@ -228,6 +230,71 @@ if [ -n "$DUPES" ]; then
     echo "Error: duplicate scene ids:" >&2
     echo "$DUPES" >&2
     exit 1
+fi
+
+# ─── 1b. Freshness declarations must match Android ──────────────────────
+# `@sinceVersion` / `@updatedIn` drive the "New" / "Updated" chips, and the
+# two platforms must flag the same demos. The source of truth is the Android
+# fragment (`DemoEntry.sinceVersion` / `updatedIn`); `parity-manifest.yml`
+# maps each Android id to its iOS scenes, and the FIRST iOS id of a row is the
+# counterpart that carries the Android declaration. Any other iOS scene
+# declares nothing. A mismatch fails the build, with the fix spelled out.
+# Skipped (with a warning) when the Android tree is not checked out, e.g. an
+# iOS-only sparse checkout.
+REPO_ROOT="$(cd "$IOS_ROOT/../.." && pwd)"
+MANIFEST="$REPO_ROOT/parity-manifest.yml"
+FRAGMENTS_DIR="$REPO_ROOT/samples/android-demo/src/main/java/io/github/sceneview/demo/fragments"
+if [ -f "$MANIFEST" ] && [ -d "$FRAGMENTS_DIR" ]; then
+    # android id <TAB> first iOS id, for every row with an iOS counterpart.
+    COUNTERPARTS="$(awk '
+        /^  - id: / { id = $3; next }
+        /^    ios: \[/ {
+            line = $0
+            sub(/^    ios: \[/, "", line); sub(/\].*$/, "", line)
+            n = split(line, ids, /,[[:space:]]*/)
+            if (id != "" && n > 0 && ids[1] != "") print id "\t" ids[1]
+        }' "$MANIFEST")"
+    # iOS id <TAB> expected since <TAB> expected updated, from the fragments.
+    EXPECTED=""
+    for kt in "$FRAGMENTS_DIR"/*Fragment.kt; do
+        a_id=$(grep -m1 -E '^[[:space:]]*id = "' "$kt" | sed -E 's/.*id = "([^"]+)".*/\1/' || true)
+        [ -n "$a_id" ] || continue
+        a_since=$(grep -m1 -E '^[[:space:]]*sinceVersion = "' "$kt" | sed -E 's/.*sinceVersion = "([^"]+)".*/\1/' || true)
+        a_updated=$(grep -m1 -E '^[[:space:]]*updatedIn = "' "$kt" | sed -E 's/.*updatedIn = "([^"]+)".*/\1/' || true)
+        [ -n "$a_since$a_updated" ] || continue
+        ios_id=$(printf '%s\n' "$COUNTERPARTS" | awk -F'\t' -v a="$a_id" '$1 == a { print $2; exit }')
+        [ -n "$ios_id" ] || continue
+        EXPECTED="$EXPECTED$ios_id	${a_since:--}	${a_updated:--}	$a_id
+"
+    done
+    MISMATCHES=""
+    while IFS=$'\t' read -r scene_id _ _ _ _ _ _ _ _ _ _ _ since_version updated_in; do
+        row=$(printf '%s' "$EXPECTED" | awk -F'\t' -v s="$scene_id" '$1 == s { print; exit }')
+        want_since=$(printf '%s' "$row" | cut -f2)
+        want_updated=$(printf '%s' "$row" | cut -f3)
+        from=$(printf '%s' "$row" | cut -f4)
+        [ -n "$row" ] || { want_since="-"; want_updated="-"; from="(no Android declaration)"; }
+        if [ "$since_version" != "$want_since" ] || [ "$updated_in" != "$want_updated" ]; then
+            MISMATCHES="$MISMATCHES  $scene_id: iOS @sinceVersion $since_version @updatedIn $updated_in, Android $from wants @sinceVersion $want_since @updatedIn $want_updated
+"
+        fi
+    done < "$TMP_META"
+    # A declared Android demo whose iOS counterpart has no scene file at all.
+    while IFS=$'\t' read -r ios_id _ _ a_id; do
+        [ -n "$ios_id" ] || continue
+        cut -f1 "$TMP_META" | grep -qx "$ios_id" || \
+            MISMATCHES="$MISMATCHES  $ios_id: parity-manifest.yml names it for Android $a_id, but no iOS scene declares @sceneId $ios_id
+"
+    done <<< "$EXPECTED"
+    if [ -n "$MISMATCHES" ]; then
+        echo "Error: iOS freshness declarations differ from Android (\"-\" = none)." >&2
+        echo "Copy the Android fragment's sinceVersion / updatedIn into the iOS scene's" >&2
+        echo "// @sinceVersion / // @updatedIn (\"-\" means remove the line):" >&2
+        printf '%s' "$MISMATCHES" >&2
+        exit 1
+    fi
+else
+    echo "warning: parity-manifest.yml or the Android fragments are missing — iOS freshness declarations not checked against Android." >&2
 fi
 
 # Sort by sceneId for a stable diff.

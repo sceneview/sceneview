@@ -83,135 +83,17 @@ enum ModelCategory: String, CaseIterable {
     }
 }
 
-/// The 18 official Sketchfab categories returned by `GET /v3/categories`.
-///
-/// The `slug` is exactly what the Sketchfab Data API expects in `?categories=`; the
-/// `displayName` is what users see on the chip. SF Symbol `icon` is picked per category.
-///
-/// Source: live `https://api.sketchfab.com/v3/categories` (snapshot 2026-05-11).
-enum SketchfabCategory: String, CaseIterable, Identifiable {
-    case animalsPets             = "animals-pets"
-    case architecture            = "architecture"
-    case artAbstract             = "art-abstract"
-    case carsVehicles            = "cars-vehicles"
-    case charactersCreatures     = "characters-creatures"
-    case culturalHeritageHistory = "cultural-heritage-history"
-    case electronicsGadgets      = "electronics-gadgets"
-    case fashionStyle            = "fashion-style"
-    case foodDrink               = "food-drink"
-    case furnitureHome           = "furniture-home"
-    case music                   = "music"
-    case naturePlants            = "nature-plants"
-    case newsPolitics            = "news-politics"
-    case people                  = "people"
-    case placesTravel            = "places-travel"
-    case scienceTechnology       = "science-technology"
-    case sportsFitness           = "sports-fitness"
-    case weaponsMilitary         = "weapons-military"
-
-    var id: String { rawValue }
-    var slug: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .animalsPets:             return "Animals & Pets"
-        case .architecture:            return "Architecture"
-        case .artAbstract:             return "Art & Abstract"
-        case .carsVehicles:            return "Cars & Vehicles"
-        case .charactersCreatures:     return "Characters & Creatures"
-        case .culturalHeritageHistory: return "Cultural Heritage"
-        case .electronicsGadgets:      return "Electronics"
-        case .fashionStyle:            return "Fashion & Style"
-        case .foodDrink:               return "Food & Drink"
-        case .furnitureHome:           return "Furniture & Home"
-        case .music:                   return "Music"
-        case .naturePlants:            return "Nature & Plants"
-        case .newsPolitics:            return "News & Politics"
-        case .people:                  return "People"
-        case .placesTravel:            return "Places & Travel"
-        case .scienceTechnology:       return "Science & Tech"
-        case .sportsFitness:           return "Sports & Fitness"
-        case .weaponsMilitary:         return "Weapons & Military"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .animalsPets:             return "pawprint.fill"
-        case .architecture:            return "building.2.fill"
-        case .artAbstract:             return "paintpalette.fill"
-        case .carsVehicles:            return "car.side.fill"
-        case .charactersCreatures:     return "figure.stand"
-        case .culturalHeritageHistory: return "building.columns.fill"
-        case .electronicsGadgets:      return "cpu.fill"
-        case .fashionStyle:            return "tshirt.fill"
-        case .foodDrink:               return "fork.knife"
-        case .furnitureHome:           return "sofa.fill"
-        case .music:                   return "music.note"
-        case .naturePlants:            return "leaf.fill"
-        case .newsPolitics:            return "newspaper.fill"
-        case .people:                  return "person.2.fill"
-        case .placesTravel:            return "globe.americas.fill"
-        case .scienceTechnology:       return "atom"
-        case .sportsFitness:           return "figure.run"
-        case .weaponsMilitary:         return "shield.lefthalf.filled"
-        }
-    }
-}
-
-/// User defaults–backed list of the last 5 search queries, surfaced under "Recent searches".
-@MainActor
-@Observable
-final class RecentSearches {
-    private let storageKey = "io.github.sceneview.demo.recentSearches"
-    private let maxItems = 5
-
-    private(set) var items: [String] = []
-
-    init() { load() }
-
-    func push(_ query: String) {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        items.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
-        items.insert(trimmed, at: 0)
-        if items.count > maxItems { items = Array(items.prefix(maxItems)) }
-        save()
-    }
-
-    func remove(_ query: String) {
-        items.removeAll { $0 == query }
-        save()
-    }
-
-    func clear() {
-        items.removeAll()
-        save()
-    }
-
-    private func load() {
-        items = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
-    }
-
-    private func save() {
-        UserDefaults.standard.set(items, forKey: storageKey)
-    }
-}
-
 /// The main Explore tab — Liquid Glass discovery hub for 3D models.
 ///
 /// Layout follows the SceneView design system (iOS Liquid Glass — see DESIGN.md):
-/// - Featured carousel of curated models (currently from the bundled `ModelItem.all` set;
-///   V1.1 will pull from `SketchfabService.featured()` when an API key is configured).
-/// - Categories chips that filter / search by topic.
-/// - Recent searches list, persisted across launches.
-/// - Native `.searchable` search bar that queries Sketchfab when an API key is set.
+/// - Search, then Android's `ExploreBody` order: the "Trending in 3D" rail,
+///   "Browse by source" with the Animated filter, and "Try a demo".
+/// - A search replaces those three with its results.
 struct ExploreTab: View {
     @State private var searchText = ""
     @State private var selectedModel: ModelItem?
     /// The source-agnostic model the user tapped — pushes `GalleryModelViewerScreen`.
     @State private var viewingModel: GalleryModel?
-    @State private var recentSearches = RecentSearches()
 
     // Multi-source resilience (#2645 / #2700): the tab browses whichever catalog
     // the user picks (Sketchfab | Poly Haven on iOS, #3789), remembering the
@@ -267,11 +149,11 @@ struct ExploreTab: View {
     }
 
     /// The one feed Explore shows as its rail — Android's `TrendingRail` input:
-    /// Trending when the source has it, else the first feed that came back
-    /// non-empty, else the source's first feed (so a failure still has a heading).
+    /// the first feed, in the source's order (Trending first), that came back
+    /// with models; else the source's first feed, so a failure still has a
+    /// heading. `loadFeeds` stops at that feed.
     private var trendingRailKind: FeedKind? {
         let kinds = selectedSource.feedKinds
-        if kinds.contains(.trending) { return .trending }
         return kinds.first { !(feedsByKind[$0] ?? []).isEmpty } ?? kinds.first
     }
 
@@ -567,10 +449,10 @@ struct ExploreTab: View {
 
     // MARK: - Multi-source data loading
 
-    /// (Re)load the selected source's feeds, one `FeedKind` at a time with
-    /// per-feed resilience: a single degraded feed (network blip, rate limit,
-    /// decode error) never cancels its siblings, so surviving feeds still render.
-    /// Mirrors the Android `supervisorScope` in `ExploreTabScreen.kt` (#2645).
+    /// (Re)load the feed the rail shows. Explore shows one feed, so it fetches
+    /// one: the source's feeds in order (Trending first), stopping at the first
+    /// that comes back with models. A degraded feed (network blip, rate limit,
+    /// decode error) only moves on to the next one.
     ///
     /// A Sketchfab 401/403 flips `keyRejected` so the banner shows instead of the
     /// feed silently self-hiding. Pass `force: true` from pull-to-refresh.
@@ -585,50 +467,43 @@ struct ExploreTab: View {
         defer { isLoadingFeeds = false }
 
         let animated = animatedOnly && source.supportsAnimatedFilter
-        let results = await withTaskGroup(
-            of: (FeedKind, [GalleryModel], Bool, Bool).self
-        ) { group -> [(FeedKind, [GalleryModel], Bool, Bool)] in
-            for kind in source.feedKinds {
-                group.addTask {
-                    do {
-                        // A source that never answers (simulator with no route,
-                        // captive portal, stalled TLS) used to keep the heading
-                        // spinner alive forever — `URLSession.shared` only
-                        // gives up after 60 s of *silence*, not of waiting.
-                        let models = try await ExploreFeedLoad.withTimeout(Self.feedTimeout) {
-                            try await source.feed(kind: kind, animatedOnly: animated, limit: 10)
-                        }
-                        return (kind, models, false, false)
-                    } catch let SketchfabError.requestFailed(statusCode)
-                        where statusCode == 401 || statusCode == 403 {
-                        return (kind, [], true, false)
-                    } catch {
-                        return (kind, [], false, true)
-                    }
-                }
-            }
-            var collected: [(FeedKind, [GalleryModel], Bool, Bool)] = []
-            for await item in group { collected.append(item) }
-            return collected
-        }
-
-        // Ignore a stale result if the user switched source mid-flight.
-        guard source.id == selectedSource.id else { return }
         var byKind: [FeedKind: [GalleryModel]] = [:]
+        var failedKinds: Set<FeedKind> = []
         var rejected = false
         var failures = 0
-        var failedKinds: Set<FeedKind> = []
-        for (kind, models, wasRejected, failed) in results {
-            byKind[kind] = models
-            rejected = rejected || wasRejected
-            if failed { failures += 1 }
-            if failed || wasRejected { failedKinds.insert(kind) }
+        for kind in source.feedKinds {
+            do {
+                // A source that never answers (simulator with no route,
+                // captive portal, stalled TLS) used to keep the heading
+                // spinner alive forever — `URLSession.shared` only
+                // gives up after 60 s of *silence*, not of waiting.
+                let models = try await ExploreFeedLoad.withTimeout(Self.feedTimeout) {
+                    try await source.feed(kind: kind, animatedOnly: animated, limit: 10)
+                }
+                byKind[kind] = models
+                if !models.isEmpty { break }
+            } catch let SketchfabError.requestFailed(statusCode)
+                where statusCode == 401 || statusCode == 403 {
+                // A rejected key fails every Sketchfab feed the same way.
+                byKind[kind] = []
+                failedKinds.insert(kind)
+                rejected = true
+                break
+            } catch {
+                byKind[kind] = []
+                failedKinds.insert(kind)
+                failures += 1
+            }
         }
+
+        // Ignore a stale result: a cancelled load (the `.task(id:)` restarted on
+        // an Animated toggle) or a source switched mid-flight.
+        guard !Task.isCancelled, source.id == selectedSource.id else { return }
         feedsByKind = byKind
         failedFeeds = failedKinds
         keyRejected = rejected
         feedsUnreachable = ExploreFeedLoad.isUnreachable(
-            feedCount: source.feedKinds.count, failures: failures, rejected: rejected)
+            feedCount: byKind.count, failures: failures, rejected: rejected)
     }
 
     /// How long one feed may take before the tab stops waiting for it.
@@ -683,12 +558,9 @@ struct ExploreTab: View {
             lineWidth: SceneViewTokens.Home.cardOutlineWidth))
     }
 
-    /// Explicit Enter press: record the query and fire the search now, without
-    /// the debounce. Only this path writes to the recent-search history — live
-    /// keystroke fragments would fill it with "m", "ma", "mar", …
+    /// Explicit Enter press: fire the search now, without the debounce.
     private func submitSearch() {
-        guard let query = search.submit(text: searchText) else { return }
-        recentSearches.push(query)
+        guard search.submit(text: searchText) != nil else { return }
         #if os(iOS)
         SceneViewHaptic.shared.light()
         #endif
