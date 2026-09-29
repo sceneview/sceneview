@@ -976,9 +976,10 @@ private fun SingleModelSection(
                     )
                 }
             }
-            // HD pack: while an HD entry shows its stand-in, the pill says why and how far along
-            // the real model is. Tapping it when nothing is running asks to download now, with the
-            // size stated first. It leaves the moment the HD model is on screen.
+            // HD pack: while an HD entry shows its stand-in, the pill names the HD model and says
+            // how far along it is ("Flight Helmet · downloading 34 %"). Tapping it when nothing is
+            // running asks to download now, with the size stated first. It stays on "loading"
+            // until the HD model is in the scene, and leaves then.
             if (hdPillShown && hdAsset != null) {
                 val status = hdStatus
                 val hdFailed = hdLoadFailed || (hdFileLocation == null && status == HdPackStatus.Failed)
@@ -989,13 +990,13 @@ private fun SingleModelSection(
                         stringResource(R.string.hd_pill_downloading, (status.fraction * 100).toInt())
                     status == HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pill_waiting_wifi)
                     status == HdPackStatus.WaitingForNetwork -> stringResource(R.string.hd_pill_waiting_network)
-                    else -> stringResource(
-                        R.string.hd_pill_download,
-                        hdPackSize(context, hdStore?.manifest?.totalBytes ?: hdAsset.bytes),
-                    )
+                    // The size of this model's own file, not of the whole pack.
+                    else -> stringResource(R.string.hd_pill_download, hdPackSize(context, hdAsset.bytes))
                 }
                 GlassActionPill(
                     icon = Icons.Outlined.HighQuality,
+                    // Names what the tap gets — the stand-in on screen is another model.
+                    subject = hdAsset.title,
                     label = hdLabel,
                     onClick = {
                         // A file on disk that failed to load retries the load; anything else
@@ -1005,9 +1006,9 @@ private fun SingleModelSection(
                     loading = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading),
                     progress = (hdStatus as? HdPackStatus.Downloading)?.fraction?.takeIf { hdFileLocation == null },
                     contentDescription = if (hdFileLocation == null) {
-                        stringResource(R.string.hd_pill_hint)
+                        stringResource(R.string.hd_pill_hint, hdAsset.title)
                     } else {
-                        hdLabel
+                        stringResource(R.string.glass_pill_subject_label, hdAsset.title, hdLabel)
                     },
                 )
             }
