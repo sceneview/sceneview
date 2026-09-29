@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android**: HDR environments no longer freeze the screen while they decode. `loadHDREnvironment` and `rememberHDREnvironment` now read and decode the `.hdr` file on a background thread. Only the Filament work (texture upload, cubemap and specular prefilter) still runs on the main thread. The API is unchanged; files the new decoder does not support fall back to `HDRLoader`. The demo's Home hero and the Lighting Lab use this path.
