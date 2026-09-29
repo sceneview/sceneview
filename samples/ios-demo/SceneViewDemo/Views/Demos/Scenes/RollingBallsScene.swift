@@ -7,6 +7,7 @@
 // @icon        circle.hexagongrid.fill
 // @order       5
 // @tags        physics,rigid-body,collision,simulation,tilt,balls
+// @sinceVersion 4.48.0
 import SwiftUI
 
 enum RollingBallsScene: DemoScene {

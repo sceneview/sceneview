@@ -79,6 +79,13 @@ struct DemoItem: Identifiable {
     let order: Int
     /// Search keywords (`// @tags`) — mirrors Android's `DemoEntry.tags`.
     let tags: [String]
+    /// Version the demo first shipped in (`// @sinceVersion`) — mirrors
+    /// Android's `DemoEntry.sinceVersion`. Drives the "New" chip through
+    /// ``DemoFreshness``.
+    let sinceVersion: String?
+    /// Version of the demo's last notable rework (`// @updatedIn`) — mirrors
+    /// Android's `DemoEntry.updatedIn`. Drives the "Updated" chip.
+    let updatedIn: String?
     let title: String
     let icon: String
     let subtitle: String
@@ -117,6 +124,8 @@ struct DemoItem: Identifiable {
         status: DemoStatus = .working,
         order: Int = 999,
         tags: [String] = [],
+        sinceVersion: String? = nil,
+        updatedIn: String? = nil,
         @ViewBuilder destination: () -> V
     ) {
         precondition(
@@ -127,6 +136,8 @@ struct DemoItem: Identifiable {
         self.sceneId = sceneId
         self.order = order
         self.tags = tags
+        self.sinceVersion = sinceVersion
+        self.updatedIn = updatedIn
         self.title = title
         self.icon = icon
         self.subtitle = subtitle
@@ -153,6 +164,8 @@ struct DemoItem: Identifiable {
         subtitle: String,
         order: Int = 999,
         tags: [String] = [],
+        sinceVersion: String? = nil,
+        updatedIn: String? = nil,
         section: DemoSection,
         category: DemoCategory,
         androidOnlyReason: String? = nil
@@ -160,6 +173,8 @@ struct DemoItem: Identifiable {
         self.sceneId = sceneId
         self.order = order
         self.tags = tags
+        self.sinceVersion = sinceVersion
+        self.updatedIn = updatedIn
         self.title = title
         self.icon = icon
         self.subtitle = subtitle

@@ -5,10 +5,10 @@ import SceneViewSwift
 ///
 /// One scroll view, no nested scroll, no background scene: a 56 pt header
 /// (cube mark + wordmark + search), the `HomeHero`, the "Featured" shelf
-/// (`HomeCatalogue.featuredIds`), the section chip row, then every demo as a
-/// `DemoMediaCard` under its `DemoSection` header in editorial `DemoItem.order`,
-/// closed by a `BrowseOnlineModelsCard` that pushes the online gallery
-/// (`ExploreTab`, embedded) onto this stack. Layout and order mirror Android's
+/// (`HomeCatalogue.featuredIds`), a full-width `BrowseOnlineModelsCard` that
+/// pushes the online gallery (`ExploreTab`, embedded) onto this stack, the
+/// section chip row, then every demo as a `DemoMediaCard` under its
+/// `DemoSection` header in editorial `DemoItem.order`. Layout and order mirror Android's
 /// `HomeScreen.kt` (#3907); demos in `HomeCatalogue.hiddenFromHome` keep
 /// their deep links but are not listed here.
 ///
@@ -162,6 +162,16 @@ struct ShowcaseTab: View {
                         featuredShelf
                     }
 
+                    // Between the shelf and the chips, full width — Android's
+                    // `browse-online` grid item. It steps aside with the hero
+                    // while a query is live.
+                    if !searching {
+                        BrowseOnlineModelsCard { showExplore = true }
+                            .padding(.top, SceneViewTokens.Home.gridGutter)
+                            .accessibilityIdentifier("home-browse-online")
+                            .staggeredReveal(position: chipRevealPosition - 1, revealed: catalogueRevealed)
+                    }
+
                     CategoryChipRow(selected: $selectedSection)
                         .padding(.top, searching ? 0 : SceneViewTokens.Home.chipRowTopGap)
                         .padding(.bottom, searching ? SceneViewTokens.Space.sm : SceneViewTokens.Home.gridTopGap)
@@ -189,15 +199,6 @@ struct ShowcaseTab: View {
 
                     sectionedGrid(visible)
                         .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
-
-                    if !searching {
-                        LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                            BrowseOnlineModelsCard { showExplore = true }
-                                .staggeredReveal(position: chipRevealPosition + 1 + visible.count,
-                                                 revealed: catalogueRevealed)
-                        }
-                        .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
-                    }
                 }
                 .animation(SceneViewTokens.Spring.fade, value: searching)
                 .padding(.horizontal, SceneViewTokens.Home.contentPadding)
@@ -385,10 +386,10 @@ struct ShowcaseTab: View {
         }
     }
 
-    /// Reveal slot of the chip row: after the hero (0) and, when shown, the
-    /// Featured header and its cards.
+    /// Reveal slot of the chip row: after the hero (0), when shown the Featured
+    /// header and its cards, and the "Browse online models" row.
     private var chipRevealPosition: Int {
-        showFeatured ? featured.count + 2 : 1
+        (showFeatured ? featured.count + 2 : 1) + (searching ? 0 : 1)
     }
 
     private func open(sceneId: String) {

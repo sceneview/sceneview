@@ -18,6 +18,10 @@
 #                                  Showcase home grid — mirrors Android `DemoEntry.order`
 #   // @tags        a,b,c          (optional) comma-separated search keywords — mirrors
 #                                  Android `DemoEntry.tags`
+#   // @sinceVersion <x.y.z>     (optional) version the demo first shipped in — mirrors
+#                                  Android `DemoEntry.sinceVersion`; drives the "New" chip
+#   // @updatedIn    <x.y.z>     (optional) version of the demo's last notable rework —
+#                                  mirrors Android `DemoEntry.updatedIn`; drives "Updated"
 #   // @androidOnlyReason <text>   (optional, #2804) one-line reason this is PERMANENTLY
 #                                  Android-only (no ARKit/RealityKit equivalent) — only valid
 #                                  with @available false. Swaps the card's "Coming soon" for an
@@ -106,6 +110,19 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     # Comma-separated search tags (mirrors Android's `DemoEntry.tags`); may be empty.
     tags=$(grep -m1 '// @tags' "$f" 2>/dev/null | sed -E 's|.*// @tags[[:space:]]+||; s/[[:space:]]+$//; s/[[:space:]]*,[[:space:]]*/,/g' || echo "")
     [ -z "$tags" ] && tags="-"
+    # Freshness versions (mirror Android's `DemoEntry.sinceVersion` / `updatedIn`);
+    # `-` is the "absent" sentinel, for the same IFS reason as androidOnlyReason.
+    since_version=$(grep -m1 '// @sinceVersion' "$f" 2>/dev/null | sed -E 's|.*// @sinceVersion[[:space:]]+||; s/[[:space:]]+$//' || echo "")
+    updated_in=$(grep -m1 '// @updatedIn' "$f" 2>/dev/null | sed -E 's|.*// @updatedIn[[:space:]]+||; s/[[:space:]]+$//' || echo "")
+    for version_field in since_version updated_in; do
+        version_value="${!version_field}"
+        if [ -n "$version_value" ] && ! printf '%s' "$version_value" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "Error: $base @$version_field must look like 4.48.0, got '$version_value'." >&2
+            exit 1
+        fi
+    done
+    [ -z "$since_version" ] && since_version="-"
+    [ -z "$updated_in" ] && updated_in="-"
 
     for field in scene_id title subtitle icon category section available; do
         if [ -z "${!field}" ]; then
@@ -195,8 +212,8 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     # decoded back to "" at the one place that reads it (step 4 below).
     android_only_reason_field="$android_only_reason"
     [ -z "$android_only_reason_field" ] && android_only_reason_field="-"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason_field" "$order" "$tags" "$section" >> "$TMP_META"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason_field" "$order" "$tags" "$section" "$since_version" "$updated_in" >> "$TMP_META"
     scene_count=$((scene_count + 1))
 done
 
@@ -248,7 +265,7 @@ status_enum() {
 TMP_FULL="$(mktemp)"
 trap 'rm -f "$TMP_META" "$SORTED_META" "$TMP_FULL"' EXIT
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in; do
     # Find the *Scene.swift file whose @sceneId matches.
     type_name=""
     for f in "$SCENES_DIR"/*Scene.swift; do
@@ -262,9 +279,9 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         echo "Error: no 'enum <Name>Scene: DemoScene' declaration found for sceneId='$scene_id'." >&2
         exit 1
     fi
-    # 13 columns: sceneId title subtitle icon category available iosOnly status androidOnlyReason order tags section typeName
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason" "$order" "$tags" "$section" "$type_name" >> "$TMP_FULL"
+    # 15 columns: sceneId title subtitle icon category available iosOnly status androidOnlyReason order tags section sinceVersion updatedIn typeName
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason" "$order" "$tags" "$section" "$since_version" "$updated_in" "$type_name" >> "$TMP_FULL"
 done < "$SORTED_META"
 
 # ─── 4. Emit GeneratedScenes.swift ───────────────────────────────────────
@@ -303,7 +320,7 @@ enum GeneratedScenes {
         var items: [DemoItem] = []
 HEADER
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in type_name; do
     # Decode the `-` "absent" sentinel back to a real empty string (see the
     # TMP_META write in step 1 for why this round-trip is necessary).
     [ "$android_only_reason" = "-" ] && android_only_reason=""
@@ -335,7 +352,10 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            section: .%s,\n' "$section"
         printf '            status: %s,\n' "$status_enum_val"
         printf '            order: %s,\n' "$order"
-        printf '            tags: [%s]\n' "$swift_tags"
+        printf '            tags: [%s]' "$swift_tags"
+        [ "$since_version" != "-" ] && printf ',\n            sinceVersion: "%s"' "$since_version"
+        [ "$updated_in" != "-" ] && printf ',\n            updatedIn: "%s"' "$updated_in"
+        printf '\n'
         if [ "$category" = "ar" ]; then
             # Every AR scene enters through ARExperienceContainer — the one
             # place that owns camera permission, device capability and the
@@ -353,6 +373,8 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            subtitle: "%s",\n' "$swift_subtitle"
         printf '            order: %s,\n' "$order"
         printf '            tags: [%s],\n' "$swift_tags"
+        [ "$since_version" != "-" ] && printf '            sinceVersion: "%s",\n' "$since_version"
+        [ "$updated_in" != "-" ] && printf '            updatedIn: "%s",\n' "$updated_in"
         printf '            section: .%s,\n' "$section"
         if [ -n "$android_only_reason" ]; then
             swift_android_only_reason=$(printf '%s' "$android_only_reason" | sed 's/"/\\"/g')
@@ -385,7 +407,7 @@ ALL_END
 
 # `allowedIds`: every scene id (available true AND false), sorted by id so
 # the diff stays stable and two parallel PRs never collide.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in type_name; do
     printf '        "%s",\n' "$scene_id"
 done < "$TMP_FULL"
 
@@ -407,7 +429,7 @@ IDS_END
 # scenes fall through to `default: return nil` (→ placeholder), never their
 # own `EmptyView`. iOS-only scenes are guarded so a non-iOS build returns
 # `nil` (→ placeholder) rather than a blank view.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in type_name; do
     [ "$available" = "true" ] || continue
     if [ "$category" = "ar" ]; then
         # Same wrapper as the DemoItem above, so a deep link never bypasses it.

@@ -7,6 +7,7 @@
 // @icon        paintpalette.fill
 // @order       21
 // @tags        pbr,material,clearcoat,sheen,transmission,occlusion,streaming
+// @updatedIn   4.35.0
 import SwiftUI
 
 enum MaterialsScene: DemoScene {

@@ -211,7 +211,6 @@ struct ExploreTab: View {
     @State private var selectedModel: ModelItem?
     /// The source-agnostic model the user tapped — pushes `GalleryModelViewerScreen`.
     @State private var viewingModel: GalleryModel?
-    @State private var selectedCategory: SketchfabCategory?
     @State private var recentSearches = RecentSearches()
 
     // Multi-source resilience (#2645 / #2700): the tab browses whichever catalog
@@ -267,6 +266,15 @@ struct ExploreTab: View {
         selectedSource.feedKinds.allSatisfy { (feedsByKind[$0] ?? []).isEmpty }
     }
 
+    /// The one feed Explore shows as its rail — Android's `TrendingRail` input:
+    /// Trending when the source has it, else the first feed that came back
+    /// non-empty, else the source's first feed (so a failure still has a heading).
+    private var trendingRailKind: FeedKind? {
+        let kinds = selectedSource.feedKinds
+        if kinds.contains(.trending) { return .trending }
+        return kinds.first { !(feedsByKind[$0] ?? []).isEmpty } ?? kinds.first
+    }
+
     /// Curated featured set — first 6 bundled models, picked for visual variety.
     /// Used as fallback when no Sketchfab API key is configured.
     /// `animated_dragon` replaced with `black_dragon` after #1152 Stage 3
@@ -303,14 +311,6 @@ struct ExploreTab: View {
                     if embedded {
                         inlineSearchField
                     }
-                    // Source picker (#2645 / #2700) — stays visible even mid-search.
-                    // Switching catalogs resets browse + search state back to the
-                    // new source's feeds (see selectSource — parity with Android's
-                    // onSelectSource in ExploreTabScreen.kt). Hidden only when a
-                    // single source is available (nothing to choose between).
-                    if sources.sources.count > 1 {
-                        sourcePickerRow
-                    }
                     // "Sketchfab unavailable" banner — only when the selected
                     // source is Sketchfab and its key was rejected at runtime
                     // (401/403). A missing key drops Sketchfab from the picker, so
@@ -319,25 +319,22 @@ struct ExploreTab: View {
                     if selectedSource.id == .sketchfab && keyRejected {
                         sketchfabDisabledBanner
                     }
-                    // "Try a demo" + the Animated filter belong to the browse
-                    // experience — hidden while searching. The Animated filter is
-                    // meaningful only for Sketchfab; the CC sources hide it.
-                    if !isSearching {
-                        trySampleSection
-                        if selectedSource.supportsAnimatedFilter {
-                            filtersBar
-                        }
-                    }
 
+                    // Android's `ExploreBody` order: the trending rail, then
+                    // "Browse by source" with the Animated filter, then "Try a
+                    // demo". A search replaces all three with its results. No
+                    // Categories or Recent searches section: Android removed both
+                    // (#2237) and iOS follows.
                     if isSearching {
                         searchResultsSection
                     } else {
-                        // One carousel per feed the selected source advertises.
-                        // A feed that failed or came back empty says so under its
-                        // heading (#3789); if every feed is empty and we're not
-                        // still loading, the bundled curated carousel follows so
-                        // the tab is never blank (#2645 / #2700).
-                        ForEach(selectedSource.feedKinds, id: \.self) { kind in
+                        // One rail: Trending, or the first feed of the source that
+                        // came back non-empty — Android's `TrendingRail`. A feed
+                        // that failed or came back empty says so under its heading
+                        // (#3789); if every feed is empty and we're not still
+                        // loading, the bundled curated carousel follows so the tab
+                        // is never blank (#2645 / #2700).
+                        if let kind = trendingRailKind {
                             galleryFeedSection(kind: kind, models: feedsByKind[kind] ?? [])
                         }
                         if feedsUnreachable && !isLoadingFeeds {
@@ -355,11 +352,13 @@ struct ExploreTab: View {
                         if allFeedsEmpty && !isLoadingFeeds {
                             bundledFeaturedSection
                         }
-                    }
 
-                    categoriesSection
-                    if !recentSearches.items.isEmpty {
-                        recentSearchesSection
+                        // Source picker (#2645 / #2700). Switching catalogs resets
+                        // browse + search state back to the new source's feeds (see
+                        // selectSource — parity with Android's onSelectSource).
+                        browseBySourceSection
+
+                        trySampleSection
                     }
                 }
                 .padding(.horizontal, SceneViewTokens.Home.contentPadding)
@@ -379,7 +378,7 @@ struct ExploreTab: View {
             // which reaches the screen's top edge. It matches the page, so it
             // is invisible until content scrolls under it.
             .modifier(OpaqueNavigationBar(visible: embedded))
-            .navigationTitle("Explore")
+            .navigationTitle("Browse online models")
             // Placeholder names the catalog being searched so the field reflects
             // the picked source (Sketchfab / Poly Haven), #2645.
             // The selected source is always usable (Sketchfab is dropped from the
@@ -443,18 +442,6 @@ struct ExploreTab: View {
                     ))
                     #endif
             }
-            .sheet(item: $selectedCategory) { category in
-                CategorySheet(category: category) { query in
-                    searchText = query
-                    recentSearches.push(query)
-                    search.submit(text: query)
-                }
-                .presentationDetents([.medium, .large])
-                #if os(iOS)
-                .presentationBackground(.regularMaterial)
-                .presentationCornerRadius(28)
-                #endif
-            }
             // `.alert(...)` is the SwiftUI counterpart of the Android `AlertDialog`
             // in ExploreTabScreen.kt — surfaced when the Sketchfab key is rejected.
             .alert(
@@ -487,14 +474,32 @@ struct ExploreTab: View {
 
     // MARK: - Source picker
 
+    /// "Browse by source" — Android's `CompactBrowseRail`: the heading with the
+    /// Animated filter at its trailing end (only for a source that supports
+    /// it), then the source picker. The heading row keeps the filter's height
+    /// whichever source is picked, so switching never shifts the chips.
+    private var browseBySourceSection: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            HStack {
+                Text("Browse by source")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                Spacer(minLength: SceneViewTokens.Space.sm)
+                if selectedSource.supportsAnimatedFilter {
+                    filtersBar.fixedSize()
+                }
+            }
+            .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+            sourcePickerRow
+        }
+        .accessibilityIdentifier("explore-browse-by-source")
+    }
+
     /// Source-picker chip row (#2645 / #2700): one chip per available `ModelSource`
-    /// (Sketchfab | Poly Haven), the selected one highlighted.
+    /// (Sketchfab | Icosa Gallery | Poly Haven), the selected one highlighted.
     private var sourcePickerRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Text("Source")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
                 ForEach(sources.sources, id: \.id) { source in
                     SourceChip(
                         title: source.id.displayName,
@@ -758,7 +763,7 @@ struct ExploreTab: View {
     /// Localised carousel title for a `FeedKind`.
     private func feedTitle(_ kind: FeedKind) -> String {
         switch kind {
-        case .trending: return "Trending"
+        case .trending: return "Trending in 3D"
         case .staffPicks: return "Staff Picks"
         case .recentlyAdded: return "Recently Added"
         }
@@ -983,57 +988,6 @@ struct ExploreTab: View {
                 .padding(.bottom, 4)
             }
             .scrollClipDisabled()
-        }
-    }
-
-    // MARK: - Categories section (chips grid)
-
-    private var categoriesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Categories")
-                .font(.title2.weight(.bold))
-            // Chips sized to their label and wrapped by `ChipFlow`. The grid this
-            // replaces gave every chip a third of the width, narrower than one
-            // word, so labels broke mid-word — "Architec-ture", "Electron-ics".
-            ChipFlow(spacing: 8) {
-                ForEach(SketchfabCategory.allCases) { category in
-                    CategoryChip(category: category) {
-                        selectedCategory = category
-                        #if os(iOS)
-                        SceneViewHaptic.shared.selection()
-                        #endif
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Recent searches
-
-    private var recentSearchesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Recent searches")
-                    .font(.title2.weight(.bold))
-                Spacer()
-                Button("Clear") {
-                    recentSearches.clear()
-                }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.tint)
-            }
-            VStack(spacing: 6) {
-                ForEach(recentSearches.items, id: \.self) { query in
-                    RecentSearchRow(query: query) {
-                        // Tapping a recent search re-runs it against the current
-                        // source (#1239 parity).
-                        searchText = query
-                        search.submit(text: query)
-                    } onRemove: {
-                        recentSearches.remove(query)
-                    }
-                }
-            }
         }
     }
 }
@@ -1283,162 +1237,6 @@ private struct NativeSearchField: ViewModifier {
             content.searchable(text: $text, prompt: prompt)
         } else {
             content
-        }
-    }
-}
-
-// MARK: - Chip flow
-
-/// Lays chips out left to right at their own width and wraps to a new row when
-/// the next one no longer fits.
-private struct ChipFlow: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = arrange(subviews, in: proposal.width ?? .infinity)
-        return CGSize(width: proposal.width ?? rows.width, height: rows.height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = arrange(subviews, in: bounds.width)
-        for (subview, origin) in zip(subviews, rows.origins) {
-            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
-                          proposal: .unspecified)
-        }
-    }
-
-    private func arrange(_ subviews: Subviews, in width: CGFloat)
-        -> (origins: [CGPoint], width: CGFloat, height: CGFloat) {
-        var origins: [CGPoint] = []
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > width {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            origins.append(CGPoint(x: x, y: y))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-            widest = max(widest, x - spacing)
-        }
-        return (origins, widest, y + rowHeight)
-    }
-}
-
-// MARK: - Category chip
-
-private struct CategoryChip: View {
-    let category: SketchfabCategory
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 6) {
-                Image(systemName: category.icon)
-                    .font(.caption.weight(.semibold))
-                Text(category.displayName)
-                    .font(.subheadline.weight(.medium))
-            }
-            .lineLimit(1)
-            .padding(.horizontal, 14)
-            // 12 + a 20 pt line + 12 = the 44 pt touch target (was 38).
-            .padding(.vertical, 12)
-            .background(.tint.opacity(0.12), in: Capsule())
-            // The 12 % fill alone measured 1.25:1 on the dark ground — the
-            // contour is what keeps the capsule readable there.
-            .overlay(Capsule().strokeBorder(.tint.opacity(0.3), lineWidth: 1))
-            .foregroundStyle(.tint)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(category.displayName) category")
-    }
-}
-
-// MARK: - Recent search row
-
-private struct RecentSearchRow: View {
-    let query: String
-    let onTap: () -> Void
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Button(action: onTap) {
-                Text(query)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(6)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(query) from recent searches")
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-// MARK: - Category sheet (presented as a modal when a chip is tapped)
-
-private struct CategorySheet: View {
-    let category: SketchfabCategory
-    let onSearchTriggered: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Spacer(minLength: 16)
-                Image(systemName: category.icon)
-                    .font(.system(size: 48, weight: .semibold))
-                    .foregroundStyle(.tint)
-                    .padding(20)
-                    .background(.tint.opacity(0.15), in: Circle())
-
-                Text(category.displayName)
-                    .font(.title.weight(.bold))
-
-                Text("Browse \(category.displayName.lowercased()) models from Sketchfab. Tap the search button to load results for this category.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-
-                Button {
-                    onSearchTriggered(category.displayName)
-                    dismiss()
-                } label: {
-                    Label("Search \(category.displayName)", systemImage: "magnifyingglass")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(.tint, in: Capsule())
-                        .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 24)
-
-                Spacer()
-            }
-            .navigationTitle("Category")
-            .navigationBarTitleInline()
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
         }
     }
 }

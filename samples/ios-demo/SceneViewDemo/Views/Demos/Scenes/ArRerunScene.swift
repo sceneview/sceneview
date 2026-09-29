@@ -8,6 +8,7 @@
 // @iosOnly     true
 // @order       18
 // @tags        ar,rerun,replay,record,export,point cloud,plane,pose,usdz,glb,ply
+// @updatedIn   4.46.0
 import SwiftUI
 
 enum ArRerunScene: DemoScene {

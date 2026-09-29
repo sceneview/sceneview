@@ -324,6 +324,33 @@ enum SceneViewTokens {
             light: Color(red: 0x00 / 255, green: 0x5B / 255, blue: 0xC1 / 255),
             dark: Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
         )
+        /// `surface-container-high` — #F1F3F5 / #2C3546, "a container on a
+        /// container": the home's "Browse online models" row, as on Android.
+        static let surfaceContainerHigh = Color(
+            light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
+            dark: Color(red: 0x2C / 255, green: 0x35 / 255, blue: 0x46 / 255)
+        )
+        /// Home-section accents, sampled evenly along `gradient-hero` —
+        /// `primary` (#005BC1 / #A4C1FF) to `tertiary` (#6446CD / #D2A8FF) —
+        /// verbatim from Android's `DemoCategoryAccent` (samples/common). They
+        /// tint the "New" / "Updated" chip of a home card, as on Android.
+        static let sectionAccentView3D = primary
+        static let sectionAccentCreate = Color(
+            light: Color(red: 0x19 / 255, green: 0x56 / 255, blue: 0xC4 / 255),
+            dark: Color(red: 0xB0 / 255, green: 0xBB / 255, blue: 0xFF / 255)
+        )
+        static let sectionAccentPlaceAR = Color(
+            light: Color(red: 0x32 / 255, green: 0x50 / 255, blue: 0xC7 / 255),
+            dark: Color(red: 0xBB / 255, green: 0xB4 / 255, blue: 0xFF / 255)
+        )
+        static let sectionAccentUnderstand = Color(
+            light: Color(red: 0x4B / 255, green: 0x4B / 255, blue: 0xCA / 255),
+            dark: Color(red: 0xC6 / 255, green: 0xAE / 255, blue: 0xFF / 255)
+        )
+        static let sectionAccentDevTools = Color(
+            light: Color(red: 0x64 / 255, green: 0x46 / 255, blue: 0xCD / 255),
+            dark: Color(red: 0xD2 / 255, green: 0xA8 / 255, blue: 0xFF / 255)
+        )
         /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
         static let onPrimary = chipSelectedText
         /// M3 `secondary-container` — #D9E3F8 / #3D4758, Android's

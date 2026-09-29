@@ -56,4 +56,77 @@ final class HomeFilterTests: XCTestCase {
     }
 }
 
+/// `DemoFreshness` — the same cases as Android's `DemoFreshnessTest`, so the
+/// two platforms flag the same cards from the same declarations.
+@MainActor
+final class DemoFreshnessTests: XCTestCase {
+    private func recent(_ version: String?, _ build: String, window: Int = DemoFreshness.windowMinors) -> Bool {
+        DemoFreshness.isRecent(version, buildVersion: build, window: window)
+    }
+
+    func testWindowCoversTheBuildAndThePreviousMinorOnly() {
+        XCTAssertTrue(recent("4.35.0", "4.35.0"))
+        XCTAssertTrue(recent("4.34.0", "4.35.0"))
+        XCTAssertFalse(recent("4.33.0", "4.35.0"))
+        XCTAssertFalse(recent("4.33.9", "4.35.2"))
+    }
+
+    func testAheadOfTheBuildIsFreshAndAnOlderMajorIsNot() {
+        XCTAssertTrue(recent("4.35.0", "4.34.0"))
+        XCTAssertTrue(recent("5.0.0", "4.34.0"))
+        XCTAssertFalse(recent("4.99.0", "5.0.0"))
+    }
+
+    func testSuffixesAreIgnoredAndMalformedVersionsNeverEarnAChip() {
+        XCTAssertTrue(recent("4.35.0", "4.35.0-main.abc1234"))
+        XCTAssertTrue(recent("4.35.0", "4.35.0+ci.7"))
+        for bad in [nil, "", "v4.35.0", "4", "main"] as [String?] {
+            XCTAssertFalse(recent(bad, "4.35.0"), "\(bad ?? "nil")")
+        }
+        XCTAssertFalse(recent("4.35.0", "not-a-version"))
+    }
+
+    func testAWiderWindowCanBeAskedFor() {
+        XCTAssertFalse(recent("4.32.0", "4.35.0"))
+        XCTAssertTrue(recent("4.32.0", "4.35.0", window: 3))
+    }
+
+    func testNewWinsOverUpdated() {
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: nil, updatedIn: nil, buildVersion: "4.35.0"), .none)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.35.0", updatedIn: nil, buildVersion: "4.35.0"), .new)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: nil, updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.35.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .new)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.20.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
+    }
+
+    /// The declarations mirrored from the Android fragments (`sinceVersion` /
+    /// `updatedIn` in `RollingBallsFragment.kt`, `AnimationPhysicsFragment.kt`
+    /// — `animation` is its iOS half in `parity-manifest.yml`). Update both
+    /// sides together.
+    func testSceneDeclarationsMirrorAndroid() {
+        let byId = Dictionary(GeneratedScenes.all().map { ($0.sceneId, $0) },
+                              uniquingKeysWith: { first, _ in first })
+        XCTAssertEqual(byId["rolling-balls"]?.sinceVersion, "4.48.0")
+        XCTAssertEqual(byId["animation"]?.updatedIn, "4.48.0")
+        XCTAssertEqual(byId["model-viewer"]?.updatedIn, "4.35.0")
+        XCTAssertEqual(byId["materials"]?.updatedIn, "4.35.0")
+        XCTAssertEqual(byId["ar-rerun"]?.updatedIn, "4.46.0")
+        // At 4.48 that is exactly Android's pair of chips.
+        let fresh = byId.values
+            .map { ($0.sceneId, DemoFreshness.of($0, buildVersion: "4.48.0")) }
+            .filter { $0.1 != .none }
+            .sorted { $0.0 < $1.0 }
+        XCTAssertEqual(fresh.map(\.0), ["animation", "rolling-balls"])
+        XCTAssertEqual(fresh.map(\.1), [.updated, .new])
+    }
+
+    /// Materials streams its subject: listed on a keyed build's home, as on
+    /// Android, and kept off a keyless one, where it has only the placeholder.
+    func testMaterialsIsOnTheHomeOfAKeyedBuildOnly() {
+        XCTAssertTrue(HomeCatalogue.isOnHome("materials", hasSketchfabKey: true))
+        XCTAssertFalse(HomeCatalogue.isOnHome("materials", hasSketchfabKey: false))
+        XCTAssertTrue(HomeCatalogue.isOnHome("model-viewer", hasSketchfabKey: false))
+    }
+}
+
 #endif

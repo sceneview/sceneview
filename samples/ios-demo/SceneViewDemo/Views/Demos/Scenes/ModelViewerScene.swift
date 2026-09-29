@@ -7,6 +7,7 @@
 // @icon        cube.transparent.fill
 // @order       1
 // @tags        gltf,glb,hdr,ibl,orbit,ar,viewer
+// @updatedIn   4.35.0
 import SwiftUI
 
 enum ModelViewerScene: DemoScene {
