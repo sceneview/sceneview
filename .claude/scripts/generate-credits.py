@@ -364,6 +364,7 @@ NON_CATALOG_BUNDLED = {
         "name": "Raccoon family (SPZ sample capture)",
         "author": "Niantic Labs",
         "license": "MIT",
+        "licenseUrl": "https://github.com/nianticlabs/spz/blob/main/LICENSE",
         "sourceUrl": "https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz",
         "note": "Real phone capture shipped with the SPZ format; cropped to the subject "
         "(932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`",
@@ -504,7 +505,7 @@ def format_entry(m: dict) -> str:
     name = m.get("name") or m.get("id") or "(unnamed)"
     author = m.get("author", "").strip()
     lic = m.get("license", "").strip()
-    lic_link = license_url(lic)
+    lic_link = (m.get("licenseUrl") or "").strip() or license_url(lic)
     src = m.get("sourceUrl", "").strip()
     lic_md = f"[{lic}]({lic_link})" if lic_link else lic
     return f"- **[{name}]({src})** by {author} — {lic_md}"
@@ -630,10 +631,10 @@ def manifest_sizes() -> dict[str, int]:
 
 
 _PBX_FILE_REF = re.compile(
-    r"^\s*(?P<id>[0-9A-F]{24}) /\*[^*]*\*/ = \{isa = PBXFileReference;(?P<body>[^\n]*)\};\s*$",
+    r"^\s*(?P<id>[0-9A-F]{24,32}) /\*[^*]*\*/ = \{isa = PBXFileReference;(?P<body>[^\n]*)\};\s*$",
     re.M,
 )
-_PBX_RESOURCE = re.compile(r"/\* [^*]* in Resources \*/ = \{isa = PBXBuildFile; fileRef = (?P<ref>[0-9A-F]{24})")
+_PBX_RESOURCE = re.compile(r"/\* [^*]* in Resources \*/ = \{isa = PBXBuildFile; fileRef = (?P<ref>[0-9A-F]{24,32})")
 
 
 def pbxproj_external_resources(scope: dict) -> dict[Path, str]:
@@ -669,10 +670,12 @@ def pbxproj_external_resources(scope: dict) -> dict[Path, str]:
         if base == target or base in target.parents:
             continue
         name = target.name
-        if target.is_dir():
-            for q in sorted(target.rglob("*")):
-                if q.is_file():
-                    out[q] = f"{name}/{q.relative_to(target).as_posix()}"
+        if "lastKnownFileType = folder" in body or target.is_dir():
+            # A folder reference ships whatever is under it, including files only
+            # fetched by tools/fetch-assets.sh and not yet on this checkout's disk.
+            on_disk = {q for q in target.rglob("*") if q.is_file()} if target.is_dir() else set()
+            for q in sorted(on_disk | {q for q in fetched if target in q.parents}):
+                out[q] = f"{name}/{q.relative_to(target).as_posix()}"
         elif target.is_file() or target in fetched:
             out[target] = name
     return out
@@ -827,7 +830,7 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
             author = (entry.get("author") or "").strip()
             lic = (entry.get("license") or "").strip()
             src = (entry.get("sourceUrl") or "").strip()
-            lic_link = license_url(lic)
+            lic_link = (entry.get("licenseUrl") or "").strip() or license_url(lic)
             lic_md = f"[{lic}]({lic_link})" if lic_link else lic
             title = f"[{name}]({src})" if src else name
             line = f"- `{rel}` — **{title}** by {author} — {lic_md} ({human_size(size)})"
@@ -905,7 +908,7 @@ def render_bundled_credits_json(scope: dict, index: dict[str, dict]) -> tuple[st
             "name": entry.get("name") or entry.get("id") or Path(rel).name,
             "author": (entry.get("author") or "").strip(),
             "license": lic,
-            "licenseUrl": license_url(lic),
+            "licenseUrl": (entry.get("licenseUrl") or "").strip() or license_url(lic),
             "sourceUrl": (entry.get("sourceUrl") or "").strip(),
             "size": size,
             "note": (entry.get("note") or "").strip(),
@@ -986,7 +989,7 @@ def render_bundled_credits_html(scope: dict, index: dict[str, dict]) -> tuple[st
         name = escape(e.get("name") or e.get("id") or Path(c["files"][0][0]).name)
         author = escape((e.get("author") or "").strip())
         lic = (e.get("license") or "").strip()
-        lic_url = license_url(lic)
+        lic_url = (e.get("licenseUrl") or "").strip() or license_url(lic)
         src = escape((e.get("sourceUrl") or "").strip(), quote=True)
         stem = Path(c["files"][0][0]).stem
         thumb = thumbs_dir / f"{stem}.webp"

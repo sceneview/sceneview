@@ -454,7 +454,7 @@
           "name": "Raccoon family (SPZ sample capture)",
           "author": "Niantic Labs",
           "license": "MIT",
-          "licenseUrl": "",
+          "licenseUrl": "https://github.com/nianticlabs/spz/blob/main/LICENSE",
           "sourceUrl": "https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz",
           "size": 3306117,
           "note": "Real phone capture shipped with the SPZ format; cropped to the subject (932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`"

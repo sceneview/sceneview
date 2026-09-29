@@ -320,7 +320,8 @@ demos:
       Capability caveat on a `working` row: iOS opens the same capture but
       draws each point as a small solid dot, not a soft camera-sorted
       gaussian. SceneViewSwift has no SplatNode yet (item 2 of #2646) and
-      RealityKit has no point primitive; the screen says so in its sheet.
+      RealityKit has no point primitive; the screen says so on its visible
+      peek line ("points drawn as dots") and in its sheet.
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SplatPreviewDemo.kt
     ios: [splat-preview]

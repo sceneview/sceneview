@@ -4,6 +4,7 @@ import RealityKit
 /// RealityKit resources shared by the Rerun replay (iOS only) and the Real-World Scan demo
 /// (iOS and macOS). Kept outside `RerunReplayStage.swift`'s `#if os(iOS)` so both platforms
 /// build the same mesh from the same shared geometry.
+@MainActor
 enum RerunRealityKit {
     /// Point-exact sampling: one texel per point, never blended with its neighbours.
     /// Computed, not stored: the sampler type is not `Sendable`, so a shared static would
