@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android demo: Museum & Space models look as clean as on iOS ([#4179](https://github.com/sceneview/sceneview/pull/4179)).** "Reset lighting" with an Apollo 11, Woolly Mammoth or Perseverance scan on stage now returns to Studio, the lighting the model opens under, instead of Chinese Garden, whose warm sun gave the white scans a yellow halo and a sepia cast. With the environment hidden, every model in the viewer now stands on the navy stage colour instead of pure black, as on iOS, in light and dark.
