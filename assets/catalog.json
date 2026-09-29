@@ -1019,7 +1019,7 @@
       "name": "Water Bottle",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle",
-      "author": "KhronosGroup",
+      "author": "Microsoft",
       "license": "CC0-1.0",
       "shippedAs": [
         "WaterBottle.glb"

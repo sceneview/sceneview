@@ -99,7 +99,7 @@ Total models: **84** (plus 8 pending metadata, 8 pending license review).
 - **[Sheen Chair (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Sunglasses](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos)** by Darmstadt Graphics Group GmbH (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Water Bottle](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle)** by KhronosGroup — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Water Bottle](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Poly Haven
 
