@@ -74,9 +74,10 @@ class HomeScreenSnapshotTest {
     @Test
     @Config(fontScale = 1.5f)
     fun home_largeFont() {
-        // Accessibility reflow: card title and subtitle are one line each with
-        // ellipsis, the hero copy is capped at 2 lines / 260 dp — an oversized
-        // font scale is exactly where clipping would show.
+        // Accessibility reflow: card titles and subtitles are never truncated
+        // (#3603), so the frosted caption must grow with them and keep its glass
+        // under every line; the hero copy is capped at 2 lines / 260 dp — an
+        // oversized font scale is exactly where clipping would show.
         captureRoboImage("src/test/snapshots/home_large_font.png", roborazziOptions = HOST_TOLERANT) {
             SceneViewDemoTheme(darkTheme = false) {
                 Home()

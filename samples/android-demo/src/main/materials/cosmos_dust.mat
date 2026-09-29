@@ -1,0 +1,55 @@
+// cosmos_dust.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Dark, camera-facing dust sprites for the Cosmos demo: the dust lanes that cut
+//             across the galaxy's bar and along the inner edge of its arms. Same four-vertex
+//             sprite as cosmos_sprite.mat, but alpha-blended instead of additive, so a sprite
+//             darkens the starlight behind it instead of adding to it.
+// Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
+// Vertex layout (one interleaved buffer, built by CosmosMeshes, the sprite layout):
+//   position — float3, the sprite centre in model space (all four corners carry the same).
+//   color    — float4, rgb = the dust's own faint colour (reddish brown, well below 1.0),
+//              a = its opacity at the centre.
+//   custom0  — float4 (corner.x, corner.y, radius in model units, unused).
+// Parameters:
+//   opacity   — float [0,1], global opacity multiplier (the scene's fade-in).
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// Why a second material: light adds, so no amount of additive sprites can draw a dark lane.
+// Dust absorbs, which is what an alpha blend does to the colour already in the target. The
+// dust mesh is drawn after the galaxy's stars (renderable priority), and overlapping dust
+// sprites of one colour compose the same in any order, so they need no sort.
+material {
+    "name" : "Cosmos Dust",
+    "parameters" : [
+        { "type" : "float", "name" : "opacity" }
+    ],
+    "requires" : [ "position", "color", "custom0" ],
+    "variables" : [ "sprite" ],
+    "shadingModel" : "unlit",
+    "blending" : "transparent",
+    "depthWrite" : false,
+    "depthCulling" : true,
+    "doubleSided" : true,
+    "culling" : "none"
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float4 c0 = getCustom0();
+        highp float3 center = material.worldPosition.xyz;
+        highp mat4 viewFromWorld = getViewFromWorldMatrix();
+        highp float3 camRight = float3(viewFromWorld[0][0], viewFromWorld[1][0], viewFromWorld[2][0]);
+        highp float3 camUp    = float3(viewFromWorld[0][1], viewFromWorld[1][1], viewFromWorld[2][1]);
+        material.worldPosition.xyz = center + (c0.x * camRight + c0.y * camUp) * c0.z;
+        material.sprite = float4(c0.xy, 0.0, 0.0);
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        float2 p = variable_sprite.xy;
+        float d2 = dot(p, p);
+        // A soft puff, cut to zero at the quad edge. Pre-multiplied, as `transparent` expects.
+        float cover = exp(-d2 * 3.0) * max(0.0, 1.0 - d2) * getColor().a * materialParams.opacity;
+        material.baseColor = float4(getColor().rgb * cover, cover);
+    }
+}

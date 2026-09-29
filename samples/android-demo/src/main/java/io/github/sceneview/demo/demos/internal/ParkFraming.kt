@@ -34,22 +34,56 @@ import kotlin.math.tan
  * parallel list so the layout, the loader and the chip label are all indexed by one thing — a slot
  * can never end up labelled with another slot's model (#2933). The framing below reads only
  * [x] / [z] / [scale]: which model stands in a slot has no bearing on where the camera goes.
+ *
+ * [yaw] turns the model on its own vertical axis, in degrees, so a piece authored side-on (the
+ * bench) faces the camera. It does not enter the bounds: the cube a model is normalised into is
+ * the same whichever way the model faces inside it.
+ *
+ * [fallbackYaw] is added to [yaw] only while the slot shows its bundled offline stand-in, which is
+ * a different model authored facing a different way: the three.js soldier standing in for the
+ * oaks faces away from the camera unless it is turned round.
  */
-internal data class ParkSlot(val uid: String, val x: Float, val z: Float, val scale: Float)
+internal data class ParkSlot(
+    val uid: String,
+    val x: Float,
+    val z: Float,
+    val scale: Float,
+    val yaw: Float = 0f,
+    val fallbackYaw: Float = 0f,
+)
 
 /**
  * The four `park` slots, back row first. Order matches the visibility chips.
+ *
+ * One corner of a park, at one consistent scale (#4103): the oaks at the back, a bench in front of
+ * them, a street lamp beside the bench and a fern at the edge of the path. The sizes are each
+ * model's LARGEST axis, so the oaks and the lamp are given by their height and the bench and the
+ * fern by their width. They are in proportion to each other, as a model railway is, rather than
+ * to the real world, where the oaks would be ten times the bench and the bench a speck in frame.
+ * Until #4103 the four slots held four trees at 1.8 m, 0.65 m, 0.40 m and 0.15 m: a forest scan
+ * the size of a pebble next to one the size of a house.
  *
  * The uids are looked up in `SampleAssets` by identity, so re-ordering the registry moves nothing
  * here. What the registry DOES decide is which model — and therefore which chip label — each slot
  * gets; the slots themselves only say where a model stands and how big it is drawn.
  */
 internal val PARK_SLOTS = listOf(
-    ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.2f, scale = 1.80f),
-    ParkSlot(uid = "6d1aeea748f147789004bc03e1930d32", x = 0.0f, z = 0.2f, scale = 0.65f),
-    ParkSlot(uid = "4f6ab5594a8a415aba3f958682b9ced5", x = -0.55f, z = 0.2f, scale = 0.40f),
-    ParkSlot(uid = "fd582b0d4a8c4af1a1b5c4f21a481c93", x = 0.55f, z = 0.2f, scale = 0.15f),
+    ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.45f, scale = 2.00f, fallbackYaw = 180f),
+    ParkSlot(uid = "378cd6e6f505493aa8e22f68db1cabec", x = -0.05f, z = 0.35f, scale = 0.70f, yaw = 90f),
+    ParkSlot(uid = "6881aa1e84b047d79860fa9297e05e22", x = 0.55f, z = 0.25f, scale = 1.10f),
+    ParkSlot(uid = "42cb7fad10ba44ecbc9ae9cf5fdd63b6", x = -0.62f, z = 0.42f, scale = 0.45f),
 )
+
+/**
+ * Radius of the lawn the formation stands on, in metres, centred on the world origin.
+ *
+ * Wide enough that every slot's footprint is on grass and the formation can spin without a model
+ * stepping off the edge. It is a round plinth on purpose: a disc turns into itself under "Spin
+ * scene", so the ground never shows a corner sweeping round. At 1.6 m it outweighed the park it
+ * carried, so it stops just past the farthest footprint (the fern, 0.75 m out) and lets the
+ * canopies overhang. iOS uses the same radius.
+ */
+internal const val PARK_LAWN_RADIUS = 1.1f
 
 /**
  * Height of the formation. Every slot is bottom-aligned onto a shared ground plane, so the union is
@@ -59,7 +93,8 @@ internal val PARK_SLOTS = listOf(
  * axis into a cube of side `scale`, so `scale` is the model's height only when it is taller than it
  * is wide or deep. That holds for the hero slot's assets (a streamed oak, or the bundled lantern
  * that stands in without a Sketchfab key). A hero that is wider than tall would render shorter than
- * this value and stand lower in the frame.
+ * this value and stand lower in the frame. The bench and the fern are wider than tall, which is
+ * why neither of them is the tallest slot.
  */
 internal val PARK_HEIGHT: Float = PARK_SLOTS.maxOf { it.scale }
 
@@ -87,13 +122,16 @@ internal data class ParkBounds(
  *
  * Each slot's model is normalised into a cube of side `scale` (`scaleToUnits`), centred on the
  * slot's x / z and standing on the ground plane at `y = -PARK_HEIGHT / 2` (`centerOrigin`). The
- * union of those cubes bounds whatever the registry puts in the slots: the streamed trees of a
- * keyed build, or the bundled lantern, lantern, shiba and soldier that stand in without a
+ * union of those cubes bounds whatever the registry puts in the slots: the streamed park of a
+ * keyed build, or the bundled soldier, sheen chair, lantern and shiba that stand in without a
  * Sketchfab key. So the camera is placed from it on the first frame and never has to move when the
  * models land. A model narrower than its cube (the lantern) leaves margin, never overflow.
  *
- * "Spin scene" turns the formation around the world origin. The back slot sits 0.2 m off it, so
- * during a spin the corners of its cube can brush the frame edges. That is accepted for a spin the
+ * The lawn ([PARK_LAWN_RADIUS]) is left out on purpose: it is ground, and ground running past the
+ * frame edges reads as ground, where fitting the whole disc would push the park to the back.
+ *
+ * "Spin scene" turns the formation around the world origin. The oaks sit 0.45 m off it, so
+ * during a spin the corners of their cube can brush the frame edges. That is accepted for a spin the
  * user starts; framing the whole sweep would push the camera back for the resting view too.
  */
 internal val PARK_BOUNDS: ParkBounds = ParkBounds(
