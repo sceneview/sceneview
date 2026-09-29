@@ -18,10 +18,10 @@ class RgbeDecoderTest {
         "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y $height +X $width\n".toByteArray(Charsets.US_ASCII)
 
     @Test
-    fun `flat scanlines decode to mantissa times two to the exponent minus 136`() {
+    fun `flat scanlines decode like Filament, mantissa plus half times two to the exponent minus 136`() {
         val out = ByteArrayOutputStream()
         out.write(header(2, 1))
-        // (128, 64, 32) at e = 129 → value * 2^(129 - 136) = value / 128.
+        // (128, 64, 32) at e = 129 → (value + 0.5) * 2^(129 - 136) = (value + 0.5) / 128.
         out.write(byteArrayOf(128.toByte(), 64, 32, 129.toByte()))
         // e = 0 is black whatever the mantissa.
         out.write(byteArrayOf(10, 20, 30, 0))
@@ -30,9 +30,9 @@ class RgbeDecoderTest {
         assertEquals(2, image.width)
         assertEquals(1, image.height)
         val px = FloatArray(6).also { image.pixels.get(it) }
-        assertEquals(1f, px[0], 0f)
-        assertEquals(0.5f, px[1], 0f)
-        assertEquals(0.25f, px[2], 0f)
+        assertEquals(128.5f / 128f, px[0], 0f)
+        assertEquals(64.5f / 128f, px[1], 0f)
+        assertEquals(32.5f / 128f, px[2], 0f)
         assertEquals(0f, px[3], 0f)
         assertEquals(0f, px[4], 0f)
         assertEquals(0f, px[5], 0f)
@@ -52,7 +52,7 @@ class RgbeDecoderTest {
             out.write(ByteArray(width) { (it * 10 + row).toByte() })
             // B: run of 4 × 7, then 4 literals.
             out.write(byteArrayOf((128 + 4).toByte(), 7, 4, 1, 2, 3, 4))
-            // E: one run of 8 × 136 → scale 1.
+            // E: one run of 8 × 136 → scale 1, so each channel is its mantissa + 0.5.
             out.write(byteArrayOf((128 + width).toByte(), 136.toByte()))
         }
 
@@ -61,9 +61,9 @@ class RgbeDecoderTest {
         for (row in 0 until 2) {
             for (x in 0 until width) {
                 val o = (row * width + x) * 3
-                assertEquals(100f, px[o], 0f)
-                assertEquals((x * 10 + row).toFloat(), px[o + 1], 0f)
-                assertEquals(if (x < 4) 7f else (x - 3).toFloat(), px[o + 2], 0f)
+                assertEquals(100.5f, px[o], 0f)
+                assertEquals(x * 10 + row + 0.5f, px[o + 1], 0f)
+                assertEquals(if (x < 4) 7.5f else x - 3 + 0.5f, px[o + 2], 0f)
             }
         }
     }
