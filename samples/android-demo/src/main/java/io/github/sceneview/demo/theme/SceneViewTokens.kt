@@ -402,8 +402,6 @@ object SceneViewTokens {
          */
         val cardGlassMelt = 28.dp
 
-        /** `featured-media-aspect` — a featured [io.github.sceneview.demo.ui.home.DemoMediaCard] is portrait, 4:5. */
-        const val featuredMediaAspect = 0.8f
 
         // ── Home list (`home-row-*` in DESIGN.md) ─────────────────────────────
         // Under the 3D header the Home is a standard Material 3 list: grouped two-line
