@@ -8,13 +8,13 @@ import com.google.android.filament.RenderableManager
 import com.google.android.filament.Scene
 import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Camera
+import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.arcore.buildPlaneDepthMeshGeometry
-import io.github.sceneview.ar.arcore.depthImage
 import io.github.sceneview.ar.arcore.rawDepthConfidenceImage
 import io.github.sceneview.ar.scene.PlaneRendererV2
 import io.github.sceneview.ar.scene.planeMaterialPresetFor
@@ -216,11 +216,21 @@ class PlaneVisualizerV2(
     private val primitivesScratch = ArrayList<MaterialInstance>(2)
     private var currentVertexCount = 0
     private var currentIndexCount = 0
-    private var lastDepthRebuildMs: Long = Long.MIN_VALUE
+    // `null` until the first rebuild — never `Long.MIN_VALUE`, which overflowed `now - last` to a
+    // negative number and kept the depth mesh from ever being built (#4095, same bug as #2186).
+    private var lastDepthRebuildMs: Long? = null
 
     // Frame + camera handed in by PlaneRendererV2.update before each updatePlane call.
     private var currentFrame: Frame? = null
     private var currentCamera: Camera? = null
+
+    /**
+     * The session's effective [Config.DepthMode], handed in by [PlaneRendererV2.update] every
+     * update. Anything but [Config.DepthMode.AUTOMATIC] — `null` (never set), `DISABLED`
+     * (`ARSceneView`'s default), `RAW_DEPTH_ONLY` — keeps the depth path off, so the plane stays
+     * on the flat polygon without ever asking ARCore for a depth image it cannot give.
+     */
+    internal var depthMode: Config.DepthMode? = null
 
     // Cached scratch matrices — building these per frame would add GC pressure.
     private val cameraToPlaneLocal = FloatArray(16)
@@ -379,7 +389,7 @@ class PlaneVisualizerV2(
         val frame = currentFrame ?: return false
         val camera = currentCamera ?: return false
         if (camera.trackingState != TrackingState.TRACKING) return false
-        if (now - lastDepthRebuildMs < DEPTH_REBUILD_INTERVAL_MS) return false
+        if (!isDepthRebuildDue(now, lastDepthRebuildMs)) return false
         return rebuildDepthMesh(frame, camera)
     }
 
@@ -392,7 +402,12 @@ class PlaneVisualizerV2(
      */
     @Suppress("ReturnCount", "TooGenericExceptionCaught")
     private fun rebuildDepthMesh(frame: Frame, camera: Camera): Boolean {
-        val depthImage = frame.depthImage() ?: return false
+        // Acquisition itself can throw (IllegalStateException on a session whose depth is off
+        // or degraded, NotYetAvailableException before the first depth frame). It must fail
+        // here, where it falls back to flat, not up in PlaneRendererV2.update's catch, which
+        // would skip the whole plane update instead.
+        val depthImage = acquirePlaneDepthImage(depthMode, frame::acquireDepthImage16Bits)
+            ?: return false
         try {
             val intrinsics = computeScaledIntrinsics(camera, depthImage.width, depthImage.height)
                 ?: return false
@@ -889,6 +904,39 @@ internal fun computeScanRadius(polygon: FloatBuffer): Float {
     }
     polygon.position(savedPos)
     return kotlin.math.sqrt(maxSq)
+}
+
+/**
+ * Whether [PlaneVisualizerV2] may rebuild its depth-driven mesh at [nowMs]: always before the
+ * first rebuild ([lastRebuildMs] `null`), then once [intervalMs] has elapsed. `null`, not a
+ * `Long.MIN_VALUE` sentinel: `nowMs - Long.MIN_VALUE` overflows negative and the depth path
+ * never ran (#4095, the #2186 bug again). Pure, so it is unit-tested without an Engine.
+ */
+internal fun isDepthRebuildDue(
+    nowMs: Long,
+    lastRebuildMs: Long?,
+    intervalMs: Long = PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS,
+): Boolean = lastRebuildMs == null || nowMs - lastRebuildMs >= intervalMs
+
+/**
+ * Acquires the smoothed depth image [PlaneVisualizerV2] builds its mesh from, or `null` when
+ * there is none to use. Only a [Config.DepthMode.AUTOMATIC] session is asked: `DISABLED` (the
+ * `ARSceneView` default, and what `ArSession.configure` downgrades an unsupported request to),
+ * `RAW_DEPTH_ONLY` (no smoothed image — its noisy raw depth stays with the app that asked for
+ * it), and `null` (the renderer has not said yet) all keep the flat polygon. A throwing
+ * acquisition — `IllegalStateException` when depth is degraded, `NotYetAvailableException`
+ * before the first depth frame — also yields `null`, so the caller keeps the flat fallback
+ * instead of escaping to PlaneRendererV2.update and skipping the plane (#4104 review). Pure, so
+ * it is unit-tested without ARCore.
+ */
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
+internal fun <T : Any> acquirePlaneDepthImage(depthMode: Config.DepthMode?, acquire: () -> T): T? {
+    if (depthMode != Config.DepthMode.AUTOMATIC) return null
+    return try {
+        acquire()
+    } catch (_: Exception) {
+        null
+    }
 }
 
 /**
