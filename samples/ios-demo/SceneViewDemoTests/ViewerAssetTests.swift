@@ -113,6 +113,49 @@ final class ViewerAssetTests: XCTestCase {
             XCTAssertNotNil(model.thumbnailName, "\(model.displayName) has no model_thumb_\(model.assetName) imageset.")
         }
     }
+
+    /// The picker card paints its own `surface-container-high` fill and the
+    /// poster stands on the stage, so every render is the model alone on a
+    /// transparent 5:4 canvas — Android's `model_thumb_*.webp` contract. A
+    /// render baked on a background shows as a dark box on the light card.
+    func testPickerThumbnailsAreTransparentAtTheCardAspect() throws {
+        for model in models + ModelViewerDemo.museumModels {
+            let name = try XCTUnwrap(model.thumbnailName, "\(model.displayName) has no thumbnail.")
+            let image = try XCTUnwrap(UIImage(named: name)?.cgImage, "\(name) does not decode.")
+            XCTAssertEqual(Double(image.width) / Double(image.height),
+                           Double(SceneViewTokens.Layout.mediaAspect), accuracy: 0.01,
+                           "\(name) is \(image.width)×\(image.height), not the card's 5:4.")
+            XCTAssertEqual(Self.cornerAlphas(image), [0, 0, 0, 0],
+                           "\(name) has opaque corners: its background is baked in.")
+        }
+    }
+
+    /// Image Planes hangs square pictures on unlit planes, which draw no
+    /// alpha: its own opaque squares, never the transparent 5:4 card renders.
+    func testImagePlanePicturesAreOpaqueSquares() throws {
+        for picture in ImageDemo.pictures {
+            let image = try XCTUnwrap(UIImage(named: picture.asset)?.cgImage, "\(picture.asset) is missing.")
+            XCTAssertEqual(image.width, image.height, "\(picture.asset) would be stretched on its square plane.")
+            XCTAssertEqual(Self.cornerAlphas(image), [255, 255, 255, 255],
+                           "\(picture.asset) has transparent corners: they render black on an unlit plane.")
+        }
+    }
+
+    /// Alpha of the four corner pixels, drawn into an 8-bit RGBA context.
+    static func cornerAlphas(_ image: CGImage) -> [UInt8] {
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        return [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)].map { x, y in
+            pixels[(y * width + x) * 4 + 3]
+        }
+    }
     #endif
 
     func testEveryHDPackModelResolvesInTheManifest() {
@@ -211,6 +254,48 @@ final class ViewerAssetTests: XCTestCase {
                     .replacingOccurrences(of: #"\'"#, with: "'")
                     .replacingOccurrences(of: "&amp;", with: "&")
             }
+        }
+        return out
+    }
+
+    /// Android turns the museum models `frontYaw = -30f` to open them
+    /// three-quarter, front to the left (#4166). iOS gets there with its
+    /// opening orbit instead: seen from an orbit of `a` toward +X, a model
+    /// looks turned by `-a`. Every Android `frontYaw` on a model iOS also
+    /// ships must land within 10° of that, on the same side.
+    func testMuseumModelsOpenThreeQuarterLikeAndroid() throws {
+        let yaws = try Self.androidFrontYaws()
+        let iosTurn = -ModelViewerDemo.openingAzimuth * 180 / .pi
+        var compared = 0
+        for model in ModelViewerDemo.museumModels {
+            guard let yaw = yaws[model.assetName] else { continue }
+            XCTAssertEqual(yaw.sign, iosTurn.sign, "\(model.displayName) opens facing the other side on Android.")
+            XCTAssertEqual(iosTurn, yaw, accuracy: 10, "\(model.displayName): Android turns it \(yaw)°, iOS \(iosTurn)°.")
+            compared += 1
+        }
+        XCTAssertGreaterThanOrEqual(compared, 2, "Android's mammoth and rover `frontYaw` were not found.")
+    }
+
+    /// `thumbnailStem` → `frontYaw` (degrees) for every `BundledViewerModel`
+    /// in the Android demo that sets one.
+    static func androidFrontYaws(file: StaticString = #filePath) throws -> [String: Float] {
+        let source = URL(fileURLWithPath: "\(file)")
+            .deletingLastPathComponent()      // SceneViewDemoTests
+            .deletingLastPathComponent()      // ios-demo
+            .deletingLastPathComponent()      // samples
+            .appendingPathComponent("android-demo/src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt")
+        let kotlin = try String(contentsOf: source, encoding: .utf8)
+        let yaw = try NSRegularExpression(pattern: #"frontYaw = (-?[0-9.]+)f"#)
+        let stem = try NSRegularExpression(pattern: #"thumbnailStem = "([a-z0-9_]+)""#)
+        var out: [String: Float] = [:]
+        for entry in kotlin.components(separatedBy: "BundledViewerModel(").dropFirst() {
+            let range = NSRange(entry.startIndex..., in: entry)
+            guard let y = yaw.firstMatch(in: entry, range: range),
+                  let s = stem.firstMatch(in: entry, range: range),
+                  let yText = Range(y.range(at: 1), in: entry),
+                  let sText = Range(s.range(at: 1), in: entry),
+                  let degrees = Float(entry[yText]) else { continue }
+            out[String(entry[sText])] = degrees
         }
         return out
     }

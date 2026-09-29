@@ -192,11 +192,12 @@ struct ModelPickerSheet: View {
 /// the 1 pt `outline-subtle` hairline; the model on screen gets the 2 pt
 /// `primary` outline instead.
 ///
-/// The media is the `model_thumb_*` render on the viewer's own stage colour:
-/// the iOS renders are baked on that stage (#0B1016 at the corners, the stage
-/// is #0B0F16), so the square render fits the 5:4 box without a seam and the
-/// card shows the model the way the viewer will. Android's renders are
-/// transparent and sit on the card fill instead.
+/// The media is the `model_thumb_*` render: the model alone on a transparent
+/// 600×480 (5:4, `mediaAspect`) canvas, so it sits straight on the card's own
+/// `surface-container-high` fill in both themes, as on Android. The files are
+/// Android's `model_thumb_*.webp` re-encoded as HEIC with alpha; the two
+/// iOS-only models (Cyberpunk Hovercar, Butterfly) are rendered the same way
+/// from their USDZ (see `tools/demo-previews/README.md`).
 struct ModelPickerCard: View {
     let model: BundledViewerModel
     let selected: Bool
@@ -217,13 +218,12 @@ struct ModelPickerCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack {
-                    SceneViewTokens.Stage.background
                     if let thumb = model.thumbnailName {
                         Image(thumb).resizable().scaledToFit()
                     } else {
                         Image(systemName: "cube.transparent")
                             .font(.title2)
-                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceFaint)
                     }
                 }
                 .frame(maxWidth: .infinity)

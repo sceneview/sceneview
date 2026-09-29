@@ -19,8 +19,8 @@ import ARKit
 /// tracking is available, which presents the existing `ARPlacementDemo` armed
 /// with the selected bundled model.
 ///
-/// **Sheets.** Models — the bundled USDZ grid (1:1 `model_thumb_*` tiles copied
-/// from Android) plus the "Surprise me" Sketchfab row (hidden without an API
+/// **Sheets.** Models — the bundled USDZ grid (transparent 5:4 `model_thumb_*`
+/// renders, Android's own where the model is shared) plus the "Surprise me" Sketchfab row (hidden without an API
 /// key) and "Browse online models"; Environment — the bundled HDRs with their
 /// `env_thumb_*` tiles, an IBL intensity slider and a skybox toggle.
 ///
@@ -183,6 +183,18 @@ struct ModelViewerDemo: View {
     /// dark-on-black — the same class of regression #3382 fixed for the hero
     /// model. Applied under `qa_mode` only.
     private static let storeHeroEnvironmentName = "studio_warm"
+
+    /// The camera's opening orbit: 36° off the content's front, toward +X,
+    /// so every model opens three-quarter with its front turned to the left
+    /// of the screen.
+    ///
+    /// Android opens the camera head-on and turns the Woolly Mammoth and the
+    /// Perseverance rover by `frontYaw = -30f` instead (#4166) — the same
+    /// three-quarter, front-left pose. iOS already opens every model there, so
+    /// the museum models take no extra turn: -30° on top of this orbit would
+    /// show them near profile. `ViewerAssetTests` reads Android's `frontYaw`
+    /// and holds the two within 10°.
+    static let openingAzimuth: Float = .pi / 5
 
     /// Fitted framing: the bounding sphere plus 12 % of air, which clears the
     /// dock band at the bottom of the viewport.
@@ -579,7 +591,7 @@ struct ModelViewerDemo: View {
                 hdFrameWatch.joined(loadedNode.entity)
             }
             .cameraControls(.orbit)
-            .cameraOrbit(azimuth: .pi / 5)
+            .cameraOrbit(azimuth: Self.openingAzimuth)
             .environment(sceneEnvironment)
             // `cameraDistanceOverride` — the `-camera_distance <float>` launch
             // arg (#2785) — wins over both when present, same as Android's
@@ -592,14 +604,14 @@ struct ModelViewerDemo: View {
             if loadedNode == nil, let posterModel, let thumb = posterModel.thumbnailName {
                 // A render of the HD model itself, so the stage already shows
                 // what the download brings; the pill in the header says how far
-                // it is. Rounded like the picker tile it was chosen from.
+                // it is. The picker card's transparent render, stage-wide at
+                // 5:4 like Android's poster: the model stands on the stage.
                 Image(thumb)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: SceneViewTokens.Stage.hdPosterSize,
-                           maxHeight: SceneViewTokens.Stage.hdPosterSize)
-                    .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
-                    .padding(.horizontal, SceneViewTokens.Space.xl)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(SceneViewTokens.Layout.mediaAspect, contentMode: .fit)
+                    .padding(.horizontal, SceneViewTokens.Space.lg)
                     .accessibilityLabel("\(posterModel.displayName), preview")
                     .accessibilityIdentifier("viewer-hd-poster")
                     .transition(.opacity)
@@ -1050,6 +1062,12 @@ struct ViewerLighting {
     /// "Reset lighting" in the sheet: back to the lighting `model` opens under
     /// (Studio for a museum scan, the garden otherwise; `nil`, a streamed
     /// model, gets the garden).
+    ///
+    /// Deliberately not Android's reset, which always sets the garden: there
+    /// the effect keyed on `isMuseumModel` does not re-run, so a museum scan
+    /// stays under a lighting the app never opens it with, and gets Studio
+    /// back only after a round trip through another model. Reset here lands
+    /// on the same state as reopening the model.
     mutating func reset(for model: BundledViewerModel?) {
         environment = ModelViewerDemo.defaultEnvironment
         museumApplied = false
