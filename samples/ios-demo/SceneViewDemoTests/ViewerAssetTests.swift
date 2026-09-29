@@ -65,6 +65,17 @@ final class ViewerAssetTests: XCTestCase {
     }
 
     /// Every HD pack model names a stand-in and an id the bundled manifest knows.
+    /// "View in AR" never reaches for the HD file (#4147): every model places
+    /// a USDZ that ships in the bundle.
+    func testEveryARModelResolvesToABundledResource() {
+        for model in ModelViewerDemo.bundledModels {
+            XCTAssertNotNil(
+                Bundle.main.url(forResource: model.arResourceName, withExtension: "usdz"),
+                "\(model.displayName) would open AR on \(model.arResourceName).usdz, which is not in the bundle."
+            )
+        }
+    }
+
     func testEveryHDPackModelResolvesInTheManifest() {
         let manifest = HDPackManifest.loadBundled()
         for model in models where model.hdPackID != nil {

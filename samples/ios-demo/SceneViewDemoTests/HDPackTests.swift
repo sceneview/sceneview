@@ -51,10 +51,32 @@ final class HDPackTests: XCTestCase {
 
     @MainActor
     func testPillCopy() {
-        XCTAssertEqual(HDPackPill.label(for: .downloading(0.349)), "HD · downloading 34 %")
-        XCTAssertEqual(HDPackPill.label(for: .waiting), "HD · waiting for Wi-Fi")
-        XCTAssertNil(HDPackPill.label(for: .ready))
-        XCTAssertEqual(HDPackSettingsRow.status(for: .ready, metered: false), "Downloaded")
+        XCTAssertEqual(HDPackPill.label(for: .downloading(0.349), bytes: 51_704_895), "HD · downloading 34 %")
+        XCTAssertEqual(HDPackPill.label(for: .waitingForWiFi, bytes: 51_704_895), "HD · waiting for Wi-Fi")
+        XCTAssertEqual(HDPackPill.label(for: .waitingForNetwork, bytes: 51_704_895), "HD · waiting for a network")
+        XCTAssertEqual(HDPackPill.label(for: .missing, bytes: 51_704_895), "HD · download 52 MB")
+        XCTAssertEqual(HDPackPill.label(for: .ready, loading: true, bytes: 51_704_895), "HD · loading")
+        XCTAssertEqual(HDPackPill.label(for: .failed, bytes: 51_704_895), "HD · download failed")
+        XCTAssertNil(HDPackPill.label(for: .ready, bytes: 51_704_895))
+    }
+
+    @MainActor
+    func testAboutRowCopy() {
+        XCTAssertEqual(HDPackSettingsRow.status(for: .ready, constrained: false), "Downloaded")
+        XCTAssertEqual(HDPackSettingsRow.status(for: .downloading(0.349), constrained: false), "Downloading 34 %")
+        XCTAssertEqual(HDPackSettingsRow.status(for: .waitingForWiFi, constrained: false), "Waiting for Wi-Fi")
+        // Low Data Mode is not cellular: it pauses the prefetch, whatever the link.
+        XCTAssertEqual(HDPackSettingsRow.status(for: .waitingForWiFi, constrained: true), "Paused · Low Data Mode")
+        XCTAssertEqual(HDPackSettingsRow.status(for: .waitingForNetwork, constrained: true), "Waiting for a network")
+        XCTAssertEqual(HDPackSettingsRow.status(for: .failed, constrained: false), "Download failed")
+        XCTAssertNil(HDPackSettingsRow.status(for: .missing, constrained: false))
+    }
+
+    @MainActor
+    func testDialogMentionsMobileDataOnlyOnAnExpensiveNetwork() {
+        let wifi = HDPackDownloadDialog.message(bytes: 51_704_895, expensive: false)
+        XCTAssertEqual(wifi, "Full-resolution models, 52 MB. They stay on this device until you remove them in About.")
+        XCTAssertEqual(HDPackDownloadDialog.message(bytes: 51_704_895, expensive: true), wifi + " This uses mobile data.")
     }
 }
 

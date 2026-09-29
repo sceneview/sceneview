@@ -100,11 +100,8 @@ struct CreditsSheet: View {
     private var hdPackSection: some View {
         let assets = HDPackStore.shared.manifest.assets
         if !assets.isEmpty {
-            sectionHeader("HD scenes — \(assets.count) \(assets.count == 1 ? "asset" : "assets")")
+            sectionHeader("HD scenes (downloaded)")
                 .padding(.top, 8)
-            Text("Downloaded once and kept on this device.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
             VStack(spacing: 8) {
                 ForEach(assets) { asset in
                     creditsRow(

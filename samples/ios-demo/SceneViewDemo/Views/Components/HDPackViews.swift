@@ -1,29 +1,44 @@
 import SwiftUI
 
+// Copy shared with Android (#4146) word for word; only the size differs, since
+// each platform ships its own file (USDZ here, GLB there).
+
 // MARK: - Status pill
 
 /// "HD · downloading 34 %" — shown in a demo's status slot while its bundled
-/// stand-in is on stage and the HD asset is not on disk yet.
+/// stand-in is on stage and the HD asset is not there yet.
 ///
-/// Same metrics as ``AssetSourcePill`` (dot, `caption2` medium, glass capsule),
-/// so the two read as one family. Nothing is shown once the HD asset is on
-/// stage: the swap is the confirmation.
+/// Same family as ``AssetSourcePill`` (dot, `caption2` medium, glass capsule).
+/// Nothing is shown once the HD asset is on stage: the swap is the
+/// confirmation. "Download 52 MB" and "download failed" are tappable: they
+/// open the same size-first dialog as the About row.
 struct HDPackPill: View {
     let state: HDAssetState
+    /// The HD file is on disk and being loaded onto the stage.
+    var loading = false
+    var bytes: Int64 = 0
+    var onDownload: (() -> Void)?
 
-    /// The pill copy. Static so the tests can pin it without SwiftUI; shared
-    /// with Android's `hd_pack_pill_*` strings.
-    static func label(for state: HDAssetState) -> String? {
+    /// The pill copy. Static so the tests can pin it without SwiftUI.
+    static func label(for state: HDAssetState, loading: Bool = false, bytes: Int64) -> String? {
+        if loading { return "HD · loading" }
         switch state {
         case .ready: return nil
-        case .waiting: return "HD · waiting for Wi-Fi"
+        case .waitingForWiFi: return "HD · waiting for Wi-Fi"
+        case .waitingForNetwork: return "HD · waiting for a network"
         case .downloading(let fraction): return "HD · downloading \(Int((fraction * 100).rounded(.down))) %"
         case .failed: return "HD · download failed"
-        case .missing: return "HD · not downloaded"
+        case .missing: return "HD · download \(HDPackFormat.size(bytes))"
         }
     }
 
+    private var isTappable: Bool {
+        guard !loading, onDownload != nil else { return false }
+        return state == .missing || state == .failed
+    }
+
     private var tint: Color {
+        if loading { return .accentColor }
         switch state {
         case .downloading: return .accentColor
         case .failed: return SceneViewTokens.HomeColor.danger
@@ -32,54 +47,97 @@ struct HDPackPill: View {
     }
 
     var body: some View {
-        if let label = Self.label(for: state) {
-            HStack(spacing: 6) {
+        if let label = Self.label(for: state, loading: loading, bytes: bytes) {
+            let pill = HStack(spacing: SceneViewTokens.Space.xs) {
                 Circle()
                     .fill(tint)
-                    .frame(width: 8, height: 8)
+                    .frame(width: SceneViewTokens.Space.sm, height: SceneViewTokens.Space.sm)
                 Text(label)
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.primary)
                     .monospacedDigit()
+                if isTappable {
+                    Image(systemName: state == .failed ? "arrow.clockwise" : "arrow.down.circle")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tint)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, SceneViewTokens.Space.sm)
+            .padding(.vertical, SceneViewTokens.Space.xs)
             .glassBackground(in: Capsule())
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(label)
-            .accessibilityIdentifier("hdPackPill")
+
+            if isTappable, let onDownload {
+                Button(action: onDownload) { pill }
+                    .buttonStyle(PressScaleButtonStyle())
+                    .accessibilityLabel(label)
+                    .accessibilityHint("Shows the download size first")
+                    .accessibilityIdentifier("hdPackPill")
+            } else {
+                pill
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(label)
+                    .accessibilityIdentifier("hdPackPill")
+            }
         }
     }
 }
 
-// MARK: - Settings row
+// MARK: - Download dialog
 
-/// "HD scenes · 52 MB · Downloaded" with its one action: Download now or Remove.
-///
-/// Lives on the About tab next to the other row cards. "Download now" states
-/// the size before anything moves (App Review 4.2.3(ii)); on a metered network
-/// it is the only way a transfer starts.
+extension View {
+    /// "Download HD scenes?" — states the size before anything moves (App
+    /// Review 4.2.3(ii)). Mentions mobile data only on an expensive network;
+    /// Low Data Mode alone is not a data plan.
+    func hdPackDownloadDialog(isPresented: Binding<Bool>, store: HDPackStore = .shared) -> some View {
+        modifier(HDPackDownloadDialog(isPresented: isPresented, store: store))
+    }
+}
+
+struct HDPackDownloadDialog: ViewModifier {
+    @Binding var isPresented: Bool
+    @ObservedObject var store: HDPackStore
+
+    static func message(bytes: Int64, expensive: Bool) -> String {
+        let base = "Full-resolution models, \(HDPackFormat.size(bytes)). They stay on this device until you remove them in About."
+        return expensive ? base + " This uses mobile data." : base
+    }
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Download HD scenes?", isPresented: $isPresented, titleVisibility: .visible) {
+            Button("Download") { store.downloadNow() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(Self.message(bytes: store.totalBytes, expensive: store.isExpensive))
+        }
+    }
+}
+
+// MARK: - About row
+
+/// "HD scenes · 52 MB" with its status line and one action: Download now or
+/// Remove. Lives on the About tab next to the other row cards.
 struct HDPackSettingsRow: View {
     @ObservedObject var store: HDPackStore = .shared
     @State private var confirmDownload = false
 
-    static func sizeText(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
-    /// Second line of the row. Static so the tests can pin it.
-    static func status(for state: HDAssetState, metered: Bool) -> String {
+    /// Status line under the title; `nil` when there is nothing to say
+    /// (not downloaded: the button says it). Static so the tests can pin it.
+    static func status(for state: HDAssetState, constrained: Bool) -> String? {
         switch state {
         case .ready: return "Downloaded"
         case .downloading(let f): return "Downloading \(Int((f * 100).rounded(.down))) %"
-        case .waiting: return metered ? "Waiting for Wi-Fi" : "Waiting for network"
+        case .waitingForWiFi: return constrained ? "Paused · Low Data Mode" : "Waiting for Wi-Fi"
+        case .waitingForNetwork: return "Waiting for a network"
         case .failed: return "Download failed"
-        case .missing: return "Not downloaded"
+        case .missing: return nil
         }
     }
 
-    private var size: String { Self.sizeText(store.totalBytes) }
     private var state: HDAssetState { store.packState }
+
+    private var statusLine: String? {
+        store.removalNotice ?? Self.status(for: state, constrained: store.isConstrained)
+    }
 
     var body: some View {
         HStack(spacing: SceneViewTokens.Space.sm + SceneViewTokens.Space.xs) {
@@ -94,16 +152,20 @@ struct HDPackSettingsRow: View {
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("HD scenes")
+                Text("HD scenes · \(HDPackFormat.size(store.totalBytes))")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                Text("\(size) · \(Self.status(for: state, metered: store.isOnMeteredNetwork))")
-                    .font(.caption)
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                    .monospacedDigit()
-                    .lineLimit(1)
+                if let statusLine {
+                    Text(statusLine)
+                        .font(.caption)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .accessibilityIdentifier("hdPackStatus")
+                }
             }
             .accessibilityElement(children: .combine)
+            .animation(.easeInOut(duration: 0.2), value: statusLine)
 
             Spacer(minLength: SceneViewTokens.Space.xs)
 
@@ -116,14 +178,7 @@ struct HDPackSettingsRow: View {
             RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
                 .strokeBorder(SceneViewTokens.HomeColor.outlineSubtle, lineWidth: 0.5)
         )
-        .confirmationDialog("Download HD scenes?", isPresented: $confirmDownload, titleVisibility: .visible) {
-            Button("Download \(size)") { store.downloadNow() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(store.isOnMeteredNetwork
-                 ? "\(size) of high-detail 3D scenes, kept on this device. This uses your cellular data."
-                 : "\(size) of high-detail 3D scenes, kept on this device.")
-        }
+        .hdPackDownloadDialog(isPresented: $confirmDownload, store: store)
         .accessibilityIdentifier("hdPackRow")
     }
 
@@ -142,7 +197,12 @@ struct HDPackSettingsRow: View {
                 .tint(SceneViewTokens.HomeColor.primary)
                 .frame(minHeight: SceneViewTokens.Layout.touchTarget)
                 .accessibilityLabel("Downloading")
-        case .waiting, .missing, .failed:
+        case .waitingForNetwork:
+            ProgressView()
+                .tint(SceneViewTokens.HomeColor.primary)
+                .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+                .accessibilityLabel("Waiting for a network")
+        case .waitingForWiFi, .missing, .failed:
             Button { confirmDownload = true } label: {
                 Text("Download now")
                     .font(SceneViewTokens.TypeScale.captionSemibold)

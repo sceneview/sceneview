@@ -20,6 +20,10 @@ struct BundledViewerModel: Identifiable, Equatable {
     /// The bundled resource to load when the HD asset is not available.
     var bundledResourceName: String { standInAssetName ?? assetName }
 
+    /// What "View in AR" places. Always a bundled USDZ: the HD file is not
+    /// used in AR until a real-device run proves it (follow-up to #4147).
+    var arResourceName: String { bundledResourceName }
+
     /// Asset-catalog thumbnail, or `nil` when none was generated for this model.
     var thumbnailName: String? {
         let name = "model_thumb_\(assetName)"

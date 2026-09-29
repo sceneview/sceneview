@@ -48,6 +48,11 @@
 #                      exists in --out-dir (default: skip — idempotent reruns)
 #   --blender <path>   Explicit Blender executable (default: $BLENDER_BIN,
 #                      then /Applications/Blender.app/…, then `blender` in PATH)
+#   --transmission-as-alpha
+#                      Map glTF KHR_materials_transmission to alpha-blended
+#                      opacity (UsdPreviewSurface has no transmission). Off by
+#                      default so existing conversions are byte-for-byte
+#                      unchanged; used for the HD pack's Flight Helmet lenses.
 #   -h, --help         Show this help
 #
 # Example — the 4 Khronos sample models this script was written for:
@@ -116,6 +121,7 @@ inputs=()
 out_dir=""
 force=false
 blender_bin="${BLENDER_BIN:-}"
+transmission_as_alpha=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -124,6 +130,8 @@ while [ $# -gt 0 ]; do
             out_dir="$2"; shift 2 ;;
         --force)
             force=true; shift ;;
+        --transmission-as-alpha)
+            transmission_as_alpha=1; shift ;;
         --blender)
             [ $# -ge 2 ] || { echo -e "${RED}--blender requires a value${NC}" >&2; exit 2; }
             blender_bin="$2"; shift 2 ;;
@@ -177,6 +185,7 @@ import bpy
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 src_glb, dst_usdz = argv[0], argv[1]
+transmission_as_alpha = len(argv) > 2 and argv[2] == "1"
 
 # Start from a truly empty scene so nothing from Blender's factory startup
 # file (default cube/camera/light) leaks into the export.
@@ -194,7 +203,8 @@ if import_result != {'FINISHED'}:
 # UsdPreviewSurface does carry: the base-colour texture's own alpha when it has
 # one (the Flight Helmet authored its lens opacity there before the asset moved
 # to transmission), otherwise a constant derived from the transmission factor.
-for mat in bpy.data.materials:
+# Opt-in (--transmission-as-alpha) so other conversions stay exactly as before.
+for mat in (bpy.data.materials if transmission_as_alpha else []):
     if not mat.use_nodes:
         continue
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
@@ -298,7 +308,7 @@ for src in "${inputs[@]}"; do
 
     echo -e "${BLUE}==${NC} $base.glb -> $base.usdz"
     if log="$("$blender_bin" --background --factory-startup --python "$driver" -- \
-                "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" "$dst" 2>&1)"; then
+                "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" "$dst" "$transmission_as_alpha" 2>&1)"; then
         echo "$log" | grep -E "^REPORT|^WARNING|^TRANSMISSION" || true
         if [ -s "$dst" ]; then
             size_h="$(du -h "$dst" | cut -f1)"

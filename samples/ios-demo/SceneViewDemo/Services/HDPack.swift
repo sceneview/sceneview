@@ -66,20 +66,30 @@ struct HDPackManifest: Decodable, Sendable {
 
     var totalBytes: Int64 { assets.reduce(0) { $0 + $1.bytes } }
 }
-
 // MARK: - State
 
 enum HDAssetState: Equatable, Sendable {
     /// Not on disk and nothing scheduled (never fetched, or removed by the user).
     case missing
-    /// Scheduled, no byte received yet — typically waiting for Wi-Fi.
-    case waiting
+    /// Automatic prefetch queued, no byte yet: it waits for an unmetered network.
+    case waitingForWiFi
+    /// "Download now" queued, no byte yet: any network will do.
+    case waitingForNetwork
     /// Receiving bytes; the value is 0...1.
     case downloading(Double)
     /// Verified and on disk.
     case ready
-    /// The last attempt failed; the next launch or "Download now" retries.
+    /// The last attempt failed. A network error resumes on the next launch;
+    /// a checksum mismatch backs off (see ``HDPackStore``).
     case failed
+}
+
+/// Sizes as the shared copy spells them ("52 MB"): whole megabytes, SI units,
+/// the same rounding Android uses for its own file size.
+enum HDPackFormat {
+    static func size(_ bytes: Int64) -> String {
+        "\(max(1, Int((Double(bytes) / 1_000_000).rounded()))) MB"
+    }
 }
 
 // MARK: - Files
@@ -91,6 +101,13 @@ enum HDPackFiles {
     static var directory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("HDPack", isDirectory: true)
+    }
+
+    /// Resume data of interrupted transfers. Caches: losing it only means
+    /// restarting a transfer from zero.
+    static var resumeDirectory: URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("HDPackResume", isDirectory: true)
     }
 
     static func url(forFile file: String) -> URL {
@@ -153,6 +170,18 @@ enum HDPackFiles {
             total + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }
     }
+
+    static func saveResumeData(_ data: Data, for file: String) {
+        try? FileManager.default.createDirectory(at: resumeDirectory, withIntermediateDirectories: true)
+        try? data.write(to: resumeDirectory.appendingPathComponent(file + ".resume"), options: .atomic)
+    }
+
+    /// Returns and forgets the resume data of `file`: it is valid once.
+    static func takeResumeData(for file: String) -> Data? {
+        let url = resumeDirectory.appendingPathComponent(file + ".resume")
+        defer { try? FileManager.default.removeItem(at: url) }
+        return try? Data(contentsOf: url)
+    }
 }
 
 // MARK: - Store
@@ -167,11 +196,17 @@ final class HDPackStore: ObservableObject {
     @Published private(set) var states: [String: HDAssetState] = [:]
     /// Bytes the pack occupies on disk right now.
     @Published private(set) var usedBytes: Int64 = 0
-    /// `true` on cellular, a personal hotspot or Low Data Mode.
-    @Published private(set) var isOnMeteredNetwork = false
+    /// Cellular or a personal hotspot: "Download now" says it uses mobile data.
+    @Published private(set) var isExpensive = false
+    /// Low Data Mode: the automatic prefetch is paused, not "waiting for Wi-Fi".
+    @Published private(set) var isConstrained = false
+    /// "HD scenes removed · 52 MB freed", shown for a few seconds after Remove.
+    @Published private(set) var removalNotice: String?
 
     /// Set by "Remove": no automatic download until the user asks again.
     private static let userRemovedKey = "hd_pack_user_removed"
+    /// `[file: [count, lastFailure]]` of checksum mismatches, for the back-off.
+    private static let mismatchKey = "hd_pack_checksum_mismatches"
 
     /// Automatic prefetch — unmetered networks only.
     static let autoSessionID = "dev.sceneview.demo.hdpack.auto"
@@ -186,6 +221,11 @@ final class HDPackStore: ObservableObject {
     /// iOS hands this over when it relaunches the app for finished background
     /// transfers; called once both sessions reported their events.
     var backgroundEventsCompletion: [String: () -> Void] = [:]
+
+    /// Unit tests host the app: no 52 MB transfer on CI and no prune racing
+    /// the install tests.
+    private static let isHostingUnitTests =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     init(manifest: HDPackManifest = .loadBundled()) {
         self.manifest = manifest
@@ -225,7 +265,7 @@ final class HDPackStore: ObservableObject {
 
     var isComplete: Bool { !manifest.assets.isEmpty && manifest.assets.allSatisfy { state(for: $0.id) == .ready } }
 
-    /// Aggregate state of the whole pack, for the Settings row.
+    /// Aggregate state of the whole pack, for the About row.
     var packState: HDAssetState {
         let all = manifest.assets.map { state(for: $0.id) }
         if all.isEmpty { return .missing }
@@ -240,7 +280,8 @@ final class HDPackStore: ObservableObject {
         if all.contains(where: { if case .downloading = $0 { return true } else { return false } }) {
             return .downloading(received / Double(max(totalBytes, 1)))
         }
-        if all.contains(.waiting) { return .waiting }
+        if all.contains(.waitingForNetwork) { return .waitingForNetwork }
+        if all.contains(.waitingForWiFi) { return .waitingForWiFi }
         if all.contains(.failed) { return .failed }
         return .missing
     }
@@ -251,12 +292,16 @@ final class HDPackStore: ObservableObject {
     /// transfers iOS kept running while the app was gone, then prefetch what
     /// is missing — unless the user removed the pack.
     func bootstrap() {
-        guard !bootstrapped else { return }
+        guard !bootstrapped, !Self.isHostingUnitTests else { return }
         bootstrapped = true
         pruneStale()
         pathMonitor.pathUpdateHandler = { path in
-            let metered = path.isExpensive || path.isConstrained
-            Task { @MainActor in HDPackStore.shared.isOnMeteredNetwork = metered }
+            let expensive = path.isExpensive
+            let constrained = path.isConstrained
+            Task { @MainActor in
+                HDPackStore.shared.isExpensive = expensive
+                HDPackStore.shared.isConstrained = constrained
+            }
         }
         pathMonitor.start(queue: DispatchQueue(label: "dev.sceneview.demo.hdpack.path"))
         #if DEBUG
@@ -265,14 +310,14 @@ final class HDPackStore: ObservableObject {
         // and every missing asset shows the state a queued prefetch shows.
         if let i = CommandLine.arguments.firstIndex(of: "-hdpack_offline"),
            i + 1 < CommandLine.arguments.count, CommandLine.arguments[i + 1] == "1" {
-            for asset in manifest.assets where state(for: asset.id) != .ready { states[asset.id] = .waiting }
+            for asset in manifest.assets where state(for: asset.id) != .ready { states[asset.id] = .waitingForWiFi }
             return
         }
         #endif
         Task {
             await reattach()
             if !UserDefaults.standard.bool(forKey: Self.userRemovedKey) {
-                await schedule(on: autoSession)
+                await schedule(on: autoSession, userRequested: false)
             }
         }
     }
@@ -293,39 +338,63 @@ final class HDPackStore: ObservableObject {
     func downloadNow() {
         UserDefaults.standard.set(false, forKey: Self.userRemovedKey)
         Task {
-            // A prefetch still waiting for Wi-Fi would duplicate the transfer.
-            for task in await autoSession.allTasks { task.cancel() }
-            await schedule(on: userSession)
+            // A prefetch still waiting for Wi-Fi would duplicate the transfer;
+            // what it already received carries over as resume data.
+            for task in await autoSession.allTasks {
+                guard let download = task as? URLSessionDownloadTask, let file = task.taskDescription else {
+                    task.cancel()
+                    continue
+                }
+                if let data = await download.cancelByProducingResumeData() {
+                    HDPackFiles.saveResumeData(data, for: file)
+                }
+            }
+            await schedule(on: userSession, userRequested: true)
         }
     }
 
-    /// Cancels any transfer, deletes every pack file and keeps it that way
-    /// until "Download now".
+    /// Cancels every transfer, waits until the sessions let go of them, then
+    /// deletes the pack and keeps it that way until "Download now".
     func remove() {
         UserDefaults.standard.set(true, forKey: Self.userRemovedKey)
+        let freed = HDPackFiles.usedBytes()
         Task {
-            for task in await autoSession.allTasks { task.cancel() }
-            for task in await userSession.allTasks { task.cancel() }
+            let tasks = await autoSession.allTasks + userSession.allTasks
+            for task in tasks { task.cancel() }
+            // A transfer finishing mid-cancel would install its file after the
+            // delete; `finished` also drops a file that lands after Remove.
+            for _ in 0..<30 {
+                let live = await autoSession.allTasks + userSession.allTasks
+                if live.allSatisfy({ $0.state == .completed }) { break }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
             try? FileManager.default.removeItem(at: HDPackFiles.directory)
+            try? FileManager.default.removeItem(at: HDPackFiles.resumeDirectory)
             for asset in manifest.assets { states[asset.id] = .missing }
             usedBytes = HDPackFiles.usedBytes()
+            let notice = "HD scenes removed · \(HDPackFormat.size(freed)) freed"
+            removalNotice = notice
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if removalNotice == notice { removalNotice = nil }
         }
     }
 
     /// Rebuilds in-flight states from both sessions after a relaunch.
     private func reattach() async {
-        for session in [autoSession, userSession] {
+        for (session, user) in [(autoSession, false), (userSession, true)] {
             for task in await session.allTasks {
                 guard let file = task.taskDescription,
                       let asset = manifest.assets.first(where: { $0.file == file }),
                       state(for: asset.id) != .ready else { continue }
                 let received = task.countOfBytesReceived
-                states[asset.id] = received > 0 ? .downloading(Double(received) / Double(asset.bytes)) : .waiting
+                states[asset.id] = received > 0
+                    ? .downloading(Double(received) / Double(asset.bytes))
+                    : (user ? .waitingForNetwork : .waitingForWiFi)
             }
         }
     }
 
-    private func schedule(on session: URLSession) async {
+    private func schedule(on session: URLSession, userRequested: Bool) async {
         var inFlight = Set<String>()
         for s in [autoSession, userSession] {
             for task in await s.allTasks where task.state == .running || task.state == .suspended {
@@ -333,12 +402,36 @@ final class HDPackStore: ObservableObject {
             }
         }
         for asset in manifest.assets where state(for: asset.id) != .ready && !inFlight.contains(asset.file) {
-            let task = session.downloadTask(with: asset.remoteURL)
+            // A file that failed its checksum is not fetched again on its own
+            // at every launch; "Download now" always tries.
+            if !userRequested, isBackingOff(asset.file) {
+                states[asset.id] = .failed
+                continue
+            }
+            let task = HDPackFiles.takeResumeData(for: asset.file).map { session.downloadTask(withResumeData: $0) }
+                ?? session.downloadTask(with: asset.remoteURL)
             task.taskDescription = asset.file
             task.countOfBytesClientExpectsToReceive = asset.bytes
             task.resume()
-            states[asset.id] = .waiting
+            states[asset.id] = userRequested ? .waitingForNetwork : .waitingForWiFi
         }
+    }
+
+    // MARK: Checksum back-off
+
+    /// One day after the first mismatch, doubling each time, capped at a week.
+    private func isBackingOff(_ file: String) -> Bool {
+        guard let entry = (UserDefaults.standard.dictionary(forKey: Self.mismatchKey) ?? [:])[file] as? [Double],
+              entry.count == 2 else { return false }
+        let delay = min(86_400 * pow(2, entry[0] - 1), 7 * 86_400)
+        return Date().timeIntervalSince1970 < entry[1] + delay
+    }
+
+    fileprivate func checksumMismatch(file: String) {
+        var all = UserDefaults.standard.dictionary(forKey: Self.mismatchKey) ?? [:]
+        let count = ((all[file] as? [Double])?.first ?? 0) + 1
+        all[file] = [count, Date().timeIntervalSince1970]
+        UserDefaults.standard.set(all, forKey: Self.mismatchKey)
     }
 
     // MARK: Delegate callbacks (main actor)
@@ -353,7 +446,18 @@ final class HDPackStore: ObservableObject {
 
     fileprivate func finished(file: String, success: Bool) {
         guard let asset = manifest.assets.first(where: { $0.file == file }) else { return }
-        states[asset.id] = success ? .ready : (Self.isOnDisk(asset) ? .ready : .failed)
+        if success, UserDefaults.standard.bool(forKey: Self.userRemovedKey) {
+            // Landed after Remove: the user asked for the space back.
+            try? FileManager.default.removeItem(at: HDPackFiles.url(forFile: file))
+            states[asset.id] = .missing
+        } else {
+            states[asset.id] = success ? .ready : (Self.isOnDisk(asset) ? .ready : .failed)
+        }
+        if success {
+            var all = UserDefaults.standard.dictionary(forKey: Self.mismatchKey) ?? [:]
+            all[file] = nil
+            UserDefaults.standard.set(all, forKey: Self.mismatchKey)
+        }
         usedBytes = HDPackFiles.usedBytes()
     }
 
@@ -392,16 +496,30 @@ private final class HDPackDownloadDelegate: NSObject, URLSessionDownloadDelegate
         guard let file = downloadTask.taskDescription else { return }
         let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 200
         var ok = false
+        var mismatch = false
         if (200..<300).contains(status) {
             // Must happen before returning: URLSession deletes `location` afterwards.
-            ok = (try? HDPackFiles.install(downloaded: location, as: file)) != nil
+            do {
+                try HDPackFiles.install(downloaded: location, as: file)
+                ok = true
+            } catch HDPackFiles.InstallError.checksumMismatch {
+                mismatch = true
+            } catch {}
         }
-        Task { @MainActor in HDPackStore.shared.finished(file: file, success: ok) }
+        Task { @MainActor in
+            if mismatch { HDPackStore.shared.checksumMismatch(file: file) }
+            HDPackStore.shared.finished(file: file, success: ok)
+        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error, let file = task.taskDescription else { return }
-        let cancelled = (error as? URLError)?.code == .cancelled
+        let nsError = error as NSError
+        let cancelled = nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+        // An interrupted transfer resumes where it stopped on the next try.
+        if !cancelled, let data = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+            HDPackFiles.saveResumeData(data, for: file)
+        }
         Task { @MainActor in
             if cancelled {
                 await HDPackStore.shared.cancelled(file: file)

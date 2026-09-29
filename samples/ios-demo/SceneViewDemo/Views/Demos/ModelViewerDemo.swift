@@ -177,6 +177,10 @@ struct ModelViewerDemo: View {
     /// swaps to it the moment the store reports it ready.
     @ObservedObject private var hdPack = HDPackStore.shared
     @State private var pendingHDID: String?
+    /// The HD file is on disk and being loaded onto the stage ("HD · loading").
+    @State private var hdLoading = false
+    /// The pill's "download 52 MB" / "download failed" tap: size-first dialog.
+    @State private var confirmHD = false
 
     /// `-qa_mode 1` / `?qa_mode=1` — keeps the authored pose for captures.
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
@@ -340,10 +344,16 @@ struct ModelViewerDemo: View {
             accessory: { floatingBand },
             status: {
                 if let pendingHDID {
-                    HDPackPill(state: hdPack.state(for: pendingHDID))
+                    HDPackPill(
+                        state: hdPack.state(for: pendingHDID),
+                        loading: hdLoading,
+                        bytes: hdPack.manifest.asset(id: pendingHDID)?.bytes ?? 0,
+                        onDownload: { confirmHD = true }
+                    )
                 }
             }
         )
+        .hdPackDownloadDialog(isPresented: $confirmHD)
         .sheet(item: $sheet) { which in
             Group {
                 switch which {
@@ -402,7 +412,7 @@ struct ModelViewerDemo: View {
         .fullScreenCover(isPresented: $showAR) {
             NavigationStack {
                 ARExperienceContainer(onViewIn3D: { showAR = false }) {
-                    ARPlacementDemo(initialModel: selectedModel.assetName)
+                    ARPlacementDemo(initialModel: selectedModel.arResourceName)
                 }
                     .navigationTitle("AR Placement")
                     .navigationBarTitleInline()
@@ -433,7 +443,7 @@ struct ModelViewerDemo: View {
         }
         .onChange(of: hdPack.states) { _, _ in
             // The HD file of the model on stage just landed: swap the stand-in out.
-            guard let id = pendingHDID, hdPack.state(for: id) == .ready,
+            guard let id = pendingHDID, hdPack.state(for: id) == .ready, !hdLoading,
                   selectedModel.hdPackID == id else { return }
             Task { await loadBundled(selectedModel) }
         }
@@ -509,6 +519,9 @@ struct ModelViewerDemo: View {
         #endif
         do {
             if let id = model.hdPackID, let url = hdPack.localURL(for: id) {
+                pendingHDID = id
+                hdLoading = true
+                defer { hdLoading = false }
                 let node = try await ModelNode.load(contentsOf: url)
                 install(node)
                 pendingHDID = nil
