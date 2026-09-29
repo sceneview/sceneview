@@ -158,6 +158,10 @@ public struct SceneView: View {
     // Default `false` — pan-then-orbit keeps the panned pivot. Closes #1236.
     var recentersTargetOnOrbit: Bool = false
 
+    // Bloom post-process (iOS / macOS 26+). `nil` until `.bloom(_:)` is called,
+    // so no existing scene pays for the pass.
+    var bloomOptions: BloomOptions?
+
     // Identity of the value the `content` closure builds from. `nil` (the
     // default) means the content is built exactly once, on `RealityView`
     // `make:` — the behaviour every existing caller gets. Set via
@@ -221,7 +225,8 @@ public struct SceneView: View {
             requestedCameraPoseGeneration: requestedCameraPoseGeneration,
             onCameraChanged: onCameraChanged,
             cameraGesturesEnabled: cameraGesturesEnabled,
-            onEntityTappedHit: onEntityTappedHit
+            onEntityTappedHit: onEntityTappedHit,
+            bloomOptions: bloomOptions
         )
     }
 
@@ -438,6 +443,31 @@ public struct SceneView: View {
     public func renderQuality(_ preset: RenderQuality) -> SceneView {
         var copy = self
         copy.renderQualityPreset = preset
+        return copy
+    }
+
+    /// Adds a bloom pass: pixels brighter than the threshold bleed a soft glow onto their
+    /// neighbours. The pass works on the displayed frame, in display space: brightness runs
+    /// from `0` (black) to `1` (white), and with the default ``BloomOptions/thresholdLevel``
+    /// of `0.6` whatever shows brighter than 60 % blooms — bright unlit or emissive colours.
+    ///
+    /// Mirrors the Android `View.bloomOptions` fields (`strength`, `levels`, `resolution`,
+    /// `threshold`). Runs on iOS 26 / macOS 26 and later (RealityKit's
+    /// `customPostProcessing`); on earlier systems the scene renders unchanged. Unavailable
+    /// on visionOS. When the frame comes in a format the pass does not handle (an EDR /
+    /// extended-range frame, for one), the frame is passed through untouched: no glow.
+    ///
+    /// The pass is attached once, when the view is created, whenever the modifier is present;
+    /// every later change — strength, levels, `.disabled` — applies live, and a zero strength
+    /// costs one copy of the frame.
+    ///
+    /// ```swift
+    /// SceneView { root in /* glowing content */ }
+    ///     .bloom(BloomOptions(strength: 0.45))
+    /// ```
+    public func bloom(_ options: BloomOptions) -> SceneView {
+        var copy = self
+        copy.bloomOptions = options
         return copy
     }
 
@@ -846,6 +876,9 @@ private struct SceneViewRepresentation: View {
     /// ``SceneView/onEntityTapHit(_:)``.
     let onEntityTappedHit: ((SceneTapHit) -> Void)?
 
+    /// Bloom pass settings, from ``SceneView/bloom(_:)``; `nil` when the modifier is absent.
+    let bloomOptions: BloomOptions?
+
     /// Mutable camera-orbit state, held in a **reference type** so mutating it
     /// (auto-rotate, drag, pinch) does NOT invalidate the SwiftUI body. The
     /// value default `CameraControls(mode: .orbit)` uses the struct's own
@@ -992,6 +1025,8 @@ private struct SceneViewRepresentation: View {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
+        /// Whether the bloom pass has been attached to the content (once, at creation).
+        var bloomInstalled = false
         /// Last camera state pushed onto the RealityKit entities by
         /// ``applyCamera()``. Compared (with float tolerance) each frame so a
         /// no-op camera apply — the common case while idle, and on every
@@ -1078,6 +1113,11 @@ private struct SceneViewRepresentation: View {
         var fittedDiagonal: Float = 0
     }
     @State private var appliedCache = AppliedCache()
+
+    #if !os(visionOS)
+    /// Metal pipelines and textures of the bloom pass, kept across frames and option changes.
+    @State private var bloomResources = BloomResources()
+    #endif
 
     /// Loaded HDR resource cached for the `RealityView.update:` closure so
     /// it can apply `content.environment = .skybox(resource)` every frame
@@ -1434,9 +1474,12 @@ private struct SceneViewRepresentation: View {
         }
         #else
         RealityView { realityContent in
+            // Before setupScene: see applyBloom for why the order matters.
+            applyBloom(&realityContent, install: true)
             setupScene(&realityContent)
         } update: { content in
             applyCamera()
+            applyBloom(&content, install: false)
             // Re-run the content closure if `.contentID(_:)` moved. Duplicated
             // from the `.task(id:)` on purpose: `update:` always runs on the
             // CURRENT view, so it closes the one ordering hole the task cannot
@@ -1484,6 +1527,26 @@ private struct SceneViewRepresentation: View {
         }
         #endif
     }
+
+    #if !os(visionOS)
+    /// Hands the current options to the bloom pass, and installs the pass when `install` is set.
+    ///
+    /// RealityKit traps if `customPostProcessing` is assigned while the scene's active camera
+    /// is an app-provided camera entity (it carries no view descriptors) — and SceneView's
+    /// orbit camera is one. So the pass is installed once, from `make`, before
+    /// ``setupScene(_:)`` adds that camera; later changes (strength, levels, `.disabled`)
+    /// reach it through the shared ``BloomResources``, never through a new effect. A view
+    /// without the `.bloom` modifier never gets the pass; one with it always does, even at a
+    /// zero strength, so that turning the glow up later just works.
+    private func applyBloom(_ content: inout RealitySceneContent, install: Bool) {
+        guard #available(iOS 26.0, macOS 26.0, *) else { return }
+        // A modifier dropped from the chain later leaves an installed pass copying through.
+        bloomResources.options = bloomOptions ?? .disabled
+        guard install, bloomOptions != nil, !appliedCache.bloomInstalled else { return }
+        appliedCache.bloomInstalled = true
+        content.renderingEffects.customPostProcessing = .effect(BloomPostProcess(resources: bloomResources))
+    }
+    #endif
 
     // MARK: - Scene Setup
 

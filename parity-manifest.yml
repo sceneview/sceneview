@@ -63,9 +63,9 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-28): 51 rows, 30 working / 0 stub / 21 android-only.
+# Current slice-5 ledger (2026-09-29): 51 rows, 31 working / 0 stub / 20 android-only.
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
-# (+1 android-only: `cosmos` — procedural bloom scenes; iOS needs SDK bloom first.)
+# (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -274,7 +274,7 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (31) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -644,6 +644,36 @@ demos:
       Orange cube + grid, Orbit/Pan/Look pickers, hint rows
       (CameraControlsDemo.swift:33-47,90-114); Ferrari on opaque plane in a
       2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only
+  - id: cosmos
+    androidStatus: Working
+    iosStatus: working
+    reason: >-
+      Capability caveat: the bloom runs through RealityKit custom
+      post-processing, iOS 26+ only; on iOS 18-25 the scenes draw without it.
+    category: CREATE
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CosmosDemo.kt
+    ios: [cosmos]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosMeshes.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosGlow.swift
+    contract: >-
+      Four procedural, real-time scenes in additive HDR light plus bloom: a
+      four-arm spiral galaxy of 60 000 camera-facing star sprites with
+      alpha-blended dust lanes, built in layers so it shows within a second, a plasma
+      star (noise-shaded sphere, Fresnel limb, magnetic loops), a looping
+      burst of ~460 charged-particle tracks, and a vortex flow field of
+      streamlines with travelling pulses. Dock picks a scene; an optional
+      tour cycles them; Bloom slider; no video, no texture.
+    parity: diverges
+    evidence: >-
+      Same meshes, seeds, cameras, captions and dock. No custom shader on iOS
+      (UnlitMaterial additive quads, camera-facing on the CPU): the ribbon
+      dashes are baked at build time (they do not travel), the plasma surface
+      is a texture baked once (it turns, it does not churn), stars do not
+      twinkle, the galaxy is built in one pass, the Flow landscape
+      quarter-turn is not ported, and the bloom is added in display space
+      with a baked filmic roll-off standing in for Filament's tone map
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working
@@ -871,7 +901,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (21) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1262,30 +1292,6 @@ demos:
     evidence: >-
       The iOS Rerun demo records and replays sessions but has no View in AR
       action; an iOS port reuses its replay layers under an anchor
-
-  - id: cosmos
-    androidStatus: Working
-    iosStatus: android-only
-    reason: >-
-      No iOS screen yet. SceneViewSwift exposes no bloom, and bloom is the whole
-      look of this demo, so the port needs an SDK addition first.
-    category: CREATE
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CosmosDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      Four procedural, real-time scenes in additive HDR light plus bloom: a
-      four-arm spiral galaxy of 60 000 camera-facing star sprites with
-      alpha-blended dust lanes, built in layers so it shows within a second, a plasma
-      star (noise-shaded sphere, Fresnel limb, magnetic loops), a looping
-      burst of ~460 charged-particle tracks, and a vortex flow field of
-      streamlines with travelling pulses. Dock picks a scene; an optional
-      tour cycles them; Bloom slider; no video, no texture.
-    parity: missing
-    evidence: >-
-      An iOS port needs a bloom post-process in SceneViewSwift, UnlitMaterial
-      or CustomMaterial emissive for the HDR colours, and LowLevelMesh for the
-      sprite and ribbon buffers
 
 # ─── iOS-only scenes, no Android row: 2 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as
