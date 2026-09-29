@@ -27,12 +27,15 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,15 +47,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
+import dev.romainguy.kotlin.math.length
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.LightingStage
+import io.github.sceneview.demo.demos.internal.LightingStageFloor
+import io.github.sceneview.demo.demos.internal.StageFade
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
@@ -61,7 +68,6 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Size
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.node.DynamicSkyNode
 import io.github.sceneview.rememberCameraNode
@@ -70,10 +76,12 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberView
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * **Lighting** — the showcase half of the lighting pair: *where does the light come from?*
@@ -122,6 +130,11 @@ import java.util.Locale
  * `rememberHDREnvironment` returns null while it decodes, which on an environment **swap** means
  * a frame or two of the neutral fallback, i.e. a black sky flashing between two HDRs. A ~200 ms
  * hitch on a deliberate tap reads as loading; a black flash reads as a bug.
+ *
+ * The Sun rig's clock is the one exception to "one HDR at a time": while it runs, the hour
+ * crosses all three skies every cycle, so the three are built once — the one on screen first, the
+ * other two one per frame after the stage is up — and kept until it stops. A swap is then a
+ * pointer change, not a 200 ms decode mid-animation.
  */
 @Composable
 fun LightingDemo(onBack: () -> Unit) {
@@ -160,15 +173,16 @@ fun LightingDemo(onBack: () -> Unit) {
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val cameraNode = rememberCameraNode(engine)
+    // Held here rather than left to `SceneView`'s default so the stage fade can be written to it.
+    val view = rememberView(engine)
     val heroInstance = rememberModelInstance(modelLoader, LightingStage.HERO_MODEL)
-
-    val floorMaterial = rememberMaterialInstance(
-        materialLoader,
-        color = LightingStage.FLOOR_COLOR,
-        metallic = 0f,
-        roughness = LightingStage.FLOOR_ROUGHNESS,
-        reflectance = LightingStage.FLOOR_REFLECTANCE,
+    val orbitRadius = rememberFitOrbitRadius(
+        extentX = LightingStage.SUBJECT_EXTENT_X,
+        extentY = LightingStage.SUBJECT_EXTENT_Y,
+        extentZ = LightingStage.SUBJECT_EXTENT_Z,
+        elevationDegrees = LightingStage.ORBIT_ELEVATION_DEGREES,
     )
+
     // The chrome probe: a mirror. Metallic 1 / roughness ~0 is the ball that shows what the
     // environment *is*, which is what makes an IBL rotation legible.
     val chromeMaterial = rememberMaterialInstance(
@@ -193,14 +207,75 @@ fun LightingDemo(onBack: () -> Unit) {
     val fillMarkerMaterial = rememberUnlitMaterialInstance(materialLoader, FILL_MARKER_COLOR)
     val rimMarkerMaterial = rememberUnlitMaterialInstance(materialLoader, RIM_MARKER_COLOR)
 
+    // ── Sun clock ────────────────────────────────────────────────────────────────────────────
+    // *Animate* animates the rig, not only the camera: on the Sun rig the clock runs, so the sun
+    // crosses the sky and the readout counts the hours (#4072 — before, the hour never moved and
+    // Animate only turned the camera). QA mode freezes it, like the orbit, so captures compare.
+    // The clock waits for the loading cover to lift: running behind it, the day opened on
+    // whatever hour the load happened to end on instead of on golden hour.
+    val firstFrame = rememberFirstFrameState(engine)
+    val sunClockEnabled = rig == LightingRig.Sun && orbiting && !DemoSettings.qaMode
+    val sunClockRunning = sunClockEnabled && heroInstance != null && firstFrame.rendered.value
+    LaunchedEffect(sunClockRunning) {
+        if (!sunClockRunning) return@LaunchedEffect
+        var last = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { now ->
+                hour = LightingStage.advanceSunClock(hour, (now - last) / 1_000_000_000f)
+                last = now
+            }
+        }
+    }
+
     // ── Environment ──────────────────────────────────────────────────────────────────────────
-    // One HDR at a time, whichever the current rig asks for. Loading three and switching between
-    // them would hold three prefiltered cubemaps resident for a screen that shows one.
+    // One HDR at a time, whichever the current rig asks for — except while the sun clock runs.
+    // A running day crosses four sky changes every ~34 s, and each synchronous build is a
+    // visible hitch in the middle of the animation; so for that stretch the three sky HDRs are
+    // held. They are built one per frame once the stage is up, never at composition: three
+    // builds on the frame that opens the screen kept the Sun rig behind its loading cover for
+    // three times as long. Stop the clock or leave the rig and they are released. QA mode never
+    // runs the clock, so it never holds three.
+    //
+    // The cache is a plain map, not state: the environment on screen is resolved in composition
+    // (below), and a prefetch that lands needs no recomposition — the next sky change finds it.
+    // The sky already on screen goes into the cache too, so it is decoded once, not twice.
+    val skyCache: MutableMap<String, Environment>? = remember(environmentLoader, sunClockEnabled) {
+        if (sunClockEnabled) HashMap() else null
+    }
+    DisposableEffect(skyCache) {
+        onDispose {
+            skyCache?.values?.forEach { environmentLoader.destroyEnvironment(it) }
+            skyCache?.clear()
+        }
+    }
+    LaunchedEffect(skyCache, sunClockRunning) {
+        if (skyCache == null || !sunClockRunning) return@LaunchedEffect
+        for (file in LightingStage.skyEnvironmentFiles) {
+            // A frame between builds: each is a main-thread stall, so they never stack.
+            withFrameNanos { }
+            if (file in skyCache) continue
+            environmentLoader.createHDREnvironment(assetFileLocation = file)
+                ?.let { skyCache[file] = it }
+        }
+    }
+    // The clock writes `hour` every frame. Everything this scope needs from it changes a few
+    // times a day, so it reads those through `derivedStateOf`: reading `hour` itself here would
+    // recompose the whole screen — and re-run the `SideEffect` below — at 60 Hz. `hour` is read
+    // only by the sun (`DynamicSkyNode`, in the scene's own scope), the status pill and the slider.
+    val sunSkyFile by remember { derivedStateOf { LightingStage.skyEnvironmentFor(hour).file } }
+    val sunFadeSkyTint by remember { derivedStateOf { LightingStage.stageFadeSkyTint(hour) } }
+    val sunStatus by remember {
+        derivedStateOf { "%.1f".format(Locale.US, hour) to LightingStage.periodLabel(hour) }
+    }
     val environmentFile = when (rig) {
         LightingRig.Image -> environmentOption.file
         LightingRig.Studio -> STUDIO_ENVIRONMENT_FILE
-        LightingRig.Sun -> LightingStage.skyEnvironmentFor(hour).file
+        LightingRig.Sun -> sunSkyFile
     }
+    val fadeSkyTint = if (rig == LightingRig.Sun) sunFadeSkyTint else LightingStage.STAGE_FADE_SKY_TINT
+    // The Image rig's photographs are rooms and streets: the far floor takes their ground tone
+    // rather than a sample of their lamps and windows (see `StageFade.apply`).
+    val fadeGround = if (rig == LightingRig.Image) LightingStage.groundToneFor(environmentFile) else null
     // The sky is drawn when the rig is *about* the world around the subject. A studio is a dark
     // surround by definition, so Studio never draws one.
     val skyVisible = when (rig) {
@@ -208,21 +283,35 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingRig.Studio -> false
         LightingRig.Sun -> true
     }
-    val loadedEnvironment: Environment? = remember(environmentLoader, environmentFile) {
-        environmentLoader.createHDREnvironment(assetFileLocation = environmentFile)
+    val loadedEnvironment: Environment? = remember(environmentLoader, environmentFile, skyCache) {
+        skyCache?.get(environmentFile)
+            ?: environmentLoader.createHDREnvironment(assetFileLocation = environmentFile)
+                ?.also { built -> skyCache?.put(environmentFile, built) }
     }
-    DisposableEffect(loadedEnvironment) {
-        onDispose { loadedEnvironment?.let { environmentLoader.destroyEnvironment(it) } }
+    // Outside the clock, the environment on screen is this screen's alone; under it, the cache
+    // owns it and releases it with the others.
+    DisposableEffect(loadedEnvironment, skyCache) {
+        onDispose {
+            if (skyCache == null) loadedEnvironment?.let { environmentLoader.destroyEnvironment(it) }
+        }
     }
     val fallbackEnvironment = remember(environmentLoader) { createEnvironment(environmentLoader) }
     DisposableEffect(fallbackEnvironment) {
         onDispose { environmentLoader.destroyEnvironment(fallbackEnvironment) }
     }
+    // With no sky, the backdrop is the stage colour rather than the renderer's black clear: the
+    // floor fades into that colour (see `StageFade`), and it has to meet the same colour behind
+    // it or the fade ends on a band.
+    val stageBackdrop = remember(engine) { StageFade.stageBackdrop(engine) }
+    DisposableEffect(stageBackdrop) {
+        onDispose { engine.destroySkybox(stageBackdrop) }
+    }
     // `copy` shares the loaded environment's Filament handles and is never itself destroyed —
     // only `loadedEnvironment` is, by the DisposableEffect above. Hiding the sky is therefore a
     // free operation rather than a rebuild of the whole prefiltered chain.
-    val environment = remember(loadedEnvironment, fallbackEnvironment, skyVisible) {
-        loadedEnvironment?.let { if (skyVisible) it else it.copy(skybox = null) } ?: fallbackEnvironment
+    val environment = remember(loadedEnvironment, fallbackEnvironment, skyVisible, stageBackdrop) {
+        loadedEnvironment?.let { if (skyVisible) it else it.copy(skybox = stageBackdrop) }
+            ?: fallbackEnvironment
     }
     // Filament rotates the *lighting* — irradiance and reflections — and leaves the skybox alone,
     // so a rotation applied while the sky is drawn would slide the reflections off the picture
@@ -243,7 +332,20 @@ fun LightingDemo(onBack: () -> Unit) {
     // for 0 runs of the effect and 0 calls to `setExposure`, while *Environment rotation* — whose
     // value is read right here, as `effectiveRotation` — ran it 9 times on one drag.
     val cameraSensitivity = LightingStage.sensitivityFor(exposure)
+    // The eye's distance to the orbit target, as of the last presented frame — what the stage
+    // fade is solved for. A plain holder, not state: it is written from `onFrame` and must not
+    // recompose the screen once per frame.
+    val eyeDistance = remember { FloatArray(1) { Float.NaN } }
     SideEffect {
+        // The fade's sky sample is sharp only near the far plane (LightingStage.STAGE_FAR).
+        if (cameraNode.far != LightingStage.STAGE_FAR) cameraNode.far = LightingStage.STAGE_FAR
+        StageFade.apply(
+            view = view,
+            cameraDistance = eyeDistance[0].takeIf { it.isFinite() } ?: orbitRadius,
+            sky = environment.skybox.takeIf { skyVisible },
+            skyTint = fadeSkyTint,
+            ground = fadeGround,
+        )
         loadedEnvironment?.indirectLight?.let { light ->
             light.setRotation(LightingStage.iblRotation(effectiveRotation))
             light.intensity = iblIntensity
@@ -275,14 +377,6 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingStage.RIM_ELEVATION_DEGREES,
     )
 
-    val firstFrame = rememberFirstFrameState(engine)
-    val orbitRadius = rememberFitOrbitRadius(
-        extentX = LightingStage.SUBJECT_EXTENT_X,
-        extentY = LightingStage.SUBJECT_EXTENT_Y,
-        extentZ = LightingStage.SUBJECT_EXTENT_Z,
-        elevationDegrees = LightingStage.ORBIT_ELEVATION_DEGREES,
-    )
-
     DemoScaffold(
         title = stringResource(R.string.demo_lighting_title),
         onBack = onBack,
@@ -302,8 +396,8 @@ fun LightingDemo(onBack: () -> Unit) {
             )
             LightingRig.Sun -> stringResource(
                 R.string.demo_lighting_status_sun,
-                "%.1f".format(Locale.US, hour),
-                LightingStage.periodLabel(hour),
+                sunStatus.first,
+                sunStatus.second,
             )
         },
         onResetSettings = {
@@ -457,8 +551,25 @@ fun LightingDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
+                onFrame = { frameTimeNanos ->
+                    firstFrame.onFrame(frameTimeNanos)
+                    // Re-solve the fade when a pinch or drag has moved the eye, so zooming out
+                    // never brings the floor's edge back into view.
+                    val distance = length(cameraNode.worldPosition)
+                    if (!(abs(distance - eyeDistance[0]) < EYE_DISTANCE_EPSILON)) {
+                        eyeDistance[0] = distance
+                        StageFade.apply(
+                            view = view,
+                            cameraDistance = distance,
+                            sky = environment.skybox.takeIf { skyVisible },
+                            skyTint = fadeSkyTint,
+                            ground = fadeGround,
+                        )
+                        cameraNode.requestRender()
+                    }
+                },
                 engine = engine,
+                view = view,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
@@ -488,15 +599,7 @@ fun LightingDemo(onBack: () -> Unit) {
                 ),
             ) {
                 // ── The stage: identical on both lighting screens ────────────────────────────
-                CubeNode(
-                    size = Size(
-                        LightingStage.FLOOR_SIZE,
-                        LightingStage.FLOOR_THICKNESS,
-                        LightingStage.FLOOR_SIZE,
-                    ),
-                    materialInstance = floorMaterial,
-                    position = LightingStage.floorCenter,
-                )
+                LightingStageFloor()
                 heroInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
@@ -753,6 +856,10 @@ private const val DEFAULT_KEY_AZIMUTH = 48f
  * the first hour of the Golden hour bucket, so the pill, the sky and the light all agree.
  */
 private const val DEFAULT_HOUR = 16.5f
+
+/** Eye movement, in metres, below which the stage fade is not re-solved. */
+private const val EYE_DISTANCE_EPSILON = 0.01f
+
 private const val DEFAULT_HAZE = 2.5f
 
 /** The photo-studio HDR: a dark surround with a few big softboxes, so it fills without modelling. */
