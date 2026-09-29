@@ -114,7 +114,7 @@
 		C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000062 /* DoublePendulumDemo.swift */; };
 		C0500000000000000000C051 /* CosmosDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C061 /* CosmosDemo.swift */; };
 		C0500000000000000000C052 /* CosmosMeshes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C062 /* CosmosMeshes.swift */; };
-		C0500000000000000000C053 /* CosmosShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C063 /* CosmosShaders.metal */; };
+		C0500000000000000000C053 /* CosmosGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C063 /* CosmosGlow.swift */; };
 		C0500000000000000000C054 /* CosmosScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C064 /* CosmosScene.swift */; };
 		C10000000000000000000018 /* CameraControlsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000018 /* CameraControlsDemo.swift */; };
 		C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000C1 /* CollisionHitTestDemo.swift */; };
@@ -331,7 +331,7 @@
 		C20000000000000000000062 /* DoublePendulumDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoublePendulumDemo.swift; sourceTree = "<group>"; };
 		C0600000000000000000C061 /* CosmosDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosDemo.swift; sourceTree = "<group>"; };
 		C0600000000000000000C062 /* CosmosMeshes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosMeshes.swift; sourceTree = "<group>"; };
-		C0600000000000000000C063 /* CosmosShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = CosmosShaders.metal; sourceTree = "<group>"; };
+		C0600000000000000000C063 /* CosmosGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosGlow.swift; sourceTree = "<group>"; };
 		C0600000000000000000C064 /* CosmosScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosScene.swift; path = SceneViewDemo/Views/Demos/Scenes/CosmosScene.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000018 /* CameraControlsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControlsDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000C1 /* CollisionHitTestDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollisionHitTestDemo.swift; sourceTree = "<group>"; };
@@ -693,7 +693,7 @@
 				C20000000000000000000062 /* DoublePendulumDemo.swift */,
 				C0600000000000000000C061 /* CosmosDemo.swift */,
 				C0600000000000000000C062 /* CosmosMeshes.swift */,
-				C0600000000000000000C063 /* CosmosShaders.metal */,
+				C0600000000000000000C063 /* CosmosGlow.swift */,
 				C20000000000000000000018 /* CameraControlsDemo.swift */,
 				C200000000000000000000C1 /* CollisionHitTestDemo.swift */,
 				C200000000000000000000CE /* GestureEditingDemo.swift */,
@@ -1077,7 +1077,7 @@
 				C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */,
 				C0500000000000000000C051 /* CosmosDemo.swift in Sources */,
 				C0500000000000000000C052 /* CosmosMeshes.swift in Sources */,
-				C0500000000000000000C053 /* CosmosShaders.metal in Sources */,
+				C0500000000000000000C053 /* CosmosGlow.swift in Sources */,
 				C10000000000000000000018 /* CameraControlsDemo.swift in Sources */,
 				C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */,
 				C100000000000000000000CE /* GestureEditingDemo.swift in Sources */,

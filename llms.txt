@@ -7767,7 +7767,7 @@ View modifiers (chainable):
 .onCameraChanged(_ handler: @escaping (SceneCameraPose) -> Void) -> SceneView  // v4.27.0+ — fires after EVERY camera change: drag, pinch, auto-rotate step, fit-to-bounds re-frame, and a clamped .cameraPose write
 .cameraGesturesEnabled(_ enabled: Bool) -> SceneView        // v4.27.0+ — freezes drag/pinch. NOT .cameraControls(.none), which hands the camera to Apple and disables .cameraPose too
 .onEntityTapHit(_ handler: @escaping (SceneTapHit) -> Void) -> SceneView  // v4.27.0+ — tap + world position. Distinct BASE name on purpose: a `hit:` label overload made every existing `.onEntityTapped { entity in }` ambiguous
-.bloom(_ options: BloomOptions) -> SceneView               // bloom pass (strength, levels, threshold, thresholdLevel) — mirrors Android View.bloomOptions. iOS / macOS 26+ only (RealityKit customPostProcessing); a no-op on iOS 18–25 and visionOS. Blooms what is brighter than 1.0: pair it with unlit HDR colours
+.bloom(_ options: BloomOptions) -> SceneView               // bloom pass (strength, levels, threshold, thresholdLevel) — mirrors Android View.bloomOptions. iOS / macOS 26+ only (RealityKit customPostProcessing); a no-op on iOS 18–25 and visionOS. Attached when the view is created with bloom on; later changes apply live, but a view created with .disabled needs a new .id to gain it. Blooms what is brighter than 1.0: pair it with unlit HDR colours
 ```
 
 **Two-way camera (v4.27.0+).** `.cameraPose(_:)` writes, `.onCameraChanged(_:)` reads

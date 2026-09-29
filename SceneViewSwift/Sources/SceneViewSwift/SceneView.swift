@@ -453,6 +453,10 @@ public struct SceneView: View {
     /// Runs on iOS 26 / macOS 26 and later (RealityKit's `customPostProcessing`); on
     /// earlier systems the scene renders unchanged. Unavailable on visionOS.
     ///
+    /// The pass is attached when the view is created, if bloom is enabled at that point;
+    /// afterwards every change — strength, levels, `.disabled` — applies live. A view created
+    /// with `.disabled` needs a new identity (`.id(_:)`) to gain bloom.
+    ///
     /// ```swift
     /// SceneView { root in /* glowing content */ }
     ///     .bloom(BloomOptions(strength: 0.45))
@@ -1017,8 +1021,8 @@ private struct SceneViewRepresentation: View {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
-        /// Last ``BloomOptions`` installed on the content (`nil` until the first apply).
-        var bloom: BloomOptions? = nil
+        /// Whether the bloom pass has been attached to the content (once, at creation).
+        var bloomInstalled = false
         /// Last camera state pushed onto the RealityKit entities by
         /// ``applyCamera()``. Compared (with float tolerance) each frame so a
         /// no-op camera apply — the common case while idle, and on every
@@ -1466,11 +1470,12 @@ private struct SceneViewRepresentation: View {
         }
         #else
         RealityView { realityContent in
+            // Before setupScene: see applyBloom for why the order matters.
+            applyBloom(&realityContent, install: true)
             setupScene(&realityContent)
-            applyBloom(&realityContent)
         } update: { content in
             applyCamera()
-            applyBloom(&content)
+            applyBloom(&content, install: false)
             // Re-run the content closure if `.contentID(_:)` moved. Duplicated
             // from the `.task(id:)` on purpose: `update:` always runs on the
             // CURRENT view, so it closes the one ordering hole the task cannot
@@ -1520,15 +1525,20 @@ private struct SceneViewRepresentation: View {
     }
 
     #if !os(visionOS)
-    /// Installs (or removes) the bloom pass. Diffed against the last applied options so an
-    /// unchanged `update:` tick does not rebuild the effect.
-    private func applyBloom(_ content: inout RealitySceneContent) {
+    /// Hands the current options to the bloom pass, and installs the pass when `install` is set.
+    ///
+    /// RealityKit traps if `customPostProcessing` is assigned while the scene's active camera
+    /// is an app-provided camera entity (it carries no view descriptors) — and SceneView's
+    /// orbit camera is one. So the pass is installed once, from `make`, before
+    /// ``setupScene(_:)`` adds that camera; later changes (strength, levels, `.disabled`)
+    /// reach it through the shared ``BloomResources``, never through a new effect. A view
+    /// created without bloom never gets the pass.
+    private func applyBloom(_ content: inout RealitySceneContent, install: Bool) {
         guard #available(iOS 26.0, macOS 26.0, *) else { return }
-        guard appliedCache.bloom != bloomOptions else { return }
-        appliedCache.bloom = bloomOptions
-        content.renderingEffects.customPostProcessing = bloomOptions.isEnabled
-            ? .effect(BloomPostProcess(options: bloomOptions, resources: bloomResources))
-            : .none
+        bloomResources.options = bloomOptions
+        guard install, bloomOptions.isEnabled, !appliedCache.bloomInstalled else { return }
+        appliedCache.bloomInstalled = true
+        content.renderingEffects.customPostProcessing = .effect(BloomPostProcess(resources: bloomResources))
     }
     #endif
 

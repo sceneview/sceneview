@@ -5,32 +5,28 @@ import SceneViewSwift
 
 /// **Cosmos** — four procedural, real-time space scenes lit by nothing but their own light
 /// and a bloom pass: a barred spiral galaxy, a plasma star, a particle-track burst and a
-/// vortex flow field. The iOS twin of the Android demo, built from the same seeds and the
-/// same shader maths (`CosmosMeshes.swift`, `CosmosShaders.metal`).
+/// vortex flow field. The iOS twin of the Android demo, built from the same seeds
+/// (`CosmosMeshes.swift`) — and without a single line of shader source.
 ///
 /// ### The recipe it teaches
 ///
 /// Glow is **additive, unlit, HDR geometry plus bloom**:
 ///
-/// - Radiance above 1.0 is what the bloom pass bleeds from, so every colour is written in
-///   linear HDR and `SceneView.bloom(_:)` turns it into light.
-/// - An additive `CustomMaterial` (`Program.Descriptor.blendMode = .add`) makes overlapping
-///   light pile up — tens of thousands of arm stars stack into a white-hot bulge with no
-///   sorting at all.
-/// - Points are camera-facing quads and strokes camera-facing ribbons, both expanded in a
-///   geometry modifier from one static `LowLevelMesh`.
-/// - The star is a sphere with a noise surface shader: domain-warped fbm, ridged filaments
-///   and a Fresnel limb.
+/// - Radiance above 1.0 is what the bloom pass bleeds from, so every colour is baked in
+///   linear HDR into float16 textures and `SceneView.bloom(_:)` turns it into light.
+/// - An additive `UnlitMaterial` (`Program.Descriptor.blendMode = .add`) makes overlapping
+///   light pile up — thousands of sprites stack into a white-hot core with no sorting at all.
+/// - Points are quads and strokes ribbons, laid out once on the CPU facing the scene's camera
+///   (`CosmosGlow.swift`) in one `LowLevelMesh` per layer.
 ///
-/// Animation is uniforms only — time, the burst's head and fade, the galaxy's spin — so a
-/// frame costs a handful of material writes and no buffer upload.
+/// Animation is a handful of per-frame writes — a material tint for the fades, the world
+/// transform for the camera path, an index count for the burst's growing tracks.
 struct CosmosDemo: View {
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
     @State private var engine = CosmosEngine()
-    @State private var bloom: Float = CosmosEngine.defaultBloom
 
     var body: some View {
         GeometryReader { geometry in
@@ -42,7 +38,7 @@ struct CosmosDemo: View {
                 .autoCenterContent(false)
                 .cameraGesturesEnabled(false)
                 .cameraPose(CosmosEngine.fixedCamera)
-                .bloom(BloomOptions(strength: bloom, levels: 7, threshold: true))
+                .bloom(BloomOptions(strength: engine.bloom, levels: 7, threshold: true))
                 if !engine.ready {
                     VStack(spacing: 12) {
                         ProgressView().tint(.white)
@@ -73,12 +69,12 @@ struct CosmosDemo: View {
             onReset: {
                 engine.touring = !engine.frozen
                 engine.animating = true
-                bloom = CosmosEngine.defaultBloom
+                engine.bloom = CosmosEngine.defaultBloom
             },
-            accessory: { DemoHint("Four procedural scenes, lit only by bloom") }
+            accessory: { DemoHint(engine.scene.caption) }
         ) {
             VStack(alignment: .leading, spacing: 16) {
-                LabeledSlider(label: "Bloom", value: $bloom, range: 0...1, decimals: 2)
+                LabeledSlider(label: "Bloom", value: $engine.bloom, range: 0...1, decimals: 2)
                 Toggle("Tour the scenes", isOn: $engine.touring)
                 Toggle("Animate", isOn: $engine.animating)
             }
@@ -102,10 +98,11 @@ private extension CosmosSceneKind {
     }
 }
 
+
 // MARK: - Engine
 
-/// Owns the RealityKit side of the demo: the materials, the four scenes (built on first
-/// use, off the main thread) and the 60 Hz tick that animates them.
+/// Owns the RealityKit side of the demo: the four scenes (built on first use, off the main
+/// thread) and the 60 Hz tick that animates them.
 @MainActor
 @Observable
 final class CosmosEngine {
@@ -118,9 +115,6 @@ final class CosmosEngine {
     static let revealSeconds: Float = 0.9
     /// Frozen per-scene times for QA captures and reduced motion: each at its most telling moment.
     static let qaTime: [Float] = [6, 3, 1.9, 4]
-    static let galaxySpinDegreesPerSecond: Float = 3.5
-    static let starSpinDegreesPerSecond: Float = 4
-    static let nucleusRadii: [Float] = [0.1, 0.075, 0.06, 0.08]
 
     /// SceneView's own camera is parked here; the tick moves the whole world instead, so
     /// the Android camera path (`CosmosFraming.pose`) is reproduced exactly.
@@ -130,12 +124,14 @@ final class CosmosEngine {
     var touring = true
     var animating = true
     var frozen = false
+    /// The Bloom slider: drives the post-process pass and the baked halos alike.
+    var bloom: Float = defaultBloom
     private(set) var ready = false
 
-    @ObservationIgnored var viewport = CGSize(width: 1170, height: 2532)
+    @ObservationIgnored var viewport = CGSize(width: 1206, height: 2622)
     @ObservationIgnored private let world = Entity()
-    @ObservationIgnored private var materials: CosmosMaterials?
-    @ObservationIgnored private var starField: CosmosGlow?
+    @ObservationIgnored private var programs: CosmosPrograms?
+    @ObservationIgnored private var starField: GlowEntity?
     @ObservationIgnored private var built: [CosmosSceneKind: CosmosSceneEntities] = [:]
     @ObservationIgnored private var building: Set<CosmosSceneKind> = []
     @ObservationIgnored private var timer: Timer?
@@ -171,6 +167,15 @@ final class CosmosEngine {
         loadTask?.cancel()
     }
 
+    /// Pixels per world unit at distance 1 for SceneView's 60° vertical field of view.
+    private var focal: Float {
+        Float(max(viewport.height, 1)) * 0.5 / CosmosFraming.tanHalfVerticalFov
+    }
+
+    private var aspect: Float {
+        Float(viewport.width / max(viewport.height, 1))
+    }
+
     // MARK: Loading
 
     private func startLoading() {
@@ -178,10 +183,15 @@ final class CosmosEngine {
         loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let materials = try await CosmosMaterials.make()
-                self.materials = materials
-                let stars = await Task.detached(priority: .userInitiated) { CosmosMeshes.starField() }.value
-                let field = try CosmosGlow(mesh: stars, material: materials.starField)
+                let program = await GlowEntity.additiveProgram()
+                self.programs = CosmosPrograms(additive: program, alpha: await GlowEntity.alphaProgram())
+                let focal = self.focal
+                let layer = await Task.detached(priority: .userInitiated) {
+                    // The sky surrounds the orbit: every star faces the origin.
+                    GlowBuilder.sprites(CosmosMeshes.starField(), view: GlowView(eye: .zero, focal: focal),
+                                        minPixels: 1.4) { -$0 }
+                }.value
+                let field = try await GlowEntity(layer, program: program)
                 self.world.addChild(field.entity)
                 self.starField = field
                 // The selected scene first, then the others so a switch is instant.
@@ -196,17 +206,25 @@ final class CosmosEngine {
     }
 
     private func ensureBuilt(_ kind: CosmosSceneKind) {
-        guard materials != nil, built[kind] == nil, !building.contains(kind) else { return }
+        guard programs != nil, built[kind] == nil, !building.contains(kind) else { return }
         Task { @MainActor in await build(kind) }
     }
 
     private func build(_ kind: CosmosSceneKind) async {
-        guard let materials, built[kind] == nil, !building.contains(kind) else { return }
+        guard let programs, built[kind] == nil, !building.contains(kind) else { return }
         building.insert(kind)
         defer { building.remove(kind) }
-        let meshes = await Task.detached(priority: .userInitiated) { CosmosSceneMeshes.build(kind) }.value
+        // Quads face the camera of the scene's resting pose; its sway is a few degrees.
+        let time = Self.qaTime[kind.rawValue]
+        let pose = CosmosFraming.pose(kind, time: time, aspect: aspect)
+        let view = GlowView(eye: Self.eye(pose), focal: focal)
+        let started = Date()
+        let layers = await Task.detached(priority: .userInitiated) {
+            CosmosSceneLayers.build(kind, view: view, time: time)
+        }.value
         do {
-            let entities = try CosmosSceneEntities(kind: kind, meshes: meshes, materials: materials)
+            let entities = try await CosmosSceneEntities(kind: kind, layers: layers, programs: programs)
+            NSLog("[Cosmos] %@ built in %.2f s", kind.label, Date().timeIntervalSince(started))
             entities.root.isEnabled = false
             world.addChild(entities.root)
             built[kind] = entities
@@ -241,22 +259,24 @@ final class CosmosEngine {
 
         let time = frozen ? Self.qaTime[current.rawValue] : sceneTime
         let reveal = frozen ? 1 : CosmosFraming.reveal(sceneTime, duration: Self.revealSeconds)
-        let height = Float(max(viewport.height, 1))
-        let aspect = Float(viewport.width / max(viewport.height, 1))
-        placeWorld(CosmosFraming.pose(current, time: time, aspect: aspect))
+        let pose = CosmosFraming.pose(current, time: time, aspect: aspect)
+        placeWorld(pose)
 
-        starField?.set(SIMD4(time, reveal * (current == .flow ? 0.35 : 1), 1, height))
-        entities.update(time: time, reveal: reveal, viewportHeight: height)
+        starField?.setIntensity(reveal * (current == .flow ? 0.35 : 1))
+        entities.update(time: time, reveal: reveal, bloom: bloom, eye: Self.eye(pose))
     }
 
-    /// Moves the world so that SceneView's fixed camera sees it from the Android pose.
-    private func placeWorld(_ pose: (distance: Float, elevation: Float, yaw: Float)) {
-        let eye = SIMD3<Float>(
+    private static func eye(_ pose: (distance: Float, elevation: Float, yaw: Float)) -> SIMD3<Float> {
+        SIMD3<Float>(
             pose.distance * cos(pose.elevation) * sin(pose.yaw),
             pose.distance * sin(pose.elevation),
             pose.distance * cos(pose.elevation) * cos(pose.yaw)
         )
-        let desired = Self.lookAt(eye: eye, target: .zero)
+    }
+
+    /// Moves the world so that SceneView's fixed camera sees it from the Android pose.
+    private func placeWorld(_ pose: (distance: Float, elevation: Float, yaw: Float)) {
+        let desired = Self.lookAt(eye: Self.eye(pose), target: .zero)
         let camera = Self.lookAt(eye: Self.fixedCamera.cameraPosition(), target: Self.fixedCamera.target)
         world.transform = Transform(matrix: camera * desired.inverse)
     }
@@ -272,152 +292,123 @@ final class CosmosEngine {
     }
 }
 
-// MARK: - Materials
-
-/// The CustomMaterials of the demo, one per Android material instance.
-struct CosmosMaterials {
-    let starField: CustomMaterial
-    let galaxy: CustomMaterial
-    let halo: CustomMaterial
-    let sparks: CustomMaterial
-    let flash: CustomMaterial
-    let dust: CustomMaterial
-    let backdrop: CustomMaterial
-    let burst: CustomMaterial
-    let flow: CustomMaterial
-    let prominences: CustomMaterial
-    let plasma: CustomMaterial
-
-    enum Failure: Error { case noMetal }
-
-    @MainActor
-    static func make() async throws -> CosmosMaterials {
-        guard let device = MTLCreateSystemDefaultDevice(), let library = device.makeDefaultLibrary() else {
-            throw Failure.noMetal
-        }
-        func additive(_ geometry: String, _ surface: String) async throws -> CustomMaterial {
-            var descriptor = CustomMaterial.Program.Descriptor()
-            descriptor.lightingModel = .unlit
-            descriptor.blendMode = .add
-            let program = try await CustomMaterial.Program(
-                surfaceShader: CustomMaterial.SurfaceShader(named: surface, in: library),
-                geometryModifier: CustomMaterial.GeometryModifier(named: geometry, in: library),
-                descriptor: descriptor
-            )
-            var material = CustomMaterial(program: program)
-            material.blending = .transparent(opacity: 1.0)
-            material.writesDepth = false
-            material.faceCulling = .none
-            return material
-        }
-        var plasma = try CustomMaterial(
-            surfaceShader: CustomMaterial.SurfaceShader(named: "cosmosPlasmaSurface", in: library),
-            lightingModel: .unlit
-        )
-        plasma.faceCulling = .back
-        return CosmosMaterials(
-            starField: try await additive("cosmosStarFieldGeometry", "cosmosSpriteSurface"),
-            galaxy: try await additive("cosmosGalaxyGeometry", "cosmosSpriteSurface"),
-            halo: try await additive("cosmosSpriteGeometry", "cosmosSpriteSurface"),
-            sparks: try await additive("cosmosSparksGeometry", "cosmosSpriteSurface"),
-            flash: try await additive("cosmosSpriteGeometry", "cosmosSpriteSurface"),
-            dust: try await additive("cosmosDustGeometry", "cosmosSpriteSurface"),
-            backdrop: try await additive("cosmosSpriteGeometry", "cosmosSpriteSurface"),
-            burst: try await additive("cosmosRibbonGeometry", "cosmosBurstSurface"),
-            flow: try await additive("cosmosRibbonGeometry", "cosmosFlowSurface"),
-            prominences: try await additive("cosmosRibbonGeometry", "cosmosProminenceSurface"),
-            plasma: plasma
-        )
-    }
-}
-
-/// One glowing mesh and its material, whose `custom` float4 the tick rewrites every frame.
-@MainActor
-final class CosmosGlow {
-    let entity: ModelEntity
-    private var material: CustomMaterial
-
-    init(mesh: GlowMesh, material: CustomMaterial) throws {
-        self.material = material
-        entity = ModelEntity(mesh: try Self.upload(mesh), materials: [material])
-    }
-
-    init(sphere radius: Float, material: CustomMaterial) {
-        self.material = material
-        entity = ModelEntity(mesh: .generateSphere(radius: radius), materials: [material])
-    }
-
-    func set(_ value: SIMD4<Float>) {
-        guard material.custom.value != value else { return }
-        material.custom.value = value
-        entity.model?.materials = [material]
-    }
-
-    /// Copies a `GlowMesh` into a `LowLevelMesh`. The Android layout is kept byte for byte;
-    /// the colour and the custom attributes ride in the uv2…uv4 slots RealityKit hands to
-    /// a geometry modifier.
-    private static func upload(_ mesh: GlowMesh) throws -> MeshResource {
-        let sprite = mesh.stride == CosmosMeshes.spriteStride
-        let attributes: [LowLevelMesh.Attribute] = sprite
-            ? [
-                .init(semantic: .position, format: .float3, offset: 0),
-                .init(semantic: .uv3, format: .float4, offset: 12),
-                .init(semantic: .uv2, format: .float4, offset: 28),
-            ]
-            : [
-                .init(semantic: .position, format: .float3, offset: 0),
-                .init(semantic: .uv4, format: .float4, offset: 12),
-                .init(semantic: .uv2, format: .float4, offset: 28),
-                .init(semantic: .uv3, format: .float4, offset: 44),
-            ]
-        let descriptor = LowLevelMesh.Descriptor(
-            vertexCapacity: mesh.vertexCount,
-            vertexAttributes: attributes,
-            vertexLayouts: [.init(bufferIndex: 0, bufferStride: mesh.stride * MemoryLayout<Float>.stride)],
-            indexCapacity: mesh.indices.count,
-            indexType: .uint32
-        )
-        let low = try LowLevelMesh(descriptor: descriptor)
-        low.withUnsafeMutableBytes(bufferIndex: 0) { target in
-            mesh.vertices.withUnsafeBytes { target.copyMemory(from: $0) }
-        }
-        low.withUnsafeMutableIndices { target in
-            mesh.indices.withUnsafeBytes { target.copyMemory(from: $0) }
-        }
-        // Sprites and strokes are expanded on the GPU (and widened to a minimum pixel size),
-        // so pad the culling box.
-        let pad = SIMD3<Float>(repeating: 0.25)
-        low.parts.replaceAll([
-            LowLevelMesh.Part(
-                indexCount: mesh.indices.count,
-                topology: .triangle,
-                bounds: BoundingBox(min: mesh.boundsMin - pad, max: mesh.boundsMax + pad)
-            ),
-        ])
-        return try MeshResource(from: low)
-    }
-}
-
 // MARK: - Scenes
 
-/// The CPU meshes of one scene, built off the main thread.
-struct CosmosSceneMeshes: Sendable {
-    var main: GlowMesh?
-    var strokes: GlowMesh?
-    var dust: GlowMesh?
+/// A plasma ball of a scene: where it sits, how big, and its view-dependent glow.
+struct CosmosSphere: Sendable {
+    var center: SIMD3<Float>
+    var radius: Float
+    var limb: GlowLayer
+}
 
-    static func build(_ kind: CosmosSceneKind) -> CosmosSceneMeshes {
+/// The CPU layers of one scene, built off the main thread.
+struct CosmosSceneLayers: Sendable {
+    /// Galaxy stars, the star's halo, the burst's flash, the flow's backdrop.
+    var main: GlowLayer?
+    /// Burst tracks, the star's loops, the flow's streamlines.
+    var strokes: GlowLayer?
+    /// Burst sparks, the flow's glints — or, alpha-blended, the galaxy's dust lanes.
+    var dust: GlowLayer?
+    /// Baked light spill around the burst's tracks, scaled by the Bloom slider.
+    var halo: GlowLayer?
+    /// The star's or the flow nuclei's surface, and each ball.
+    var plasma: GlowImage?
+    var spheres: [CosmosSphere] = []
+
+    /// Radiance baked into the burst flash: the envelope's peak (`6 + 0.35`), so the per-frame
+    /// tint only ever scales it down.
+    static let flashPeak: Float = 6.35
+    /// Radiance of the baked halo at a full Bloom slider, and how many stroke widths it spans.
+    static let haloPeak: Float = 0.3
+    static let haloWidth: Float = 5
+    /// Peaks of the star's pulsing, baked in so the tint only scales down (Android's
+    /// `1 + 0.08 sin` on the surface and `1 + 0.12 sin` on the halo).
+    static let starPulse: Float = 1.08
+    static let haloPulse: Float = 1.12
+    /// The flow nuclei: the first four vortices, and their radii.
+    static let nucleusRadii: [Float] = [0.1, 0.075, 0.06, 0.08]
+
+    /// A ribbon's steady brightness: the shader's `base` plus the mean of its `dashAmp × pulse⁸`
+    /// travelling dashes (the mean of `((1 + sin)/2)⁸` is C(16,8)/2¹⁶ ≈ 0.196).
+    private static func body(base: Float, dashAmp: Float) -> Float { base + dashAmp * 0.196 }
+
+    /// The star turns 4°/s about its axis, tilted 12° towards the viewer — Android's
+    /// `Rotation(y = 4t, x = 12)`.
+    static func starOrientation(_ time: Float) -> simd_quatf {
+        let deg = Float.pi / 180
+        return simd_quatf(angle: 12 * deg, axis: SIMD3(1, 0, 0)) * simd_quatf(angle: 4 * deg * time, axis: SIMD3(0, 1, 0))
+    }
+
+    /// The galaxy turns 3.5°/s, clockwise seen from above.
+    static func galaxyOrientation(_ time: Float) -> simd_quatf {
+        simd_quatf(angle: -3.5 * .pi / 180 * time, axis: SIMD3(0, 1, 0))
+    }
+
+    static func build(_ kind: CosmosSceneKind, view: GlowView, time: Float) -> CosmosSceneLayers {
+        let facing: (SIMD3<Float>) -> SIMD3<Float> = { view.eye - $0 }
         switch kind {
         case .galaxy:
-            CosmosSceneMeshes(main: CosmosMeshes.galaxy())
+            // The disc spins about Y, so its sprites lie in the disc plane, facing up.
+            let up: (SIMD3<Float>) -> SIMD3<Float> = { _ in SIMD3(0, 1, 0) }
+            return CosmosSceneLayers(
+                main: GlowBuilder.sprites(CosmosMeshes.galaxy(), view: view, minPixels: 1.0, facing: up),
+                dust: GlowBuilder.sprites(CosmosMeshes.galaxyDust(), view: view, minPixels: 0.5,
+                                          profile: .dust, facing: up)
+            )
         case .star:
-            CosmosSceneMeshes(main: CosmosMeshes.starHalo(), strokes: CosmosMeshes.prominences())
+            let surface = Plasma.surface(.star, time: time, gain: starPulse)
+            let look = PlasmaLook.star
+            let limb = GlowBuilder.Limb(radius: 1, surface: surface.mean * starPulse,
+                                        rim: look.rim * starPulse, rimPower: look.rimPower)
+            // The loops turn with the star: widen them for the eye as the turned star sees it.
+            let spunView = GlowView(eye: starOrientation(time).inverse.act(view.eye), focal: view.focal)
+            return CosmosSceneLayers(
+                main: GlowBuilder.sprites(CosmosMeshes.starHalo(), view: view, minPixels: 1.1,
+                                          gain: haloPulse, facing: facing),
+                strokes: GlowBuilder.ribbons(CosmosMeshes.prominences(), view: spunView, minPixels: 1.0,
+                                             body: body(base: 0.6, dashAmp: 1.6), tailTaper: 0.2),
+                plasma: surface.image,
+                spheres: [CosmosSphere(center: .zero, radius: 1,
+                                       limb: GlowBuilder.limb(limb, distance: simd_length(view.eye), resolution: 256))]
+            )
         case .burst:
-            CosmosSceneMeshes(main: CosmosMeshes.burstCore(), strokes: CosmosMeshes.burst(), dust: CosmosMeshes.burstSparks())
+            return CosmosSceneLayers(
+                main: GlowBuilder.sprites(CosmosMeshes.burstCore(), view: view, minPixels: 1.1,
+                                          gain: flashPeak, facing: facing),
+                strokes: GlowBuilder.ribbons(CosmosMeshes.burst(), view: view, minPixels: 1.0,
+                                             body: body(base: 0.75, dashAmp: 0.5), tailTaper: 0.35),
+                dust: GlowBuilder.sprites(CosmosMeshes.burstSparks(), view: view, minPixels: 1.6,
+                                          facing: facing),
+                halo: GlowBuilder.ribbons(CosmosMeshes.burst(), view: view, minPixels: 1.0,
+                                          body: haloPeak, tailTaper: 0.35, halo: haloWidth)
+            )
         case .flow:
-            CosmosSceneMeshes(main: CosmosMeshes.flowBackdrop(), strokes: CosmosMeshes.flowField(), dust: CosmosMeshes.flowDust())
+            let surface = Plasma.surface(.nucleus, time: time, width: 256, height: 128)
+            let look = PlasmaLook.nucleus
+            let spheres = zip(CosmosMeshes.flowVortices, nucleusRadii).map { vortex, radius in
+                let center = SIMD3(vortex.x, vortex.y, CosmosMeshes.flowDepth(vortex.x, vortex.y) + radius * 0.4)
+                let limb = GlowBuilder.Limb(radius: radius, surface: surface.mean, rim: look.rim, rimPower: look.rimPower)
+                return CosmosSphere(center: center, radius: radius,
+                                    limb: GlowBuilder.limb(limb, distance: simd_length(view.eye - center), resolution: 64))
+            }
+            return CosmosSceneLayers(
+                main: GlowBuilder.sprites(CosmosMeshes.flowBackdrop(), view: view, minPixels: 1.1, facing: facing),
+                strokes: GlowBuilder.ribbons(CosmosMeshes.flowField(), view: view, minPixels: 1.0,
+                                             body: body(base: 0.5, dashAmp: 1.3), tailTaper: 0),
+                dust: GlowBuilder.sprites(CosmosMeshes.flowDust(), view: view, minPixels: 1.3, facing: facing),
+                plasma: surface.image,
+                spheres: spheres
+            )
         }
     }
+}
+
+/// The glow programs every scene draws with.
+struct CosmosPrograms {
+    /// Light that adds up: stars, strokes, halos.
+    let additive: UnlitMaterial.Program
+    /// Matter that blocks light: the galaxy's dust.
+    let alpha: UnlitMaterial.Program
 }
 
 /// The entities of one scene and how each frame drives them.
@@ -425,74 +416,95 @@ struct CosmosSceneMeshes: Sendable {
 final class CosmosSceneEntities {
     let kind: CosmosSceneKind
     let root = Entity()
-    /// The galaxy disc or the star — the node that spins.
-    private let spinner = Entity()
-    private var main: CosmosGlow?
-    private var strokes: CosmosGlow?
-    private var dust: CosmosGlow?
-    private var spheres: [CosmosGlow] = []
+    /// What turns with the star: its surface and its loops.
+    private let spin = Entity()
+    private var main: GlowEntity?
+    private var strokes: GlowEntity?
+    private var dust: GlowEntity?
+    private var halo: GlowEntity?
+    private var balls: [PlasmaEntity] = []
+    /// Limb discs, one per ball, each turned towards the eye every frame.
+    private var limbs: [(glow: GlowEntity, center: SIMD3<Float>)] = []
 
-    init(kind: CosmosSceneKind, meshes: CosmosSceneMeshes, materials: CosmosMaterials) throws {
+    init(kind: CosmosSceneKind, layers: CosmosSceneLayers, programs: CosmosPrograms) async throws {
         self.kind = kind
-        root.addChild(spinner)
-        switch kind {
-        case .galaxy:
-            main = try meshes.main.map { try CosmosGlow(mesh: $0, material: materials.galaxy) }
-            main.map { spinner.addChild($0.entity) }
-        case .star:
-            let star = CosmosGlow(sphere: 1, material: materials.plasma)
-            spheres = [star]
-            spinner.addChild(star.entity)
-            strokes = try meshes.strokes.map { try CosmosGlow(mesh: $0, material: materials.prominences) }
-            strokes.map { spinner.addChild($0.entity) }
-            main = try meshes.main.map { try CosmosGlow(mesh: $0, material: materials.halo) }
-            main.map { root.addChild($0.entity) }
-        case .burst:
-            strokes = try meshes.strokes.map { try CosmosGlow(mesh: $0, material: materials.burst) }
-            dust = try meshes.dust.map { try CosmosGlow(mesh: $0, material: materials.sparks) }
-            main = try meshes.main.map { try CosmosGlow(mesh: $0, material: materials.flash) }
-            for glow in [strokes, dust, main].compactMap({ $0 }) { root.addChild(glow.entity) }
-        case .flow:
-            main = try meshes.main.map { try CosmosGlow(mesh: $0, material: materials.backdrop) }
-            strokes = try meshes.strokes.map { try CosmosGlow(mesh: $0, material: materials.flow) }
-            dust = try meshes.dust.map { try CosmosGlow(mesh: $0, material: materials.dust) }
-            for glow in [main, strokes, dust].compactMap({ $0 }) { root.addChild(glow.entity) }
-            for (index, radius) in CosmosEngine.nucleusRadii.enumerated() {
-                let vortex = CosmosMeshes.flowVortices[index]
-                let nucleus = CosmosGlow(sphere: radius, material: materials.plasma)
-                nucleus.entity.position = SIMD3(
-                    vortex.x, vortex.y, CosmosMeshes.flowDepth(vortex.x, vortex.y) + radius * 0.4
-                )
-                spheres.append(nucleus)
-                root.addChild(nucleus.entity)
+        let program = programs.additive
+        if let layer = layers.strokes { strokes = try await GlowEntity(layer, program: program) }
+        if let layer = layers.main { main = try await GlowEntity(layer, program: program) }
+        if let layer = layers.halo { halo = try await GlowEntity(layer, program: program) }
+        if let layer = layers.dust {
+            dust = try await GlowEntity(layer, program: kind == .galaxy ? programs.alpha : program)
+        }
+        if let image = layers.plasma {
+            let texture = try await GlowEntity.texture(image)
+            for sphere in layers.spheres {
+                let ball = PlasmaEntity(texture: texture, radius: sphere.radius)
+                ball.entity.position = sphere.center
+                balls.append(ball)
+                let limb = try await GlowEntity(sphere.limb, program: program)
+                limb.entity.position = sphere.center
+                limbs.append((limb, sphere.center))
             }
+        }
+
+        switch kind {
+        case .star:
+            // The surface and its loops turn together; the halo and the limb face the viewer.
+            root.addChild(spin)
+            for ball in balls { spin.addChild(ball.entity) }
+            if let strokes { spin.addChild(strokes.entity) }
+            for glow in [main].compactMap({ $0 }) + limbs.map(\.glow) { root.addChild(glow.entity) }
+        case .galaxy:
+            // Dust has to land on the stars it dims, whatever the depth sort thinks.
+            let group = ModelSortGroup()
+            main?.drawOrder(0, in: group)
+            dust?.drawOrder(1, in: group)
+            for glow in [main, dust].compactMap({ $0 }) { root.addChild(glow.entity) }
+        case .burst, .flow:
+            for glow in [main, halo, strokes, dust].compactMap({ $0 }) { root.addChild(glow.entity) }
+            for ball in balls { root.addChild(ball.entity) }
+            for limb in limbs { root.addChild(limb.glow.entity) }
         }
     }
 
-    func update(time: Float, reveal: Float, viewportHeight h: Float) {
-        let deg = Float.pi / 180
+    /// - Parameter eye: where the camera is, in this scene's coordinates.
+    func update(time: Float, reveal: Float, bloom: Float, eye: SIMD3<Float>) {
         switch kind {
         case .galaxy:
-            spinner.orientation = simd_quatf(angle: -time * CosmosEngine.galaxySpinDegreesPerSecond * deg, axis: [0, 1, 0])
-            main?.set(SIMD4(time, reveal, 1, h))
+            root.orientation = CosmosSceneLayers.galaxyOrientation(time)
+            main?.setIntensity(reveal)
+            dust?.setOpacity(reveal)
         case .star:
-            spinner.orientation = simd_quatf(angle: 12 * deg, axis: [1, 0, 0])
-                * simd_quatf(angle: time * CosmosEngine.starSpinDegreesPerSecond * deg, axis: [0, 1, 0])
-            spinner.scale = SIMD3(repeating: 1 + 0.012 * sin(time * 2.1))
-            spheres.first?.set(SIMD4(time, reveal * (1 + 0.08 * sin(time * 2.1)), 0, 0))
-            strokes?.set(SIMD4(time, reveal, 10, h))
-            main?.set(SIMD4(time, reveal * (1 + 0.12 * sin(time * 2.1)), 1, h))
+            let pulse = sin(time * 2.1)
+            spin.orientation = CosmosSceneLayers.starOrientation(time)
+            spin.scale = SIMD3(repeating: 1 + 0.012 * pulse)
+            let surface = reveal * (1 + 0.08 * pulse) / CosmosSceneLayers.starPulse
+            for ball in balls { ball.setIntensity(surface) }
+            for limb in limbs {
+                limb.glow.setIntensity(surface)
+                limb.glow.entity.scale = spin.scale
+            }
+            strokes?.setIntensity(reveal)
+            main?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
         case .burst:
             let envelope = CosmosMeshes.burstEnvelope((time / CosmosEngine.burstPeriod).truncatingRemainder(dividingBy: 1))
-            let grown = min(envelope.x, 1)
-            strokes?.set(SIMD4(time, reveal * envelope.y, envelope.x, h))
-            dust?.set(SIMD4(time, reveal * envelope.y * grown, 0.4 + 0.6 * grown, h))
-            main?.set(SIMD4(time, reveal * envelope.z, 1, h))
+            strokes?.reveal(upTo: envelope.x)
+            strokes?.setIntensity(reveal * envelope.y)
+            halo?.reveal(upTo: envelope.x)
+            halo?.setIntensity(reveal * envelope.y * bloom)
+            dust?.setIntensity(reveal * envelope.y * min(envelope.x, 1))
+            main?.setIntensity(reveal * envelope.z / CosmosSceneLayers.flashPeak)
         case .flow:
-            main?.set(SIMD4(time, reveal, 1, h))
-            strokes?.set(SIMD4(time, reveal, 10, h))
-            dust?.set(SIMD4(time, reveal, 1, h))
-            for sphere in spheres { sphere.set(SIMD4(time, 1, 1, 0)) }
+            main?.setIntensity(reveal)
+            strokes?.setIntensity(reveal)
+            dust?.setIntensity(reveal)
+            for ball in balls { ball.setIntensity(reveal) }
+            for limb in limbs { limb.glow.setIntensity(reveal) }
+        }
+        for limb in limbs {
+            let toEye = eye - limb.center
+            guard simd_length(toEye) > 1e-4 else { continue }
+            limb.glow.entity.orientation = simd_quatf(from: SIMD3(0, 0, 1), to: simd_normalize(toEye))
         }
     }
 }

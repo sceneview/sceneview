@@ -5,11 +5,11 @@ import simd
 // `CosmosMeshes.kt`, down to its random number generator, so both apps draw the very same
 // galaxy, burst, loops and streamlines from the same seeds.
 //
-// Two vertex layouts, one per shader family (`CosmosShaders.metal`):
+// The meshes keep Android's two vertex layouts, which `CosmosGlow.swift` turns into
+// camera-facing quads and textures:
 //
 // - **Sprites** (`CosmosMeshes.spriteStride` floats: position 3, colour 4, corner 4) —
-//   four corners per sprite sharing one centre, pushed apart on the GPU so they face the
-//   camera.
+//   four corners per sprite sharing one centre.
 // - **Ribbons** (`CosmosMeshes.ribbonStride` floats: position 3, colour 4, tangent+side 4,
 //   width/t/seed/arc 4) — two vertices per curve point, one on each side of the stroke.
 //
@@ -122,12 +122,13 @@ struct SpriteBuilder {
     }
 
     // swiftlint:disable:next function_parameter_count
-    mutating func add(_ x: Float, _ y: Float, _ z: Float, r: Float, g: Float, b: Float, radius: Float, phase: Float) {
+    mutating func add(_ x: Float, _ y: Float, _ z: Float, r: Float, g: Float, b: Float,
+                      radius: Float, phase: Float, a: Float = 1) {
         let base = UInt32(count * 4)
         for corner in 0..<4 {
             let cx: Float = (corner == 0 || corner == 3) ? -1 : 1
             let cy: Float = corner < 2 ? -1 : 1
-            vertices.append(contentsOf: [x, y, z, r, g, b, 1, cx, cy, radius, phase])
+            vertices.append(contentsOf: [x, y, z, r, g, b, a, cx, cy, radius, phase])
         }
         indices.append(contentsOf: [base, base + 1, base + 2, base, base + 2, base + 3])
         bounds.include(x, y, z, pad: radius)
@@ -137,6 +138,27 @@ struct SpriteBuilder {
     func build() -> GlowMesh {
         GlowMesh(vertices: vertices, indices: indices, stride: CosmosMeshes.spriteStride,
                  boundsMin: bounds.min, boundsMax: bounds.max)
+    }
+}
+
+extension GlowMesh {
+    /// `meshes` as one mesh of the same layout.
+    static func merged(_ meshes: [GlowMesh]) -> GlowMesh {
+        var vertices: [Float] = []
+        var indices: [UInt32] = []
+        vertices.reserveCapacity(meshes.reduce(0) { $0 + $1.vertices.count })
+        indices.reserveCapacity(meshes.reduce(0) { $0 + $1.indices.count })
+        var low = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
+        var high = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
+        for mesh in meshes {
+            let offset = UInt32(vertices.count / mesh.stride)
+            vertices.append(contentsOf: mesh.vertices)
+            indices.append(contentsOf: mesh.indices.map { $0 + offset })
+            low = simd_min(low, mesh.boundsMin)
+            high = simd_max(high, mesh.boundsMax)
+        }
+        return GlowMesh(vertices: vertices, indices: indices, stride: meshes.first?.stride ?? CosmosMeshes.spriteStride,
+                        boundsMin: low, boundsMax: high)
     }
 }
 
@@ -217,24 +239,61 @@ enum CosmosMeshes {
     /// Floats per ribbon vertex: position (3), colour (4), tangent+side (4), width/t/seed/arc (4).
     static let ribbonStride = 15
 
+    /// Radius of the galaxy disc in model units; the camera frames it.
     static let galaxyRadius: Float = 1
+    /// Logarithmic spiral: `theta = ln(r / r0) / tan(pitch)`.
     private static let galaxyArmStart: Float = 0.14
     private static let galaxyPitchTan: Float = 0.27
+    /// Two major arms off the ends of the bar, two minor ones.
+    private static let galaxyArms: Int32 = 4
+    /// Each layer is a thinner random sample of the whole galaxy; together they hold
+    /// `galaxyStars` stars. Same seeds and layering as Android, so both draw the same galaxy.
+    static let galaxyLayers = 8
+    static let galaxyStars = 60_000
 
-    /// Where arm `arm` of two sits at radius `r`, in radians (logarithmic spiral).
+    /// Where arm `arm` (of four) sits at radius `r`, in radians.
     static func galaxyArmAngle(_ r: Float, _ arm: Int32) -> Float {
-        log(max(r, galaxyArmStart) / galaxyArmStart) / galaxyPitchTan + Float(arm) * .pi
+        log(max(r, galaxyArmStart) / galaxyArmStart) / galaxyPitchTan + Float(arm) * (2 * .pi / Float(galaxyArms))
     }
 
-    /// A barred two-arm spiral galaxy in the XZ plane.
-    // swiftlint:disable:next function_body_length
-    static func galaxy(seed: Int32 = 7, armStars: Int = 34_000) -> GlowMesh {
-        var rnd = KotlinRandom(seed: seed)
-        var out = SpriteBuilder(expected: armStars + 16_000)
-        let twoPi = 2 * Float.pi
+    /// Half-width of a major arm at radius `r`: arms widen as they wind out.
+    private static func galaxyArmSpread(_ r: Float) -> Float { 0.034 + 0.11 * r }
 
-        // Bulge and bar — warm, dense, the white-hot core once additive blending stacks it up.
-        for _ in 0..<(armStars / 6) {
+    private static func isMajorArm(_ arm: Int32) -> Bool { arm % 2 == 0 }
+
+    /// The whole galaxy — every layer of `galaxyLayer` — in the XZ plane.
+    static func galaxy(seed: Int32 = 7) -> GlowMesh {
+        GlowMesh.merged((0..<galaxyLayers).map { galaxyLayer(Int32($0), layers: galaxyLayers, seed: seed) })
+    }
+
+    /// Layer `layer` of `layers` of a barred four-arm spiral galaxy: a warm bar and bulge, two
+    /// bright major arms and two fainter minor ones, spurs, a disc of old stars and pink
+    /// star-forming knots. The dark dust lanes are `galaxyDust`, since these sprites only add light.
+    static func galaxyLayer(_ layer: Int32, layers: Int, seed: Int32 = 7) -> GlowMesh {
+        var rnd = KotlinRandom(seed: seed &* 7_919 &+ layer)
+        let stars = galaxyStars / layers
+        var out = SpriteBuilder(expected: stars + stars / 8 + 64)
+        galaxyBulge(&out, &rnd, count: stars * 3 / 20)
+        galaxyArmStars(&out, &rnd, count: stars * 11 / 20)
+        galaxyDisc(&out, &rnd, count: stars * 6 / 20)
+        galaxyArmGlow(&out, &rnd, count: stars / 20)
+        galaxyKnots(&out, &rnd, knots: 72 / layers)
+        if layer == 0 {
+            // The glow of the core itself: soft sprites the bloom turns into a halo.
+            out.add(0, 0, 0, r: 1.3, g: 0.86, b: 0.5, radius: 0.26, phase: 0)
+            out.add(0, 0, 0, r: 0.2, g: 0.14, b: 0.09, radius: 0.6, phase: 0)
+            out.add(0, 0, 0, r: 0.08, g: 0.09, b: 0.15, radius: 1.45, phase: 0)
+        }
+        return out.build()
+    }
+
+    // Kotlin evaluates call arguments left to right; each random draw below is hoisted into a
+    // `let` in that same order, so the sequence — and the galaxy — matches Android's.
+
+    /// Bulge and bar: warm, dense, the white-hot core once additive blending stacks it up.
+    private static func galaxyBulge(_ out: inout SpriteBuilder, _ rnd: inout KotlinRandom, count: Int) {
+        let twoPi = 2 * Float.pi
+        for _ in 0..<count {
             let bar = rnd.nextFloat() < 0.55
             let x: Float, y: Float, z: Float
             if bar {
@@ -249,19 +308,26 @@ enum CosmosMeshes {
                 y = rnd.gaussian() * 0.045
             }
             let heat = rnd.nextFloat()
+            let b: Float = 0.5
             let radius = 0.010 + rnd.nextFloat() * 0.012
-            out.add(x, y, z, r: 1.0 * 0.34, g: mix(0.70, 0.80, heat) * 0.34, b: mix(0.42, 0.58, heat) * 0.34,
-                    radius: radius, phase: rnd.nextFloat())
+            let phase = rnd.nextFloat()
+            out.add(x, y, z, r: 1.0 * b, g: mix(0.72, 0.84, heat) * b, b: mix(0.44, 0.62, heat) * b,
+                    radius: radius, phase: phase)
         }
+    }
 
-        // Arms.
-        for _ in 0..<armStars {
-            let arm = rnd.nextInt(2)
+    /// The arms: young blue-white stars on the crest, spurs branching off the outer arms.
+    private static func galaxyArmStars(_ out: inout SpriteBuilder, _ rnd: inout KotlinRandom, count: Int) {
+        for _ in 0..<count {
+            // Two thirds of the arm stars sit on the two major arms.
+            let arm: Int32 = rnd.nextFloat() < 0.66 ? 2 * rnd.nextInt(2) : 1 + 2 * rnd.nextInt(2)
+            let major = isMajorArm(arm)
             let spur = rnd.nextFloat() < 0.2
+            // Exponential disc profile, clipped to the rim; minor arms start further out.
             let disc = min(galaxyArmStart + (-log(1 - rnd.nextFloat() * 0.96)) / 2.8, galaxyRadius * 1.05)
-            let r = spur ? max(disc, 0.42) : disc
-            let spread = (0.034 + 0.11 * r) * (spur ? 1.3 : 1)
-            let angle = galaxyArmAngle(r, arm) + (spur ? 1.15 : 0)
+            let r = spur ? max(disc, 0.42) : (major ? disc : max(disc, 0.3))
+            let spread = galaxyArmSpread(r) * (spur ? 1.3 : 1) * (major ? 1 : 1.25)
+            let angle = galaxyArmAngle(r, arm) + (spur ? 0.8 : 0)
             let along = rnd.gaussian() * spread
             let across = rnd.gaussian() * spread * 0.9
             let x = cos(angle) * (r + along) - sin(angle) * across
@@ -269,71 +335,106 @@ enum CosmosMeshes {
             let y = rnd.gaussian() * (0.018 * (1.1 - r))
             let crest = exp(-(along * along + across * across) / (spread * spread * 0.5))
             let outer = smoothstep(0.1, 0.75, r)
-            let red = mix(1.0, 0.56, outer)
-            let green = mix(0.84, 0.64, outer)
-            let blue = mix(0.70, 1.0, outer)
             let boost: Float = rnd.nextFloat() < 0.04 ? 3.2 : 1
-            let brightness = (0.13 + 0.46 * crest) * boost * (spur ? 0.5 : 1)
+            let brightness = (0.13 + 0.46 * crest) * boost * (spur ? 0.5 : 1) * (major ? 1 : 0.62)
             let radius = 0.0045 + rnd.nextFloat() * 0.007
-            out.add(x, y, z, r: red * brightness, g: green * brightness, b: blue * brightness,
-                    radius: radius, phase: rnd.nextFloat())
+            let phase = rnd.nextFloat()
+            out.add(x, y, z,
+                    r: mix(1.0, 0.56, outer) * brightness,
+                    g: mix(0.84, 0.64, outer) * brightness,
+                    b: mix(0.70, 1.0, outer) * brightness,
+                    radius: radius, phase: phase)
         }
+    }
 
-        // A soft lavender glow under the arms.
-        for _ in 0..<(armStars / 12) {
-            let arm = rnd.nextInt(2)
+    /// The disc of old stars the arms ride on, dense enough that the dust lanes read against it.
+    private static func galaxyDisc(_ out: inout SpriteBuilder, _ rnd: inout KotlinRandom, count: Int) {
+        let twoPi = 2 * Float.pi
+        for _ in 0..<count {
+            let r = min(-log(1 - rnd.nextFloat() * 0.985) * 0.26, galaxyRadius * 1.15)
+            let a = rnd.nextFloat() * twoPi
+            let outer = smoothstep(0.05, 0.8, r)
+            let b = 0.07 + 0.08 * rnd.nextFloat()
+            let y = rnd.gaussian() * 0.025 * (1.2 - r)
+            let radius = 0.004 + rnd.nextFloat() * 0.005
+            let phase = rnd.nextFloat()
+            out.add(cos(a) * r, y, sin(a) * r,
+                    r: mix(1.0, 0.72, outer) * b, g: 0.8 * b, b: mix(0.6, 1.0, outer) * b,
+                    radius: radius, phase: phase)
+        }
+    }
+
+    /// A soft lavender glow under the arms, so they read as light and not only as grain.
+    private static func galaxyArmGlow(_ out: inout SpriteBuilder, _ rnd: inout KotlinRandom, count: Int) {
+        for _ in 0..<count {
+            let arm = rnd.nextInt(galaxyArms)
             let r = galaxyArmStart + rnd.nextFloat() * (galaxyRadius - galaxyArmStart)
+            if !isMajorArm(arm) && r < 0.3 { continue }
             let angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.12
-            let fade = 1 - 0.7 * r
+            let fade = (1 - 0.7 * r) * (isMajorArm(arm) ? 1 : 0.6)
             let y = rnd.gaussian() * 0.01
             let radius = 0.05 + rnd.nextFloat() * 0.05
+            let phase = rnd.nextFloat()
             out.add(cos(angle) * r, y, sin(angle) * r, r: 0.026 * fade, g: 0.03 * fade, b: 0.056 * fade,
-                    radius: radius, phase: rnd.nextFloat())
+                    radius: radius, phase: phase)
         }
+    }
 
-        // Pink star-forming knots along the outer arms.
-        for _ in 0..<48 {
-            let arm = rnd.nextInt(2)
-            let r = 0.55 + rnd.nextFloat() * 0.55
-            let angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.3
+    /// Pink star-forming knots strung along the outer arms.
+    private static func galaxyKnots(_ out: inout SpriteBuilder, _ rnd: inout KotlinRandom, knots: Int) {
+        for _ in 0..<knots {
+            let arm = rnd.nextInt(galaxyArms)
+            let r = 0.5 + rnd.nextFloat() * 0.55
+            let angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.25
             let cx = cos(angle) * r
             let cz = sin(angle) * r
-            let knots = 4 + Int(rnd.nextInt(7))
-            for _ in 0..<knots {
+            let stars = 4 + Int(rnd.nextInt(7))
+            for _ in 0..<stars {
                 let x = cx + rnd.gaussian() * 0.012
                 let y = rnd.gaussian() * 0.006
                 let z = cz + rnd.gaussian() * 0.012
                 let radius = 0.006 + rnd.nextFloat() * 0.007
-                out.add(x, y, z, r: 1.5, g: 0.2, b: 0.38, radius: radius, phase: rnd.nextFloat())
+                let phase = rnd.nextFloat()
+                out.add(x, y, z, r: 1.5, g: 0.2, b: 0.38, radius: radius, phase: phase)
             }
         }
+    }
 
-        // Reddish dust haze on the inner (trailing) edge of the arms.
-        for _ in 0..<1_800 {
-            let arm = rnd.nextInt(2)
-            let r = 0.2 + rnd.nextFloat() * 0.8
-            let angle = galaxyArmAngle(r, arm) - 0.22 + rnd.gaussian() * 0.06
-            let x = cos(angle) * r + rnd.gaussian() * 0.02
-            let y = rnd.gaussian() * 0.01
-            let z = sin(angle) * r + rnd.gaussian() * 0.02
-            let radius = 0.015 + rnd.nextFloat() * 0.02
-            out.add(x, y, z, r: 0.018, g: 0.005, b: 0.006, radius: radius, phase: rnd.nextFloat())
+    /// The galaxy's dust lanes: thin, patchy, near-black puffs along the inner edge of every
+    /// arm (heavier on the major ones) and two faint lanes off the bar. Each puff's alpha is
+    /// how much of the light behind it it blocks, so a lane darkens an arm without hiding it.
+    static func galaxyDust(seed: Int32 = 29, count: Int = 2_600) -> GlowMesh {
+        var rnd = KotlinRandom(seed: seed)
+        var out = SpriteBuilder(expected: count)
+        for i in 0..<count {
+            let x: Float, z: Float, r: Float
+            let weight: Float
+            if i < count / 12 {
+                // Two faint straight lanes along the leading sides of the bar, point-symmetric.
+                let s: Float = rnd.nextBoolean() ? 1 : -1
+                let u = 0.06 + rnd.nextFloat() * 0.14
+                x = s * u + rnd.gaussian() * 0.006
+                z = -s * (0.05 + 0.1 * u) + rnd.gaussian() * 0.005
+                r = sqrt(x * x + z * z)
+                weight = 0.5
+            } else {
+                let major = rnd.nextFloat() < 0.72
+                let arm: Int32 = major ? 2 * rnd.nextInt(2) : 1 + 2 * rnd.nextInt(2)
+                r = (major ? 0.2 : 0.36) + rnd.nextFloat() * (major ? 0.62 : 0.46)
+                // Real lanes break up: a slow beat along the lane thins it into clumps and gaps.
+                let beat = sin(r * 23 + Float(arm) * 1.7) + 0.6 * sin(r * 57 + Float(arm) * 0.9)
+                if beat < -0.5 { continue }
+                let angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.02
+                let inner = r - 0.7 * galaxyArmSpread(r) + rnd.gaussian() * 0.008
+                x = cos(angle) * inner
+                z = sin(angle) * inner
+                weight = major ? 1 : 0.6
+            }
+            let opacity = (0.16 + 0.18 * rnd.nextFloat()) * weight * (1 - smoothstep(0.6, 0.95, r))
+            let y = rnd.gaussian() * 0.003
+            let radius = 0.01 + rnd.nextFloat() * 0.012
+            out.add(x, y, z, r: 0.008, g: 0.005, b: 0.003, radius: radius, phase: 0, a: opacity)
         }
-
-        // Field stars between the arms, and a sparse halo.
-        for _ in 0..<5_000 {
-            let r = sqrt(rnd.nextFloat()) * galaxyRadius * 1.15
-            let a = rnd.nextFloat() * twoPi
-            let b = 0.12 + 0.2 * rnd.nextFloat()
-            let y = rnd.gaussian() * 0.03
-            let radius = 0.004 + rnd.nextFloat() * 0.004
-            out.add(cos(a) * r, y, sin(a) * r, r: 0.75 * b, g: 0.82 * b, b: 1.0 * b,
-                    radius: radius, phase: rnd.nextFloat())
-        }
-
-        // The glow of the core itself — one big soft sprite the bloom turns into a halo.
-        out.add(0, 0, 0, r: 0.95, g: 0.62, b: 0.34, radius: 0.24, phase: 0)
-        out.add(0, 0, 0, r: 0.09, g: 0.1, b: 0.17, radius: 1.4, phase: 0)
         return out.build()
     }
 
@@ -675,6 +776,16 @@ enum CosmosSceneKind: Int, CaseIterable, Sendable {
         case .flow: "Flow"
         }
     }
+
+    /// The plain one-line caption shown under the scene — Android's `CosmosScene.caption`.
+    var caption: String {
+        switch self {
+        case .galaxy: "A spiral galaxy of 60,000 stars"
+        case .star: "A hot blue star and its magnetic loops"
+        case .burst: "A particle collision, traced"
+        case .flow: "Currents swirling into whirlpools"
+        }
+    }
 }
 
 /// Camera framing of each Cosmos scene, as pure functions of time and viewport aspect.
@@ -702,13 +813,68 @@ enum CosmosFraming {
         case .galaxy:
             let elevation = 58 * deg
             let yaw = (25 + 12 * sin(time * 0.07)) * deg
-            return (fitDistance(0.98, 0.98 * sin(elevation) + 0.1, aspect: aspect), elevation, yaw)
+            return (fitDistance(1.04, 1.04 * sin(elevation) + 0.1, aspect: aspect), elevation, yaw)
         case .star:
             return (fitDistance(1.3, 1.3, aspect: aspect), (6 + 3 * sin(time * 0.09)) * deg, (8 * sin(time * 0.11)) * deg)
         case .burst:
             return (fitDistance(1.6, 1.6, aspect: aspect), (8 + 4 * sin(time * 0.13)) * deg, (16 * sin(time * 0.1)) * deg)
         case .flow:
-            return (fitDistance(1.12, 2.05, aspect: aspect), (12 + 2 * sin(time * 0.08)) * deg, (4 * sin(time * 0.1)) * deg)
+            return flowPose(time: time, aspect: aspect)
         }
+    }
+
+    /// The share of the flow field the viewport may reach: a margin for the funnels' dip.
+    private static let flowCoverMargin: Float = 0.93
+
+    /// The flow field has an edge, so unlike the other scenes it must overfill the viewport:
+    /// the camera comes in until all four viewport corners land on the field. The largest such
+    /// distance is found by bisection — the corner footprint grows with distance.
+    private static func flowPose(time: Float, aspect: Float) -> (distance: Float, elevation: Float, yaw: Float) {
+        let deg = Float.pi / 180
+        let elevation = (10 + 2 * sin(time * 0.08)) * deg
+        let yaw = (4 * sin(time * 0.1)) * deg
+        // Android also rolls the camera a quarter turn on a landscape viewport; SceneView's
+        // camera here has no roll, so a landscape viewport simply comes in closer.
+        let halfWidth = flowCoverMargin * CosmosMeshes.flowHalfWidth
+        let halfHeight = flowCoverMargin * CosmosMeshes.flowHalfHeight
+        var near: Float = 0.3
+        var far = fitDistance(halfWidth, halfHeight, aspect: aspect) * 2
+        for _ in 0..<24 {
+            let mid = 0.5 * (near + far)
+            if cornersOnPlane(eye: orbit(mid, elevation, yaw), aspect: aspect, halfWidth: halfWidth, halfHeight: halfHeight) {
+                near = mid
+            } else {
+                far = mid
+            }
+        }
+        return (near, elevation, yaw)
+    }
+
+    /// The eye of a camera orbiting the origin at `distance`, `elevation` and `yaw`.
+    static func orbit(_ distance: Float, _ elevation: Float, _ yaw: Float) -> SIMD3<Float> {
+        SIMD3(distance * cos(elevation) * sin(yaw), distance * sin(elevation), distance * cos(elevation) * cos(yaw))
+    }
+
+    /// Where the ray through viewport point (`sx`, `sy`) (each in −1...1) of a camera at `eye`,
+    /// looking at the origin with Y up, meets the plane z = 0; `nil` if it never does.
+    static func planeHit(eye: SIMD3<Float>, aspect: Float, sx: Float, sy: Float) -> SIMD2<Float>? {
+        let forward = simd_normalize(-eye)
+        let right = simd_normalize(simd_cross(forward, SIMD3<Float>(0, 1, 0)))
+        let up = simd_cross(right, forward)
+        let direction = forward + right * (sx * tanHalfVerticalFov * aspect) + up * (sy * tanHalfVerticalFov)
+        guard direction.z < -1e-4 else { return nil }
+        let t = -eye.z / direction.z
+        return SIMD2(eye.x + t * direction.x, eye.y + t * direction.y)
+    }
+
+    private static func cornersOnPlane(eye: SIMD3<Float>, aspect: Float, halfWidth: Float, halfHeight: Float) -> Bool {
+        for sx: Float in [-1, 1] {
+            for sy: Float in [-1, 1] {
+                guard let hit = planeHit(eye: eye, aspect: aspect, sx: sx, sy: sy),
+                      abs(hit.x) <= halfWidth, abs(hit.y) <= halfHeight
+                else { return false }
+            }
+        }
+        return true
     }
 }
