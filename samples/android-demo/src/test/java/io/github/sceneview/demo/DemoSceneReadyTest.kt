@@ -138,9 +138,23 @@ class DemoSceneReadyTest {
 
         state.holdUntil(landed = true)
         state.onFrame(base + 900 * millis)
-        assertFalse("one frame with the HDR proves only that the loop asked", rendered.value)
-        state.onFrame(base + 916 * millis)
-        assertTrue(rendered.value)
+        assertTrue("the first frame that carries the HDR lifts the cover", rendered.value)
+    }
+
+    @Test
+    fun `an HDR that lands before the second frame costs no frame`() {
+        // #4174: the cover must lift on the same frame as without a hold. Frames presented
+        // before the HDR lands still count, so an HDR that is in by the second frame is free.
+        val rendered = mutableStateOf(false)
+        val state = FirstFrameState(rendered)
+        state.holdUntil(landed = false)
+        state.onFrame(base)
+        assertFalse(rendered.value)
+
+        state.holdUntil(landed = true)
+        state.onFrame(base + 1_400 * millis)
+
+        assertTrue("same frame as a scene that never held", rendered.value)
     }
 
     @Test

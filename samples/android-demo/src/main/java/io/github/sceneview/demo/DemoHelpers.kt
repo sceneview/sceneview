@@ -445,7 +445,9 @@ fun rememberArPlaybackDataset(): File? {
  * backdrop, drawn on black. Those frames are real pixels but not the demo's picture:
  * the cover lifting on them showed a flat, black-backed scene for as long as the decode
  * took, and the render goldens captured exactly that. A demo that loads an HDR calls
- * [holdUntil] with "has it landed?", and frames presented before it has are not counted.
+ * [holdUntil] with "has it landed?": frames presented before it has still count, but the
+ * cover lifts only on a frame presented once it has — the frame it would lift on anyway when
+ * the HDR lands in time, the first frame that carries the HDR when it lands late.
  *
  * The hold is bounded: once the scene has presented frames it waits at most
  * [CONTENT_WAIT_TIMEOUT_MS] for the content, then latches on what it has — a load that
@@ -481,8 +483,12 @@ class FirstFrameState internal constructor(
 
     val onFrame: (frameTimeNanos: Long) -> Unit = {
         if (!renderedState.value) {
+            // Every presented frame counts, with or without the content: the frame the cover
+            // lifts on is the one it lifts on without a hold, so a content that lands in time
+            // costs nothing (#4174 measured one extra frame, +90 to +230 ms, when frames before
+            // the HDR were not counted).
+            if (presentedFrames < READY_PRESENTED_FRAMES) presentedFrames++
             if (contentLanded || contentWaitOver) {
-                if (presentedFrames < READY_PRESENTED_FRAMES) presentedFrames++
                 if (presentedFrames >= READY_PRESENTED_FRAMES) latch()
             } else if (!waitingOnContent.value) {
                 // A frame without the content: real pixels, but not the demo's picture.
@@ -494,8 +500,10 @@ class FirstFrameState internal constructor(
     /**
      * Holds [rendered] at `false` until [landed] is `true` — pass "has this demo's HDR
      * environment been applied?". Call it from composition, where that answer is read, so it
-     * follows the state. Frames presented while it is `false` are not counted, so the cover
-     * lifts on frames that carry the content. Bounded by [CONTENT_WAIT_TIMEOUT_MS]; once
+     * follows the state. Frames still count while it is `false`, but the cover does not lift on
+     * them: it lifts on the first frame presented once the content has landed, or on the frame
+     * it would have lifted on anyway if the content landed before. Bounded by
+     * [CONTENT_WAIT_TIMEOUT_MS]; once
      * [rendered] is `true` it stays `true` whatever [landed] does next (an environment swap is
      * not a cold start).
      */
