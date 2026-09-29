@@ -30,6 +30,7 @@ struct CreditsSheet: View {
                         .foregroundStyle(.secondary)
 
                     bundledSection
+                    hdPackSection
                     streamedSection
                 }
                 .padding(.horizontal, 20)
@@ -87,6 +88,30 @@ struct CreditsSheet: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .materialGlassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    // MARK: - HD pack (downloaded once)
+
+    /// Credits of the HD pack come from its bundled manifest
+    /// (`assets/hd-pack/ios.json`), which carries author, license and source
+    /// for every file whether or not it is on disk yet.
+    @ViewBuilder
+    private var hdPackSection: some View {
+        let assets = HDPackStore.shared.manifest.assets
+        if !assets.isEmpty {
+            sectionHeader("HD scenes (downloaded)")
+                .padding(.top, 8)
+            VStack(spacing: 8) {
+                ForEach(assets) { asset in
+                    creditsRow(
+                        icon: "sparkles.tv",
+                        title: asset.title,
+                        subtitle: "by \(asset.author) — \(asset.license)",
+                        url: URL(string: asset.source)
+                    )
+                }
+            }
         }
     }
 

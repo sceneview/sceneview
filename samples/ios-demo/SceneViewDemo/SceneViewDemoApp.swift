@@ -97,6 +97,11 @@ struct SceneViewDemoApp: App {
     /// throttle/snooze rules; `-update_qa available` forces it in DEBUG.
     @StateObject private var updater = AppStoreUpdater(forcedVersion: AppStoreUpdater.launchArgForcedVersion)
 
+    #if os(iOS)
+    /// Receives iOS's wake-up for finished HD pack transfers.
+    @UIApplicationDelegateAdaptor(HDPackAppDelegate.self) private var hdPackDelegate
+    #endif
+
     @Environment(\.scenePhase) private var scenePhase
 
     /// A document handed to the app. A SceneView scan or a Rerun recording (`.svscan`,
@@ -129,6 +134,9 @@ struct SceneViewDemoApp: App {
                 }
                 #endif
                 .task {
+                    // Prune stale HD files, re-attach to running transfers and
+                    // prefetch the pack on an unmetered network.
+                    HDPackStore.shared.bootstrap()
                     if openedFile == nil, let document = Self.launchArgOpenFile {
                         open(document.url)
                     }

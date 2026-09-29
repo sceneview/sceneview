@@ -36,6 +36,11 @@ struct ModelViewerDemo: View {
     /// instead of silently regressing to the blank-cube placeholder (#3584).
     static let bundledModels: [BundledViewerModel] = [
         BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet"),
+        // HD pack: 52 MB, full 2K textures, downloaded once. The bundled
+        // Damaged Helmet stands in until the file is on disk — same choice
+        // as Android.
+        BundledViewerModel(assetName: "khronos_flight_helmet", displayName: "Flight Helmet",
+                           hdPackID: "flight-helmet", standInAssetName: "khronos_damaged_helmet"),
         BundledViewerModel(assetName: "khronos_fox", displayName: "Fox"),
         BundledViewerModel(assetName: "khronos_lantern", displayName: "Lantern"),
         BundledViewerModel(assetName: "khronos_toy_car", displayName: "Toy Car"),
@@ -175,6 +180,18 @@ struct ModelViewerDemo: View {
     @State private var streamedUid: String?
 
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// HD pack: the stage shows a bundled stand-in while the selected model's
+    /// HD file is not on disk; ``pendingHDID`` names that file, and the stage
+    /// swaps to it the moment the store reports it ready.
+    @ObservedObject private var hdPack = HDPackStore.shared
+    @State private var pendingHDID: String?
+    /// The HD file is on disk and being loaded onto the stage
+    /// ("Flight Helmet · loading"), until its first frame is drawn.
+    @State private var hdLoading = false
+    @State private var hdFrameWatch = HDFirstFrameWatch()
+    /// The pill's "download 52 MB" / "download failed" tap: size-first dialog.
+    @State private var confirmHD = false
 
     /// `-qa_mode 1` / `?qa_mode=1` — keeps the authored pose for captures.
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
@@ -335,8 +352,20 @@ struct ModelViewerDemo: View {
             dock: dock,
             accent: DockItem(icon: "arkit", label: "View in AR", enabled: arSupported) { showAR = true },
             onReset: resetAll,
-            accessory: { floatingBand }
+            accessory: { floatingBand },
+            status: {
+                if let pendingHDID, let hdAsset = hdPack.manifest.asset(id: pendingHDID) {
+                    HDPackPill(
+                        title: hdAsset.title,
+                        state: hdPack.state(for: pendingHDID),
+                        loading: hdLoading,
+                        bytes: hdAsset.bytes,
+                        onDownload: { confirmHD = true }
+                    )
+                }
+            }
         )
+        .hdPackDownloadDialog(isPresented: $confirmHD)
         .sheet(item: $sheet) { which in
             Group {
                 switch which {
@@ -395,7 +424,7 @@ struct ModelViewerDemo: View {
         .fullScreenCover(isPresented: $showAR) {
             NavigationStack {
                 ARExperienceContainer(onViewIn3D: { showAR = false }) {
-                    ARPlacementDemo(initialModel: selectedModel.assetName)
+                    ARPlacementDemo(initialModel: selectedModel.arResourceName)
                 }
                     .navigationTitle("AR Placement")
                     .navigationBarTitleInline()
@@ -424,6 +453,12 @@ struct ModelViewerDemo: View {
             }
             await loadBundled(selectedModel)
         }
+        .onChange(of: hdPack.states) { _, _ in
+            // The HD file of the model on stage just landed: swap the stand-in out.
+            guard let id = pendingHDID, hdPack.state(for: id) == .ready, !hdLoading,
+                  selectedModel.hdPackID == id else { return }
+            Task { await loadBundled(selectedModel) }
+        }
         .onChange(of: selectedAnimation) { _, index in
             play(clip: index)
         }
@@ -445,6 +480,7 @@ struct ModelViewerDemo: View {
             SceneView { root in
                 guard let loadedNode else { return }
                 root.addChild(loadedNode.entity)
+                hdFrameWatch.joined(loadedNode.entity)
             }
             .cameraControls(.orbit)
             .cameraOrbit(azimuth: .pi / 5)
@@ -491,9 +527,51 @@ struct ModelViewerDemo: View {
         loadError = nil
         streamedDisplayName = nil
         streamedUid = nil
+        #if DEBUG
+        let started = Date()
+        #endif
+        hdFrameWatch.cancel()
         do {
-            let node = try await ModelNode.load(model.assetName)
-            install(node)
+            if let id = model.hdPackID, let url = hdPack.localURL(for: id) {
+                pendingHDID = id
+                hdLoading = true
+                let node: ModelNode
+                do {
+                    node = try await ModelNode.load(contentsOf: url)
+                } catch {
+                    hdLoading = false
+                    throw error
+                }
+                // The pill stays on "loading" until the HD entity is drawn,
+                // not when the load call returns (see HDFirstFrameWatch).
+                let entity = node.entity
+                hdFrameWatch.expect(entity) {
+                    hdLoading = false
+                    pendingHDID = nil
+                    #if DEBUG
+                    print(String(format: "[ModelViewer] first HD frame of %@ after %.0f ms, footprint %.0f MB",
+                                 model.assetName, Date().timeIntervalSince(started) * 1000,
+                                 Double(MemoryFootprint.current()) / 1_048_576))
+                    #endif
+                }
+                install(node)
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(15))
+                    if hdFrameWatch.isWaiting(for: entity) { hdFrameWatch.finish() }
+                }
+            } else {
+                hdLoading = false
+                let node = try await ModelNode.load(model.bundledResourceName)
+                install(node)
+                pendingHDID = model.hdPackID
+            }
+            #if DEBUG
+            // Guardrail for the HD pack: load time and footprint per model.
+            print(String(format: "[ModelViewer] loaded %@%@ in %.0f ms, footprint %.0f MB",
+                         model.assetName, model.hdPackID != nil && !hdLoading ? " (stand-in)" : "",
+                         Date().timeIntervalSince(started) * 1000,
+                         Double(MemoryFootprint.current()) / 1_048_576))
+            #endif
         } catch {
             loadError = "Could not load \(model.displayName): \(error.localizedDescription)"
         }
@@ -582,7 +660,10 @@ struct ModelViewerDemo: View {
                 let node = try? await ModelNode.load(contentsOf: downloaded),
                 SurpriseModelCheck.isCoherent(node.entity)
             else { continue }
+            hdFrameWatch.cancel()
+            hdLoading = false
             install(node)
+            pendingHDID = nil
             streamedUid = pick.uid
             streamedDisplayName = pick.name
             return
@@ -704,5 +785,63 @@ enum SurpriseModelCheck {
 
     private static func overlaps(_ a: BoundingBox, _ b: BoundingBox) -> Bool {
         all(a.min .<= b.max) && all(b.min .<= a.max)
+    }
+}
+
+// MARK: - HD first frame
+
+/// Holds the HD pill on "loading" until RealityKit has actually drawn the HD
+/// entity. `ModelNode.load` returns before the renderer has uploaded the
+/// textures; on the simulator the stand-in frame stayed on screen 3–5 s after
+/// the pill had already cleared, which read as "nothing is happening".
+///
+/// The first scene update after the entity joins the scene precedes the frame
+/// that uploads its resources; the second one comes after that frame, so it
+/// marks the swap as visible. A timeout in the caller covers a scene that
+/// stops ticking.
+@MainActor
+final class HDFirstFrameWatch {
+    private weak var expected: Entity?
+    private var onDrawn: (@MainActor () -> Void)?
+    private var stopUpdates: (() -> Void)?
+    private var updates = 0
+
+    /// Waits for `entity`; nothing happens until it joins the scene.
+    func expect(_ entity: Entity, onDrawn: @escaping @MainActor () -> Void) {
+        cancel()
+        expected = entity
+        self.onDrawn = onDrawn
+    }
+
+    /// Called from the scene content closure with every entity it adds.
+    func joined(_ entity: Entity) {
+        guard entity === expected, stopUpdates == nil else { return }
+        guard let scene = entity.scene else { finish(); return }
+        updates = 0
+        let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        stopUpdates = { subscription.cancel() }
+    }
+
+    /// Whether the watch still waits for `entity` (used by the timeout).
+    func isWaiting(for entity: Entity) -> Bool { expected === entity }
+
+    func finish() {
+        let done = onDrawn
+        cancel()
+        done?()
+    }
+
+    func cancel() {
+        stopUpdates?()
+        stopUpdates = nil
+        expected = nil
+        onDrawn = nil
+    }
+
+    private func tick() {
+        updates += 1
+        if updates >= 2 { finish() }
     }
 }

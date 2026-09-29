@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **84** (plus 8 pending metadata, 8 pending license review).
+Total models: **85** (plus 8 pending metadata, 8 pending license review).
 
 ---
 
@@ -89,6 +89,7 @@ Total models: **84** (plus 8 pending metadata, 8 pending license review).
 - **[Corset](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Corset)** by KhronosGroup (UX3D) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Diffuse Transmission Teacup](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DiffuseTransmissionTeacup)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Dragon (Attenuation)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DragonAttenuation)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Flight Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet)** by Gary Hsu (Microsoft) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Iridescence Lamp](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
