@@ -91,25 +91,30 @@ class HdPackStore(
 
     val isComplete: Boolean get() = _readyIds.value.size == manifest.assets.size
 
+    /** Whether every asset in [ids] is on disk and verified. */
+    fun isReady(ids: Set<String>): Boolean = _readyIds.value.containsAll(ids)
+
     /** Bytes the pack occupies on disk right now, part files included. */
     fun bytesOnDisk(): Long = dir.listFiles()?.sumOf { it.length() } ?: 0L
 
     /**
-     * Downloads every asset not yet on disk, one after the other, in [downloadOrder]. Safe to
-     * call concurrently — a second caller waits for the first and finds the files already there.
+     * Downloads the assets not yet on disk, one after the other, in [downloadOrder]. Safe to
+     * call concurrently — a second caller waits for the first (its model reads "queued") and
+     * finds the files already there.
      *
-     * @param first id of the asset the user is looking at: it goes before every other file.
+     * @param only ids to fetch — the one model the user tapped, or the prefetch set. `null`
+     * fetches every missing asset (About → "Download now").
      * @throws IOException on a network failure (the part file is kept for the next attempt) or
      * an [HdPackIntegrityException] (the part file is deleted).
      */
-    suspend fun downloadMissing(first: String? = null) = downloadLock.withLock {
+    suspend fun downloadMissing(only: Set<String>? = null) = downloadLock.withLock {
         withContext(Dispatchers.IO) {
             prune()
             val total = manifest.totalBytes
             var completed = manifest.assets.filter { it.id in _readyIds.value }.sumOf { it.bytes }
             try {
-                for (asset in downloadOrder(first)) {
-                    if (asset.id in _readyIds.value) continue
+                for (asset in downloadOrder()) {
+                    if (asset.id in _readyIds.value || (only != null && asset.id !in only)) continue
                     val base = completed
                     val progress = { onDisk: Long ->
                         _transfer.value = HdTransfer(base + onDisk, total, asset.id, onDisk, asset.bytes)

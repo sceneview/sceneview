@@ -94,9 +94,8 @@ import io.github.sceneview.demo.hdpack.HdPack
 import io.github.sceneview.demo.hdpack.HdPackDownloadDialog
 import io.github.sceneview.demo.hdpack.HdPackPerfProbe
 import io.github.sceneview.demo.hdpack.HdPackStatus
-import io.github.sceneview.demo.hdpack.HdTransfer
 import io.github.sceneview.demo.hdpack.hdPackSize
-import io.github.sceneview.demo.hdpack.rememberHdPackStatus
+import io.github.sceneview.demo.hdpack.rememberHdAssetStatus
 import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -627,13 +626,13 @@ private fun SingleModelSection(
     // same loader as the streamed models, so the swap waits for its textures and the stand-in
     // stays up meanwhile: no untextured frame, no black stage.
     val hdStore = rememberHdPackStore()
-    val hdStatus by rememberHdPackStatus(hdStore)
     val hdReadyIds by remember(hdStore) {
         hdStore?.readyIds ?: kotlinx.coroutines.flow.MutableStateFlow(emptySet<String>())
     }.collectAsState()
     val hdAsset = selectedModel.hdAssetId
         ?.takeIf { openedModel == null && streamedFileUrl == null }
         ?.let { hdStore?.manifest?.asset(it) }
+    val hdAssetStatus by rememberHdAssetStatus(hdStore, hdAsset?.id)
     val hdFileLocation = hdAsset?.takeIf { it.id in hdReadyIds }
         ?.let { android.net.Uri.fromFile(hdStore?.fileFor(it)).toString() }
     // A file that times out or has no framable bounds is dropped: the stand-in stays and the
@@ -648,9 +647,6 @@ private fun SingleModelSection(
     )
     val hdShown = hdFileLocation != null && !hdLoadFailed && hdModel?.location == hdFileLocation
     val hdPillShown = hdAsset != null && !hdShown
-    val hdTransfer by remember(hdStore) {
-        hdStore?.transfer ?: kotlinx.coroutines.flow.MutableStateFlow<HdTransfer?>(null)
-    }.collectAsState()
     var hdDialogOpen by remember { mutableStateOf(false) }
 
     // The instance actually rendered this frame. Falls back to the bundled
@@ -1082,17 +1078,18 @@ private fun SingleModelSection(
             // running asks to download now, with the size stated first. It stays on "loading"
             // until the HD model is in the scene, and leaves then.
             if (hdPillShown && hdAsset != null) {
-                val status = hdStatus
+                // The pill narrates THIS model's file and job: each model downloads on its own tap,
+                // one file at a time, so while another one is on the wire this one is queued.
+                val status = hdAssetStatus
                 val hdFailed = hdLoadFailed || (hdFileLocation == null && status == HdPackStatus.Failed)
-                val hdPillBusy = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading)
-                // The pill narrates THIS model's file: the pack downloads one file at a time, so
-                // while another one is on the wire this one is queued, not "downloading 0 %".
-                val ownFraction = hdTransfer?.fractionOf(hdAsset.id)
-                val hdQueued = status is HdPackStatus.Downloading && hdTransfer != null && ownFraction == null
+                val hdPillBusy = !hdFailed && (
+                    hdFileLocation != null || status is HdPackStatus.Downloading || status == HdPackStatus.Queued
+                    )
+                val ownFraction = (status as? HdPackStatus.Downloading)?.fraction
                 val hdLabel = when {
                     hdFailed -> stringResource(R.string.hd_pill_failed)
                     hdFileLocation != null -> stringResource(R.string.hd_pill_loading)
-                    hdQueued -> stringResource(R.string.hd_pill_queued)
+                    status == HdPackStatus.Queued -> stringResource(R.string.hd_pill_queued)
                     status is HdPackStatus.Downloading ->
                         stringResource(R.string.hd_pill_downloading, ((ownFraction ?: 0f) * 100).toInt())
                     status == HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pill_waiting_wifi)
@@ -1111,7 +1108,7 @@ private fun SingleModelSection(
                         if (hdLoadFailed) hdRejectedLocation = null else hdDialogOpen = true
                     },
                     loading = hdPillBusy,
-                    progress = ownFraction?.takeIf { hdFileLocation == null && status is HdPackStatus.Downloading },
+                    progress = ownFraction?.takeIf { hdFileLocation == null },
                     // What the pill says, then what a tap does when it opens the download dialog.
                     contentDescription = stringResource(R.string.glass_pill_subject_label, hdAsset.title, hdLabel)
                         .let { if (hdPillBusy || hdLoadFailed) it else stringResource(R.string.hd_pill_hint, it) },
@@ -1384,9 +1381,9 @@ private fun SingleModelSection(
     )
     if (hdDialogOpen && hdStore != null) {
         HdPackDownloadDialog(
-            totalBytes = hdStore.manifest.totalBytes,
-            // The model on screen is fetched first, so the pill it was opened from moves at once.
-            onConfirm = { hdDialogOpen = false; HdPack.downloadNow(context, first = hdAsset?.id) },
+            // This model's own file: a Museum pill never downloads the rest of the pack.
+            totalBytes = hdAsset?.bytes ?: hdStore.manifest.missingBytes(hdReadyIds),
+            onConfirm = { hdDialogOpen = false; HdPack.downloadNow(context, assetId = hdAsset?.id) },
             onDismiss = { hdDialogOpen = false },
         )
     }

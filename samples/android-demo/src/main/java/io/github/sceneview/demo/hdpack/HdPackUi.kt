@@ -68,6 +68,22 @@ fun rememberHdPackStatus(store: HdPackStore?): State<HdPackStatus> {
     return flow.collectAsState(initial = initial)
 }
 
+/** Live [HdPackStatus] of one model's file, for its viewer pill. `NotDownloaded` without an asset. */
+@Composable
+fun rememberHdAssetStatus(store: HdPackStore?, assetId: String?): State<HdPackStatus> {
+    val context = LocalContext.current
+    val flow = remember(store, assetId) {
+        if (store != null && assetId != null) {
+            HdPack.assetStatus(context, store, assetId)
+        } else {
+            flowOf(HdPackStatus.NotDownloaded)
+        }
+    }
+    val onDisk = assetId != null && store?.readyFile(assetId) != null
+    val initial = if (onDisk) HdPackStatus.Ready else HdPackStatus.NotDownloaded
+    return flow.collectAsState(initial = initial)
+}
+
 /** "48 MB" — the platform's short file size, so it reads the way Settings → Storage does. */
 fun hdPackSize(context: Context, bytes: Long): String = Formatter.formatShortFileSize(context, bytes)
 
@@ -121,6 +137,7 @@ fun HdPackSettingsRow() {
         HdPackStatus.Ready -> stringResource(R.string.hd_pack_settings_ready)
         is HdPackStatus.Downloading ->
             stringResource(R.string.hd_pack_settings_downloading, (s.fraction * 100).toInt())
+        HdPackStatus.Queued -> stringResource(R.string.hd_pack_settings_downloading, 0)
         HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pack_settings_waiting_wifi)
         HdPackStatus.WaitingForNetwork -> stringResource(R.string.hd_pack_settings_waiting_network)
         HdPackStatus.NotDownloaded -> stringResource(R.string.hd_pack_settings_not_downloaded)
@@ -189,7 +206,7 @@ fun HdPackSettingsRow() {
     }
     if (dialogOpen) {
         HdPackDownloadDialog(
-            totalBytes = store.manifest.totalBytes,
+            totalBytes = store.manifest.missingBytes(store.readyIds.value),
             onConfirm = { dialogOpen = false; HdPack.downloadNow(context) },
             onDismiss = { dialogOpen = false },
         )

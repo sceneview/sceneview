@@ -23,6 +23,12 @@ data class HdPackManifest(
     /** Sum of every asset's size — what the Settings row and the "Download now" dialog quote. */
     val totalBytes: Long get() = assets.sumOf { it.bytes }
 
+    /**
+     * What "Download now" still has to fetch: the assets not in [readyIds]. An app update that
+     * adds models to a pack already on the device asks for the new files only, not the whole pack.
+     */
+    fun missingBytes(readyIds: Set<String>): Long = assets.filter { it.id !in readyIds }.sumOf { it.bytes }
+
     fun asset(id: String): HdAsset? = assets.firstOrNull { it.id == id }
 
     companion object {

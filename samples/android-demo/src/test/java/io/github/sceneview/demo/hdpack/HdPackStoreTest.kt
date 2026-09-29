@@ -121,6 +121,14 @@ class HdPackStoreTest {
         assertEquals(listOf("small", "mid", "big"), store.downloadOrder(first = "unknown").map { it.id })
     }
 
+    @Test fun `the download dialog quotes only the files still missing`() {
+        fun entry(id: String, bytes: Long) = asset.copy(id = id, bytes = bytes)
+        val manifest = HdPackManifest(1, listOf(entry("helmet", 48), entry("apollo", 9), entry("rover", 5)))
+        assertEquals(62L, manifest.missingBytes(emptySet()))
+        assertEquals(14L, manifest.missingBytes(setOf("helmet")))
+        assertEquals(0L, manifest.missingBytes(setOf("helmet", "apollo", "rover")))
+    }
+
     @Test fun `the pill reads its own file's progress, not the pack's`() {
         val transfer = HdTransfer(
             doneBytes = 60,
@@ -155,6 +163,29 @@ class HdPackStoreTest {
             assertNull(store.transfer.value)
             assertEquals("/$sha.glb", server.takeRequest(5, TimeUnit.SECONDS)!!.url.encodedPath)
         }
+    }
+
+    @Test fun `a model's own download fetches that file and nothing else`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val other = asset.copy(id = "woolly-mammoth", title = "Woolly Mammoth")
+            val store = HdPackStore(
+                HdPackManifest(1, listOf(asset, other)),
+                tmp.newFolder("hd-pack"),
+                OkHttpClient(),
+                server.url("/").toString().trimEnd('/'),
+            )
+            // Not in the set: no request reaches the server (none is enqueued, so one would hang).
+            store.downloadMissing(only = setOf("perseverance"))
+            assertEquals(0, server.requestCount)
+            assertTrue(store.readyIds.value.isEmpty())
+        }
+    }
+
+    @Test fun `the Wi-Fi prefetch is the Flight Helmet alone`() {
+        assertEquals(setOf("flight-helmet"), HdPack.PREFETCH_IDS)
+        val bundled = HdPackManifest.parse(File(repoRoot(), "assets/hd-pack/android.json").readText())
+        assertTrue(HdPack.PREFETCH_IDS.all { bundled.asset(it) != null })
     }
 
     @Test fun `an interrupted download resumes from the part file`() = runBlocking {
@@ -287,6 +318,44 @@ class HdPackStoreTest {
         assertEquals(
             HdPackStatus.Ready,
             HdPack.statusOf(true, null, work(WorkInfo.State.FAILED, NetworkType.CONNECTED)),
+        )
+    }
+
+    @Test fun `a model's pill reads its own file and its own job`() {
+        val id = "apollo11-interior"
+        val running = work(WorkInfo.State.RUNNING, NetworkType.CONNECTED)
+        assertEquals(HdPackStatus.Ready, HdPack.assetStatusOf(id, setOf(id), null, running))
+        assertEquals(HdPackStatus.NotDownloaded, HdPack.assetStatusOf(id, emptySet(), null, null))
+        assertEquals(
+            HdPackStatus.Downloading(0.5f),
+            HdPack.assetStatusOf(id, emptySet(), HdTransfer(10, 100, id, 5, 10), running),
+        )
+        // Its job runs, but another model's file is on the wire: queued, not "downloading 0 %".
+        assertEquals(
+            HdPackStatus.Queued,
+            HdPack.assetStatusOf(id, emptySet(), HdTransfer(10, 100, "woolly-mammoth", 5, 10), running),
+        )
+        // Another model downloading does not move a pill nobody tapped.
+        assertEquals(
+            HdPackStatus.NotDownloaded,
+            HdPack.assetStatusOf(id, emptySet(), HdTransfer(10, 100, "woolly-mammoth", 5, 10), null),
+        )
+        assertEquals(
+            HdPackStatus.WaitingForNetwork,
+            HdPack.assetStatusOf(id, emptySet(), null, work(WorkInfo.State.ENQUEUED, NetworkType.CONNECTED)),
+        )
+        assertEquals(
+            HdPackStatus.WaitingForWifi,
+            HdPack.assetStatusOf(
+                "flight-helmet",
+                emptySet(),
+                null,
+                work(WorkInfo.State.ENQUEUED, NetworkType.UNMETERED),
+            ),
+        )
+        assertEquals(
+            HdPackStatus.Failed,
+            HdPack.assetStatusOf(id, emptySet(), null, work(WorkInfo.State.FAILED, NetworkType.CONNECTED)),
         )
     }
 
