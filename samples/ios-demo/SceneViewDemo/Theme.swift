@@ -90,6 +90,10 @@ enum SceneViewTokens {
     enum Stage {
         static let background = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
 
+        /// Largest side of the poster an HD-only viewer model shows until its
+        /// file is on disk: its `model_thumb_*` render (720 px, sharp at 3x).
+        static let hdPosterSize: CGFloat = 240
+
         /// Fills for primitives that must stay apart on the stage — Android's
         /// `SceneViewColors.Ramp4`: `primary` light #005BC1, `gradient-hero` end
         /// #6446CD, `primary` dark #A4C1FF, `tertiary` dark #D2A8FF. Fixed in both

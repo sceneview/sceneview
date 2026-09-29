@@ -214,7 +214,37 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
 
     // MARK: Top row
 
+    /// Title and status on one row while both fit in full; otherwise the
+    /// status drops to its own row under the title, trailing. A long HD pill
+    /// ("Apollo 11 Command Module · download 14 MB") otherwise crushed the
+    /// title chip to its first letter and still truncated its own name.
     private var identityRow: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
+                titleCluster.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: SceneViewTokens.Space.sm)
+                status
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.trailing, Self.touchSlop)
+            }
+            .padding(.horizontal, Metrics.margin - Self.touchSlop)
+
+            VStack(alignment: .trailing, spacing: SceneViewTokens.Space.sm) {
+                HStack(spacing: 0) {
+                    titleCluster
+                    Spacer(minLength: 0)
+                }
+                status
+                    .padding(.trailing, Self.touchSlop)
+            }
+            .padding(.horizontal, Metrics.margin - Self.touchSlop)
+
+            sharedRow
+        }
+    }
+
+    /// Back button and title chip (plus the QA chip for a human tester).
+    private var titleCluster: some View {
         HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
             GlassIconButton(icon: "chevron.left", label: "Close demo") {
                 dismiss()
@@ -240,12 +270,20 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                             .accessibilityLabel("Disable QA mode")
                     }
                 }
+            }
+        }
+    }
+
+    /// Last resort (a status too wide even on its own row, largest Dynamic
+    /// Type): the original shared row, where title and status give way.
+    private var sharedRow: some View {
+        HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
+            titleCluster
                 // At the default size the title gives way first (it can
                 // shrink to 80 %) so a status such as the HD pill keeps its
                 // full text. With larger Dynamic Type the title is served
                 // first and the status truncates instead of the title.
                 .layoutPriority(dynamicTypeSize > .large ? 2 : 0)
-            }
 
             Spacer(minLength: 0)
 

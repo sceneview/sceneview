@@ -197,7 +197,10 @@ struct CreditsSheet: View {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    // Three lines: "by NASA/JPL-Caltech — NASA Media Usage
+                    // Guidelines (no endorsement implied; …)" is the licence
+                    // itself, and must not be cut to an ellipsis.
+                    .lineLimit(3)
             }
 
             Spacer(minLength: 4)

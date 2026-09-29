@@ -16,11 +16,15 @@ import SwiftUI
 /// - **Storage.** `Application Support/HDPack/<sha256>.<ext>`, excluded from
 ///   iCloud backup. Never evicted on use; only hashes that left the manifest
 ///   are deleted (``HDPackStore/pruneStale()``).
-/// - **Download.** After first launch, on unmetered networks only: a background
-///   `URLSession` that refuses expensive (cellular, hotspot) and constrained
-///   (Low Data Mode) paths. On such a path nothing starts on its own; the
-///   Settings row's "Download now", which states the size first (App Review
-///   4.2.3(ii)), uses a second session that may use them.
+/// - **Download, per model.** Only ``HDPackStore/autoPrefetchIDs`` (Flight
+///   Helmet, 52 MB) is prefetched on its own, after first launch and on
+///   unmetered networks only: a background `URLSession` that refuses expensive
+///   (cellular, hotspot) and constrained (Low Data Mode) paths. Every other
+///   model (the Museum & Space scans) is fetched only when the user taps its
+///   pill and accepts its own size (``HDPackStore/download(id:)``). The About
+///   row's "Download now" fetches everything missing. Both state the size
+///   first (App Review 4.2.3(ii)) and use a second session that may use any
+///   network.
 /// - **Integrity.** Every file is hashed before it is renamed into place;
 ///   a mismatch is discarded, never kept.
 
@@ -35,6 +39,11 @@ struct HDPackAsset: Decodable, Identifiable, Hashable, Sendable {
     let license: String
     let author: String
     let source: String
+    /// Metres per authored unit, shared with Android's manifest. Set, the
+    /// file goes on stage at its true size instead of the viewer's
+    /// normalised 0.6 m: `0.01` for the centimetre-authored Smithsonian
+    /// Apollo scans, `1` for a file already in metres.
+    var scale: Float? = nil
 
     /// Where the release serves this file.
     var remoteURL: URL { HDPackManifest.releaseBase.appendingPathComponent(file) }
@@ -209,15 +218,23 @@ final class HDPackStore: ObservableObject {
     /// `[file: [count, lastFailure]]` of checksum mismatches, for the back-off.
     private static let mismatchKey = "hd_pack_checksum_mismatches"
 
+    /// The only assets fetched without a tap, on unmetered networks: the ones
+    /// a bundled stand-in already shows, so the upgrade is silent and small
+    /// (52 MB). A Museum scan is fetched only when the user asks for it.
+    static let autoPrefetchIDs: Set<String> = ["flight-helmet"]
+
     /// Automatic prefetch — unmetered networks only.
-    static let autoSessionID = "dev.sceneview.demo.hdpack.auto"
-    /// "Download now" — the user accepted the size, any network.
-    static let userSessionID = "dev.sceneview.demo.hdpack.user"
+    nonisolated static let autoSessionID = "dev.sceneview.demo.hdpack.auto"
+    /// "Download now" or a pill tap: the user accepted the size, any network.
+    nonisolated static let userSessionID = "dev.sceneview.demo.hdpack.user"
 
     private lazy var autoSession: URLSession = Self.makeSession(id: Self.autoSessionID, allowMetered: false)
     private lazy var userSession: URLSession = Self.makeSession(id: Self.userSessionID, allowMetered: true)
     private let pathMonitor = NWPathMonitor()
     private var bootstrapped = false
+    /// Files whose transfer Remove cancelled: one that still lands is deleted,
+    /// not kept. A new request for the file takes it off the list.
+    private var discardOnLanding = Set<String>()
 
     /// iOS hands this over when it relaunches the app for finished background
     /// transfers; called once both sessions reported their events.
@@ -264,14 +281,31 @@ final class HDPackStore: ObservableObject {
 
     var totalBytes: Int64 { manifest.totalBytes }
 
-    var isComplete: Bool { !manifest.assets.isEmpty && manifest.assets.allSatisfy { state(for: $0.id) == .ready } }
+    /// The assets the About row speaks for: the prefetched ones, plus any
+    /// model the user fetched, is fetching or failed to fetch from its pill.
+    /// A Museum scan nobody asked for is not "missing" from the pack: the
+    /// row would otherwise never read "Downloaded", nor offer Remove.
+    static func packAssets(of manifest: HDPackManifest, states: [String: HDAssetState]) -> [HDPackAsset] {
+        manifest.assets.filter { autoPrefetchIDs.contains($0.id) || (states[$0.id] ?? .missing) != .missing }
+    }
 
-    /// Aggregate state of the whole pack, for the About row.
+    var packAssets: [HDPackAsset] { Self.packAssets(of: manifest, states: states) }
+
+    /// The About row's size: what the pack weighs once all of it is here.
+    var packBytes: Int64 { packAssets.reduce(0) { $0 + $1.bytes } }
+
+    /// What "Download now" still has to fetch.
+    var missingBytes: Int64 {
+        packAssets.filter { state(for: $0.id) != .ready }.reduce(0) { $0 + $1.bytes }
+    }
+
+    /// Aggregate state of ``packAssets``, for the About row.
     var packState: HDAssetState {
-        let all = manifest.assets.map { state(for: $0.id) }
+        let assets = packAssets
+        let all = assets.map { state(for: $0.id) }
         if all.isEmpty { return .missing }
         if all.allSatisfy({ $0 == .ready }) { return .ready }
-        let received = manifest.assets.reduce(Double(0)) { sum, asset in
+        let received = assets.reduce(Double(0)) { sum, asset in
             switch state(for: asset.id) {
             case .ready: return sum + Double(asset.bytes)
             case .downloading(let f): return sum + f * Double(asset.bytes)
@@ -279,7 +313,7 @@ final class HDPackStore: ObservableObject {
             }
         }
         if all.contains(where: { if case .downloading = $0 { return true } else { return false } }) {
-            return .downloading(received / Double(max(totalBytes, 1)))
+            return .downloading(received / Double(max(packBytes, 1)))
         }
         if all.contains(.waitingForNetwork) { return .waitingForNetwork }
         if all.contains(.waitingForWiFi) { return .waitingForWiFi }
@@ -296,8 +330,16 @@ final class HDPackStore: ObservableObject {
         guard !bootstrapped, !Self.isHostingUnitTests else { return }
         bootstrapped = true
         pruneStale()
+        #if DEBUG
+        // QA captures only: the simulator has no cellular radio, so
+        // `-hdpack_cellular 1` stands for "on mobile data" in the dialogs.
+        let forceExpensive = CommandLine.arguments.firstIndex(of: "-hdpack_cellular")
+            .map { $0 + 1 < CommandLine.arguments.count && CommandLine.arguments[$0 + 1] == "1" } ?? false
+        #else
+        let forceExpensive = false
+        #endif
         pathMonitor.pathUpdateHandler = { path in
-            let expensive = path.isExpensive
+            let expensive = path.isExpensive || forceExpensive
             let constrained = path.isConstrained
             Task { @MainActor in
                 HDPackStore.shared.isExpensive = expensive
@@ -308,17 +350,20 @@ final class HDPackStore: ObservableObject {
         #if DEBUG
         // QA captures only: the simulator shares the Mac's network, so
         // `-hdpack_offline 1` stands for "no Wi-Fi yet": nothing is scheduled
-        // and every missing asset shows the state a queued prefetch shows.
+        // and every missing prefetch asset shows the state a queued prefetch
+        // shows. The others stay "download N MB", as they would.
         if let i = CommandLine.arguments.firstIndex(of: "-hdpack_offline"),
            i + 1 < CommandLine.arguments.count, CommandLine.arguments[i + 1] == "1" {
-            for asset in manifest.assets where state(for: asset.id) != .ready { states[asset.id] = .waitingForWiFi }
+            for asset in manifest.assets where Self.autoPrefetchIDs.contains(asset.id) && state(for: asset.id) != .ready {
+                states[asset.id] = .waitingForWiFi
+            }
             return
         }
         #endif
         Task {
             await reattach()
             if !UserDefaults.standard.bool(forKey: Self.userRemovedKey) {
-                await schedule(on: autoSession, userRequested: false)
+                await schedule(on: autoSession, userRequested: false, ids: Self.autoPrefetchIDs)
             }
         }
     }
@@ -335,14 +380,32 @@ final class HDPackStore: ObservableObject {
         usedBytes = HDPackFiles.usedBytes()
     }
 
-    /// The user accepted the size: download everything missing now, on any network.
+    /// The user accepted the pack's size (About row): download what
+    /// ``packAssets`` still misses now, on any network, and resume the
+    /// automatic prefetch.
     func downloadNow() {
         UserDefaults.standard.set(false, forKey: Self.userRemovedKey)
+        request(ids: Set(packAssets.map(\.id)))
+    }
+
+    /// The user accepted this one model's size (its pill): download that file
+    /// now, on any network. Nothing else starts, and a Remove the user made
+    /// earlier still keeps the automatic prefetch off.
+    func download(id: String) {
+        guard manifest.asset(id: id) != nil, state(for: id) != .ready else { return }
+        request(ids: [id])
+    }
+
+    /// Moves `ids` (every asset when nil) to the user session.
+    private func request(ids: Set<String>?) {
+        let files = Set(manifest.assets.filter { ids?.contains($0.id) ?? true }.map(\.file))
+        discardOnLanding.subtract(files)
         Task {
             // A prefetch still waiting for Wi-Fi would duplicate the transfer;
             // what it already received carries over as resume data.
             for task in await autoSession.allTasks {
-                guard let download = task as? URLSessionDownloadTask, let file = task.taskDescription else {
+                guard let file = task.taskDescription, files.contains(file) else { continue }
+                guard let download = task as? URLSessionDownloadTask else {
                     task.cancel()
                     continue
                 }
@@ -350,7 +413,7 @@ final class HDPackStore: ObservableObject {
                     HDPackFiles.saveResumeData(data, for: file)
                 }
             }
-            await schedule(on: userSession, userRequested: true)
+            await schedule(on: userSession, userRequested: true, ids: ids)
         }
     }
 
@@ -361,6 +424,7 @@ final class HDPackStore: ObservableObject {
         let freed = HDPackFiles.usedBytes()
         Task {
             let tasks = await autoSession.allTasks + userSession.allTasks
+            discardOnLanding.formUnion(tasks.compactMap(\.taskDescription))
             for task in tasks { task.cancel() }
             // A transfer finishing mid-cancel would install its file after the
             // delete; `finished` also drops a file that lands after Remove.
@@ -395,14 +459,17 @@ final class HDPackStore: ObservableObject {
         }
     }
 
-    private func schedule(on session: URLSession, userRequested: Bool) async {
+    /// Queues a transfer for every asset of `ids` (all when nil) that is
+    /// neither on disk nor already in flight.
+    private func schedule(on session: URLSession, userRequested: Bool, ids: Set<String>?) async {
         var inFlight = Set<String>()
         for s in [autoSession, userSession] {
             for task in await s.allTasks where task.state == .running || task.state == .suspended {
                 if let file = task.taskDescription { inFlight.insert(file) }
             }
         }
-        for asset in manifest.assets where state(for: asset.id) != .ready && !inFlight.contains(asset.file) {
+        for asset in manifest.assets where (ids?.contains(asset.id) ?? true)
+            && state(for: asset.id) != .ready && !inFlight.contains(asset.file) {
             // A file that failed its checksum is not fetched again on its own
             // at every launch; "Download now" always tries.
             if !userRequested, isBackingOff(asset.file) {
@@ -445,9 +512,12 @@ final class HDPackStore: ObservableObject {
         states[asset.id] = .downloading(fraction)
     }
 
-    fileprivate func finished(file: String, success: Bool) {
+    /// `userRequested`: the transfer ran on the user session (a tap accepted
+    /// its size), so a Remove made before that tap does not throw it away.
+    fileprivate func finished(file: String, success: Bool, userRequested: Bool) {
         guard let asset = manifest.assets.first(where: { $0.file == file }) else { return }
-        if success, UserDefaults.standard.bool(forKey: Self.userRemovedKey) {
+        let cancelledByRemove = discardOnLanding.remove(file) != nil
+        if success, cancelledByRemove || (!userRequested && UserDefaults.standard.bool(forKey: Self.userRemovedKey)) {
             // Landed after Remove: the user asked for the space back.
             try? FileManager.default.removeItem(at: HDPackFiles.url(forFile: file))
             states[asset.id] = .missing
@@ -507,9 +577,10 @@ private final class HDPackDownloadDelegate: NSObject, URLSessionDownloadDelegate
                 mismatch = true
             } catch {}
         }
+        let user = session.configuration.identifier == HDPackStore.userSessionID
         Task { @MainActor in
             if mismatch { HDPackStore.shared.checksumMismatch(file: file) }
-            HDPackStore.shared.finished(file: file, success: ok)
+            HDPackStore.shared.finished(file: file, success: ok, userRequested: user)
         }
     }
 
@@ -521,11 +592,12 @@ private final class HDPackDownloadDelegate: NSObject, URLSessionDownloadDelegate
         if !cancelled, let data = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
             HDPackFiles.saveResumeData(data, for: file)
         }
+        let user = session.configuration.identifier == HDPackStore.userSessionID
         Task { @MainActor in
             if cancelled {
                 await HDPackStore.shared.cancelled(file: file)
             } else {
-                HDPackStore.shared.finished(file: file, success: false)
+                HDPackStore.shared.finished(file: file, success: false, userRequested: user)
             }
         }
     }

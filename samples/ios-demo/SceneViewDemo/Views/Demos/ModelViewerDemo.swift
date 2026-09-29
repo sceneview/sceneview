@@ -48,6 +48,37 @@ struct ModelViewerDemo: View {
         BundledViewerModel(assetName: "animated_butterfly", displayName: "Butterfly"),
     ]
 
+    /// "Museum & Space": HD pack models with no bundled copy, in Android's
+    /// order. Until the file is on disk the stage shows the model's thumbnail
+    /// with the HD pill; then the HD model at its real-world size.
+    ///
+    /// `hdPackID` is the shared id in `assets/hd-pack/{ios,android}.json`;
+    /// the pill reads its title there, the stage its real-world `scale`.
+    /// `assetName` only keys the `model_thumb_<assetName>` tile. None is
+    /// offered in AR: the HD file is not placed in AR until a real-device run
+    /// proves it (see #4147).
+    static let museumModels: [BundledViewerModel] = [
+        BundledViewerModel(assetName: "hd_apollo11_exterior", displayName: "Apollo 11 Command Module",
+                           hdPackID: "apollo11-exterior"),
+        BundledViewerModel(assetName: "hd_apollo11_interior", displayName: "Apollo 11 Interior",
+                           hdPackID: "apollo11-interior"),
+        BundledViewerModel(assetName: "hd_woolly_mammoth", displayName: "Woolly Mammoth",
+                           hdPackID: "woolly-mammoth"),
+        // Shown static: the rover's rigging clips stay under Animate, paused.
+        BundledViewerModel(assetName: "hd_perseverance", displayName: "Perseverance Rover",
+                           hdPackID: "perseverance", autoplaysAnimations: false),
+    ]
+
+    #if DEBUG
+    /// `-viewer_model <assetName>` (DEBUG, QA captures): opens the viewer on
+    /// that model — bundled or Museum & Space — instead of the default.
+    static var launchArgModel: BundledViewerModel? {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "-viewer_model"), i + 1 < args.count else { return nil }
+        return (bundledModels + museumModels).first { $0.assetName == args[i + 1] }
+    }
+    #endif
+
     /// Bundled HDRs offered in the Environment sheet, in Android's order.
     ///
     /// `internal`, not `private` — see ``bundledModels``: `ViewerAssetTests`
@@ -190,8 +221,13 @@ struct ModelViewerDemo: View {
     /// ("Flight Helmet · loading"), until its first frame is drawn.
     @State private var hdLoading = false
     @State private var hdFrameWatch = HDFirstFrameWatch()
+    /// Which load may still put its model on stage: see ``StageRequests``.
+    @State private var stageRequests = StageRequests()
     /// The pill's "download 52 MB" / "download failed" tap: size-first dialog.
     @State private var confirmHD = false
+    /// An HD-only model (Museum & Space) picked before its file is on disk:
+    /// the stage shows its thumbnail instead of a 3D stand-in.
+    @State private var posterModel: BundledViewerModel?
 
     /// `-qa_mode 1` / `?qa_mode=1` — keeps the authored pose for captures.
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
@@ -350,7 +386,8 @@ struct ModelViewerDemo: View {
         .demoChrome(
             title: "Model Viewer",
             dock: dock,
-            accent: DockItem(icon: "arkit", label: "View in AR", enabled: arSupported) { showAR = true },
+            accent: DockItem(icon: "arkit", label: "View in AR",
+                             enabled: arSupported && selectedModel.arResourceName != nil) { showAR = true },
             onReset: resetAll,
             accessory: { floatingBand },
             status: {
@@ -360,18 +397,20 @@ struct ModelViewerDemo: View {
                         state: hdPack.state(for: pendingHDID),
                         loading: hdLoading,
                         bytes: hdAsset.bytes,
+                        hdOnly: selectedModel.isHDOnly,
                         onDownload: { confirmHD = true }
                     )
                 }
             }
         )
-        .hdPackDownloadDialog(isPresented: $confirmHD)
+        .hdPackDownloadDialog(isPresented: $confirmHD, assetID: pendingHDID)
         .sheet(item: $sheet) { which in
             Group {
                 switch which {
                 case .models:
                     ModelPickerSheet(
                         models: Self.bundledModels,
+                        museum: Self.museumModels,
                         selected: selectedModel,
                         surpriseAvailable: hasSketchfabKey,
                         surpriseLoading: surpriseInFlight,
@@ -451,6 +490,9 @@ struct ModelViewerDemo: View {
                 // otherwise fall back to the picked environment's own default.
                 showSkybox = defaultSkybox(for: environment)
             }
+            #if DEBUG
+            if let picked = Self.launchArgModel { selectedModel = picked }
+            #endif
             await loadBundled(selectedModel)
         }
         .onChange(of: hdPack.states) { _, _ in
@@ -493,7 +535,21 @@ struct ModelViewerDemo: View {
             .recenterCamera(recenterGeneration)
             .ignoresSafeArea()
 
-            if loadedNode == nil {
+            if loadedNode == nil, let posterModel, let thumb = posterModel.thumbnailName {
+                // A render of the HD model itself, so the stage already shows
+                // what the download brings; the pill in the header says how far
+                // it is. Rounded like the picker tile it was chosen from.
+                Image(thumb)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: SceneViewTokens.Stage.hdPosterSize,
+                           maxHeight: SceneViewTokens.Stage.hdPosterSize)
+                    .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+                    .padding(.horizontal, SceneViewTokens.Space.xl)
+                    .accessibilityLabel("\(posterModel.displayName), preview")
+                    .accessibilityIdentifier("viewer-hd-poster")
+                    .transition(.opacity)
+            } else if loadedNode == nil {
                 VStack(spacing: SceneViewTokens.Space.sm + 4) {
                     ProgressView().tint(.white)
                     if let loadError {
@@ -531,6 +587,10 @@ struct ModelViewerDemo: View {
         let started = Date()
         #endif
         hdFrameWatch.cancel()
+        let ticket = stageRequests.begin()
+        // A 38 MB scan can take seconds to load: if the user picked another
+        // model meanwhile, this one must not land over it.
+        func isCurrent() -> Bool { stageRequests.isCurrent(ticket) && selectedModel == model }
         do {
             if let id = model.hdPackID, let url = hdPack.localURL(for: id) {
                 pendingHDID = id
@@ -539,9 +599,10 @@ struct ModelViewerDemo: View {
                 do {
                     node = try await ModelNode.load(contentsOf: url)
                 } catch {
-                    hdLoading = false
+                    if isCurrent() { hdLoading = false }
                     throw error
                 }
+                guard isCurrent() else { return }
                 // The pill stays on "loading" until the HD entity is drawn,
                 // not when the load call returns (see HDFirstFrameWatch).
                 let entity = node.entity
@@ -554,15 +615,22 @@ struct ModelViewerDemo: View {
                                  Double(MemoryFootprint.current()) / 1_048_576))
                     #endif
                 }
-                install(node)
+                install(node, as: model, hd: true)
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(15))
                     if hdFrameWatch.isWaiting(for: entity) { hdFrameWatch.finish() }
                 }
-            } else {
+            } else if let resource = model.bundledResourceName {
                 hdLoading = false
-                let node = try await ModelNode.load(model.bundledResourceName)
-                install(node)
+                let node = try await ModelNode.load(resource)
+                guard isCurrent() else { return }
+                install(node, as: model, hd: false)
+                pendingHDID = model.hdPackID
+            } else {
+                // HD-only and not on disk yet: its thumbnail holds the stage
+                // with the pill until the file lands (`onChange(of: states)`).
+                hdLoading = false
+                clearStage(poster: model)
                 pendingHDID = model.hdPackID
             }
             #if DEBUG
@@ -573,6 +641,9 @@ struct ModelViewerDemo: View {
                          Double(MemoryFootprint.current()) / 1_048_576))
             #endif
         } catch {
+            guard isCurrent() else { return }
+            // The poster would hide the message; the spinner overlay shows it.
+            posterModel = nil
             loadError = "Could not load \(model.displayName): \(error.localizedDescription)"
         }
     }
@@ -580,11 +651,20 @@ struct ModelViewerDemo: View {
     /// Puts a freshly loaded node on stage: normalised to 0.6 units and
     /// centred (auto-fit framing then adapts the orbit radius), animation
     /// state rebuilt from the entity's clips.
+    ///
+    /// An HD file whose manifest entry carries a real-world `scale` keeps its
+    /// true size instead: the capsule is 3.9 m across, the mammoth 5 m long,
+    /// and the framing fits the camera to that.
     @MainActor
-    private func install(_ node: ModelNode) {
-        _ = node.scaleToUnits(0.6)
+    private func install(_ node: ModelNode, as model: BundledViewerModel? = nil, hd: Bool = false) {
+        if hd, let id = model?.hdPackID, let scale = HDPackStore.shared.manifest.asset(id: id)?.scale {
+            node.entity.scale = SIMD3(repeating: scale)
+        } else {
+            _ = node.scaleToUnits(0.6)
+        }
         _ = node.centerOrigin()
         playback = nil
+        posterModel = nil
         loadedNode = node
         loadCount += 1
         animationNames = node.entity.availableAnimations.enumerated().map { index, clip in
@@ -592,12 +672,24 @@ struct ModelViewerDemo: View {
         }
         selectedAnimation = 0
         animationProgress = 0
-        animationPlaying = !qaMode
+        animationPlaying = !qaMode && (model?.autoplaysAnimations ?? true)
         if !animationNames.isEmpty {
             play(clip: 0)
         } else {
             animationBarOpen = false
         }
+    }
+
+    /// Empties the stage for an HD-only model whose file is not on disk:
+    /// ``posterModel``'s thumbnail stands in until the HD model is installed.
+    @MainActor
+    private func clearStage(poster model: BundledViewerModel) {
+        loadedNode?.entity.stopAllAnimations()
+        playback = nil
+        loadedNode = nil
+        posterModel = model
+        animationNames = []
+        animationBarOpen = false
     }
 
     private func resetAll() {
@@ -660,6 +752,8 @@ struct ModelViewerDemo: View {
                 let node = try? await ModelNode.load(contentsOf: downloaded),
                 SurpriseModelCheck.isCoherent(node.entity)
             else { continue }
+            // The surprise wins over a bundled load still in flight.
+            _ = stageRequests.begin()
             hdFrameWatch.cancel()
             hdLoading = false
             install(node)
@@ -799,6 +893,22 @@ enum SurpriseModelCheck {
 /// that uploads its resources; the second one comes after that frame, so it
 /// marks the swap as visible. A timeout in the caller covers a scene that
 /// stops ticking.
+/// Last request wins on stage. Every load that ends in an install takes a
+/// ticket first; after its `await` it installs only if no newer load took
+/// one since. Picking the 38 MB Apollo interior and then the mammoth used to
+/// let the interior land over the mammoth when its load finished last.
+struct StageRequests: Equatable {
+    private(set) var latest = 0
+
+    /// A fresh ticket; every ticket issued before it is now stale.
+    mutating func begin() -> Int {
+        latest += 1
+        return latest
+    }
+
+    func isCurrent(_ ticket: Int) -> Bool { ticket == latest }
+}
+
 @MainActor
 final class HDFirstFrameWatch {
     private weak var expected: Entity?
