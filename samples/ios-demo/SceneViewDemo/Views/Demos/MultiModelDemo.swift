@@ -62,13 +62,17 @@ struct MultiModelDemo: View {
     /// Anchor under which every model lives. Stored so we can attach / detach
     /// individual entities without rebuilding the entire scene.
     @State private var sceneAnchor: AnchorEntity?
-    /// Bumped when a slot lands long enough after the previous one that the
-    /// auto-framing may already have latched on the smaller scene; fed to
-    /// `.recenterCamera(_:)` so the camera re-fits the whole park (#4103).
+    /// Bumped when a slot lands late AND grows the park, while the camera is still
+    /// the auto-framed one; fed to `.recenterCamera(_:)` so the camera re-fits the
+    /// whole park (#4103). See `noteLanding(previousExtents:)`.
     @State private var reframeToken = 0
     /// When the last slot landed, to tell a late arrival from one inside the
     /// auto-framing's settle window.
     @State private var lastLanding: Date?
+    /// Set by the first orbit drag or pinch on the viewport. From then on the
+    /// camera is the user's: `.recenterCamera(_:)` resets the orbit angles and
+    /// the zoom, so a late landing must never fire it again.
+    @State private var userMovedCamera = false
 
     private struct ParkSlot {
         let slug: SketchfabSlug?
@@ -201,6 +205,14 @@ struct MultiModelDemo: View {
             .cameraOrbit(azimuth: 0, elevation: .pi / 10)
             // A model that lands after the fit latched re-arms it (#4103).
             .recenterCamera(reframeToken)
+            // Observes, never drives: the SDK's own orbit drag and pinch still
+            // move the camera; these only record that the user took it over.
+            .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in
+                userMovedCamera = true
+            })
+            .simultaneousGesture(MagnifyGesture().onChanged { _ in
+                userMovedCamera = true
+            })
             .ignoresSafeArea()
 
             if loadedEntities.isEmpty && loadError == nil {
@@ -343,8 +355,9 @@ struct MultiModelDemo: View {
             holder.position = slot.position
             holder.orientation = simd_quatf(angle: slot.yaw, axis: SIMD3<Float>(0, 1, 0))
             holder.addChild(node.entity)
+            let previousExtents = parkExtents()
             loadedEntities[slug.uid] = holder
-            noteLanding()
+            noteLanding(previousExtents: previousExtents)
             syncVisibility()
         } catch {
             // Per-slot failure — log and move on so the rest of the park
@@ -356,17 +369,63 @@ struct MultiModelDemo: View {
     /// The SDK's auto-framing latches once the scene's bounds hold still for
     /// 2.5 s (`framingStableHoldSeconds`) and does not re-fit on its own after
     /// that. Slots stream in over seconds to a minute, so a slot landing after
-    /// such a gap would stand outside a frame fitted to the ones before it: on
-    /// a first run, the oaks above a frame fitted to the fern and the bench. A
-    /// landing more than 2 s after the previous one re-arms the fit; closer
-    /// landings are still inside the settle window and need nothing.
+    /// such a gap could stand outside a frame fitted to the ones before it: on
+    /// a first run, the oaks above a frame fitted to the fern and the bench.
+    ///
+    /// `.recenterCamera(_:)` is not free, though: it also resets the orbit
+    /// angles and the zoom. So a late landing re-arms the fit only when all
+    /// three hold:
+    ///  - it lands more than 2 s after the previous one (closer landings are
+    ///    still inside the settle window and need nothing);
+    ///  - it grows the park by more than `reframeGrowth` on some axis — the
+    ///    oaks over a fern-and-bench park do, a fern under the oaks does not;
+    ///  - the user has not orbited or zoomed yet. Once they have, the camera is
+    ///    theirs and a landing never snaps it back.
     @MainActor
-    private func noteLanding() {
+    private func noteLanding(previousExtents: SIMD3<Float>?) {
         let now = Date()
-        if let lastLanding, now.timeIntervalSince(lastLanding) > 2.0 {
-            reframeToken += 1
+        defer { lastLanding = now }
+        guard let lastLanding, now.timeIntervalSince(lastLanding) > 2.0 else { return }
+        guard !userMovedCamera else { return }
+        guard let previousExtents, let extents = parkExtents() else { return }
+        let grows = (0..<3).contains { axis in
+            extents[axis] > previousExtents[axis] * Self.reframeGrowth
         }
-        lastLanding = now
+        if grows { reframeToken += 1 }
+    }
+
+    /// How much one axis of the park's bounds must grow for a late landing to
+    /// re-fit the camera.
+    private static let reframeGrowth: Float = 1.25
+
+    /// Extents of what the auto-framing fits — the lawn plus every visible
+    /// landed slot, in the anchor's space — or `nil` before anything landed.
+    /// Computed from the slot holders rather than read off the anchor, so it
+    /// holds even before `syncVisibility` has attached them.
+    @MainActor
+    private func parkExtents() -> SIMD3<Float>? {
+        var lower = SIMD3<Float>(-1.1, -0.05, -2.6)   // the lawn, see `makeLawn`
+        var upper = SIMD3<Float>(1.1, 0.0, -0.4)
+        var any = false
+        for slot in Self.slots {
+            guard let slug = slot.slug, let holder = loadedEntities[slug.uid],
+                  !visible.indices.contains(slot.index) || visible[slot.index] else { continue }
+            let local = holder.visualBounds(relativeTo: holder)
+            guard !local.isEmpty else { continue }
+            let matrix = holder.transform.matrix
+            for corner in 0..<8 {
+                let point = SIMD3<Float>(
+                    corner & 1 == 0 ? local.min.x : local.max.x,
+                    corner & 2 == 0 ? local.min.y : local.max.y,
+                    corner & 4 == 0 ? local.min.z : local.max.z
+                )
+                let world = matrix * SIMD4<Float>(point, 1)
+                lower = simd_min(lower, SIMD3<Float>(world.x, world.y, world.z))
+                upper = simd_max(upper, SIMD3<Float>(world.x, world.y, world.z))
+            }
+            any = true
+        }
+        return any ? upper - lower : nil
     }
 
     /// Sketchfab's USDZ exports wire leaf opacity to the base-colour texture's

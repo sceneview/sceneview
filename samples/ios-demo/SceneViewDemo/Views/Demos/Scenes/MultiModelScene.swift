@@ -1,5 +1,5 @@
 // @sceneId     multi-model
-// @title       Multi-Model Scene
+// @title       Park Scene
 // @subtitle    Multiple models in one scene
 // @category    basics3D
 // @section     view3d
