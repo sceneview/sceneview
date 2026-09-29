@@ -170,17 +170,17 @@ final class ViewerAssetTests: XCTestCase {
             "hd_woolly_mammoth": "woolly_mammoth",
             "hd_perseverance": "perseverance",
         ]
-        // The HD-pack lines reach Android's sources with #4166; until then only
-        // the Khronos ones are there. Once any HD line exists, all must.
-        let bundledKeys: Set = ["damaged_helmet", "lantern", "toy_car"]
-        let hdKeys = Set(keys.values).subtracting(bundledKeys)
-        let androidHasHD = hdKeys.contains { android[$0] != nil }
+        // The Museum & Space lines reach Android's sources with #4166; until
+        // then only the others are there. Once any museum line exists, all must.
+        let museumKeys: Set = ["apollo11_exterior", "apollo11_interior", "woolly_mammoth", "perseverance"]
+        let bundledKeys = Set(keys.values).subtracting(museumKeys)
+        let androidHasMuseum = museumKeys.contains { android[$0] != nil }
         var compared = 0
         for model in models + ModelViewerDemo.museumModels {
             XCTAssertFalse((model.description ?? "").isEmpty, "\(model.displayName) has no picker description.")
             guard let key = keys[model.assetName] else { continue }
             guard let expected = android[key] else {
-                XCTAssertFalse(bundledKeys.contains(key) || androidHasHD,
+                XCTAssertFalse(bundledKeys.contains(key) || androidHasMuseum,
                                "Android has no demo_model_desc_\(key) for \(model.displayName).")
                 continue
             }
