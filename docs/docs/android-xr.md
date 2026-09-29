@@ -121,7 +121,15 @@ fun XRSceneViewPanel() {
 
 ### Approach 2: SceneView AR with XR passthrough
 
-For AR experiences on XR headsets, combine SceneView's `ARSceneView {}` with XR passthrough.
+!!! warning "Compiles, but not verified on a headset"
+    `ARSceneView` runs **phone ARCore** (`com.google.ar.core`), a different runtime from
+    ARCore for Jetpack XR. The snippet below compiles against the pinned Jetpack XR artifacts,
+    but it has **not** been shown to run inside a `SpatialPanel` on an Android XR headset. For
+    headset tracking today, use SceneView's Jetpack XR nodes instead: `XrHandNode` (hand
+    tracking) and `XrFaceNode` (face tracking), documented in
+    [`llms.txt`](https://sceneview.github.io/llms.txt) under *Jetpack XR Extensions*.
+
+This combines SceneView's `ARSceneView {}` with XR passthrough.
 Inside a Compose for XR hierarchy the Jetpack XR `Session` is provided by `LocalSession`
 (`null` when the app is not running on an XR device):
 
@@ -206,6 +214,8 @@ fun MixedXRExperience() {
     // Load the glTF once (asset path relative to src/main/assets/)
     val gltfModel by produceState<GltfModel?>(initialValue = null, xrSession) {
         value = GltfModel.create(xrSession, Uri.parse("models/simple-object.glb"))
+        // Release the native model when this composable leaves the composition
+        awaitDispose { value?.close() }
     }
 
     Subspace {
@@ -350,8 +360,8 @@ dependencyResolutionManagement {
 ### Android manifest
 
 ```xml
-<!-- Required for XR -->
-<uses-feature android:name="android.hardware.xr.headtracking" android:required="true" />
+<!-- Android XR Spatial APIs (Jetpack XR SDK). required="false" keeps the same APK installable on phones -->
+<uses-feature android:name="android.software.xr.api.spatial" android:required="false" />
 
 <application>
     <activity

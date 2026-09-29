@@ -14,11 +14,11 @@ import io.github.sceneview.node.Node
 /**
  * Opt-in marker for the **preview** Jetpack XR layer of SceneView.
  *
- * Every public symbol that wraps `androidx.xr.arcore` (the pinned `jetpackXrArCore`
- * version, see `gradle/libs.versions.toml`) carries this annotation. The upstream
- * SDK is preview and subject to breaking changes; requiring an explicit opt-in
- * makes the preview status visible at every call site rather than burying it in
- * a doc comment.
+ * Every public symbol that wraps Jetpack XR (`androidx.xr.arcore`) carries this
+ * annotation (maintainers: SceneView's pin is `jetpackXrArCore` in SceneView's
+ * own version catalog). The upstream SDK is pre-stable and subject to breaking
+ * changes; requiring an explicit opt-in makes the preview status visible at
+ * every call site rather than burying it in a doc comment.
  *
  * Opt in per call site with `@OptIn(XrPreviewApi::class)`, or module-wide via
  * the `-opt-in` compiler flag.
@@ -27,7 +27,7 @@ import io.github.sceneview.node.Node
  * — tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738).
  */
 @RequiresOptIn(
-    message = "Jetpack XR API is preview (androidx.xr.arcore, pinned in gradle/libs.versions.toml) and may change.",
+    message = "Jetpack XR (androidx.xr.arcore) is pre-stable and may change.",
     level = RequiresOptIn.Level.WARNING,
 )
 @Retention(AnnotationRetention.BINARY)
@@ -64,8 +64,8 @@ annotation class XrPreviewApi
  * throw `NoClassDefFoundError` at class-load time, so never instantiate this
  * node unless [XrFeatures.isAvailable] returned `true`.
  *
- * Preview: this API wraps `androidx.xr.arcore` (the pinned `jetpackXrArCore`
- * version, see `gradle/libs.versions.toml`) and may change —
+ * Preview: this API wraps Jetpack XR (`androidx.xr.arcore`), which is pre-stable
+ * and may change —
  * see [XrPreviewApi].
  *
  * @property engine     The Filament [Engine] that owns the joint child nodes.
@@ -169,13 +169,13 @@ open class XrHandNode(
  * Bridges the upstream `androidx.xr.arcore` perception types to SceneView's own
  * [Position]. The upstream `HandState.handJoints` is a `Map<HandJointType,
  * Pose>`; this matches each upstream `HandJointType` to a SceneView
- * [XrHandJoint] **by enum name** so the mapping survives the alpha SDK adding
+ * [XrHandJoint] **by enum name** so the mapping survives the pre-stable SDK adding
  * or reordering joints — an unrecognised upstream joint is simply skipped, and
  * a SceneView joint with no upstream counterpart is absent from the result
  * (the node hides it).
  *
  * The name match is reflective so this function never hard-references an
- * individual `HandJointType` constant that a future alpha might rename. It
+ * individual `HandJointType` constant that a future upstream release might rename. It
  * still requires the `androidx.xr.arcore` runtime to be present — only call it
  * behind [XrFeatures.isAvailable].
  *
@@ -187,7 +187,7 @@ fun readHandJoints(hand: Hand): Map<XrHandJoint, Position> = runCatching {
     // `Hand.state` is a StateFlow<HandState>; `.value` is the current snapshot.
     val state: Any = hand.state.value
     // `HandState.handJoints: Map<HandJointType, Pose>` — read reflectively so a
-    // rename of the property or the joint enum on the alpha SDK degrades to an
+    // rename of the property or the joint enum on the pre-stable SDK degrades to an
     // empty map (hand hidden) instead of a hard crash.
     @Suppress("UNCHECKED_CAST")
     val handJoints = state.javaClass.getMethod("getHandJoints").invoke(state)

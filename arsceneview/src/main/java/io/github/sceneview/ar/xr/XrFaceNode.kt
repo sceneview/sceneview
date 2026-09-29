@@ -54,8 +54,8 @@ import java.nio.ShortBuffer
  * throw `NoClassDefFoundError` at class-load time, so never instantiate this
  * node unless [XrFeatures.isAvailable] returned `true`.
  *
- * Preview: this API wraps `androidx.xr.arcore` (the pinned `jetpackXrArCore`
- * version, see `gradle/libs.versions.toml`) and may change —
+ * Preview: this API wraps Jetpack XR (`androidx.xr.arcore`), which is pre-stable
+ * and may change —
  * see [XrPreviewApi].
  *
  * @property engine             The Filament [Engine] that owns the region child nodes.
@@ -159,7 +159,7 @@ open class XrFaceNode(
             }
         }
         // Only accept a mesh that passes the buffer-layout sanity check — a
-        // malformed alpha-SDK frame is dropped rather than carried forward.
+        // malformed upstream frame is dropped rather than carried forward.
         mesh = meshData?.takeIf { XrFaceMesh.isValid(it) }
         isTracking = tracked > 0 || (mesh?.vertexCount ?: 0) > 0
         onUpdated?.invoke(this)
@@ -182,11 +182,11 @@ open class XrFaceNode(
  * `regionPoseMap: Map<FaceMeshRegion, Pose>`; this function matches the center
  * pose to [XrFaceRegion.CENTER] and each upstream `FaceMeshRegion` to a
  * SceneView [XrFaceRegion] **by constant name** ([XrFaceRegion.upstreamName])
- * so the mapping survives the alpha SDK adding or renaming regions — an
+ * so the mapping survives the pre-stable SDK adding or renaming regions — an
  * unrecognised upstream region is simply skipped.
  *
  * Every upstream access is reflective so this function never hard-references an
- * individual `FaceMeshRegion` constant a future alpha might rename. It still
+ * individual `FaceMeshRegion` constant a future upstream release might rename. It still
  * requires the `androidx.xr.arcore` runtime to be present — only call it behind
  * [XrFeatures.isAvailable].
  *
@@ -235,7 +235,7 @@ fun readFaceRegions(face: Face): Map<XrFaceRegion, Position> = runCatching {
  * dependency.
  *
  * Every upstream access is reflective so a rename of the `meshData` property or
- * the buffer accessors on the alpha SDK degrades to `null` (mesh hidden)
+ * the buffer accessors on the pre-stable SDK degrades to `null` (mesh hidden)
  * instead of a hard crash. Returns `null` when the face is not tracked or the
  * upstream mesh cannot be read.
  */

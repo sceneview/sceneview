@@ -174,7 +174,6 @@ import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.width
 import io.github.sceneview.SceneView
 import io.github.sceneview.createEnvironment
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
@@ -400,7 +399,7 @@ fun SceneViewContent() {
 | Emulator won't boot | Ensure emulator >= 35.6.7: `$ANDROID_HOME/emulator/emulator -version` |
 | Black screen in XR | Enable GPU: set `hw.gpu.enabled=yes` and `hw.gpu.mode=host` in config.ini |
 | No XR device profile in Studio | Use Android Studio Canary, or create AVD via command line (Option B above) |
-| App crashes on launch | Ensure `compileSdk = 36` or higher (the XR AARs require it, with AGP 8.9.1+) and the XR compose dependency is added |
+| Build fails: `minCompileSdk` 36 | The Jetpack XR AARs declare `minCompileSdk=36` (and AGP 8.9.1+) in their AAR metadata — set `compileSdk = 36` or higher |
 | Filament rendering issues | Increase RAM to 4096M in AVD config; XR rendering is GPU-intensive |
 | `SpatialPanel` not appearing | Wrap in `Subspace {}` and ensure Full Space mode is enabled in manifest |
 | Slow performance | Close other AVDs; XR emulator is resource-intensive on ARM translation |

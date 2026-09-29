@@ -20,9 +20,9 @@ import android.content.Context
  * Tracking issue: [#1738](https://github.com/sceneview/sceneview/issues/1738).
  * Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
  *
- * Preview status: this API forwards to `androidx.xr.arcore`
- * (the pinned `jetpackXrArCore` version, see `gradle/libs.versions.toml`). The
- * upstream is preview and subject to breaking changes;
+ * Preview status: this API forwards to Jetpack XR (`androidx.xr.arcore`), which
+ * is pre-stable and subject to breaking changes (maintainers: SceneView's pin is
+ * `jetpackXrArCore` in SceneView's own version catalog);
  * follow-up SceneView versions will track its evolution.
  */
 object XrFeatures {
