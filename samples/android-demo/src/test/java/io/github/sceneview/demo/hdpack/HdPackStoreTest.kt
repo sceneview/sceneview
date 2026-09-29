@@ -79,6 +79,56 @@ class HdPackStoreTest {
         assertParseFails("""{"version":1,"assets":[$entry,$entry]}""")
     }
 
+    @Test fun `the bundled manifest lists the museum scans at real-world scale`() {
+        val parsed = HdPackManifest.parse(File(repoRoot(), "assets/hd-pack/android.json").readText())
+        // The ids iOS matches 1:1 — renaming one orphans the other platform's entry.
+        assertEquals(
+            listOf("flight-helmet", "apollo11-exterior", "apollo11-interior", "woolly-mammoth", "perseverance"),
+            parsed.assets.map { it.id },
+        )
+        // The Smithsonian Apollo scans are authored in centimetres.
+        assertEquals(0.01f, parsed.asset("apollo11-exterior")!!.scale)
+        assertEquals(0.01f, parsed.asset("apollo11-interior")!!.scale)
+        assertEquals(1f, parsed.asset("woolly-mammoth")!!.scale)
+        assertEquals(1f, parsed.asset("perseverance")!!.scale)
+        // An entry with no scale is in metres already.
+        assertEquals(1f, parsed.asset("flight-helmet")!!.scale)
+        for (asset in parsed.assets) {
+            assertTrue("${asset.id} has no credit", asset.author.isNotBlank() && asset.license.isNotBlank())
+            assertTrue("${asset.id} source is not a link", asset.source.startsWith("http"))
+        }
+    }
+
+    @Test fun `a zero or negative scale is refused`() {
+        for (scale in listOf("0", "-1", "0.0")) {
+            assertParseFails(
+                """{"version":1,"assets":[{"id":"a","title":"A","file":"$sha.glb","sha256":"$sha",""" +
+                    """"bytes":1,"scale":$scale,"license":"CC0-1.0","author":"x","source":"y"}]}""",
+            )
+        }
+    }
+
+    // ── Order and progress ───────────────────────────────────────────────
+
+    @Test fun `the model on screen downloads first, then the smallest files`() {
+        fun entry(id: String, bytes: Long) = asset.copy(id = id, bytes = bytes)
+        val store = HdPackStore(
+            HdPackManifest(1, listOf(entry("big", 30), entry("small", 10), entry("mid", 20))),
+            tmp.newFolder(),
+        )
+        assertEquals(listOf("small", "mid", "big"), store.downloadOrder().map { it.id })
+        assertEquals(listOf("big", "small", "mid"), store.downloadOrder(first = "big").map { it.id })
+        assertEquals(listOf("small", "mid", "big"), store.downloadOrder(first = "unknown").map { it.id })
+    }
+
+    @Test fun `the pill reads its own file's progress, not the pack's`() {
+        val transfer = HdTransfer(doneBytes = 60, totalBytes = 100, assetId = "mammoth", assetDoneBytes = 10, assetBytes = 40)
+        assertEquals(0.6f, transfer.fraction)
+        assertEquals(0.25f, transfer.fractionOf("mammoth"))
+        // Another file is on the wire: this one is queued, not at 60 %.
+        assertNull(transfer.fractionOf("perseverance"))
+    }
+
     // ── Download ─────────────────────────────────────────────────────────
 
     @Test fun `a download is verified then renamed into place`() = runBlocking {

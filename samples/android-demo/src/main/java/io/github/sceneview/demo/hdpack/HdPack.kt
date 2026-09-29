@@ -11,6 +11,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,6 +57,7 @@ object HdPack {
     private const val PREF_REMOVED = "removed_by_user"
     private const val DIR_NAME = "hd-pack"
     private const val MAX_ATTEMPTS = 8
+    private const val KEY_FIRST = "first"
 
     private val _loaded = MutableStateFlow<HdPackStore?>(null)
     @Volatile private var manifestFailed = false
@@ -97,11 +99,11 @@ object HdPack {
         enqueue(context, NetworkType.UNMETERED, ExistingWorkPolicy.KEEP)
     }
 
-    /** The user's "Download now" — any network. */
-    fun downloadNow(context: Context) {
+    /** The user's "Download now" — any network. [first] (the model on screen) is fetched first. */
+    fun downloadNow(context: Context, first: String? = null) {
         store(context) ?: return
         setRemoved(context, false)
-        enqueue(context, NetworkType.CONNECTED, ExistingWorkPolicy.REPLACE)
+        enqueue(context, NetworkType.CONNECTED, ExistingWorkPolicy.REPLACE, first)
     }
 
     /** Cancels any download, deletes the pack and remembers the choice. Returns the bytes freed. */
@@ -134,8 +136,14 @@ object HdPack {
         else -> HdPackStatus.WaitingForNetwork
     }
 
-    private fun enqueue(context: Context, network: NetworkType, policy: ExistingWorkPolicy) {
+    private fun enqueue(
+        context: Context,
+        network: NetworkType,
+        policy: ExistingWorkPolicy,
+        first: String? = null,
+    ) {
         val request = OneTimeWorkRequestBuilder<HdPackWorker>()
+            .setInputData(workDataOf(KEY_FIRST to first))
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(network)
@@ -163,7 +171,7 @@ object HdPack {
         override suspend fun doWork(): Result {
             val store = store(applicationContext) ?: return Result.failure()
             return try {
-                store.downloadMissing()
+                store.downloadMissing(first = inputData.getString(KEY_FIRST))
                 Result.success()
             } catch (e: HdPackIntegrityException) {
                 Log.e(TAG, "HD pack file rejected, not retrying", e)

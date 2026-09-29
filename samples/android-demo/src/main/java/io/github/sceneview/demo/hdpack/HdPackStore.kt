@@ -26,9 +26,25 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-/** A download of the pack in flight: bytes on disk (completed files + the current one) over the total. */
-data class HdTransfer(val doneBytes: Long, val totalBytes: Long) {
-    val fraction: Float get() = if (totalBytes > 0L) (doneBytes.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+/**
+ * A download of the pack in flight: bytes on disk (completed files + the current one) over the
+ * total, and which file is on the wire. The viewer pill narrates one model, so it reads
+ * [fractionOf] its own asset rather than the pack-wide [fraction].
+ */
+data class HdTransfer(
+    val doneBytes: Long,
+    val totalBytes: Long,
+    val assetId: String? = null,
+    val assetDoneBytes: Long = 0L,
+    val assetBytes: Long = 0L,
+) {
+    val fraction: Float get() = ratio(doneBytes, totalBytes)
+
+    /** How far [id]'s own file is, or `null` while another file of the pack is on the wire. */
+    fun fractionOf(id: String): Float? = if (id == assetId) ratio(assetDoneBytes, assetBytes) else null
+
+    private fun ratio(done: Long, total: Long): Float =
+        if (total > 0L) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
 }
 
 /** The downloaded file failed its SHA-256 or size check. It is deleted, never kept. */
@@ -79,23 +95,27 @@ class HdPackStore(
     fun bytesOnDisk(): Long = dir.listFiles()?.sumOf { it.length() } ?: 0L
 
     /**
-     * Downloads every asset not yet on disk, one after the other. Safe to call concurrently —
-     * a second caller waits for the first and finds the files already there.
+     * Downloads every asset not yet on disk, one after the other, in [downloadOrder]. Safe to
+     * call concurrently — a second caller waits for the first and finds the files already there.
      *
+     * @param first id of the asset the user is looking at: it goes before every other file.
      * @throws IOException on a network failure (the part file is kept for the next attempt) or
      * an [HdPackIntegrityException] (the part file is deleted).
      */
-    suspend fun downloadMissing() = downloadLock.withLock {
+    suspend fun downloadMissing(first: String? = null) = downloadLock.withLock {
         withContext(Dispatchers.IO) {
             prune()
             val total = manifest.totalBytes
             var completed = manifest.assets.filter { it.id in _readyIds.value }.sumOf { it.bytes }
             try {
-                for (asset in manifest.assets) {
+                for (asset in downloadOrder(first)) {
                     if (asset.id in _readyIds.value) continue
-                    _transfer.value = HdTransfer(completed + partFile(asset).length(), total)
                     val base = completed
-                    download(asset) { onDisk -> _transfer.value = HdTransfer(base + onDisk, total) }
+                    val progress = { onDisk: Long ->
+                        _transfer.value = HdTransfer(base + onDisk, total, asset.id, onDisk, asset.bytes)
+                    }
+                    progress(partFile(asset).length())
+                    download(asset, progress)
                     completed += asset.bytes
                     _readyIds.value = _readyIds.value + asset.id
                 }
@@ -104,6 +124,13 @@ class HdPackStore(
             }
         }
     }
+
+    /**
+     * The order files are fetched in: [first] (the model on screen), then the smallest first —
+     * a fresh install on Wi-Fi gets a model to show in seconds instead of after the biggest file.
+     */
+    fun downloadOrder(first: String? = null): List<HdAsset> =
+        manifest.assets.sortedWith(compareBy<HdAsset>({ it.id != first }, { it.bytes }))
 
     /** Deletes every file of the pack — the user's "Remove". Returns the bytes freed. */
     suspend fun removeAll(): Long = downloadLock.withLock {

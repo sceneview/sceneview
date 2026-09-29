@@ -209,6 +209,19 @@ both themes. The throwaway screen is not committed: re-render by rebuilding it f
 above, and review every thumbnail over both card fills next to the viewer's first frame of
 the same model before it ships.
 
+### HD pack thumbnails
+
+`model_thumb_hd_<id>.webp` (Apollo 11 exterior and interior, woolly mammoth, Perseverance) are
+the cards of the sheet's "Museum & Space" section. These models ship no bundled stand-in, so the
+viewer also shows the thumbnail on the stage until the downloaded GLB is on screen. They are
+Blender 4.4 renders of the exact GLB the pack serves (`assets/hd-pack/android.json`), same light,
+lens and angles as above (30° yaw, 18° pitch, bounding sphere fit, transparent film, 80 % of
+600×480, `cwebp -q 90`). Cycles for all but the Apollo interior, which is rendered with EEVEE
+and back-face culling on its single-sided materials: that is what Filament does, and what opens
+the capsule's walls so the cabin shows. Perseverance is posed at the start of its first clip,
+the pose the viewer holds. The mammoth and the rover open turned by `frontYaw = -30°`, so their
+30° thumbnails are the very angle the viewer opens on (the camera turned rather than the model).
+
 ### Scene cards
 
 The sheet's "Scenes" row holds one card, the Park, in two files: the sheet shows the one this

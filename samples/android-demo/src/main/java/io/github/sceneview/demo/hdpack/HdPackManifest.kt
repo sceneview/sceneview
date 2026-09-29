@@ -61,6 +61,9 @@ data class HdPackManifest(
                     "HD asset ${asset.id}: file must be <sha256>.<ext>, was ${asset.file}"
                 }
                 require(asset.bytes > 0) { "HD asset ${asset.id}: bytes must be positive" }
+                require(asset.scale.isFinite() && asset.scale > 0f) {
+                    "HD asset ${asset.id}: scale must be a positive number, was ${asset.scale}"
+                }
             }
             return manifest
         }
@@ -69,7 +72,13 @@ data class HdPackManifest(
     }
 }
 
-/** One file of the HD pack. Field names are the shared contract — do not rename. */
+/**
+ * One file of the HD pack. Field names are the shared contract — do not rename.
+ *
+ * @property scale metres per model unit: the factor that brings the file to its real-world size.
+ *   `0.01` for a centimetre-authored scan (the Smithsonian Apollo 11 files), `1` — the default,
+ *   and what a manifest without the field means — for a file already in metres.
+ */
 @Serializable
 data class HdAsset(
     val id: String,
@@ -80,6 +89,7 @@ data class HdAsset(
     val license: String,
     val author: String,
     val source: String,
+    val scale: Float = 1f,
 ) {
     /** The immutable download URL of this file. */
     val url: String get() = "${HdPackManifest.BASE_URL}/$file"

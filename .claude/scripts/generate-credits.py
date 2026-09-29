@@ -483,6 +483,10 @@ def license_url(lic: str) -> str:
         "CC-BY-NC-SA-4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "Apache-2.0": "https://www.apache.org/licenses/LICENSE-2.0",
         "SCEA Shared Source License": "https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/LICENSES/SCEA.txt",
+        # HD pack (2026-09-29): NASA 3D Resources models are not copyrighted, but NASA's media
+        # guidelines forbid logos and any implied endorsement — the licence string says both.
+        "NASA Media Usage Guidelines (no endorsement implied; insignia removed)":
+            "https://www.nasa.gov/nasa-brand-center/images-and-media/",
     }
     return table.get(lic, "")
 
