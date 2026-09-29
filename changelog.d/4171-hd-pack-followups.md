@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo — Museum & Space follow-ups.** Leaving an HD scan for a bundled model no longer shows a black stage while the next model loads; a paused animation stays paused when the HD file replaces its stand-in; an opened file or a Surprise pick no longer switches the lighting to Studio; one failed model download no longer marks the whole HD pack "Failed" in About; picker card titles wrap to two lines ("Apollo 11 Command Module"). (#4171)
