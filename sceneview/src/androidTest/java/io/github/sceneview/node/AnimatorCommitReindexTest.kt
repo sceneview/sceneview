@@ -31,8 +31,8 @@ import org.junit.runner.RunWith
  * Soldier's first animated frame re-sorted, its ModelNode's cached root handle pointed at one of
  * its own meshes, and the model rendered as nothing.
  *
- * Every case stages that order — animated model B created while static model A is alive, then A
- * destroyed — and asserts two things after the commit: the node's cached handle equals a fresh
+ * Every case stages that order — animated model B created while static model A is alive, a child
+ * node added to B last, then A destroyed — and asserts two things after the commit: the node's cached handle equals a fresh
  * `getInstance(entity)`, and a position written through the node lands on B's root entity.
  * Each case also asserts that the commit really moved B's root, so none can pass vacuously.
  */
@@ -71,9 +71,14 @@ class AnimatorCommitReindexTest {
             modelInstance = loader.createModelInstance("khronos_fox.glb"),
             autoAnimate = false
         )
+        // A child node created last, so it is the tail entity: the destroy's first swap-remove
+        // moves it into one of A's freed slots, ahead of B's root. Without it, whether a child of
+        // the root lands ahead of it depends on gltfio's entity order and the test is flaky.
+        animated.addChildNode(Node(engine))
+        engine.sortTransformsIfUnsorted() // the reparent above, as the frame loop would
         animated.transformInstance // populate the cache, as a composed node does on attach
-        loader.destroyModel(staticModel)
         val tm = engine.transformManager
+        loader.destroyModel(staticModel)
         return animated to tm.getInstance(animated.entity)
     }
 
@@ -116,8 +121,11 @@ class AnimatorCommitReindexTest {
     }
 
     /**
-     * A clip playing at speed 0 never calls applyAnimation during the frame. The commit comes
-     * later, from an app scrubbing the paused clip by hand — it must not reindex under the node.
+     * A clip playing at speed 0 never calls applyAnimation during the node's frame, so nothing
+     * commits there. The commit comes later, from an app scrubbing the paused clip by hand. The
+     * frame's onFrame must not declare the order repaired (it did before this fix, and the next
+     * read cached a handle the scrub then moved), so no top-of-frame sort runs here: the node's
+     * own frame is the only thing between the destroy and the scrub.
      */
     @Test
     fun speedZeroFrameThenScrub_keepsRootHandle() {
@@ -125,9 +133,8 @@ class AnimatorCommitReindexTest {
             val (node, rootAfterDestroy) = stageDestroyAfterAnimatedModel()
             node.playAnimation(0, speed = 0f)
 
-            engine.sortTransformsIfUnsorted()
             node.onFrame(System.nanoTime() + 300_000_000L)
-            node.transformInstance // re-cache after the frame, as any read would
+            node.transformInstance // a read after the frame, as any caller would make
             node.modelInstance.animator.applyAnimation(0, 0.5f)
 
             assertNodeDrivesItsRoot(node, rootAfterDestroy)
