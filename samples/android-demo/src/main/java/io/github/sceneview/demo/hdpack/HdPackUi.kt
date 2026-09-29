@@ -130,6 +130,8 @@ fun HdPackSettingsRow() {
     val resources = LocalResources.current
     val store = rememberHdPackStore() ?: return
     val status by rememberHdPackStatus(store)
+    // Collected, not read with `.value`: the dialog's size follows each file that lands.
+    val readyIds by store.readyIds.collectAsState()
     val scope = rememberCoroutineScope()
     var dialogOpen by remember { mutableStateOf(false) }
     val size = hdPackSize(context, store.manifest.totalBytes)
@@ -206,7 +208,7 @@ fun HdPackSettingsRow() {
     }
     if (dialogOpen) {
         HdPackDownloadDialog(
-            totalBytes = store.manifest.missingBytes(store.readyIds.value),
+            totalBytes = store.manifest.missingBytes(readyIds),
             onConfirm = { dialogOpen = false; HdPack.downloadNow(context) },
             onDismiss = { dialogOpen = false },
         )
