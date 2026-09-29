@@ -238,6 +238,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     val environment = litEnvironment ?: fallbackEnvironment
 
     val firstFrame = rememberFirstFrameState(engine)
+    // The cover waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = litEnvironment != null)
 
     val resetAll: () -> Unit = demoState::reset
 

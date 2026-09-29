@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
+import kotlinx.coroutines.flow.first
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.acos
@@ -437,6 +438,19 @@ fun rememberArPlaybackDataset(): File? {
  * shader compilation waits exactly as long as it should, and a scene that presents
  * them in the settle tail and parks is ready in 33 ms.
  *
+ * ### A scene waiting on its HDR is not ready (#4174)
+ *
+ * An HDR environment decodes off the main thread and lands after the geometry, so a
+ * demo's first frames are lit by the neutral fallback and, where the HDR also paints the
+ * backdrop, drawn on black. Those frames are real pixels but not the demo's picture:
+ * the cover lifting on them showed a flat, black-backed scene for as long as the decode
+ * took, and the render goldens captured exactly that. A demo that loads an HDR calls
+ * [holdUntil] with "has it landed?", and frames presented before it has are not counted.
+ *
+ * The hold is bounded: once the scene has presented frames it waits at most
+ * [CONTENT_WAIT_TIMEOUT_MS] for the content, then latches on what it has — a load that
+ * failed (and so never lands) must cost a flat scene, never a cover that stays up.
+ *
  * @property rendered Read in the scaffold — `false` until the scene is really on
  *                    screen, then `true`. Never goes back to `false`.
  * @property onFrame Pass straight to `SceneView(onFrame = …)`. Cheap after the
@@ -449,21 +463,67 @@ class FirstFrameState internal constructor(
     /** How many frames the scene has presented so far, capped once [rendered] latches. */
     private var presentedFrames: Int = 0
 
+    /** `false` while content the first frame must show is still loading; see [holdUntil]. */
+    private var contentLanded: Boolean = true
+
+    /** Set once the content wait is over: frames count whether the content landed or not. */
+    private var contentWaitOver: Boolean = false
+
+    /**
+     * `true` once the scene has presented a frame while its content was still loading. The
+     * bounded wait of [rememberFirstFrameState] starts here — not at composition, because on
+     * a software GL the first frame alone can take longer than any sensible content budget.
+     */
+    internal val waitingOnContent: androidx.compose.runtime.MutableState<Boolean> =
+        androidx.compose.runtime.mutableStateOf(false)
+
     val rendered: androidx.compose.runtime.State<Boolean> get() = renderedState
 
     val onFrame: (frameTimeNanos: Long) -> Unit = {
-        if (!renderedState.value && presentedFrames < READY_PRESENTED_FRAMES) {
-            presentedFrames++
+        if (!renderedState.value) {
+            if (contentLanded || contentWaitOver) {
+                if (presentedFrames < READY_PRESENTED_FRAMES) presentedFrames++
+                if (presentedFrames >= READY_PRESENTED_FRAMES) latch()
+            } else if (!waitingOnContent.value) {
+                // A frame without the content: real pixels, but not the demo's picture.
+                waitingOnContent.value = true
+            }
         }
-        if (!renderedState.value && presentedFrames >= READY_PRESENTED_FRAMES) {
-            // Latches once the backend has executed what those frames queued: on a software
-            // GL that is the whole material-link time, on hardware ~100 ms. The cover is a
-            // static image, so the wait is invisible — and it is the only thing here that
-            // speaks to the driver rather than about it. Polled, never awaited (#3799);
-            // repeated calls while the fence is out are no-ops.
-            val drain = backendDrain
-            if (drain == null) renderedState.value = true else drain.start { renderedState.value = true }
-        }
+    }
+
+    /**
+     * Holds [rendered] at `false` until [landed] is `true` — pass "has this demo's HDR
+     * environment been applied?". Call it from composition, where that answer is read, so it
+     * follows the state. Frames presented while it is `false` are not counted, so the cover
+     * lifts on frames that carry the content. Bounded by [CONTENT_WAIT_TIMEOUT_MS]; once
+     * [rendered] is `true` it stays `true` whatever [landed] does next (an environment swap is
+     * not a cold start).
+     */
+    fun holdUntil(landed: Boolean) {
+        contentLanded = landed
+    }
+
+    /**
+     * The bounded wait is over and the content has still not landed: stop holding. The
+     * scene has presented at least one frame by then ([waitingOnContent]) and may have
+     * parked since — so this latches directly rather than waiting for a frame that is never
+     * going to be presented.
+     */
+    internal fun contentWaitExpired() {
+        if (renderedState.value) return
+        contentWaitOver = true
+        presentedFrames = READY_PRESENTED_FRAMES
+        latch()
+    }
+
+    private fun latch() {
+        // Latches once the backend has executed what those frames queued: on a software
+        // GL that is the whole material-link time, on hardware ~100 ms. The cover is a
+        // static image, so the wait is invisible — and it is the only thing here that
+        // speaks to the driver rather than about it. Polled, never awaited (#3799);
+        // repeated calls while the fence is out are no-ops.
+        val drain = backendDrain
+        if (drain == null) renderedState.value = true else drain.start { renderedState.value = true }
     }
 
     override fun onRemembered() = Unit
@@ -488,6 +548,20 @@ class FirstFrameState internal constructor(
  * the settle tail pays is a threshold that is never reached.
  */
 private const val READY_PRESENTED_FRAMES = 2
+
+/**
+ * Longest [FirstFrameState.holdUntil] keeps the cover up for content that has not landed,
+ * counted from the first frame the scene presented without it.
+ *
+ * A bundled HDR lands in well under a second on a phone. The budget is sized for the other
+ * end: a debuggable build decodes the HDR in interpreted Kotlin, and on the CI's software GL
+ * that decode competes with the rasteriser for the same cores while the IBL prefilter queues
+ * behind the first shader link — #4174 measured a debug decode at up to 17 s on a loaded
+ * host. Past this, the load is treated as failed and the scene shows without it; the
+ * scaffold's "Still loading…" card has been up since its own 12 s mark by then, so the wait
+ * is never a silent one.
+ */
+internal const val CONTENT_WAIT_TIMEOUT_MS = 30_000L
 
 /**
  * Is the viewport showing something worth looking at?
@@ -520,10 +594,33 @@ fun rememberFirstFrameState(
     val rendered = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    return androidx.compose.runtime.remember(engine) {
+    val state = androidx.compose.runtime.remember(engine) {
         FirstFrameState(rendered, engine?.let(::filamentBackendDrainWait))
     }
+    // The bound on FirstFrameState.holdUntil: it starts at the first frame presented without
+    // the content, so a demo that never holds never starts it.
+    androidx.compose.runtime.LaunchedEffect(state) {
+        androidx.compose.runtime.snapshotFlow { state.waitingOnContent.value }.first { it }
+        val heldSince = android.os.SystemClock.elapsedRealtime()
+        val latched = kotlinx.coroutines.withTimeoutOrNull(CONTENT_WAIT_TIMEOUT_MS) {
+            androidx.compose.runtime.snapshotFlow { state.rendered.value }.first { it }
+        }
+        val heldMs = android.os.SystemClock.elapsedRealtime() - heldSince
+        if (latched != null) {
+            // Grep-able in the render goldens' logcat: how long the cover waited on the HDR.
+            android.util.Log.i(FIRST_FRAME_LOG_TAG, "held for content ${heldMs}ms")
+        } else {
+            android.util.Log.w(
+                FIRST_FRAME_LOG_TAG,
+                "content did not land within ${heldMs}ms of the first frame; showing the scene without it",
+            )
+            state.contentWaitExpired()
+        }
+    }
+    return state
 }
+
+private const val FIRST_FRAME_LOG_TAG = "FirstFrameState"
 
 /**
  * Idle auto-orbit state for a camera that sweeps slowly around a target.

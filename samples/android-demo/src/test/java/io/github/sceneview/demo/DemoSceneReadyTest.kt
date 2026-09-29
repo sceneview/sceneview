@@ -119,4 +119,66 @@ class DemoSceneReadyTest {
         state.onFrame(base + 60_000 * millis) // a long stall afterwards: a pause, not a regression
         assertTrue("the cover must not come back over a scene the user has seen", rendered.value)
     }
+
+    @Test
+    fun `frames presented before the HDR lands do not make the scene ready`() {
+        // #4174: the HDR decodes off the main thread and lands after the geometry. The frames
+        // before it are real pixels — neutral-lit, on a black backdrop — but not the demo's
+        // picture, and the render goldens captured exactly those.
+        val rendered = mutableStateOf(false)
+        val state = FirstFrameState(rendered)
+        state.holdUntil(landed = false)
+
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+        state.onFrame(base + 32 * millis)
+
+        assertFalse("frames without the HDR are not the scene", rendered.value)
+        assertTrue("the bounded wait starts at the first frame without it", state.waitingOnContent.value)
+
+        state.holdUntil(landed = true)
+        state.onFrame(base + 900 * millis)
+        assertFalse("one frame with the HDR proves only that the loop asked", rendered.value)
+        state.onFrame(base + 916 * millis)
+        assertTrue(rendered.value)
+    }
+
+    @Test
+    fun `a content load that never lands releases the cover once the wait expires`() {
+        // A failed HDR load never lands. The scene has presented its fallback-lit frames and
+        // parked, so no later frame will come to count: the expiry has to latch by itself.
+        val rendered = mutableStateOf(false)
+        val state = FirstFrameState(rendered)
+        state.holdUntil(landed = false)
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+
+        state.contentWaitExpired()
+
+        assertTrue("a failed load costs a flat scene, never a cover that stays up", rendered.value)
+    }
+
+    @Test
+    fun `a scene that is not holding never starts the content wait`() {
+        val rendered = mutableStateOf(false)
+        val state = FirstFrameState(rendered)
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+        assertTrue(rendered.value)
+        assertFalse(state.waitingOnContent.value)
+    }
+
+    @Test
+    fun `an environment swap after the scene is up does not bring the cover back`() {
+        val rendered = mutableStateOf(false)
+        val state = FirstFrameState(rendered)
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+        assertTrue(rendered.value)
+
+        state.holdUntil(landed = false) // the user picked another HDR
+        state.onFrame(base + 5_000 * millis)
+
+        assertTrue("an environment swap is not a cold start", rendered.value)
+    }
 }

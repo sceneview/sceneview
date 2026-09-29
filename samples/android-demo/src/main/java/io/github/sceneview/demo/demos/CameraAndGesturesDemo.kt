@@ -169,7 +169,10 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
     val sky = themedStageSky()
     val skybox = rememberStageSkybox(engine, sky, renderInvalidator::requestRender)
     StageSkyFog(view, sky, renderInvalidator::requestRender)
-    val baseEnvironment = rememberModelDemoEnvironment(environmentLoader)
+    // The cover waits for the studio HDR too: without it the helmet is lit by the neutral
+    // fallback, a frame the demo never means to show (#4174).
+    val firstFrame = rememberFirstFrameState(engine)
+    val baseEnvironment = rememberModelDemoEnvironment(environmentLoader, firstFrame)
     val environment = remember(baseEnvironment, skybox) { baseEnvironment.copy(skybox = skybox) }
 
     // The floor is what makes a camera move legible: orbit swings its perspective lines, pan
@@ -268,8 +271,6 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
     LaunchedEffect(moveMode) {
         if (moveMode && focus == null) flyTo(RigSubject.Helmet, CameraView.Hero)
     }
-
-    val firstFrame = rememberFirstFrameState(engine)
 
     val resetAll = {
         cinematic = false

@@ -255,6 +255,8 @@ fun LightingLabDemo(onBack: () -> Unit) {
         LightingStage.KEY_ELEVATION_DEGREES,
     )
     val firstFrame = rememberFirstFrameState(engine)
+    // The cover waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = benchEnvironment != null)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,
