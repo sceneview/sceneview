@@ -5,6 +5,7 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import kotlin.math.acos
 import kotlin.math.cos
+import kotlin.math.ln
 import kotlin.math.sin
 import kotlin.math.tan
 
@@ -58,18 +59,39 @@ object LightingStage {
     const val FLOOR_THICKNESS: Float = 0.04f
 
     /**
-     * Floor side length.
+     * Side length of the floor the viewer sees.
      *
-     * 4 m, not "very large": the floor has to run past the frame so it reads as ground rather
-     * than as a plinth the subject floats on, but every extra metre is also extra ground the
-     * directional shadow map has to cover, and a cascade stretched over a 20 m slab turns a
-     * 0.5 m helmet's shadow into stair-steps. 4 m clears the widest hero-orbit framing with the
-     * shadow still crisp.
+     * 240 m, and never seen whole (#4072). The floor used to be a 4 m slab; its far edge sat
+     * 2 m behind the helmet, in frame on every rig, and the "infinite stage" read as a table
+     * top with the sky showing past its corner. A pinch can take the eye out to eight times its
+     * home distance — about 30 m on a portrait phone — so the floor has to run well past that,
+     * and the stage fade ([stageFadeDensity]) dissolves it into the background before any edge
+     * could be drawn.
+     *
+     * This floor does not receive shadows: see [SHADOW_FLOOR_SIZE].
      */
-    const val FLOOR_SIZE: Float = 4f
+    const val FLOOR_SIZE: Float = 240f
 
-    /** Centre of the floor slab, derived so its top lands exactly on [FLOOR_TOP]. */
+    /**
+     * Side length of the part of the floor that receives shadows, laid on top of the big one.
+     *
+     * Filament fits a directional light's shadow map to the shadow receivers in view; a 240 m
+     * receiver would spread the Sun rig's map over the whole floor and blur the helmet's contact
+     * shadow away. This inset keeps the map on the stage. It is the same material, and its top
+     * sits [SHADOW_FLOOR_LIFT] above the big floor, so its sides are never visible; 8 m holds the
+     * helmet's shadow down to a sun about 7° above the horizon.
+     */
+    const val SHADOW_FLOOR_SIZE: Float = 8f
+
+    /** Height of the shadow inset above the big floor — enough to never z-fight, too thin to see. */
+    const val SHADOW_FLOOR_LIFT: Float = 0.002f
+
+    /** Centre of the shadow-receiving inset, so its top lands exactly on [FLOOR_TOP]. */
     val floorCenter: Position get() = Position(0f, FLOOR_TOP - FLOOR_THICKNESS / 2f, 0f)
+
+    /** Centre of the big floor, [SHADOW_FLOOR_LIFT] below the inset. */
+    val outerFloorCenter: Position
+        get() = Position(0f, FLOOR_TOP - SHADOW_FLOOR_LIFT - FLOOR_THICKNESS / 2f, 0f)
 
     /**
      * Floor material — a dark, faintly polished studio sweep.
@@ -147,7 +169,7 @@ object LightingStage {
     /**
      * Clearance kept between the eye and [FLOOR_TOP] when a user drag pitches the camera all the
      * way down (#3794). Zero clearance would let the eye reach exactly floor height — level with
-     * a 4 m slab that runs past the frame on every side — which still reads as a wall filling the
+     * a floor that runs past the frame on every side — which still reads as a wall filling the
      * screen rather than as "the drag stopped on purpose"; a visible sliver of floor under the
      * helmet is what tells the two apart.
      */
@@ -375,6 +397,88 @@ object LightingStage {
     const val GOLDEN_MORNING_END_HOUR: Float = 8f
     const val GOLDEN_EVENING_START_HOUR: Float = 16f
     const val NIGHT_START_HOUR: Float = 19.5f
+
+    /** Every HDR the Sun rig's sky can show — what a running clock keeps resident. */
+    val skyEnvironmentFiles: List<String>
+        get() = listOf(4f, 7f, 12f).map { skyEnvironmentFor(it).file }
+
+    // ── Sun clock ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The clock's day, dawn to dusk. It opens and closes inside the night bucket, where the
+     * sun is below the horizon and the sky is the same HDR, so the wrap from [SUN_CLOCK_DUSK]
+     * back to [SUN_CLOCK_DAWN] changes nothing on screen — the viewer sees a night that is
+     * simply short, instead of ten dark hours out of every twenty-four.
+     */
+    const val SUN_CLOCK_DAWN: Float = 5f
+    const val SUN_CLOCK_DUSK: Float = 20.5f
+
+    /**
+     * Clock speed while *Animate* runs: the 15.5 h day passes in about 34 s, slow enough for
+     * the golden hours to be watched rather than glimpsed.
+     */
+    const val SUN_CLOCK_HOURS_PER_SECOND: Float = 0.45f
+
+    /**
+     * The hour [elapsedSeconds] after [hour] on the running clock. An hour outside the clock's
+     * day — the slider allows the whole 24 h — resumes at dawn.
+     */
+    fun advanceSunClock(hour: Float, elapsedSeconds: Float): Float {
+        val next = hour + elapsedSeconds * SUN_CLOCK_HOURS_PER_SECOND
+        return if (next < SUN_CLOCK_DAWN || next >= SUN_CLOCK_DUSK) SUN_CLOCK_DAWN else next
+    }
+
+    // ── Stage fade ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * How far behind the orbit target the fade begins. The helmet and both probes sit within
+     * 0.4 m of the target, so they are never fogged; the floor under and just behind them is.
+     */
+    const val STAGE_FADE_START_BEHIND_TARGET: Float = 0.6f
+
+    /** Opacity the fade has reached by the time a ray could first meet the floor's edge. */
+    const val STAGE_FADE_OPACITY_AT_EDGE: Float = 0.995f
+
+    /** Fog start, measured from the eye, for an eye [cameraDistance] from the orbit target. */
+    fun stageFadeStart(cameraDistance: Float): Float =
+        cameraDistance.coerceAtLeast(0f) + STAGE_FADE_START_BEHIND_TARGET
+
+    /**
+     * Fog density that hides the floor's edge from an eye [cameraDistance] from the target.
+     *
+     * Every point of the edge is at least `FLOOR_SIZE / 2` from the target, so at least
+     * `FLOOR_SIZE / 2 - cameraDistance` from the eye; the fog has from [stageFadeStart] to there
+     * to reach [STAGE_FADE_OPACITY_AT_EDGE]. Solved from `1 - exp(-density × path)` with the
+     * path floored at [MIN_FADE_PATH], so an eye pinched out further than the floor was sized
+     * for gets a thicker fade rather than an edge.
+     */
+    fun stageFadeDensity(cameraDistance: Float): Float {
+        val edge = FLOOR_SIZE / 2f - cameraDistance.coerceAtLeast(0f)
+        val path = (edge - stageFadeStart(cameraDistance)).coerceAtLeast(MIN_FADE_PATH)
+        return -ln(1f - STAGE_FADE_OPACITY_AT_EDGE) / path
+    }
+
+    /**
+     * Beyond this distance the fade is off. It only has to cover the floor; everything past it
+     * is the skybox, at infinity, which already *is* the colour the floor fades into.
+     */
+    const val STAGE_FADE_CUTOFF: Float = FLOOR_SIZE * 2f
+
+    /**
+     * The stage camera's far plane, in metres: the floor's half-length, instead of the SDK's
+     * 1 km.
+     *
+     * With a sky drawn, the fade samples the sky's picture ([StageFade]), and Filament picks the
+     * mip from where a fragment sits between the near and far planes — blurriest at the near
+     * plane, sharpest at the far one. Against 1 km the whole floor sat in the blurry tenth, so
+     * the fade was the environment's average and met the real horizon at a hard line. Ending
+     * the frustum where the floor ends makes the far floor sample the sky right below the
+     * horizon, sharp, and the fade is already opaque there. The skybox is drawn at infinity
+     * whatever the far plane, and nothing on the stage is further than the floor.
+     */
+    const val STAGE_FAR: Float = FLOOR_SIZE / 2f
+
+    private const val MIN_FADE_PATH: Float = 2f
 
     // ── Key light colour presets ─────────────────────────────────────────────────────────────
 

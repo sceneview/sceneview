@@ -31,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import com.google.android.filament.LightManager
 import com.google.android.filament.View.AntiAliasing
 import com.google.android.filament.View.Dithering
+import dev.romainguy.kotlin.math.length
 import io.github.sceneview.SceneView
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.DemoPreviewPlaceholder
@@ -39,13 +40,14 @@ import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.LightingStage
+import io.github.sceneview.demo.demos.internal.LightingStageFloor
+import io.github.sceneview.demo.demos.internal.StageFade
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Size
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.node.FogNode
 import io.github.sceneview.rememberCameraNode
@@ -60,6 +62,7 @@ import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
+import kotlin.math.abs
 import com.google.android.filament.Scene as FilamentScene
 
 /**
@@ -240,8 +243,15 @@ fun LightingLabDemo(onBack: () -> Unit) {
     DisposableEffect(fallbackEnvironment) {
         onDispose { environmentLoader.destroyEnvironment(fallbackEnvironment) }
     }
-    val environment = remember(benchEnvironment, fallbackEnvironment, showSky) {
-        benchEnvironment?.let { if (showSky) it else it.copy(skybox = null) } ?: fallbackEnvironment
+    // The showcase's backdrop: with the sky off, the stage colour rather than a black clear, so
+    // the floor's fade (see `StageFade`) meets the colour it fades into.
+    val stageBackdrop = remember(engine) { StageFade.stageBackdrop(engine) }
+    DisposableEffect(stageBackdrop) {
+        onDispose { engine.destroySkybox(stageBackdrop) }
+    }
+    val environment = remember(benchEnvironment, fallbackEnvironment, showSky, stageBackdrop) {
+        benchEnvironment?.let { if (showSky) it else it.copy(skybox = stageBackdrop) }
+            ?: fallbackEnvironment
     }
     // Rotating the IBL turns the lighting; Filament's skybox does not turn with it. The slider is
     // disabled while the sky is drawn rather than letting the reflections slide off the picture.
@@ -251,7 +261,25 @@ fun LightingLabDemo(onBack: () -> Unit) {
     // where the camera actually is instead of against the origin.
     var cameraPosition by remember { mutableStateOf(Position()) }
 
+    val keyPosition = LightingStage.rigPosition(
+        BENCH_KEY_AZIMUTH,
+        LightingStage.KEY_ELEVATION_DEGREES,
+    )
+    val firstFrame = rememberFirstFrameState(engine)
+    val orbitRadius = rememberFitOrbitRadius(
+        extentX = LightingStage.SUBJECT_EXTENT_X,
+        extentY = LightingStage.SUBJECT_EXTENT_Y,
+        extentZ = LightingStage.SUBJECT_EXTENT_Z,
+        elevationDegrees = LightingStage.ORBIT_ELEVATION_DEGREES,
+    )
+
+    // The eye's distance to the orbit target as of the last presented frame, for the stage fade.
+    // A plain holder, not state: written from `onFrame`, it must not recompose the bench.
+    val eyeDistance = remember { FloatArray(1) { Float.NaN } }
+
     SideEffect {
+        // The fade's sky sample is sharp only near the far plane (LightingStage.STAGE_FAR).
+        cameraNode.far = LightingStage.STAGE_FAR
         benchEnvironment?.indirectLight?.let { light ->
             light.setRotation(LightingStage.iblRotation(effectiveRotation))
             light.intensity = iblIntensity
@@ -277,19 +305,14 @@ fun LightingLabDemo(onBack: () -> Unit) {
         }
         view.antiAliasing = if (fxaaEnabled) AntiAliasing.FXAA else AntiAliasing.NONE
         view.dithering = if (ditheringEnabled) Dithering.TEMPORAL else Dithering.NONE
+        if (!fogEnabled) {
+            StageFade.apply(
+                view = view,
+                cameraDistance = eyeDistance[0].takeIf { it.isFinite() } ?: orbitRadius,
+                sky = environment.skybox.takeIf { showSky },
+            )
+        }
     }
-
-    val keyPosition = LightingStage.rigPosition(
-        BENCH_KEY_AZIMUTH,
-        LightingStage.KEY_ELEVATION_DEGREES,
-    )
-    val firstFrame = rememberFirstFrameState(engine)
-    val orbitRadius = rememberFitOrbitRadius(
-        extentX = LightingStage.SUBJECT_EXTENT_X,
-        extentY = LightingStage.SUBJECT_EXTENT_Y,
-        extentZ = LightingStage.SUBJECT_EXTENT_Z,
-        elevationDegrees = LightingStage.ORBIT_ELEVATION_DEGREES,
-    )
 
     DemoScaffold(
         title = stringResource(R.string.demo_lighting_lab_title),
@@ -490,6 +513,16 @@ fun LightingLabDemo(onBack: () -> Unit) {
                 onFrame = { frameTimeNanos ->
                     firstFrame.onFrame(frameTimeNanos)
                     cameraPosition = cameraNode.worldPosition
+                    val distance = length(cameraNode.worldPosition)
+                    if (!fogEnabled && !(abs(distance - eyeDistance[0]) < EYE_DISTANCE_EPSILON)) {
+                        eyeDistance[0] = distance
+                        StageFade.apply(
+                            view = view,
+                            cameraDistance = distance,
+                            sky = environment.skybox.takeIf { showSky },
+                        )
+                        cameraNode.requestRender()
+                    }
                 },
             ) {
                 if (probeEnabled && probeEnvironment != null) {
@@ -501,23 +534,20 @@ fun LightingLabDemo(onBack: () -> Unit) {
                         cameraPosition = cameraPosition,
                     )
                 }
-                FogNode(
-                    view = view,
-                    enabled = fogEnabled,
-                    density = fogDensity,
-                    color = fogColor.color,
-                )
+                // The Fog switch hands the view's fog to the library's `FogNode`; off, the view
+                // carries the stage fade instead (set from the `SideEffect` and `onFrame`), so the
+                // floor still never shows its edge. Only one of the two writes it at a time.
+                if (fogEnabled) {
+                    FogNode(
+                        view = view,
+                        enabled = true,
+                        density = fogDensity,
+                        color = fogColor.color,
+                    )
+                }
 
                 // ── The stage, identical to the showcase's ───────────────────────────────────
-                CubeNode(
-                    size = Size(
-                        LightingStage.FLOOR_SIZE,
-                        LightingStage.FLOOR_THICKNESS,
-                        LightingStage.FLOOR_SIZE,
-                    ),
-                    materialInstance = floorMaterial,
-                    position = LightingStage.floorCenter,
-                )
+                LightingStageFloor(floorMaterial)
                 heroInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
@@ -583,4 +613,8 @@ private const val BENCH_CONE_INNER = 0.44f
 private const val BENCH_CONE_OUTER = 0.70f
 private const val BENCH_FALLOFF = 6f
 private const val DEFAULT_FOG_DENSITY = 0.12f
+
+/** Eye movement, in metres, below which the stage fade is not re-solved. */
+private const val EYE_DISTANCE_EPSILON = 0.01f
+
 private val KEY_MARKER_COLOR = Color(0xFFFFF6E8)
