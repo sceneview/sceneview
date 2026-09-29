@@ -1,9 +1,13 @@
 package io.github.sceneview.ar
 
+import com.google.ar.core.Config
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -17,6 +21,62 @@ import org.junit.Test
  * tests run on plain JUnit + the JVM.
  */
 class PlaneVisualizerV2Test {
+
+    // ── isDepthRebuildDue (#4095) ───────────────────────────────────────────────────
+
+    /** `System.currentTimeMillis()` in 2026, what [PlaneVisualizerV2] passes as `now`. */
+    private val wallClockMs = 1_790_000_000_000L
+
+    @Test
+    fun `the first depth rebuild is due at a real wall-clock time`() {
+        assertTrue(isDepthRebuildDue(wallClockMs, null))
+        // The old sentinel: the subtraction overflows negative and the rebuild never ran.
+        assertFalse(wallClockMs - Long.MIN_VALUE >= PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS)
+    }
+
+    @Test
+    fun `the first depth rebuild is due at time zero`() {
+        assertTrue(isDepthRebuildDue(0L, null))
+    }
+
+    @Test
+    fun `a depth rebuild waits for its interval`() {
+        val interval = PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS
+        assertFalse(isDepthRebuildDue(wallClockMs + interval - 1, wallClockMs))
+        assertTrue(isDepthRebuildDue(wallClockMs + interval, wallClockMs))
+    }
+
+    // ── acquirePlaneDepthImage (#4104 review) ────────────────────────────────────────
+
+    private fun failIfCalled(): String = throw AssertionError("depth acquired on a session without smoothed depth")
+
+    @Test
+    fun `a session with depth disabled is never asked for a depth image`() {
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.DISABLED, ::failIfCalled))
+    }
+
+    @Test
+    fun `a raw-depth-only session is never asked for the smoothed image`() {
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.RAW_DEPTH_ONLY, ::failIfCalled))
+    }
+
+    @Test
+    fun `no depth image is acquired before the renderer reports the depth mode`() {
+        assertNull(acquirePlaneDepthImage(null, ::failIfCalled))
+    }
+
+    @Test
+    fun `a throwing acquisition falls back instead of escaping`() {
+        // ARCore raises IllegalStateException when depth is degraded; escaping here made
+        // PlaneRendererV2.update's catch skip the whole plane update instead of drawing flat.
+        val degraded: () -> String = { throw IllegalStateException("depth is not available") }
+        assertNull(acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC, degraded))
+    }
+
+    @Test
+    fun `an automatic-depth session reads its depth image`() {
+        assertEquals("depth", acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC) { "depth" })
+    }
 
     // ── computeScanProgress / computeReflectionFadeIn ───────────────────────────────
 
