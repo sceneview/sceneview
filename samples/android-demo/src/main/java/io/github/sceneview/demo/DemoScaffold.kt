@@ -6,6 +6,7 @@ import android.content.Context
 import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -1140,8 +1141,16 @@ private val DOCK_CAPTION_GAP = 2.dp
 /**
  * Covers the 3D viewport until the SceneView presents its first Filament frame
  * (#1022): the stage colour, a progress indicator and the demo's own
- * [loadingLabel]. Cross-fades out over `duration-medium` (350 ms) once
+ * [loadingLabel]. Cross-fades out over `motion-handover` (150 ms) once
  * [firstFrameRendered] flips, never the reverse.
+ *
+ * **The cover is not what makes a demo slow to open (#4160).** Traced on the
+ * emulator, it lifts ~30 ms after Filament finishes executing frame 1 (second
+ * accepted frame + one 16 ms drain poll) and has no minimum display time. Frame
+ * 1 itself is the floor: its backend work — the first shader compile and link
+ * for the scene's materials — is where the seconds go, and the cover only waits
+ * for it honestly. What the cover did add was a 350 ms fade over a scene that
+ * was already there; it now hands over in 150 ms.
  *
  * **This used to be the demo's preview image (#3402).** Full-bleed, cropped, and
  * lit nothing like the live scene — so opening the Model Viewer flashed a
@@ -1184,7 +1193,10 @@ private fun BoxScope.FirstFrameCover(
     val loadingContentDescription = stringResource(R.string.demo_loading_scene_cd)
     val alpha by animateFloatAsState(
         targetValue = if (dismissed) 0f else 1f,
-        animationSpec = tween(durationMillis = SceneViewTokens.Duration.mediumMillis),
+        animationSpec = tween(
+            durationMillis = SceneViewTokens.Duration.handoverMillis,
+            easing = FastOutSlowInEasing,
+        ),
         label = "first-frame-cover",
     )
     if (alpha > 0f) {
