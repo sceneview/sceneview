@@ -18,7 +18,8 @@ import kotlin.math.sqrt
  * bone segments and the rendered skeleton.
  *
  * Preview status: the joint enumeration mirrors `androidx.xr.arcore.HandJointType`
- * (`1.0.0-alpha14`); the upstream is alpha and may add / rename joints. See
+ * (the pinned `jetpackXrArCore` version, see `gradle/libs.versions.toml`); the
+ * upstream is preview and may add / rename joints. See
  * [arsceneview/docs/JETPACK-XR-INTEGRATION.md](https://github.com/sceneview/sceneview/blob/main/arsceneview/docs/JETPACK-XR-INTEGRATION.md).
  */
 

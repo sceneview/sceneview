@@ -18,8 +18,8 @@ import kotlin.math.sqrt
  * to the functions here to validate, measure and centre the mesh.
  *
  * Preview status: the buffer layout mirrors `androidx.xr.arcore.Face`
- * (`1.0.0-alpha14`); the upstream is alpha and may change the vertex stride or
- * the index winding. See
+ * (the pinned `jetpackXrArCore` version, see `gradle/libs.versions.toml`); the
+ * upstream is preview and may change the vertex stride or the index winding. See
  * [arsceneview/docs/JETPACK-XR-INTEGRATION.md](https://github.com/sceneview/sceneview/blob/main/arsceneview/docs/JETPACK-XR-INTEGRATION.md).
  */
 

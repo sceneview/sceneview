@@ -54,7 +54,8 @@ import java.nio.ShortBuffer
  * throw `NoClassDefFoundError` at class-load time, so never instantiate this
  * node unless [XrFeatures.isAvailable] returned `true`.
  *
- * Preview: this API wraps `androidx.xr.arcore` `1.0.0-alpha14` and may change —
+ * Preview: this API wraps `androidx.xr.arcore` (the pinned `jetpackXrArCore`
+ * version, see `gradle/libs.versions.toml`) and may change —
  * see [XrPreviewApi].
  *
  * @property engine             The Filament [Engine] that owns the region child nodes.

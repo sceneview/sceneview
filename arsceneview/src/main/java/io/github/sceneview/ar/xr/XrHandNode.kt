@@ -14,10 +14,11 @@ import io.github.sceneview.node.Node
 /**
  * Opt-in marker for the **preview** Jetpack XR layer of SceneView.
  *
- * Every public symbol that wraps `androidx.xr.arcore` (`1.0.0-alpha14` at the
- * time of writing) carries this annotation. The upstream SDK is alpha and
- * subject to breaking changes; requiring an explicit opt-in makes the preview
- * status visible at every call site rather than burying it in a doc comment.
+ * Every public symbol that wraps `androidx.xr.arcore` (the pinned `jetpackXrArCore`
+ * version, see `gradle/libs.versions.toml`) carries this annotation. The upstream
+ * SDK is preview and subject to breaking changes; requiring an explicit opt-in
+ * makes the preview status visible at every call site rather than burying it in
+ * a doc comment.
  *
  * Opt in per call site with `@OptIn(XrPreviewApi::class)`, or module-wide via
  * the `-opt-in` compiler flag.
@@ -26,7 +27,7 @@ import io.github.sceneview.node.Node
  * — tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738).
  */
 @RequiresOptIn(
-    message = "Jetpack XR API is preview (androidx.xr.arcore 1.0.0-alpha14) and may change.",
+    message = "Jetpack XR API is preview (androidx.xr.arcore, pinned in gradle/libs.versions.toml) and may change.",
     level = RequiresOptIn.Level.WARNING,
 )
 @Retention(AnnotationRetention.BINARY)
@@ -63,7 +64,8 @@ annotation class XrPreviewApi
  * throw `NoClassDefFoundError` at class-load time, so never instantiate this
  * node unless [XrFeatures.isAvailable] returned `true`.
  *
- * Preview: this API wraps `androidx.xr.arcore` `1.0.0-alpha14` and may change —
+ * Preview: this API wraps `androidx.xr.arcore` (the pinned `jetpackXrArCore`
+ * version, see `gradle/libs.versions.toml`) and may change —
  * see [XrPreviewApi].
  *
  * @property engine     The Filament [Engine] that owns the joint child nodes.

@@ -21,7 +21,8 @@ import android.content.Context
  * Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
  *
  * Preview status: this API forwards to `androidx.xr.arcore`
- * (`1.0.0-alpha14`). The upstream is alpha and subject to breaking changes;
+ * (the pinned `jetpackXrArCore` version, see `gradle/libs.versions.toml`). The
+ * upstream is preview and subject to breaking changes;
  * follow-up SceneView versions will track its evolution.
  */
 object XrFeatures {
@@ -47,7 +48,7 @@ object XrFeatures {
      *
      * **Scope of the check.** A `true` answer only proves that the XR runtime
      * *types* are loadable — not that the *device* supports XR. Device-level
-     * capability is determined by the upstream `Session.create(activity)`
+     * capability is determined by the upstream `Session.create(context)`
      * outcome (it returns a `SessionCreateUnsupportedDevice` sealed-variant on
      * a non-XR device). Slices 2 and 3 layer that device check on top of
      * [isAvailable]; for the public API at the foundation slice, classpath
