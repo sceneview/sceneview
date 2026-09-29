@@ -1,0 +1,87 @@
+// cosmos_ring.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The translucent rings of the Cosmos demo's ringed world. A flat annulus whose
+//             opacity is a procedural radial profile (a dim inner ring, a bright middle one, a
+//             dark gap, a thinner outer ring, fine ringlets), lit by the star at one point and
+//             darkened where the planet's shadow falls across it. Ring particles scatter light
+//             forward, so the rings brighten when the camera looks through them at the star.
+// Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
+// Geometry:   an annulus in the node's local XZ plane, centred on the node's origin, which is
+//             the planet's centre (CosmosMeshes.ring). Only `position` is read.
+// Parameters:
+//   sunPosition  — float3, world position of the light (the star).
+//   sunColor     — float3, linear radiance of the starlight.
+//   ringColor    — float3, linear albedo of the ring particles.
+//   planetRadius — float, radius of the shadowing planet, world units.
+//   ringInner    — float, inner radius of the annulus, model units.
+//   ringOuter    — float, outer radius of the annulus, model units.
+//   intensity    — float, master fade (the scene reveal).
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// Blending is `transparent` with a premultiplied colour (see CONTRIBUTING.md, #2224): a ring in
+// front of the planet must hide part of it, which additive light cannot do.
+material {
+    "name" : "Cosmos Ring",
+    "parameters" : [
+        { "type" : "float3", "name" : "sunPosition" },
+        { "type" : "float3", "name" : "sunColor" },
+        { "type" : "float3", "name" : "ringColor" },
+        { "type" : "float",  "name" : "planetRadius" },
+        { "type" : "float",  "name" : "ringInner" },
+        { "type" : "float",  "name" : "ringOuter" },
+        { "type" : "float",  "name" : "intensity" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "objectPosition", "planetCenter" ],
+    "shadingModel" : "unlit",
+    "blending" : "transparent",
+    "depthWrite" : false,
+    "depthCulling" : true,
+    "doubleSided" : true,
+    "culling" : "none"
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.objectPosition = float4(getPosition().xyz, 0.0);
+        material.planetCenter = float4(getWorldFromModelMatrix()[3].xyz, 0.0);
+    }
+}
+fragment {
+    // Same profile as the ring shadow in cosmos_planet.mat.
+    float ringDensity(float x) {
+        float inside = smoothstep(0.0, 0.03, x) * (1.0 - smoothstep(0.97, 1.0, x));
+        float body = mix(0.3, 1.0, smoothstep(0.12, 0.3, x)) * mix(1.0, 0.65, smoothstep(0.66, 0.72, x));
+        float gap = smoothstep(0.012, 0.03, abs(x - 0.62));
+        float fine = 0.68 + 0.32 * sin(x * 97.0) * sin(x * 41.0 + 1.3);
+        return inside * body * gap * fine;
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        float r = length(variable_objectPosition.xz);
+        float x = (r - materialParams.ringInner) / (materialParams.ringOuter - materialParams.ringInner);
+        float density = ringDensity(clamp(x, 0.0, 1.0));
+
+        highp float3 p = getWorldPosition();
+        highp float3 c = variable_planetCenter.xyz;
+        // Shader world space is centred on the camera: shift the star's scene position into it.
+        highp float3 L = normalize(materialParams.sunPosition - getWorldOffset() - p);
+        highp float3 V = normalize(getWorldCameraPosition() - p);
+
+        // The planet's shadow: a cylinder of its radius, behind it as seen from the star. The
+        // star has a real angular size, so the penumbra widens with distance behind the planet.
+        highp float3 w = p - c;
+        highp float along = dot(w, L);
+        highp float across = length(w - L * along);
+        float penumbra = materialParams.planetRadius * 0.04 + 0.22 * max(-along, 0.0);
+        float umbra = smoothstep(materialParams.planetRadius - penumbra, materialParams.planetRadius + penumbra, across);
+        float shadow = along < 0.0 ? umbra : 1.0;
+
+        // Ring particles scatter forward: bright when seen against the light.
+        float forward = pow(clamp(dot(-V, L), 0.0, 1.0), 4.0);
+        float3 radiance = materialParams.ringColor * materialParams.sunColor * shadow * (0.75 + 1.6 * forward);
+
+        float alpha = density * 0.62 * materialParams.intensity;
+        material.baseColor = float4(radiance * alpha, alpha);
+    }
+}

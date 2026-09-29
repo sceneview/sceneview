@@ -1,0 +1,141 @@
+// cosmos_planet.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The ringed world that orbits the Cosmos demo's plasma star. An unlit sphere that
+//             lights itself from one point, the star, so the scene needs no Filament light and
+//             no shadow map, yet the planet has a soft day/night terminator, cloud bands, the
+//             shadow its own rings cast on it, and an atmosphere: a Fresnel rim that is bright
+//             on the day side and, seen against the star, scatters light forward into a thin
+//             glowing ring round the night side.
+// Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
+// Geometry:   a sphere centred on its node's origin (SphereNode). The node's local Y is the spin
+//             axis; its rings lie in the node's local XZ plane. Only `position` is read.
+// Parameters:
+//   time        — float, seconds; the bands drift.
+//   sunPosition — float3, world position of the light (the star).
+//   sunColor    — float3, linear radiance of the starlight.
+//   bandLight   — float3, linear albedo of the pale bands.
+//   bandDark    — float3, linear albedo of the dark belts.
+//   atmosphere  — float3, linear radiance of the atmosphere rim at full sun.
+//   ringInner   — float, inner radius of the ring shadow, world units.
+//   ringOuter   — float, outer radius of the ring shadow, world units.
+//   intensity   — float, master fade (the scene reveal).
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// Why the light is computed here and not by Filament: every other Cosmos surface is its own
+// light source, and the star is a point at the origin. One dot product and one ray-plane test
+// cost less than a light, a shadow map and a lit material, and give the sharper ring shadow.
+material {
+    "name" : "Cosmos Planet",
+    "parameters" : [
+        { "type" : "float",  "name" : "time" },
+        { "type" : "float3", "name" : "sunPosition" },
+        { "type" : "float3", "name" : "sunColor" },
+        { "type" : "float3", "name" : "bandLight" },
+        { "type" : "float3", "name" : "bandDark" },
+        { "type" : "float3", "name" : "atmosphere" },
+        { "type" : "float",  "name" : "ringInner" },
+        { "type" : "float",  "name" : "ringOuter" },
+        { "type" : "float",  "name" : "intensity" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "objectPosition", "worldNormal", "planetCenter", "spinAxis" ],
+    "shadingModel" : "unlit",
+    "blending" : "opaque",
+    "doubleSided" : false
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float3 p = getPosition().xyz;
+        highp mat4 worldFromModel = getWorldFromModelMatrix();
+        material.objectPosition = float4(p, 0.0);
+        material.worldNormal = float4(mat3(worldFromModel) * p, 0.0);
+        material.planetCenter = float4(worldFromModel[3].xyz, 0.0);
+        material.spinAxis = float4(worldFromModel[1].xyz, 0.0);
+    }
+}
+fragment {
+    highp float planetHash(highp float3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+
+    highp float planetNoise(highp float3 x) {
+        highp float3 i = floor(x);
+        highp float3 f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(
+            mix(mix(planetHash(i + float3(0.0, 0.0, 0.0)), planetHash(i + float3(1.0, 0.0, 0.0)), f.x),
+                mix(planetHash(i + float3(0.0, 1.0, 0.0)), planetHash(i + float3(1.0, 1.0, 0.0)), f.x), f.y),
+            mix(mix(planetHash(i + float3(0.0, 0.0, 1.0)), planetHash(i + float3(1.0, 0.0, 1.0)), f.x),
+                mix(planetHash(i + float3(0.0, 1.0, 1.0)), planetHash(i + float3(1.0, 1.0, 1.0)), f.x), f.y),
+            f.z);
+    }
+
+    // Ring opacity at a normalised radius x in [0, 1] across the ring: a dim inner ring, a
+    // bright middle one, a dark gap, and a thinner outer ring. Same profile as cosmos_ring.mat.
+    float ringDensity(float x) {
+        float inside = smoothstep(0.0, 0.03, x) * (1.0 - smoothstep(0.97, 1.0, x));
+        float body = mix(0.3, 1.0, smoothstep(0.12, 0.3, x)) * mix(1.0, 0.65, smoothstep(0.66, 0.72, x));
+        float gap = smoothstep(0.012, 0.03, abs(x - 0.62));
+        float fine = 0.68 + 0.32 * sin(x * 97.0) * sin(x * 41.0 + 1.3);
+        return inside * body * gap * fine;
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        highp float3 c = variable_planetCenter.xyz;
+        highp float3 N = normalize(variable_worldNormal.xyz);
+        highp float3 p = c + variable_worldNormal.xyz;
+        // Shader world space is centred on the camera; the star's position is given in the
+        // scene's own world space, so shift it by the offset between the two.
+        highp float3 sun = materialParams.sunPosition - getWorldOffset();
+        highp float3 L = normalize(sun - p);
+        highp float3 V = normalize(getWorldCameraPosition() - p);
+        float NoL = dot(N, L);
+        float NoV = clamp(dot(N, V), 0.0, 1.0);
+
+        // Bands follow latitude, bent by a slow noise so the belts meander and churn.
+        highp float3 q = normalize(variable_objectPosition.xyz);
+        highp float t = materialParams.time * 0.02;
+        float swirl = planetNoise(q * 5.0 + float3(t, 0.0, -t)) + 0.5 * planetNoise(q * 11.0 - float3(0.0, t, t));
+        float lat = q.y + 0.07 * (swirl - 0.75);
+        float bands = 0.5 + 0.5 * sin(lat * 23.0 + 1.7 * sin(lat * 9.0));
+        float belts = smoothstep(0.25, 0.85, bands);
+        float3 albedo = mix(materialParams.bandDark, materialParams.bandLight, belts);
+        albedo *= 0.85 + 0.3 * planetNoise(q * 26.0);
+        // The poles are paler and calmer.
+        albedo = mix(albedo, materialParams.bandLight * 0.8, smoothstep(0.75, 0.95, abs(q.y)));
+
+        // A soft terminator: the atmosphere carries a little light past it.
+        float day = smoothstep(-0.12, 0.55, NoL);
+
+        // Ring shadow: follow the ray to the sun to the ring plane and read the ring's opacity.
+        highp float3 axis = normalize(variable_spinAxis.xyz);
+        highp float denom = dot(L, axis);
+        float ringShade = 1.0;
+        if (abs(denom) > 1e-4) {
+            highp float along = dot(c - p, axis) / denom;
+            if (along > 0.0) {
+                highp float r = length(p + L * along - c);
+                float x = (r - materialParams.ringInner) / (materialParams.ringOuter - materialParams.ringInner);
+                if (x > 0.0 && x < 1.0) ringShade = 1.0 - 0.85 * ringDensity(x);
+            }
+        }
+
+        float3 light = materialParams.sunColor;
+        float3 radiance = albedo * light * day * ringShade;
+        // Night side: a faint glow, so the disc still reads as a ball against the dark.
+        radiance += albedo * 0.012;
+
+        // Atmosphere: a Fresnel rim, lit where the sun reaches it...
+        float fresnel = pow(1.0 - NoV, 3.0);
+        float litRim = smoothstep(-0.35, 0.35, NoL);
+        // ...and, seen against the star, a forward-scattering ring round the night side.
+        float against = pow(clamp(dot(-V, L), 0.0, 1.0), 6.0);
+        float forward = against * pow(1.0 - NoV, 2.0) * 2.5;
+        radiance += materialParams.atmosphere * light * (fresnel * litRim * ringShade + forward);
+
+        material.baseColor = float4(radiance * materialParams.intensity, 1.0);
+    }
+}
