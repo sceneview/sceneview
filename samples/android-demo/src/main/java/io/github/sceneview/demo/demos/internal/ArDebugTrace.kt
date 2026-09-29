@@ -164,6 +164,10 @@ class ArDebugTrace {
     private var imageTimes = FloatArray(64)
     private val imagePaths = ArrayList<String>()
 
+    private var depthTimes = FloatArray(64)
+    private var depthTotals = IntArray(64)
+    private var depthCount = 0
+
     /**
      * When set, every event that changed the trace is appended here as it was kept — the
      * confident, finite points only, a plane or an anchor only when it changed — so replaying
@@ -377,6 +381,35 @@ class ArDebugTrace {
         imagePaths.add(path)
         journal?.add(ArDebugEvent.Image(nanos, path))
         touch(t)
+    }
+
+    /**
+     * Records that the dense map (a `.svscan` v2's `dense/points.bin`) held [total] surfels at
+     * [nanos], [added] of them new and [kept] depth samples merged — what lets a replay reveal
+     * the cloud as it grew, since surfels keep the order they were found in.
+     */
+    fun addDepthStats(nanos: Long, added: Int, kept: Int, total: Int) {
+        val t = secondsOf(nanos)
+        if (depthCount > 0 && t < depthTimes[depthCount - 1]) return // never back in time
+        if (depthCount == depthTimes.size) {
+            depthTimes = depthTimes.copyOf(depthCount * 2)
+            depthTotals = depthTotals.copyOf(depthCount * 2)
+        }
+        depthTimes[depthCount] = t
+        depthTotals[depthCount] = total
+        depthCount++
+        journal?.add(ArDebugEvent.DepthStats(nanos, added, kept, total))
+        touch(t)
+    }
+
+    /** Whether the trace says how its dense map grew ([addDepthStats]). */
+    val hasDepthStats: Boolean get() = depthCount > 0
+
+    /** Surfels of the dense map at [time]: `0` before the first depth frame, `-1` with no stats. */
+    fun denseCountAt(time: Float): Int {
+        if (depthCount == 0) return -1
+        val i = upperBound(depthTimes, depthCount, time) - 1
+        return if (i < 0) 0 else depthTotals[i]
     }
 
     /** The whole scene as it stood at [time] (clamped to the trace). */

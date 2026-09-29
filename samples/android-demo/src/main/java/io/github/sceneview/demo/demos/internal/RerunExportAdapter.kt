@@ -86,7 +86,16 @@ object RerunExportAdapter {
             anchors = anchors,
             photos = photos,
             pointObservations = observationsOf(trace),
+            dense = denseOf(opened),
+            denseVoxelM = opened.manifest.dense?.voxelM ?: DenseFusion.VOXEL_M,
         )
+    }
+
+    /** A `.svscan` v2's dense cloud, decoded from its SVPC blob; `null` for a v1 or sparse scan. */
+    private fun denseOf(opened: OpenedCapture): DenseCloud? {
+        val dense = opened.manifest.dense ?: return null
+        val bytes = opened.bytesOf(dense.path) ?: return null
+        return SvpcCodec.decode(bytes)?.takeIf { it.count > 0 }
     }
 
     /**

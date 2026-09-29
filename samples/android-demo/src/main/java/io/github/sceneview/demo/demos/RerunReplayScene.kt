@@ -25,11 +25,14 @@ import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
+import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.loaders.MaterialLoader
@@ -67,6 +70,8 @@ internal class RerunReplayMedia(
      * the view frames what is there now and keeps a photo slot for every keyframe it may reach.
      */
     val growing: Boolean = false,
+    /** A `.svscan` v2's dense cloud, ready to draw; `null` for a v1 or sparse-tier scan. */
+    val dense: ReplayDenseLayer? = null,
 ) {
     /** The thumbnail of the camera image in force at [time], `null` before the first one. */
     fun thumbnailAt(time: Float): Bitmap? {
@@ -86,6 +91,32 @@ internal class RerunReplayMedia(
         val span = manifest.media[path] ?: return null
         if (span.offset + span.length > archive.size) return null
         return archive.copyOfRange(span.offset, span.offset + span.length)
+    }
+}
+
+/**
+ * A `.svscan` v2's dense cloud as the replay draws it — the design's zero-shader parity fallback:
+ * [mesh] one square surfel per point in the plane of its normal, [atlas] its colours
+ * ([DenseSurfels.ATLAS_SIZE]² RGBA), both built off the main thread.
+ */
+internal class ReplayDenseLayer(val cloud: DenseCloud, val voxelM: Float, val mesh: DebugMesh, val atlas: ByteArray) {
+    companion object {
+        /** The dense cloud [manifest] indexes in [archive], built for drawing; `null` without one. */
+        fun of(manifest: ReplayManifest, archive: ByteArray): ReplayDenseLayer? {
+            val dense = manifest.dense ?: return null
+            val span = manifest.media[dense.path] ?: return null
+            if (span.offset + span.length > archive.size) return null
+            val cloud = SvpcCodec.decode(archive, span.offset, span.length)?.takeIf { it.count > 0 } ?: return null
+            return ReplayDenseLayer(
+                cloud = cloud,
+                voxelM = dense.voxelM,
+                mesh = DenseSurfels.mesh(cloud, dense.voxelM),
+                atlas = DenseSurfels.atlas(cloud, fallback = DENSE_FALLBACK_COLOR),
+            )
+        }
+
+        /** A surfel the camera never coloured: the sparse points' own neutral. */
+        const val DENSE_FALLBACK_COLOR = 0xFFB8C2D6.toInt()
     }
 }
 
@@ -121,6 +152,7 @@ private suspend fun openReplay(
     val planes = manifest.textures.map { texture ->
         async(Dispatchers.Default) { shell.decode(texture.path)?.let { texture.planeId to it } }
     }
+    val dense = async(Dispatchers.Default) { runCatching { ReplayDenseLayer.of(manifest, archive) }.getOrNull() }
     val thumbnails = (0 until trace.imageCount).map { i ->
         async(Dispatchers.Default) {
             val path = trace.imagePath(i)
@@ -134,6 +166,7 @@ private suspend fun openReplay(
         planeBitmaps = planes.awaitAll().filterNotNull().toMap(),
         thumbnails = thumbnails.awaitAll().filterNotNull().toMap(),
         archive = archive,
+        dense = dense.await(),
     )
 }
 
@@ -259,6 +292,28 @@ internal class ReplayLayers(
         engine, material(texture(shadowBitmap()), solid = false), SHADOW_PRIORITY, textured = true,
     )
 
+    /**
+     * A v2 scan's dense cloud: surfels coloured from their own texel of a 1024² atlas, uploaded
+     * once here and revealed as the timeline reaches them ([syncDense]). Writes depth, so the
+     * surfels hide what is behind them, like a surface.
+     */
+    private val denseNode: DebugLayerNode? = media.dense?.let { dense ->
+        val atlas = Texture.Builder()
+            .width(DenseSurfels.ATLAS_SIZE)
+            .height(DenseSurfels.ATLAS_SIZE)
+            .levels(1)
+            .sampler(Texture.Sampler.SAMPLER_2D)
+            .format(Texture.InternalFormat.SRGB8_A8)
+            .build(engine)
+            .also(textures::add)
+        atlas.setImage(
+            engine, 0,
+            Texture.PixelBufferDescriptor(ByteBuffer.wrap(dense.atlas), Texture.Format.RGBA, Texture.Type.UBYTE),
+        )
+        DebugLayerNode(engine, material(atlas, nearest), POINTS_PRIORITY, textured = true)
+            .also { it.upload(dense.mesh) }
+    }
+
     /** The photos in the frustums, at the archive's full size; bounded, see [evictFrames]. */
     private val frameTextures = HashMap<String, Texture>()
 
@@ -276,7 +331,8 @@ internal class ReplayLayers(
         }
     }
 
-    val nodes: List<DebugLayerNode> = planeNodes.values + pointsNode + shadowNode + photoSlots.map { it.node }
+    val nodes: List<DebugLayerNode> =
+        planeNodes.values + pointsNode + listOfNotNull(denseNode) + shadowNode + photoSlots.map { it.node }
 
     private val mesh = DebugMesh()
     private val keys = HashMap<Any, Any?>()
@@ -289,7 +345,9 @@ internal class ReplayLayers(
 
     fun sync(frame: ArDebugFrame, pointStyle: ArDebugStyle, floorY: Float, show: ReplayVisibility) {
         syncPlanes(frame, floorY, show.planes)
-        syncPoints(frame, pointStyle, show.points)
+        // A dense cloud stands in for the sparse one, under the same toggle.
+        syncPoints(frame, pointStyle, show.points && denseNode == null)
+        syncDense(frame, show.points)
         syncShadows(frame, show.anchors)
         syncPhotos(frame, show.trail)
     }
@@ -318,6 +376,20 @@ internal class ReplayLayers(
         mesh.clear()
         ReplayGeometry.addColoredPoints(mesh, frame.mapPoints, style.mapPointRadius * POINT_SCALE)
         pointsNode.upload(mesh)
+    }
+
+    /**
+     * The dense cloud as it stood at [frame]'s time: its surfels keep the order the scan found
+     * them in, so the trace's `depth_stats` count at that time is how many to draw. A cloud with
+     * no stats on its timeline is drawn whole.
+     */
+    private fun syncDense(frame: ArDebugFrame, shown: Boolean) {
+        val node = denseNode ?: return
+        val total = media.dense?.cloud?.count ?: 0
+        val atTime = media.trace.denseCountAt(frame.time)
+        val count = if (atTime < 0) total else minOf(atTime, total)
+        node.isVisible = shown && count > 0
+        if (node.isVisible) node.showIndices(minOf(count, DenseSurfels.MAX_SURFELS) * INDICES_PER_SURFEL)
     }
 
     private fun syncShadows(frame: ArDebugFrame, shown: Boolean) {
@@ -409,6 +481,9 @@ internal class ReplayLayers(
         const val SHADOW_PRIORITY = 2
         const val POINTS_PRIORITY = 3
         const val PHOTO_FRUSTUM_PRIORITY = 5
+
+        /** Two triangles per surfel ([DenseSurfels.mesh]). */
+        const val INDICES_PER_SURFEL = 6
 
         /** Anisotropic filtering on the photos: 8 taps, a mid-range GPU's cheap maximum. */
         const val ANISOTROPY = 8f

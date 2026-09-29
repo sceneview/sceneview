@@ -47,9 +47,12 @@ import io.github.sceneview.loaders.ModelLoader
 /**
  * The live figures of a scan: the red recording dot and the clock, then the points, surfaces
  * and photos taken so far — each counted off the scan itself, never estimated.
+ *
+ * A [depthScan] (ARCore raw depth, Rerun v2 tier `depth`) counts its dense map's points, and
+ * says so beside "Scanning"; a sparse scan counts ARCore's feature points and says that too.
  */
 @Composable
-internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Boolean) {
+internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Boolean, depthScan: Boolean = false) {
     OverlayCard(testTag = SCAN_HUD_TAG) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -58,7 +61,14 @@ internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Bo
                     .background(ArOverlay.accentRecord, CircleShape),
             )
             Spacer(Modifier.width(Space.sm))
-            Text(text = SCANNING, style = OnScrimTitle, modifier = Modifier.weight(1f))
+            Text(text = SCANNING, style = OnScrimTitle)
+            Spacer(Modifier.width(Space.sm))
+            Text(
+                text = if (depthScan) ScanCopy.TIER_DEPTH else ScanCopy.TIER_SPARSE,
+                style = OnScrimTitle.copy(color = ArOverlay.onScrimMuted),
+                maxLines = 1,
+                modifier = Modifier.weight(1f).testTag(SCAN_TIER_TAG),
+            )
             val clock = ArDebugFormat.clock(seconds)
             Text(
                 text = clock,
@@ -67,7 +77,7 @@ internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Bo
             )
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            ScanFigure(figures.points, "point", "points", Modifier.weight(1f))
+            ScanFigure(if (depthScan) figures.dense else figures.points, "point", "points", Modifier.weight(1f))
             ScanFigure(figures.surfaces, "surface", "surfaces", Modifier.weight(1f))
             ScanFigure(figures.photos, "photo", "photos", Modifier.weight(1f))
         }
@@ -179,6 +189,9 @@ internal fun ScanShutter(
 }
 
 private const val SCANNING = "Scanning"
+
+/** The HUD's tier label, for the QA harness. */
+internal const val SCAN_TIER_TAG = "rerun_scan_tier"
 
 /** Wider than tall: the room reads across, and the camera keeps the lower half of the screen. */
 private const val SCAN_STAGE_ASPECT = 1.35f

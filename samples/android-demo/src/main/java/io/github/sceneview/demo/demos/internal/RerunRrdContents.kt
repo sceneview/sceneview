@@ -40,6 +40,9 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
     private var title: String? = null
     private var points: List<Vec3> = emptyList()
     private var pointColors: IntArray? = null
+    private var densePositions: FloatArray? = null
+    private var denseColors: IntArray? = null
+    private var denseRadius: Float? = null
     private val sightings = ArrayList<Sighting>()
     private val cameraRows = ArrayList<CameraRow>()
     private val photos = ArrayList<Photo>()
@@ -63,6 +66,14 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
                     pointColors = null
                 }
                 last(chunk.uint32s("Points3D:colors"))?.let { pointColors = it }
+            }
+            DENSE -> {
+                last(chunk.floatVectors("Points3D:positions", 3))?.let {
+                    densePositions = it
+                    denseColors = null
+                }
+                last(chunk.uint32s("Points3D:colors"))?.let { denseColors = it }
+                last(chunk.floats("Points3D:radii"))?.firstOrNull()?.let { denseRadius = it }
             }
             LIVE_POINTS -> {
                 val positions = chunk.floatVectors("Points3D:positions", 3)
@@ -142,7 +153,8 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
             AnchorEvent(ANCHORS_PREFIX + anchor.name, position, anchor.orientation ?: RerunExportScene.Quat.Identity)
         }
         val mapPoints = points.indices.filter { points[it].isFinite() }
-        if (poses.isEmpty() && mapPoints.isEmpty() && planeEvents.none { it.polygon.size >= 3 }) {
+        val dense = denseCloud()
+        if (poses.isEmpty() && mapPoints.isEmpty() && dense == null && planeEvents.none { it.polygon.size >= 3 }) {
             rrdFail(Failure.NothingToReplay())
         }
         // The session starts at 0 on the writer's timeline (seconds since the first event).
@@ -181,19 +193,43 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
         }
         val photoMedia = cameraLines(poses, shots, sightingLines, log)
 
-        // Photos first in the archive, as in a recorded capture; plane photos after them.
+        // Photos first in the archive, as in a recorded capture; plane photos, then the dense
+        // cloud's SVPC blob (a `.svscan` v2's `dense/points.bin`) after them.
+        val denseMedia = dense?.let { listOf(ReplayDense.PATH to SvpcCodec.encode(it)) }.orEmpty()
         val media = ByteArrayOutputStream()
-        val entries = (photoMedia + planeMedia).map { (path, bytes) ->
+        val entries = (photoMedia + planeMedia + denseMedia).map { (path, bytes) ->
             val offset = media.size()
             media.write(bytes)
             "{\"path\":${Json.string(path)},\"offset\":$offset,\"length\":${bytes.size}}"
         }
-        val manifest = manifest(start, end, photoMedia.size, planeEvents, textures, entries)
+        val manifest = manifest(start, end, photoMedia.size, planeEvents, textures, entries, dense)
         return RerunRrdReader.Recording(
             title,
             RerunCapturePack(manifest.encodeToByteArray(), log.toString().encodeToByteArray(), media.toByteArray()),
         )
     }
+
+    /**
+     * `world/dense` as the `.svscan` v2 cloud it was exported from: finite positions, their
+     * colours as `0xFFRRGGBB` (the writer's white for a point the camera never coloured stays
+     * white), no normals — Rerun's `Points3D` has none. `null` without a dense point.
+     */
+    private fun denseCloud(): DenseCloud? {
+        val flat = densePositions ?: return null
+        val colors = denseColors?.takeIf { it.size * 3 == flat.size }
+        val kept = (0 until flat.size / 3).filter { i ->
+            flat[3 * i].isFinite() && flat[3 * i + 1].isFinite() && flat[3 * i + 2].isFinite()
+        }
+        if (kept.isEmpty()) return null
+        val positions = FloatArray(kept.size * 3)
+        kept.forEachIndexed { j, i -> System.arraycopy(flat, 3 * i, positions, 3 * j, 3) }
+        val argb = IntArray(kept.size) { j -> colors?.let { (0xFF shl 24) or (it[kept[j]] ushr 8) } ?: 0 }
+        return DenseCloud(positions, argb)
+    }
+
+    /** The dense cloud's voxel: twice the writer's half-voxel radius. */
+    private fun denseVoxelM(): Float =
+        denseRadius?.takeIf { it.isFinite() && it > 0f }?.let { it * 2f } ?: DenseFusion.VOXEL_M
 
     private fun planeEvents(codec: RerunImageCodec): List<PlaneEvent> = planes.values.mapNotNull { plane ->
         val polygon = plane.outline?.filter { it.isFinite() }?.toMutableList()?.takeIf { it.isNotEmpty() }
@@ -301,7 +337,7 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
         return photoMedia
     }
 
-    @Suppress("LongParameterList") // the manifest's six sections
+    @Suppress("LongParameterList") // the manifest's sections
     private fun manifest(
         start: Long,
         end: Long,
@@ -309,11 +345,18 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
         planes: List<PlaneEvent>,
         textures: List<String>,
         media: List<String>,
+        dense: DenseCloud?,
     ): String {
         // In Double: hostile times cannot overflow.
         val seconds = (end.toDouble() - start.toDouble()) / NANOS_PER_SECOND
         val frameRate = if (seconds > 0 && frames > 1) frames / seconds else DEFAULT_FRAME_RATE
         val out = StringBuilder("{")
+        // A dense cloud makes it a `.svscan` v2 (ReplayManifest.parse); without one it stays v1.
+        if (dense != null) {
+            out.append("\"version\":2,\"dense\":{\"path\":${Json.string(ReplayDense.PATH)}")
+            out.append(",\"count\":${dense.count},\"voxelM\":${Json.number(denseVoxelM())},\"normals\":false")
+            out.append(",\"bounds\":[").append(dense.bounds().joinToString(",", transform = Json::number)).append("]},")
+        }
         lens()?.let { lens ->
             out.append("\"intrinsics\":{\"width\":${lens.width},\"height\":${lens.height}")
             out.append(",\"fx\":${Json.number(lens.fx)},\"fy\":${Json.number(lens.fy)}")
@@ -490,6 +533,9 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
 
         /** What the camera saw over time, one row per observation ([RerunRrdWriter]). */
         const val LIVE_POINTS = "world/points/live"
+
+        /** A `.svscan` v2's dense cloud, one static row ([RerunRrdWriter]). */
+        const val DENSE = "world/dense"
         private const val NANOS_PER_SECOND = 1e9
         private const val DEFAULT_FRAME_RATE = 10.0
         private const val MAX_LENS_SIZE = 1e6f
@@ -498,7 +544,7 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
 
         /** Whether a chunk on [entity] carries anything the replay uses; other chunks are not decoded. */
         fun reads(entity: String): Boolean =
-            entity in setOf("__properties", "world/points", LIVE_POINTS, "world/camera", "world/camera_path") ||
+            entity in setOf("__properties", "world/points", LIVE_POINTS, DENSE, "world/camera", "world/camera_path") ||
                 child(PLANES_PREFIX, entity) != null || child(ANCHORS_PREFIX, entity) != null
 
         /** `world/planes/7` → `7`; `null` for any other path or a deeper one. */
