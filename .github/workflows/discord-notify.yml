@@ -26,7 +26,10 @@ permissions:
 
 jobs:
   notify-release:
-    if: github.event_name == 'release'
+    # Only SDK releases (v*). Data releases such as hd-pack-v1 / assets-v1 are
+    # asset stores for the apps, not announcements. Data release tags must
+    # never start with "v".
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
