@@ -432,6 +432,29 @@ def generateDemoRegistry = tasks.register("generateDemoRegistry", Exec) {
     commandLine "bash", collatorScript.absolutePath, "--kt-only"
 }
 
+// ─── Binary 3D assets (assets/manifest.json) ─────────────────────────────
+//
+// The demo's models, HDR environments and splats are not in git: they live on
+// the `assets-v1` GitHub Release and `tools/fetch-assets.sh` materialises them
+// under src/main/assets/. Every variant's preBuild depends on this task, so any
+// Gradle build (local, CI, store release) embeds the same bytes or fails loudly
+// — it never packages an APK without its models. The task declares no outputs
+// on purpose: it always runs, and the script is a ~0.1 s hash check once the
+// shared cache (~/.cache/sceneview-assets) is warm.
+def fetchAssets = tasks.register("fetchAssets", Exec) {
+    description = "Materialises the demo's binary assets listed in assets/manifest.json."
+    group = "build"
+    workingDir rootProject.projectDir
+    commandLine "bash", rootProject.file("tools/fetch-assets.sh").absolutePath, "--scope", "android"
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(fetchAssets)
+}
+// Unit tests read some of these files straight from the source tree.
+tasks.withType(Test).configureEach {
+    dependsOn(fetchAssets)
+}
+
 // Make every Kotlin compilation (debug/release, app + unit tests) depend on the
 // generator so a fresh checkout always has GeneratedDemos.kt before kotlinc runs.
 tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
