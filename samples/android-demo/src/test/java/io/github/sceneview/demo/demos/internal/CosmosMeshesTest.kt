@@ -27,7 +27,9 @@ class CosmosMeshesTest {
     @Test
     fun `every scene builds well-formed buffers`() {
         listOf(
-            CosmosMeshes.galaxy(),
+            CosmosMeshes.galaxyLayer(0),
+            CosmosMeshes.galaxyLayer(CosmosMeshes.GALAXY_LAYERS - 1),
+            CosmosMeshes.galaxyDust(),
             CosmosMeshes.starField(),
             CosmosMeshes.burst(),
             CosmosMeshes.burstSparks(),
@@ -42,7 +44,8 @@ class CosmosMeshesTest {
 
     @Test
     fun `builders are deterministic`() {
-        assertArrayEquals(CosmosMeshes.galaxy().vertices, CosmosMeshes.galaxy().vertices, 0f)
+        assertArrayEquals(CosmosMeshes.galaxyLayer(3).vertices, CosmosMeshes.galaxyLayer(3).vertices, 0f)
+        assertArrayEquals(CosmosMeshes.galaxyDust().vertices, CosmosMeshes.galaxyDust().vertices, 0f)
         assertArrayEquals(CosmosMeshes.burst().vertices, CosmosMeshes.burst().vertices, 0f)
     }
 
@@ -94,16 +97,56 @@ class CosmosMeshesTest {
     }
 
     @Test
-    fun `the galaxy is a disc of the advertised radius`() {
-        val mesh = CosmosMeshes.galaxy()
+    fun `the galaxy is a disc of the advertised radius and star count`() {
         var outside = 0
+        var sprites = 0
+        repeat(CosmosMeshes.GALAXY_LAYERS) { layer ->
+            val mesh = CosmosMeshes.galaxyLayer(layer)
+            sprites += mesh.vertexCount / 4
+            for (v in 0 until mesh.vertexCount step 4) {
+                val o = v * SPRITE_STRIDE
+                val r = sqrt(mesh.vertices[o] * mesh.vertices[o] + mesh.vertices[o + 2] * mesh.vertices[o + 2])
+                if (r > CosmosMeshes.GALAXY_RADIUS * 1.3f) outside++
+                assertTrue("thin disc", abs(mesh.vertices[o + 1]) < 0.25f)
+            }
+        }
+        assertTrue("almost every star inside the disc, got $outside outside", outside < sprites / 100)
+        assertTrue("the caption's 60,000 stars are there, got $sprites", sprites >= CosmosMeshes.GALAXY_STARS)
+    }
+
+    @Test
+    fun `the first galaxy layer alone already spans the whole disc`() {
+        val mesh = CosmosMeshes.galaxyLayer(0)
+        var reach = 0f
         for (v in 0 until mesh.vertexCount step 4) {
             val o = v * SPRITE_STRIDE
-            val r = sqrt(mesh.vertices[o] * mesh.vertices[o] + mesh.vertices[o + 2] * mesh.vertices[o + 2])
-            if (r > CosmosMeshes.GALAXY_RADIUS * 1.3f) outside++
-            assertTrue("thin disc", abs(mesh.vertices[o + 1]) < 0.25f)
+            val x = mesh.vertices[o]
+            val z = mesh.vertices[o + 2]
+            reach = maxOf(reach, sqrt(x * x + z * z))
         }
-        assertTrue("almost every star inside the disc, got $outside outside", outside < mesh.vertexCount / 4 / 100)
+        assertTrue("layer 0 reaches the rim, got $reach", reach > 0.9f * CosmosMeshes.GALAXY_RADIUS)
+    }
+
+    @Test
+    fun `the flow field covers the whole viewport at every aspect and time`() {
+        // Phone portrait, tablet portrait, tablet landscape, phone landscape.
+        for (aspect in floatArrayOf(0.45f, 0.75f, 1.33f, 2.2f)) {
+            for (step in 0..40) {
+                val pose = CosmosFraming.pose(CosmosScene.Flow, time = step * 0.5f, aspect = aspect)
+                for (sx in floatArrayOf(-1f, 1f)) {
+                    for (sy in floatArrayOf(-1f, 1f)) {
+                        val hit = CosmosFraming.planeHit(pose, aspect, sx, sy)
+                        assertTrue("corner ($sx, $sy) at aspect $aspect looks past the plane", hit != null)
+                        hit!!
+                        assertTrue(
+                            "corner ($sx, $sy) at aspect $aspect lands off the field: ${hit.toList()}",
+                            abs(hit[0]) <= CosmosMeshes.FLOW_HALF_WIDTH &&
+                                abs(hit[1]) <= CosmosMeshes.FLOW_HALF_HEIGHT,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     @Test
@@ -136,7 +179,7 @@ class CosmosMeshesTest {
         assertEquals(28f / 12f, landscape, 1e-4f)
         CosmosScene.entries.forEach { scene ->
             val pose = CosmosFraming.pose(scene, time = 3f, aspect = 0.45f)
-            assertEquals(6, pose.size)
+            assertEquals("eye, target and up", 9, pose.size)
             val distance = sqrt(pose[0] * pose[0] + pose[1] * pose[1] + pose[2] * pose[2])
             assertTrue("$scene camera is outside the subject", distance > 2f)
         }

@@ -10,10 +10,10 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (34 mats → 34 filamats), across THREE pinned toolchains:
+# Inventory (35 mats → 35 filamats), across THREE pinned toolchains:
 #   sceneview/src/main/materials/         (15) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
-#   samples/android-demo/src/main/materials/ (6) → samples/android-demo/src/main/assets/materials/
+#   samples/android-demo/src/main/materials/ (7) → samples/android-demo/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/     [filamentWebsite]
 #   sceneview-web/materials/               (1) → sceneview-web/materials/      [filamentWeb]
 #
@@ -31,8 +31,8 @@
 # fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 34 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 34 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 35 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 35 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -171,6 +171,7 @@ MATS=(
     "android-demo:cosmos_sprite:samples/android-demo/src/main/materials/cosmos_sprite.mat:samples/android-demo/src/main/assets/materials/cosmos_sprite.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_ribbon:samples/android-demo/src/main/materials/cosmos_ribbon.mat:samples/android-demo/src/main/assets/materials/cosmos_ribbon.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_plasma:samples/android-demo/src/main/materials/cosmos_plasma.mat:samples/android-demo/src/main/assets/materials/cosmos_plasma.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:cosmos_dust:samples/android-demo/src/main/materials/cosmos_dust.mat:samples/android-demo/src/main/assets/materials/cosmos_dust.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_depth:arsceneview/src/main/materials/camera_stream_depth.mat:arsceneview/src/main/assets/materials/camera_stream_depth.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_person_occlusion:arsceneview/src/main/materials/camera_stream_person_occlusion.mat:arsceneview/src/main/assets/materials/camera_stream_person_occlusion.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_flat:arsceneview/src/main/materials/camera_stream_flat.mat:arsceneview/src/main/assets/materials/camera_stream_flat.filamat:--optimize-size -p mobile -a opengl -a vulkan"

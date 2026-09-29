@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import android.os.SystemClock
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,7 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -85,7 +89,7 @@ private const val DEFAULT_BLOOM = 0.45f
 
 /**
  * **Cosmos** — four procedural, real-time space scenes lit by nothing but their own light and
- * a bloom pass: a barred spiral galaxy, a plasma star, a particle-track burst and a vortex flow
+ * a bloom pass: a four-arm spiral galaxy, a plasma star, a particle-track burst and a vortex flow
  * field. Nothing is a video or a texture; every point and stroke is geometry built on the CPU
  * once ([CosmosMeshes]) and animated in the shader.
  *
@@ -95,11 +99,13 @@ private const val DEFAULT_BLOOM = 0.45f
  *
  * - Radiance above 1.0 is what the bloom pass bleeds from, so every colour here is written in
  *   linear HDR (a star core at 3–6, a dim dust grain at 0.05) and the tone mapper rolls it off.
- * - `blending: add` in the material makes overlapping light pile up — 26 000 arm stars stack
+ * - `blending: add` in the material makes overlapping light pile up — 60 000 galaxy stars stack
  *   into a white-hot bulge with no sorting at all.
  * - `PrimitiveType.POINTS` and `LINES` draw at one device pixel on mobile, so points are
  *   camera-facing quads and strokes are camera-facing ribbons, both expanded in the vertex
  *   shader (`cosmos_sprite.mat`, `cosmos_ribbon.mat`) from one static buffer.
+ * - Additive light cannot darken, so the galaxy's dust lanes are a second, alpha-blended
+ *   material (`cosmos_dust.mat`) drawn last with a renderable priority of 7.
  * - The star is a `SphereNode` with a noise material (`cosmos_plasma.mat`): domain-warped fbm,
  *   ridged filaments and a Fresnel limb.
  *
@@ -141,6 +147,9 @@ fun CosmosDemo(onBack: () -> Unit) {
     val plasmaMaterial by produceState<Material?>(null, materialLoader) {
         value = materialLoader.loadMaterial("materials/cosmos_plasma.filamat")
     }
+    val dustMaterial by produceState<Material?>(null, materialLoader) {
+        value = materialLoader.loadMaterial("materials/cosmos_dust.filamat")
+    }
     val sprites = remember(materialLoader, spriteMaterial) {
         spriteMaterial?.let { material ->
             SpriteInstances(List(SPRITE_SLOTS) { materialLoader.createInstance(material) })
@@ -159,28 +168,51 @@ fun CosmosDemo(onBack: () -> Unit) {
             )
         }
     }
+    val dust = remember(materialLoader, dustMaterial) {
+        dustMaterial?.let { material -> materialLoader.createInstance(material).apply { setParameter("opacity", 0f) } }
+    }
 
     // GPU meshes, built per scene on first use. The arrays are computed off the main thread;
     // the Filament buffers are created on it. Declared before the SceneView so they are
     // destroyed after the nodes that draw them.
     val meshes = remember { mutableStateMapOf<CosmosScene, SceneMeshes>() }
+    // The galaxy comes in layers, each a sparser sample of the whole: the first is on screen
+    // within a second of opening, the rest densify it while it fades in.
+    val galaxyLayers = remember { mutableStateListOf<GpuMesh>() }
+    val openedAt = remember { SystemClock.elapsedRealtime() }
     val stars by produceState<GpuMesh?>(null, engine) {
         val cpu = withContext(Dispatchers.Default) { CosmosMeshes.starField().staged() }
         value = cpu.upload(engine)
     }
     LaunchedEffect(engine, scene) {
         // The selected scene first, then the others in the background so a switch is instant.
+        // The first galaxy layer goes ahead of everything: it is what a user sees first.
+        if (galaxyLayers.isEmpty()) {
+            val first = withContext(Dispatchers.Default) { CosmosMeshes.galaxyLayer(0).staged() }
+            galaxyLayers += first.upload(engine)
+        }
         val order = listOf(scene) + CosmosScene.entries.filter { it != scene }
         for (target in order) {
-            if (meshes.containsKey(target)) continue
-            val staged = withContext(Dispatchers.Default) { buildScene(target) }
-            meshes[target] = staged.mapValues { (_, mesh) -> mesh.upload(engine) }.let(::SceneMeshes)
+            if (!meshes.containsKey(target)) {
+                val staged = withContext(Dispatchers.Default) { buildScene(target) }
+                meshes[target] = staged.mapValues { (_, mesh) -> mesh.upload(engine) }.let(::SceneMeshes)
+            }
+            if (target == CosmosScene.Galaxy && galaxyLayers.size < CosmosMeshes.GALAXY_LAYERS) {
+                while (galaxyLayers.size < CosmosMeshes.GALAXY_LAYERS) {
+                    val layer = galaxyLayers.size
+                    val staged = withContext(Dispatchers.Default) { CosmosMeshes.galaxyLayer(layer).staged() }
+                    galaxyLayers += staged.upload(engine)
+                }
+                Log.i(TAG, "galaxy complete ${SystemClock.elapsedRealtime() - openedAt} ms after opening")
+            }
         }
     }
     DisposableEffect(engine) {
         onDispose {
             meshes.values.forEach { scene -> scene.parts.values.forEach { it.destroy(engine) } }
             meshes.clear()
+            galaxyLayers.forEach { it.destroy(engine) }
+            galaxyLayers.clear()
         }
     }
     DisposableEffect(engine, stars) {
@@ -192,13 +224,14 @@ fun CosmosDemo(onBack: () -> Unit) {
     val galaxyNode = remember { arrayOfNulls<NodeImpl>(1) }
     val starNode = remember { arrayOfNulls<NodeImpl>(1) }
     val firstFrame = rememberFirstFrameState(engine)
+    val galaxyShown = remember { booleanArrayOf(false) }
 
     DemoScaffold(
         title = stringResource(R.string.demo_cosmos_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.demo_cosmos_loading),
-        peekHeader = "Four procedural scenes, lit only by bloom",
+        peekHeader = scene.caption,
         onResetSettings = {
             touring = true
             animating = true
@@ -250,24 +283,49 @@ fun CosmosDemo(onBack: () -> Unit) {
                 cameraNode.lookAt(
                     eye = Position(pose[0], pose[1], pose[2]),
                     center = Position(pose[3], pose[4], pose[5]),
-                    up = Direction(0f, 1f, 0f),
+                    up = Direction(pose[6], pose[7], pose[8]),
                 )
+                if (!galaxyShown[0] && current == CosmosScene.Galaxy && galaxyLayers.isNotEmpty()) {
+                    galaxyShown[0] = true
+                    Log.i(TAG, "first galaxy frame ${SystemClock.elapsedRealtime() - openedAt} ms after opening")
+                }
                 galaxyNode[0]?.rotation = Rotation(y = -time * GALAXY_SPIN_DEGREES_PER_SECOND)
                 starNode[0]?.rotation = Rotation(y = time * STAR_SPIN_DEGREES_PER_SECOND, x = 12f)
                 starNode[0]?.scale = Scale(1f + 0.012f * sin(time * 2.1f))
                 sprites?.update(current, time, reveal)
                 ribbons?.update(current, time, reveal)
                 plasma?.update(current, time, reveal)
+                if (current == CosmosScene.Galaxy) dust?.setParameter("opacity", reveal)
             },
         ) {
             val sceneMeshes = meshes[scene]
             stars?.let { mesh -> sprites?.let { GlowMeshNode(mesh, it.starField) } }
-            val materialsReady = sprites != null && ribbons != null && plasma != null
+            val materialsReady = sprites != null && ribbons != null && plasma != null && dust != null
+            if (scene == CosmosScene.Galaxy && sprites != null) {
+                Node(apply = { galaxyNode[0] = this }) {
+                    galaxyLayers.forEach { layer -> key(layer) { GlowMeshNode(layer, sprites.galaxy) } }
+                    val lanes = sceneMeshes?.parts?.get(CosmosPart.Dust)
+                    // The dust joins once the stars are up: its program is one less to link before
+                    // the first frame, and it fades in with the rest.
+                    if (lanes != null && dust != null && firstFrame.rendered.value) {
+                        // Dust absorbs light, so it is alpha-blended and drawn after the stars.
+                        MeshNode(
+                            primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+                            vertexBuffer = lanes.vertexBuffer,
+                            indexBuffer = lanes.indexBuffer,
+                            boundingBox = lanes.box,
+                            materialInstance = dust,
+                            apply = {
+                                configureGlow()
+                                setPriority(DUST_PRIORITY)
+                            },
+                        )
+                    }
+                }
+            }
             if (sceneMeshes != null && materialsReady) {
                 when (scene) {
-                    CosmosScene.Galaxy -> Node(apply = { galaxyNode[0] = this }) {
-                        GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Main), sprites.galaxy)
-                    }
+                    CosmosScene.Galaxy -> Unit
                     CosmosScene.Star -> {
                         Node(apply = { starNode[0] = this }) {
                             SphereNode(
@@ -317,9 +375,16 @@ fun CosmosDemo(onBack: () -> Unit) {
         // Raw View writes, declared after the SceneView so they land after its own
         // render-quality effect (#1078). Nothing here casts or receives a shadow and nothing
         // is lit, so SSAO and shadows are pure cost; bloom is the whole look.
-        LaunchedEffect(view, bloom) {
+        // Bloom waits for the first frame on screen. Its programs are the costliest to link, and
+        // on a software GL (the emulator) linking them held the loading cover for seconds; this
+        // way the galaxy shows first and the glow joins it during the fade-in.
+        val onScreen = firstFrame.rendered.value
+        LaunchedEffect(onScreen) {
+            if (onScreen) Log.i(TAG, "on screen ${SystemClock.elapsedRealtime() - openedAt} ms after opening")
+        }
+        LaunchedEffect(view, bloom, onScreen) {
             view.bloomOptions = view.bloomOptions.also { options ->
-                options.enabled = bloom > 0f
+                options.enabled = bloom > 0f && onScreen
                 options.strength = bloom
                 options.levels = 7
                 options.resolution = 512
@@ -380,6 +445,11 @@ private fun MeshNodeImpl.configureGlow() {
 /** Frozen per-scene times for QA captures and reduced motion: each at its most telling moment. */
 private val QA_TIME = floatArrayOf(6f, 3f, 1.9f, 4f)
 
+private const val TAG = "CosmosDemo"
+
+/** Renderable priority of the dust lanes: last, over the additive stars they darken. */
+private const val DUST_PRIORITY = 7
+
 private const val GALAXY_SPIN_DEGREES_PER_SECOND = 3.5f
 private const val STAR_SPIN_DEGREES_PER_SECOND = 4f
 private const val NUCLEI = 4
@@ -391,7 +461,8 @@ private enum class CosmosPart { Main, Strokes, Dust }
 private class SceneMeshes(val parts: Map<CosmosPart, GpuMesh>)
 
 private fun buildScene(scene: CosmosScene): Map<CosmosPart, StagedMesh> = when (scene) {
-    CosmosScene.Galaxy -> mapOf(CosmosPart.Main to CosmosMeshes.galaxy().staged())
+    // The stars come in layers (see galaxyLayers); only the dust lanes are a scene part.
+    CosmosScene.Galaxy -> mapOf(CosmosPart.Dust to CosmosMeshes.galaxyDust().staged())
     CosmosScene.Star -> mapOf(
         CosmosPart.Main to CosmosMeshes.starHalo().staged(),
         CosmosPart.Strokes to CosmosMeshes.prominences().staged(),

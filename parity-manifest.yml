@@ -1275,7 +1275,8 @@ demos:
     iosFiles: []
     contract: >-
       Four procedural, real-time scenes in additive HDR light plus bloom: a
-      barred spiral galaxy of ~40 000 camera-facing star sprites, a plasma
+      four-arm spiral galaxy of 60 000 camera-facing star sprites with
+      alpha-blended dust lanes, built in layers so it shows within a second, a plasma
       star (noise-shaded sphere, Fresnel limb, magnetic loops), a looping
       burst of ~460 charged-particle tracks, and a vortex flow field of
       streamlines with travelling pulses. Dock picks a scene; an optional

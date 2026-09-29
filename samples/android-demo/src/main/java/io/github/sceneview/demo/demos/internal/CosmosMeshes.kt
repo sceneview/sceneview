@@ -67,7 +67,17 @@ internal class SpriteBuilder(expected: Int = 1024) {
     val count: Int get() = sprites
 
     @Suppress("LongParameterList")
-    fun add(x: Float, y: Float, z: Float, r: Float, g: Float, b: Float, radius: Float, phase: Float) {
+    fun add(
+        x: Float,
+        y: Float,
+        z: Float,
+        r: Float,
+        g: Float,
+        b: Float,
+        radius: Float,
+        phase: Float,
+        a: Float = 1f,
+    ) {
         ensure(sprites + 1)
         val base = sprites * 4
         var o = base * SPRITE_STRIDE
@@ -80,7 +90,7 @@ internal class SpriteBuilder(expected: Int = 1024) {
             vertices[o++] = r
             vertices[o++] = g
             vertices[o++] = b
-            vertices[o++] = 1f
+            vertices[o++] = a
             vertices[o++] = cx
             vertices[o++] = cy
             vertices[o++] = radius
@@ -259,23 +269,58 @@ internal object CosmosMeshes {
     private const val GALAXY_ARM_START = 0.14f
     private const val GALAXY_PITCH_TAN = 0.27f
 
-    /** Where arm `arm` of two sits at radius [r], in radians. */
-    fun galaxyArmAngle(r: Float, arm: Int): Float =
-        ln(max(r, GALAXY_ARM_START) / GALAXY_ARM_START) / GALAXY_PITCH_TAN + arm * PI.toFloat()
+    /** How many arms the galaxy has: two major arms off the ends of the bar, two minor ones. */
+    private const val GALAXY_ARMS = 4
 
     /**
-     * A barred two-arm spiral galaxy in the XZ plane: a warm bar and bulge, blue-white arms on
-     * a logarithmic spiral, pink star-forming knots strung along them, a faint reddish dust
-     * haze on their inner edge, and a thin population of field stars between the arms.
+     * How many layers the galaxy is built in. Each layer is a thinner random sample of the
+     * whole galaxy, so the first one alone already looks like the galaxy, only sparser, and
+     * can be on screen while the others are still being built.
      */
-    @Suppress("LongMethod")
-    fun galaxy(seed: Int = 7, armStars: Int = 34_000): GlowMesh {
-        val rnd = Random(seed)
-        val out = SpriteBuilder(armStars + 16_000)
-        val twoPi = 2f * PI.toFloat()
+    const val GALAXY_LAYERS = 8
 
-        // Bulge and bar — warm, dense, the white-hot core once additive blending stacks it up.
-        repeat(armStars / 6) {
+    /** The stars in the whole galaxy, all layers together. */
+    const val GALAXY_STARS = 60_000
+
+    /** Where arm [arm] (of [GALAXY_ARMS]) sits at radius [r], in radians. */
+    fun galaxyArmAngle(r: Float, arm: Int): Float =
+        ln(max(r, GALAXY_ARM_START) / GALAXY_ARM_START) / GALAXY_PITCH_TAN +
+            arm * (2f * PI.toFloat() / GALAXY_ARMS)
+
+    /** Half-width of a major arm at radius [r]: arms widen as they wind out. */
+    private fun galaxyArmSpread(r: Float): Float = 0.034f + 0.11f * r
+
+    private fun isMajorArm(arm: Int) = arm % 2 == 0
+
+    /**
+     * Layer [layer] of [layers] of a barred four-arm spiral galaxy in the XZ plane: a warm bar
+     * and bulge, two bright major arms off the ends of the bar and two fainter minor ones on a
+     * logarithmic spiral, spurs branching off them, a dense disc of old stars under the arms,
+     * and pink star-forming knots. The dark dust lanes are a separate mesh, [galaxyDust],
+     * because dust absorbs light and these sprites can only add it.
+     */
+    fun galaxyLayer(layer: Int, layers: Int = GALAXY_LAYERS, seed: Int = 7): GlowMesh {
+        val rnd = Random(seed * 7_919 + layer)
+        val stars = GALAXY_STARS / layers
+        val out = SpriteBuilder(stars + stars / 8 + 64)
+        galaxyBulge(out, rnd, stars * 3 / 20)
+        galaxyArms(out, rnd, stars * 11 / 20)
+        galaxyDisc(out, rnd, stars * 6 / 20)
+        galaxyArmGlow(out, rnd, stars / 20)
+        galaxyKnots(out, rnd, knots = 72 / layers)
+        if (layer == 0) {
+            // The glow of the core itself: soft sprites the bloom turns into a halo.
+            out.add(0f, 0f, 0f, r = 1.3f, g = 0.86f, b = 0.5f, radius = 0.26f, phase = 0f)
+            out.add(0f, 0f, 0f, r = 0.2f, g = 0.14f, b = 0.09f, radius = 0.6f, phase = 0f)
+            out.add(0f, 0f, 0f, r = 0.08f, g = 0.09f, b = 0.15f, radius = 1.45f, phase = 0f)
+        }
+        return out.build()
+    }
+
+    /** Bulge and bar: warm, dense, the white-hot core once additive blending stacks it up. */
+    private fun galaxyBulge(out: SpriteBuilder, rnd: Random, count: Int) {
+        val twoPi = 2f * PI.toFloat()
+        repeat(count) {
             val bar = rnd.nextFloat() < 0.55f
             val x: Float
             val z: Float
@@ -292,54 +337,83 @@ internal object CosmosMeshes {
                 y = rnd.gaussian() * 0.045f
             }
             val heat = rnd.nextFloat()
+            val b = 0.5f
             out.add(
                 x, y, z,
-                r = 1.0f * 0.34f, g = mix(0.70f, 0.80f, heat) * 0.34f, b = mix(0.42f, 0.58f, heat) * 0.34f,
+                r = 1.0f * b, g = mix(0.72f, 0.84f, heat) * b, b = mix(0.44f, 0.62f, heat) * b,
                 radius = 0.010f + rnd.nextFloat() * 0.012f,
                 phase = rnd.nextFloat(),
             )
         }
+    }
 
-        // Arms.
-        repeat(armStars) {
-            val arm = rnd.nextInt(2)
-            // A fifth of the stars trace fainter spurs that branch off the outer arms.
+    /** The arms: young blue-white stars on the crest, spurs branching off the outer arms. */
+    private fun galaxyArms(out: SpriteBuilder, rnd: Random, count: Int) {
+        repeat(count) {
+            // Two thirds of the arm stars sit on the two major arms.
+            val arm = if (rnd.nextFloat() < 0.66f) 2 * rnd.nextInt(2) else 1 + 2 * rnd.nextInt(2)
+            val major = isMajorArm(arm)
             val spur = rnd.nextFloat() < 0.2f
-            // Exponential disc profile, clipped to the rim.
+            // Exponential disc profile, clipped to the rim; minor arms start further out.
             val disc = min(
                 GALAXY_ARM_START + (-ln(1f - rnd.nextFloat() * 0.96f)) / 2.8f,
                 GALAXY_RADIUS * 1.05f,
             )
-            val r = if (spur) max(disc, 0.42f) else disc
-            val spread = (0.034f + 0.11f * r) * (if (spur) 1.3f else 1f)
-            val angle = galaxyArmAngle(r, arm) + (if (spur) 1.15f else 0f)
+            val r = when {
+                spur -> max(disc, 0.42f)
+                major -> disc
+                else -> max(disc, 0.3f)
+            }
+            val spread = galaxyArmSpread(r) * (if (spur) 1.3f else 1f) * (if (major) 1f else 1.25f)
+            val angle = galaxyArmAngle(r, arm) + (if (spur) 0.8f else 0f)
             val along = rnd.gaussian() * spread
             val across = rnd.gaussian() * spread * 0.9f
             val x = cos(angle) * (r + along) - sin(angle) * across
             val z = sin(angle) * (r + along) + cos(angle) * across
             val y = rnd.gaussian() * (0.018f * (1.1f - r))
-            // Young blue stars concentrate on the arm crest; older, whiter ones are spread.
             val crest = exp(-(along * along + across * across) / (spread * spread * 0.5f))
             val outer = smoothstep(0.1f, 0.75f, r)
-            val red = mix(1.0f, 0.56f, outer)
-            val green = mix(0.84f, 0.64f, outer)
-            val blue = mix(0.70f, 1.0f, outer)
             val brightness = (0.13f + 0.46f * crest) * (if (rnd.nextFloat() < 0.04f) 3.2f else 1f) *
-                (if (spur) 0.5f else 1f)
+                (if (spur) 0.5f else 1f) * (if (major) 1f else 0.62f)
             out.add(
                 x, y, z,
-                r = red * brightness, g = green * brightness, b = blue * brightness,
+                r = mix(1.0f, 0.56f, outer) * brightness,
+                g = mix(0.84f, 0.64f, outer) * brightness,
+                b = mix(0.70f, 1.0f, outer) * brightness,
                 radius = 0.0045f + rnd.nextFloat() * 0.007f,
                 phase = rnd.nextFloat(),
             )
         }
+    }
 
-        // A soft lavender glow under the arms, so they read as light and not only as grain.
-        repeat(armStars / 12) {
-            val arm = rnd.nextInt(2)
+    /**
+     * The disc of old stars the arms ride on: an exponential disc, warm near the centre and
+     * bluer outside, faint star by star but dense enough that the dust lanes read against it.
+     */
+    private fun galaxyDisc(out: SpriteBuilder, rnd: Random, count: Int) {
+        val twoPi = 2f * PI.toFloat()
+        repeat(count) {
+            val r = min(-ln(1f - rnd.nextFloat() * 0.985f) * 0.26f, GALAXY_RADIUS * 1.15f)
+            val a = rnd.nextFloat() * twoPi
+            val outer = smoothstep(0.05f, 0.8f, r)
+            val b = 0.07f + 0.08f * rnd.nextFloat()
+            out.add(
+                cos(a) * r, rnd.gaussian() * 0.025f * (1.2f - r), sin(a) * r,
+                r = mix(1.0f, 0.72f, outer) * b, g = mix(0.8f, 0.8f, outer) * b, b = mix(0.6f, 1.0f, outer) * b,
+                radius = 0.004f + rnd.nextFloat() * 0.005f,
+                phase = rnd.nextFloat(),
+            )
+        }
+    }
+
+    /** A soft lavender glow under the arms, so they read as light and not only as grain. */
+    private fun galaxyArmGlow(out: SpriteBuilder, rnd: Random, count: Int) {
+        repeat(count) {
+            val arm = rnd.nextInt(GALAXY_ARMS)
             val r = GALAXY_ARM_START + rnd.nextFloat() * (GALAXY_RADIUS - GALAXY_ARM_START)
+            if (!isMajorArm(arm) && r < 0.3f) return@repeat
             val angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.12f
-            val fade = 1f - 0.7f * r
+            val fade = (1f - 0.7f * r) * (if (isMajorArm(arm)) 1f else 0.6f)
             out.add(
                 cos(angle) * r, rnd.gaussian() * 0.01f, sin(angle) * r,
                 r = 0.026f * fade, g = 0.03f * fade, b = 0.056f * fade,
@@ -347,12 +421,14 @@ internal object CosmosMeshes {
                 phase = rnd.nextFloat(),
             )
         }
+    }
 
-        // Pink star-forming knots along the outer arms.
-        repeat(48) {
-            val arm = rnd.nextInt(2)
-            val r = 0.55f + rnd.nextFloat() * 0.55f
-            val angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.3f
+    /** Pink star-forming knots strung along the outer arms. */
+    private fun galaxyKnots(out: SpriteBuilder, rnd: Random, knots: Int) {
+        repeat(knots) {
+            val arm = rnd.nextInt(GALAXY_ARMS)
+            val r = 0.5f + rnd.nextFloat() * 0.55f
+            val angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.25f
             val cx = cos(angle) * r
             val cz = sin(angle) * r
             repeat(4 + rnd.nextInt(7)) {
@@ -366,38 +442,52 @@ internal object CosmosMeshes {
                 )
             }
         }
+    }
 
-        // Reddish dust haze on the inner (trailing) edge of the arms.
-        repeat(1_800) {
-            val arm = rnd.nextInt(2)
-            val r = 0.2f + rnd.nextFloat() * 0.8f
-            val angle = galaxyArmAngle(r, arm) - 0.22f + rnd.gaussian() * 0.06f
+    /**
+     * The galaxy's dust lanes, for `cosmos_dust.mat`: thin, patchy, near-black puffs along the
+     * inner edge of every arm (heavier on the two major ones) and two faint lanes off the bar.
+     * Each puff blocks only part of the light behind it, so a lane darkens the arm without
+     * hiding it; the colour is the faint reddish brown dust scatters.
+     */
+    fun galaxyDust(seed: Int = 29, count: Int = 2_600): GlowMesh {
+        val rnd = Random(seed)
+        val out = SpriteBuilder(count)
+        repeat(count) { i ->
+            val x: Float
+            val z: Float
+            val r: Float
+            var weight = 1f
+            if (i < count / 12) {
+                // Two faint straight lanes along the leading sides of the bar, point-symmetric.
+                val s = if (rnd.nextBoolean()) 1f else -1f
+                val u = 0.06f + rnd.nextFloat() * 0.14f
+                x = s * u + rnd.gaussian() * 0.006f
+                z = -s * (0.05f + 0.1f * u) + rnd.gaussian() * 0.005f
+                r = sqrt(x * x + z * z)
+                weight = 0.5f
+            } else {
+                val major = rnd.nextFloat() < 0.72f
+                val arm = if (major) 2 * rnd.nextInt(2) else 1 + 2 * rnd.nextInt(2)
+                r = (if (major) 0.2f else 0.36f) + rnd.nextFloat() * (if (major) 0.62f else 0.46f)
+                // Real lanes break up: a slow beat along the lane thins it into clumps and gaps.
+                val beat = sin(r * 23f + arm * 1.7f) + 0.6f * sin(r * 57f + arm * 0.9f)
+                if (beat < -0.5f) return@repeat
+                val angle = galaxyArmAngle(r, arm) + rnd.gaussian() * 0.02f
+                val inner = r - 0.7f * galaxyArmSpread(r) + rnd.gaussian() * 0.008f
+                x = cos(angle) * inner
+                z = sin(angle) * inner
+                weight = if (major) 1f else 0.6f
+            }
+            val opacity = (0.16f + 0.18f * rnd.nextFloat()) * weight * (1f - smoothstep(0.6f, 0.95f, r))
             out.add(
-                cos(angle) * r + rnd.gaussian() * 0.02f,
-                rnd.gaussian() * 0.01f,
-                sin(angle) * r + rnd.gaussian() * 0.02f,
-                r = 0.018f, g = 0.005f, b = 0.006f,
-                radius = 0.015f + rnd.nextFloat() * 0.02f,
-                phase = rnd.nextFloat(),
+                x, rnd.gaussian() * 0.003f, z,
+                r = 0.008f, g = 0.005f, b = 0.003f,
+                radius = 0.01f + rnd.nextFloat() * 0.012f,
+                phase = 0f,
+                a = opacity,
             )
         }
-
-        // Field stars between the arms, and a sparse halo.
-        repeat(5_000) {
-            val r = sqrt(rnd.nextFloat()) * GALAXY_RADIUS * 1.15f
-            val a = rnd.nextFloat() * twoPi
-            val b = 0.12f + 0.2f * rnd.nextFloat()
-            out.add(
-                cos(a) * r, rnd.gaussian() * 0.03f, sin(a) * r,
-                r = 0.75f * b, g = 0.82f * b, b = 1.0f * b,
-                radius = 0.004f + rnd.nextFloat() * 0.004f,
-                phase = rnd.nextFloat(),
-            )
-        }
-
-        // The glow of the core itself — one big soft sprite the bloom turns into a halo.
-        out.add(0f, 0f, 0f, r = 0.95f, g = 0.62f, b = 0.34f, radius = 0.24f, phase = 0f)
-        out.add(0f, 0f, 0f, r = 0.09f, g = 0.1f, b = 0.17f, radius = 1.4f, phase = 0f)
         return out.build()
     }
 
@@ -765,12 +855,15 @@ internal object CosmosMeshes {
     }
 }
 
-/** The four procedural scenes of the Cosmos demo, in tour order. */
-internal enum class CosmosScene(val label: String) {
-    Galaxy("Galaxy"),
-    Star("Star"),
-    Burst("Burst"),
-    Flow("Flow"),
+/**
+ * The four scenes of the Cosmos demo, in tour order: the dock [label] and the plain one-line
+ * [caption] shown under the scene.
+ */
+internal enum class CosmosScene(val label: String, val caption: String) {
+    Galaxy("Galaxy", "A spiral galaxy of 60,000 stars"),
+    Star("Star", "A hot blue star and its magnetic loops"),
+    Burst("Burst", "A particle collision, traced"),
+    Flow("Flow", "Currents swirling into whirlpools"),
 }
 
 /** Camera framing of each Cosmos scene, as pure functions of time and viewport aspect. */
@@ -778,6 +871,9 @@ internal object CosmosFraming {
 
     /** tan(half vertical FOV) of the default 28 mm lens on a 24 mm sensor height. */
     private const val TAN_HALF_VERTICAL_FOV = 12f / 28f
+
+    /** The share of the flow field the viewport may reach: a margin for the funnels' dip. */
+    private const val FLOW_COVER_MARGIN = 0.93f
 
     /** Distance at which a [halfWidth] × [halfHeight] rectangle just fits the viewport. */
     fun fitDistance(halfWidth: Float, halfHeight: Float, aspect: Float): Float {
@@ -789,8 +885,9 @@ internal object CosmosFraming {
     fun reveal(sceneTime: Float, duration: Float): Float = smoothstep(0f, duration, sceneTime)
 
     /**
-     * Camera eye (xyz) then target (xyz) for [scene] at [time] seconds, on a viewport of
-     * width / height [aspect]. Every scene drifts a little, so even a still subject reads as 3D.
+     * Camera eye (xyz), target (xyz) and up (xyz) for [scene] at [time] seconds, on a viewport
+     * of width / height [aspect]. Every scene drifts a little, so even a still subject reads
+     * as 3D.
      */
     fun pose(scene: CosmosScene, time: Float, aspect: Float): FloatArray {
         val deg = PI.toFloat() / 180f
@@ -798,7 +895,7 @@ internal object CosmosFraming {
             CosmosScene.Galaxy -> {
                 val elevation = 58f * deg
                 val yaw = (25f + 12f * sin(time * 0.07f)) * deg
-                val d = fitDistance(0.98f, 0.98f * sin(elevation) + 0.1f, aspect)
+                val d = fitDistance(1.04f, 1.04f * sin(elevation) + 0.1f, aspect)
                 orbit(d, elevation, yaw)
             }
             CosmosScene.Star -> {
@@ -809,12 +906,85 @@ internal object CosmosFraming {
                 val d = fitDistance(1.6f, 1.6f, aspect)
                 orbit(d, (8f + 4f * sin(time * 0.13f)) * deg, (16f * sin(time * 0.1f)) * deg)
             }
-            CosmosScene.Flow -> {
-                val d = fitDistance(1.12f, 2.05f, aspect)
-                orbit(d, (12f + 2f * sin(time * 0.08f)) * deg, (4f * sin(time * 0.1f)) * deg)
-            }
+            CosmosScene.Flow -> flowPose(time, aspect)
         }
     }
+
+    /**
+     * The flow field has an edge, so unlike the other scenes it must overfill the viewport,
+     * never fit inside it: the camera is brought in until all four viewport corners land on
+     * the field. The field is portrait; on a landscape viewport the camera is rolled a
+     * quarter turn so the field's long side runs along the screen's long side.
+     */
+    private fun flowPose(time: Float, aspect: Float): FloatArray {
+        val deg = PI.toFloat() / 180f
+        val elevation = (10f + 2f * sin(time * 0.08f)) * deg
+        val yaw = (4f * sin(time * 0.1f)) * deg
+        val rolled = aspect > 1f
+        // In the camera's own frame a rolled field is simply a wider-than-tall one.
+        val halfWidth = FLOW_COVER_MARGIN * if (rolled) CosmosMeshes.FLOW_HALF_HEIGHT else CosmosMeshes.FLOW_HALF_WIDTH
+        val halfHeight = FLOW_COVER_MARGIN * if (rolled) CosmosMeshes.FLOW_HALF_WIDTH else CosmosMeshes.FLOW_HALF_HEIGHT
+        // The largest distance at which the corners still land on the field: bisection, since
+        // the corner footprint grows monotonically with distance.
+        var near = 0.3f
+        var far = fitDistance(halfWidth, halfHeight, aspect) * 2f
+        repeat(24) {
+            val mid = 0.5f * (near + far)
+            if (cornersOnPlane(orbit(mid, elevation, yaw), aspect, halfWidth, halfHeight)) near = mid else far = mid
+        }
+        val pose = orbit(near, elevation, yaw)
+        return if (rolled) rollQuarterTurn(pose) else pose
+    }
+
+    /**
+     * Where the ray through viewport corner ([sx], [sy]) (each ±1, or anything in between)
+     * of a camera at [pose] meets the plane z = 0, as (x, y); null if it never does.
+     */
+    fun planeHit(pose: FloatArray, aspect: Float, sx: Float, sy: Float): FloatArray? {
+        val fx = pose[3] - pose[0]
+        val fy = pose[4] - pose[1]
+        val fz = pose[5] - pose[2]
+        val fl = sqrt(fx * fx + fy * fy + fz * fz)
+        // right = forward × up, then the true up = right × forward.
+        val ux = pose[6]
+        val uy = pose[7]
+        val uz = pose[8]
+        var rx = fy * uz - fz * uy
+        var ry = fz * ux - fx * uz
+        var rz = fx * uy - fy * ux
+        val rl = sqrt(rx * rx + ry * ry + rz * rz)
+        rx /= rl
+        ry /= rl
+        rz /= rl
+        val vx = (ry * fz - rz * fy) / fl
+        val vy = (rz * fx - rx * fz) / fl
+        val vz = (rx * fy - ry * fx) / fl
+        val tanV = TAN_HALF_VERTICAL_FOV
+        val tanH = TAN_HALF_VERTICAL_FOV * aspect
+        val dx = fx / fl + rx * sx * tanH + vx * sy * tanV
+        val dy = fy / fl + ry * sx * tanH + vy * sy * tanV
+        val dz = fz / fl + rz * sx * tanH + vz * sy * tanV
+        if (dz > -1e-4f) return null
+        val t = -pose[2] / dz
+        return floatArrayOf(pose[0] + t * dx, pose[1] + t * dy)
+    }
+
+    private fun cornersOnPlane(pose: FloatArray, aspect: Float, halfWidth: Float, halfHeight: Float): Boolean {
+        for (sx in floatArrayOf(-1f, 1f)) {
+            for (sy in floatArrayOf(-1f, 1f)) {
+                val hit = planeHit(pose, aspect, sx, sy) ?: return false
+                if (abs(hit[0]) > halfWidth || abs(hit[1]) > halfHeight) return false
+            }
+        }
+        return true
+    }
+
+    /** The same camera rig turned a quarter turn about the view axis z: (x, y) → (-y, x). */
+    private fun rollQuarterTurn(pose: FloatArray): FloatArray = floatArrayOf(
+        -pose[1], pose[0], pose[2],
+        -pose[4], pose[3], pose[5],
+        -pose[7], pose[6], pose[8],
+    )
 
     private fun orbit(distance: Float, elevation: Float, yaw: Float): FloatArray = floatArrayOf(
         distance * cos(elevation) * sin(yaw),
@@ -822,6 +992,9 @@ internal object CosmosFraming {
         distance * cos(elevation) * cos(yaw),
         0f,
         0f,
+        0f,
+        0f,
+        1f,
         0f,
     )
 }
