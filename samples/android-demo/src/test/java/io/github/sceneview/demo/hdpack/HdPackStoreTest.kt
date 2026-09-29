@@ -347,6 +347,24 @@ class HdPackStoreTest {
         )
     }
 
+    @Test fun `a model's own job reaching FAILED leaves the pack status unchanged`() {
+        // The unique jobs WorkManager holds: the Wi-Fi prefetch parked, and one model's pill job.
+        val prefetch = HdPack.PREFETCH_WORK to work(WorkInfo.State.ENQUEUED, NetworkType.UNMETERED)
+        val modelJob = HdPack.assetWorkName("apollo11-exterior")
+        val query = HdPack.packStatusQuery()
+        // What `status` sees: only the jobs its query names, as WorkManager filters them.
+        fun packStatus(jobs: Map<String, WorkInfo>) = HdPack.statusOf(
+            false,
+            null,
+            HdPack.relevantJob(jobs.filterKeys { it in query.uniqueWorkNames }.values.toList()),
+        )
+        val before = packStatus(mapOf(prefetch, modelJob to work(WorkInfo.State.RUNNING, NetworkType.CONNECTED)))
+        val after = packStatus(mapOf(prefetch, modelJob to work(WorkInfo.State.FAILED, NetworkType.CONNECTED)))
+        assertEquals(HdPackStatus.WaitingForWifi, before)
+        assertEquals(before, after)
+        assertFalse(modelJob in query.uniqueWorkNames)
+    }
+
     @Test fun `a model's pill reads its own file and its own job`() {
         val id = "apollo11-interior"
         val running = work(WorkInfo.State.RUNNING, NetworkType.CONNECTED)

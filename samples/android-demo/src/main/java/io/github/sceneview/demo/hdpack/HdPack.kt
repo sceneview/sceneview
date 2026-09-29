@@ -61,7 +61,7 @@ object HdPack {
     private const val TAG = "HdPack"
     /** The pre-per-model job, which fetched the whole pack on Wi-Fi: cancelled on launch. */
     private const val LEGACY_WORK = "hd-pack-download"
-    private const val PREFETCH_WORK = "hd-pack-prefetch"
+    internal const val PREFETCH_WORK = "hd-pack-prefetch"
     private const val ALL_WORK = "hd-pack-all"
     private const val ASSET_WORK_PREFIX = "hd-pack-asset-"
     private const val TAG_PACK = "hd-pack"
@@ -128,7 +128,7 @@ object HdPack {
         // prefetch back on after the user removed the pack. Only the whole-pack download does.
         if (assetId == null) setRemoved(context, false)
         if (assetId != null && store.manifest.asset(assetId) != null) {
-            val name = ASSET_WORK_PREFIX + assetId
+            val name = assetWorkName(assetId)
             enqueue(context, name, NetworkType.CONNECTED, ExistingWorkPolicy.KEEP, setOf(assetId))
         } else {
             val all = store.manifest.assets.mapTo(mutableSetOf()) { it.id }
@@ -153,12 +153,16 @@ object HdPack {
     fun status(context: Context, store: HdPackStore): Flow<HdPackStatus> = combine(
         store.readyIds,
         store.transfer,
-        WorkManager.getInstance(context).getWorkInfosFlow(
-            WorkQuery.fromUniqueWorkNames(listOf(ALL_WORK, PREFETCH_WORK)),
-        ),
+        WorkManager.getInstance(context).getWorkInfosFlow(packStatusQuery()),
     ) { ready, transfer, infos ->
         statusOf(ready.size == store.manifest.assets.size, transfer, relevantJob(infos))
     }
+
+    /** The jobs [status] reads: the whole-pack download and the Wi-Fi prefetch, never a model's own job. */
+    internal fun packStatusQuery(): WorkQuery = WorkQuery.fromUniqueWorkNames(listOf(ALL_WORK, PREFETCH_WORK))
+
+    /** The unique work name of one model's own download (its viewer pill). */
+    internal fun assetWorkName(assetId: String): String = ASSET_WORK_PREFIX + assetId
 
     /** Live [HdPackStatus] of one model's file — what its viewer pill narrates. */
     fun assetStatus(context: Context, store: HdPackStore, assetId: String): Flow<HdPackStatus> = combine(
@@ -170,7 +174,7 @@ object HdPack {
     }
 
     /** The job that speaks for a set: a running one, else a pending one, else one that gave up. */
-    private fun relevantJob(infos: List<WorkInfo>): WorkInfo? =
+    internal fun relevantJob(infos: List<WorkInfo>): WorkInfo? =
         infos.firstOrNull { it.state == WorkInfo.State.RUNNING }
             ?: infos.firstOrNull { !it.state.isFinished }
             ?: infos.firstOrNull { it.state == WorkInfo.State.FAILED }
