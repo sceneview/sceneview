@@ -213,10 +213,16 @@ final class ViewerEntranceDriver {
         written.removeAll()
     }
 
-    /// Feed of `SceneView.onCameraChanged(_:)`. Runs inside RealityKit's
-    /// update pass: it touches entities and plain properties only, and hops
-    /// before writing the observed ``pose``.
-    func cameraChanged(_ reported: SceneCameraPose) {
+    /// Whether the arriving model is in the scene. Read-only, so it is safe to
+    /// call from inside RealityKit's update pass; the caller snapshots it there
+    /// and hands it to ``cameraChanged(_:entityInScene:)`` after the hop.
+    var isEntityInScene: Bool { entity?.parent != nil }
+
+    /// Feed of `SceneView.onCameraChanged(_:)`, delivered after a hop out of
+    /// RealityKit's update pass, as `SceneView.cameraPose(_:)` prescribes.
+    /// `entityInScene` is ``isEntityInScene`` as it was when the pose was
+    /// reported.
+    func cameraChanged(_ reported: SceneCameraPose, entityInScene: Bool) {
         lastReported = reported
         switch phase {
         case .idle:
@@ -228,22 +234,19 @@ final class ViewerEntranceDriver {
         case let .awaitingRest(azimuth, elevation):
             // The first report once the new model is in the scene is the fit.
             // Reports before that frame the previous model.
-            guard let entity, entity.parent != nil else { return }
+            guard entityInScene else { return }
             let rest = SceneCameraPose(azimuth: azimuth, elevation: elevation,
                                        distance: reported.distance, target: reported.target)
             self.rest = rest
             phase = .revealing
-            Task { [weak self] in
-                guard let self, case .revealing = self.phase else { return }
-                self.start(ViewerEntranceFlight(rest: rest, start: .arrival))
-            }
+            start(ViewerEntranceFlight(rest: rest, start: .arrival))
         case .revealing:
             guard let flight, written.contains(where: { $0.approximatelyMatches(reported, tolerance: 1e-3) }) else { return }
-            // The start pose is drawn this frame: show the model, low, and fly.
+            // The start pose is drawn: show the model, low, and fly.
             entity?.components.remove(OpacityComponent.self)
             entity?.position.y = restY - flight.settleDrop
             phase = .flying
-            Task { [weak self] in self?.runLoop() }
+            runLoop()
         case .flying:
             // Anything we did not write is the user's hand on the camera.
             if !written.contains(where: { $0.approximatelyMatches(reported, tolerance: 1e-3) }) {

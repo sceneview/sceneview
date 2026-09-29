@@ -1141,8 +1141,13 @@ private struct EntranceStage: View {
         scene
             .cameraPose(entrance.pose)
             .onCameraChanged { [entrance] pose in
-                // Called on the main actor, from inside RealityKit's update.
-                MainActor.assumeIsolated { entrance.cameraChanged(pose) }
+                // Called from inside RealityKit's update pass: hop before the
+                // driver mutates anything (see `SceneView.cameraPose(_:)`). Whether
+                // the arriving model was in the scene is read here, in the pass,
+                // so a report that framed the previous frame's content is not
+                // taken for the new model's fit once the hop lands.
+                let attached = MainActor.assumeIsolated { entrance.isEntityInScene }
+                Task { @MainActor in entrance.cameraChanged(pose, entityInScene: attached) }
             }
             .ignoresSafeArea()
     }
