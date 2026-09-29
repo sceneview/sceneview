@@ -13,8 +13,9 @@ import UIKit
 /// is fine, because the surface is created at the right size. A bare `RealityView` in a
 /// minimal app does the same, so the fault is in RealityKit, not in ``SceneView``.
 ///
-/// This zero-size marker sits behind the `RealityView`. Whenever its layout changes it finds
-/// the `ARView` next to it and, **only if** the render surface no longer matches the view,
+/// This invisible marker is the `RealityView`'s background, so it shares its rectangle.
+/// Whenever its layout changes it finds the `ARView` laid out in that same rectangle (never a
+/// neighbouring `SceneView`'s) and, **only if** the render surface no longer matches the view,
 /// resizes the surface and its drawable (keeping the drawable's pixel density), then calls
 /// `onResize` so the scene re-writes its camera and RealityKit re-derives the projection.
 /// A surface that already matches is left alone, so a RealityKit build that resizes on its
@@ -63,28 +64,68 @@ struct RenderSurfaceResizer: UIViewRepresentable {
             }
         }
 
+        /// Layout passes a check may wait for the paired `ARView` to take its new frame.
+        private var retriesLeft = 0
+
         private func check() {
-            guard window != nil else { return }
-            // The nearest ancestor holding an ARView holds this RealityView's; a sibling
-            // SceneView's surface caught in the same walk only gets the same correction.
-            var ancestor = superview
-            while let container = ancestor {
-                let views = Self.realityViews(in: container)
-                if !views.isEmpty {
-                    let resized = views.reduce(false) { Self.fitSurface(of: $1) || $0 }
-                    if resized { onResize?() }
-                    return
-                }
-                ancestor = container.superview
+            guard let window else { return }
+            let markerFrame = convert(bounds, to: window)
+            guard markerFrame.width > 0, markerFrame.height > 0 else { return }
+            if let arView = pairedRealityView(markerFrame: markerFrame, in: window) {
+                retriesLeft = 0
+                if Self.fitSurface(of: arView) { onResize?() }
+            } else if retriesLeft < 5 {
+                // Mid-rotation, the ARView may not have its new frame yet.
+                retriesLeft += 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.check() }
+            } else {
+                retriesLeft = 0
             }
         }
 
-        private static func realityViews(in view: UIView) -> [ARView] {
+        /// The `ARView` of the `RealityView` this marker sits behind, and no other.
+        ///
+        /// The marker is the `RealityView`'s background, so it is laid out in exactly the
+        /// same rectangle. The walk climbs from the marker until a container holds a
+        /// non-AR `ARView` whose on-screen frame is that rectangle. Two `SceneView`s side by
+        /// side or stacked never share a rectangle, so a sibling's surface is never touched.
+        /// If two views do share it (one `SceneView` drawn over another), the tie goes to
+        /// the first one after the marker in subview order, which is where SwiftUI puts the
+        /// view a background belongs to.
+        private func pairedRealityView(markerFrame: CGRect, in window: UIWindow) -> ARView? {
+            var ancestor = superview
+            while let container = ancestor {
+                var order: [UIView] = []
+                Self.collect(container, into: &order, marker: self)
+                let matches = order.enumerated().compactMap { index, view -> (Int, ARView)? in
+                    guard let arView = view as? ARView,
+                          Self.sameRect(arView.convert(arView.bounds, to: window), markerFrame)
+                    else { return nil }
+                    return (index, arView)
+                }
+                if !matches.isEmpty {
+                    let markerIndex = order.firstIndex(of: self) ?? -1
+                    return (matches.first { $0.0 > markerIndex } ?? matches.last!).1
+                }
+                ancestor = container.superview
+            }
+            return nil
+        }
+
+        /// Depth-first list of the marker and of every non-AR `ARView` under `view`.
+        private static func collect(_ view: UIView, into order: inout [UIView], marker: UIView) {
+            if view === marker { order.append(view); return }
             if let arView = view as? ARView {
                 // An AR camera view (ARSceneView) manages its own surface.
-                return arView.cameraMode == .nonAR ? [arView] : []
+                if arView.cameraMode == .nonAR { order.append(arView) }
+                return
             }
-            return view.subviews.flatMap(realityViews(in:))
+            for sub in view.subviews { collect(sub, into: &order, marker: marker) }
+        }
+
+        private static func sameRect(_ a: CGRect, _ b: CGRect) -> Bool {
+            abs(a.minX - b.minX) < 1 && abs(a.minY - b.minY) < 1
+                && abs(a.width - b.width) < 1 && abs(a.height - b.height) < 1
         }
 
         /// Returns `true` when the surface had to be resized.
