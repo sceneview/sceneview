@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **SceneViewSwift — rotation on iOS**: a `SceneView` now fills the screen after the device rotates. On iOS 26, RealityKit kept the `RealityView` render surface at its launch size, so after portrait → landscape the scene only covered a portrait-wide strip and the rest of the screen was black. `SceneView` now resizes the surface to the view and refreshes the camera projection, which fixes every demo, including Cosmos and Geometry Primitives (#4182).
