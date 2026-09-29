@@ -45,6 +45,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.BackHandler
@@ -112,6 +113,7 @@ import io.github.sceneview.core.threemf.ModelUnitGuess
 import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.StageFade
 import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
 import io.github.sceneview.demo.demos.internal.SurprisePrefetch
 import io.github.sceneview.demo.demos.internal.SurpriseRolls
@@ -979,6 +981,18 @@ private fun SingleModelSection(
         // ambient would sit there with no frame coming to show it (#3718).
         renderInvalidator.requestRender()
     }
+    // With the environment hidden, the model stands on the stage colour, as on iOS — not on the
+    // renderer's black clear, which covered the Box's `Stage.background` edge to edge. Same
+    // backdrop as the Lighting demos (`StageFade.stageBackdrop`). `copy` shares the environment's
+    // Filament handles and is never itself destroyed; only the backdrop is ours to free.
+    val stageBackdrop = remember(engine) { StageFade.stageBackdrop(engine) }
+    DisposableEffect(stageBackdrop) {
+        onDispose { engine.destroySkybox(stageBackdrop) }
+    }
+    val stagedEnvironment = remember(viewerEnvironment, showEnvironment, stageBackdrop) {
+        if (showEnvironment && loadedEnvironment != null) viewerEnvironment
+        else viewerEnvironment.copy(skybox = stageBackdrop)
+    }
     // The arrival (#3406) — camera fly-in and model settle, started together and gated on
     // the frame that actually SHOWS the model. Keying these on `bounds` alone (what the
     // settle used to do) spent the whole animation behind the loading cover: the model was
@@ -1429,7 +1443,7 @@ private fun SingleModelSection(
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
-                environment = viewerEnvironment,
+                environment = stagedEnvironment,
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
                 cameraNode = cameraNode,
@@ -1551,6 +1565,8 @@ private fun SingleModelSection(
         selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,
         onSelect = { userEnvironment = it },
         onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
+        // Back to the default, which follows the model on stage: Studio for a Museum & Space
+        // scan, the garden for everything else — as on iOS.
         onReset = { userEnvironment = null; iblIntensity = 1f; showEnvironment = false },
         onDismiss = { environmentSheetOpen = false },
         onCoveredHeightChange = { environmentSheetCover = it },
