@@ -45,6 +45,9 @@
 		B7E40000000000000000001A /* showcase in Resources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000001A /* showcase */; };
 		2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */; };
 		B10000000000000000003585 /* ViewerAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000003584 /* ViewerAssetTests.swift */; };
+		C4E5A0000000000000000006 /* ViewerEntranceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000005 /* ViewerEntranceTests.swift */; };
+		C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */; };
+		C4E5A0000000000000000002 /* ViewerEntrance.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000001 /* ViewerEntrance.swift */; };
 		D13CADF7F6A0750FD91AE404 /* ShowcaseTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1805CCAE3BB264332107B4B /* ShowcaseTab.swift */; };
 		FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4EC /* ViewerSheets.swift */; };
 		FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4ED /* OpenedFileViewer.swift */; };
@@ -293,6 +296,9 @@
 		B7E50000000000000000001A /* showcase */ = {isa = PBXFileReference; lastKnownFileType = folder; name = showcase; path = ../android-demo/src/main/assets/rerun/showcase; sourceTree = SOURCE_ROOT; };
 		9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilterTests.swift; path = SceneViewDemoTests/HomeFilterTests.swift; sourceTree = SOURCE_ROOT; };
 		B10000000000000000003584 /* ViewerAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerAssetTests.swift; path = SceneViewDemoTests/ViewerAssetTests.swift; sourceTree = SOURCE_ROOT; };
+		C4E5A0000000000000000005 /* ViewerEntranceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerEntranceTests.swift; path = SceneViewDemoTests/ViewerEntranceTests.swift; sourceTree = SOURCE_ROOT; };
+		C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerMaterialRepairs.swift; path = SceneViewDemo/Views/Viewer/ViewerMaterialRepairs.swift; sourceTree = SOURCE_ROOT; };
+		C4E5A0000000000000000001 /* ViewerEntrance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerEntrance.swift; path = SceneViewDemo/Views/Viewer/ViewerEntrance.swift; sourceTree = SOURCE_ROOT; };
 		F1805CCAE3BB264332107B4B /* ShowcaseTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShowcaseTab.swift; path = SceneViewDemo/Views/Tabs/ShowcaseTab.swift; sourceTree = SOURCE_ROOT; };
 		446371A911170C776F03B4EC /* ViewerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerSheets.swift; path = SceneViewDemo/Views/Viewer/ViewerSheets.swift; sourceTree = SOURCE_ROOT; };
 		446371A911170C776F03B4ED /* OpenedFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenedFileViewer.swift; path = SceneViewDemo/Views/Viewer/OpenedFileViewer.swift; sourceTree = SOURCE_ROOT; };
@@ -552,6 +558,8 @@
 			children = (
 				446371A911170C776F03B4EC /* ViewerSheets.swift */,
 				446371A911170C776F03B4ED /* OpenedFileViewer.swift */,
+				C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */,
+				C4E5A0000000000000000001 /* ViewerEntrance.swift */,
 			);
 			name = Viewer;
 			sourceTree = "<group>";
@@ -612,6 +620,7 @@
 				5A1A71000000000000000004 /* SplatScanTests.swift */,
 				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
 				B10000000000000000003584 /* ViewerAssetTests.swift */,
+				C4E5A0000000000000000005 /* ViewerEntranceTests.swift */,
 				A20000000000000000003158 /* ReflectionProbesDemoTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
@@ -1111,6 +1120,8 @@
 				D13CADF7F6A0750FD91AE404 /* ShowcaseTab.swift in Sources */,
 				FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */,
 				FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */,
+				C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */,
+				C4E5A0000000000000000002 /* ViewerEntrance.swift in Sources */,
 				F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */,
 				B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */,
 				4D3AFF95252330C277928054 /* HomeHero.swift in Sources */,
@@ -1262,6 +1273,7 @@
 				5A1A70000000000000000004 /* SplatScanTests.swift in Sources */,
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,
+				C4E5A0000000000000000006 /* ViewerEntranceTests.swift in Sources */,
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
 				A20000000000000000003159 /* ReflectionProbesDemoTests.swift in Sources */,
