@@ -1915,25 +1915,6 @@ private struct SceneViewRepresentation: View {
     /// (which grows the union materially) always re-frames. Fed into
     /// ``FramingStabilityTracker``.
     private static let framingStabilityEpsilon: Float = 0.01
-    /// Union growth (diagonal ratio) past which the framing pass takes the
-    /// camera back from the user: another streamed model landed (#4009).
-    private static let refitGrowthThreshold: Float = 1.25
-
-    /// Whether a ``cameraPose(_:)`` write takes the camera from the
-    /// fit-to-bounds pass, as a drag does: only a write that moves it. An echo
-    /// of the live pose — a host mirroring ``onCameraChanged(_:)`` back —
-    /// moves nothing and claims nothing.
-    static func poseWriteTakesCamera(requested: SceneCameraPose, live: SceneCameraPose) -> Bool {
-        !requested.approximatelyMatches(live)
-    }
-
-    /// Whether the fit-to-bounds pass leaves a camera the user (or a host
-    /// pose write) has taken where it is (#4009): yes, unless the content
-    /// union grew materially since the last fit — another streamed model
-    /// landing — which takes the camera back.
-    static func fitKeepsTakenCamera(taken: Bool, diagonal: Float, fittedDiagonal: Float) -> Bool {
-        taken && diagonal <= fittedDiagonal * refitGrowthThreshold
-    }
 
     /// How long the content union must hold steady before the framing pass
     /// latches `didCenterContent`. Must exceed the worst-case gap between two
@@ -2121,7 +2102,7 @@ private struct SceneViewRepresentation: View {
         // back to the fit. Only a union that grew materially (another
         // streamed model landing) takes the camera back; Recenter, a content
         // swap or a rotation re-arm the pass and clear the flag.
-        if Self.fitKeepsTakenCamera(taken: appliedCache.userMovedCamera,
+        if SceneView.fitKeepsTakenCamera(taken: appliedCache.userMovedCamera,
                                     diagonal: diagonal,
                                     fittedDiagonal: appliedCache.fittedDiagonal) {
             camera.orbitRadius = min(max(camera.orbitRadius, camera.minRadius), camera.maxRadius)
@@ -2300,7 +2281,7 @@ private struct SceneViewRepresentation: View {
             // the live pose — the mirrored-state pattern above — moves nothing
             // and claims nothing. A content swap, Recenter or rotation re-arms
             // the pass and hands the camera back to it, as for a gesture.
-            if Self.poseWriteTakesCamera(requested: requested, live: live) {
+            if SceneView.poseWriteTakesCamera(requested: requested, live: live) {
                 appliedCache.userMovedCamera = true
             }
         }
@@ -2760,6 +2741,30 @@ private struct SceneViewRepresentation: View {
             .onEnded { value in
                 NodeGesture.dispatchLongPress(on: value.entity)
             }
+    }
+}
+
+// MARK: - Who owns the camera during the fit (#4009, #4184)
+
+extension SceneView {
+    /// Union growth (diagonal ratio) past which the framing pass takes the
+    /// camera back from the user: another streamed model landed (#4009).
+    static let refitGrowthThreshold: Float = 1.25
+
+    /// Whether a ``cameraPose(_:)`` write takes the camera from the
+    /// fit-to-bounds pass, as a drag does: only a write that moves it. An echo
+    /// of the live pose — a host mirroring ``onCameraChanged(_:)`` back —
+    /// moves nothing and claims nothing.
+    static func poseWriteTakesCamera(requested: SceneCameraPose, live: SceneCameraPose) -> Bool {
+        !requested.approximatelyMatches(live)
+    }
+
+    /// Whether the fit-to-bounds pass leaves a camera the user (or a host
+    /// pose write) has taken where it is (#4009): yes, unless the content
+    /// union grew materially since the last fit — another streamed model
+    /// landing — which takes the camera back.
+    static func fitKeepsTakenCamera(taken: Bool, diagonal: Float, fittedDiagonal: Float) -> Bool {
+        taken && diagonal <= fittedDiagonal * refitGrowthThreshold
     }
 }
 #endif // os(iOS) || os(macOS) || os(visionOS)
