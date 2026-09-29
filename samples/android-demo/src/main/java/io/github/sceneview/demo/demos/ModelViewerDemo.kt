@@ -45,6 +45,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.BackHandler
@@ -111,6 +112,7 @@ import io.github.sceneview.demo.OpenedModelIntent
 import io.github.sceneview.core.threemf.ModelUnitGuess
 import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
+import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
 import io.github.sceneview.demo.demos.internal.SurprisePrefetch
@@ -979,6 +981,18 @@ private fun SingleModelSection(
         // ambient would sit there with no frame coming to show it (#3718).
         renderInvalidator.requestRender()
     }
+    // With the environment hidden, the model stands on the stage colour, as on iOS — not on the
+    // renderer's black clear, which covered the Box's `Stage.background` edge to edge. The
+    // backdrop is pre-compensated for the tone mapper (see ViewerBackdrop). `copy` shares the
+    // environment's Filament handles and is never itself destroyed; only the backdrop is ours.
+    val stageBackdrop = remember(engine) { ViewerBackdrop.create(engine) }
+    DisposableEffect(stageBackdrop) {
+        onDispose { engine.destroySkybox(stageBackdrop) }
+    }
+    val stagedEnvironment = remember(viewerEnvironment, showEnvironment, stageBackdrop) {
+        if (showEnvironment && loadedEnvironment != null) viewerEnvironment
+        else viewerEnvironment.copy(skybox = stageBackdrop)
+    }
     // The arrival (#3406) — camera fly-in and model settle, started together and gated on
     // the frame that actually SHOWS the model. Keying these on `bounds` alone (what the
     // settle used to do) spent the whole animation behind the loading cover: the model was
@@ -1362,7 +1376,7 @@ private fun SingleModelSection(
             // Camera orbits; the model stays fixed at its glTF pose. The resting pose is flown
             // to when the model lands (#3406) and then held live.
             //
-            // #3403 / #3404 — the manipulator is deliberately keyed on the CONTENT ONLY. A
+            // #3403 / #3404 — the manipulator is deliberately reset on the CONTENT ONLY. A
             // Filament manipulator carries the whole camera pose, so rebuilding it discards the
             // user's orbit and snaps the camera back to the front view. The previous
             // `remember(framing, modelCenter, recenterGeneration, sliderDistance)` did exactly
@@ -1382,16 +1396,24 @@ private fun SingleModelSection(
                 if (f == null) c
                 else Position(c.x, c.y + f.targetOffset.second, c.z + f.targetOffset.third)
             }
-            // Keyed on the content alone (#3403 / #3404, see above) — NOT `recenterGeneration`.
+            // Started over on the content alone (#3403 / #3404, see above) — NOT `recenterGeneration`.
             // Rebuilding on every recenter tap used to be how the flight got a fresh start, but a
             // fresh instance has no [EntranceCameraManipulator.flightStartEye] captured, so it fell
             // through to the cold-open's synthetic swung-off-axis geometry instead of the pose the
             // user had actually orbited to (#3622). `beginRecenterFlight` now does that job on the
             // SAME instance, from the dock's onClick above, before `recenterGeneration` even changes.
-            val cameraManipulator = remember(activeModelInstance) {
-                // The content this manipulator frames; `entranceProgress` only counts for it once
-                // the entrance effect has claimed it (see `entranceOwner`).
-                val ownContent = bounds
+            //
+            // ONE instance for the screen, started over for each model rather than rebuilt: since
+            // #3932 `SceneView` glides the camera from the pose on screen to a NEW manipulator's
+            // pose over 0.6 s. A manipulator rebuilt per model therefore framed the next model
+            // from the previous one's distance while the entrance below was already flying: the
+            // Apollo capsule (3.9 m, real size) arrived as one full-screen sepia close-up, then a
+            // shrinking one, behind its poster; the next model after it arrived as a speck.
+            // The content this manipulator frames; `entranceProgress` only counts for it once
+            // the entrance effect has claimed it (see `entranceOwner`).
+            val manipulatorContent = remember { java.util.concurrent.atomic.AtomicReference<Any?>(null) }
+            val manipulatorInstance = remember { java.util.concurrent.atomic.AtomicReference<Any?>(null) }
+            val cameraManipulator = remember {
                 EntranceCameraManipulator(
                     eye = {
                         val f = aimFraming()
@@ -1401,7 +1423,7 @@ private fun SingleModelSection(
                     },
                     target = livePivot,
                     progress = {
-                        if (entranceOwner.get() === ownContent) entranceProgress.value else 0f
+                        if (entranceOwner.get() === manipulatorContent.get()) entranceProgress.value else 0f
                     },
                     fitDistance = { liveFraming.value?.distance ?: 1.4f },
                     distanceOverride = { DemoSettings.cameraDistance },
@@ -1410,7 +1432,17 @@ private fun SingleModelSection(
                     onDistanceChange = { DemoSettings.cameraDistance = it },
                 )
             }
-            SideEffect { cameraManipulatorRef.value = cameraManipulator }
+            // A new model on stage: what a rebuilt manipulator used to start from — no orbit, no
+            // captured flight, the content it frames. Applied with the node, so the first frame
+            // that draws the model is aimed for it.
+            SideEffect {
+                if (manipulatorInstance.get() !== activeModelInstance) {
+                    manipulatorInstance.set(activeModelInstance)
+                    manipulatorContent.set(bounds)
+                    cameraManipulator.startOver()
+                }
+                cameraManipulatorRef.value = cameraManipulator
+            }
             // #3543 — the near plane moves with the subject. The library default is 1 cm, which
             // is in front of a metre-scale model and *behind* a millimetre-scale one: a 2 mm mesh
             // frames at ~5 mm, so a fixed 1 cm near plane clips it away entirely and no amount of
@@ -1429,7 +1461,7 @@ private fun SingleModelSection(
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
-                environment = viewerEnvironment,
+                environment = stagedEnvironment,
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
                 cameraNode = cameraNode,
@@ -1551,6 +1583,8 @@ private fun SingleModelSection(
         selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,
         onSelect = { userEnvironment = it },
         onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
+        // Back to the default, which follows the model on stage: Studio for a Museum & Space
+        // scan, the garden for everything else — as on iOS.
         onReset = { userEnvironment = null; iblIntensity = 1f; showEnvironment = false },
         onDismiss = { environmentSheetOpen = false },
         onCoveredHeightChange = { environmentSheetCover = it },

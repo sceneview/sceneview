@@ -1086,11 +1086,9 @@ struct ViewerLighting {
     /// (Studio for a museum scan, the garden otherwise; `nil`, a streamed
     /// model, gets the garden).
     ///
-    /// Deliberately not Android's reset, which always sets the garden: there
-    /// the effect keyed on `isMuseumModel` does not re-run, so a museum scan
-    /// stays under a lighting the app never opens it with, and gets Studio
-    /// back only after a round trip through another model. Reset here lands
-    /// on the same state as reopening the model.
+    /// Reset lands on the same state as reopening the model, so a museum scan
+    /// never stays under a lighting the app does not open it with. Android's
+    /// reset lands on the same state: its default follows the model on stage.
     mutating func reset(for model: BundledViewerModel?) {
         environment = ModelViewerDemo.defaultEnvironment
         museumApplied = false
