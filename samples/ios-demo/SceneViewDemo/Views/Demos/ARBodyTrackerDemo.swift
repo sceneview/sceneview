@@ -2,6 +2,7 @@
 import SwiftUI
 import RealityKit
 import ARKit
+import os
 
 /// AR body anchor tracking demo — follows a detected body anchor (#910).
 ///
@@ -19,7 +20,9 @@ import ARKit
 /// Requires a physical iOS device with an A12+ chip and iOS 13+.
 struct ARBodyTrackerDemo: View {
     @State private var isTracking = false
-    @State private var isSupported = false
+    // Seeded from the hardware, not `false`: the banner must never flash on a
+    // device that supports body tracking while the view is being made.
+    @State private var isSupported = ARBodyTrackingConfiguration.isSupported
 
     var body: some View {
         ZStack {
@@ -103,13 +106,22 @@ private struct BodyTrackingARViewRepresentable: UIViewRepresentable {
         // The camera composition is stated on the view, as `ARSceneView`
         // does, never inherited from what the process rendered before (#3912).
         arView.environment.background = .cameraFeed()
-        isSupported = ARBodyTrackingConfiguration.isSupported
-        guard isSupported else { return arView }
+
+        // Decided from a local, never from the binding: a `@Binding` written
+        // inside `makeUIView` (a view update) is not readable back in the same
+        // pass, so `guard isSupported` read the stale `false`, returned before
+        // `session.run`, and an iPhone that supports body tracking showed the
+        // "requires iPhone XS / XR" banner over a camera that never started.
+        let supported = ARBodyTrackingConfiguration.isSupported
+        let isSupportedBinding = $isSupported
+        DispatchQueue.main.async { isSupportedBinding.wrappedValue = supported }
+        guard supported else { return arView }
 
         let config = ARBodyTrackingConfiguration()
         arView.session.delegate = context.coordinator
         context.coordinator.arView = arView
         arView.session.run(config)
+        BodyTrackingLog.log.info("body tracking session running")
         return arView
     }
 
@@ -133,6 +145,14 @@ private struct BodyTrackingARViewRepresentable: UIViewRepresentable {
 
         init(isTracking: Binding<Bool>) {
             _isTracking = isTracking
+        }
+
+        nonisolated func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
+            BodyTrackingLog.log.info("camera tracking state: \(String(describing: camera.trackingState), privacy: .public)")
+        }
+
+        nonisolated func session(_ session: ARSession, didFailWithError error: Error) {
+            BodyTrackingLog.log.error("body tracking session failed: \(error.localizedDescription, privacy: .public)")
         }
 
         nonisolated func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
@@ -177,6 +197,10 @@ private struct BodyTrackingARViewRepresentable: UIViewRepresentable {
             if trackedBodies.isEmpty { isTracking = false }
         }
     }
+}
+
+private enum BodyTrackingLog {
+    static let log = Logger(subsystem: "io.github.sceneview.demo", category: "BodyTracking")
 }
 #endif
 
