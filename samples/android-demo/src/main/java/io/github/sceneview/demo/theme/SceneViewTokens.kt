@@ -641,6 +641,12 @@ object SceneViewTokens {
         const val longMillis = 700
         /** Design spec §6 — the one fade (`tween(300, FastOutSlowIn)`). */
         const val fadeMillis = 300
+        /**
+         * `motion-handover` — the loading cover giving way to the first rendered
+         * frame (#4160). Short on purpose: the scene is already there, so every
+         * extra millisecond of fade is the user waiting on a veil, not on work.
+         */
+        const val handoverMillis = 150
     }
 
     /**

@@ -385,7 +385,8 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 ### App Motion (Android demo)
 
 One spring and one fade for the chrome; one shared-axis spec for screen changes, one
-fly-in for a 3D subject's arrival, and one breathing ellipsis for a step in flight. In AR,
+fly-in for a 3D subject's arrival, one short handover from the loading cover to the first
+rendered frame, and one breathing ellipsis for a step in flight. In AR,
 the coaching glyph and a placed object's entrance (the `motion-coach-*` and
 `motion-placement-*` tokens below — shipped by the SDK, so every AR app gets them).
 Nothing else animates.
@@ -393,7 +394,8 @@ Nothing else animates.
 | Token | Value | Usage |
 |---|---|---|
 | `motion-spring` | `spring(dampingRatio = 0.85, stiffness = 450)` | Press scale (0.97–0.98), sheet open/close, dock show/hide, panel expand |
-| `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus, loading-cover crossfade |
+| `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus |
+| `motion-handover` | `tween(150ms, FastOutSlowIn)` | The loading cover giving way to the first rendered frame — the scene is already there, so the veil leaves fast |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
 | `motion-coach-sweep` | 1600ms per sweep, sine, ±18dp travel and ±10° roll | The phone of the AR coaching glyph sweeping over the surface it is looking for. Half speed while tracking is limited |
