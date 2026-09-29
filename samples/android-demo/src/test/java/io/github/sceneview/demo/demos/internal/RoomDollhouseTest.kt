@@ -353,7 +353,9 @@ class RoomDollhouseTest {
     @Test
     fun `a path starting in the middle of the room names no side, and the room keeps its axes`() {
         val fit = DollhouseFit(0f, 0f, 0f, width = 4f, height = 2.5f, depth = 3f, denominator = 12)
-        val frame = ArDebugFrame(0f, floatArrayOf(0.1f, 0f, 0.1f), null, FloatArray(0), FloatArray(0), emptyList(), emptyList())
+        val frame = ArDebugFrame(
+            0f, floatArrayOf(0.1f, 0f, 0.1f), null, FloatArray(0), FloatArray(0), emptyList(), emptyList(),
+        )
         val o = RoomDollhouse.orientation(DollhouseRoom(frame, fit))
         assertEquals(0f, o.yawDegrees, 0f)
         assertEquals(1.5f, o.front, 1e-5f)

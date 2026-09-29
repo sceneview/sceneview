@@ -227,7 +227,9 @@ internal fun RoomDollhouseScreen(
         },
     )
     val fit = room?.fit
-    val card = when (state.phase) {
+    // The scale pill shows once the room stands: in the 3D view, or placed in AR.
+    val showsScale = hasSurfaces && (stage == DollhouseStage.Preview || canAdjust)
+    val card =when (state.phase) {
         PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
         PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
         else -> null
@@ -240,7 +242,7 @@ internal fun RoomDollhouseScreen(
         loadingLabel = DollhouseCopy.OPENING,
         // The camera feed is media; the 3D view, the empty state and the error follow the theme.
         themedStage = !inRoom,
-        peekHeader = if (fit != null && hasSurfaces && (stage == DollhouseStage.Preview || canAdjust)) {
+        peekHeader = if (fit != null && showsScale) {
             DollhouseCopy.peek(title, fit, realSize && inRoom)
         } else null,
         onReset = if (inRoom) ::reset else null,
