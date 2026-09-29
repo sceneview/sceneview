@@ -79,7 +79,7 @@ import io.github.sceneview.sample.ui.DemoCategoryAccent
  * otherwise; then title (`type-card`) and subtitle (`type-caption`, weight 400), never
  * truncated. There is no white box under the picture any more: the caption sits on
  * `card-glass` — a blurred copy of the card's own picture under `surface-container` at
- * 72 % / 85 % — and the sharp picture dissolves into it over `card-glass-melt`, so each
+ * 80 % / 85 % — and the sharp picture dissolves into it over `card-glass-melt`, so each
  * card is tinted by what it shows. 20 dp radius; light lifts it with `shadow-sm`, dark
  * keeps the 1 dp `outline-subtle`.
  *
@@ -104,6 +104,8 @@ fun DemoMediaCard(
     freshness: DemoFreshness = DemoFreshness.None,
     featured: Boolean = false,
     mediaShift: () -> Float = { 0f },
+    /** Where the picture is anchored when it is cropped — see [FEATURED_MEDIA_ALIGNMENT]. */
+    mediaAlignment: Alignment = Alignment.Center,
 ) {
     val dark = isSystemInDarkTheme()
     MediaCard(
@@ -118,6 +120,7 @@ fun DemoMediaCard(
         freshness = freshness,
         featured = featured,
         mediaShift = mediaShift,
+        mediaAlignment = mediaAlignment,
     )
 }
 
@@ -166,6 +169,8 @@ private fun MediaCard(
     featured: Boolean = false,
     /** Horizontal lag of the picture inside the card, in px — the shelf's parallax. */
     mediaShift: () -> Float = { 0f },
+    /** Where the picture is anchored when it is cropped to the card. */
+    mediaAlignment: Alignment = Alignment.Center,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -225,7 +230,7 @@ private fun MediaCard(
                         .clipToBounds(),
                 ) {
                     if (preview != null) {
-                        MediaImage(preview, mediaShift, featured)
+                        MediaImage(preview, mediaShift, featured, mediaAlignment)
                     } else {
                         IconTile(icon = icon, accent = accent)
                     }
@@ -244,7 +249,7 @@ private fun MediaCard(
                             }
                             .blur(home.cardGlassBlur, BlurredEdgeTreatment.Rectangle),
                     ) {
-                        MediaImage(preview, mediaShift, featured)
+                        MediaImage(preview, mediaShift, featured, mediaAlignment)
                     }
                 }
                 // 3. The glass tint — what the caption's contrast is measured against.
@@ -319,11 +324,12 @@ private fun MediaCard(
  * the card and slides by `shift` as the shelf is swiped — parallax, read at draw time.
  */
 @Composable
-private fun MediaImage(painter: Painter, shift: () -> Float, featured: Boolean) {
+private fun MediaImage(painter: Painter, shift: () -> Float, featured: Boolean, alignment: Alignment) {
     Image(
         painter = painter,
         contentDescription = null,
         contentScale = ContentScale.Crop,
+        alignment = alignment,
         modifier = Modifier
             .fillMaxSize()
             .then(

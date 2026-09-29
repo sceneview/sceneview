@@ -361,6 +361,7 @@ fun FeaturedShelf(
                 onClick = { onDemoClick(demo.id) },
                 freshness = freshness(demo),
                 featured = true,
+                mediaAlignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center,
                 mediaShift = {
                     listState.layoutInfo.visibleItemsInfo
                         .firstOrNull { it.index == index }
@@ -372,6 +373,21 @@ fun FeaturedShelf(
         }
     }
 }
+
+/**
+ * Where a Featured picture is anchored when the 5:4 card preview is cropped to the 4:5
+ * portrait card. Centred by default; a preview listed here carries something at one edge
+ * that must stay out of frame.
+ *
+ * `ar-rerun`: the preview is a capture of the demo, whose top-right corner holds the
+ * demo's own "Camera" picture-in-picture (source x ≥ 525 of 800). Centred, the portrait
+ * crop keeps half of it and it reads as a second card stuck on the first. Anchored left,
+ * the crop is source x 0–512 — the camera path and the rebuilt room, no inset — and the
+ * parallax overscan stays inside that band.
+ */
+internal val FEATURED_MEDIA_ALIGNMENT: Map<String, Alignment> = mapOf(
+    "ar-rerun" to Alignment.CenterStart,
+)
 
 /** 28 dp — the What's new page's corner glyph, matched to `type-display`'s cap height. */
 private val featuredGlyphSize = 28.dp

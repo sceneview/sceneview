@@ -321,13 +321,14 @@ object SceneViewTokens {
         const val headerOverlayAlpha = 1f
 
         /**
-         * `card-glass`, light — the frosted caption of a home card: `surface-container` at
-         * 72 % over a blurred copy of the card's own image, so the caption is tinted by the
-         * picture it describes instead of sitting in a white box under it. The blur averages
-         * the image, so the worst ground is a uniformly black one: there `on-surface` holds
-         * 8.6:1 and `on-surface-variant` 4.8:1.
+         * `card-glass`, light — the frosted caption of a home card: `surface-container`
+         * (white) at 80 % over a blurred copy of the card's own image, so the caption is
+         * tinted by the picture it describes instead of sitting in a white box under it. At
+         * 72 % a dark picture pulled the glass to a muddy grey; 80 % keeps it frosted white.
+         * The blur averages the image, so the worst ground is a uniformly black one: there
+         * `on-surface` holds 10.6:1 and `on-surface-variant` 5.9:1.
          */
-        const val cardGlassAlphaLight = 0.72f
+        const val cardGlassAlphaLight = 0.80f
 
         /**
          * `card-glass`, dark — `surface-container` at 85 %. Over a mid-grey image
