@@ -241,8 +241,6 @@ struct ExploreTab: View {
     /// When `true`, the Sketchfab feeds filter to `animated=true` (skeletal rigs).
     /// Ignored by the CC sources, which don't expose the flag.
     @State private var animatedOnly = false
-    /// The "Try a demo" row (`trySampleSection`), built once.
-    @State private var tryDemos: [DemoItem] = []
     /// The demo opened from that row, shown in the home's `DemoCover`.
     @State private var trialDemo: DemoItem?
 
@@ -707,7 +705,7 @@ struct ExploreTab: View {
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: SceneViewTokens.Space.sm) {
-                    ForEach(tryDemos, id: \.sceneId) { demo in
+                    ForEach(Self.tryDemos, id: \.sceneId) { demo in
                         DemoMediaCard(demo: demo) {
                             #if os(iOS)
                             SceneViewHaptic.shared.light()
@@ -725,19 +723,17 @@ struct ExploreTab: View {
             .scrollTargetBehavior(.viewAligned)
             .scrollClipDisabled()
         }
-        .onAppear {
-            if tryDemos.isEmpty { tryDemos = Self.makeTryDemos() }
-        }
     }
 
-    /// The demos of the "Try a demo" row, in Android's order.
-    private static func makeTryDemos() -> [DemoItem] {
+    /// The demos of the "Try a demo" row, in Android's order — built once, on
+    /// first use.
+    private static let tryDemos: [DemoItem] = {
         let ids = ["model-viewer", "geometry", "lighting", "ar-placement", "materials", "animation"]
         let byId = Dictionary(GeneratedScenes.all().map { ($0.sceneId, $0) },
                               uniquingKeysWith: { first, _ in first })
         return ids.compactMap { byId[$0] }
             .filter { HomeCatalogue.isOnHome($0.sceneId) && $0.status.isAvailable }
-    }
+    }()
 
     /// Horizontal row of filter chips above the feed carousels.
     private var filtersBar: some View {

@@ -332,7 +332,8 @@ struct ShowcaseTab: View {
             HStack(alignment: .top, spacing: SceneViewTokens.Home.gridGutter) {
                 ForEach(Array(featured.enumerated()), id: \.element.sceneId) { index, demo in
                     let sourceId = "featured-\(demo.sceneId)"
-                    DemoMediaCard(demo: demo, featuredWidth: featuredCardWidth) { open(demo, from: sourceId) }
+                    DemoMediaCard(demo: demo, featuredWidth: featuredCardWidth,
+                                  featuredTrailingCards: featured.count - 1 - index) { open(demo, from: sourceId) }
                         #if os(iOS)
                         .matchedTransitionSource(id: sourceId, in: cardNamespace)
                         #endif

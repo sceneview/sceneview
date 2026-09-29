@@ -1,4 +1,8 @@
 import SwiftUI
+#if canImport(UIKit)
+import CoreImage
+import UIKit
+#endif
 
 /// One demo on the home grid (`DESIGN.md` "Demo App Home", "Home cards are
 /// pictures first") — the iOS twin of Android's `DemoMediaCard.kt` (#4144).
@@ -26,6 +30,9 @@ struct DemoMediaCard: View {
     let demo: DemoItem
     /// Set for a "Featured" shelf card: its width, from which its 4:5 floor follows.
     var featuredWidth: CGFloat?
+    /// Shelf cards after this one, so the last card's picture rests unshifted
+    /// when the shelf reaches its end.
+    var featuredTrailingCards = 0
     let onTap: () -> Void
 
     var body: some View {
@@ -38,10 +45,12 @@ struct DemoMediaCard: View {
             status: demo.status,
             badgeIcon: nil,
             featuredWidth: featuredWidth,
+            featuredTrailingCards: featuredTrailingCards,
             mediaAlignment: featuredWidth != nil && HomeCatalogue.featuredLeadingAnchored.contains(demo.sceneId)
                 ? .leading : .center,
             onTap: onTap
         )
+        .dynamicTypeSize(...MediaCard.largestTypeSize)
         .accessibilityLabel(accessibilityLabel)
     }
 
@@ -74,6 +83,7 @@ struct BrowseOnlineModelsCard: View {
             mediaAlignment: .center,
             onTap: onTap
         )
+        .dynamicTypeSize(...MediaCard.largestTypeSize)
         .accessibilityLabel("Browse online models")
     }
 }
@@ -101,14 +111,20 @@ private struct MediaCard: View {
     /// badge in its bottom-leading corner (the "Browse online models" card).
     let badgeIcon: String?
     let featuredWidth: CGFloat?
+    /// Featured shelf cards after this one — where the shelf's end lies.
+    var featuredTrailingCards = 0
     /// Where the picture is anchored when it is cropped to the card.
     let mediaAlignment: Alignment
     let onTap: () -> Void
 
+    @Environment(\.displayScale) private var displayScale
+
     /// Top of a featured card's caption (its melt padding included), in the
-    /// card's own space. A grid card's is fixed: one melt above the picture's
-    /// bottom edge.
-    @State private var featuredCaptionTop: CGFloat = .nan
+    /// card's own space, once measured. Until then the glass sits at
+    /// `featured-caption-top-estimate` of the card, so it is drawn on the first
+    /// frame instead of popping in one frame late. A grid card's is fixed: one
+    /// melt above the picture's bottom edge.
+    @State private var featuredCaptionTop: CGFloat?
 
     private var featured: Bool { featuredWidth != nil }
     private var melt: CGFloat { SceneViewTokens.Home.cardGlassMelt }
@@ -131,7 +147,20 @@ private struct MediaCard: View {
                                       lineWidth: SceneViewTokens.Home.cardOutlineWidth)
                 }
             }
-            .cardShadow(colorScheme == .dark ? [] : (featured ? SceneViewTokens.Shadow.md : SceneViewTokens.Shadow.sm))
+            // The shadow is cast by a plain shape behind the card, not by the
+            // card itself: a `.shadow` on the card would re-render the whole
+            // card — pictures and blur — offscreen on every scroll frame.
+            .background {
+                if colorScheme != .dark {
+                    let layers = featured ? SceneViewTokens.Shadow.md : SceneViewTokens.Shadow.sm
+                    ForEach(layers.indices, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .fill(SceneViewTokens.HomeColor.surfaceContainer)
+                            .shadow(color: .black.opacity(layers[index].opacity),
+                                    radius: layers[index].radius, x: 0, y: layers[index].y)
+                    }
+                }
+            }
         }
         .buttonStyle(PressScaleButtonStyle())
     }
@@ -181,23 +210,15 @@ private struct MediaCard: View {
             //    coincide through the fade; below the picture it carries on as
             //    its mirror image, which under the blur reads as the picture's
             //    colours running on under the caption.
-            if previewName != nil {
-                VStack(spacing: 0) {
-                    media(width: size.width, height: mediaHeight)
-                    media(width: size.width, height: mediaHeight)
-                        .scaleEffect(x: 1, y: -1)
-                }
-                .offset(y: -bandTop)
-                .frame(width: size.width, height: bandHeight, alignment: .top)
-                .clipped()
-                .blur(radius: SceneViewTokens.Home.cardGlassBlurSigma, opaque: true)
-                .mask { meltMask(captionTop: melt, height: bandHeight) }
-                .offset(y: bandTop)
+            //    The picture is static, so the band is a bitmap made once.
+            if let previewName {
+                gridGlassBand(previewName: previewName, width: size.width, mediaHeight: mediaHeight,
+                              bandTop: bandTop, bandHeight: bandHeight)
+                    .offset(y: bandTop)
             }
             // 3. The glass tint — what the caption's contrast is measured against.
             Rectangle()
-                .fill(SceneViewTokens.HomeColor.cardGlass)
-                .mask { meltMask(captionTop: mediaHeight - melt, height: size.height) }
+                .fill(glassTint(captionTop: mediaHeight - melt, height: size.height))
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .clipped()
@@ -208,6 +229,34 @@ private struct MediaCard: View {
                     .frame(width: size.width, height: max(0, mediaHeight - melt), alignment: .bottomLeading)
             }
         }
+    }
+
+    @ViewBuilder
+    private func gridGlassBand(
+        previewName: String, width: CGFloat, mediaHeight: CGFloat, bandTop: CGFloat, bandHeight: CGFloat
+    ) -> some View {
+        #if canImport(UIKit)
+        if let band = GlassBandCache.band(
+            previewName: previewName, width: width, mediaHeight: mediaHeight,
+            bandTop: bandTop, bandHeight: bandHeight, fadeEnd: mediaHeight - bandTop,
+            sigma: SceneViewTokens.Home.cardGlassBlurSigma, scale: displayScale
+        ) {
+            Image(uiImage: band)
+                .resizable()
+                .frame(width: width, height: bandHeight)
+        }
+        #else
+        VStack(spacing: 0) {
+            media(width: width, height: mediaHeight)
+            media(width: width, height: mediaHeight)
+                .scaleEffect(x: 1, y: -1)
+        }
+        .offset(y: -bandTop)
+        .frame(width: width, height: bandHeight, alignment: .top)
+        .clipped()
+        .blur(radius: SceneViewTokens.Home.cardGlassBlurSigma, opaque: true)
+        .mask { meltMask(captionTop: melt, height: bandHeight) }
+        #endif
     }
 
     // MARK: Featured card
@@ -239,33 +288,46 @@ private struct MediaCard: View {
 
     @ViewBuilder
     private func featuredLayers(size: CGSize) -> some View {
+        let captionTop = featuredCaptionTop
+            ?? size.height * SceneViewTokens.Home.featuredCaptionTopEstimate
         ZStack {
             SceneViewTokens.HomeColor.surfaceContainer
             parallaxMedia(size: size)
-            if !featuredCaptionTop.isNaN {
-                if previewName != nil {
-                    parallaxMedia(size: size)
-                        .blur(radius: SceneViewTokens.Home.cardGlassBlurSigma, opaque: true)
-                        .mask { meltMask(captionTop: featuredCaptionTop, height: size.height) }
-                }
-                Rectangle()
-                    .fill(SceneViewTokens.HomeColor.cardGlass)
-                    .mask { meltMask(captionTop: featuredCaptionTop, height: size.height) }
+            // Live blur here: the picture slides under the parallax.
+            if previewName != nil {
+                parallaxMedia(size: size)
+                    .blur(radius: SceneViewTokens.Home.cardGlassBlurSigma, opaque: true)
+                    .mask { meltMask(captionTop: captionTop, height: size.height) }
             }
+            Rectangle()
+                .fill(glassTint(captionTop: captionTop, height: size.height))
         }
         .frame(width: size.width, height: size.height)
     }
 
     /// The featured picture, drawn `featured-media-overscan` larger than the card
-    /// and sliding against the shelf's scroll by `featured-parallax`. The shelf's
-    /// content margin is subtracted, so a card snapped at rest has no shift.
+    /// and sliding against the shelf's scroll by `featured-parallax`, measured from
+    /// the card's own rest position so a card snapped at rest has no shift.
+    ///
+    /// A card rests at the leading content margin — except the last ones, which
+    /// the shelf cannot scroll that far: they rest when the shelf hits its end.
+    /// So the travel is the smaller of the distance to the leading margin and
+    /// the scroll left before the end, which is zero at the end. The scroll left
+    /// is read from this card's trailing extent (itself plus the cards after it),
+    /// so no per-frame state reaches the card.
     private func parallaxMedia(size: CGSize) -> some View {
         let slack = size.width * (SceneViewTokens.Home.featuredMediaOverscan - 1) / 2
+        let margin = SceneViewTokens.Home.contentPadding
+        let trailingExtent = size.width
+            + CGFloat(featuredTrailingCards) * (size.width + SceneViewTokens.Home.gridGutter)
         return media(width: size.width, height: size.height)
             .scaleEffect(SceneViewTokens.Home.featuredMediaOverscan)
             .visualEffect { content, proxy in
-                let travel = proxy.frame(in: .scrollView(axis: .horizontal)).minX
-                    - SceneViewTokens.Home.contentPadding
+                let minX = proxy.frame(in: .scrollView(axis: .horizontal)).minX
+                let viewport = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? .infinity
+                let toLeading = minX - margin
+                let toEnd = minX + trailingExtent + margin - viewport
+                let travel = min(toLeading, max(0, toEnd))
                 let shift = min(slack, max(-slack, -travel * SceneViewTokens.Home.featuredParallax))
                 return content.offset(x: shift)
             }
@@ -275,16 +337,24 @@ private struct MediaCard: View {
 
     // MARK: Shared parts
 
+    // The caption follows Dynamic Type, as Android's follows the font scale:
+    // the `type-*` sizes below are the default-size values, scaled with the
+    // text style of the same size. `DemoMediaCard` caps the scale (see there).
+    @ScaledMetric(relativeTo: .title2) private var featuredTitleSize = SceneViewTokens.TypeScale.titleSize
+    @ScaledMetric(relativeTo: .headline) private var cardTitleSize = SceneViewTokens.TypeScale.cardSize
+    @ScaledMetric(relativeTo: .subheadline) private var featuredBodySize = SceneViewTokens.TypeScale.bodySize
+    @ScaledMetric(relativeTo: .footnote) private var cardBodySize = SceneViewTokens.TypeScale.captionSize
+
     private var captionText: some View {
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
             // Wrap, never truncate — Android sets `maxLines = Int.MAX_VALUE` (#3786).
             Text(title)
-                .font(featured ? SceneViewTokens.TypeScale.title : SceneViewTokens.TypeScale.card)
-                .tracking(featured ? SceneViewTokens.TypeScale.titleTracking : 0)
+                .font(.system(size: featured ? featuredTitleSize : cardTitleSize, weight: .semibold))
+                .tracking(featured ? SceneViewTokens.TypeScale.trackingTight * featuredTitleSize : 0)
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                 .fixedSize(horizontal: false, vertical: true)
             Text(subtitle)
-                .font(featured ? SceneViewTokens.TypeScale.body : SceneViewTokens.TypeScale.captionRegular)
+                .font(.system(size: featured ? featuredBodySize : cardBodySize, weight: .regular))
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -300,6 +370,21 @@ private struct MediaCard: View {
             stops: [
                 .init(color: .clear, location: start),
                 .init(color: .black, location: max(end, start)),
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+    }
+
+    /// `card-glass` faded in like ``meltMask(captionTop:height:)`` — a gradient
+    /// fill, so the tint needs no mask pass.
+    private func glassTint(captionTop: CGFloat, height: CGFloat) -> LinearGradient {
+        let end = min(max(captionTop + melt, 0), height) / height
+        let start = min(max(captionTop - melt, 0), height) / height
+        let glass = SceneViewTokens.HomeColor.cardGlass
+        return LinearGradient(
+            stops: [
+                .init(color: glass.opacity(0), location: start),
+                .init(color: glass, location: max(end, start)),
             ],
             startPoint: .top, endPoint: .bottom
         )
@@ -359,16 +444,102 @@ private struct MediaCard: View {
     }
 
     private static let cardSpace = "demo-media-card"
+
+    /// The largest Dynamic Type a card caption takes: `accessibility2` puts a
+    /// grid title at 33 pt, about Android's 2.0 font-scale ceiling. Past it a
+    /// half-width card holds a word or two per line.
+    static let largestTypeSize = DynamicTypeSize.accessibility2
 }
 
-private extension View {
-    /// Draws `layers` (a `DESIGN.md` shadow token) under the view.
-    func cardShadow(_ layers: [SceneViewTokens.Shadow.Layer]) -> some View {
-        layers.reduce(AnyView(self)) { view, layer in
-            AnyView(view.shadow(color: .black.opacity(layer.opacity), radius: layer.radius, x: 0, y: layer.y))
+#if canImport(UIKit)
+/// The grid card's frosted band as a bitmap, rendered once per picture and size.
+///
+/// A grid card's picture never moves inside its card, so its blurred copy is
+/// static: blurring it live would run a Gaussian pass and a gradient mask per
+/// card on every scroll frame. Here the band — the picture continued as its
+/// mirror image, cropped to the caption band, blurred by `card-glass-blur` and
+/// faded in over `card-glass-melt` — is drawn once and kept.
+@MainActor
+enum GlassBandCache {
+    private static let cache = NSCache<NSString, UIImage>()
+    private static let context = CIContext(options: [.cacheIntermediates: false])
+
+    /// - Parameters:
+    ///   - mediaHeight: height of the sharp picture; the mirror starts there.
+    ///   - bandTop: top of the band in card space.
+    ///   - fadeEnd: where, in band space, the fade reaches full opacity.
+    static func band(
+        previewName: String,
+        width: CGFloat,
+        mediaHeight: CGFloat,
+        bandTop: CGFloat,
+        bandHeight: CGFloat,
+        fadeEnd: CGFloat,
+        sigma: CGFloat,
+        scale: CGFloat
+    ) -> UIImage? {
+        let key = "\(previewName)|\(width)|\(mediaHeight)|\(bandTop)|\(bandHeight)|\(scale)" as NSString
+        if let hit = cache.object(forKey: key) { return hit }
+        guard let source = UIImage(named: previewName), width > 0, bandHeight > 0 else { return nil }
+
+        let size = CGSize(width: width, height: bandHeight)
+        let opaque = UIGraphicsImageRendererFormat()
+        opaque.scale = scale
+        opaque.opaque = true
+        // 1. The picture, aspect-filled and centred, then its mirror image below.
+        let composed = UIGraphicsImageRenderer(size: size, format: opaque).image { ctx in
+            let cg = ctx.cgContext
+            cg.translateBy(x: 0, y: -bandTop)
+            let slot = CGRect(x: 0, y: 0, width: width, height: mediaHeight)
+            let fill = aspectFill(source.size, in: slot)
+            cg.saveGState()
+            cg.clip(to: slot)
+            source.draw(in: fill)
+            cg.restoreGState()
+            cg.saveGState()
+            cg.translateBy(x: 0, y: 2 * mediaHeight)
+            cg.scaleBy(x: 1, y: -1)
+            cg.clip(to: slot)
+            source.draw(in: fill)
+            cg.restoreGState()
         }
+        // 2. Blurred with its edges clamped — SwiftUI's `blur(opaque: true)`.
+        guard let input = composed.cgImage.map(CIImage.init(cgImage:)) else { return nil }
+        let blurred = input.clampedToExtent()
+            .applyingGaussianBlur(sigma: Double(sigma * scale))
+            .cropped(to: input.extent)
+        guard let blurredCG = context.createCGImage(blurred, from: input.extent) else { return nil }
+
+        // 3. Faded in from the band's top to `fadeEnd`.
+        let clear = UIGraphicsImageRendererFormat()
+        clear.scale = scale
+        clear.opaque = false
+        let faded = UIGraphicsImageRenderer(size: size, format: clear).image { ctx in
+            UIImage(cgImage: blurredCG, scale: scale, orientation: .up)
+                .draw(in: CGRect(origin: .zero, size: size))
+            let colors = [UIColor.black.withAlphaComponent(0).cgColor, UIColor.black.cgColor] as CFArray
+            guard let gradient = CGGradient(colorsSpace: nil, colors: colors, locations: [0, 1]) else { return }
+            ctx.cgContext.setBlendMode(.destinationIn)
+            ctx.cgContext.drawLinearGradient(
+                gradient,
+                start: .zero,
+                end: CGPoint(x: 0, y: min(max(fadeEnd, 1), bandHeight)),
+                options: [.drawsAfterEndLocation]
+            )
+        }
+        cache.setObject(faded, forKey: key)
+        return faded
+    }
+
+    private static func aspectFill(_ image: CGSize, in rect: CGRect) -> CGRect {
+        guard image.width > 0, image.height > 0 else { return rect }
+        let scale = max(rect.width / image.width, rect.height / image.height)
+        let size = CGSize(width: image.width * scale, height: image.height * scale)
+        return CGRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
+                      width: size.width, height: size.height)
     }
 }
+#endif
 
 /// "Preview" / "In review" / "Soon" — the neutral status chip on the media.
 private struct StatusChip: View {
