@@ -1088,7 +1088,7 @@ struct ViewerLighting {
     ///
     /// Reset lands on the same state as reopening the model, so a museum scan
     /// never stays under a lighting the app does not open it with. Android's
-    /// `ViewerLighting.reset` applies the same rule.
+    /// reset lands on the same state: its default follows the model on stage.
     mutating func reset(for model: BundledViewerModel?) {
         environment = ModelViewerDemo.defaultEnvironment
         museumApplied = false
