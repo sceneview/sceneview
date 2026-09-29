@@ -118,7 +118,7 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
 | `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid. Tried at the `glass-sheet` opacity: without a backdrop blur the card titles scrolling under the wordmark stay legible and read as an overlap bug, so it stays opaque |
-| `card-glass` | `surface-container` (#ffffff) at 80 % over the card's own picture blurred 28dp — at 72 % a dark picture turned it a muddy grey | `surface-container` at 85 %, same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
+| `card-glass` | `surface-container` (#ffffff) at 80 % over the card's own picture blurred 28dp — at 72 % a dark picture turned it a muddy grey | `surface-container` at 90 % (the `glass-sheet` value), same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
 | `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
 Catalogue **section headers** (the full-span label above each group of demo cards)
@@ -154,8 +154,9 @@ moves.
 | `featured-parallax` | 0.08, clamped to a 6 % overscan | Picture lag behind its card while the shelf is swiped |
 
 Contrast of `card-glass`, composited over the worst uniform ground: light, over black —
-`on-surface` 10.6:1, `on-surface-variant` 5.9:1; dark, over mid-grey — 10.8:1 and 5.2:1
-(over a uniformly white picture, which dark captures never are, 8.1:1 and 3.9:1).
+`on-surface` 10.6:1, `on-surface-variant` 5.9:1; dark, over white — 9.6:1 and 4.56:1. Dark
+is at 90 % and not lower because light pictures do reach dark mode: at 85 % the Animation
+card's light-grey stage took its caption to 4.4:1.
 
 ### Demo App About (Android)
 

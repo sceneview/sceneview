@@ -23,7 +23,6 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.platform.LocalDensity
 import io.github.sceneview.demo.DemoFreshness
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
@@ -345,7 +344,6 @@ fun FeaturedShelf(
 ) {
     val home = SceneViewTokens.Home
     val listState = rememberLazyListState()
-    val startPadding = with(LocalDensity.current) { home.contentPadding.toPx() }
     LazyRow(
         state = listState,
         flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Start),
@@ -362,10 +360,12 @@ fun FeaturedShelf(
                 freshness = freshness(demo),
                 featured = true,
                 mediaAlignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center,
+                // Item offsets start after the content padding (the viewport starts at
+                // -padding), so a card snapped at rest has offset 0 and no shift.
                 mediaShift = {
                     listState.layoutInfo.visibleItemsInfo
                         .firstOrNull { it.index == index }
-                        ?.let { -(it.offset - startPadding) * home.featuredParallax }
+                        ?.let { -it.offset * home.featuredParallax }
                         ?: 0f
                 },
                 modifier = Modifier.width(if (expanded) home.featuredCardWidthExpanded else home.featuredCardWidth),

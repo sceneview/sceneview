@@ -331,12 +331,12 @@ object SceneViewTokens {
         const val cardGlassAlphaLight = 0.80f
 
         /**
-         * `card-glass`, dark — `surface-container` at 85 %. Over a mid-grey image
-         * `on-surface-variant` holds 5.2:1; the theoretical worst ground, a uniformly white
-         * image, takes it to 3.9:1 (`on-surface` 8.1:1) — dark mode draws the dark captures,
-         * whose blurred average is never near white.
+         * `card-glass`, dark — `surface-container` at 90 %, the `glass-sheet` value. Light
+         * pictures do reach dark mode (the Animation card's stage is a light grey): at 85 %
+         * its caption measured 4.4:1, under AA. At 90 % the worst ground, a uniformly white
+         * image, holds `on-surface-variant` at 4.56:1 and `on-surface` at 9.6:1.
          */
-        const val cardGlassAlphaDark = 0.85f
+        const val cardGlassAlphaDark = 0.90f
     }
 
     /** Home screen geometry (design spec §2) — `home-*` tokens. */

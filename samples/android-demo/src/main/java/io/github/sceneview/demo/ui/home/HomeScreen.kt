@@ -95,6 +95,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.BuildConfig
@@ -222,6 +223,10 @@ fun HomeScreen(
     // selected the chip already names it, and a lone header above a filtered grid
     // is chrome repeating what the user just tapped.
     val showSections = remember(visible) { visible.map { it.category }.distinct().size > 1 }
+    // The run of cards each demo is laid out in, and its place there: a run restarts at
+    // every section header, a full-span item. Cards read their grid row out of it at
+    // layout time, once [gridCells] knows the column count, to end level (#4144).
+    val cardRuns = remember(visible, showSections) { cardRuns(visible, showSections) }
 
     // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
     // featured page they feed (#3566). Derived from the demo's own declared
@@ -317,6 +322,10 @@ fun HomeScreen(
     val heroHeight = if (expanded) home.heroHeightExpanded else home.heroHeight
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
+    val gridCells = remember(expanded) {
+        CountingAdaptiveCells(if (expanded) home.gridMinCellExpanded else home.gridMinCell)
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         // The stage: composed once, under the grid, alive as long as this screen is
         // (#3948, #3949). It starts above the Scaffold's status-bar inset so the sky
@@ -338,7 +347,7 @@ fun HomeScreen(
 
         LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(if (expanded) home.gridMinCellExpanded else home.gridMinCell),
+            columns = gridCells,
             contentPadding = PaddingValues(
                 start = home.contentPadding,
                 end = home.contentPadding,
@@ -448,6 +457,7 @@ fun HomeScreen(
                         demo = demo,
                         onClick = { onDemoClick(demo.id) },
                         freshness = freshnessById[demo.id] ?: DemoFreshness.None,
+                        rowPeers = { cardRuns[demo.id]?.rowOf(gridCells.columns).orEmpty() },
                         modifier = Modifier
                             .animateItem(
                                 fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
@@ -659,6 +669,47 @@ private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "l
  * on earlier models stay in their sections, which are themselves in priority order
  * (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
  */
+/**
+ * [GridCells.Adaptive] that also remembers how many columns its last measure produced, so
+ * a card can find its grid row while it is being laid out. The grid computes the cells
+ * before it measures any item in the same pass, so the count is current when read.
+ */
+internal class CountingAdaptiveCells(private val minSize: Dp) : GridCells {
+    private val adaptive = GridCells.Adaptive(minSize)
+
+    /** Columns of the last measure; 1 before the first one. */
+    var columns: Int = 1
+        private set
+
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> =
+        with(adaptive) { calculateCrossAxisCellSizes(availableSize, spacing) }.also { columns = it.size }
+
+    override fun equals(other: Any?): Boolean = other is CountingAdaptiveCells && other.minSize == minSize
+
+    override fun hashCode(): Int = minSize.hashCode()
+}
+
+/** One demo's run of consecutive cards (between two full-span items) and its index in it. */
+internal class CardRun(private val run: List<DemoEntry>, private val index: Int) {
+    /** The cards sharing this demo's grid row when the grid has [columns] columns. */
+    fun rowOf(columns: Int): List<DemoEntry> {
+        val first = index / columns.coerceAtLeast(1) * columns.coerceAtLeast(1)
+        return run.subList(first, minOf(run.size, first + columns.coerceAtLeast(1)))
+    }
+}
+
+/** Splits [visible] into runs at each section header, as the grid lays them out. */
+internal fun cardRuns(visible: List<DemoEntry>, showSections: Boolean): Map<String, CardRun> {
+    val runs = mutableListOf<MutableList<DemoEntry>>()
+    var category: String? = null
+    visible.forEach { demo ->
+        if (runs.isEmpty() || (showSections && demo.category != category)) runs += mutableListOf<DemoEntry>()
+        runs.last() += demo
+        category = demo.category
+    }
+    return runs.flatMap { run -> run.mapIndexed { index, demo -> demo.id to CardRun(run, index) } }.toMap()
+}
+
 internal val FEATURED_SECTION_IDS = listOf(
     "ar-rerun", // Rerun AR replay — the flagship, reworked in 4.46
     // Record your room there, then stand it on your table here.
