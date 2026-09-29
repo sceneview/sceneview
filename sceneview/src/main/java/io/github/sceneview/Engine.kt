@@ -318,6 +318,41 @@ internal fun Engine.transformGeneration(): Int =
 internal fun Engine.bumpTransformGeneration() {
     transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
         .incrementAndGet()
+    // The swap-remove that made this bump necessary can also leave a child ahead of its parent.
+    markTransformOrderUnsorted()
+}
+
+// TransformManager has a second reindexing path besides destruction:
+// `commitLocalTransformTransaction()` walks the whole array and `swapNode()`s every child that sits
+// before its parent, so that world transforms resolve in one pass (`computeAllWorldTransforms`).
+// gltfio's `Animator.applyAnimation` opens and commits such a transaction on every call, so every
+// animated [io.github.sceneview.node.ModelNode] frame can reindex entities that have nothing to do
+// with the model — including the ModelNode's own root, whose cached `transformInstance` then
+// points at another entity. Its transform writes land on that entity: a skinned model swapped in
+// while the previous model is still alive (its destruction swap-removes the newcomer's entities
+// into lower slots) renders as nothing at all.
+//
+// A child only gets ahead of its parent through a destroy (swap-remove) or a reparent, and the sort
+// puts every node back in order, so the flag below is raised by those two and cleared by the first
+// commit that follows, which bumps the transform generation once. An animated scene whose
+// hierarchy does not change keeps its cached handles.
+private val transformOrderUnsortedByEngine = java.util.WeakHashMap<Engine, Boolean>()
+
+/** Records that a TransformManager child may now sit before its parent in the packed array. */
+internal fun Engine.markTransformOrderUnsorted() {
+    transformOrderUnsortedByEngine[this] = true
+}
+
+/**
+ * Call after a `commitLocalTransformTransaction()` ran on this [Engine] (gltfio's
+ * `Animator.applyAnimation` runs one). If the hierarchy could have been out of order, the commit
+ * reindexed it: bump the transform generation so every cached handle is looked up again.
+ */
+internal fun Engine.onLocalTransformTransactionCommitted() {
+    if (transformOrderUnsortedByEngine.remove(this) == true) {
+        transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
+            .incrementAndGet()
+    }
 }
 
 internal fun Engine.lightGeneration(): Int =

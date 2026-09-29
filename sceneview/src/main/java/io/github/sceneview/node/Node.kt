@@ -46,6 +46,7 @@ import io.github.sceneview.math.worldToLocalQuaternion
 import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
+import io.github.sceneview.markTransformOrderUnsorted
 import io.github.sceneview.transformGeneration
 import io.github.sceneview.safeRecycleEntity
 
@@ -647,6 +648,9 @@ open class Node protected constructor(
         set(value) {
             if (parentInstance != value) {
                 transformManager.setParent(transformInstance, value ?: 0)
+                // setParent() does not reorder the array: the child may now sit before its new
+                // parent, and the next transaction commit will move it (see Engine.kt).
+                engine.markTransformOrderUnsorted()
                 // The reparent changed both parent caches; invalidate so the next read re-fetches
                 // the fresh entity/instance from Filament (#2403 / #2404).
                 _parentEntityValid = false

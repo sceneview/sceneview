@@ -550,6 +550,10 @@ private fun SingleModelSection(
     // on a second, poorer screen written to say the same thing.
     val openedModel = remember { DemoSettings.openedModel.also { DemoSettings.openedModel = null } }
     var streamedFileUrl by remember { mutableStateOf<String?>(openedModel?.location) }
+    // The opened file while it is the model on stage. `openedModel` is the one-shot handoff and
+    // never changes; this drops to null once a pick from the sheet or a Surprise roll replaces the
+    // file, so the title, the source chip and the AR handoff follow the model actually shown.
+    var openedFile by remember { mutableStateOf(openedModel) }
     // Scale question for a unit-less file (#3543). STL / OBJ / PLY record no unit, so the loader
     // reads them in millimetres; `loadedUnit` is the reading currently on screen, and taking the
     // offer re-converts the same staged bytes at the other one.
@@ -848,7 +852,7 @@ private fun SingleModelSection(
     val assetSource = when {
         // The user's own file is neither streamed nor bundled: its origin is the title bar,
         // which names the file. A "Streamed" chip over a local file would simply be false.
-        openedModel != null -> null
+        openedFile != null -> null
         streamedFileUrl == null -> null
         streamedModel?.location != streamedFileUrl -> AssetSourceState.Streaming
         else -> AssetSourceState.Streamed
@@ -931,8 +935,8 @@ private fun SingleModelSection(
     // #3543 — a unit-less mesh a couple of units across is metre-authored, not a 2 mm part. The
     // viewer frames it correctly either way now, so this is a question, asked once, about what the
     // file MEANT — never a silent rescale, and never a hidden setting.
-    val unitSuggestion = remember(bounds, loadedUnit, openedModel) {
-        val name = openedModel?.displayName ?: return@remember null
+    val unitSuggestion = remember(bounds, loadedUnit, openedFile) {
+        val name = openedFile?.displayName ?: return@remember null
         if (OpenedModelIntent.unitLessFormat(name) == null) return@remember null
         val extents = bounds?.extents ?: return@remember null
         ModelUnitGuess.suggestFromLoaded(maxOf(extents.x, extents.y, extents.z), loadedUnit)
@@ -975,9 +979,9 @@ private fun SingleModelSection(
     // content. Without this, back from a swapped-in model skipped straight past the demo's
     // own default (the Damaged Helmet) to the Showcase home. One level at a time: revert to
     // the default model first, exit only from there. Scoped to the bundled-model swap only —
-    // an opened external file (`openedModel`, a one-shot `val` for the "Open with SceneView"
-    // handoff) is a different, narrower flow this issue does not report on.
-    val modelSwapped = openedModel == null && selectedModel != BUNDLED_VIEWER_MODELS.first()
+    // an opened external file still on stage (`openedFile`, the "Open with SceneView" handoff) is
+    // a different, narrower flow this issue does not report on.
+    val modelSwapped = openedFile == null && selectedModel != BUNDLED_VIEWER_MODELS.first()
     BackHandler(enabled = anySheetOpen || unitSheetOpen || modelSwapped) {
         when {
             anySheetOpen || unitSheetOpen -> {
@@ -1009,6 +1013,7 @@ private fun SingleModelSection(
                 surpriseStage = if (pick.second == streamedFileUrl) null else SurpriseStage.Decoding
                 surprisePick = pick
                 streamedFileUrl = pick.second
+                openedFile = null
                 // Warm the next roll while this model is looked at.
                 surprisePrefetch.warm(scope, service)
             }
@@ -1032,7 +1037,7 @@ private fun SingleModelSection(
     DemoScaffold(
         // An opened file is titled with its own name: the user came here from their file
         // manager or a share sheet, and "Model Viewer" would not tell them it worked.
-        title = openedModel?.displayName ?: stringResource(R.string.demo_model_viewer_screen_title),
+        title = openedFile?.displayName ?: stringResource(R.string.demo_model_viewer_screen_title),
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstModelFrame,
@@ -1214,7 +1219,7 @@ private fun SingleModelSection(
             // An opened file goes to AR as itself, at the size it actually is. That measurement
             // is the point for a 3MF: the format carries true manufacturing size, so a 60 mm
             // print must arrive in the room as 60 mm, not as the catalogue's default 30 cm.
-            DemoSettings.openedModelSizeMeters = openedModel?.let {
+            DemoSettings.openedModelSizeMeters = openedFile?.let {
                 bounds?.extents?.let { extents ->
                     // `Aabb.extents` is already the FULL size (halfExtent * 2), so the longest
                     // dimension is the object's real length — no second doubling.
@@ -1223,22 +1228,22 @@ private fun SingleModelSection(
             }
             // The staged file is called `opened-model` on disk, so AR cannot recover the user's
             // file name from the location it is handed. Carry it across explicitly.
-            DemoSettings.openedModelDisplayName = openedModel?.displayName
+            DemoSettings.openedModelDisplayName = openedFile?.displayName
             // #3493 — whatever the viewer is showing must be what AR opens on, never a picker.
             // `selectedModel.assetPath` covers every bundled row, including ones the AR
             // placement catalogue itself doesn't curate (the Damaged Helmet, #2023) — its name
             // has to ride along too, for AR to label a row the catalogue has no entry for. Set
             // unconditionally: a match against the curated catalogue uses ITS OWN name instead,
             // and this value is consumed once then cleared.
-            DemoSettings.requestedModelDisplayName = openedModel?.displayName ?: selectedModel.displayName
+            DemoSettings.requestedModelDisplayName = openedFile?.displayName ?: selectedModel.displayName
             // An HD entry goes to AR as the HD file once it is the model on screen.
             // AR always gets the bundled stand-in, HD entries included: HD in AR waits for a
             // real-device proof (same decision on iOS).
-            val model = openedModel?.location ?: selectedModel.assetPath ?: return@DockItem
+            val model = openedFile?.location ?: selectedModel.assetPath ?: return@DockItem
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
             // A Museum & Space scan has no bundled stand-in to take to AR (HD in AR waits for a
             // real-device proof), so the action is off rather than opening another model.
-        }, enabled = arSupported == true && (openedModel != null || selectedModel.assetPath != null)),
+        }, enabled = arSupported == true && (openedFile != null || selectedModel.assetPath != null)),
         chromeToggleOnTap = true,
         // The Lighting sheet is glass (#3827): the dock would show through it.
         dockHidden = environmentSheetOpen,
@@ -1439,7 +1444,7 @@ private fun SingleModelSection(
         currentScene = null,
         onSelect = {
             HdPackPerfProbe.start(it.key)
-            cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false
+            cancelSurprise(); onSelectModel(it); streamedFileUrl = null; openedFile = null; modelSheetOpen = false
         },
         onScene = { cancelSurprise(); modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
@@ -1462,7 +1467,7 @@ private fun SingleModelSection(
             onOpenAt = { unit ->
                 unitSheetOpen = false
                 unitAnswered = true
-                val name = openedModel?.displayName ?: return@ModelUnitSheet
+                val name = openedFile?.displayName ?: return@ModelUnitSheet
                 scope.launch {
                     val reopened = withContext(Dispatchers.IO) {
                         OpenedModelIntent.reopenAt(context, name, unit)
