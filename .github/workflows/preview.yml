@@ -83,6 +83,10 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -168,6 +172,10 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       # Same Xcode preference list as ios.yml / device-qa.yml; DEVELOPER_DIR
       # instead of `sudo xcode-select` so the step is portable.

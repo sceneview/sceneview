@@ -3319,7 +3319,7 @@ SceneView(modifier = Modifier.fillMaxSize()) {
 - `true` when the consumer has declared `androidx.xr.arcore:arcore` (or any artifact pulling `androidx.xr.runtime`) on the runtime classpath — i.e. the consumer has explicitly opted into the XR path.
 - `false` on a default `arsceneview/` consumer (no XR dep on classpath).
 
-Classpath presence is the foundation gate; the device-capability check (XR headset vs mobile phone) is layered on top by Slices 2 / 3 via the upstream `androidx.xr.runtime.Session.create(activity)` outcome.
+Classpath presence is the foundation gate; the device-capability check (XR headset vs mobile phone) is layered on top by Slices 2 / 3 via the upstream `androidx.xr.runtime.Session.create(context)` outcome (a suspend call returning a `SessionCreateResult`; `SessionCreateUnsupportedDevice` on a phone).
 
 Mobile ARCore tracking (`AugmentedFaceNode`, `AugmentedImageNode`, `AnchorNode`, etc.) keeps working unchanged on phones — the Jetpack XR layer is strictly additive.
 
@@ -3327,7 +3327,7 @@ Mobile ARCore tracking (`AugmentedFaceNode`, `AugmentedImageNode`, `AnchorNode`,
 
 `XrHandNode` mirrors a hand tracked by ARCore for Jetpack XR (`androidx.xr.arcore.Hand`) as a SceneView scene-graph node — the Jetpack XR sibling of `AugmentedFaceNode`. It exposes one child node per skeleton joint (~26 joints: wrist, palm, and 4–5 joints per finger); attach a `SphereNode` per joint and a `LineNode` per bone to render a hand skeleton, or anchor a model to a single joint.
 
-**Preview API.** Every `XrHandNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+**Preview API.** Every `XrHandNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is pre-stable — opt in with `@OptIn(XrPreviewApi::class)`.
 
 Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
 
@@ -3366,7 +3366,7 @@ Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on 
 
 It exposes one child node per named anchor region (`XrFaceRegion`: `CENTER`, `NOSE_TIP`, `FOREHEAD_LEFT`, `FOREHEAD_RIGHT`) whose transform follows the live pose — anchor glasses to `NOSE_TIP`, a hat above the forehead — plus the decoded dense mesh (`XrFaceMeshData`: vertex / normal / index buffers) so a consumer can upload its own `MeshNode` skin overlay. `XrFaceNode` creates no Filament mesh resource itself; building geometry stays a deliberate, main-thread step the consumer owns.
 
-**Preview API.** Every `XrFaceNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+**Preview API.** Every `XrFaceNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is pre-stable — opt in with `@OptIn(XrPreviewApi::class)`.
 
 Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
 

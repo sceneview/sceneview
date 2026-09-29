@@ -76,6 +76,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       # ── Release-window guard ─────────────────────────────────────────────
       # Google's Play Edits API races when two workflows upload-and-commit to
