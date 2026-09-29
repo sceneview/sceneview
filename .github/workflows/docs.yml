@@ -81,6 +81,13 @@ jobs:
         with:
           scopes: web
 
+      # The site serves CC-BY models: /credits.html is what attributes them.
+      # Never deploy a page whose generated list disagrees with
+      # assets/catalog.json or with the models actually served (same gate as
+      # ci.yml → build, "Check asset credits").
+      - name: Check asset credits
+        run: python3 .claude/scripts/generate-credits.py --check
+
       # ── 1. Copy static website (marketing site — root) ─────────────────
       - name: Assemble site root from static HTML
         run: |

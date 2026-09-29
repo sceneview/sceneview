@@ -142,7 +142,7 @@
         {
           "file": "Models/khronos_fox.usdz",
           "name": "Fox",
-          "author": "PixelMannen (model), tomkranis (rigging & animation)",
+          "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
           "license": "CC-BY-4.0",
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",

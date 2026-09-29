@@ -253,6 +253,8 @@ jobs:
               - 'samples/ios-demo/SceneViewDemo/Audio/CREDITS.md'
               - 'samples/web-demo/site/credits.json'
               - 'samples/web-demo/site/audio/CREDITS.md'
+              - 'website-static/credits.html'
+              - 'website-static/models/platforms/thumbnails/**'
             # `web` gates the Gradle Kotlin/JS build of the sceneview-web
             # library plus the desktop-demo compile (#2540) that lives in the
             # same job. samples/web-demo is a plain static site (no Gradle
@@ -511,7 +513,8 @@ jobs:
         run: bash tools/fetch-assets.sh --check --scope android --scope tv
 
       # Every generated CREDITS file (assets/CREDITS.md, the APK's CREDITS.md,
-      # the iOS and web demos' credits JSON) must match what
+      # the iOS and web demos' credits JSON, the list on the website's
+      # credits.html) must match what
       # generate-credits.py renders from assets/catalog.json and the bundled
       # files, and every bundled file must be credited. Ran in no workflow from
       # #3244 (which deleted `repo-hygiene`) until #4151. It reads manifest
