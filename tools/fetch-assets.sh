@@ -19,16 +19,25 @@
 #      `$SCENEVIEW_ASSETS_CACHE` (default `~/.cache/sceneview-assets/<sha256>`),
 #      and verified against its sha256 before it is kept.
 #   2. It is then materialised at its path with an APFS clone (`cp -c`), a
-#      reflink, a hardlink, or a plain copy — first that works.
+#      reflink, or a plain copy — first that works. Never a hardlink: it shares
+#      the cache file's inode, so any in-place write to the checkout copy would
+#      silently corrupt the cache for every worktree. Clones and reflinks are
+#      copy-on-write, so they cost no space and cannot.
 #   3. A file already in place with the right hash is left alone, so the script
 #      is idempotent and needs no network once the cache is warm.
+#   4. A file in a managed folder that the manifest does not list (and git does
+#      not track) FAILS the fetch, and with it the Gradle / Xcode build: it would
+#      ship from this machine and be missing everywhere else. A fresh checkout
+#      never has one.
 #
 # `SCENEVIEW_ASSETS_BASE_URL` overrides the download location (a mirror, or a
 # `file://` directory in tests). The Gradle `fetchAssets` task, the iOS demo's
 # "Fetch assets" build phase and CI all call this script.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Physical path (`pwd -P`): `--register` resolves its arguments through symlinks
+# (/tmp -> /private/tmp on macOS), so ROOT must be resolved the same way.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 export SCENEVIEW_ASSETS_ROOT="$ROOT"
 PYTHON="$(command -v python3 || true)"
 if [ -z "$PYTHON" ]; then
@@ -49,7 +58,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(os.environ["SCENEVIEW_ASSETS_ROOT"])
+ROOT = Path(os.environ["SCENEVIEW_ASSETS_ROOT"]).resolve()
 MANIFEST = ROOT / "assets" / "manifest.json"
 CACHE = Path(
     os.environ.get("SCENEVIEW_ASSETS_CACHE")
@@ -109,7 +118,13 @@ def download(manifest: dict, entry: dict) -> Path:
 
 
 def materialise(src: Path, dest: Path) -> str:
-    """Place `src` at `dest`: clone, reflink, hardlink, else copy. Returns the method."""
+    """Place `src` at `dest`: clone or reflink (copy-on-write), else copy. Returns the method.
+
+    No hardlink: it would share the cache file's inode, so an in-place write to
+    `dest` (an editor, a tool that rewrites a GLB without replacing it) would
+    corrupt the cache for every worktree. On APFS the clone always succeeds
+    where a hardlink could (same volume); elsewhere a copy is the safe fallback.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(f".{dest.name}.fetch-{os.getpid()}")
     if tmp.exists():
@@ -123,13 +138,6 @@ def materialise(src: Path, dest: Path) -> str:
         if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             os.replace(tmp, dest)
             return method
-        if tmp.exists():
-            tmp.unlink()
-    try:
-        os.link(src, tmp)
-        os.replace(tmp, dest)
-        return "hardlink"
-    except OSError:
         if tmp.exists():
             tmp.unlink()
     shutil.copyfile(src, tmp)
@@ -215,10 +223,18 @@ def cmd_fetch(manifest: dict, scopes: list[str], jobs: int) -> int:
     label = ",".join(scopes) or "all"
     log(f"{label}: {len(entries)} files, {len(entries) - len(todo)} already in place, "
         f"{len(todo) - len(errors)} materialised ({how})")
-    for p in orphans(manifest, scopes):
-        log(f"warning: {p} is neither in assets/manifest.json nor tracked by git — "
-            f"CI will not have it. Run: bash tools/fetch-assets.sh --register {p}")
-    return 1 if errors else 0
+    unregistered = report_orphans(manifest, scopes)
+    return 1 if errors or unregistered else 0
+
+
+def report_orphans(manifest: dict, scopes: list[str]) -> list[str]:
+    """Log an error for every unregistered file in a managed folder; return them."""
+    found = orphans(manifest, scopes)
+    for p in found:
+        log(f"ERROR {p} is in a managed asset folder but not in assets/manifest.json — "
+            f"run tools/fetch-assets.sh --register {p} (then upload before merging) "
+            f"or delete it")
+    return found
 
 
 def cmd_check(manifest: dict, scopes: list[str], jobs: int) -> int:
@@ -243,6 +259,7 @@ def cmd_check(manifest: dict, scopes: list[str], jobs: int) -> int:
             for p in tracked]
     for b in bad:
         log(f"ERROR {b}")
+    bad += report_orphans(manifest, scopes)
     label = ",".join(scopes) or "all"
     if bad:
         log(f"--check {label}: {len(bad)} problem(s) in {len(entries)} files. "
@@ -285,7 +302,12 @@ def cmd_register(manifest: dict, paths: list[str]) -> int:
         paths = [line.strip() for line in sys.stdin if line.strip()]
     for arg in paths:
         p = Path(arg).resolve()
-        rel = p.relative_to(ROOT).as_posix()
+        if not p.is_file():
+            sys.exit(f"fetch-assets: {arg}: no such file")
+        try:
+            rel = p.relative_to(ROOT).as_posix()
+        except ValueError:
+            sys.exit(f"fetch-assets: {arg} is not inside this checkout ({ROOT})")
         scope = next((n for n, s in manifest["scopes"].items()
                       if any(rel.startswith(d.rstrip("/") + "/") for d in s["dirs"])
                       and p.suffix.lower() in s["extensions"]), None)
@@ -310,9 +332,28 @@ def cmd_register(manifest: dict, paths: list[str]) -> int:
         f.write("\n")
     tag = manifest["release"]["tag"]
     repo = manifest["release"]["repo"]
-    log("now upload the new blobs (maintainers; existing names are skipped):")
+    # Release assets are named by sha256, so a name already on the release is
+    # already these exact bytes. `gh release upload` FAILS on an existing name
+    # (no --clobber on purpose: delete-then-upload would 404 concurrent
+    # fetches), so only the blobs the release does not have yet are printed.
+    present = set()
+    if shutil.which("gh"):
+        r = subprocess.run(["gh", "release", "view", tag, "-R", repo,
+                            "--json", "assets", "-q", ".assets[].name"],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            present = set(r.stdout.split())
+        else:
+            log(f"note: could not list the {tag} assets ({r.stderr.strip() or r.returncode}); "
+                f"`gh release upload` fails on a blob already there — that blob is done")
     for src, rel in uploads:
-        print(f"gh release upload {tag} -R {repo} '{src}#{Path(rel).name}'")
+        if src.name in present:
+            log(f"{rel}: already on {tag}, nothing to upload")
+    todo = [(src, rel) for src, rel in uploads if src.name not in present]
+    if todo:
+        log("now upload the new blobs (maintainers), before merging:")
+        for src, rel in todo:
+            print(f"gh release upload {tag} -R {repo} '{src}#{Path(rel).name}'")
     return 0
 
 
