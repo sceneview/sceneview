@@ -54,6 +54,7 @@ import io.github.sceneview.demo.ui.home.outlineSubtle
  * @param hdAssetId id of an HD pack asset (`assets/hd-pack/android.json`). The entry then opens
  *   that model once it is on the device, and [assetPath] is only its bundled stand-in, shown
  *   instantly while the HD file downloads or loads.
+ * @param thumbnailStem [ModelThumbnails] key when it is not the stem of [assetPath].
  */
 data class BundledViewerModel(
     val assetPath: String,
@@ -61,14 +62,18 @@ data class BundledViewerModel(
     @StringRes val description: Int? = null,
     val frontYaw: Float = 0f,
     val hdAssetId: String? = null,
+    val thumbnailStem: String? = null,
 ) {
     val assetName get() = assetPath.substringAfterLast('/').substringBeforeLast('.')
 
     /** Identity in the picker: an HD entry shares its stand-in's [assetPath] with another card. */
     val key: String get() = hdAssetId?.let { "hd:$it" } ?: assetPath
 
-    /** Thumbnail stem: the stand-in's render would picture the wrong model on an HD card. */
-    val thumbnailName: String get() = hdAssetId?.replace('-', '_') ?: assetName
+    /**
+     * Thumbnail stem ([ModelThumbnails]): [thumbnailStem] when set — an HD card pictures its HD
+     * model, not the stand-in at [assetPath] — else the asset's own stem.
+     */
+    val thumbnailName: String get() = thumbnailStem ?: assetName
 }
 
 /**

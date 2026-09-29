@@ -30,7 +30,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.sketchfab.SampleAssets
-import io.github.sceneview.demo.hdpack.HdPack
+import io.github.sceneview.demo.hdpack.rememberHdPackStore
 
 /**
  * Modal bottom sheet listing every streamed Sketchfab model the demo app
@@ -87,7 +86,7 @@ fun CreditsSheet(onDismiss: () -> Unit) {
         }
     }
 
-    val hdPackAssets = remember { HdPack.store(context)?.manifest?.assets.orEmpty() }
+    val hdPackAssets = rememberHdPackStore()?.manifest?.assets.orEmpty()
 
     DemoModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -181,6 +180,7 @@ fun CreditsSheet(onDismiss: () -> Unit) {
                         title = asset.title,
                         subtitle = stringResource(R.string.credits_hd_row_subtitle, asset.author, asset.license),
                         onOpen = { openUrl(asset.source) },
+                        openDescription = stringResource(R.string.credits_hd_row_open_cd),
                     )
                 }
             }
@@ -199,7 +199,12 @@ fun CreditsSheet(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun CreditsRow(title: String, subtitle: String, onOpen: () -> Unit) {
+private fun CreditsRow(
+    title: String,
+    subtitle: String,
+    onOpen: () -> Unit,
+    openDescription: String = stringResource(R.string.credits_row_open_cd),
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -244,7 +249,7 @@ private fun CreditsRow(title: String, subtitle: String, onOpen: () -> Unit) {
             }
             Icon(
                 Icons.AutoMirrored.Filled.OpenInNew,
-                contentDescription = stringResource(R.string.credits_row_open_cd),
+                contentDescription = openDescription,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )

@@ -2,6 +2,7 @@ package io.github.sceneview.demo.hdpack
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.text.format.Formatter
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,17 +33,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/** The process HD pack store, or `null` when this build ships no readable manifest. */
+/**
+ * The process HD pack store, or `null` while it loads or when this build ships no readable
+ * manifest. The first load reads an asset and scans a directory, so it runs on
+ * [Dispatchers.IO] — never during composition on the main thread.
+ */
 @Composable
 fun rememberHdPackStore(): HdPackStore? {
     val context = LocalContext.current
-    return remember { HdPack.store(context) }
+    val store by HdPack.loaded.collectAsState()
+    LaunchedEffect(Unit) {
+        if (HdPack.loaded.value == null) withContext(Dispatchers.IO) { HdPack.store(context) }
+    }
+    return store
 }
 
 /** Live status of [store]; [HdPackStatus.NotDownloaded] when there is no pack. */
@@ -66,21 +79,20 @@ fun hdPackSize(context: Context, bytes: Long): String = Formatter.formatShortFil
 fun HdPackDownloadDialog(totalBytes: Long, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val size = hdPackSize(context, totalBytes)
+    // Only a network that is up and metered: `isActiveNetworkMetered` also answers `true` with no
+    // network at all, which would warn about mobile data on a device that has none.
     val metered = remember {
-        context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered == true
+        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+        val capabilities = connectivity?.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
     }
+    val body = stringResource(R.string.hd_pack_dialog_body, size)
+    val meteredNote = stringResource(R.string.hd_pack_dialog_metered_note)
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.HighQuality, contentDescription = null) },
         title = { Text(stringResource(R.string.hd_pack_dialog_title)) },
-        text = {
-            Text(
-                stringResource(
-                    if (metered) R.string.hd_pack_dialog_body_metered else R.string.hd_pack_dialog_body,
-                    size,
-                ),
-            )
-        },
+        text = { Text(if (metered) "$body $meteredNote" else body) },
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(stringResource(R.string.hd_pack_dialog_confirm)) }
         },
@@ -91,28 +103,29 @@ fun HdPackDownloadDialog(totalBytes: Long, onConfirm: () -> Unit, onDismiss: () 
 }
 
 /**
- * About → App → "HD scenes · 48 MB · Downloaded". One row in the group's own anatomy (leading
- * glyph, label, trailing action), with the state as its supporting line and a progress bar
- * while a download runs. The action is "Download now" until the pack is complete, then
- * "Remove".
+ * About → App → "HD scenes · 48 MB" over "Downloaded". One row in the group's own anatomy
+ * (leading glyph, label, trailing action), with the state as its supporting line and a progress
+ * bar while a download runs. The action is "Download now" (a retry after a failure) until the
+ * pack is complete, then "Remove". Copy shared word for word with the iOS demo.
  */
 @Composable
 fun HdPackSettingsRow() {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val store = rememberHdPackStore() ?: return
     val status by rememberHdPackStatus(store)
     val scope = rememberCoroutineScope()
     var dialogOpen by remember { mutableStateOf(false) }
     val size = hdPackSize(context, store.manifest.totalBytes)
     val supporting = when (val s = status) {
-        HdPackStatus.Ready -> stringResource(R.string.hd_pack_settings_ready, size)
+        HdPackStatus.Ready -> stringResource(R.string.hd_pack_settings_ready)
         is HdPackStatus.Downloading ->
-            stringResource(R.string.hd_pack_settings_downloading, size, (s.fraction * 100).toInt())
-        HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pack_settings_waiting_wifi, size)
-        HdPackStatus.WaitingForNetwork -> stringResource(R.string.hd_pack_settings_waiting_network, size)
-        HdPackStatus.NotDownloaded -> stringResource(R.string.hd_pack_settings_not_downloaded, size)
+            stringResource(R.string.hd_pack_settings_downloading, (s.fraction * 100).toInt())
+        HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pack_settings_waiting_wifi)
+        HdPackStatus.WaitingForNetwork -> stringResource(R.string.hd_pack_settings_waiting_network)
+        HdPackStatus.NotDownloaded -> stringResource(R.string.hd_pack_settings_not_downloaded)
+        HdPackStatus.Failed -> stringResource(R.string.hd_pack_settings_failed)
     }
-    val removedMessage = R.string.hd_pack_removed
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,7 +150,7 @@ fun HdPackSettingsRow() {
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
         ) {
             Text(
-                text = stringResource(R.string.hd_pack_settings_title),
+                text = stringResource(R.string.hd_pack_settings_title, size),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -160,7 +173,7 @@ fun HdPackSettingsRow() {
                         val freed = HdPack.remove(context)
                         Toast.makeText(
                             context,
-                            context.getString(removedMessage, hdPackSize(context, freed)),
+                            resources.getString(R.string.hd_pack_removed, hdPackSize(context, freed)),
                             Toast.LENGTH_SHORT,
                         ).show()
                     }

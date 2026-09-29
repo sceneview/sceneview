@@ -234,6 +234,7 @@ private val BUNDLED_VIEWER_MODELS = listOf(
         "Flight Helmet",
         R.string.demo_model_desc_flight_helmet,
         hdAssetId = "flight-helmet",
+        thumbnailStem = "khronos_flight_helmet",
     ),
     BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa", R.string.demo_model_desc_velvet_sofa),
     BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair", R.string.demo_model_desc_sheen_chair),
@@ -576,12 +577,17 @@ private fun SingleModelSection(
         ?.let { hdStore?.manifest?.asset(it) }
     val hdFileLocation = hdAsset?.takeIf { it.id in hdReadyIds }
         ?.let { android.net.Uri.fromFile(hdStore?.fileFor(it)).toString() }
+    // A file that times out or has no framable bounds is dropped: the stand-in stays and the
+    // pill turns to "HD · download failed" (tap = retry) instead of spinning forever.
+    var hdRejectedLocation by remember { mutableStateOf<String?>(null) }
+    val hdLoadFailed = hdFileLocation != null && hdFileLocation == hdRejectedLocation
     val hdModel = rememberStreamedModelInstance(
         modelLoader,
-        hdFileLocation,
+        hdFileLocation?.takeIf { !hdLoadFailed },
         wakeRenderLoop = renderInvalidator::requestRender,
+        onRejected = { hdRejectedLocation = it },
     )
-    val hdShown = hdFileLocation != null && hdModel?.location == hdFileLocation
+    val hdShown = hdFileLocation != null && !hdLoadFailed && hdModel?.location == hdFileLocation
     val hdPillShown = hdAsset != null && !hdShown
     var hdDialogOpen by remember { mutableStateOf(false) }
 
@@ -975,7 +981,9 @@ private fun SingleModelSection(
             // size stated first. It leaves the moment the HD model is on screen.
             if (hdPillShown && hdAsset != null) {
                 val status = hdStatus
+                val hdFailed = hdLoadFailed || (hdFileLocation == null && status == HdPackStatus.Failed)
                 val hdLabel = when {
+                    hdFailed -> stringResource(R.string.hd_pill_failed)
                     hdFileLocation != null -> stringResource(R.string.hd_pill_loading)
                     status is HdPackStatus.Downloading ->
                         stringResource(R.string.hd_pill_downloading, (status.fraction * 100).toInt())
@@ -989,8 +997,12 @@ private fun SingleModelSection(
                 GlassActionPill(
                     icon = Icons.Outlined.HighQuality,
                     label = hdLabel,
-                    onClick = { hdDialogOpen = true },
-                    loading = hdFileLocation != null || hdStatus is HdPackStatus.Downloading,
+                    onClick = {
+                        // A file on disk that failed to load retries the load; anything else
+                        // asks to download now, size first.
+                        if (hdLoadFailed) hdRejectedLocation = null else hdDialogOpen = true
+                    },
+                    loading = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading),
                     progress = (hdStatus as? HdPackStatus.Downloading)?.fraction?.takeIf { hdFileLocation == null },
                     contentDescription = if (hdFileLocation == null) {
                         stringResource(R.string.hd_pill_hint)
@@ -1051,7 +1063,9 @@ private fun SingleModelSection(
             // and this value is consumed once then cleared.
             DemoSettings.requestedModelDisplayName = openedModel?.displayName ?: selectedModel.displayName
             // An HD entry goes to AR as the HD file once it is the model on screen.
-            val model = openedModel?.location ?: hdModel?.location?.takeIf { hdShown } ?: selectedModel.assetPath
+            // AR always gets the bundled stand-in, HD entries included: HD in AR waits for a
+            // real-device proof (same decision on iOS).
+            val model = openedModel?.location ?: selectedModel.assetPath
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),
         chromeToggleOnTap = true,

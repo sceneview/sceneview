@@ -219,6 +219,21 @@ class HdPackStoreTest {
         )
     }
 
+    @Test fun `a job that gave up reads as failed, a cancelled one as not downloaded`() {
+        assertEquals(
+            HdPackStatus.Failed,
+            HdPack.statusOf(false, null, work(WorkInfo.State.FAILED, NetworkType.CONNECTED)),
+        )
+        assertEquals(
+            HdPackStatus.NotDownloaded,
+            HdPack.statusOf(false, null, work(WorkInfo.State.CANCELLED, NetworkType.UNMETERED)),
+        )
+        assertEquals(
+            HdPackStatus.Ready,
+            HdPack.statusOf(true, null, work(WorkInfo.State.FAILED, NetworkType.CONNECTED)),
+        )
+    }
+
     private fun work(state: WorkInfo.State, network: NetworkType) = WorkInfo(
         id = UUID.randomUUID(),
         state = state,
