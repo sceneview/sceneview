@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Website: every 3D model the site serves is credited on a new `/credits.html` page.** The page lists each model's author, licence and source link, with its thumbnail. `generate-credits.py` generates it from `assets/catalog.json`, and its `--check` (run in CI and before each site deploy) fails when the page drifts from the catalog. The footer on every page now links to it. The catalog gains a `shippedAs` field for the site's file names, the missing authors from Sketchfab and Khronos metadata, and a corrected licence for AntiqueCamera (CC0-1.0).

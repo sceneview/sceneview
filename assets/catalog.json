@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "_comment": "SceneView shared 3D asset catalog. Source of truth for all demo assets across platforms.",
   "version": "1.0.0",
-  "lastUpdated": "2026-04-11",
+  "lastUpdated": "2026-09-29",
   "sources": {
     "sketchfab": {
       "apiBase": "https://api.sketchfab.com/v3",
@@ -27,6 +27,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f",
       "author": "JonhyOliver",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "GameBoyClassic.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/game_boy_classic.glb",
@@ -338,6 +341,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/mosquito-in-amber-53a61d58c09b4d2ab30e269aa3e22078",
       "author": "Lo\u00efc Norgeot",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "MosquitoInAmber.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/mosquito_amber.glb",
@@ -981,6 +987,9 @@
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
       "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)",
       "license": "CC-BY-NC-4.0",
+      "shippedAs": [
+        "DamagedHelmet.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_damaged_helmet.glb",
@@ -1010,8 +1019,11 @@
       "name": "Water Bottle",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle",
-      "author": "KhronosGroup",
+      "author": "Microsoft",
       "license": "CC0-1.0",
+      "shippedAs": [
+        "WaterBottle.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_water_bottle.glb",
@@ -1037,8 +1049,11 @@
       "name": "Antique Camera",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/AntiqueCamera",
-      "author": "KhronosGroup (UX3D)",
-      "license": "CC-BY-4.0",
+      "author": "UX3D (Maximillan Kamps)",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "AntiqueCamera.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_antique_camera.glb",
@@ -1195,6 +1210,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/animated-t-rex-dinosaur-biting-attack-loop-5bbcadb7d9274843abb5ada35767dba1",
       "author": "LasquetiSpice",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "AnimatedTrex.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/animated_trex.glb",
@@ -1233,6 +1251,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/animated-floating-astronaut-in-space-suit-loop-e2c4b146e58141e4b87917456a9970b1",
       "author": "LasquetiSpice",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "AnimatedAstronaut.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/animated_astronaut.glb",
@@ -1636,8 +1657,11 @@
       "name": "Fox",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
-      "author": "PixelMannen (model), tomkranis (rigging & animation)",
+      "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "Fox.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_fox.glb",
@@ -1721,8 +1745,11 @@
       "name": "Chronograph Watch",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch",
-      "author": "KhronosGroup",
+      "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ChronographWatch.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_chronograph_watch.glb",
@@ -1845,6 +1872,9 @@
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Duck",
       "author": "Sony Computer Entertainment",
       "license": "SCEA Shared Source License",
+      "shippedAs": [
+        "Duck.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_duck.glb",
@@ -1876,6 +1906,9 @@
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa",
       "author": "Wayfair, LLC (Eric Chadwick)",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "VelvetSofa.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_glam_velvet_sofa.glb",
@@ -1908,6 +1941,9 @@
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern",
       "author": "Microsoft",
       "license": "CC0-1.0",
+      "shippedAs": [
+        "Lantern.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_lantern.glb",
@@ -1944,6 +1980,10 @@
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe",
       "author": "Shopify",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "MaterialsVariantsShoe.glb",
+        "Sneaker.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_materials_variants_shoe.glb",
@@ -1974,8 +2014,11 @@
       "name": "Sunglasses",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos",
-      "author": "Khronos",
+      "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "SunglassesKhronos.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_sunglasses.glb",
@@ -2289,7 +2332,11 @@
       "source": "sketchfab",
       "sourceId": "236859b809984f52b70c94fd040b9c59",
       "sourceUrl": "https://sketchfab.com/3d-models/koi-fish-236859b809984f52b70c94fd040b9c59",
+      "author": "7PLUS",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "KoiFish.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/koi_fish.glb",
@@ -2318,7 +2365,11 @@
       "source": "sketchfab",
       "sourceId": "b2bd1ee7858444bda366110a2d960386",
       "sourceUrl": "https://sketchfab.com/3d-models/toon-cat-free-b2bd1ee7858444bda366110a2d960386",
+      "author": "Omabuarts Studio",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ToonCat.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/toon_cat.glb",
@@ -2347,7 +2398,11 @@
       "source": "sketchfab",
       "sourceId": "a8e7e10f005f4baab0a2f5079d759fcd",
       "sourceUrl": "https://sketchfab.com/3d-models/elephant-animation-idle-a8e7e10f005f4baab0a2f5079d759fcd",
+      "author": "GremorySaiyan",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "AnimatedElephant.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/animated_elephant.glb",
@@ -2376,7 +2431,11 @@
       "source": "sketchfab",
       "sourceId": "be22fbe1ef0044f3bedc6e3edf459593",
       "sourceUrl": "https://sketchfab.com/3d-models/keyboard-casio-vl-tone-be22fbe1ef0044f3bedc6e3edf459593",
+      "author": "AleixoAlonso",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "CasioKeyboard.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/casio_keyboard.glb",
@@ -2405,7 +2464,11 @@
       "source": "sketchfab",
       "sourceId": "3f2d4f5b962340b2933012e1bc634d88",
       "sourceUrl": "https://sketchfab.com/3d-models/trumpet-3f2d4f5b962340b2933012e1bc634d88",
+      "author": "Charlie Tinley",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "Trumpet.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/trumpet.glb",
@@ -2433,7 +2496,11 @@
       "source": "sketchfab",
       "sourceId": "1a97f872c1ac4a83a0132cd749d0b2a8",
       "sourceUrl": "https://sketchfab.com/3d-models/coffee-cart-1a97f872c1ac4a83a0132cd749d0b2a8",
+      "author": "Outlier Spa",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "CoffeeCart.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/coffee_cart.glb",
@@ -2462,7 +2529,11 @@
       "source": "sketchfab",
       "sourceId": "b0035b8713b048bb8ddf311ee67c28c8",
       "sourceUrl": "https://sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8",
+      "author": "99.Miles",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "NightCity.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/night_city.glb",
@@ -2492,7 +2563,11 @@
       "source": "sketchfab",
       "sourceId": "06a32da82b0441c39950296315307400",
       "sourceUrl": "https://sketchfab.com/3d-models/kindred-league-of-legends-rigged-06a32da82b0441c39950296315307400",
+      "author": "maisth",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "KindredLol.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/kindred_lol.glb",
@@ -2805,6 +2880,9 @@
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
       "author": "Wayfair, LLC (Eric Chadwick)",
       "license": "CC0-1.0",
+      "shippedAs": [
+        "SheenChair.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_sheen_chair.glb",
@@ -2887,7 +2965,7 @@
       "_comment": "Chronograph Watch bundled under a short filename by the web demo's curated catalog.",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch",
-      "author": "KhronosGroup",
+      "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)",
       "license": "CC-BY-4.0",
       "formats": {
         "glb": {
@@ -2934,6 +3012,54 @@
         "ios-demo"
       ],
       "defaultScale": 0.3,
+      "cameraDistance": 2.5
+    },
+    {
+      "id": "khronos_car_concept",
+      "name": "Car Concept",
+      "_comment": "Website-only: served from website-static/models/platforms, no demo bundles it.",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
+      "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "CarConcept.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "car",
+        "vehicle",
+        "clearcoat",
+        "pbr"
+      ],
+      "usedIn": [
+        "website"
+      ],
+      "defaultScale": 1.0,
+      "cameraDistance": 4.0
+    },
+    {
+      "id": "khronos_iridescence_lamp",
+      "name": "Iridescence Lamp",
+      "_comment": "Website-only: served from website-static/models/platforms, no demo bundles it.",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp",
+      "author": "Wayfair, LLC (Eric Chadwick)",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "IridescenceLamp.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "lamp",
+        "furniture",
+        "iridescence",
+        "pbr"
+      ],
+      "usedIn": [
+        "website"
+      ],
+      "defaultScale": 1.0,
       "cameraDistance": 2.5
     }
   ],

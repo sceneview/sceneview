@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH). -->
+  <script src="/assets/analytics.js"></script>
+  <title>3D Model Credits — SceneView</title>
+  <meta name="description" content="Authors, licences and sources of every 3D model shown on sceneview.github.io.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://sceneview.github.io/credits.html">
+  <meta property="og:title" content="3D Model Credits — SceneView">
+  <meta property="og:description" content="Authors, licences and sources of every 3D model shown on sceneview.github.io.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sceneview.github.io/credits.html">
+  <meta property="og:image" content="https://sceneview.github.io/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="3D Model Credits — SceneView">
+  <meta name="twitter:description" content="Authors, licences and sources of every 3D model shown on sceneview.github.io.">
+  <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
+  <meta name="theme-color" content="#005bc1">
+  <meta property="og:site_name" content="SceneView">
+  <meta property="og:locale" content="en_US">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ===== CREDITS PAGE ===== */
+    .credits-page {
+      padding-top: var(--nav-height);
+    }
+
+    .credits-hero {
+      padding: 80px 0 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .credits-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 20%, rgba(0,91,193,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    [data-theme="dark"] .credits-hero::before {
+      background: radial-gradient(ellipse 80% 60% at 50% 20%, rgba(141,179,255,0.06) 0%, transparent 70%);
+    }
+
+    .credits-hero__container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+    }
+
+    .credits-hero__title {
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-tertiary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+
+    .credits-hero__lead {
+      font-size: 1.05rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.6;
+    }
+
+    .credits-content {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 16px var(--container-padding) 80px;
+    }
+
+    .credits-content a {
+      color: var(--color-primary);
+    }
+
+    .credits-note {
+      max-width: 720px;
+      margin: 0 auto 32px;
+      font-size: 0.95rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.7;
+      background: var(--color-surface-container-low);
+      border: 1px solid var(--color-outline-variant);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    .credits-note p + p {
+      margin-top: 8px;
+    }
+
+    .credits-summary {
+      font-size: 0.9rem;
+      color: var(--color-on-surface-variant);
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .credits-summary strong {
+      color: var(--color-on-surface);
+    }
+
+    .credits-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      list-style: none;
+      padding: 0;
+    }
+
+    .credits-card {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      padding: 16px;
+      background: var(--color-surface-container-lowest);
+      border: 1px solid var(--color-outline-variant);
+      border-radius: 16px;
+    }
+
+    [data-theme="dark"] .credits-card {
+      background: var(--color-surface-container-low);
+    }
+
+    .credits-card__thumb {
+      flex-shrink: 0;
+      width: 72px;
+      height: 72px;
+      border-radius: 12px;
+      object-fit: contain;
+      background: var(--color-surface-container);
+    }
+
+    .credits-card__thumb--empty {
+      background: var(--color-surface-container-high);
+    }
+
+    .credits-card__body {
+      min-width: 0;
+    }
+
+    .credits-card__name {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.3;
+      margin-bottom: 2px;
+    }
+
+    .credits-card__name a {
+      color: var(--color-on-surface);
+    }
+
+    .credits-card__name a:hover {
+      color: var(--color-primary);
+      text-decoration: underline;
+    }
+
+    .credits-card__author {
+      font-size: 0.85rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.45;
+      margin-bottom: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    .credits-card__license {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--color-primary-container);
+      color: var(--color-on-primary-container);
+    }
+
+    .credits-content a.credits-card__license {
+      color: var(--color-on-primary-container);
+    }
+
+    .credits-card__files {
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: var(--color-on-surface-variant);
+      overflow-wrap: anywhere;
+    }
+
+    .credits-card__files code {
+      font-family: var(--font-mono);
+    }
+
+    @media (max-width: 768px) {
+      .credits-hero { padding: 48px 0 24px; }
+      .credits-content { padding: 8px var(--container-padding) 64px; }
+    }
+  </style>
+  <link href="assets/fonts/fonts.css" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ===== NAVIGATION ===== -->
+  <nav class="nav" id="nav">
+    <div class="nav__container">
+      <a href="/" class="nav__brand" aria-label="SceneView SDK — home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" style="flex-shrink:0">
+          <defs>
+            <linearGradient id="navTopGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8AB4F8"/><stop offset="100%" stop-color="#42A5F5"/></linearGradient>
+            <linearGradient id="navRightGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#005BC1"/></linearGradient>
+            <linearGradient id="navLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#005BC1"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient>
+          </defs>
+          <polygon points="256,272 122,194 122,340 256,418" fill="url(#navLeftGrad)"/>
+          <polygon points="256,272 390,194 390,340 256,418" fill="url(#navRightGrad)"/>
+          <polygon points="256,126 390,204 256,282 122,204" fill="url(#navTopGrad)"/>
+          <polyline points="96,120 96,82 134,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,120 416,82 378,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="96,392 96,430 134,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,392 416,430 378,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>SceneView SDK</span>
+      </a>
+
+      <div class="nav__links" id="navLinks">
+        <a href="/#features" class="nav__link">Features</a>
+        <a href="/showcase.html" class="nav__link">Showcase</a>
+        <a href="/playground.html" class="nav__link">Playground</a>
+        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
+        <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
+        <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav__actions">
+        <a href="https://github.com/sceneview/sceneview" class="nav__icon-btn" target="_blank" rel="noopener" aria-label="View on GitHub">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="nav__hamburger nav__hamburger--mobile" id="hamburgerMobile" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="credits-page">
+
+    <section class="credits-hero">
+      <div class="credits-hero__container">
+        <h1 class="credits-hero__title">3D Model Credits</h1>
+        <p class="credits-hero__lead">Every 3D model this website shows was made by someone else and shared under an open licence. Here is who made each one, where it comes from, and the licence it is used under.</p>
+      </div>
+    </section>
+
+    <div class="credits-content">
+
+      <div class="credits-note">
+        <p>SceneView itself is Apache 2.0. These models are not covered by that licence: each keeps the licence its author chose. Click a model name for its original page, or a licence for its terms.</p>
+        <p>The same list, for the whole asset catalogue and the demo apps, is in <a href="https://github.com/sceneview/sceneview/blob/main/assets/CREDITS.md" target="_blank" rel="noopener">assets/CREDITS.md</a>. Spotted a wrong credit? <a href="https://github.com/sceneview/sceneview/issues/new" target="_blank" rel="noopener">Open an issue</a>.</p>
+      </div>
+
+      <!-- BEGIN GENERATED CREDITS: rendered from assets/catalog.json by .claude/scripts/generate-credits.py. Do not edit by hand. -->
+      <p class="credits-summary"><strong>34 models</strong> in 35 files · CC-BY-4.0 × 28 · CC0-1.0 × 4 · CC-BY-NC-4.0 × 1 · SCEA Shared Source License × 1</p>
+      <ul class="credits-grid">
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/AnimatedAstronaut.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/animated-floating-astronaut-in-space-suit-loop-e2c4b146e58141e4b87917456a9970b1" target="_blank" rel="noopener">Animated Floating Astronaut in Space Suit Loop</a></h3>
+            <p class="credits-card__author">by LasquetiSpice</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>AnimatedAstronaut.glb</code> (20.3 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/AnimatedTrex.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/animated-t-rex-dinosaur-biting-attack-loop-5bbcadb7d9274843abb5ada35767dba1" target="_blank" rel="noopener">Animated T-Rex Dinosaur Biting Attack Loop</a></h3>
+            <p class="credits-card__author">by LasquetiSpice</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>AnimatedTrex.glb</code> (6.6 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/AntiqueCamera.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/AntiqueCamera" target="_blank" rel="noopener">Antique Camera</a></h3>
+            <p class="credits-card__author">by UX3D (Maximillan Kamps)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener license">CC0-1.0</a>
+            <p class="credits-card__files"><code>AntiqueCamera.glb</code> (17.5 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/canon_eos_rp.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/canon-eos-rp-mirrorless-camera-3d-model-cd470005397c48ec8b68bb8a4609ecd1" target="_blank" rel="noopener">Canon EOS RP Mirrorless Camera</a></h3>
+            <p class="credits-card__author">by fahadratul</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>canon_eos_rp.glb</code> (11.9 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/CarConcept.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept" target="_blank" rel="noopener">Car Concept</a></h3>
+            <p class="credits-card__author">by Darmstadt Graphics Group GmbH (Eric Chadwick)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>CarConcept.glb</code> (11.8 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/CasioKeyboard.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/keyboard-casio-vl-tone-be22fbe1ef0044f3bedc6e3edf459593" target="_blank" rel="noopener">Casio VL-Tone Keyboard</a></h3>
+            <p class="credits-card__author">by AleixoAlonso</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>CasioKeyboard.glb</code> (2.3 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/ChronographWatch.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch" target="_blank" rel="noopener">Chronograph Watch</a></h3>
+            <p class="credits-card__author">by Darmstadt Graphics Group GmbH (Eric Chadwick)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>ChronographWatch.glb</code> (7.4 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/CoffeeCart.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/coffee-cart-1a97f872c1ac4a83a0132cd749d0b2a8" target="_blank" rel="noopener">Coffee Cart</a></h3>
+            <p class="credits-card__author">by Outlier Spa</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>CoffeeCart.glb</code> (15.9 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/DamagedHelmet.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet" target="_blank" rel="noopener">Damaged Helmet</a></h3>
+            <p class="credits-card__author">by theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener license">CC-BY-NC-4.0</a>
+            <p class="credits-card__files"><code>DamagedHelmet.glb</code> (3.8 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/dji_mavic_3.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b" target="_blank" rel="noopener">DJI Mavic 3 Cine</a></h3>
+            <p class="credits-card__author">by aurumjuda747</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>dji_mavic_3.glb</code> (9.9 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/Duck.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Duck" target="_blank" rel="noopener">Duck</a></h3>
+            <p class="credits-card__author">by Sony Computer Entertainment</p>
+            <a class="credits-card__license" href="https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/LICENSES/SCEA.txt" target="_blank" rel="noopener license">SCEA Shared Source License</a>
+            <p class="credits-card__files"><code>Duck.glb</code> (120 KB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/AnimatedElephant.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/elephant-animation-idle-a8e7e10f005f4baab0a2f5079d759fcd" target="_blank" rel="noopener">Elephant Animation Idle</a></h3>
+            <p class="credits-card__author">by GremorySaiyan</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>AnimatedElephant.glb</code> (4.0 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/ferrari_f40.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70" target="_blank" rel="noopener">Ferrari F40</a></h3>
+            <p class="credits-card__author">by Black Snow</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>ferrari_f40.glb</code> (8.1 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/Fox.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox" target="_blank" rel="noopener">Fox</a></h3>
+            <p class="credits-card__author">by PixelMannen (model), tomkranis (rigging &amp; animation), @AsoboStudio and @scurest (glTF conversion)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>Fox.glb</code> (163 KB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/GameBoyClassic.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f" target="_blank" rel="noopener">Game Boy Classic</a></h3>
+            <p class="credits-card__author">by JonhyOliver</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>GameBoyClassic.glb</code> (2.9 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/VelvetSofa.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa" target="_blank" rel="noopener">Glam Velvet Sofa</a></h3>
+            <p class="credits-card__author">by Wayfair, LLC (Eric Chadwick)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>VelvetSofa.glb</code> (3.1 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/IridescenceLamp.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp" target="_blank" rel="noopener">Iridescence Lamp</a></h3>
+            <p class="credits-card__author">by Wayfair, LLC (Eric Chadwick)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>IridescenceLamp.glb</code> (4.1 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/jbl_tour_one_m3.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16" target="_blank" rel="noopener">JBL Tour One M3 Headphones</a></h3>
+            <p class="credits-card__author">by cubemodelex</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>jbl_tour_one_m3.glb</code> (5.5 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/KindredLol.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/kindred-league-of-legends-rigged-06a32da82b0441c39950296315307400" target="_blank" rel="noopener">Kindred (League of Legends) - Rigged</a></h3>
+            <p class="credits-card__author">by maisth</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>KindredLol.glb</code> (27.9 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/KoiFish.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/koi-fish-236859b809984f52b70c94fd040b9c59" target="_blank" rel="noopener">Koi Fish</a></h3>
+            <p class="credits-card__author">by 7PLUS</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>KoiFish.glb</code> (5.0 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/Lantern.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern" target="_blank" rel="noopener">Lantern</a></h3>
+            <p class="credits-card__author">by Microsoft</p>
+            <a class="credits-card__license" href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener license">CC0-1.0</a>
+            <p class="credits-card__files"><code>Lantern.glb</code> (9.6 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/NightCity.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8" target="_blank" rel="noopener">Low Poly Night City Building Skyline</a></h3>
+            <p class="credits-card__author">by 99.Miles</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>NightCity.glb</code> (4.2 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/MaterialsVariantsShoe.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe" target="_blank" rel="noopener">Materials Variants Shoe</a></h3>
+            <p class="credits-card__author">by Shopify</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>MaterialsVariantsShoe.glb</code> (7.8 MB), <code>Sneaker.glb</code> (7.8 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/MosquitoInAmber.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/mosquito-in-amber-53a61d58c09b4d2ab30e269aa3e22078" target="_blank" rel="noopener">Mosquito in Amber</a></h3>
+            <p class="credits-card__author">by Loïc Norgeot</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>MosquitoInAmber.glb</code> (24.2 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/moto_helmet.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac" target="_blank" rel="noopener">Motorcycle Helmet</a></h3>
+            <p class="credits-card__author">by sayedgamal655</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>moto_helmet.glb</code> (3.6 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/photorealistic_guitar.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/photorealistic-western-guitar-f8d68a2c328345418db71b36f44168b9" target="_blank" rel="noopener">Photorealistic Western Guitar</a></h3>
+            <p class="credits-card__author">by Keandir</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>photorealistic_guitar.glb</code> (826 KB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/rolex_watch.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/rolex-watch-0fde5c5f56d841cda53ae4a01f66dfaf" target="_blank" rel="noopener">Rolex Luxury Watch</a></h3>
+            <p class="credits-card__author">by sudo-self</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>rolex_watch.glb</code> (2.6 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/school_backpack.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/school-backpack-524d7fc724094ead9f203ed06bae76e1" target="_blank" rel="noopener">School Backpack</a></h3>
+            <p class="credits-card__author">by MadeByYeshe</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>school_backpack.glb</code> (3.5 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/SheenChair.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair" target="_blank" rel="noopener">Sheen Chair</a></h3>
+            <p class="credits-card__author">by Wayfair, LLC (Eric Chadwick)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener license">CC0-1.0</a>
+            <p class="credits-card__files"><code>SheenChair.glb</code> (4.1 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/sneaker_vibe.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/sneaker-vibe-1e52862eb2634fa3b5c13bf9e261945b" target="_blank" rel="noopener">Sneaker Vibe</a></h3>
+            <p class="credits-card__author">by vmmaniac</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>sneaker_vibe.glb</code> (5.3 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/SunglassesKhronos.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos" target="_blank" rel="noopener">Sunglasses</a></h3>
+            <p class="credits-card__author">by Darmstadt Graphics Group GmbH (Eric Chadwick)</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>SunglassesKhronos.glb</code> (371 KB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/ToonCat.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/toon-cat-free-b2bd1ee7858444bda366110a2d960386" target="_blank" rel="noopener">Toon Cat</a></h3>
+            <p class="credits-card__author">by Omabuarts Studio</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>ToonCat.glb</code> (205 KB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/Trumpet.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://sketchfab.com/3d-models/trumpet-3f2d4f5b962340b2933012e1bc634d88" target="_blank" rel="noopener">Trumpet</a></h3>
+            <p class="credits-card__author">by Charlie Tinley</p>
+            <a class="credits-card__license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener license">CC-BY-4.0</a>
+            <p class="credits-card__files"><code>Trumpet.glb</code> (2.7 MB)</p>
+          </div>
+        </li>
+        <li class="credits-card">
+          <img class="credits-card__thumb" src="/models/platforms/thumbnails/WaterBottle.webp" alt="" width="256" height="256" loading="lazy" decoding="async">
+          <div class="credits-card__body">
+            <h3 class="credits-card__name"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle" target="_blank" rel="noopener">Water Bottle</a></h3>
+            <p class="credits-card__author">by Microsoft</p>
+            <a class="credits-card__license" href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener license">CC0-1.0</a>
+            <p class="credits-card__files"><code>WaterBottle.glb</code> (9.0 MB)</p>
+          </div>
+        </li>
+      </ul>
+      <!-- END GENERATED CREDITS -->
+
+    </div>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer__container">
+      <div class="footer__grid">
+        <div class="footer__brand-col">
+          <div class="footer__brand-name">SceneView SDK</div>
+          <p class="footer__brand-desc">The architectural logic for building high-performance 3D spatial experiences across all modern platforms.</p>
+          <div class="footer__copyright">&copy; 2026 SceneView SDK. Architectural Logic.</div>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Documentation</h4>
+          <ul class="footer__col-list">
+            <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
+            <li><a href="/showcase.html">Showcase</a></li>
+            <li><a href="/view.html">3D Viewer</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Community</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Legal</h4>
+          <ul class="footer__col-list">
+            <li><a href="/privacy.html">Privacy</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+            <li><a href="/credits.html">3D asset credits</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
