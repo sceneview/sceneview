@@ -306,6 +306,9 @@ private val MUSEUM_VIEWER_MODELS = listOf(
     ),
 )
 
+/** Every entry of the Models sheet, bundled and Museum & Space. */
+private val ALL_VIEWER_MODELS = BUNDLED_VIEWER_MODELS + MUSEUM_VIEWER_MODELS
+
 /** The lighting a Museum & Space model opens under: the viewer's "Studio" softbox. */
 private const val MUSEUM_ENVIRONMENT = "environments/studio_warm_2k.hdr"
 
@@ -631,7 +634,8 @@ private fun SingleModelSection(
     // A Museum & Space entry has no bundled stand-in: nothing to load until its HD file is in.
     // Called unconditionally, for the reason above (#1464): a null path is a value, not a
     // missing call.
-    val bundledModelInstance = rememberBundledModelInstance(modelLoader, selectedModel.assetPath)
+    val bundledModel = rememberBundledModel(modelLoader, selectedModel.assetPath)
+    val bundledModelInstance = bundledModel?.instance
 
     // HD pack (2026-09-29). An HD entry shows its bundled stand-in at once and swaps to the
     // downloaded file when it is on disk — read from `filesDir`, never re-fetched. It rides the
@@ -642,15 +646,18 @@ private fun SingleModelSection(
         hdStore?.readyIds ?: kotlinx.coroutines.flow.MutableStateFlow(emptySet<String>())
     }.collectAsState()
     val hdAsset = selectedModel.hdAssetId
-        ?.takeIf { openedModel == null && streamedFileUrl == null }
+        ?.takeIf { streamedFileUrl == null }
         ?.let { hdStore?.manifest?.asset(it) }
     val hdAssetStatus by rememberHdAssetStatus(hdStore, hdAsset?.id)
     // Museum & Space opens under Studio. The scans are pale and matte (the mammoth has no
     // colour texture at all), so the garden's green canopy tints them and its sun blooms into
     // a halo round the bones; the softbox shows them as the museum does, as iOS does. Only
     // the default is swapped: a lighting the user picked stays, and leaving the shelf gives
-    // the garden back only if Studio was ours.
-    val isMuseumModel = selectedModel in MUSEUM_VIEWER_MODELS
+    // the garden back only if Studio was ours. A file the user opened, or a Surprise pick, is
+    // not a Museum scan even while a Museum entry is still the selection behind it: both ride
+    // `streamedFileUrl`, which a pick from the sheet clears. `openedModel` is no test here — a
+    // one-shot `val`, it stays set after the user picks a model from the sheet.
+    val isMuseumModel = selectedModel in MUSEUM_VIEWER_MODELS && streamedFileUrl == null
     LaunchedEffect(isMuseumModel) {
         lighting = lighting.select(isMuseumModel, gardenEnvironment, museumEnvironment)
     }
@@ -662,11 +669,17 @@ private fun SingleModelSection(
     val hdLoadFailed = hdFileLocation != null && hdFileLocation == hdRejectedLocation
     // HD scans run to ~300 MB each once decoded: the previous one is released before the next
     // is read, never held alongside it. The stand-in (or the poster) covers the load.
+    // Leaving a scan for a bundled model is the other way round: the scan stays up until that
+    // model is ready. Released first, it left the stage empty through the whole decode and
+    // material link — seconds of black on a slow GPU (Apollo 11 → Toy Car). The hold ends once
+    // that model's load has finished either way: a bundled file that fails to load must not
+    // leave the scan up under the new model's title.
     val hdModel = rememberStreamedModelInstance(
         modelLoader,
         hdFileLocation?.takeIf { !hdLoadFailed },
         wakeRenderLoop = renderInvalidator::requestRender,
         releasePreviousFirst = true,
+        holdPrevious = selectedModel.assetPath != null && bundledModel?.assetPath != selectedModel.assetPath,
         onRejected = { hdRejectedLocation = it },
     )
     val hdShown = hdFileLocation != null && !hdLoadFailed && hdModel?.location == hdFileLocation
@@ -677,21 +690,38 @@ private fun SingleModelSection(
     // helmet whenever the streamed instance is null (no Surprise tap yet,
     // streamed load still in flight, or streamed load failed).
     val activeModelInstance = streamedModelInstance ?: hdModel?.instance ?: bundledModelInstance
-    // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
-    // Apollo 11 scans) is shown at its real size. Read from the file actually presented, not
-    // from the selection, which changes before its file is on screen.
-    val modelScale = remember(activeModelInstance, hdStore) {
+    // The HD file on stage, when the instance presented is one. Read from the file actually
+    // presented, not from the selection, which changes before its file is on screen.
+    val hdAssetOnStage = remember(activeModelInstance, hdStore) {
         val location = hdModel?.location
             ?.takeIf { streamedModelInstance == null && activeModelInstance === hdModel?.instance }
         location?.let { loc ->
             hdStore?.manifest?.assets
                 ?.firstOrNull { android.net.Uri.fromFile(hdStore.fileFor(it)).toString() == loc }
-                ?.scale
-        } ?: 1f
+        }
+    }
+    // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
+    // Apollo 11 scans) is shown at its real size.
+    val modelScale = hdAssetOnStage?.scale ?: 1f
+    // Whether the instance on stage is the one the current selection asked for, rather than the
+    // previous model kept up while the next one loads.
+    val stageShowsSelection = when {
+        activeModelInstance == null -> false
+        streamedModelInstance != null -> streamedModel?.location == streamedFileUrl
+        activeModelInstance === hdModel?.instance -> hdShown
+        else -> streamedFileUrl == null && bundledModel?.assetPath == selectedModel.assetPath
     }
     // A model whose clips are a rig rather than a performance (Perseverance) opens still; every
     // other one plays its first clip, as before. Each new model starts from its first clip.
-    LaunchedEffect(activeModelInstance) {
+    // The reset waits for the new model to be on stage: run at the pick, the previous model's
+    // play loop wrote its progress back on the next frame, and the next model opened mid-clip.
+    // It runs once per selection: an HD file replacing its stand-in is the same model, so it
+    // must not restart playback the user paused.
+    var lastAnimationReset by remember { mutableStateOf<Any?>(null) }
+    val animationSelection: Any = streamedFileUrl ?: selectedModel
+    LaunchedEffect(activeModelInstance, animationSelection) {
+        if (!stageShowsSelection || lastAnimationReset == animationSelection) return@LaunchedEffect
+        lastAnimationReset = animationSelection
         selectedAnimation = 0
         animationProgress = 0f
         animationPlaying = streamedModelInstance != null || selectedModel.autoplayAnimations
@@ -746,7 +776,17 @@ private fun SingleModelSection(
     // Measured in world units: an HD model shown at its real size (`modelScale`) is framed at it.
     // A bundled model turned by `frontYaw` is framed by the footprint of the TURNED box: at -30°
     // the mammoth's tusks reached past the screen edge when framed by its unturned AABB.
-    val frontYaw = if (streamedModelInstance == null) selectedModel.frontYaw else 0f
+    // Read from the entry that owns the instance on stage, not from the pick: the model still up
+    // while the next one loads keeps its own turn instead of taking the next model's (the helmet
+    // spun 180° for Soldier's sake between a Surprise model and Soldier).
+    val frontYaw = remember(activeModelInstance, hdAssetOnStage) {
+        val owner = when {
+            activeModelInstance == null || streamedModelInstance != null -> null
+            hdAssetOnStage != null -> ALL_VIEWER_MODELS.firstOrNull { it.hdAssetId == hdAssetOnStage.id }
+            else -> ALL_VIEWER_MODELS.firstOrNull { it.assetPath == bundledModel?.assetPath }
+        }
+        owner?.frontYaw ?: 0f
+    }
     val bounds = remember(activeModelInstance, modelScale, frontYaw) {
         val instance = activeModelInstance ?: return@remember null
         runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
@@ -1490,6 +1530,9 @@ private fun SingleModelSection(
  * then the previous model stays on screen, and a file that fails either test is reported to
  * [onRejected] and never shown. The result carries the location it was loaded from, so the
  * caller can tell the new model from the previous one.
+ *
+ * With [holdPrevious], a null [streamedFileUrl] keeps the model presented until the flag drops
+ * (the caller's replacement is ready) instead of releasing it at once.
  */
 @Composable
 private fun rememberStreamedModelInstance(
@@ -1497,15 +1540,18 @@ private fun rememberStreamedModelInstance(
     streamedFileUrl: String?,
     wakeRenderLoop: () -> Unit,
     releasePreviousFirst: Boolean = false,
+    holdPrevious: Boolean = false,
     onRejected: (location: String) -> Unit = {},
 ): StreamedModel? {
     val rejected = androidx.compose.runtime.rememberUpdatedState(onRejected)
+    // Only a key while there is no URL: flipping it must never re-read a file being shown.
+    val holding = streamedFileUrl == null && holdPrevious
     // One `produceState` in a stable slot, whatever the URL (#1464). It keeps its last value
     // across a key change, so the model on screen stays there while the next one loads —
     // unless [releasePreviousFirst], for files too big to hold two of.
-    val presented = produceState<StreamedModel?>(initialValue = null, modelLoader, streamedFileUrl) {
+    val presented = produceState<StreamedModel?>(initialValue = null, modelLoader, streamedFileUrl, holding) {
         val location = streamedFileUrl ?: run {
-            value = null
+            if (!holding) value = null
             return@produceState
         }
         if (releasePreviousFirst && value != null) {
@@ -1553,7 +1599,7 @@ private fun rememberStreamedModelInstance(
     androidx.compose.runtime.DisposableEffect(presented) {
         onDispose { presented?.let { modelLoader.destroyModel(it.instance.model) } }
     }
-    return if (streamedFileUrl == null) null else presented
+    return if (streamedFileUrl == null && !holding) null else presented
 }
 
 /**
@@ -1561,15 +1607,17 @@ private fun rememberStreamedModelInstance(
  * file (Museum & Space). Same load as `rememberModelInstance`, but it takes a nullable path so
  * the call stays in one slot whatever the entry: switching from a Museum model to a bundled one
  * never makes the `produceState` appear or disappear (#1464). A new path keeps the previous
- * model until the next is ready; a null path releases it.
+ * model until the next is ready; a null path releases it. The result names the path it was
+ * loaded from, so the caller can tell the previous model from the next one; a load that failed
+ * reports its path with no instance.
  */
 @Composable
-private fun rememberBundledModelInstance(
+private fun rememberBundledModel(
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     assetPath: String?,
-): io.github.sceneview.model.ModelInstance? {
+): BundledModel? {
     val context = LocalContext.current
-    val instance = produceState<io.github.sceneview.model.ModelInstance?>(null, modelLoader, assetPath) {
+    val loaded = produceState<BundledModel?>(null, modelLoader, assetPath) {
         val path = assetPath ?: run {
             value = null
             return@produceState
@@ -1577,15 +1625,18 @@ private fun rememberBundledModelInstance(
         // File bytes on IO, Filament back on Main (produceState's context).
         val buffer = withContext(Dispatchers.IO) {
             runCatching { context.assets.readBuffer(path) }.getOrNull()
-        } ?: return@produceState
-        value = runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
+        }
+        value = BundledModel(path, buffer?.let { runCatching { modelLoader.createModelInstance(it) }.getOrNull() })
     }.value
     // `produceState` has no per-key disposal: destroy the previous model once replaced (#2459).
-    androidx.compose.runtime.DisposableEffect(instance) {
-        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
+    androidx.compose.runtime.DisposableEffect(loaded) {
+        onDispose { loaded?.instance?.let { modelLoader.destroyModel(it.model) } }
     }
-    return instance
+    return loaded
 }
+
+/** A bundled model and the asset path it was loaded from; [instance] is `null` when it failed. */
+private class BundledModel(val assetPath: String, val instance: io.github.sceneview.model.ModelInstance?)
 
 /** A streamed model on screen and the location it was loaded from. */
 private class StreamedModel(val location: String, val instance: io.github.sceneview.model.ModelInstance)
