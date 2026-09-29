@@ -9,9 +9,11 @@ import ARKit
 /// after the showcase redesign.
 ///
 /// **Stage.** A `#0B0F16` stage (`SceneViewTokens.Stage.background`), no
-/// auto-rotate: the model sits still on its fitted framing (12 % margin,
-/// `framingMargin(1.12)`) until the user orbits it. Under `qa_mode` the
-/// authored three-quarter pose is what a capture lands on.
+/// auto-rotate: the model sits still on its fitted framing
+/// (`framingMargin(0.91)`, sized to Android's) until the user orbits it. The
+/// camera opens in front of the model, azimuth 0 and 12° above it, as on
+/// Android; a model that reads better three-quarter is turned by its own
+/// `frontYaw`, not by the camera.
 ///
 /// **Dock.** Models · Lighting · Animate (only when the loaded entity has
 /// animation clips) · Recenter — Android's order — then the scaffold's
@@ -201,11 +203,15 @@ struct ModelViewerDemo: View {
 
     /// Fitted framing, sized to Android's. Android fits the front view of the
     /// box to 65 % of the band between the chrome and 86 % of the width
-    /// (`DemoMath.VIEWER_FILL` / `VIEWER_HORIZONTAL_FILL`); the SceneView fit
-    /// frames the box swept all the way round, so orbiting never clips it,
-    /// and at 1.12 drew every model ~1.23x smaller than Android (Helmet 1.25,
-    /// Toy Car 1.19, Mammoth 1.35, Perseverance 1.17, Apollo 1.19, measured
-    /// on the silhouettes of side-by-side captures). 1.12 / 1.23 ≈ 0.91.
+    /// (`DemoMath.VIEWER_FILL` / `VIEWER_HORIZONTAL_FILL`). The SceneView fit
+    /// sizes a sphere round the box instead, and at 1.12 drew every model
+    /// ~1.23x smaller than Android (Helmet 1.25, Toy Car 1.19, Mammoth 1.35,
+    /// Perseverance 1.17, Apollo 1.19, measured on the silhouettes of
+    /// side-by-side captures). 1.12 / 1.23 ≈ 0.91.
+    ///
+    /// Below 1 the sphere no longer fits the frame, so a long model can run
+    /// past the screen edges once orbited side-on. Android clips the same
+    /// way: it fits the front view only.
     private static let framingMargin: Float = 0.91
     /// Under `qa_mode` the pose is frozen, so the store capture fills the frame.
     ///
@@ -739,8 +745,11 @@ struct ModelViewerDemo: View {
         // Turned before centring: `centerOrigin` reads the world bounds, so
         // the turned box is what lands on the origin and what the fit frames,
         // as Android frames the turned AABB. A streamed file keeps its pose.
+        // Composed with the file's own root rotation, never written over it:
+        // a USDZ whose root prim carries a turn keeps it.
         if let yaw = model?.frontYaw, yaw != 0 {
             node.entity.orientation = simd_quatf(angle: yaw * .pi / 180, axis: [0, 1, 0])
+                * node.entity.orientation
         }
         _ = node.centerOrigin()
         playback = nil

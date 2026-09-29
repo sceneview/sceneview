@@ -860,7 +860,9 @@ demos:
     evidence: >-
       Models Fox/Hovercar/Butterfly vs Sofa/Chair/Dish/Soldier
       (ModelViewerDemo.swift:37-44 vs .kt:277-283); lands on outdoor_cloudy
-      sky (.swift:69,150); no Park row, Browse→ExploreTab (.swift:368)
+      sky (.swift:69,150); no Park row, Browse→ExploreTab (.swift:368); HD
+      poster capped at 400 pt (Theme.swift Stage.posterMaxWidth), Android's
+      spans the stage
   - id: picking-collision
     androidStatus: Working
     iosStatus: working
