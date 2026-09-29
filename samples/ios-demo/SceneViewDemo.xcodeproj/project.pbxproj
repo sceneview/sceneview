@@ -17,6 +17,7 @@
 		B7E400000000000000000003 /* RerunGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000003 /* RerunGeometry.swift */; };
 		B7E400000000000000000004 /* RerunReplaySession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000004 /* RerunReplaySession.swift */; };
 		B7E400000000000000000005 /* RerunReplayStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000005 /* RerunReplayStage.swift */; };
+		5A1A70000000000000000006 /* RerunRealityKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000006 /* RerunRealityKit.swift */; };
 		B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000006 /* RerunReplayChrome.swift */; };
 		B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000007 /* RerunShowcaseDemo.swift */; };
 		B7E400000000000000000008 /* RerunExportScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000008 /* RerunExportScene.swift */; };
@@ -264,6 +265,7 @@
 		B7E500000000000000000003 /* RerunGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunGeometry.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunGeometry.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000004 /* RerunReplaySession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplaySession.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplaySession.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000005 /* RerunReplayStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayStage.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000006 /* RerunRealityKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRealityKit.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRealityKit.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000006 /* RerunReplayChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayChrome.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayChrome.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000007 /* RerunShowcaseDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunShowcaseDemo.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000008 /* RerunExportScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunExportScene.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunExportScene.swift; sourceTree = SOURCE_ROOT; };
@@ -523,6 +525,7 @@
 				B7E500000000000000000003 /* RerunGeometry.swift */,
 				B7E500000000000000000004 /* RerunReplaySession.swift */,
 				B7E500000000000000000005 /* RerunReplayStage.swift */,
+				5A1A71000000000000000006 /* RerunRealityKit.swift */,
 				B7E500000000000000000006 /* RerunReplayChrome.swift */,
 				B7E500000000000000000007 /* RerunShowcaseDemo.swift */,
 				B7E500000000000000000008 /* RerunExportScene.swift */,
@@ -1089,6 +1092,7 @@
 				B7E400000000000000000003 /* RerunGeometry.swift in Sources */,
 				B7E400000000000000000004 /* RerunReplaySession.swift in Sources */,
 				B7E400000000000000000005 /* RerunReplayStage.swift in Sources */,
+				5A1A70000000000000000006 /* RerunRealityKit.swift in Sources */,
 				B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */,
 				B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */,
 				B7E400000000000000000008 /* RerunExportScene.swift in Sources */,

@@ -379,7 +379,9 @@ struct ExploreTab: View {
     @ViewBuilder
     private var exploreStage: some View {
         if let hero = heroModel {
-            SpatialHeroCard(model: hero, transitionNamespace: heroNamespace) {
+            SpatialHeroCard(model: hero,
+                            isTrending: feedsByKind[.trending]?.first?.cardKey == hero.cardKey,
+                            transitionNamespace: heroNamespace) {
                 viewingModel = hero
                 #if os(iOS)
                 SceneViewHaptic.shared.light()
@@ -1092,11 +1094,15 @@ private struct FilterChip: View {
 
 // MARK: - Spatial hero (Android's `SpatialHero`)
 
-/// The Explore hero: the first trending model's image, full width, under a
-/// bottom scrim that carries its source, its name and "View in 3D". A still
-/// image on purpose, like Android — the 3D starts when the viewer opens.
+/// The Explore hero: the first trending model's image (or, when the source
+/// has no trending feed, its first model), full width, under a bottom scrim
+/// that carries its source, its name and "View in 3D". A still image on
+/// purpose, like Android — the 3D starts when the viewer opens.
 private struct SpatialHeroCard: View {
     let model: GalleryModel
+    /// False when the hero comes from a fallback feed, so VoiceOver does not
+    /// call it trending.
+    let isTrending: Bool
     var transitionNamespace: Namespace.ID? = nil
     let onViewIn3D: () -> Void
 
@@ -1106,7 +1112,8 @@ private struct SpatialHeroCard: View {
             // never widen the card past the screen.
             SceneViewTokens.HomeColor.surfaceContainerHigh
                 .overlay {
-                    AsyncImage(url: model.preferredThumbnailURL()) { phase in
+                    // Full width, so ask for a large thumbnail, not the card-sized default.
+                    AsyncImage(url: model.preferredThumbnailURL(minWidth: 1024, maxWidth: 2048)) { phase in
                         switch phase {
                         case .success(let image):
                             image.resizable().aspectRatio(contentMode: .fill)
@@ -1137,10 +1144,9 @@ private struct SpatialHeroCard: View {
                     .foregroundStyle(.white)
                     .lineLimit(2)
                 Button(action: onViewIn3D) {
-                    Label("View in 3D", systemImage: "arkit")
+                    Label("View in 3D", systemImage: "cube")
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, SceneViewTokens.Space.xs)
-                        .frame(minHeight: 40)
                 }
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
@@ -1156,7 +1162,9 @@ private struct SpatialHeroCard: View {
         .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous))
         .modifier(MatchedSourceModifier(id: "gallery-hero-\(model.cardKey)", namespace: transitionNamespace))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(model.name), trending on \(model.sourceId.displayName)")
+        .accessibilityLabel(isTrending
+            ? "\(model.name), trending on \(model.sourceId.displayName)"
+            : "\(model.name), from \(model.sourceId.displayName)")
         .accessibilityIdentifier("explore-hero")
     }
 }

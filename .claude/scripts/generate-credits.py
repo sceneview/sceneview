@@ -67,6 +67,7 @@ Exit code:
 from __future__ import annotations
 
 import json
+import re
 import os
 import sys
 from collections import defaultdict
@@ -165,6 +166,10 @@ BUNDLED_SCOPES = [
         "artefact": "the App Store build",
         "ignore_suffixes": (".md", ".json"),
         "format": "json",
+        # The Xcode project also copies files that live outside `assets_dir`
+        # (`../android-demo/...` references, #4167): read them from the project
+        # itself so a new cross-tree reference cannot ship uncredited.
+        "pbxproj": "samples/ios-demo/SceneViewDemo.xcodeproj/project.pbxproj",
     },
     {
         "id": "web-demo",
@@ -624,6 +629,64 @@ def manifest_sizes() -> dict[str, int]:
         return {e["path"]: e["size"] for e in json.load(f).get("files", [])}
 
 
+_PBX_FILE_REF = re.compile(
+    r"^\s*(?P<id>[0-9A-F]{24}) /\*[^*]*\*/ = \{isa = PBXFileReference;(?P<body>[^\n]*)\};\s*$",
+    re.M,
+)
+_PBX_RESOURCE = re.compile(r"/\* [^*]* in Resources \*/ = \{isa = PBXBuildFile; fileRef = (?P<ref>[0-9A-F]{24})")
+
+
+def pbxproj_external_resources(scope: dict) -> dict[Path, str]:
+    """Files the Xcode project copies into the app from outside `assets_dir`.
+
+    Only `sourceTree = SOURCE_ROOT` references in the Resources phase whose
+    path leaves the assets folder count (the `../android-demo/...` ones). A
+    folder reference ships its whole tree. Returns absolute path -> the path
+    the file has inside the app bundle (what the credits list shows).
+    """
+    rel_proj = scope.get("pbxproj")
+    if not rel_proj:
+        return {}
+    proj = ROOT / rel_proj
+    if not proj.is_file():
+        return {}
+    text = proj.read_text()
+    in_resources = {m.group("ref") for m in _PBX_RESOURCE.finditer(text)}
+    source_root = proj.parent.parent
+    base = ROOT / scope["assets_dir"]
+    fetched = {ROOT / rel for rel in manifest_sizes()}
+    out: dict[Path, str] = {}
+    for m in _PBX_FILE_REF.finditer(text):
+        if m.group("id") not in in_resources:
+            continue
+        body = m.group("body")
+        path_m = re.search(r"\bpath = (?P<p>\"[^\"]*\"|[^;]+);", body)
+        if not path_m or "sourceTree = SOURCE_ROOT" not in body:
+            continue
+        # normpath, not resolve(): paths stay in the same form as ROOT, which
+        # the manifest lookup and relative_to(ROOT) below depend on.
+        target = Path(os.path.normpath(source_root / path_m.group("p").strip('"')))
+        if base == target or base in target.parents:
+            continue
+        name = target.name
+        if target.is_dir():
+            for q in sorted(target.rglob("*")):
+                if q.is_file():
+                    out[q] = f"{name}/{q.relative_to(target).as_posix()}"
+        elif target.is_file() or target in fetched:
+            out[target] = name
+    return out
+
+
+def bundle_rel(scope: dict, p: Path) -> str:
+    """Path of a bundled file as the credits list shows it."""
+    base = ROOT / scope["assets_dir"]
+    try:
+        return p.relative_to(base).as_posix()
+    except ValueError:
+        return pbxproj_external_resources(scope)[p]
+
+
 def scan_bundled(scope: dict) -> list[Path]:
     """Every file that ships inside the scope's artefact, sorted.
 
@@ -656,6 +719,12 @@ def scan_bundled(scope: dict) -> list[Path]:
         if p.suffix in scope["ignore_suffixes"]:
             continue
         out.append(p)
+    for p, rel in pbxproj_external_resources(scope).items():
+        if any(part.startswith(".") for part in rel.split("/")):
+            continue
+        if p.suffix in scope["ignore_suffixes"]:
+            continue
+        out.append(p)
     return out
 
 
@@ -674,7 +743,7 @@ def classify_bundled(scope: dict, index: dict[str, dict]) -> tuple[list, list, l
     blanket: list[tuple[str, dict, int]] = []
     uncredited: list[str] = []
     for p in scan_bundled(scope):
-        rel = p.relative_to(base).as_posix()
+        rel = bundle_rel(scope, p)
         size = p.stat().st_size if p.is_file() else manifest_sizes()[p.relative_to(ROOT).as_posix()]
         declared = NON_CATALOG_BUNDLED.get(p.name)
         if declared is not None:

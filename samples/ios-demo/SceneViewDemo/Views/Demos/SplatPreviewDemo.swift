@@ -17,7 +17,6 @@ struct SplatPreviewDemo: View {
     @State private var model = SplatPreviewModel()
     @State private var drawn: Double = 0
     @State private var cameraPose: SceneCameraPose?
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         GeometryReader { proxy in
@@ -46,7 +45,7 @@ struct SplatPreviewDemo: View {
         case .failed(let message):
             return message
         case .ready:
-            return "Phone capture · \(Self.formatPoints(model.total)) points · "
+            return "Phone capture · \(Self.formatPoints(model.total)) points drawn as dots · "
                 + Self.formatMegabytes(model.fileBytes)
         }
     }
@@ -105,7 +104,7 @@ struct SplatPreviewDemo: View {
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
             Text("Someone walked around this tree stump filming with a phone. There is no model "
                  + "and no texture here — the scan is stored as coloured points, and that is what "
-                 + "you are looking at. On iPhone each point is drawn as a small solid dot.")
+                 + "you are looking at. Here, each point is drawn as a small solid dot.")
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -176,15 +175,26 @@ final class SplatPreviewModel {
     private(set) var fileBytes = 0
     private(set) var decodeMillis = 0
 
-    @ObservationIgnored private let container = Entity()
+    /// Created on first use: SwiftUI re-runs `@State`'s initialiser on every view re-init and
+    /// throws the extra models away, so the init builds nothing.
+    @ObservationIgnored private var containerEntity: Entity?
     @ObservationIgnored private var chunkEntities: [ModelEntity] = []
     @ObservationIgnored private var materials: [UnlitMaterial] = []
     @ObservationIgnored private var partial: ModelEntity?
+    /// The chunk `partial` is a cut of.
+    @ObservationIgnored private var partialChunk = -1
     @ObservationIgnored private var scan: SplatScan?
     @ObservationIgnored private var framing: SplatFraming?
     @ObservationIgnored private var scale: Float = 1
     @ObservationIgnored private var shown = -1
     @ObservationIgnored private var partialTask: Task<Void, Never>?
+
+    private var container: Entity {
+        if let containerEntity { return containerEntity }
+        let entity = Entity()
+        containerEntity = entity
+        return entity
+    }
 
     func install(in root: Entity) {
         container.removeFromParent()
@@ -207,15 +217,23 @@ final class SplatPreviewModel {
             scale = prepared.scale
             fileBytes = prepared.fileBytes
             decodeMillis = prepared.decodeMillis
+            // All chunks or none: `show` indexes chunks by point range, so a skipped chunk
+            // would shift every later one onto the wrong points.
+            var entities: [ModelEntity] = []
+            var chunkMaterials: [UnlitMaterial] = []
             for (mesh, pixels) in zip(prepared.meshes, prepared.atlases) {
-                guard let resource = RerunStageRenderer.resource(mesh),
-                      let texture = Self.atlasTexture(pixels) else { continue }
+                guard let resource = RerunRealityKit.resource(mesh),
+                      let texture = Self.atlasTexture(pixels) else {
+                    phase = .failed("The scan could not be drawn.")
+                    return
+                }
                 let material = Self.pointMaterial(texture)
-                let entity = ModelEntity(mesh: resource, materials: [material])
-                materials.append(material)
-                chunkEntities.append(entity)
-                container.addChild(entity)
+                chunkMaterials.append(material)
+                entities.append(ModelEntity(mesh: resource, materials: [material]))
             }
+            materials = chunkMaterials
+            chunkEntities = entities
+            entities.forEach { container.addChild($0) }
             total = prepared.scan.count
             phase = .ready
             show(total)
@@ -232,31 +250,44 @@ final class SplatPreviewModel {
         guard count != shown else { return }
         shown = count
         let size = SplatPointCloud.chunkSize
-        let full = count / size
-        let remainder = count % size
-        for (i, entity) in chunkEntities.enumerated() { entity.isEnabled = i < full }
+        // A chunk is on once its last point is drawn; the last chunk is the short one, so at
+        // `count == scan.count` every chunk is on.
+        for (i, entity) in chunkEntities.enumerated() {
+            entity.isEnabled = min((i + 1) * size, scan.count) <= count
+        }
         partialTask?.cancel()
-        guard remainder > 0, full < chunkEntities.count else {
-            partial?.removeFromParent()
-            partial = nil
+        let cut = count / size
+        let start = cut * size
+        guard cut < chunkEntities.count, start < count, count < min(start + size, scan.count) else {
+            removePartial()
             return
         }
-        let range = full * size ..< full * size + remainder
+        // A cut of another chunk would now overlap a whole chunk or run past the count:
+        // drop it now rather than after the debounce.
+        if partialChunk != cut { removePartial() }
+        let range = start ..< count
         let centroid = framing?.centroid ?? .zero
         let scale = scale
-        let material = materials[full]
+        let material = materials[cut]
         partialTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(60))
             guard !Task.isCancelled else { return }
             let mesh = await Task.detached(priority: .userInitiated) {
                 SplatPointCloud.mesh(scan, range: range, centroid: centroid, scale: scale)
             }.value
-            guard !Task.isCancelled, let self, let resource = RerunStageRenderer.resource(mesh) else { return }
-            self.partial?.removeFromParent()
+            guard !Task.isCancelled, let self, let resource = RerunRealityKit.resource(mesh) else { return }
+            self.removePartial()
             let entity = ModelEntity(mesh: resource, materials: [material])
             self.container.addChild(entity)
             self.partial = entity
+            self.partialChunk = cut
         }
+    }
+
+    private func removePartial() {
+        partial?.removeFromParent()
+        partial = nil
+        partialChunk = -1
     }
 
     private struct Prepared: Sendable {
@@ -290,20 +321,10 @@ final class SplatPreviewModel {
 
     // MARK: Resources
 
-    private static let nearest: MaterialParameters.Texture.Sampler = {
-        let descriptor = MTLSamplerDescriptor()
-        descriptor.minFilter = .nearest
-        descriptor.magFilter = .nearest
-        descriptor.mipFilter = .notMipmapped
-        descriptor.sAddressMode = .clampToEdge
-        descriptor.tAddressMode = .clampToEdge
-        return MaterialParameters.Texture.Sampler(descriptor)
-    }()
-
     /// Unlit and untonemapped: a point shows the colour the phone recorded, not a lit surface.
     private static func pointMaterial(_ texture: TextureResource) -> UnlitMaterial {
         var material = UnlitMaterial(applyPostProcessToneMap: false)
-        material.color = .init(tint: .white, texture: .init(texture, sampler: nearest))
+        material.color = .init(tint: .white, texture: .init(texture, sampler: RerunRealityKit.nearest))
         material.faceCulling = .none
         return material
     }

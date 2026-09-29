@@ -6,7 +6,7 @@
 // @available   true
 // @icon        camera.metering.matrix
 // @order       2
-// @tags        splat,gaussian,radiance-field,point-cloud,scan,spz
+// @tags        splat,point-cloud,scan,spz
 // @updatedIn   4.37.0
 import SwiftUI
 
