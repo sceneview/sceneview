@@ -68,20 +68,25 @@ fragment {
         highp float3 L = normalize(materialParams.sunPosition - getWorldOffset() - p);
         highp float3 V = normalize(getWorldCameraPosition() - p);
 
-        // The planet's shadow: a cylinder of its radius, behind it as seen from the star. The
-        // star has a real angular size, so the penumbra widens with distance behind the planet.
+        // The planet's shadow: a cylinder of its radius, behind it as seen from the star. It
+        // falls on the ring plane only (this fragment is on it), with a narrow penumbra that
+        // opens a little with distance, so it reads as a crisp band across the rings.
         highp float3 w = p - c;
         highp float along = dot(w, L);
         highp float across = length(w - L * along);
-        float penumbra = materialParams.planetRadius * 0.04 + 0.22 * max(-along, 0.0);
-        float umbra = smoothstep(materialParams.planetRadius - penumbra, materialParams.planetRadius + penumbra, across);
-        float shadow = along < 0.0 ? umbra : 1.0;
+        float penumbra = materialParams.planetRadius * 0.03 + 0.04 * max(-along, 0.0);
+        float lit = smoothstep(materialParams.planetRadius - penumbra, materialParams.planetRadius + penumbra, across);
+        // A faint floor: particles in the shadow still catch light scattered off their neighbours.
+        float shadow = along < 0.0 ? mix(0.07, 1.0, lit) : 1.0;
 
         // Ring particles scatter forward: bright when seen against the light.
         float forward = pow(clamp(dot(-V, L), 0.0, 1.0), 4.0);
         float3 radiance = materialParams.ringColor * materialParams.sunColor * shadow * (0.75 + 1.6 * forward);
 
-        float alpha = density * 0.62 * materialParams.intensity;
+        // Unlit particles veil less of the sky behind them: the shadow stays a band on the rings
+        // instead of a dark sheet over the background.
+        float veil = along < 0.0 ? mix(0.55, 1.0, lit) : 1.0;
+        float alpha = density * 0.62 * veil * materialParams.intensity;
         material.baseColor = float4(radiance * alpha, alpha);
     }
 }

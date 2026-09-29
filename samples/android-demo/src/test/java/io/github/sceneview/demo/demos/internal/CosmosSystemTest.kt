@@ -90,6 +90,40 @@ class CosmosSystemTest {
     }
 
     @Test
+    fun `an instant flight lands on the target on its first frame`() {
+        // QA captures taken right after a tap must show the end pose, not a pose mid-flight.
+        val rig = CosmosRig()
+        val flight = CosmosFlight(rig)
+        flight.record(CosmosSystem.pose(CosmosFocus.System, 0f, portrait), 0f)
+        flight.start()
+        val target = CosmosSystem.pose(CosmosFocus.Planet, 0f, portrait)
+        val landed = flight.advance(1_000_000L, target, instant = true)
+        for (i in target.indices) assertEquals(target[i], landed[i], 0f)
+    }
+
+    @Test
+    fun `a live flight leaves from the pose on screen`() {
+        val rig = CosmosRig()
+        val flight = CosmosFlight(rig)
+        val from = CosmosSystem.pose(CosmosFocus.System, 0f, portrait)
+        flight.record(from, 0f)
+        flight.start()
+        val target = CosmosSystem.pose(CosmosFocus.Planet, 0f, portrait)
+        val first = flight.advance(1_000_000L, target, instant = false)
+        for (i in 0..2) assertEquals(from[i], first[i], 1e-4f)
+    }
+
+    @Test
+    fun `the rig does not allocate a new pose every frame`() {
+        val rig = CosmosRig()
+        val a = rig.pose(CosmosFocus.System, 1f, portrait)
+        val b = rig.pose(CosmosFocus.System, 2f, portrait)
+        assertTrue(a === b)
+        val wrapped = CosmosSystem.pose(CosmosFocus.System, 2f, portrait)
+        for (i in wrapped.indices) assertEquals(wrapped[i], b[i], 1e-6f)
+    }
+
+    @Test
     fun `quaternion rotation turns x into y about z`() {
         val q = CosmosSystem.axisAngle(0f, 0f, 1f, (PI / 2).toFloat())
         val v = CosmosSystem.rotate(q, floatArrayOf(1f, 0f, 0f))

@@ -48,9 +48,11 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.CosmosFlight
 import io.github.sceneview.demo.demos.internal.CosmosFocus
 import io.github.sceneview.demo.demos.internal.CosmosFraming
 import io.github.sceneview.demo.demos.internal.CosmosMeshes
+import io.github.sceneview.demo.demos.internal.CosmosRig
 import io.github.sceneview.demo.demos.internal.CosmosScene
 import io.github.sceneview.demo.demos.internal.CosmosSystem
 import io.github.sceneview.demo.demos.internal.GlowMesh
@@ -256,7 +258,9 @@ fun CosmosDemo(onBack: () -> Unit) {
     val clock = remember { CosmosClock() }
     // The Star scene's camera: what it looks at, and the eased flight between two looks.
     var focus by remember { mutableStateOf(CosmosFocus.System) }
-    val flight = remember { CosmosFlight() }
+    // One rig per render loop: the orbit and camera maths reuse its buffers, frame after frame.
+    val rig = remember { CosmosRig() }
+    val flight = remember { CosmosFlight(rig) }
     val planetNode = remember { arrayOfNulls<NodeImpl>(1) }
     val orbitNode = remember { arrayOfNulls<NodeImpl>(1) }
     val minTapRadiusPx = with(LocalDensity.current) { SceneViewTokens.Space.xl.toPx() }
@@ -358,7 +362,9 @@ fun CosmosDemo(onBack: () -> Unit) {
                         flight.start()
                         focus = CosmosFocus.Planet
                     }
-                    flight.advance(nanos, CosmosSystem.pose(focus, time, aspect), instant = !motionEnabled)
+                    // QA captures after a tap must show where the flight lands, not a frame of it.
+                    val instant = !motionEnabled || DemoSettings.qaMode
+                    flight.advance(nanos, rig.pose(focus, time, aspect), instant)
                 } else {
                     CosmosFraming.pose(current, time, aspect)
                 }
@@ -379,14 +385,17 @@ fun CosmosDemo(onBack: () -> Unit) {
                 ribbons?.update(current, time, reveal)
                 plasma?.update(current, time, reveal)
                 if (current == CosmosScene.Star) {
-                    orbitNode[0]?.quaternion = CosmosSystem.trailRotation(time, aspect).toQuaternion()
+                    orbitNode[0]?.quaternion = rig.trailRotation(time, aspect).toQuaternion()
                     planetNode[0]?.apply {
-                        val at = CosmosSystem.planetPosition(time, aspect)
+                        val at = rig.planetPosition(time, aspect)
                         position = Position(at[0], at[1], at[2])
-                        quaternion = CosmosSystem.planetRotation(time, aspect).toQuaternion()
+                        quaternion = rig.planetRotation(time, aspect).toQuaternion()
                     }
                     world?.update(time, reveal)
-                    ribbons?.trail?.setParameter("intensity", reveal)
+                    // The trail fades out as the camera closes on the planet: from the follow view
+                    // the arc behind it runs past the lens.
+                    val trail = rig.trailVisibility(pose[0], pose[1], pose[2], time, aspect)
+                    ribbons?.trail?.setParameter("intensity", reveal * trail)
                 }
                 if (ignition.advance(nanos, firstFrame.rendered.value, instant = frozen)) {
                     view.bloomOptions = view.bloomOptions.also { it.strength = bloom * ignition.level }
@@ -875,65 +884,6 @@ private class PlasmaInstances(val star: MaterialInstance, val nucleus: MaterialI
 private const val TWO_PI = (2.0 * PI).toFloat()
 
 private fun FloatArray.toQuaternion() = Quaternion(this[0], this[1], this[2], this[3])
-
-/**
- * The Star scene's camera between two looks: the pose it left from, and how far along the
- * [CosmosSystem.FLY_SECONDS] flight it is. The target is re-evaluated every frame, so a flight
- * to the planet lands on it wherever its orbit has carried it meanwhile.
- */
-private class CosmosFlight {
-    /** The last pose drawn and the scene time it was drawn at: what a tap is tested against. */
-    var lastPose = FloatArray(POSE_FLOATS)
-        private set
-    var lastTime = 0f
-        private set
-
-    /** Whether the user took the camera: the tour then leaves it alone. */
-    var userSteered = false
-
-    private var from: FloatArray? = null
-    private var progress = 1f
-    private var lastNanos = 0L
-
-    /** Takes off from the pose on screen now. */
-    fun start() {
-        // Nothing drawn yet: there is no pose to leave from, so the first frame lands.
-        from = if (lastPose.all { it == 0f }) null else lastPose.copyOf()
-        progress = 0f
-        lastNanos = 0L
-    }
-
-    fun reset() {
-        from = null
-        progress = 1f
-        lastNanos = 0L
-        userSteered = false
-    }
-
-    fun record(pose: FloatArray, time: Float) {
-        lastPose = pose
-        lastTime = time
-    }
-
-    /** The pose for this frame: eased from the take-off pose toward [target], or [target] once landed. */
-    fun advance(nanos: Long, target: FloatArray, instant: Boolean): FloatArray {
-        val start = from ?: return target
-        if (instant) {
-            progress = 1f
-        } else if (lastNanos != 0L) {
-            // Clamp a hitch, so a stall does not skip the flight.
-            progress += ((nanos - lastNanos) / 1e9f).coerceIn(0f, 0.1f) / CosmosSystem.FLY_SECONDS
-        }
-        lastNanos = nanos
-        if (progress >= 1f) {
-            from = null
-            return target
-        }
-        return CosmosSystem.blend(start, target, CosmosSystem.easeExpressive(progress))
-    }
-}
-
-private const val POSE_FLOATS = 9
 
 /** The ringed world's two surfaces: the planet and its rings, both lit by the star at the origin. */
 private class WorldInstances(val planet: MaterialInstance, val ring: MaterialInstance) {
