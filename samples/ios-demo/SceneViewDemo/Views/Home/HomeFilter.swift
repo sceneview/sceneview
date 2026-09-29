@@ -91,6 +91,13 @@ enum HomeCatalogue {
         "movable-light": "Moving the light barely changes the scene (#3907)",
         "scene-gallery": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
         "multi-model": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
+    ]
+
+    /// Demos that stream their subject from Sketchfab and have nothing but the
+    /// "Offline placeholder" to show without an API key. They open the Create
+    /// section of a keyed build (every store and CI build is keyed) — where
+    /// Android shows them — and stay off the home of a keyless local build.
+    static let hiddenWithoutSketchfabKey: [String: String] = [
         "materials": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
     ]
 
@@ -102,9 +109,73 @@ enum HomeCatalogue {
     /// the first. Anchored leading, the crop keeps the camera path and the room.
     static let featuredLeadingAnchored: Set<String> = ["ar-rerun"]
 
-    static func isOnHome(_ sceneId: String) -> Bool {
-        hiddenFromHome[sceneId] == nil
+    static func isOnHome(_ sceneId: String,
+                         hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil) -> Bool {
+        if hiddenFromHome[sceneId] != nil { return false }
+        if !hasSketchfabKey, hiddenWithoutSketchfabKey[sceneId] != nil { return false }
+        return true
     }
+}
+
+/// "New" / "Updated" verdict of a demo card — the iOS port of Android's
+/// `DemoFreshness.kt`, same rule and same inputs: each scene declares the
+/// version it shipped in (`// @sinceVersion`) and its last notable rework
+/// (`// @updatedIn`), mirrored from the Android fragment of the same demo,
+/// and the verdict is computed against the running build's version. Nothing
+/// is hardcoded as "new": a declaration ages out on its own two minors later.
+enum DemoFreshness: Equatable {
+    case new
+    case updated
+    case none
+
+    /// Minors a declaration stays fresh for — Android's `FRESHNESS_WINDOW_MINORS`.
+    /// `1`: a 4.48 build flags what landed in 4.47 or 4.48.
+    static let windowMinors = 1
+
+    /// Chip text, verbatim from Android's `samples_chip_new` / `_updated`.
+    var label: String? {
+        switch self {
+        case .new: return "New"
+        case .updated: return "Updated"
+        case .none: return nil
+        }
+    }
+
+    /// `sinceVersion` wins over `updatedIn`: a demo that is new is not also
+    /// "updated".
+    static func of(sinceVersion: String?, updatedIn: String?,
+                   buildVersion: String, window: Int = windowMinors) -> DemoFreshness {
+        if isRecent(sinceVersion, buildVersion: buildVersion, window: window) { return .new }
+        if isRecent(updatedIn, buildVersion: buildVersion, window: window) { return .updated }
+        return .none
+    }
+
+    static func of(_ item: DemoItem, buildVersion: String = appVersion) -> DemoFreshness {
+        of(sinceVersion: item.sinceVersion, updatedIn: item.updatedIn, buildVersion: buildVersion)
+    }
+
+    /// `true` when `version` is within `window` minors of `buildVersion`, or
+    /// ahead of it. Across a major bump only a newer major counts. Pre-release
+    /// and build suffixes (`-rc1`, `+sha`) are ignored; an unparseable version
+    /// is never fresh.
+    static func isRecent(_ version: String?, buildVersion: String, window: Int = windowMinors) -> Bool {
+        guard let declared = majorMinor(version), let build = majorMinor(buildVersion) else { return false }
+        if declared.major != build.major { return declared.major > build.major }
+        return declared.minor >= build.minor - window
+    }
+
+    private static func majorMinor(_ version: String?) -> (major: Int, minor: Int)? {
+        guard let version else { return nil }
+        let base = version.prefix { $0 != "-" && $0 != "+" }.trimmingCharacters(in: .whitespaces)
+        let parts = base.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count >= 2, let major = Int(parts[0]), let minor = Int(parts[1]) else { return nil }
+        return (major, minor)
+    }
+
+    /// The running build's marketing version (`MARKETING_VERSION`, kept equal
+    /// to Android's `VERSION_NAME` by the release pipeline).
+    static let appVersion: String =
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
 }
 
 extension DemoCategory {

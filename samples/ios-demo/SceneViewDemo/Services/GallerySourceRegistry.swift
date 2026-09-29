@@ -56,12 +56,6 @@ final class GallerySourcesRegistry {
         return all.filter(\.isAvailable)
     }
 
-    /// The catalogs Explore lists in this build, for the Home card that opens
-    /// it — "Sketchfab, Poly Haven" with a key, "Poly Haven" without.
-    static var availableSourceNames: String {
-        availableSources().map(\.id.displayName).joined(separator: ", ")
-    }
-
     /// Switch the active source (idempotent) and persist the choice.
     func select(_ source: any ModelSource) {
         guard source.id != selected.id else { return }

@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo app home and Explore now match Android.** Cards show the same "New" and "Updated" chips as Android, driven by the same version declarations on each demo. "Browse online models" is a full-width row under the Featured shelf, as on Android. Materials is back in its section on builds that can stream its model. Explore follows Android's order: search, the "Trending in 3D" rail, "Browse by source" with the Animated filter, then "Try a demo". Light and dark.

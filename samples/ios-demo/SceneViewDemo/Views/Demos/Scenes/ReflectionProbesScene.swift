@@ -6,6 +6,7 @@
 // @available   true
 // @icon        circle.lefthalf.filled
 // @order       28
+// @updatedIn   4.35.0
 import SwiftUI
 
 enum ReflectionProbesScene: DemoScene {

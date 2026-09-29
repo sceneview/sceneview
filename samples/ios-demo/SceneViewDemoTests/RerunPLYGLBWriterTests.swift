@@ -651,7 +651,12 @@ final class RerunPLYGLBWriterTests: XCTestCase {
         let data = try bufferView(document, bin, accessor["bufferView"] as? Int)
         let bytes = [UInt8](data)
         switch accessor["componentType"] as? Int {
-        case 5123: return (0..<count).map { Int(bytes[$0 * 2]) | Int(bytes[$0 * 2 + 1]) << 8 }
+        case 5123:
+            return (0..<count).map { (i: Int) -> Int in
+                let low = Int(bytes[i * 2])
+                let high = Int(bytes[i * 2 + 1])
+                return low | (high << 8)
+            }
         case 5125: return (0..<count).map { Int(word(data, $0 * 4)) }
         default: throw ParseError(description: "not an index accessor")
         }

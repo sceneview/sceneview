@@ -35,6 +35,8 @@ struct DemoMediaCard: View {
     var featuredTrailingCards = 0
     let onTap: () -> Void
 
+    private var freshness: DemoFreshness { DemoFreshness.of(demo) }
+
     var body: some View {
         MediaCard(
             title: demo.title,
@@ -43,7 +45,8 @@ struct DemoMediaCard: View {
             icon: demo.icon,
             accent: demo.category.accent,
             status: demo.status,
-            badgeIcon: nil,
+            freshness: freshness,
+            freshnessAccent: demo.section.accent,
             featuredWidth: featuredWidth,
             featuredTrailingCards: featuredTrailingCards,
             mediaAlignment: featuredWidth != nil && HomeCatalogue.featuredLeadingAnchored.contains(demo.sceneId)
@@ -55,36 +58,50 @@ struct DemoMediaCard: View {
     }
 
     private var accessibilityLabel: String {
+        let fresh = freshness.label.map { "\($0). " } ?? ""
         switch demo.status {
-        case .working: return "\(demo.title): \(demo.subtitle)"
-        case .knownIssue: return "\(demo.title): \(demo.subtitle). Known issue."
-        case .inReview: return "\(demo.title): \(demo.subtitle). In review."
-        case .comingSoon: return "\(demo.title): \(demo.subtitle). Coming soon."
+        case .working: return "\(fresh)\(demo.title): \(demo.subtitle)"
+        case .knownIssue: return "\(fresh)\(demo.title): \(demo.subtitle). Known issue."
+        case .inReview: return "\(fresh)\(demo.title): \(demo.subtitle). In review."
+        case .comingSoon: return "\(fresh)\(demo.title): \(demo.subtitle). Coming soon."
         }
     }
 }
 
-/// The closing grid item — same anatomy as a demo card, with the Model Viewer
-/// hero artwork under a scrim and a globe badge — that opens the online model
-/// gallery (`ExploreTab`).
+/// The full-width row between the "Featured" shelf and the section chips that
+/// opens the online model gallery (`ExploreTab`) — Android's
+/// `BrowseOnlineModelsCard`: a globe glyph, the title and a one-line subtitle
+/// on `surface-container-high`, `radius-md`, `space-md` inside.
 struct BrowseOnlineModelsCard: View {
     let onTap: () -> Void
 
     var body: some View {
-        MediaCard(
-            title: "Browse online models",
-            subtitle: GallerySourcesRegistry.availableSourceNames,
-            previewName: "preview_hero_model_viewer",
-            icon: "globe",
-            accent: SceneViewTheme.primary,
-            status: .working,
-            badgeIcon: "globe",
-            featuredWidth: nil,
-            mediaAlignment: .center,
-            onTap: onTap
-        )
-        .dynamicTypeSize(...MediaCard.largestTypeSize)
+        Button(action: onTap) {
+            HStack(spacing: SceneViewTokens.Space.md) {
+                Image(systemName: "globe")
+                    .font(.system(size: 22))
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Browse online models")
+                        .font(SceneViewTokens.TypeScale.card)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                    Text("Discover models from online collections")
+                        .font(SceneViewTokens.TypeScale.body)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(SceneViewTokens.Space.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SceneViewTokens.HomeColor.surfaceContainerHigh,
+                        in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
+        }
+        .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel("Browse online models")
+        .accessibilityHint("Discover models from online collections")
     }
 }
 
@@ -107,9 +124,11 @@ private struct MediaCard: View {
     let icon: String
     let accent: Color
     let status: DemoStatus
-    /// When set, the picture gets the hero scrim and this SF Symbol as a glass
-    /// badge in its bottom-leading corner (the "Browse online models" card).
-    let badgeIcon: String?
+    /// "New" / "Updated" chip on the picture's top-leading corner, opposite
+    /// the status chip — Android's `FreshnessChip`.
+    let freshness: DemoFreshness
+    /// Tint of the freshness chip: the demo's home-section accent.
+    let freshnessAccent: Color
     let featuredWidth: CGFloat?
     /// Featured shelf cards after this one — where the shelf's end lies.
     var featuredTrailingCards = 0
@@ -204,7 +223,6 @@ private struct MediaCard: View {
             SceneViewTokens.HomeColor.surfaceContainer
             // 1. The picture, sharp.
             media(width: size.width, height: mediaHeight)
-                .overlay { if badgeIcon != nil { badgeScrim } }
             // 2. The same picture, blurred, over the caption band only. Inside the
             //    band it has the sharp picture's exact size and crop, so the two
             //    coincide through the fade; below the picture it carries on as
@@ -223,12 +241,7 @@ private struct MediaCard: View {
         .frame(width: size.width, height: size.height, alignment: .top)
         .clipped()
         .overlay(alignment: .topTrailing) { statusChip }
-        .overlay(alignment: .topLeading) {
-            if let badgeIcon {
-                badge(badgeIcon)
-                    .frame(width: size.width, height: max(0, mediaHeight - melt), alignment: .bottomLeading)
-            }
-        }
+        .overlay(alignment: .topLeading) { freshnessChip }
     }
 
     @ViewBuilder
@@ -284,6 +297,7 @@ private struct MediaCard: View {
             }
         }
         .overlay(alignment: .topTrailing) { statusChip }
+        .overlay(alignment: .topLeading) { freshnessChip }
     }
 
     @ViewBuilder
@@ -414,31 +428,18 @@ private struct MediaCard: View {
         }
     }
 
-    private var badgeScrim: some View {
-        LinearGradient(
-            stops: [
-                .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimStart,
-                      location: SceneViewTokens.Home.heroScrimStart),
-                .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimEnd, location: 1),
-            ],
-            startPoint: .top, endPoint: .bottom
-        )
-    }
-
-    private func badge(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(SceneViewTokens.HomeColor.heroPillText)
-            .frame(width: SceneViewTokens.Home.heroPillHeight - 8,
-                   height: SceneViewTokens.Home.heroPillHeight - 8)
-            .background(SceneViewTokens.HomeColor.heroPillBackground, in: Circle())
-            .padding(SceneViewTokens.Space.sm)
-    }
-
     @ViewBuilder
     private var statusChip: some View {
         if let label = status.badgeLabel {
             StatusChip(label: label)
+                .padding(featured ? SceneViewTokens.Space.md : SceneViewTokens.Space.sm)
+        }
+    }
+
+    @ViewBuilder
+    private var freshnessChip: some View {
+        if let label = freshness.label {
+            FreshnessChip(label: label, accent: freshnessAccent)
                 .padding(featured ? SceneViewTokens.Space.md : SceneViewTokens.Space.sm)
         }
     }
@@ -563,6 +564,48 @@ private struct StatusChip: View {
         .overlay(Capsule().strokeBorder(colorScheme == .dark ? SceneViewTokens.HomeColor.outline
                                                            : SceneViewTokens.HomeColor.outlineSubtle,
                                         lineWidth: SceneViewTokens.Home.cardOutlineWidth))
+    }
+}
+
+/// "New" / "Updated" on the media, top-leading — Android's `FreshnessChip`.
+/// Same pill as ``StatusChip`` so the two read as one family, but the sparkle
+/// and the label take the demo's section accent: freshness is an invitation,
+/// status a caveat, and they must not look alike at a glance.
+private struct FreshnessChip: View {
+    let label: String
+    let accent: Color
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(spacing: SceneViewTokens.Space.xs) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 12, weight: .semibold))
+            Text(label)
+                .font(SceneViewTokens.TypeScale.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(accent)
+        .padding(.horizontal, SceneViewTokens.Space.sm)
+        .padding(.vertical, 3)
+        .background(colorScheme == .dark ? SceneViewTokens.HomeColor.floatingSurface
+                                        : SceneViewTokens.HomeColor.surface.opacity(0.92), in: Capsule())
+        .overlay(Capsule().strokeBorder(colorScheme == .dark ? SceneViewTokens.HomeColor.outline
+                                                           : SceneViewTokens.HomeColor.outlineSubtle,
+                                        lineWidth: SceneViewTokens.Home.cardOutlineWidth))
+        .accessibilityHidden(true)
+    }
+}
+
+extension DemoSection {
+    /// The section's accent — Android's `DemoCategoryAccent`, keyed the same way.
+    var accent: Color {
+        switch self {
+        case .view3d: return SceneViewTokens.HomeColor.sectionAccentView3D
+        case .create: return SceneViewTokens.HomeColor.sectionAccentCreate
+        case .placeAR: return SceneViewTokens.HomeColor.sectionAccentPlaceAR
+        case .understand: return SceneViewTokens.HomeColor.sectionAccentUnderstand
+        case .devTools: return SceneViewTokens.HomeColor.sectionAccentDevTools
+        }
     }
 }
 
