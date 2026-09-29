@@ -221,6 +221,8 @@ struct ModelViewerDemo: View {
     /// ("Flight Helmet · loading"), until its first frame is drawn.
     @State private var hdLoading = false
     @State private var hdFrameWatch = HDFirstFrameWatch()
+    /// Which load may still put its model on stage: see ``StageRequests``.
+    @State private var stageRequests = StageRequests()
     /// The pill's "download 52 MB" / "download failed" tap: size-first dialog.
     @State private var confirmHD = false
     /// An HD-only model (Museum & Space) picked before its file is on disk:
@@ -395,12 +397,13 @@ struct ModelViewerDemo: View {
                         state: hdPack.state(for: pendingHDID),
                         loading: hdLoading,
                         bytes: hdAsset.bytes,
+                        hdOnly: selectedModel.isHDOnly,
                         onDownload: { confirmHD = true }
                     )
                 }
             }
         )
-        .hdPackDownloadDialog(isPresented: $confirmHD)
+        .hdPackDownloadDialog(isPresented: $confirmHD, assetID: pendingHDID)
         .sheet(item: $sheet) { which in
             Group {
                 switch which {
@@ -584,6 +587,10 @@ struct ModelViewerDemo: View {
         let started = Date()
         #endif
         hdFrameWatch.cancel()
+        let ticket = stageRequests.begin()
+        // A 38 MB scan can take seconds to load: if the user picked another
+        // model meanwhile, this one must not land over it.
+        func isCurrent() -> Bool { stageRequests.isCurrent(ticket) && selectedModel == model }
         do {
             if let id = model.hdPackID, let url = hdPack.localURL(for: id) {
                 pendingHDID = id
@@ -592,9 +599,10 @@ struct ModelViewerDemo: View {
                 do {
                     node = try await ModelNode.load(contentsOf: url)
                 } catch {
-                    hdLoading = false
+                    if isCurrent() { hdLoading = false }
                     throw error
                 }
+                guard isCurrent() else { return }
                 // The pill stays on "loading" until the HD entity is drawn,
                 // not when the load call returns (see HDFirstFrameWatch).
                 let entity = node.entity
@@ -615,6 +623,7 @@ struct ModelViewerDemo: View {
             } else if let resource = model.bundledResourceName {
                 hdLoading = false
                 let node = try await ModelNode.load(resource)
+                guard isCurrent() else { return }
                 install(node, as: model, hd: false)
                 pendingHDID = model.hdPackID
             } else {
@@ -632,6 +641,7 @@ struct ModelViewerDemo: View {
                          Double(MemoryFootprint.current()) / 1_048_576))
             #endif
         } catch {
+            guard isCurrent() else { return }
             // The poster would hide the message; the spinner overlay shows it.
             posterModel = nil
             loadError = "Could not load \(model.displayName): \(error.localizedDescription)"
@@ -742,6 +752,8 @@ struct ModelViewerDemo: View {
                 let node = try? await ModelNode.load(contentsOf: downloaded),
                 SurpriseModelCheck.isCoherent(node.entity)
             else { continue }
+            // The surprise wins over a bundled load still in flight.
+            _ = stageRequests.begin()
             hdFrameWatch.cancel()
             hdLoading = false
             install(node)
@@ -881,6 +893,22 @@ enum SurpriseModelCheck {
 /// that uploads its resources; the second one comes after that frame, so it
 /// marks the swap as visible. A timeout in the caller covers a scene that
 /// stops ticking.
+/// Last request wins on stage. Every load that ends in an install takes a
+/// ticket first; after its `await` it installs only if no newer load took
+/// one since. Picking the 38 MB Apollo interior and then the mammoth used to
+/// let the interior land over the mammoth when its load finished last.
+struct StageRequests: Equatable {
+    private(set) var latest = 0
+
+    /// A fresh ticket; every ticket issued before it is now stale.
+    mutating func begin() -> Int {
+        latest += 1
+        return latest
+    }
+
+    func isCurrent(_ ticket: Int) -> Bool { ticket == latest }
+}
+
 @MainActor
 final class HDFirstFrameWatch {
     private weak var expected: Entity?

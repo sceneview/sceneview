@@ -131,6 +131,60 @@ final class HDPackTests: XCTestCase {
         XCTAssertEqual(wifi, "Full-resolution models, 52\u{00A0}MB. They stay on this device until you remove them in About.")
         XCTAssertEqual(HDPackDownloadDialog.message(bytes: 51_704_895, expensive: true), wifi + " This uses mobile data.")
     }
+
+    /// Per-model downloads: only the Flight Helmet (52 MB) is prefetched on
+    /// its own; a Museum scan comes only from a tap on its pill.
+    @MainActor
+    func testOnlyTheFlightHelmetIsPrefetched() {
+        let manifest = HDPackManifest.loadBundled()
+        XCTAssertEqual(HDPackStore.autoPrefetchIDs, ["flight-helmet"])
+        let auto = manifest.assets.filter { HDPackStore.autoPrefetchIDs.contains($0.id) }
+        XCTAssertEqual(HDPackFormat.size(auto.reduce(0) { $0 + $1.bytes }), "52\u{00A0}MB")
+    }
+
+    /// The About row speaks for the prefetched helmet plus whatever the user
+    /// asked for; a Museum scan nobody tapped does not keep it "missing".
+    @MainActor
+    func testPackAssetsFollowWhatTheUserAskedFor() {
+        let manifest = HDPackManifest.loadBundled()
+        var states = Dictionary(uniqueKeysWithValues: manifest.assets.map { ($0.id, HDAssetState.missing) })
+        XCTAssertEqual(HDPackStore.packAssets(of: manifest, states: states).map(\.id), ["flight-helmet"])
+        states["flight-helmet"] = .ready
+        states["woolly-mammoth"] = .downloading(0.4)
+        XCTAssertEqual(HDPackStore.packAssets(of: manifest, states: states).map(\.id), ["flight-helmet", "woolly-mammoth"])
+    }
+
+    /// A pill's dialog names its model and states that one file's size.
+    @MainActor
+    func testPerModelDialogStatesItsOwnSize() throws {
+        let interior = try XCTUnwrap(HDPackManifest.loadBundled().asset(id: "apollo11-interior"))
+        XCTAssertEqual(HDPackDownloadDialog.title(asset: interior), "Download Apollo 11 Interior?")
+        let wifi = HDPackDownloadDialog.message(asset: interior, expensive: false)
+        XCTAssertEqual(wifi, "Full-resolution model, 38\u{00A0}MB. It stays on this device until you remove HD scenes in About.")
+        XCTAssertEqual(HDPackDownloadDialog.message(asset: interior, expensive: true), wifi + " This uses mobile data.")
+    }
+
+    /// "waiting for Wi-Fi" is a tap target only where nothing else can go on
+    /// stage (an HD-only model); a helmet waiting for Wi-Fi keeps its stand-in.
+    @MainActor
+    func testWaitingForWiFiIsTappableOnlyForHDOnlyModels() {
+        XCTAssertTrue(HDPackPill.isTappable(.waitingForWiFi, hdOnly: true))
+        XCTAssertFalse(HDPackPill.isTappable(.waitingForWiFi, hdOnly: false))
+        XCTAssertTrue(HDPackPill.isTappable(.missing, hdOnly: false))
+        XCTAssertTrue(HDPackPill.isTappable(.failed, hdOnly: true))
+        XCTAssertFalse(HDPackPill.isTappable(.downloading(0.5), hdOnly: true))
+        XCTAssertFalse(HDPackPill.isTappable(.waitingForNetwork, hdOnly: true))
+        XCTAssertFalse(HDPackPill.isTappable(.missing, loading: true, hdOnly: true))
+    }
+
+    /// The last model picked wins the stage, whichever load finishes first.
+    func testOnlyTheLatestStageRequestInstalls() {
+        var requests = StageRequests()
+        let interior = requests.begin()
+        let mammoth = requests.begin()
+        XCTAssertFalse(requests.isCurrent(interior), "The slow interior load must not land over the mammoth.")
+        XCTAssertTrue(requests.isCurrent(mammoth))
+    }
 }
 
 #endif

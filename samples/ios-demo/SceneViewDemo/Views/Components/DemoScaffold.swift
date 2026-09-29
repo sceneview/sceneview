@@ -243,36 +243,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         }
     }
 
+    /// Back button and title chip (plus the QA chip for a human tester).
     private var titleCluster: some View {
-        HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
-            GlassIconButton(icon: "chevron.left", label: "Close demo") {
-                dismiss()
-            }
-            .accessibilityIdentifier("demo-close")
-
-            if let resolvedTitle {
-                GlassPill {
-                    Text(resolvedTitle)
-                        .font(SceneViewTokens.TypeScale.chromeLabel)
-                        .foregroundStyle(SceneViewTokens.Glass.onGlass)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .accessibilityAddTraits(.isHeader)
-                    if qaMode && !DeepLinkRouter.isScriptedCapture {
-                        Text("QA ×")
-                            .font(SceneViewTokens.TypeScale.chromeCaption)
-                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
-                            .onTapGesture { qaMode = false }
-                            .accessibilityLabel("Disable QA mode")
-                    }
-                }
-            }
-        }
-    }
-
-    /// Last resort (a status too wide even on its own row, largest Dynamic
-    /// Type): the original shared row, where title and status give way.
-    private var sharedRow: some View {
         HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
             GlassIconButton(icon: "chevron.left", label: "Close demo") {
                 dismiss()
@@ -298,12 +270,20 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                             .accessibilityLabel("Disable QA mode")
                     }
                 }
+            }
+        }
+    }
+
+    /// Last resort (a status too wide even on its own row, largest Dynamic
+    /// Type): the original shared row, where title and status give way.
+    private var sharedRow: some View {
+        HStack(spacing: SceneViewTokens.Space.sm - Self.touchSlop) {
+            titleCluster
                 // At the default size the title gives way first (it can
                 // shrink to 80 %) so a status such as the HD pill keeps its
                 // full text. With larger Dynamic Type the title is served
                 // first and the status truncates instead of the title.
                 .layoutPriority(dynamicTypeSize > .large ? 2 : 0)
-            }
 
             Spacer(minLength: 0)
 
