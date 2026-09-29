@@ -148,11 +148,15 @@ data class ArDebugStats(
     companion object {
         val Empty = ArDebugStats(0f, 0f, 0f, 0, 0, 0, tracking = false)
 
-        fun of(frame: ArDebugFrame, duration: Float): ArDebugStats = ArDebugStats(
+        /**
+         * [frame]'s figures. [points] is what the view draws: [frame]'s feature points, or the
+         * dense surfels a replay draws in their place ([ArDebugTrace.pointCountAt]).
+         */
+        fun of(frame: ArDebugFrame, duration: Float, points: Int = frame.mapPointCount): ArDebugStats = ArDebugStats(
             time = frame.time,
             duration = duration,
             pathMetres = pathLength(frame.trail),
-            mapPoints = frame.mapPointCount,
+            mapPoints = points,
             planes = frame.planes.size,
             anchors = frame.anchors.size,
             tracking = frame.camera != null,

@@ -164,6 +164,10 @@ class ArDebugTrace {
     private var imageTimes = FloatArray(64)
     private val imagePaths = ArrayList<String>()
 
+    private var depthTimes = FloatArray(64)
+    private var depthTotals = IntArray(64)
+    private var depthCount = 0
+
     /**
      * When set, every event that changed the trace is appended here as it was kept — the
      * confident, finite points only, a plane or an anchor only when it changed — so replaying
@@ -377,6 +381,47 @@ class ArDebugTrace {
         imagePaths.add(path)
         journal?.add(ArDebugEvent.Image(nanos, path))
         touch(t)
+    }
+
+    /**
+     * Records that the dense map (a `.svscan` v2's `dense/points.bin`) held [total] surfels at
+     * [nanos], [added] of them new and [kept] depth samples merged — what lets a replay reveal
+     * the cloud as it grew, since surfels keep the order they were found in.
+     */
+    fun addDepthStats(nanos: Long, added: Int, kept: Int, total: Int) {
+        val t = secondsOf(nanos)
+        if (depthCount > 0 && t < depthTimes[depthCount - 1]) return // never back in time
+        if (depthCount == depthTimes.size) {
+            depthTimes = depthTimes.copyOf(depthCount * 2)
+            depthTotals = depthTotals.copyOf(depthCount * 2)
+        }
+        depthTimes[depthCount] = t
+        depthTotals[depthCount] = total
+        depthCount++
+        journal?.add(ArDebugEvent.DepthStats(nanos, added, kept, total))
+        touch(t)
+    }
+
+    /** Whether the trace says how its dense map grew ([addDepthStats]). */
+    val hasDepthStats: Boolean get() = depthCount > 0
+
+    /** Surfels of the dense map at [time]: `0` before the first depth frame, `-1` with no stats. */
+    fun denseCountAt(time: Float): Int {
+        if (depthCount == 0) return -1
+        val i = upperBound(depthTimes, depthCount, time) - 1
+        return if (i < 0) 0 else depthTotals[i]
+    }
+
+    /**
+     * The points a view of this trace shows at [time]: with a dense cloud of [denseTotal] surfels
+     * (a `.svscan` v2), the surfels found by then — all of them on a timeline without depth stats —
+     * which stand in for ARCore's feature points; without one, the feature-point map. The one
+     * figure the scan HUD, the replay HUD and the sessions list count, so they never disagree.
+     */
+    fun pointCountAt(time: Float, denseTotal: Int = 0): Int {
+        if (denseTotal <= 0) return upperBound(pointFirstSeen, pointCount, time.coerceIn(0f, duration))
+        val atTime = denseCountAt(time)
+        return if (atTime < 0) denseTotal else minOf(atTime, denseTotal)
     }
 
     /** The whole scene as it stood at [time] (clamped to the trace). */

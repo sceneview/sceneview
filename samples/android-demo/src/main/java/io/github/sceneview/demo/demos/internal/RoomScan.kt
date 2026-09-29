@@ -314,7 +314,13 @@ object ScanArchive {
 }
 
 /** The figures the Record screen shows while scanning, read off the trace. */
-data class ScanFigures(val points: Int, val surfaces: Int, val photos: Int) {
+data class ScanFigures(
+    val points: Int,
+    val surfaces: Int,
+    val photos: Int,
+    /** Surfels of the dense depth map (Rerun v2 tier `depth`); `0` for a sparse scan. */
+    val dense: Int = 0,
+) {
     companion object {
         val Empty = ScanFigures(0, 0, 0)
     }
@@ -386,6 +392,10 @@ object ScanCopy {
 
     /** `1` → `1 photo`, `12` → `12 photos`: the figure's label follows its value. */
     fun label(count: Int, one: String, many: String): String = if (count == 1) one else many
+
+    /** The HUD's tier, beside "Scanning": what this phone's scan really is (Rerun v2). */
+    const val TIER_DEPTH = "Depth scan"
+    const val TIER_SPARSE = "Sparse scan"
 
     /**
      * A figure of the Record screen, in full up to `9,999` and compact past it (`12k`), so three
