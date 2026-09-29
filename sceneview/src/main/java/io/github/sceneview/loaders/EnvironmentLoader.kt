@@ -109,7 +109,7 @@ class EnvironmentLoader(
      *
      * Filament calls only — the decode already happened, off the main thread, in
      * [loadHDREnvironment]. The texture matches `HDRLoader.createTexture`'s: full mip chain,
-     * [HDRLoader.Options.desiredFormat], mipmaps generated for the equirect-to-cubemap pass.
+     * mipmappable usage, [HDRLoader.Options.desiredFormat], mipmaps generated for the equirect-to-cubemap pass.
      */
     private fun createHDREnvironmentFromImage(
         image: RgbeImage,
@@ -123,6 +123,7 @@ class EnvironmentLoader(
             .height(image.height)
             .levels(ALL_MIP_LEVELS)
             .sampler(Texture.Sampler.SAMPLER_2D)
+            .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE)
             .format(textureOptions.desiredFormat)
             .build(engine)
         equirect.setImage(
