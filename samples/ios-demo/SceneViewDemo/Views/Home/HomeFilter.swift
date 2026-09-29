@@ -71,12 +71,14 @@ private extension HomeSearchEntry {
 enum HomeCatalogue {
     /// The Featured shelf under the hero, in priority order — Android's
     /// `FEATURED_SECTION_IDS` (`HomeScreen.kt`) reduced to the demos that have
-    /// an iOS screen. Android features `splat-preview` and `ar-splat-room`
-    /// too; neither exists on iOS yet (#2646, #4075), so the shelf skips them rather
-    /// than showing a placeholder. `animation` is the iOS half of Android's
+    /// an iOS screen. Android features `ar-splat-room` too; it does not exist on
+    /// iOS yet (#4075), so the shelf skips it rather than showing a placeholder.
+    /// `splat-preview` opens the same capture drawn as a point cloud (no splat
+    /// renderer on iOS yet, #2646). `animation` is the iOS half of Android's
     /// `animation-physics`.
     static let featuredIds: [String] = [
         "ar-rerun",
+        "splat-preview",
         "animation",
         "ar-placement",
         "ar-record-playback",

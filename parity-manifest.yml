@@ -63,7 +63,8 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-29): 51 rows, 31 working / 0 stub / 20 android-only.
+# Current slice-5 ledger (2026-09-29): 51 rows, 32 working / 0 stub / 19 android-only.
+# (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
@@ -312,6 +313,29 @@ demos:
       151 on both; tip sideways: balls pile in one corner). Both stages follow
       the theme from the same tokens. Diverges in chrome only: iOS puts Drop,
       Tilt, Reset and Settings in one bottom toolbar
+  - id: splat-preview
+    androidStatus: Working
+    iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS opens the same capture but
+      draws each point as a small solid dot, not a soft camera-sorted
+      gaussian. SceneViewSwift has no SplatNode yet (item 2 of #2646) and
+      RealityKit has no point primitive; the screen says so in its sheet.
+    category: VIEW_3D
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SplatPreviewDemo.kt
+    ios: [splat-preview]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/SplatPreviewDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/SplatScan.swift
+    contract: >-
+      Render the bundled raccoon_family.spz as a Gaussian-splat cloud,
+      orbitable, with a splat-count slider and a file readout
+    parity: diverges
+    evidence: >-
+      Same file (the Android asset, referenced by the Xcode project), same
+      decode (SPZReader, a Swift port of SpzParser's v2/v3 path), same orbit
+      home (scanFraming), same copy, same "Points drawn" slider. Diverges in
+      the look: a point cloud of 233 808 opaque dots instead of splats.
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working
@@ -901,7 +925,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1231,26 +1255,6 @@ demos:
       SecondaryCameraDemo.kt:144 pipCameraNode, :345-352 presets. Feasible: a
       2nd non-AR RealityView with its own PerspectiveCamera over a cloned
       entity (or RealityRenderer, iOS 18)
-  - id: splat-preview
-    androidStatus: Working
-    iosStatus: android-only
-    reason: >-
-      No iOS screen — blocked on an iOS SplatNode renderer, tracked as
-      item 2 of #2646 (#2768 documents the gap but explicitly parks the
-      port as a maintainer decision, not an implementation owner). Its
-      coming-soon Scene stub was deleted in #3231.
-    category: VIEW_3D
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SplatPreviewDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      Render the bundled raccoon_family.spz as a Gaussian-splat cloud,
-      orbitable, with a splat-count slider and a file readout
-    parity: missing
-    evidence: >-
-      SplatPreviewDemo.kt:51 (raccoon_family.spz), :196 points slider;
-      SceneViewSwift has no SplatNode (#2646/#3654); feasible with
-      LowLevelMesh + Metal sort (code-only)
   - id: video-recording
     androidStatus: Working
     iosStatus: android-only
@@ -1343,7 +1347,7 @@ shell:
     evidence: >-
       Featured shelf, 5 section chips and section headers match since #3907
       (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); the shelf skips
-      splat-preview (#2646) and ar-splat-room (#4075), which have no iOS screen. Still diverges:
+      ar-splat-room (#4075), which has no iOS screen. Still diverges:
       single HomeHero instead of the pager, no What's new, Browse-online card
       last instead of under the shelf, and six broken demos are kept off the
       home (HomeCatalogue.hiddenFromHome)
@@ -1375,10 +1379,11 @@ shell:
       (Sketchfab/Icosa/Poly Haven), curated samples
     parity: diverges
     evidence: >-
-      Android says iOS 'still shows the previous layout'
-      ExploreTabScreen.kt:97; iOS entry is the last grid item
-      ShowcaseTab.swift:137; same 3 sources; D2 error states now exist
-      :352,:763 (code-only)
+      Since the second home parity pass: the same hero stage (first
+      Trending model, source pill, title, View in 3D) above a Trending rail
+      that leaves it out, and the source picker is a segmented control (the
+      iOS counterpart of Android's connected button group). iOS keeps its
+      inline search field instead of the floating search pill.
   - surface: about
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/RootScreen.kt

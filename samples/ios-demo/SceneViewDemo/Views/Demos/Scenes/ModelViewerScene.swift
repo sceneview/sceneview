@@ -1,6 +1,6 @@
 // @sceneId     model-viewer
-// @title       Model Viewer
-// @subtitle    Load and display 3D models
+// @title       Models
+// @subtitle    Explore a model in 3D or in your room
 // @category    basics3D
 // @section     view3d
 // @available   true
