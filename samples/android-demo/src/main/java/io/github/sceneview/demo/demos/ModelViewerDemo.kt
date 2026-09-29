@@ -112,8 +112,8 @@ import io.github.sceneview.demo.OpenedModelIntent
 import io.github.sceneview.core.threemf.ModelUnitGuess
 import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
+import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import io.github.sceneview.demo.demos.internal.DemoMath
-import io.github.sceneview.demo.demos.internal.StageFade
 import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
 import io.github.sceneview.demo.demos.internal.SurprisePrefetch
 import io.github.sceneview.demo.demos.internal.SurpriseRolls
@@ -982,10 +982,10 @@ private fun SingleModelSection(
         renderInvalidator.requestRender()
     }
     // With the environment hidden, the model stands on the stage colour, as on iOS — not on the
-    // renderer's black clear, which covered the Box's `Stage.background` edge to edge. Same
-    // backdrop as the Lighting demos (`StageFade.stageBackdrop`). `copy` shares the environment's
-    // Filament handles and is never itself destroyed; only the backdrop is ours to free.
-    val stageBackdrop = remember(engine) { StageFade.stageBackdrop(engine) }
+    // renderer's black clear, which covered the Box's `Stage.background` edge to edge. The
+    // backdrop is pre-compensated for the tone mapper (see ViewerBackdrop). `copy` shares the
+    // environment's Filament handles and is never itself destroyed; only the backdrop is ours.
+    val stageBackdrop = remember(engine) { ViewerBackdrop.create(engine) }
     DisposableEffect(stageBackdrop) {
         onDispose { engine.destroySkybox(stageBackdrop) }
     }
