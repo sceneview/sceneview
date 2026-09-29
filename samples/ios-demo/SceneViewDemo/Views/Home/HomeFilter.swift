@@ -67,12 +67,12 @@ private extension HomeSearchEntry {
 }
 
 /// Editorial choices of the Showcase home that are not a property of any one
-/// scene (#3907): the Featured shelf and the demos kept off the home grid.
+/// scene (#3907): the "Featured" group and the demos kept off the home list.
 enum HomeCatalogue {
-    /// The Featured shelf under the hero, in priority order — Android's
+    /// The "Featured" group under the hero, in priority order — Android's
     /// `FEATURED_SECTION_IDS` (`HomeScreen.kt`) reduced to the demos that have
     /// an iOS screen. Android features `ar-splat-room` too; it does not exist on
-    /// iOS yet (#4075), so the shelf skips it rather than showing a placeholder.
+    /// iOS yet (#4075), so the group skips it rather than showing a placeholder.
     /// `splat-preview` opens the same capture drawn as a point cloud (no splat
     /// renderer on iOS yet, #2646). `animation` is the iOS half of Android's
     /// `animation-physics`.
@@ -102,13 +102,14 @@ enum HomeCatalogue {
     /// Empty since Materials became a procedural sphere wall, as on Android.
     static let hiddenWithoutSketchfabKey: [String: String] = [:]
 
-    /// Featured pictures anchored at their leading edge rather than centred when
-    /// the landscape preview is cropped to the 4:5 portrait card — Android's
-    /// `FEATURED_MEDIA_ALIGNMENT` (#4144). `ar-rerun`'s preview is a capture of
-    /// the demo whose top-right corner holds its own "Camera" picture-in-picture:
-    /// centred, the crop kept half of it and it read as a second card stuck on
-    /// the first. Anchored leading, the crop keeps the camera path and the room.
-    static let featuredLeadingAnchored: Set<String> = ["ar-rerun"]
+    /// Previews anchored at their leading edge rather than centred when the
+    /// landscape capture is cropped to a home row's square thumb — Android's
+    /// `FEATURED_MEDIA_ALIGNMENT` (#4144, #4186). `ar-rerun`'s preview is a
+    /// capture of the demo whose top-right corner holds its own "Camera"
+    /// picture-in-picture: centred, the crop kept half of it and it read as a
+    /// second picture stuck on the first. Anchored leading, the crop keeps the
+    /// camera path and the room.
+    static let leadingAnchored: Set<String> = ["ar-rerun"]
 
     static func isOnHome(_ sceneId: String,
                          hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil) -> Bool {

@@ -340,10 +340,16 @@ enum SceneViewTokens {
             dark: Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
         )
         /// `surface-container-high` — #F1F3F5 / #2C3546, "a container on a
-        /// container": the home's "Browse online models" row, as on Android.
+        /// container": `home-row-bg`, the grey tile of every home list row.
         static let surfaceContainerHigh = Color(
             light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
             dark: Color(red: 0x2C / 255, green: 0x35 / 255, blue: 0x46 / 255)
+        )
+        /// `surface-container-highest` — #E9ECEF / #354056: one step above a
+        /// home row, the ground of a row's glyph thumb while it has no capture.
+        static let surfaceContainerHighest = Color(
+            light: Color(red: 0xE9 / 255, green: 0xEC / 255, blue: 0xEF / 255),
+            dark: Color(red: 0x35 / 255, green: 0x40 / 255, blue: 0x56 / 255)
         )
         /// Home-section accents, sampled evenly along `gradient-hero` —
         /// `primary` (#005BC1 / #A4C1FF) to `tertiary` (#6446CD / #D2A8FF) —
@@ -464,8 +470,6 @@ enum SceneViewTokens {
         static let searchFieldHeight: CGFloat = 48
         static let contentPadding: CGFloat = 20
         static let gridGutter: CGFloat = 12
-        static let gridMinCell: CGFloat = 156
-        static let gridMinCellExpanded: CGFloat = 220
         static let heroHeight: CGFloat = 320
         static let heroHeightExpanded: CGFloat = 400
         static let heroPadding: CGFloat = 24
@@ -479,9 +483,10 @@ enum SceneViewTokens {
         static let chipPaddingHorizontal: CGFloat = 16
         static let gridTopGap: CGFloat = 20
         /// DESIGN.md `section-header-top-gap` / `section-header-bottom-gap`:
-        /// space above a catalogue section header, and from it to its first row.
-        static let sectionHeaderTopGap: CGFloat = 32
-        static let sectionHeaderBottomGap: CGFloat = 16
+        /// space above a catalogue section header (`space-sm` for the first one,
+        /// right under the chips), and from it to its group of rows.
+        static let sectionHeaderTopGap: CGFloat = 24
+        static let sectionHeaderBottomGap: CGFloat = 12
         static let gridBottomInset: CGFloat = 32
         static let cardRadius: CGFloat = 20
         static let cardTextPaddingTop: CGFloat = 12
@@ -511,27 +516,43 @@ enum SceneViewTokens {
         /// into the frosted caption (the fade spans twice this, centred on the
         /// caption's top).
         static let cardGlassMelt: CGFloat = 28
-        /// `featured-card-width` — one "Featured" card; the next one peeks.
-        static let featuredCardWidth: CGFloat = 280
-        static let featuredCardWidthExpanded: CGFloat = 340
-        /// `featured-media-aspect` — width / height of a "Featured" card, 4:5.
-        /// A minimum height: a long caption may grow the card.
-        static let featuredMediaAspect: CGFloat = 0.8
-        /// `featured-parallax` — fraction of a Featured card's travel its picture
-        /// lags behind it while the shelf is swiped, clamped to the overscan.
-        static let featuredParallax: CGFloat = 0.08
-        /// How much larger than its card a Featured picture is drawn, so the
-        /// parallax never shows an edge (6 %).
-        static let featuredMediaOverscan: CGFloat = 1.06
-        /// Where a Featured card's glass starts, as a fraction of the card's
-        /// height, until the caption has been measured — about a two-line
-        /// title and subtitle on a 4:5 card — so the first frame has its glass.
-        static let featuredCaptionTopEstimate: CGFloat = 0.6
         /// Explore's "Try a demo" card — Android's `SAMPLE_CARD_WIDTH`
         /// (`hero-stage-height` 360 less `space-3xl` 64).
         static let sampleCardWidth: CGFloat = 296
         /// Fraction of the band's scroll travel the sky and the flight lag behind.
         static let heroParallax: CGFloat = 0.35
+
+        // Home list (`home-row-*` in DESIGN.md): under the 3D header the Home
+        // is a standard grouped list — two-line rows on neutral grey tiles, one
+        // vertical scroll, no carousel. Android's `SceneViewTokens.Home.row*`.
+
+        /// `home-row-thumb` — the leading square of a row: the demo's capture
+        /// (`radius-sm`) or a glyph.
+        static let rowThumb: CGFloat = 56
+        /// Glyph inside a `home-row-thumb` that has no capture.
+        static let rowThumbGlyph: CGFloat = 28
+        /// `home-row-min-height` — the two-line list item with a 56 pt image.
+        static let rowMinHeight: CGFloat = 72
+        /// Row insets: `space-md` across (also the thumb-to-text gap), `space-sm` down.
+        static let rowPaddingHorizontal: CGFloat = 16
+        static let rowPaddingVertical: CGFloat = 8
+        /// Title-to-subtitle gap inside a row.
+        static let rowTextGap: CGFloat = 2
+        /// `home-row-gap` — the seam of page between two rows of one group.
+        static let rowGap: CGFloat = 2
+        /// `home-row-radius-outer` — a group's four outer corners (`radius-md`).
+        static let rowRadiusOuter: CGFloat = 16
+        /// `home-row-radius-inner` — every corner a row shares with a neighbour.
+        static let rowRadiusInner: CGFloat = 4
+        /// `home-row-min-width` — from two of these across, the list goes
+        /// multi-column (an iPad).
+        static let rowMinWidth: CGFloat = 340
+        /// `home-group-gap` — between two groups with no section header between
+        /// them ("Featured" and "Browse online models").
+        static let groupGap: CGFloat = 16
+        /// Opacity of `on-surface` over a row while it is pressed — the M3
+        /// pressed state layer, Android's ripple. No scale: a row is a list item.
+        static let rowPressedAlpha: Double = 0.10
     }
 
     /// `DESIGN.md` — Demo App About (`about-*`), the iOS twin of Android's

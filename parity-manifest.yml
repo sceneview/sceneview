@@ -1350,7 +1350,7 @@ shell:
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Tabs/ShowcaseTab.swift
       - samples/ios-demo/SceneViewDemo/Views/Home/HomeHero.swift
-      - samples/ios-demo/SceneViewDemo/Views/Home/DemoMediaCard.swift
+      - samples/ios-demo/SceneViewDemo/Views/Home/HomeListRow.swift
       - samples/ios-demo/SceneViewDemo/Views/Home/HomeFilter.swift
     contract: >-
       Header (search + What's new), 3-page featured pager (Models live,
@@ -1364,11 +1364,11 @@ shell:
     evidence: >-
       Featured order, 5 section chips and section headers match since #3907
       (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); Featured skips
-      ar-splat-room (#4075), which has no iOS screen. Still diverges:
-      Android replaced the horizontal Featured carousel and the picture
-      cards with the grouped list (home-standard-tiles), iOS still draws
-      them; single HomeHero instead of the pager, no What's new,
-      Browse-online card last instead of under Featured, and six broken
+      ar-splat-room (#4075), which has no iOS screen. The grouped list
+      matches since ios-home-standard-rows (HomeListRow.swift: 72pt rows,
+      56pt thumbs, surface-container-high, 2pt seams, 16/4 corners, 340pt
+      iPad columns, Browse-online row under Featured). Still diverges:
+      single HomeHero instead of the pager, no What's new, and six broken
       demos are kept off the home (HomeCatalogue.hiddenFromHome)
   - surface: ar-view
     category: SHELL
