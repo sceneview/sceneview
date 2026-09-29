@@ -5771,6 +5771,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
 - `video-recording` — Scene to MP4. Record and share a moving 3D model.
+- `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
 
 ### Understand the world
 

@@ -1,0 +1,109 @@
+// cosmos_plasma.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The surface of the Cosmos demo's plasma star, and the dark nuclei of its flow
+//             field. An unlit sphere whose radiance is animated fractal noise: 3D value noise
+//             summed over five octaves (fbm), domain-warped by three more fbm lookups that drift
+//             with time, so the surface churns rather than scrolls. A ridged copy of the same
+//             field draws the bright filaments, and a Fresnel term lights the limb, the thin
+//             bright ring a hot sphere shows against the dark.
+// Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
+// Geometry:   any sphere centred on its origin (SphereNode); only `position` is read — the
+//             model-space position doubles as the normal and as the noise domain.
+// Parameters:
+//   time       — float, seconds.
+//   deepColor  — float3, linear radiance of the calm plasma.
+//   hotColor   — float3, linear radiance of the churning, brightest plasma.
+//   rimColor   — float3, linear radiance of the limb.
+//   rimPower   — float, Fresnel exponent: higher is a thinner ring.
+//   noiseScale — float, noise frequency on the unit sphere.
+//   flow       — float, how fast the field churns.
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// Why a shader and not a noise texture: a scrolling texture slides across the sphere and seams
+// at the poles; a 3D field evaluated on the sphere has no seam, and the domain warp is what
+// makes it read as plasma instead of a marble texture on a ball.
+material {
+    "name" : "Cosmos Plasma",
+    "parameters" : [
+        { "type" : "float",  "name" : "time" },
+        { "type" : "float3", "name" : "deepColor" },
+        { "type" : "float3", "name" : "hotColor" },
+        { "type" : "float3", "name" : "rimColor" },
+        { "type" : "float",  "name" : "rimPower" },
+        { "type" : "float",  "name" : "noiseScale" },
+        { "type" : "float",  "name" : "flow" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "objectPosition", "worldNormal", "toEye" ],
+    "shadingModel" : "unlit",
+    "blending" : "opaque",
+    "doubleSided" : false
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float3 p = getPosition().xyz;
+        material.objectPosition = float4(p, 0.0);
+        material.worldNormal = float4(mat3(getWorldFromModelMatrix()) * p, 0.0);
+        material.toEye = float4(getWorldCameraPosition() - material.worldPosition.xyz, 0.0);
+    }
+}
+fragment {
+    highp float plasmaHash(highp float3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+
+    highp float plasmaNoise(highp float3 x) {
+        highp float3 i = floor(x);
+        highp float3 f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(
+            mix(mix(plasmaHash(i + float3(0.0, 0.0, 0.0)), plasmaHash(i + float3(1.0, 0.0, 0.0)), f.x),
+                mix(plasmaHash(i + float3(0.0, 1.0, 0.0)), plasmaHash(i + float3(1.0, 1.0, 0.0)), f.x), f.y),
+            mix(mix(plasmaHash(i + float3(0.0, 0.0, 1.0)), plasmaHash(i + float3(1.0, 0.0, 1.0)), f.x),
+                mix(plasmaHash(i + float3(0.0, 1.0, 1.0)), plasmaHash(i + float3(1.0, 1.0, 1.0)), f.x), f.y),
+            f.z);
+    }
+
+    highp float plasmaFbm(highp float3 p) {
+        highp float sum = 0.0;
+        highp float amplitude = 0.5;
+        for (int octave = 0; octave < 5; octave++) {
+            sum += amplitude * plasmaNoise(p);
+            p = p * 2.03 + float3(1.7, 9.2, 3.1);
+            amplitude *= 0.5;
+        }
+        return sum;
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        highp float t = materialParams.time * materialParams.flow;
+        highp float3 p = normalize(variable_objectPosition.xyz) * materialParams.noiseScale;
+
+        // Domain warp: the field is looked up through a second, slowly drifting field.
+        highp float3 warp = float3(
+            plasmaFbm(p + float3(0.0, t * 0.9, 0.0)),
+            plasmaFbm(p + float3(5.2, 1.3 - t * 0.7, 2.8)),
+            plasmaFbm(p + float3(t * 0.6, 3.7, 8.1)));
+        highp float n = plasmaFbm(p + 2.4 * warp + float3(0.0, 0.0, t * 0.5));
+
+        // Filaments: the ridges of the warped field, where it crosses its mid value.
+        float ridge = 1.0 - abs(2.0 * n - 1.0);
+        ridge = ridge * ridge * ridge * ridge;
+
+        float3 N = normalize(variable_worldNormal.xyz);
+        float3 V = normalize(variable_toEye.xyz);
+        float NoV = clamp(dot(N, V), 0.0, 1.0);
+        float rim = pow(1.0 - NoV, materialParams.rimPower);
+
+        float heat = smoothstep(0.3, 0.75, n);
+        float3 radiance = mix(materialParams.deepColor, materialParams.hotColor, heat);
+        radiance += materialParams.hotColor * ridge * 0.9;
+        // Limb brightening: the edge of a glowing ball is the brightest part of it.
+        radiance *= 0.75 + 0.5 * (1.0 - NoV);
+        radiance += materialParams.rimColor * rim;
+        material.baseColor = float4(radiance, 1.0);
+    }
+}

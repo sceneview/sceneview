@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `cosmos` demo (registered by `CosmosFragment.kt`). Android's resource
+     merger fans every `res/values/*.xml` file in, so `R.string.demo_cosmos_title` etc.
+     remains globally resolvable — see #1870. -->
+<resources>
+    <string name="demo_cosmos_title">Cosmos</string>
+    <string name="demo_cosmos_subtitle">Watch a galaxy, a star and particle storms glow</string>
+    <string name="demo_cosmos_loading">Lighting up the cosmos</string>
+</resources>
