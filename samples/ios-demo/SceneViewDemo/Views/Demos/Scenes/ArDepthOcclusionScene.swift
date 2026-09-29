@@ -6,7 +6,7 @@
 // @available   true
 // @icon        square.3.layers.3d.down.right
 // @iosOnly     true
-// @order       41
+// @order       42
 // @tags        ar,depth,occlusion,arcore
 import SwiftUI
 

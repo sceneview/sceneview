@@ -6,7 +6,7 @@
 // @available   true
 // @icon        face.smiling.inverse
 // @iosOnly     true
-// @order       38
+// @order       39
 // @tags        ar,face,anchor,tracking,accessories
 import SwiftUI
 

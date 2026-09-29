@@ -6,7 +6,7 @@
 // @available   true
 // @icon        figure.walk.motion
 // @iosOnly     true
-// @order       40
+// @order       41
 // @tags        ar,body,pose,anchor,skeleton
 import SwiftUI
 

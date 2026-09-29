@@ -99,9 +99,8 @@ enum HomeCatalogue {
     /// "Offline placeholder" to show without an API key. They open the Create
     /// section of a keyed build (every store and CI build is keyed) — where
     /// Android shows them — and stay off the home of a keyless local build.
-    static let hiddenWithoutSketchfabKey: [String: String] = [
-        "materials": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
-    ]
+    /// Empty since Materials became a procedural sphere wall, as on Android.
+    static let hiddenWithoutSketchfabKey: [String: String] = [:]
 
     /// Featured pictures anchored at their leading edge rather than centred when
     /// the landscape preview is cropped to the 4:5 portrait card — Android's

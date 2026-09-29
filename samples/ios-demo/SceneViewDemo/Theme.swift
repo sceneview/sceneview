@@ -136,6 +136,11 @@ enum SceneViewTokens {
         /// The Rolling Balls tray rails — `accent-deep` (#5A32A3), Android's
         /// `SceneViewColors.AccentDeep`.
         static let trayRail = UIColor(red: 0x5A / 255, green: 0x32 / 255, blue: 0xA3 / 255, alpha: 1)
+
+        /// The Lighting stage floor — Android's `LightingStage.FLOOR_COLOR` (#2A3346): a
+        /// blue-grey slate dark enough for a contact shadow, light enough to catch the key.
+        /// Fixed in both themes, like the stage.
+        static let lightingFloor = UIColor(red: 0x2A / 255, green: 0x33 / 255, blue: 0x46 / 255, alpha: 1)
     }
 
     /// `DESIGN.md` — Spatial Gallery overlay colours.
