@@ -1045,6 +1045,9 @@ fun SceneView(
                             ) { frameRateGate.shouldRender(active, frameTimeNanos) }
                         }
                     ) {
+                        // Before any node's onFrame: the animator commits this frame then find the
+                        // TransformManager already sorted and reindex nothing (Engine.kt).
+                        engine.sortTransformsIfUnsorted()
                         modelLoader.updateLoad()
                         childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
 

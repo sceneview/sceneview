@@ -1,8 +1,10 @@
 package io.github.sceneview.demo.hdpack
 
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.NetworkType
 import androidx.work.WorkInfo
+import androidx.work.workDataOf
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -201,6 +203,17 @@ class HdPackStoreTest {
         assertTrue(HdPack.PREFETCH_IDS.all { bundled.asset(it) != null })
     }
 
+    @Test fun `a job carries its own ids to the worker`() {
+        val ids = setOf("woolly-mammoth", "perseverance")
+        assertEquals(ids, HdPack.idsToFetch(HdPack.inputFor(ids)))
+    }
+
+    @Test fun `a legacy job with no id list fetches the prefetch set, never the whole pack`() {
+        // The pre-per-model `hd-pack-download` job was queued with no input at all.
+        assertEquals(HdPack.PREFETCH_IDS, HdPack.idsToFetch(Data.EMPTY))
+        assertEquals(HdPack.PREFETCH_IDS, HdPack.idsToFetch(workDataOf("unrelated" to "x")))
+    }
+
     @Test fun `an interrupted download resumes from the part file`() = runBlocking {
         MockWebServer().use { server ->
             val half = payload.size / 2
@@ -332,6 +345,24 @@ class HdPackStoreTest {
             HdPackStatus.Ready,
             HdPack.statusOf(true, null, work(WorkInfo.State.FAILED, NetworkType.CONNECTED)),
         )
+    }
+
+    @Test fun `a model's own job reaching FAILED leaves the pack status unchanged`() {
+        // The unique jobs WorkManager holds: the Wi-Fi prefetch parked, and one model's pill job.
+        val prefetch = HdPack.PREFETCH_WORK to work(WorkInfo.State.ENQUEUED, NetworkType.UNMETERED)
+        val modelJob = HdPack.assetWorkName("apollo11-exterior")
+        val query = HdPack.packStatusQuery()
+        // What `status` sees: only the jobs its query names, as WorkManager filters them.
+        fun packStatus(jobs: Map<String, WorkInfo>) = HdPack.statusOf(
+            false,
+            null,
+            HdPack.relevantJob(jobs.filterKeys { it in query.uniqueWorkNames }.values.toList()),
+        )
+        val before = packStatus(mapOf(prefetch, modelJob to work(WorkInfo.State.RUNNING, NetworkType.CONNECTED)))
+        val after = packStatus(mapOf(prefetch, modelJob to work(WorkInfo.State.FAILED, NetworkType.CONNECTED)))
+        assertEquals(HdPackStatus.WaitingForWifi, before)
+        assertEquals(before, after)
+        assertFalse(modelJob in query.uniqueWorkNames)
     }
 
     @Test fun `a model's pill reads its own file and its own job`() {

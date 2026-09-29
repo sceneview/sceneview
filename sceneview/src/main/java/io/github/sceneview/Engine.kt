@@ -305,19 +305,69 @@ fun Engine.safeRecycleEntity(@FilamentEntity entity: Entity) =
 // Safe under this codebase's existing main-thread-only assumption for anything touching Filament
 // JNI (see e.g. the @MainThread annotations on ModelLoader's Filament-touching functions,
 // ModelLoader.kt's createInstance and others).
-private val transformGenerationByEngine =
-    java.util.WeakHashMap<Engine, java.util.concurrent.atomic.AtomicInteger>()
 private val lightGenerationByEngine =
     java.util.WeakHashMap<Engine, java.util.concurrent.atomic.AtomicInteger>()
 private val renderableGenerationByEngine =
     java.util.WeakHashMap<Engine, java.util.concurrent.atomic.AtomicInteger>()
 
-internal fun Engine.transformGeneration(): Int =
-    transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }.get()
+// TransformManager has a second reindexing path besides destruction:
+// `commitLocalTransformTransaction()` walks the whole array and `swapNode()`s every child that sits
+// before its parent, so that world transforms resolve in one pass (`computeAllWorldTransforms`).
+// gltfio's `Animator.applyAnimation` and `applyCrossFade` open and commit such a transaction on
+// every call — from ModelNode's frame, from an app scrubbing a paused clip, from anywhere. A child
+// only gets ahead of its parent through a destroy (the swap-remove above) or a reparent
+// (`setParent` links, it never reorders), so each of those marks the order as unsorted. Until the
+// order is sorted again, the next commit can reindex any entity at all, and no cached handle can be
+// trusted across it: [TransformState.unsorted] tells `Node.transformInstance` /
+// `Node.parentInstance` to resolve fresh on every read instead. [sortTransformsIfUnsorted], at the
+// top of each SceneView frame, sorts once, bumps the generation once and lets the caches resume.
+//
+// Without this, an animated ModelNode added while another model was still alive, then that model
+// destroyed, pointed its root handle at one of its own meshes after the animator's first commit:
+// its transform went to the mesh, the root never moved, and a skinned model rendered as nothing.
+internal class TransformState {
+    /** Bumped every time the TransformManager array may have been reindexed. */
+    var generation = 0
+
+    /** A child may sit before its parent: the next transaction commit would reindex. */
+    var unsorted = false
+}
+
+private val transformStateByEngine = java.util.WeakHashMap<Engine, TransformState>()
+
+internal fun Engine.transformState(): TransformState =
+    transformStateByEngine.getOrPut(this) { TransformState() }
+
+internal fun Engine.transformGeneration(): Int = transformState().generation
 
 internal fun Engine.bumpTransformGeneration() {
-    transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
-        .incrementAndGet()
+    val state = transformState()
+    state.generation++
+    // The swap-remove that made this bump necessary can also leave a child ahead of its parent.
+    state.unsorted = true
+}
+
+/** Records that a TransformManager child may now sit before its parent in the packed array. */
+internal fun Engine.markTransformOrderUnsorted() {
+    transformState().unsorted = true
+}
+
+/**
+ * Puts TransformManager back in parent-before-child order if a destroy or a reparent may have
+ * broken it, and bumps the transform generation so cached handles are looked up again. Once per
+ * frame at most, before any node's `onFrame`: a teardown of a thousand entities pays one O(n)
+ * sort, not one per entity. A no-op while the order is known to be sorted.
+ *
+ * Library-group API, not app API: `arsceneview`'s frame loop calls it too.
+ */
+@androidx.annotation.RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+fun Engine.sortTransformsIfUnsorted() {
+    val state = transformState()
+    if (!state.unsorted) return
+    transformManager.openLocalTransformTransaction()
+    transformManager.commitLocalTransformTransaction()
+    state.unsorted = false
+    state.generation++
 }
 
 internal fun Engine.lightGeneration(): Int =

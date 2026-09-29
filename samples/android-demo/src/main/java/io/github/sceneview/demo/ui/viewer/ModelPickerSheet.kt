@@ -311,7 +311,9 @@ private fun PickerCard(
                     title,
                     style = SceneViewTokens.Type.card,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    // Two lines, as on iOS: "Apollo 11 Command Module" read "Apollo 11 Comman…"
+                    // on one. [CardRow] grows the whole row, so the two cards stay level.
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (subtitle != null) {
