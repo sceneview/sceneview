@@ -295,8 +295,8 @@ final class MaterialWall {
     /// The still frame QA mode and Reset land on — Android's `STATIC_SWEEP_PHASE`.
     static let staticSweepPhase: Double = 0.375
     /// Label chip scale: metres per SwiftUI point, so a 13 pt caption reads at about 13 pt
-    /// on the wall view.
-    private static let metresPerPoint: Float = 0.0042
+    /// on the wall view, and a chip (112 pt at most) stays inside the 0.6 m ball spacing.
+    private static let metresPerPoint: Float = 0.005
     private static let labelGap: Float = 0.035
     private static let namePrefix = "material-ball-"
 
@@ -444,7 +444,7 @@ final class MaterialWall {
             .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
             .padding(.horizontal, SceneViewTokens.Space.sm)
             .padding(.vertical, SceneViewTokens.Space.xs)
-            .frame(maxWidth: 104)
+            .frame(maxWidth: 112)
             .background(SceneViewTokens.HomeColor.surfaceContainer,
                         in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xs, style: .continuous))
             .fixedSize(horizontal: false, vertical: true)

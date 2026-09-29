@@ -439,9 +439,9 @@ struct LightingDemo: View {
         // reflection of the helmet, which is what seats it on the floor.
         var floorMaterial = PhysicallyBasedMaterial()
         floorMaterial.baseColor = .init(tint: SceneViewTokens.Stage.lightingFloor)
-        floorMaterial.roughness = 0.45
-        floorMaterial.metallic = 0
-        floorMaterial.specular = 0.55
+        floorMaterial.roughness = .init(floatLiteral: 0.45)
+        floorMaterial.metallic = .init(floatLiteral: 0)
+        floorMaterial.specular = .init(floatLiteral: 0.55)
         let floor = ModelEntity(
             mesh: .generatePlane(width: Self.floorSize, depth: Self.floorSize),
             materials: [floorMaterial]
