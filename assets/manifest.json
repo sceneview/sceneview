@@ -27,7 +27,11 @@
       "extensions": [
         ".usdz",
         ".hdr"
-      ]
+      ],
+      "needs": [
+        "android"
+      ],
+      "_why": "the iOS demo bundles ../android-demo/src/main/assets/models/shiba.glb"
     },
     "tv": {
       "dirs": [
@@ -35,7 +39,11 @@
       ],
       "extensions": [
         ".glb"
-      ]
+      ],
+      "needs": [
+        "android"
+      ],
+      "_why": "the TV app also packages ../android-demo/src/main/assets"
     },
     "web": {
       "dirs": [

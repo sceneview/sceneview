@@ -137,6 +137,21 @@ def materialise(src: Path, dest: Path) -> str:
     return "copy"
 
 
+def expand_scopes(manifest: dict, scopes: list[str]) -> list[str]:
+    """Add the scopes a requested scope `needs` (an app that bundles another app's files)."""
+    known = manifest["scopes"]
+    out: list[str] = []
+    todo = list(scopes)
+    while todo:
+        s = todo.pop(0)
+        if s not in known:
+            sys.exit(f"fetch-assets: unknown scope '{s}' (known: {', '.join(sorted(known))})")
+        if s not in out:
+            out.append(s)
+            todo.extend(known[s].get("needs", []))
+    return out
+
+
 def select(manifest: dict, scopes: list[str]) -> list[dict]:
     known = set(manifest["scopes"])
     for s in scopes:
@@ -311,8 +326,8 @@ def main() -> int:
                     help="add or refresh manifest entries for these files")
     ap.add_argument("--jobs", type=int, default=6)
     args = ap.parse_args()
-    scopes = [s for arg in args.scope for s in arg.split(",") if s]
     manifest = load_manifest()
+    scopes = expand_scopes(manifest, [s for arg in args.scope for s in arg.split(",") if s])
     if args.register:
         return cmd_register(manifest, args.register)
     if args.check:
