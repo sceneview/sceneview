@@ -13,12 +13,16 @@ on:
     paths:
       - 'SceneViewSwift/**'
       - 'samples/ios-demo/**'
+      - 'assets/manifest.json'
+      - 'tools/fetch-assets.sh'
       - '.github/workflows/ios.yml'
   pull_request:
     branches: [main]
     paths:
       - 'SceneViewSwift/**'
       - 'samples/ios-demo/**'
+      - 'assets/manifest.json'
+      - 'tools/fetch-assets.sh'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 
@@ -245,6 +249,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       # Same Xcode preference list and simulator resolver as the `build` job
       # above — see the comments there (#3174) before changing either.
@@ -378,6 +386,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       - name: Select Xcode
         run: |

@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 42,
+  "total": 41,
   "sections": [
     {
       "title": "3D models",
@@ -233,16 +233,6 @@
           "file": "Models/porsche_911.usdz",
           "name": "FREE 1975 Porsche 911 (930) Turbo",
           "author": "Karol Miklas",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",
-          "size": 12351092,
-          "note": ""
-        },
-        {
-          "file": "Models/porsche_911_turbo.usdz",
-          "name": "1975 Porsche 911 (930) Turbo",
-          "author": "Lionsharp Studios",
           "license": "CC-BY-4.0",
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",

@@ -44,7 +44,9 @@ Rules for the two GENERATED files:
   - Flag entries with missing required fields so they get fixed upstream.
 
 `--check` regenerates in memory and compares against the committed files
-without writing. It is a hard CI gate (`ci.yml` → `repo-hygiene`): CREDITS.md
+without writing. It is a hard CI gate (`ci.yml` → `build`, step "Check asset
+credits"; the `repo-hygiene` job that first ran it was deleted by #3244 and the
+gate ran nowhere until #4151): CREDITS.md
 is what discharges the attribution clause of every model's license, so a model
 added to catalog.json but never credited is a compliance gap, not a cosmetic
 one. Deterministic regenerate-and-compare has no false-positive risk, so it
@@ -68,6 +70,9 @@ from pathlib import Path
 ROOT = Path(os.environ.get("GENERATE_CREDITS_ROOT") or Path(__file__).resolve().parent.parent.parent)
 CATALOG = ROOT / "assets" / "catalog.json"
 CREDITS = ROOT / "assets" / "CREDITS.md"
+# Binary assets kept out of git (fetched by tools/fetch-assets.sh). They are
+# bundled whether or not they have been materialised in this working tree.
+MANIFEST = ROOT / "assets" / "manifest.json"
 
 # Licenses we are allowed to ship in an open-source project intended for
 # commercial distribution (Play Store, App Store, Maven Central).
@@ -94,7 +99,7 @@ UNSAFE_LICENSES = {
 # ─── Bundled scopes ───────────────────────────────────────────────────────────
 # A "bundled scope" is a directory whose entire contents ship inside a store
 # artefact, plus the CREDITS.md that travels with them. `assets/CREDITS.md`
-# lists all 90 catalogue models; only 19 files reach the APK. Crediting the
+# lists all 89 catalogue models; only 19 files reach the APK. Crediting the
 # catalogue in the APK would be noise, and crediting nothing is what we had —
 # so the APK copy is generated from the files that are actually there.
 ANDROID_ASSETS = "samples/android-demo/src/main/assets"
@@ -536,6 +541,14 @@ def render_catalog_credits(models: list[dict]) -> str:
     return "\n".join(lines) + "\n", len(complete), len(incomplete), len(unsafe)
 
 
+def manifest_sizes() -> dict[str, int]:
+    """Repo-relative path -> size of every file in assets/manifest.json."""
+    if not MANIFEST.exists():
+        return {}
+    with open(MANIFEST) as f:
+        return {e["path"]: e["size"] for e in json.load(f).get("files", [])}
+
+
 def scan_bundled(scope: dict) -> list[Path]:
     """Every file that ships inside the scope's artefact, sorted.
 
@@ -551,9 +564,13 @@ def scan_bundled(scope: dict) -> list[Path]:
     roots = [base / d for d in scope.get("subdirs", ())] or [base]
     out_abs = ROOT / scope["out"]
     out: list[Path] = []
-    for p in sorted(q for r in roots if r.is_dir() for q in r.rglob("*")):
-        if not p.is_file():
-            continue
+    on_disk = {q for r in roots if r.is_dir() for q in r.rglob("*") if q.is_file()}
+    # A file listed in assets/manifest.json ships in the artefact even when this
+    # checkout has not run tools/fetch-assets.sh yet: credit it all the same, so
+    # the generated files never depend on the state of the working tree.
+    fetched = {ROOT / rel for rel in manifest_sizes()}
+    in_roots = {p for p in fetched if any(r in p.parents for r in roots)}
+    for p in sorted(on_disk | in_roots):
         rel = p.relative_to(base).as_posix()
         if any(part.startswith(".") for part in rel.split("/")):
             continue
@@ -581,7 +598,7 @@ def classify_bundled(scope: dict, index: dict[str, dict]) -> tuple[list, list, l
     uncredited: list[str] = []
     for p in scan_bundled(scope):
         rel = p.relative_to(base).as_posix()
-        size = p.stat().st_size
+        size = p.stat().st_size if p.is_file() else manifest_sizes()[p.relative_to(ROOT).as_posix()]
         declared = NON_CATALOG_BUNDLED.get(p.name)
         if declared is not None:
             credited.append((rel, declared, size))
@@ -637,7 +654,8 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
     lines.append(f"contents of `{scope['assets_dir']}` by")
     lines.append(f"[`.claude/scripts/generate-credits.py`]({to_root}.claude/scripts/generate-credits.py).")
     lines.append("Re-run that script after adding, removing or re-compressing a bundled asset;")
-    lines.append("`ci.yml` → `repo-hygiene` fails if this file and the assets disagree.")
+    lines.append("`ci.yml` → `build` (step \"Check asset credits\") fails if this file and the")
+    lines.append("assets disagree.")
     lines.append("")
     total = len(credited) + len(blanket)
     lines.append(f"Assets bundled: **{total}**.")

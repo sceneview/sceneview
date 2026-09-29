@@ -125,6 +125,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       - name: Select Xcode
         run: |
@@ -379,6 +383,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      - name: Fetch binary assets (ios)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: ios
 
       - name: Select Xcode
         run: |

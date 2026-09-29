@@ -45,6 +45,8 @@
 		F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE31566D2309ACB52F2541CF /* HomeFilter.swift */; };
 		B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */; };
 		4D3AFF95252330C277928054 /* HomeHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251CDB4D89CD0202517E852 /* HomeHero.swift */; };
+		C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B001 /* HomeHeroFlight.swift */; };
+		C0DE4E50000000000000A002 /* HomeHeroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B002 /* HomeHeroScene.swift */; };
 		7E28E9DEA941B656301CDA67 /* DemoScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DDC7D4F688438DB5EBE4ED /* DemoScene.swift */; };
 		F962AD205078EAFC5201865B /* AnimationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C649EB882E1792036DA612 /* AnimationScene.swift */; };
 		96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63582A5C1EEB276B6E9CA85 /* ArAugmentedFacesScene.swift */; };
@@ -186,7 +188,6 @@
 		D10000000000000000000014 /* lamborghini_countach.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000014 /* lamborghini_countach.usdz */; };
 		D10000000000000000000015 /* nike_air_jordan.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000015 /* nike_air_jordan.usdz */; };
 		D10000000000000000000016 /* ferrari_f40.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000016 /* ferrari_f40.usdz */; };
-		D10000000000000000000017 /* porsche_911_turbo.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000017 /* porsche_911_turbo.usdz */; };
 		D10000000000000000000018 /* ps5_dualsense.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000018 /* ps5_dualsense.usdz */; };
 		D10000000000000000000019 /* tesla_cybertruck.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000019 /* tesla_cybertruck.usdz */; };
 		D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001A /* mercedes_a45_amg.usdz */; };
@@ -277,6 +278,8 @@
 		DE31566D2309ACB52F2541CF /* HomeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilter.swift; path = SceneViewDemo/Views/Home/HomeFilter.swift; sourceTree = SOURCE_ROOT; };
 		A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoMediaCard.swift; path = SceneViewDemo/Views/Home/DemoMediaCard.swift; sourceTree = SOURCE_ROOT; };
 		A251CDB4D89CD0202517E852 /* HomeHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHero.swift; path = SceneViewDemo/Views/Home/HomeHero.swift; sourceTree = SOURCE_ROOT; };
+		C0DE4E50000000000000B001 /* HomeHeroFlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroFlight.swift; path = SceneViewDemo/Views/Home/HomeHeroFlight.swift; sourceTree = SOURCE_ROOT; };
+		C0DE4E50000000000000B002 /* HomeHeroScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroScene.swift; path = SceneViewDemo/Views/Home/HomeHeroScene.swift; sourceTree = SOURCE_ROOT; };
 		5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComingSoonScreen.swift; path = SceneViewDemo/Views/ComingSoonScreen.swift; sourceTree = SOURCE_ROOT; };
 		6C214F8F9A1B35560E551895 /* SketchfabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabModels.swift; path = SceneViewDemo/Services/SketchfabModels.swift; sourceTree = SOURCE_ROOT; };
 		8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabService.swift; path = SceneViewDemo/Services/SketchfabService.swift; sourceTree = SOURCE_ROOT; };
@@ -391,7 +394,6 @@
 		D20000000000000000000014 /* lamborghini_countach.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = lamborghini_countach.usdz; sourceTree = "<group>"; };
 		D20000000000000000000015 /* nike_air_jordan.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = nike_air_jordan.usdz; sourceTree = "<group>"; };
 		D20000000000000000000016 /* ferrari_f40.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = ferrari_f40.usdz; sourceTree = "<group>"; };
-		D20000000000000000000017 /* porsche_911_turbo.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = porsche_911_turbo.usdz; sourceTree = "<group>"; };
 		D20000000000000000000018 /* ps5_dualsense.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = ps5_dualsense.usdz; sourceTree = "<group>"; };
 		D20000000000000000000019 /* tesla_cybertruck.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = tesla_cybertruck.usdz; sourceTree = "<group>"; };
 		D2000000000000000000001A /* mercedes_a45_amg.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = mercedes_a45_amg.usdz; sourceTree = "<group>"; };
@@ -530,6 +532,8 @@
 				DE31566D2309ACB52F2541CF /* HomeFilter.swift */,
 				A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */,
 				A251CDB4D89CD0202517E852 /* HomeHero.swift */,
+				C0DE4E50000000000000B001 /* HomeHeroFlight.swift */,
+				C0DE4E50000000000000B002 /* HomeHeroScene.swift */,
 			);
 			name = Home;
 			sourceTree = "<group>";
@@ -745,7 +749,6 @@
 				D20000000000000000000014 /* lamborghini_countach.usdz */,
 				D20000000000000000000015 /* nike_air_jordan.usdz */,
 				D20000000000000000000016 /* ferrari_f40.usdz */,
-				D20000000000000000000017 /* porsche_911_turbo.usdz */,
 				D20000000000000000000018 /* ps5_dualsense.usdz */,
 				D20000000000000000000019 /* tesla_cybertruck.usdz */,
 				D2000000000000000000001A /* mercedes_a45_amg.usdz */,
@@ -807,6 +810,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70000010000000000000003 /* Build configuration list for PBXNativeTarget "SceneViewDemo" */;
 			buildPhases = (
+				A60000010000000000000005 /* Fetch assets */,
 				A60000010000000000000004 /* Collate iOS demos */,
 				A60000010000000000000003 /* Validate store secrets */,
 				A60000010000000000000001 /* Sources */,
@@ -940,7 +944,6 @@
 				D10000000000000000000014 /* lamborghini_countach.usdz in Resources */,
 				D10000000000000000000015 /* nike_air_jordan.usdz in Resources */,
 				D10000000000000000000016 /* ferrari_f40.usdz in Resources */,
-				D10000000000000000000017 /* porsche_911_turbo.usdz in Resources */,
 				D10000000000000000000018 /* ps5_dualsense.usdz in Resources */,
 				D10000000000000000000019 /* tesla_cybertruck.usdz in Resources */,
 				D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */,
@@ -970,6 +973,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A60000010000000000000005 /* Fetch assets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../assets/manifest.json",
+			);
+			name = "Fetch assets";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Models/ and Environments/ are not in git: they live on the `assets-v1`\n# GitHub Release, listed in assets/manifest.json. Materialise them before\n# Copy Bundle Resources so every build (Xcode, xcodebuild, fastlane, CI)\n# embeds the same bytes, or fails here instead of shipping without models.\n# Once ~/.cache/sceneview-assets is warm this is an offline hash check.\nset -eu\nbash \"${SRCROOT}/../../tools/fetch-assets.sh\" --scope ios\n";
+			showEnvVarsInLog = 0;
+		};
 		A60000010000000000000004 /* Collate iOS demos */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 0;
@@ -1043,6 +1067,8 @@
 				F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */,
 				B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */,
 				4D3AFF95252330C277928054 /* HomeHero.swift in Sources */,
+				C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */,
+				C0DE4E50000000000000A002 /* HomeHeroScene.swift in Sources */,
 				A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */,
 				C10000000000000000000002 /* DemoItem.swift in Sources */,
 				C10000000000000000000030 /* FavoritesManager.swift in Sources */,
