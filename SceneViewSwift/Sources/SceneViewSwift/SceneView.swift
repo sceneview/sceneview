@@ -158,6 +158,10 @@ public struct SceneView: View {
     // Default `false` — pan-then-orbit keeps the panned pivot. Closes #1236.
     var recentersTargetOnOrbit: Bool = false
 
+    // Bloom post-process (iOS / macOS 26+). `.disabled` by default, so no
+    // existing scene pays for the pass. Set via `.bloom(_:)`.
+    var bloomOptions: BloomOptions = .disabled
+
     // Identity of the value the `content` closure builds from. `nil` (the
     // default) means the content is built exactly once, on `RealityView`
     // `make:` — the behaviour every existing caller gets. Set via
@@ -221,7 +225,8 @@ public struct SceneView: View {
             requestedCameraPoseGeneration: requestedCameraPoseGeneration,
             onCameraChanged: onCameraChanged,
             cameraGesturesEnabled: cameraGesturesEnabled,
-            onEntityTappedHit: onEntityTappedHit
+            onEntityTappedHit: onEntityTappedHit,
+            bloomOptions: bloomOptions
         )
     }
 
@@ -438,6 +443,23 @@ public struct SceneView: View {
     public func renderQuality(_ preset: RenderQuality) -> SceneView {
         var copy = self
         copy.renderQualityPreset = preset
+        return copy
+    }
+
+    /// Adds a bloom pass: pixels brighter than the threshold bleed a soft glow onto their
+    /// neighbours. Pair it with unlit or emissive colours above `1.0` — that is what blooms.
+    ///
+    /// Mirrors the Android `View.bloomOptions` fields (`strength`, `levels`, `threshold`).
+    /// Runs on iOS 26 / macOS 26 and later (RealityKit's `customPostProcessing`); on
+    /// earlier systems the scene renders unchanged. Unavailable on visionOS.
+    ///
+    /// ```swift
+    /// SceneView { root in /* glowing content */ }
+    ///     .bloom(BloomOptions(strength: 0.45))
+    /// ```
+    public func bloom(_ options: BloomOptions) -> SceneView {
+        var copy = self
+        copy.bloomOptions = options
         return copy
     }
 
@@ -846,6 +868,9 @@ private struct SceneViewRepresentation: View {
     /// ``SceneView/onEntityTapHit(_:)``.
     let onEntityTappedHit: ((SceneTapHit) -> Void)?
 
+    /// Bloom pass settings, from ``SceneView/bloom(_:)``.
+    let bloomOptions: BloomOptions
+
     /// Mutable camera-orbit state, held in a **reference type** so mutating it
     /// (auto-rotate, drag, pinch) does NOT invalidate the SwiftUI body. The
     /// value default `CameraControls(mode: .orbit)` uses the struct's own
@@ -992,6 +1017,8 @@ private struct SceneViewRepresentation: View {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
+        /// Last ``BloomOptions`` installed on the content (`nil` until the first apply).
+        var bloom: BloomOptions? = nil
         /// Last camera state pushed onto the RealityKit entities by
         /// ``applyCamera()``. Compared (with float tolerance) each frame so a
         /// no-op camera apply — the common case while idle, and on every
@@ -1078,6 +1105,11 @@ private struct SceneViewRepresentation: View {
         var fittedDiagonal: Float = 0
     }
     @State private var appliedCache = AppliedCache()
+
+    #if !os(visionOS)
+    /// Metal pipelines and textures of the bloom pass, kept across frames and option changes.
+    @State private var bloomResources = BloomResources()
+    #endif
 
     /// Loaded HDR resource cached for the `RealityView.update:` closure so
     /// it can apply `content.environment = .skybox(resource)` every frame
@@ -1435,8 +1467,10 @@ private struct SceneViewRepresentation: View {
         #else
         RealityView { realityContent in
             setupScene(&realityContent)
+            applyBloom(&realityContent)
         } update: { content in
             applyCamera()
+            applyBloom(&content)
             // Re-run the content closure if `.contentID(_:)` moved. Duplicated
             // from the `.task(id:)` on purpose: `update:` always runs on the
             // CURRENT view, so it closes the one ordering hole the task cannot
@@ -1484,6 +1518,19 @@ private struct SceneViewRepresentation: View {
         }
         #endif
     }
+
+    #if !os(visionOS)
+    /// Installs (or removes) the bloom pass. Diffed against the last applied options so an
+    /// unchanged `update:` tick does not rebuild the effect.
+    private func applyBloom(_ content: inout RealitySceneContent) {
+        guard #available(iOS 26.0, macOS 26.0, *) else { return }
+        guard appliedCache.bloom != bloomOptions else { return }
+        appliedCache.bloom = bloomOptions
+        content.renderingEffects.customPostProcessing = bloomOptions.isEnabled
+            ? .effect(BloomPostProcess(options: bloomOptions, resources: bloomResources))
+            : .none
+    }
+    #endif
 
     // MARK: - Scene Setup
 
