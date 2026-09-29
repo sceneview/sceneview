@@ -173,13 +173,6 @@ fun LightingLabDemo(onBack: () -> Unit) {
     val cameraNode = rememberCameraNode(engine)
     val heroInstance = rememberModelInstance(modelLoader, LightingStage.HERO_MODEL)
 
-    val floorMaterial = rememberMaterialInstance(
-        materialLoader,
-        color = LightingStage.FLOOR_COLOR,
-        metallic = 0f,
-        roughness = LightingStage.FLOOR_ROUGHNESS,
-        reflectance = LightingStage.FLOOR_REFLECTANCE,
-    )
     val chromeMaterial = rememberMaterialInstance(
         materialLoader,
         color = Color.White,
@@ -279,7 +272,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
 
     SideEffect {
         // The fade's sky sample is sharp only near the far plane (LightingStage.STAGE_FAR).
-        cameraNode.far = LightingStage.STAGE_FAR
+        if (cameraNode.far != LightingStage.STAGE_FAR) cameraNode.far = LightingStage.STAGE_FAR
         benchEnvironment?.indirectLight?.let { light ->
             light.setRotation(LightingStage.iblRotation(effectiveRotation))
             light.intensity = iblIntensity
@@ -310,7 +303,11 @@ fun LightingLabDemo(onBack: () -> Unit) {
                 view = view,
                 cameraDistance = eyeDistance[0].takeIf { it.isFinite() } ?: orbitRadius,
                 sky = environment.skybox.takeIf { showSky },
+                ground = BENCH_GROUND_TONE,
             )
+        } else {
+            // `FogNode` takes over; without this its fog would keep the sky texture's colour.
+            StageFade.release(view)
         }
     }
 
@@ -520,6 +517,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
                             view = view,
                             cameraDistance = distance,
                             sky = environment.skybox.takeIf { showSky },
+                            ground = BENCH_GROUND_TONE,
                         )
                         cameraNode.requestRender()
                     }
@@ -547,7 +545,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
                 }
 
                 // ── The stage, identical to the showcase's ───────────────────────────────────
-                LightingStageFloor(floorMaterial)
+                LightingStageFloor()
                 heroInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
@@ -607,6 +605,9 @@ private fun SectionHeader(text: String) {
 
 /** The bench IBL: the photo studio, so the knobs act on a neutral, legible baseline. */
 private const val BENCH_ENVIRONMENT_FILE = "environments/studio_warm_2k.hdr"
+
+// The bench photograph's ground, which the far floor fades into when its sky is shown (#4072).
+private val BENCH_GROUND_TONE = LightingStage.groundToneFor(BENCH_ENVIRONMENT_FILE)
 
 private const val BENCH_KEY_AZIMUTH = 48f
 private const val BENCH_CONE_INNER = 0.44f

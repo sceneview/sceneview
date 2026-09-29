@@ -77,21 +77,29 @@ object LightingStage {
      *
      * Filament fits a directional light's shadow map to the shadow receivers in view; a 240 m
      * receiver would spread the Sun rig's map over the whole floor and blur the helmet's contact
-     * shadow away. This inset keeps the map on the stage. It is the same material, and its top
-     * sits [SHADOW_FLOOR_LIFT] above the big floor, so its sides are never visible; 8 m holds the
-     * helmet's shadow down to a sun about 7° above the horizon.
+     * shadow away. This inset keeps the map on the stage; 8 m holds the helmet's shadow down to a
+     * sun about 7° above the horizon.
+     *
+     * The inset is a side-less plane lying exactly on [FLOOR_TOP], in the floor's own material,
+     * and wins the depth test through a polygon offset ([SHADOW_FLOOR_DEPTH_OFFSET]) rather than
+     * by sitting higher. An earlier cut lifted an 8 m slab 2 mm above the floor: from the far end
+     * of a pinch its lit side faces drew a jagged dotted line in front of the helmet — a floor
+     * edge again, in a new place. A plane with no sides, on the same plane, has no edge to draw.
      */
     const val SHADOW_FLOOR_SIZE: Float = 8f
 
-    /** Height of the shadow inset above the big floor — enough to never z-fight, too thin to see. */
-    const val SHADOW_FLOOR_LIFT: Float = 0.002f
+    /**
+     * Polygon offset pulling the shadow inset toward the eye, in `glPolygonOffset` units (Filament
+     * flips the sign for its reversed depth). Only the inset carries it, so it wins over the big
+     * floor it lies on at every distance and angle the orbit allows, without being raised.
+     */
+    const val SHADOW_FLOOR_DEPTH_OFFSET: Float = -2f
 
-    /** Centre of the shadow-receiving inset, so its top lands exactly on [FLOOR_TOP]. */
+    /** Centre of the big floor slab, so its top face lands exactly on [FLOOR_TOP]. */
     val floorCenter: Position get() = Position(0f, FLOOR_TOP - FLOOR_THICKNESS / 2f, 0f)
 
-    /** Centre of the big floor, [SHADOW_FLOOR_LIFT] below the inset. */
-    val outerFloorCenter: Position
-        get() = Position(0f, FLOOR_TOP - SHADOW_FLOOR_LIFT - FLOOR_THICKNESS / 2f, 0f)
+    /** The shadow inset's plane: [FLOOR_TOP], coplanar with the big floor's top face. */
+    val shadowFloorCenter: Position get() = Position(0f, FLOOR_TOP, 0f)
 
     /**
      * Floor material — a dark, faintly polished studio sweep.
@@ -352,6 +360,15 @@ object LightingStage {
     /** The environment both demos open on — neutral, bright, and flattering to a metal helmet. */
     val defaultEnvironment: EnvironmentOption get() = environments.first()
 
+    /**
+     * The tone the far floor fades into under the photograph [file], when that photograph is
+     * drawn: its hand-picked ground colour ([EnvironmentOption.swatchBottom]). The photographs
+     * the user picks are rooms and streets whose lower half holds windows and lamps, and a
+     * floor sampling them washes out to white facing the window (#4072); only the Sun rig's
+     * three skies, whose ground is dark and even, keep the sampled fade.
+     */
+    fun groundToneFor(file: String): Color? = environments.firstOrNull { it.file == file }?.swatchBottom
+
     /** The environment the lab's local reflection probe overrides with — deliberately unmissable. */
     const val PROBE_ENVIRONMENT_FILE: String = "environments/sunset_2k.hdr"
 
@@ -477,6 +494,27 @@ object LightingStage {
      * whatever the far plane, and nothing on the stage is further than the floor.
      */
     const val STAGE_FAR: Float = FLOOR_SIZE / 2f
+
+    /**
+     * Share of the sky's brightness the faded floor takes when a photograph is behind it — see
+     * `StageFade.apply`'s `skyTint`. Well under 1 so the far floor reads as ground in the sky's
+     * tone rather than as the sky itself, blown out; the Image rig and the Lab use this one.
+     */
+    const val STAGE_FADE_SKY_TINT: Float = 0.45f
+
+    /**
+     * [STAGE_FADE_SKY_TINT] for the Sun rig at [hour]: lower at golden hour, whose sunset sky
+     * holds a sun low enough to bleed into the floor's samples, and lowest at night, whose sky is
+     * a floodlit rooftop — at a full pinch-out its lamps washed the whole floor white.
+     */
+    fun stageFadeSkyTint(hour: Float): Float = when {
+        hour < NIGHT_END_HOUR || hour >= NIGHT_START_HOUR -> NIGHT_FADE_SKY_TINT
+        hour < GOLDEN_MORNING_END_HOUR || hour >= GOLDEN_EVENING_START_HOUR -> GOLDEN_FADE_SKY_TINT
+        else -> STAGE_FADE_SKY_TINT
+    }
+
+    private const val GOLDEN_FADE_SKY_TINT: Float = 0.35f
+    private const val NIGHT_FADE_SKY_TINT: Float = 0.2f
 
     private const val MIN_FADE_PATH: Float = 2f
 

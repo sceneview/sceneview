@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos.internal
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
@@ -8,7 +10,9 @@ import com.google.android.filament.Skybox
 import com.google.android.filament.View
 import io.github.sceneview.SceneScope
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Size
+import io.github.sceneview.sample.rememberMaterialInstance
 
 /**
  * The lighting stage's fade to infinity (#4072): the floor dissolves into whatever is behind
@@ -23,7 +27,8 @@ import io.github.sceneview.math.Size
  * - it is cut off past the floor ([LightingStage.STAGE_FADE_CUTOFF]), so the skybox — at
  *   infinity — is never fogged and stays the photograph it is;
  * - its colour is the background's: with a sky drawn, the sky's own picture sampled in the view
- *   direction (`skyColor`), so the floor runs into the photograph at the horizon without a seam;
+ *   direction (`skyColor`), so the floor runs into the photograph at the horizon without a seam
+ *   — or, under a photographed room or street, that photograph's ground tone (see `ground`);
  *   with no sky, the stage colour, which the backdrop is painted in too ([stageBackdrop]).
  *
  * Every call is a raw `View` write — main thread, like every Filament call — and asks for no
@@ -32,9 +37,10 @@ import io.github.sceneview.math.Size
 object StageFade {
 
     /** The stage colour as the linear RGB Filament works in — `stage-background` in DESIGN.md. */
-    private val stageLinear: FloatArray = SceneViewTokens.Stage.background
-        .convert(ColorSpaces.LinearSrgb)
-        .let { floatArrayOf(it.red, it.green, it.blue) }
+    private val stageLinear: FloatArray = SceneViewTokens.Stage.background.toLinear()
+
+    private fun Color.toLinear(): FloatArray =
+        convert(ColorSpaces.LinearSrgb).let { floatArrayOf(it.red, it.green, it.blue) }
 
     /**
      * Applies the fade for an eye [cameraDistance] from the orbit target.
@@ -44,16 +50,36 @@ object StageFade {
      *   the mip from the fragment's distance, so the far floor takes the sky's sharp picture right
      *   below the horizon while the near fade stays soft. The blurred IBL (`fogColorFromIbl`
      *   alone) averages the whole environment instead, and meets a dark treeline or a bright
-     *   studio wall at a hard line. The tint is neutral: Filament scales the fog's sample by the
-     *   IBL's intensity, and it draws the skybox at that same intensity whenever an IBL is set
-     *   (the skybox's own `intensity` is ignored then), so the two already agree.
+     *   studio wall at a hard line.
+     * @param skyTint how much of that sky's brightness the far floor takes, from
+     *   [LightingStage.stageFadeSkyTint]. Filament scales the fog's sample by the IBL's intensity
+     *   and draws the skybox at that same intensity, so 1 would make the far floor as bright as
+     *   the sky itself — and since a floor looks *down*, the sample is the photograph's lower
+     *   half, whose blurred mips average in the sun and every lamp: at a full pinch-out the whole
+     *   floor turned a flat, blown-out white, even at night. Under 1, the ground stays darker
+     *   than the sky, as real ground does, and meets it at a horizon instead of dissolving into
+     *   a glare. Ignored when [sky] is null.
+     * @param ground a solid ground tone to fade into instead of the sky sample, for a sky that is
+     *   a photograph of a room or a street rather than of the sky: their lower half holds windows
+     *   and lamps many times brighter than the rest, no single [skyTint] keeps both the floor
+     *   under a window and the floor under a wall readable, and facing the window at a full
+     *   pinch-out turned the whole floor white. With a ground tone the floor meets the
+     *   photograph at a horizon — which is what a floor under a photograph is. Ignored when
+     *   [sky] is null.
      */
     fun apply(
         view: View,
         cameraDistance: Float,
         sky: Skybox?,
+        skyTint: Float = LightingStage.STAGE_FADE_SKY_TINT,
+        ground: Color? = null,
     ) {
-        val skyTexture = sky?.texture
+        val skyTexture = sky?.texture?.takeIf { ground == null }
+        val tone: FloatArray? = when {
+            sky == null -> stageLinear
+            ground != null -> ground.toLinear()
+            else -> null
+        }
         view.fogOptions = view.fogOptions.also { fog ->
             fog.enabled = true
             fog.distance = LightingStage.stageFadeStart(cameraDistance)
@@ -65,16 +91,32 @@ object StageFade {
             fog.height = 0f
             fog.inScatteringSize = -1f
             fog.skyColor = skyTexture
-            fog.fogColorFromIbl = sky != null
-            if (sky != null) {
-                fog.color[0] = 1f
-                fog.color[1] = 1f
-                fog.color[2] = 1f
+            fog.fogColorFromIbl = skyTexture != null
+            if (tone == null) {
+                fog.color[0] = skyTint
+                fog.color[1] = skyTint
+                fog.color[2] = skyTint
             } else {
-                fog.color[0] = stageLinear[0]
-                fog.color[1] = stageLinear[1]
-                fog.color[2] = stageLinear[2]
+                fog.color[0] = tone[0]
+                fog.color[1] = tone[1]
+                fog.color[2] = tone[2]
             }
+        }
+    }
+
+    /**
+     * Hands the view's fog over to another writer — the Lab's `FogNode` — by clearing what only
+     * the stage fade sets: `FogNode` writes its own colour, density and distances, but not the
+     * sky texture, the opacity cap or the height, and a sky texture left behind would keep
+     * colouring its fog with the photograph.
+     */
+    fun release(view: View) {
+        view.fogOptions = view.fogOptions.also { fog ->
+            fog.skyColor = null
+            fog.fogColorFromIbl = false
+            fog.maximumOpacity = 1f
+            fog.height = 0f
+            fog.inScatteringSize = -1f
         }
     }
 
@@ -91,30 +133,47 @@ object StageFade {
 }
 
 /**
- * The lighting stage's floor, identical on both lighting screens: a 240 m floor that the stage
- * fade dissolves before its edge, with the shadow-receiving inset on top of it (see
- * [LightingStage.SHADOW_FLOOR_SIZE] for why the two are split). Neither casts: there is nothing
- * under the floor to shade.
+ * The lighting stage's floor, identical on both lighting screens: a 240 m slab that the stage
+ * fade dissolves before its edge, and the shadow-receiving inset lying on it (see
+ * [LightingStage.SHADOW_FLOOR_SIZE] for why the two are split and why the inset is a plane).
+ * Neither casts: there is nothing under the floor to shade.
+ *
+ * Both wear the floor material ([LightingStage.FLOOR_COLOR]); the inset has its own instance
+ * because the polygon offset that lets it win the depth test is set per instance.
  */
 @Composable
-fun SceneScope.LightingStageFloor(materialInstance: MaterialInstance) {
+fun SceneScope.LightingStageFloor() {
+    val floorMaterial = rememberFloorMaterial(materialLoader)
+    val insetMaterial = rememberFloorMaterial(materialLoader)
+    remember(insetMaterial) {
+        insetMaterial.setPolygonOffset(
+            LightingStage.SHADOW_FLOOR_DEPTH_OFFSET,
+            LightingStage.SHADOW_FLOOR_DEPTH_OFFSET,
+        )
+    }
     CubeNode(
         size = Size(LightingStage.FLOOR_SIZE, LightingStage.FLOOR_THICKNESS, LightingStage.FLOOR_SIZE),
-        materialInstance = materialInstance,
-        position = LightingStage.outerFloorCenter,
+        materialInstance = floorMaterial,
+        position = LightingStage.floorCenter,
         apply = {
             isShadowCaster = false
             isShadowReceiver = false
         },
     )
-    CubeNode(
-        size = Size(
-            LightingStage.SHADOW_FLOOR_SIZE,
-            LightingStage.FLOOR_THICKNESS,
-            LightingStage.SHADOW_FLOOR_SIZE,
-        ),
-        materialInstance = materialInstance,
-        position = LightingStage.floorCenter,
+    PlaneNode(
+        size = Size(x = LightingStage.SHADOW_FLOOR_SIZE, y = 0f, z = LightingStage.SHADOW_FLOOR_SIZE),
+        materialInstance = insetMaterial,
+        position = LightingStage.shadowFloorCenter,
         apply = { isShadowCaster = false },
     )
 }
+
+@Composable
+private fun rememberFloorMaterial(materialLoader: MaterialLoader): MaterialInstance =
+    rememberMaterialInstance(
+        materialLoader,
+        color = LightingStage.FLOOR_COLOR,
+        metallic = 0f,
+        roughness = LightingStage.FLOOR_ROUGHNESS,
+        reflectance = LightingStage.FLOOR_REFLECTANCE,
+    )

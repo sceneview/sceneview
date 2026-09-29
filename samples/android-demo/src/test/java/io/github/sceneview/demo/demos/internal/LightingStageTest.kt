@@ -47,6 +47,25 @@ class LightingStageTest {
     }
 
     @Test
+    fun `the faded floor stays darker than the sky, darkest at night`() {
+        val night = LightingStage.stageFadeSkyTint(4f)
+        val golden = LightingStage.stageFadeSkyTint(18.5f)
+        val day = LightingStage.stageFadeSkyTint(12f)
+        assertTrue("day $day", day < 1f)
+        assertTrue("golden $golden vs day $day", golden <= day)
+        assertTrue("night $night vs golden $golden", night < golden)
+        assertTrue("night $night", night > 0f)
+    }
+
+    @Test
+    fun `every pickable photograph has a ground tone for the fade`() {
+        for (option in LightingStage.environments) {
+            assertEquals(option.swatchBottom, LightingStage.groundToneFor(option.file))
+        }
+        assertEquals(null, LightingStage.groundToneFor("environments/unknown.hdr"))
+    }
+
+    @Test
     fun `the fade starts behind the subject`() {
         val distance = 3.5f
         // Hero and probes sit within 0.4 m of the orbit target.
