@@ -122,7 +122,13 @@ class HdPackStoreTest {
     }
 
     @Test fun `the pill reads its own file's progress, not the pack's`() {
-        val transfer = HdTransfer(doneBytes = 60, totalBytes = 100, assetId = "mammoth", assetDoneBytes = 10, assetBytes = 40)
+        val transfer = HdTransfer(
+            doneBytes = 60,
+            totalBytes = 100,
+            assetId = "mammoth",
+            assetDoneBytes = 10,
+            assetBytes = 40,
+        )
         assertEquals(0.6f, transfer.fraction)
         assertEquals(0.25f, transfer.fractionOf("mammoth"))
         // Another file is on the wire: this one is queued, not at 60 %.

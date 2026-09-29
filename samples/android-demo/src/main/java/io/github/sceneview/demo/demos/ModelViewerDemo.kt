@@ -664,7 +664,9 @@ private fun SingleModelSection(
         val location = hdModel?.location
             ?.takeIf { streamedModelInstance == null && activeModelInstance === hdModel?.instance }
         location?.let { loc ->
-            hdStore?.manifest?.assets?.firstOrNull { android.net.Uri.fromFile(hdStore.fileFor(it)).toString() == loc }?.scale
+            hdStore?.manifest?.assets
+                ?.firstOrNull { android.net.Uri.fromFile(hdStore.fileFor(it)).toString() == loc }
+                ?.scale
         } ?: 1f
     }
     // A model whose clips are a rig rather than a performance (Perseverance) opens still; every
