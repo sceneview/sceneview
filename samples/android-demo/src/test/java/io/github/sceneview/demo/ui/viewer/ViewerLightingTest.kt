@@ -36,6 +36,14 @@ class ViewerLightingTest {
     }
 
     @Test
+    fun pickingTheDefaultStillLetsAMuseumScanOpenUnderStudio() {
+        // The one pick that is overridden, as on iOS: an explicit garden looks like the start.
+        val lit = ViewerLighting(garden).pick(garden).select(museum = true)
+        assertEquals(studio, lit.environment)
+        assertTrue(lit.museumApplied)
+    }
+
+    @Test
     fun resetWithAMuseumModelOnStageReturnsToStudio() {
         val lit = ViewerLighting(garden).select(museum = true).pick(sunset).reset(museum = true)
         assertEquals(studio, lit.environment)

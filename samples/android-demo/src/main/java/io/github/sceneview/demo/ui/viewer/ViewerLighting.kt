@@ -6,7 +6,8 @@ package io.github.sceneview.demo.ui.viewer
  *
  * A Museum & Space model opens under [museum] only while the stage is still on [default]; leaving
  * the shelf gives [default] back only if the app put [museum] there itself. A lighting the user
- * picks is never overridden.
+ * picks is never overridden, except the default itself: picking [default] and then opening a
+ * museum scan still gives [museum], as on iOS — the value cannot tell that pick from the start.
  */
 data class ViewerLighting(
     val environment: ViewerEnvironment,
