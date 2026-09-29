@@ -2,6 +2,9 @@ import SwiftUI
 import RealityKit
 import Metal
 import SceneViewSwift
+#if os(macOS)
+import AppKit
+#endif
 
 /// **Cosmos** — four procedural, real-time space scenes lit by nothing but their own light
 /// and a bloom pass: a barred spiral galaxy, a plasma star, a particle-track burst and a
@@ -537,16 +540,22 @@ final class CosmosSceneEntities {
 @MainActor
 final class CosmosFrameLink {
     private let target: Target
-    private let link: CADisplayLink
+    private let link: CADisplayLink?
 
     init(_ tick: @escaping @MainActor () -> Void) {
         target = Target(tick)
+        #if os(macOS)
+        // UIKit's `CADisplayLink(target:selector:)` is unavailable on macOS; AppKit vends the
+        // link from the screen it follows (macOS 14+).
+        link = (NSScreen.main ?? NSScreen.screens.first)?.displayLink(target: target, selector: #selector(Target.step))
+        #else
         link = CADisplayLink(target: target, selector: #selector(Target.step))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
-        link.add(to: .main, forMode: .common)
+        #endif
+        link?.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        link?.add(to: .main, forMode: .common)
     }
 
-    func invalidate() { link.invalidate() }
+    func invalidate() { link?.invalidate() }
 
     /// `CADisplayLink` needs an Objective-C target; it retains it, not the other way round.
     /// The link fires on the main run loop it was added to.

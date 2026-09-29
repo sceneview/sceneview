@@ -2,7 +2,11 @@ import Accelerate
 import Foundation
 import Metal
 import RealityKit
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import simd
 
 // The Cosmos scenes without a single line of shader source.
@@ -584,7 +588,7 @@ final class GlowEntity {
         tint = clamped
         // A linear tint, so 0.5 halves the radiance instead of dimming it by sRGB's curve.
         let v = CGFloat(clamped)
-        material.color.tint = UIColor(cgColor: CGColor(colorSpace: Self.linear, components: [v, v, v, 1])!)
+        material.color.tint = GlowEntity.linearTint(v)
         entity.model?.materials = [material]
     }
 
@@ -696,6 +700,16 @@ final class GlowEntity {
     enum GlowError: Error { case noMetal }
 
     fileprivate static let linear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+
+    /// A grey in linear extended sRGB. `NSColor(cgColor:)` is failable where `UIColor`'s is not.
+    fileprivate static func linearTint(_ v: CGFloat) -> UIColor {
+        let cg = CGColor(colorSpace: linear, components: [v, v, v, 1])!
+        #if canImport(UIKit)
+        return UIColor(cgColor: cg)
+        #else
+        return NSColor(cgColor: cg) ?? .white
+        #endif
+    }
 }
 
 /// The one Metal device and command queue every atlas upload goes through.
@@ -759,7 +773,7 @@ final class PlasmaEntity {
         guard abs(clamped - tint) > 1e-4 else { return }
         tint = clamped
         let v = CGFloat(clamped)
-        material.color.tint = UIColor(cgColor: CGColor(colorSpace: GlowEntity.linear, components: [v, v, v, 1])!)
+        material.color.tint = GlowEntity.linearTint(v)
         entity.model?.materials = [material]
     }
 }
