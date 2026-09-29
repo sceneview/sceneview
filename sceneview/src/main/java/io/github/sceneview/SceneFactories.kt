@@ -119,6 +119,7 @@ fun createView(engine: Engine): View = engine.createView().apply {
     // Keep Filmic tone mapper as default. ACES was tested on 2026-05-11 and shifts PBR
     // hero shots (DamagedHelmet) toward a cooler/desaturated film grade — fine for cinema
     // but not the SDK's job to impose. Users can opt into ACES via `view.colorGrading`.
+    // The demo's ViewerBackdrop inverts this exact curve: change the tone mapper, update it too.
     colorGrading = ColorGrading.Builder()
         .toneMapper(ToneMapper.Filmic())
         .build(engine)
