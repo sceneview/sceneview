@@ -85,6 +85,8 @@ import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.hdpack.HdPackSettingsRow
+import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -429,6 +431,10 @@ private fun AboutTabContent() {
             )
         }
         AboutGroup(title = stringResource(R.string.about_group_app)) {
+            if (rememberHdPackStore() != null) {
+                HdPackSettingsRow()
+                AboutRowDivider()
+            }
             AboutActionRow(
                 icon = Icons.Outlined.BugReport,
                 title = stringResource(R.string.about_card_feedback_title),

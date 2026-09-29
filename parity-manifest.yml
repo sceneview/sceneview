@@ -63,8 +63,9 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-27): 49 rows, 29 working / 0 stub / 20 android-only.
+# Current slice-5 ledger (2026-09-28): 51 rows, 30 working / 0 stub / 21 android-only.
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
+# (+1 android-only: `cosmos` — procedural bloom scenes; iOS needs SDK bloom first.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -870,7 +871,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (21) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1261,6 +1262,30 @@ demos:
     evidence: >-
       The iOS Rerun demo records and replays sessions but has no View in AR
       action; an iOS port reuses its replay layers under an anchor
+
+  - id: cosmos
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen yet. SceneViewSwift exposes no bloom, and bloom is the whole
+      look of this demo, so the port needs an SDK addition first.
+    category: CREATE
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CosmosDemo.kt
+    ios: []
+    iosFiles: []
+    contract: >-
+      Four procedural, real-time scenes in additive HDR light plus bloom: a
+      four-arm spiral galaxy of 60 000 camera-facing star sprites with
+      alpha-blended dust lanes, built in layers so it shows within a second, a plasma
+      star (noise-shaded sphere, Fresnel limb, magnetic loops), a looping
+      burst of ~460 charged-particle tracks, and a vortex flow field of
+      streamlines with travelling pulses. Dock picks a scene; an optional
+      tour cycles them; Bloom slider; no video, no texture.
+    parity: missing
+    evidence: >-
+      An iOS port needs a bloom post-process in SceneViewSwift, UnlitMaterial
+      or CustomMaterial emissive for the HDR colours, and LowLevelMesh for the
+      sprite and ribbon buffers
 
 # ─── iOS-only scenes, no Android row: 2 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as

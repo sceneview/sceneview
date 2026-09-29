@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.BottomSheetDefaults
@@ -43,6 +44,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.BackHandler
 import io.github.sceneview.environment.Environment
 import androidx.compose.runtime.getValue
@@ -83,6 +85,13 @@ import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.hdpack.HdPack
+import io.github.sceneview.demo.hdpack.HdPackDownloadDialog
+import io.github.sceneview.demo.hdpack.HdPackPerfProbe
+import io.github.sceneview.demo.hdpack.HdPackStatus
+import io.github.sceneview.demo.hdpack.hdPackSize
+import io.github.sceneview.demo.hdpack.rememberHdPackStatus
+import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
@@ -104,6 +113,7 @@ import io.github.sceneview.demo.demos.internal.checkSurpriseSize
 import io.github.sceneview.demo.demos.internal.drawFullyOpaqueMaskedMaterials
 import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_LAWN_RADIUS
 import io.github.sceneview.demo.demos.internal.PARK_SLOTS
 import io.github.sceneview.demo.demos.internal.ParkSlot
 import io.github.sceneview.demo.demos.internal.parkCamera
@@ -123,11 +133,15 @@ import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabService
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Size
+import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.ui.LabeledSlider
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
@@ -217,6 +231,16 @@ fun ModelViewerDemo(onBack: () -> Unit) {
  */
 private val BUNDLED_VIEWER_MODELS = listOf(
     BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet", R.string.demo_model_desc_damaged_helmet),
+    // HD pack (2026-09-29): the full-resolution Khronos Flight Helmet, downloaded after install.
+    // Its stand-in is the bundled Damaged Helmet — the nearest thing the APK ships, another
+    // helmet at the same scale — shown instantly while the HD file downloads or loads.
+    BundledViewerModel(
+        "models/khronos_damaged_helmet.glb",
+        "Flight Helmet",
+        R.string.demo_model_desc_flight_helmet,
+        hdAssetId = "flight-helmet",
+        thumbnailStem = "khronos_flight_helmet",
+    ),
     BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa", R.string.demo_model_desc_velvet_sofa),
     BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair", R.string.demo_model_desc_sheen_chair),
     BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish", R.string.demo_model_desc_olive_dish),
@@ -544,10 +568,45 @@ private fun SingleModelSection(
     // eagerly so the first frame after launch shows the hero shot.
     val bundledModelInstance = rememberModelInstance(modelLoader, selectedModel.assetPath)
 
+    // HD pack (2026-09-29). An HD entry shows its bundled stand-in at once and swaps to the
+    // downloaded file when it is on disk — read from `filesDir`, never re-fetched. It rides the
+    // same loader as the streamed models, so the swap waits for its textures and the stand-in
+    // stays up meanwhile: no untextured frame, no black stage.
+    val hdStore = rememberHdPackStore()
+    val hdStatus by rememberHdPackStatus(hdStore)
+    val hdReadyIds by remember(hdStore) {
+        hdStore?.readyIds ?: kotlinx.coroutines.flow.MutableStateFlow(emptySet<String>())
+    }.collectAsState()
+    val hdAsset = selectedModel.hdAssetId
+        ?.takeIf { openedModel == null && streamedFileUrl == null }
+        ?.let { hdStore?.manifest?.asset(it) }
+    val hdFileLocation = hdAsset?.takeIf { it.id in hdReadyIds }
+        ?.let { android.net.Uri.fromFile(hdStore?.fileFor(it)).toString() }
+    // A file that times out or has no framable bounds is dropped: the stand-in stays and the
+    // pill turns to "HD · download failed" (tap = retry) instead of spinning forever.
+    var hdRejectedLocation by remember { mutableStateOf<String?>(null) }
+    val hdLoadFailed = hdFileLocation != null && hdFileLocation == hdRejectedLocation
+    val hdModel = rememberStreamedModelInstance(
+        modelLoader,
+        hdFileLocation?.takeIf { !hdLoadFailed },
+        wakeRenderLoop = renderInvalidator::requestRender,
+        onRejected = { hdRejectedLocation = it },
+    )
+    val hdShown = hdFileLocation != null && !hdLoadFailed && hdModel?.location == hdFileLocation
+    val hdPillShown = hdAsset != null && !hdShown
+    var hdDialogOpen by remember { mutableStateOf(false) }
+
     // The instance actually rendered this frame. Falls back to the bundled
     // helmet whenever the streamed instance is null (no Surprise tap yet,
     // streamed load still in flight, or streamed load failed).
-    val activeModelInstance = streamedModelInstance ?: bundledModelInstance
+    val activeModelInstance = streamedModelInstance ?: hdModel?.instance ?: bundledModelInstance
+    // Debug builds log how long a pick takes to reach a finished frame (HD pack QA).
+    val perfTargetReached = when {
+        streamedFileUrl != null -> false
+        hdFileLocation != null -> hdShown
+        else -> bundledModelInstance != null
+    }
+    androidx.compose.runtime.SideEffect { if (perfTargetReached) HdPackPerfProbe.instanceReady() }
     val animationNames = remember(activeModelInstance) {
         val animator = activeModelInstance?.animator ?: return@remember emptyList()
         (0 until animator.animationCount).map { animator.getAnimationName(it).takeIf(String::isNotBlank) ?: "Clip ${it + 1}" }
@@ -658,6 +717,7 @@ private fun SingleModelSection(
     val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, modelDrain, renderInvalidator) {
         { nanos ->
             firstFrame.onFrame(nanos)
+            HdPackPerfProbe.onFrame { runCatching { modelLoader.progress >= 1f }.getOrDefault(true) }
             if (hasModelRef.get() && modelFramesSeen.value < MODEL_COVER_FRAMES &&
                 runCatching { modelLoader.progress >= 1f }.getOrDefault(true)
             ) {
@@ -889,7 +949,7 @@ private fun SingleModelSection(
         // in and out with the standard M3 enter/exit instead of appearing and vanishing
         // between frames (#3406). An `AnimatedVisibility` that is not visible measures
         // zero, so the scaffold's measured bottom band is unchanged while it is closed.
-        bottomOverlay = if (hasSketchfabKey || animationNames.isNotEmpty()) {{
+        bottomOverlay = if (hasSketchfabKey || animationNames.isNotEmpty() || hdPillShown) {{
             // #3585 — "Surprise me" was reachable only from the third row of a sheet the
             // user had to open first, and it is the one action of this viewer that makes
             // people keep tapping. A glass pill floating over the scene re-rolls without
@@ -920,6 +980,41 @@ private fun SingleModelSection(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
+            }
+            // HD pack: while an HD entry shows its stand-in, the pill names the HD model and says
+            // how far along it is ("Flight Helmet · downloading 34 %"). Tapping it when nothing is
+            // running asks to download now, with the size stated first. It stays on "loading"
+            // until the HD model is in the scene, and leaves then.
+            if (hdPillShown && hdAsset != null) {
+                val status = hdStatus
+                val hdFailed = hdLoadFailed || (hdFileLocation == null && status == HdPackStatus.Failed)
+                val hdPillBusy = !hdFailed && (hdFileLocation != null || status is HdPackStatus.Downloading)
+                val hdLabel = when {
+                    hdFailed -> stringResource(R.string.hd_pill_failed)
+                    hdFileLocation != null -> stringResource(R.string.hd_pill_loading)
+                    status is HdPackStatus.Downloading ->
+                        stringResource(R.string.hd_pill_downloading, (status.fraction * 100).toInt())
+                    status == HdPackStatus.WaitingForWifi -> stringResource(R.string.hd_pill_waiting_wifi)
+                    status == HdPackStatus.WaitingForNetwork -> stringResource(R.string.hd_pill_waiting_network)
+                    // The size of this model's own file, not of the whole pack.
+                    else -> stringResource(R.string.hd_pill_download, hdPackSize(context, hdAsset.bytes))
+                }
+                GlassActionPill(
+                    icon = Icons.Outlined.HighQuality,
+                    // Names what the tap gets — the stand-in on screen is another model.
+                    subject = hdAsset.title,
+                    label = hdLabel,
+                    onClick = {
+                        // A file on disk that failed to load retries the load; anything else
+                        // asks to download now, size first.
+                        if (hdLoadFailed) hdRejectedLocation = null else hdDialogOpen = true
+                    },
+                    loading = hdPillBusy,
+                    progress = (hdStatus as? HdPackStatus.Downloading)?.fraction?.takeIf { hdFileLocation == null },
+                    // What the pill says, then what a tap does when it opens the download dialog.
+                    contentDescription = stringResource(R.string.glass_pill_subject_label, hdAsset.title, hdLabel)
+                        .let { if (hdPillBusy || hdLoadFailed) it else stringResource(R.string.hd_pill_hint, it) },
+                )
             }
             if (hasSketchfabKey) {
                 GlassActionPill(
@@ -972,6 +1067,9 @@ private fun SingleModelSection(
             // unconditionally: a match against the curated catalogue uses ITS OWN name instead,
             // and this value is consumed once then cleared.
             DemoSettings.requestedModelDisplayName = openedModel?.displayName ?: selectedModel.displayName
+            // An HD entry goes to AR as the HD file once it is the model on screen.
+            // AR always gets the bundled stand-in, HD entries included: HD in AR waits for a
+            // real-device proof (same decision on iOS).
             val model = openedModel?.location ?: selectedModel.assetPath
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),
@@ -1147,12 +1245,22 @@ private fun SingleModelSection(
         models = BUNDLED_VIEWER_MODELS,
         // A streamed or opened model is not one of the cards: outline none rather than the
         // bundled model it replaced.
-        selectedPath = selectedModel.assetPath.takeIf { streamedFileUrl == null },
+        selectedKey = selectedModel.key.takeIf { streamedFileUrl == null },
         currentScene = null,
-        onSelect = { cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false },
+        onSelect = {
+            HdPackPerfProbe.start(it.key)
+            cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false
+        },
         onScene = { cancelSurprise(); modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
     )
+    if (hdDialogOpen && hdStore != null) {
+        HdPackDownloadDialog(
+            totalBytes = hdStore.manifest.totalBytes,
+            onConfirm = { hdDialogOpen = false; HdPack.downloadNow(context) },
+            onDismiss = { hdDialogOpen = false },
+        )
+    }
     if (unitSheetOpen && unitSuggestion != null) {
         val extents = bounds?.extents
         ModelUnitSheet(
@@ -1396,12 +1504,30 @@ private const val SURPRISE_ATTEMPTS = 2
 /** The pool's largest file is 5.2 MB: past this, the network is the problem, not the file. */
 private const val SURPRISE_DOWNLOAD_TIMEOUT_MS = 15_000L
 
+/** The Park's garden: Poly Haven's "Chinese Garden" (CC0), the viewer's first environment too. */
+private const val PARK_ENVIRONMENT = "environments/chinese_garden_2k.hdr"
+
+/** The lawn is a disc this thick, in metres: enough to show an edge, too thin to read as a step. */
+private const val PARK_LAWN_THICKNESS = 0.05f
+
+/**
+ * Mown grass. This is the base colour that RENDERS as a natural lawn green (about #587839 on
+ * screen), not the lawn's colour: the garden's diffuse light is yellow-green with little blue in
+ * it, and the Filmic tone mapper's toe crushes a dark channel further, so #335222 came out as a
+ * saturated lime (#3B7208) with no blue left. The blue here is what survives that. iOS needs a
+ * different value for the same on-screen green (RealityKit lights and tone-maps the same HDR
+ * brighter and cooler): the two are matched on screen, not in code (#4103). A 3D material, not UI
+ * chrome, so it is not a DESIGN.md token.
+ */
+private val PARK_LAWN_COLOR = Color(0xFF435646)
+
 // ─── Multi-Model section ──────────────────────────────────────────────────────
 // Formerly MultiModelDemo (id `multi-model`).
 //
-// Composes a themed "Park" scene from the 4 glTF assets in [SampleAssets]' `park`
-// category: one hero at the back of the formation and three smaller ones in a
-// front row.
+// Composes a "Park" scene from the 4 glTF assets in [SampleAssets]' `park` category:
+// a pair of oaks at the back, a bench in front of them, a street lamp and a fern, on a
+// round lawn in a garden (#4103). Until #4103 it was four unrelated tree scans at four
+// unrelated sizes in the grey softbox studio, which read as a product shoot, not a park.
 //
 // The layout is positional and fixed ([PARK_SLOTS]); WHICH model stands in each slot
 // is the registry's call ([ParkSlot.uid]). Nothing here names a species: the
@@ -1413,8 +1539,8 @@ private const val SURPRISE_DOWNLOAD_TIMEOUT_MS = 15_000L
 // a dog, with no bench and no dog on screen (#2933).
 //
 // ⚠️ WHAT loads depends on the build. With a Sketchfab API key the resolver streams
-// the `park` category — four photoreal scanned oaks. Without one it substitutes each
-// slug's BUNDLED fallback: a lantern, a lantern, a shiba, a soldier. Same demo id,
+// the `park` category — oaks, bench, lamp and fern. Without one it substitutes each
+// slug's BUNDLED fallback: a soldier, the sheen chair, a lantern and a shiba. Same demo id,
 // same layout, completely different picture — worth knowing before reading a
 // screenshot of this section as evidence of anything (#2913). The chip label names
 // the CATALOGUE ENTRY, not the geometry, so on a fallback build it still reads
@@ -1423,8 +1549,9 @@ private const val SURPRISE_DOWNLOAD_TIMEOUT_MS = 15_000L
 // off whether a key is configured, because a keyed build whose download fails lands
 // on the same stand-ins.
 //
-// Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that unifies
-// the four assets into one cohesive open-air display.
+// Lighting and backdrop come from `chinese_garden_2k.hdr`: trees, a pond and a pavilion
+// under daylight, so the park stands in a garden and is lit like one. The lawn and one
+// contact shadow per model put the four of them on the same ground.
 //
 // Framing fits the whole formation (#3923): the camera is placed per viewport
 // from the formation's layout bounds, before any model loads — see [parkCamera].
@@ -1481,8 +1608,13 @@ private fun MultiModelSection(
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val context = LocalContext.current
+    // Mown grass: fully rough and non-metallic, so the garden's sky does not glint off it.
+    val lawnMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(PARK_LAWN_COLOR, metallic = 0f, roughness = 1f, reflectance = 0.2f)
+    }
 
     // Resolve each slot's slug by uid (stable across registry re-ordering). Falling
     // back to the slug at the same index in the category if an explicit uid is
@@ -1531,14 +1663,13 @@ private fun MultiModelSection(
         rememberFileModelInstance(modelLoader, files[3]),
     )
 
-    // Warm dusk HDR — `studio_warm_2k.hdr` gives a golden-hour wash that
-    // unifies the four very different materials. Skybox enabled so the warm tint
-    // is visible behind the display, not just rim-lighting the models on a black
-    // void. Falls back to the default neutral environment while the HDR is still
-    // loading.
+    // A garden, drawn as the skybox and lighting the models: the park reads as outdoors
+    // because it is lit by an outdoor sky (#4103). It used to be `studio_warm_2k.hdr`, the
+    // grey softbox studio, whose ceiling light hung over the trees. Falls back to the default
+    // neutral environment while the HDR is still loading.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
-        "environments/studio_warm_2k.hdr",
+        PARK_ENVIRONMENT,
         createSkybox = true,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
@@ -1595,7 +1726,7 @@ private fun MultiModelSection(
             // (the registry's own name), never from a hardcoded noun — the
             // registry decides what stands in each slot, so it decides the label
             // too. Horizontally scrolling because
-            // catalogue names run long ("Skovfogedegen Oak") and four of them do not
+            // catalogue names run long ("Simple Park Bench") and four of them do not
             // fit a portrait phone width without clipping. `OverflowChipRow` fades
             // the overflowing edge so the off-screen chip is discoverable (#2944).
             OverflowChipRow {
@@ -1695,8 +1826,19 @@ private fun MultiModelSection(
                 // Indexed off PARK_SLOTS rather than four named locals, so visibility, loaded
                 // instance and layout can only ever be read for the SAME slot (#2933).
                 val displays = PARK_SLOTS.mapIndexed { index, slot ->
-                    Display(visible[index], instances[index], slot)
+                    val isFallback = files[index]?.let(SketchfabAssetResolver::isBundledFallback) == true
+                    Display(visible[index], instances[index], slot, if (isFallback) slot.fallbackYaw else 0f)
                 }
+                // The lawn: a flat disc whose top face is the ground plane every model stands
+                // on. It is drawn from the first frame, so the scrim lifts onto a park that is
+                // already laid out rather than onto models floating in the garden.
+                CylinderNode(
+                    radius = PARK_LAWN_RADIUS,
+                    height = PARK_LAWN_THICKNESS,
+                    sideCount = 72,
+                    materialInstance = lawnMaterial,
+                    position = Position(y = -PARK_HEIGHT / 2f - PARK_LAWN_THICKNESS / 2f),
+                )
                 // `key(index)` + `isVisible`, never a skipped call site (#2939). `ModelNode`
                 // holds `remember(engine, modelInstance)`, and its `DisposableEffect(node)`
                 // runs `node.destroy()`, which calls `engine.safeDestroyEntity` on entities
@@ -1717,6 +1859,16 @@ private fun MultiModelSection(
                             // Rotation math lives in DemoMath.rotateAroundCentre so it can be
                             // JVM-unit-tested without firing up Filament / Compose.
                             val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
+                            // Grounds the model on the lawn: a soft pool under its footprint,
+                            // hidden with it. Just above the lawn so the two never z-fight.
+                            if (d.show) {
+                                ContactShadow(
+                                    size = Size(x = d.slot.scale * 0.8f, y = 0f, z = d.slot.scale * 0.8f),
+                                    context = ContactShadowContext.Floor,
+                                    normal = Direction(y = 1f),
+                                    position = Position(x = rx, y = -PARK_HEIGHT / 2f + 0.002f, z = rz),
+                                )
+                            }
                             ModelNode(
                                 modelInstance = d.instance,
                                 isVisible = d.show,
@@ -1736,7 +1888,7 @@ private fun MultiModelSection(
                                 // and is now honoured.)
                                 centerOrigin = Position(0f, -1f, 0f),
                                 position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
-                                rotation = Rotation(y = -sceneYaw),
+                                rotation = Rotation(y = d.slot.yaw + d.extraYaw - sceneYaw),
                             )
                         }
                     }
@@ -1761,7 +1913,7 @@ private fun MultiModelSection(
     // offer the Damaged Helmet alone). A card opens that model on the single-model stage.
     if (modelSheetOpen) ModelPickerSheet(
         models = BUNDLED_VIEWER_MODELS,
-        selectedPath = null,
+        selectedKey = null,
         currentScene = ViewerScene.Park,
         onSelect = { modelSheetOpen = false; onOpenModel(it) },
         onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
@@ -1779,6 +1931,8 @@ private data class Display(
     val show: Boolean,
     val instance: io.github.sceneview.model.ModelInstance?,
     val slot: ParkSlot,
+    /** [ParkSlot.fallbackYaw] when the slot shows its bundled stand-in, else 0. */
+    val extraYaw: Float,
 )
 
 /**

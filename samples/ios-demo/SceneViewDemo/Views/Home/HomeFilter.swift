@@ -94,6 +94,14 @@ enum HomeCatalogue {
         "materials": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
     ]
 
+    /// Featured pictures anchored at their leading edge rather than centred when
+    /// the landscape preview is cropped to the 4:5 portrait card — Android's
+    /// `FEATURED_MEDIA_ALIGNMENT` (#4144). `ar-rerun`'s preview is a capture of
+    /// the demo whose top-right corner holds its own "Camera" picture-in-picture:
+    /// centred, the crop kept half of it and it read as a second card stuck on
+    /// the first. Anchored leading, the crop keeps the camera path and the room.
+    static let featuredLeadingAnchored: Set<String> = ["ar-rerun"]
+
     static func isOnHome(_ sceneId: String) -> Bool {
         hiddenFromHome[sceneId] == nil
     }

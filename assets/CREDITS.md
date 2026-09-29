@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **75** (plus 16 pending metadata, 8 pending license review).
+Total models: **85** (plus 8 pending metadata, 8 pending license review).
 
 ---
 
@@ -34,16 +34,22 @@ Total models: **75** (plus 16 pending metadata, 8 pending license review).
 - **[Baked Goods](https://sketchfab.com/3d-models/baked-goods-d1ae09e3cb8343bc8790b15928452906)** by Aullwen — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Black Dragon with Idle Animation](https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36)** by Arturs J — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Canon EOS RP Mirrorless Camera](https://sketchfab.com/3d-models/canon-eos-rp-mirrorless-camera-3d-model-cd470005397c48ec8b68bb8a4609ecd1)** by fahadratul — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Casio VL-Tone Keyboard](https://sketchfab.com/3d-models/keyboard-casio-vl-tone-be22fbe1ef0044f3bedc6e3edf459593)** by AleixoAlonso — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Choco Bunny](https://sketchfab.com/3d-models/choco-bunny-583deedf74ab4df4a3f102b123d3382e)** by Ergoni — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Coffee Cart](https://sketchfab.com/3d-models/coffee-cart-1a97f872c1ac4a83a0132cd749d0b2a8)** by Outlier Spa — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Car](https://sketchfab.com/3d-models/cyberpunk-car-b4301ff99d214d16a7a43708a5866bf0)** by 4d_Bob — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Character](https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51)** by Esk — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Karol Miklas (modified by SceneView — display plinth removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[D.S.S. Harbinger Battle Cruiser](https://sketchfab.com/3d-models/dss-harbinger-battle-cruiser-474f62d00ed54212b37f93ce91569c53)** by Mike Pan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[DJI Mavic 3 Cine](https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b)** by aurumjuda747 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Elephant Animation Idle](https://sketchfab.com/3d-models/elephant-animation-idle-a8e7e10f005f4baab0a2f5079d759fcd)** by GremorySaiyan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Ferrari F40](https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70)** by Black Snow — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[FREE 1975 Porsche 911 (930) Turbo](https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e)** by Karol Miklas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Game Boy Classic](https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f)** by JonhyOliver — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[JBL Tour One M3 Headphones](https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16)** by cubemodelex — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Kindred (League of Legends) - Rigged](https://sketchfab.com/3d-models/kindred-league-of-legends-rigged-06a32da82b0441c39950296315307400)** by maisth — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Koi Fish](https://sketchfab.com/3d-models/koi-fish-236859b809984f52b70c94fd040b9c59)** by 7PLUS — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Low Poly Night City Building Skyline](https://sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)** by 99.Miles — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Low Poly Tree Scene](https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd)** by mateustorresg (modified by SceneView — grass-tuft prims removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lowpoly Fruits & Vegetables](https://sketchfab.com/3d-models/lowpoly-fruits-vegetables-d3be8fed96eb48be88b47bbe8d2951e1)** by norgeotloic — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Medieval Fantasy Book](https://sketchfab.com/3d-models/medieval-fantasy-book-06d5a80a04fc4c5ab552759e9a97d91a)** by Pixel — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -65,32 +71,36 @@ Total models: **75** (plus 16 pending metadata, 8 pending license review).
 - **[Sneaker Vibe](https://sketchfab.com/3d-models/sneaker-vibe-1e52862eb2634fa3b5c13bf9e261945b)** by vmmaniac — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Star Wars Speeder Bike](https://sketchfab.com/3d-models/starwars-speeder-bike-free-download-1d0ea6fe43c1405b8d4b17722e166f6e)** by NORBERTO-3D — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Tesla Cybertruck](https://sketchfab.com/3d-models/tesla-cybertruck-657e71b3e2ad468196668e9c9df708fb)** by hashikemu — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Toon Cat](https://sketchfab.com/3d-models/toon-cat-free-b2bd1ee7858444bda366110a2d960386)** by Omabuarts Studio — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Trumpet](https://sketchfab.com/3d-models/trumpet-3f2d4f5b962340b2933012e1bc634d88)** by Charlie Tinley — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Wall-E (Animated)](https://sketchfab.com/3d-models/wall-eanimated-a6758de2e5a04f9e821596592ef4279c)** by Zeckensack — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## Khronos glTF Sample Assets
 
 - **[A Beautiful Game (Chess Set)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ABeautifulGame)** by Chris Kuhn — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Antique Camera](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/AntiqueCamera)** by KhronosGroup (UX3D) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Antique Camera](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/AntiqueCamera)** by UX3D (Maximillan Kamps) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Avocado](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Avocado)** by KhronosGroup — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Barramundi Fish](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BarramundiFish)** by Sketchfab — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[BoomBox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BoomBox)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Car Concept](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept)** by Darmstadt Graphics Group GmbH (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cesium Milk Truck](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CesiumMilkTruck)** by Cesium — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Chronograph Watch](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Chronograph Watch (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Chronograph Watch](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by Darmstadt Graphics Group GmbH (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Chronograph Watch (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by Darmstadt Graphics Group GmbH (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Corset](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Corset)** by KhronosGroup (UX3D) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Diffuse Transmission Teacup](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DiffuseTransmissionTeacup)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Dragon (Attenuation)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DragonAttenuation)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Flight Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet)** by Gary Hsu (Microsoft) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
-- **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Iridescence Lamp](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Iridescent Dish with Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Materials Variants Shoe](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe)** by Shopify — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Sheen Chair (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
-- **[Sunglasses](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos)** by Khronos — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Sunglasses](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos)** by Darmstadt Graphics Group GmbH (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Water Bottle](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle)** by KhronosGroup — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Water Bottle](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Poly Haven
 
@@ -126,21 +136,13 @@ Replace or remove before the next store publication:
 
 ---
 
-## Missing metadata (16 entries)
+## Missing metadata (8 entries)
 
 These entries in `catalog.json` lack at least one of `author`, `license`,
 `sourceUrl`, or use a license this script does not recognise. Fill in the
 missing fields so they can be credited properly:
 
 - `khronos_duck` — missing: license `SCEA Shared Source License` unrecognised
-- `koi_fish` — missing: author
-- `toon_cat` — missing: author
-- `animated_elephant` — missing: author
-- `casio_keyboard` — missing: author
-- `trumpet` — missing: author
-- `coffee_cart` — missing: author
-- `night_city` — missing: author
-- `kindred_lol` — missing: author
 - `cozy_living_room` — missing: author
 - `rooftop_night` — missing: author, license, sourceUrl
 - `studio` — missing: author, license, sourceUrl

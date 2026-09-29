@@ -290,6 +290,10 @@ dependencies {
 
     // Compose (extras beyond what :samples:common provides)
     implementation libs.androidx.compose.material.icons.extended
+    // HD pack (2026-09-29): the Wi-Fi-only, resumable download of the full-resolution demo
+    // models runs as a WorkManager job. Literal coordinate, like the other demo-only extras
+    // kept out of the shared catalogue.
+    implementation "androidx.work:work-runtime-ktx:2.11.2"
     // Material 3 Expressive APIs (alpha, newer than BOM's stable release)
     implementation libs.androidx.compose.material3.expressive
 
@@ -679,6 +683,34 @@ androidComponents {
             it.fragments.from(rootProject.fileTree("changelog.d") { include '*.md' })
         }
         variant.sources.assets.addGeneratedSourceDirectory(bundleChangelogAsset) { it.outputDir }
+        def bundleHdPackManifest = tasks.register(
+                "bundle${variant.name.capitalize()}HdPackManifest", BundleHdPackManifest) {
+            it.description = "Bundles assets/hd-pack/android.json into the ${variant.name} assets as hd-pack/android.json."
+            it.group = "build"
+            it.manifest.set(rootProject.file("assets/hd-pack/android.json"))
+        }
+        variant.sources.assets.addGeneratedSourceDirectory(bundleHdPackManifest) { it.outputDir }
+    }
+}
+
+// ─── HD pack manifest (2026-09-29) ─────────────────────────────────────────
+//
+// The manifest lives at the repo root, next to the iOS one (`assets/hd-pack/ios.json`),
+// so both demos read one reviewed list of ids. It is registered as a generated asset
+// directory for the same reason as the changelog above: AGP then wires it into every
+// consumer, release lint included.
+abstract class BundleHdPackManifest extends DefaultTask {
+    @InputFile
+    abstract RegularFileProperty getManifest()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    @TaskAction
+    void bundle() {
+        def target = outputDir.file("hd-pack/android.json").get().asFile
+        target.parentFile.mkdirs()
+        target.bytes = manifest.get().asFile.bytes
     }
 }
 

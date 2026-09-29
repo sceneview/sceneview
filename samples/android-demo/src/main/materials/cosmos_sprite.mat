@@ -1,0 +1,80 @@
+// cosmos_sprite.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Additive, camera-facing glow sprites for the Cosmos demo: the tens of thousands
+//             of stars of the spiral galaxy, the background star field, the dust of the flow
+//             field and the halos behind the plasma star. Every sprite is four vertices that
+//             share one centre; the vertex stage pushes each corner out along the camera's
+//             right/up axes, so the quads always face the viewer without any CPU work per frame.
+// Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
+// Vertex layout (one interleaved buffer, built by CosmosMeshes):
+//   position — float3, the sprite centre in model space (all four corners carry the same).
+//   color    — float4, linear HDR radiance (well above 1.0 for the bright ones, so bloom has
+//              something to bleed); alpha unused.
+//   custom0  — float4 (corner.x, corner.y, radius in model units, twinkle phase).
+// Parameters:
+//   time      — float, seconds; drives the twinkle.
+//   intensity — float, global radiance multiplier.
+//   sizeScale — float, global radius multiplier.
+//   twinkle   — float [0,1], how deep the twinkle modulation goes.
+//   minPixels — float, the smallest on-screen radius in pixels. A sprite that would be smaller
+//               is drawn at this radius with its radiance scaled down by the area ratio, so a far
+//               star keeps its energy but stops flickering in and out of the pixel grid.
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// Why additive: light adds. Overlapping stars in the galaxy core must pile up into a white-hot
+// bulge the tone mapper then rolls off, which is exactly what `blending: add` does and what an
+// alpha blend (which would need a painter's sort of 40 000 sprites) cannot.
+material {
+    "name" : "Cosmos Sprite",
+    "parameters" : [
+        { "type" : "float", "name" : "time" },
+        { "type" : "float", "name" : "intensity" },
+        { "type" : "float", "name" : "sizeScale" },
+        { "type" : "float", "name" : "twinkle" },
+        { "type" : "float", "name" : "minPixels" }
+    ],
+    "requires" : [ "position", "color", "custom0" ],
+    "variables" : [ "sprite" ],
+    "shadingModel" : "unlit",
+    "blending" : "add",
+    "depthWrite" : false,
+    "depthCulling" : true,
+    "doubleSided" : true,
+    "culling" : "none"
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float4 c0 = getCustom0();
+        highp float3 center = material.worldPosition.xyz;
+        highp mat4 viewFromWorld = getViewFromWorldMatrix();
+        highp mat4 clipFromView = getClipFromViewMatrix();
+        highp float depth = max(-mulMat4x4Float3(viewFromWorld, center).z, 1e-3);
+        highp float focal = clipFromView[1][1] * 0.5 * getResolution().y;
+
+        highp float radius = c0.z * materialParams.sizeScale;
+        highp float radiusPx = radius * focal / depth;
+        float energy = 1.0;
+        if (radiusPx < materialParams.minPixels) {
+            energy = (radiusPx * radiusPx) / (materialParams.minPixels * materialParams.minPixels);
+            radius = materialParams.minPixels * depth / focal;
+        }
+
+        highp float3 camRight = float3(viewFromWorld[0][0], viewFromWorld[1][0], viewFromWorld[2][0]);
+        highp float3 camUp    = float3(viewFromWorld[0][1], viewFromWorld[1][1], viewFromWorld[2][1]);
+        material.worldPosition.xyz = center + (c0.x * camRight + c0.y * camUp) * radius;
+
+        float flicker = 1.0 + materialParams.twinkle * sin(materialParams.time * 2.7 + c0.w * 6.2831);
+        material.sprite = float4(c0.xy, energy * flicker, 0.0);
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        float2 p = variable_sprite.xy;
+        float d2 = dot(p, p);
+        // A tight gaussian core and a soft skirt, cut to zero at the quad edge.
+        float glow = (exp(-d2 * 10.0) + 0.18 * exp(-d2 * 2.5)) * max(0.0, 1.0 - d2);
+        float3 radiance = getColor().rgb * (glow * variable_sprite.z * materialParams.intensity);
+        material.baseColor = float4(radiance, 1.0);
+    }
+}

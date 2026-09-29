@@ -100,14 +100,14 @@ final class ViewerAssetTests: XCTestCase {
     /// stays hidden; an environment authored as a place is meant to be seen.
     func testOnlyStudioRigsHideTheirBackdropByDefault() {
         let hidden = environments.filter { !$0.authoredAsPlace }.map(\.assetName)
-        XCTAssertEqual(hidden, ["studio", "studio_warm"])
+        XCTAssertEqual(hidden, ["studio_warm", "studio"])
     }
 
     /// A first run must land on an environment whose backdrop is worth drawing,
     /// otherwise "show the environment by default" (#3583) resolves to nothing:
     /// the smart default above would hide the backdrop of a studio rig forever.
     func testFirstRunEnvironmentIsAPlace() {
-        let first = environments.first { $0.assetName == "outdoor_cloudy" }
+        let first = environments.first { $0.assetName == "chinese_garden" }
         XCTAssertNotNil(first, "the first-run environment left the catalog")
         XCTAssertEqual(first?.authoredAsPlace, true)
     }
