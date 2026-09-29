@@ -12,13 +12,12 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **75** (plus 16 pending metadata, 8 pending license review).
+Total models: **74** (plus 16 pending metadata, 8 pending license review).
 
 ---
 
 ## Sketchfab
 
-- **[1975 Porsche 911 (930) Turbo](https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e)** by Lionsharp Studios — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[1995 Fiat Punto GT](https://sketchfab.com/3d-models/free-1995-fiat-punto-gt-48db6facb4b64e99b60f36b8c01185e1)** by Karol Miklas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[An Animated Cat](https://sketchfab.com/3d-models/an-animated-cat-aec25699660043a29595f9572149d1e8)** by Evil_Katz — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Animated Bee Flying Landing Loop](https://sketchfab.com/3d-models/animated-bee-flying-landing-loop-a39c45911dab421da0de51672c7a8f62)** by LasquetiSpice — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)

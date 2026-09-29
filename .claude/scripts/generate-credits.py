@@ -94,7 +94,7 @@ UNSAFE_LICENSES = {
 # ─── Bundled scopes ───────────────────────────────────────────────────────────
 # A "bundled scope" is a directory whose entire contents ship inside a store
 # artefact, plus the CREDITS.md that travels with them. `assets/CREDITS.md`
-# lists all 90 catalogue models; only 19 files reach the APK. Crediting the
+# lists all 89 catalogue models; only 19 files reach the APK. Crediting the
 # catalogue in the APK would be noise, and crediting nothing is what we had —
 # so the APK copy is generated from the files that are actually there.
 ANDROID_ASSETS = "samples/android-demo/src/main/assets"
