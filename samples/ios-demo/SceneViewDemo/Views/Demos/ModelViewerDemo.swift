@@ -243,6 +243,12 @@ struct ModelViewerDemo: View {
     @State private var loadError: String?
     @State private var loadCount = 0
     @State private var recenterGeneration = 0
+    /// Android's entrance: the camera flies in to each model that opens, and
+    /// back to rest on Recenter (``ViewerEntranceFlight``). Skipped under
+    /// `qa_mode`, where a capture must land on the resting frame every run, and
+    /// under Reduce Motion.
+    @State private var entrance = ViewerEntranceDriver()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sheet: ViewerSheet?
     @State private var showExplore = false
     @State private var showAR = false
@@ -346,7 +352,7 @@ struct ModelViewerDemo: View {
                 withAnimation(SceneViewTokens.Spring.animation) { animationBarOpen.toggle() }
             })
         }
-        items.append(DockItem(icon: "scope", label: "Recenter") { recenterGeneration += 1 })
+        items.append(DockItem(icon: "scope", label: "Recenter") { recenter() })
         return items
     }
 
@@ -599,21 +605,23 @@ struct ModelViewerDemo: View {
             // contentID change rebuilds the model, which restarted the playing
             // animation and made the button look like it did something random
             // rather than recentring (#3595).
-            SceneView { root in
-                guard let loadedNode else { return }
-                root.addChild(loadedNode.entity)
-                hdFrameWatch.joined(loadedNode.entity)
-            }
-            .cameraControls(.orbit)
-            .cameraOrbit(azimuth: Self.openingAzimuth, elevation: Self.openingElevation)
-            .environment(sceneEnvironment)
-            // `cameraDistanceOverride` — the `-camera_distance <float>` launch
-            // arg (#2785) — wins over both when present, same as Android's
-            // `DemoSettings.cameraDistance` beating its own `radius` default.
-            .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
-            .contentID(loadedNode == nil ? nil : "\(loadCount)")
-            .recenterCamera(recenterGeneration)
-            .ignoresSafeArea()
+            EntranceStage(
+                scene: SceneView { root in
+                    guard let loadedNode else { return }
+                    root.addChild(loadedNode.entity)
+                    hdFrameWatch.joined(loadedNode.entity)
+                }
+                .cameraControls(.orbit)
+                .cameraOrbit(azimuth: Self.openingAzimuth, elevation: Self.openingElevation)
+                .environment(sceneEnvironment)
+                // `cameraDistanceOverride` — the `-camera_distance <float>` launch
+                // arg (#2785) — wins over both when present, same as Android's
+                // `DemoSettings.cameraDistance` beating its own `radius` default.
+                .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
+                .contentID(loadedNode == nil ? nil : "\(loadCount)")
+                .recenterCamera(recenterGeneration),
+                entrance: entrance
+            )
 
             if loadedNode == nil, let posterModel, let thumb = posterModel.thumbnailName {
                 // A render of the HD model itself, so the stage already shows
@@ -752,10 +760,17 @@ struct ModelViewerDemo: View {
                 * node.entity.orientation
         }
         _ = node.centerOrigin()
+        // The Toy Car's USDZ lost its velvet sheen and fabric tint.
+        if let model { ViewerMaterialRepairs.apply(to: node.entity, asset: model.assetName) }
         playback = nil
         posterModel = nil
         loadedNode = node
         loadCount += 1
+        if flightsEnabled {
+            entrance.arrive(node.entity, azimuth: Self.openingAzimuth, elevation: Self.openingElevation)
+        } else {
+            entrance.stop(settle: true)
+        }
         animationNames = node.entity.availableAnimations.enumerated().map { index, clip in
             clip.name ?? "Clip \(index + 1)"
         }
@@ -773,12 +788,24 @@ struct ModelViewerDemo: View {
     /// ``posterModel``'s thumbnail stands in until the HD model is installed.
     @MainActor
     private func clearStage(poster model: BundledViewerModel) {
+        entrance.stop(settle: true)
         loadedNode?.entity.stopAllAnimations()
         playback = nil
         loadedNode = nil
         posterModel = model
         animationNames = []
         animationBarOpen = false
+    }
+
+    private var flightsEnabled: Bool { !qaMode && !reduceMotion }
+
+    /// Android's Recenter: a flight from the pose on screen back to rest, then
+    /// the SDK re-fit. Without a flight (qa_mode, Reduce Motion, nothing
+    /// landed yet) the re-fit alone, which cuts straight to rest.
+    private func recenter() {
+        if flightsEnabled, entrance.recenter(landed: { recenterGeneration += 1 }) { return }
+        entrance.stop(settle: true)
+        recenterGeneration += 1
     }
 
     private func resetAll() {
@@ -1098,5 +1125,28 @@ struct ViewerLighting {
     /// The demo's global reset: first-run lighting.
     mutating func resetAll() {
         self = ViewerLighting()
+    }
+}
+
+/// The viewer's `SceneView` with the entrance flight wired in. A view of its
+/// own so that a flight's per-frame pose writes re-evaluate this body only,
+/// not the whole viewer's.
+private struct EntranceStage: View {
+    let scene: SceneView
+    let entrance: ViewerEntranceDriver
+
+    var body: some View {
+        scene
+            .cameraPose(entrance.pose)
+            .onCameraChanged { [entrance] pose in
+                // Called from inside RealityKit's update pass: hop before the
+                // driver mutates anything (see `SceneView.cameraPose(_:)`). Whether
+                // the arriving model was in the scene is read here, in the pass,
+                // so a report that framed the previous frame's content is not
+                // taken for the new model's fit once the hop lands.
+                let attached = MainActor.assumeIsolated { entrance.isEntityInScene }
+                Task { @MainActor in entrance.cameraChanged(pose, entityInScene: attached) }
+            }
+            .ignoresSafeArea()
     }
 }

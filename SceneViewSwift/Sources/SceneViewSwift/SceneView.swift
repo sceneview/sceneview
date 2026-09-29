@@ -609,6 +609,11 @@ public struct SceneView: View {
     /// reports the clamped result, so a pose that could not be honoured verbatim says so
     /// instead of leaving your state and the screen disagreeing.
     ///
+    /// A written pose that moves the camera takes it from the fit-to-bounds pass, as a
+    /// drag does: the pass stops re-fitting distance and target while the content's
+    /// bounds settle, so a pose animated frame by frame is not pulled back to the fit.
+    /// A ``contentID(_:)`` swap or a ``recenterCamera(_:)`` hands the camera back.
+    ///
     /// Has no effect in the native camera modes (``CameraControlMode/none``, `.tilt`,
     /// `.dolly`), where Apple's `realityViewCameraControls(_:)` owns the
     /// camera transform outright.
@@ -1103,7 +1108,8 @@ private struct SceneViewRepresentation: View {
         /// World-space centroid of the content union AABB, as last computed by
         /// ``refreshContentCentering()``. `.zero` until the first valid pass.
         var contentWorldCenter: SIMD3<Float> = .zero
-        /// Set when a pinch or an orbit drag moves the camera; while set,
+        /// Set when a pinch, an orbit drag or a ``SceneView/cameraPose(_:)``
+        /// write moves the camera; while set,
         /// ``refreshContentCentering()`` no longer re-fits the radius or the
         /// pivot unless the content grew materially (#4009). Cleared by every
         /// re-arm of the framing pass.
@@ -1909,9 +1915,6 @@ private struct SceneViewRepresentation: View {
     /// (which grows the union materially) always re-frames. Fed into
     /// ``FramingStabilityTracker``.
     private static let framingStabilityEpsilon: Float = 0.01
-    /// Union growth (diagonal ratio) past which the framing pass takes the
-    /// camera back from the user: another streamed model landed (#4009).
-    private static let refitGrowthThreshold: Float = 1.25
 
     /// How long the content union must hold steady before the framing pass
     /// latches `didCenterContent`. Must exceed the worst-case gap between two
@@ -2099,8 +2102,9 @@ private struct SceneViewRepresentation: View {
         // back to the fit. Only a union that grew materially (another
         // streamed model landing) takes the camera back; Recenter, a content
         // swap or a rotation re-arm the pass and clear the flag.
-        if appliedCache.userMovedCamera,
-           diagonal <= appliedCache.fittedDiagonal * Self.refitGrowthThreshold {
+        if SceneView.fitKeepsTakenCamera(taken: appliedCache.userMovedCamera,
+                                    diagonal: diagonal,
+                                    fittedDiagonal: appliedCache.fittedDiagonal) {
             camera.orbitRadius = min(max(camera.orbitRadius, camera.minRadius), camera.maxRadius)
             if stable {
                 appliedCache.didCenterContent = true
@@ -2268,7 +2272,18 @@ private struct SceneViewRepresentation: View {
             || requestedCameraPoseGeneration != appliedCache.requestedPoseGeneration {
             appliedCache.requestedPose = requested
             appliedCache.requestedPoseGeneration = requestedCameraPoseGeneration
+            let live = camera.pose
             camera.apply(pose: requested)
+            // A write that moves the camera is the host taking it, exactly like a
+            // drag (#4009): the fit-to-bounds pass must not pull it back to the
+            // fitted pose on its next tick while the bounds settle, or an
+            // animated pose (a fly-in) fights the fit every ~33 ms. An echo of
+            // the live pose — the mirrored-state pattern above — moves nothing
+            // and claims nothing. A content swap, Recenter or rotation re-arms
+            // the pass and hands the camera back to it, as for a gesture.
+            if SceneView.poseWriteTakesCamera(requested: requested, live: live) {
+                appliedCache.userMovedCamera = true
+            }
         }
 
         // Diff-guard (#2331): every per-mode branch below is a pure function of
@@ -2726,6 +2741,30 @@ private struct SceneViewRepresentation: View {
             .onEnded { value in
                 NodeGesture.dispatchLongPress(on: value.entity)
             }
+    }
+}
+
+// MARK: - Who owns the camera during the fit (#4009, #4184)
+
+extension SceneView {
+    /// Union growth (diagonal ratio) past which the framing pass takes the
+    /// camera back from the user: another streamed model landed (#4009).
+    static let refitGrowthThreshold: Float = 1.25
+
+    /// Whether a ``cameraPose(_:)`` write takes the camera from the
+    /// fit-to-bounds pass, as a drag does: only a write that moves it. An echo
+    /// of the live pose — a host mirroring ``onCameraChanged(_:)`` back —
+    /// moves nothing and claims nothing.
+    static func poseWriteTakesCamera(requested: SceneCameraPose, live: SceneCameraPose) -> Bool {
+        !requested.approximatelyMatches(live)
+    }
+
+    /// Whether the fit-to-bounds pass leaves a camera the user (or a host
+    /// pose write) has taken where it is (#4009): yes, unless the content
+    /// union grew materially since the last fit — another streamed model
+    /// landing — which takes the camera back.
+    static func fitKeepsTakenCamera(taken: Bool, diagonal: Float, fittedDiagonal: Float) -> Bool {
+        taken && diagonal <= fittedDiagonal * refitGrowthThreshold
     }
 }
 #endif // os(iOS) || os(macOS) || os(visionOS)

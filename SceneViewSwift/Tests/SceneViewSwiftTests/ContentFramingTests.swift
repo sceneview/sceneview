@@ -127,6 +127,39 @@ final class ContentFramingTests: XCTestCase {
         XCTAssertEqual(front, side, accuracy: 0.0001)
     }
 
+    // MARK: - A host pose write takes the camera (#4184)
+
+    /// `.cameraPose(_:)` animated frame by frame (the Model Viewer's fly-in)
+    /// must not be pulled back to the fit while the bounds settle: a write that
+    /// moves the camera takes it, as a drag does, and the fit pass then leaves
+    /// it alone unless the content grew materially.
+    func testPoseWriteThatMovesTheCameraTakesItFromTheFit() {
+        let live = SceneCameraPose(azimuth: 0, elevation: 0.21, distance: 2, target: [0, 0.1, 0])
+        var flown = live
+        flown.azimuth = 0.3
+        flown.distance = 3.1
+        XCTAssertTrue(SceneView.poseWriteTakesCamera(requested: flown, live: live))
+
+        // The fit keeps a taken camera over settling bounds…
+        XCTAssertTrue(SceneView.fitKeepsTakenCamera(taken: true, diagonal: 1.1, fittedDiagonal: 1))
+        // …takes it back when another model lands and the union grows…
+        XCTAssertFalse(SceneView.fitKeepsTakenCamera(taken: true, diagonal: 1.3, fittedDiagonal: 1))
+        // …and re-fits freely a camera nobody took.
+        XCTAssertFalse(SceneView.fitKeepsTakenCamera(taken: false, diagonal: 1.1, fittedDiagonal: 1))
+    }
+
+    /// The mirrored-state pattern (`onCameraChanged` → state → `cameraPose`)
+    /// hands the live pose straight back: that echo moves nothing, so it must
+    /// not take the camera, or a host that merely mirrors it would freeze the
+    /// fit for good.
+    func testEchoOfTheLivePoseDoesNotTakeTheCamera() {
+        let live = SceneCameraPose(azimuth: 1.2, elevation: -0.1, distance: 4, target: [1, 2, 3])
+        XCTAssertFalse(SceneView.poseWriteTakesCamera(requested: live, live: live))
+        var jitter = live
+        jitter.distance += 0.00005
+        XCTAssertFalse(SceneView.poseWriteTakesCamera(requested: jitter, live: live))
+    }
+
     // MARK: - Reset restores the initial state
 
     /// A Recenter / Reset re-arms the framing pass, so the *next* pass over
