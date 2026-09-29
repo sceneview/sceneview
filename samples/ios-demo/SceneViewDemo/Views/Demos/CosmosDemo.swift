@@ -225,13 +225,23 @@ final class CosmosEngine {
     }
 
     private func build(_ kind: CosmosSceneKind) async {
-        guard let programs, built[kind] == nil, !building.contains(kind) else { return }
+        guard built[kind] == nil, !building.contains(kind) else { return }
         building.insert(kind)
         defer { building.remove(kind) }
+        guard let (entities, landscape) = await makeEntities(kind) else { return }
+        entities.root.isEnabled = false
+        world.addChild(entities.root)
+        built[kind] = entities
+        if kind == .flow { flowLandscape = landscape }
+    }
+
+    /// Lays out `kind` for the current viewport, off the main thread; `nil` if it failed.
+    private func makeEntities(_ kind: CosmosSceneKind) async -> (CosmosSceneEntities, landscape: Bool)? {
+        guard let programs else { return nil }
         // Quads face the camera of the scene's resting pose; its sway is a few degrees.
         let time = Self.qaTime[kind.rawValue]
-        let view = GlowView(eye: camera(kind, time: time).eye, focal: focal)
         let landscape = aspect > 1
+        let view = GlowView(eye: camera(kind, time: time, rolled: landscape).eye, focal: focal)
         let started = Date()
         let layers = await Task.detached(priority: .userInitiated) {
             CosmosSceneLayers.build(kind, view: view, time: time)
@@ -239,12 +249,30 @@ final class CosmosEngine {
         do {
             let entities = try await CosmosSceneEntities(kind: kind, layers: layers, programs: programs, time: time)
             NSLog("[Cosmos] %@ built in %.2f s", kind.label, Date().timeIntervalSince(started))
-            entities.root.isEnabled = false
-            world.addChild(entities.root)
-            built[kind] = entities
-            if kind == .flow { flowLandscape = landscape }
+            return (entities, landscape)
         } catch {
             NSLog("[Cosmos] building \(kind) failed: \(error)")
+            return nil
+        }
+    }
+
+    /// The viewport turned across square: lays the flow out again for the new framing while
+    /// the old one stays on screen, then swaps them in one tick — the scene's clock, its
+    /// reveal and the tour timer carry on untouched.
+    private func rebuildFlow() {
+        guard programs != nil, !building.contains(.flow) else { return }
+        building.insert(.flow)
+        Task { @MainActor in
+            defer { building.remove(.flow) }
+            guard let (entities, landscape) = await makeEntities(.flow) else { return }
+            entities.root.isEnabled = false
+            world.addChild(entities.root)
+            built[.flow]?.cancelChurn()
+            built[.flow]?.root.removeFromParent()
+            built[.flow] = entities
+            flowLandscape = landscape
+            // Frame the successor now, so no frame renders it with the old camera roll.
+            if frameLink != nil { tick() }
         }
     }
 
@@ -272,12 +300,17 @@ final class CosmosEngine {
                 return
             }
         }
-        if let flow = built[.flow], let landscape = flowLandscape, landscape != (aspect > 1) {
-            // The viewport turned across square: the flow's quads faced the other framing.
-            flow.root.removeFromParent()
-            built[.flow] = nil
-            flowLandscape = nil
-            if current == .flow { ensureBuilt(.flow) }
+        if let landscape = flowLandscape, landscape != (aspect > 1) {
+            if current == .flow {
+                // The flow's quads face the other framing; it keeps showing, in that framing,
+                // until its successor lands.
+                rebuildFlow()
+            } else if !building.contains(.flow) {
+                // Off screen: drop it, the next visit builds it for the viewport it meets.
+                built[.flow]?.root.removeFromParent()
+                built[.flow] = nil
+                flowLandscape = nil
+            }
         }
         for (kind, other) in built { other.root.isEnabled = kind == current }
         guard let entities = built[current] else {
@@ -301,11 +334,14 @@ final class CosmosEngine {
 
     /// Where `kind`'s camera is at `time`, and which way is up on screen. The flow field is
     /// portrait: on a landscape viewport the camera rolls a quarter turn — (x, y) → (−y, x),
-    /// as on Android — so its long side runs along the screen's.
-    private func camera(_ kind: CosmosSceneKind, time: Float) -> (eye: SIMD3<Float>, up: SIMD3<Float>) {
-        let pose = CosmosFraming.pose(kind, time: time, aspect: aspect)
+    /// as on Android — so its long side runs along the screen's. `rolled` defaults to the
+    /// framing the built flow was laid out for, which lags the viewport during a rebuild.
+    private func camera(_ kind: CosmosSceneKind, time: Float,
+                        rolled: Bool? = nil) -> (eye: SIMD3<Float>, up: SIMD3<Float>) {
+        let rolled = kind == .flow && (rolled ?? flowLandscape ?? (aspect > 1))
+        let pose = CosmosFraming.pose(kind, time: time, aspect: aspect, rolled: rolled)
         let eye = CosmosFraming.orbit(pose.distance, pose.elevation, pose.yaw)
-        guard kind == .flow, aspect > 1 else { return (eye, SIMD3(0, 1, 0)) }
+        guard rolled else { return (eye, SIMD3(0, 1, 0)) }
         return (SIMD3(-eye.y, eye.x, eye.z), SIMD3(-1, 0, 0))
     }
 
@@ -650,20 +686,24 @@ final class CosmosSceneEntities {
                 Plasma.surface(.star, time: at, gain: CosmosSceneLayers.starPulse,
                                width: width, height: width / 2).image
             }.value
-            guard let self, !Task.isCancelled else { return }
-            let texture = try? await GlowEntity.texture(image)
+            guard let self else { return }
+            // The bake has ended, cancelled or not: only now may the next one start, so a
+            // clock reset never leaves two plasma bakes running at once.
+            defer {
+                self.churnBaking = nil
+                self.churnTask = nil
+            }
             guard !Task.isCancelled else { return }
-            if let texture { self.churnFrames[wanted] = texture }
-            self.churnBaking = nil
-            self.churnTask = nil
+            let texture = try? await GlowEntity.texture(image)
+            guard !Task.isCancelled, let texture else { return }
+            self.churnFrames[wanted] = texture
         }
     }
 
-    /// Stops the surface bake in flight; the next `update` starts it again.
+    /// Drops the surface bake in flight. The detached plasma loop cannot be interrupted, so
+    /// `churnBaking` stays set until it returns; the next `update` after that bakes again.
     func cancelChurn() {
         churnTask?.cancel()
-        churnTask = nil
-        churnBaking = nil
     }
 
     /// Width of a churned surface frame; the build's frame 0 keeps the full 1024.
@@ -676,7 +716,27 @@ final class CosmosSceneEntities {
     }
 
     /// Low Power Mode or a serious thermal state: the surface holds its frame, nothing is baked.
-    private static var churnHeld: Bool {
+    private static var churnHeld: Bool { CosmosPowerState.shared.constrained }
+}
+
+/// Low Power Mode or a serious thermal state, read once and then kept current by the two
+/// system notifications instead of being queried on every frame.
+@MainActor
+final class CosmosPowerState {
+    static let shared = CosmosPowerState()
+    private(set) var constrained = CosmosPowerState.read()
+    private var observers: [NSObjectProtocol] = []
+
+    private init() {
+        let names = [ProcessInfo.thermalStateDidChangeNotification, Notification.Name.NSProcessInfoPowerStateDidChange]
+        observers = names.map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { CosmosPowerState.shared.constrained = CosmosPowerState.read() }
+            }
+        }
+    }
+
+    private nonisolated static func read() -> Bool {
         let info = ProcessInfo.processInfo
         return info.isLowPowerModeEnabled || info.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     }
