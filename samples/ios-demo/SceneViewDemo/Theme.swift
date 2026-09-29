@@ -90,6 +90,12 @@ enum SceneViewTokens {
     enum Stage {
         static let background = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
 
+        /// Widest the HD poster draws, in points. Its render is 600 px wide:
+        /// on a phone the stage width (~350 pt) already stays under this, and
+        /// on an iPad it keeps the upscale near the phone's instead of
+        /// stretching the render across a 1,000-point stage (3.4x).
+        static let posterMaxWidth: CGFloat = 400
+
         /// Fills for primitives that must stay apart on the stage — Android's
         /// `SceneViewColors.Ramp4`: `primary` light #005BC1, `gradient-hero` end
         /// #6446CD, `primary` dark #A4C1FF, `tertiary` dark #D2A8FF. Fixed in both

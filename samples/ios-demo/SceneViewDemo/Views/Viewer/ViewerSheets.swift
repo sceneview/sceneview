@@ -18,6 +18,11 @@ struct BundledViewerModel: Identifiable, Equatable {
     /// The bundled USDZ shown instantly while the HD asset is not on disk.
     /// `nil` for an HD-only model (Museum & Space): its thumbnail stands in.
     var standInAssetName: String? = nil
+    /// Turn about +Y, degrees, applied when the model is put on stage —
+    /// Android's `frontYaw`, same sign (right-handed, counter-clockwise seen
+    /// from above). The camera opens head-on (``ModelViewerDemo/openingAzimuth``);
+    /// a model that reads better three-quarter carries its own turn here.
+    var frontYaw: Float = 0
     /// `false` for a model shown static: its clips stay listed under Animate
     /// but do not start on their own (Perseverance ships 23 rigging clips).
     var autoplaysAnimations: Bool = true
