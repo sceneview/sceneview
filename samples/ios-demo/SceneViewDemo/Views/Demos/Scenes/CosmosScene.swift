@@ -7,6 +7,7 @@
 // @icon        sparkles
 // @order       38
 // @tags        bloom,emissive,particles,procedural,shader,galaxy,space,custom material
+// @sinceVersion 4.49.0
 import SwiftUI
 
 enum CosmosScene: DemoScene {
