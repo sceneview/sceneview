@@ -6,7 +6,7 @@
 // @available   true
 // @icon        viewfinder.circle.fill
 // @iosOnly     true
-// @order       39
+// @order       40
 // @tags        ar,image,tracking,augmented-image,marker
 import SwiftUI
 

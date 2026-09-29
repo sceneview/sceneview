@@ -794,9 +794,9 @@ demos:
       reset.
     parity: diverges
     evidence: >-
-      LightTypesDemo.swift:250-282 no helmet (Android LightingDemo.kt:500);
-      :136 four of seven HDRs; one control per rig, no exposure, dock or
-      reset; plus 3 legacy cards
+      Helmet, probe balls, slate floor, orbit dock and reset now match
+      (#4175); left: LightTypesDemo.swift:172 four of seven HDRs, :559-580
+      one control per rig, no exposure or IBL rotation; plus 3 legacy cards
   - id: lighting-lab
     androidStatus: Working
     iosStatus: working
@@ -847,9 +847,11 @@ demos:
       sliders, compare split) | Occlusion modes.
     parity: diverges
     evidence: >-
-      MaterialsDemo.swift:46-125 streams Sketchfab KHR models (the keyless
-      fallbacks lack the extension the legend names); 3 separate cards;
-      Android MaterialsDemo.kt:6-42,190-194
+      Gallery wall matches since #4175 (nine procedural presets, sweep,
+      tap to focus); left: no Inspect or Occlusion mode and no HDR switch,
+      a pale themed stage instead of Android's blurred grey studio
+      (MaterialsDemo.swift:106-110), crystal is transparency not
+      transmission (no RealityKit lobe, :29-31); 3 separate cards
   - id: model-viewer
     androidStatus: Working
     iosStatus: working

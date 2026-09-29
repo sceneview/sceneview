@@ -6,7 +6,7 @@
 // @available   true
 // @icon        camera.metering.spot
 // @iosOnly     true
-// @order       44
+// @order       45
 // @tags        ar,point-cloud,feature-points,tracking
 import SwiftUI
 

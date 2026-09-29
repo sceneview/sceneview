@@ -116,11 +116,11 @@ final class DemoFreshnessTests: XCTestCase {
         }
     }
 
-    /// Materials streams its subject: listed on a keyed build's home, as on
-    /// Android, and kept off a keyless one, where it has only the placeholder.
-    func testMaterialsIsOnTheHomeOfAKeyedBuildOnly() {
+    /// Materials is a procedural sphere wall, as on Android: it needs no
+    /// Sketchfab key, so it stays on the home of a keyless build too.
+    func testMaterialsIsOnTheHomeWithOrWithoutAKey() {
         XCTAssertTrue(HomeCatalogue.isOnHome("materials", hasSketchfabKey: true))
-        XCTAssertFalse(HomeCatalogue.isOnHome("materials", hasSketchfabKey: false))
+        XCTAssertTrue(HomeCatalogue.isOnHome("materials", hasSketchfabKey: false))
         XCTAssertTrue(HomeCatalogue.isOnHome("model-viewer", hasSketchfabKey: false))
     }
 }

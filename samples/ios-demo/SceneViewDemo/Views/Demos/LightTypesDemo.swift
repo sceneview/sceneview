@@ -45,7 +45,14 @@ import SceneViewSwift
 ///
 /// ## The stage
 ///
-/// Two probe balls and a floor, shared by all three rigs — the gaffer's pair:
+/// Android's `LightingStage`, value for value: the Khronos Damaged Helmet as the hero (0.5 m,
+/// centred on the orbit target), a slate floor just under it, and the gaffer's pair of probe
+/// balls at its feet. The first iOS cut had the probes alone, 0.28 m each, on a 4 m grey slab
+/// that the auto-framing fitted instead of the subject — the balls came out as two small dots
+/// on a grey band (#3907 parity audit). The camera now frames the subject, not the floor, and
+/// circles it slowly like Android's idle orbit so the reflections travel.
+///
+/// The two probes, shared by all three rigs:
 ///
 /// - The **chrome** probe (`metallic: 1, roughness: 0.05`) is a mirror. It shows
 ///   what the environment *is*, which is what makes an IBL swap legible at all.
@@ -104,17 +111,40 @@ struct LightingDemo: View {
     /// Hour of day for the Sun rig, 0…24.
     @State private var hour: Double = 15
 
+    /// The hero, loaded once. `nil` until it lands (or if it fails — the probes still stand).
+    @State private var heroNode: ModelNode?
+    @State private var heroLoadFailed = false
+    /// Android's idle orbit: on until the viewer takes the camera.
+    @State private var orbiting = true
+    @State private var orbitStart = Date()
+    @State private var orbitStartYaw: Double = Self.staticYawDegrees
+    /// The pose held once the orbit stops.
+    @State private var heldPose: SceneCameraPose?
+    @State private var viewport: CGSize = .zero
+
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
-    // MARK: - Stage constants
+    // MARK: - Stage constants (Android `LightingStage`)
 
+    /// Largest side of the hero helmet.
+    private static let heroUnits: Float = 0.5
     /// Radius of both probe balls.
-    private static let probeRadius: Float = 0.28
-    /// The probes sit either side of the origin, far enough apart that the
-    /// chrome one never mirrors the matte one across most of the orbit.
-    private static let probeSpacing: Float = 0.42
-    private static let stageZ: Float = -1.8
-    private static let floorY: Float = -0.3
+    private static let probeRadius: Float = 0.065
+    /// The probes stand either side of the helmet and a little in front of it.
+    private static let probeSpacing: Float = 0.34
+    private static let probeOffsetZ: Float = 0.14
+    private static let stageZ: Float = 0
+    /// Top of the floor: 1 cm under the helmet's underside.
+    private static let floorY: Float = -heroUnits / 2 - 0.01
+    /// Runs well past the frame at every orbit distance, so its edge is never seen.
+    private static let floorSize: Float = 60
+
+    /// Camera: 20° above the subject, a revolution every 26 s, 32° yaw when still.
+    private static let orbitElevationDegrees: Float = 20
+    private static let orbitPeriod: Double = 26
+    private static let staticYawDegrees: Double = 32
+    /// What the camera fits: both probes across, the helmet up and deep.
+    private static let subjectExtent = SIMD3<Float>((0.34 + 0.065) * 2, 0.5, 0.5)
 
     /// The analytic rigs need the IBL *dimmed*, not off: at full strength the
     /// ambient does the modelling the key light exists to do. Off entirely and
@@ -123,11 +153,17 @@ struct LightingDemo: View {
     /// `STUDIO_IBL_INTENSITY`.
     private static let studioIBLIntensity: Float = 0.12
 
-    /// Distance of every analytic light from the stage centre.
-    private static let rigRadius: Float = 2.2
-    private static let keyElevationDegrees: Double = 35
-    private static let fillAzimuthOffsetDegrees: Double = 150
-    private static let rimAzimuthOffsetDegrees: Double = -110
+    /// Distance of every analytic light from the stage centre — Android's `RIG_RADIUS`, so
+    /// the markers stand inside the frame instead of beyond it.
+    private static let rigRadius: Float = 1.35
+    private static let keyElevationDegrees: Double = 38
+    private static let fillAzimuthOffsetDegrees: Double = 155
+    private static let fillElevationDegrees: Double = 12
+    private static let rimAzimuthOffsetDegrees: Double = -125
+    private static let rimElevationDegrees: Double = 46
+    /// The rig moved from 2.2 m to 1.35 m: its lumens scale by (1.35 / 2.2)² so the light
+    /// landing on the stage stays what it was.
+    private static let rigIntensityScale: Float = 0.38
 
     /// Environments offered by the Image rig. A subset of
     /// `SceneEnvironment.allPresets` chosen so consecutive entries look nothing
@@ -188,19 +224,65 @@ struct LightingDemo: View {
     /// intermittently renders nothing at all on iOS 26 Simulator, permanently
     /// (#3008).
     private var contentKey: String {
+        let hero = heroNode == nil ? "" : "-hero"
         switch rig {
         case .image:
-            return "image-\(environmentIndex)"
+            return "image-\(environmentIndex)\(hero)"
         case .studio:
-            return "studio-\(Int(keyAzimuth))"
+            return "studio-\(Int(keyAzimuth))\(hero)"
         case .sun:
-            return "sun-\(Int(hour * 4))"
+            return "sun-\(Int(hour * 4))\(hero)"
         }
     }
 
     // MARK: - Body
 
     var body: some View {
+        GeometryReader { proxy in
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !orbiting)) { context in
+                scene(pose: pose(at: context.date))
+            }
+            .onAppear {
+                viewport = proxy.size
+                if qaMode { orbiting = false }
+                heldPose = framingPose(yawDegrees: Self.staticYawDegrees)
+            }
+            .onChange(of: proxy.size) { _, size in
+                viewport = size
+                if !orbiting { heldPose = framingPose(yawDegrees: orbitStartYaw) }
+            }
+        }
+        .ignoresSafeArea()
+        .task { await loadHeroIfNeeded() }
+        // The rig picker and the rig's one control ride the scaffold's
+        // accessory cluster on glass; the explainer lives in the sheet. The
+        // previous `.ultraThinMaterial` card went near-white in dark mode
+        // and the screen had no back button at all (#3766 P2 §3, §6).
+        .demoChrome(
+            dock: [
+                DockItem(icon: orbiting ? "pause.fill" : "play.fill", label: "Animate",
+                         selected: orbiting) { setOrbiting(!orbiting) },
+            ],
+            onReset: {
+                orbitStartYaw = Self.staticYawDegrees
+                heldPose = framingPose(yawDegrees: Self.staticYawDegrees)
+                orbiting = false
+            },
+            accessory: {
+                VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
+                    rigControl
+                    DemoOptionStrip(Rig.allCases, selection: $rig) { $0.title }
+                }
+            }
+        ) {
+            Text(rig.explainer)
+                .font(SceneViewTokens.TypeScale.body)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func scene(pose: SceneCameraPose?) -> some View {
         SceneView { root in
             addStage(to: root)
             switch rig {
@@ -220,41 +302,122 @@ struct LightingDemo: View {
         .environment(environment)
         .contentID(contentKey)
         .cameraControls(.orbit)
-        // A low orbit keeps the floor, both probes and the sky in frame.
-        .cameraOrbit(elevation: .pi / 12)
-        .framingMargin(qaMode ? 0.75 : 1.05)
-        // The rig picker and the rig's one control ride the scaffold's
-        // accessory cluster on glass; the explainer lives in the sheet. The
-        // previous `.ultraThinMaterial` card went near-white in dark mode
-        // and the screen had no back button at all (#3766 P2 §3, §6).
-        .demoChrome(
-            accessory: {
-                VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
-                    rigControl
-                    DemoOptionStrip(Rig.allCases, selection: $rig) { $0.title }
+        // The camera frames the subject, never the floor — see `framingPose`.
+        .autoCenterContent(false)
+        .cameraPose(pose)
+        .onCameraChanged { reported in
+            Task { @MainActor in noteCamera(reported) }
+        }
+    }
+
+    // MARK: - Camera
+
+    private func pose(at date: Date) -> SceneCameraPose? {
+        guard orbiting else { return heldPose }
+        return framingPose(yawDegrees: yaw(at: date))
+    }
+
+    private func yaw(at date: Date) -> Double {
+        orbitStartYaw + date.timeIntervalSince(orbitStart) / Self.orbitPeriod * 360
+    }
+
+    private func setOrbiting(_ on: Bool) {
+        if on {
+            orbitStart = Date()
+        } else {
+            orbitStartYaw = yaw(at: Date())
+            heldPose = framingPose(yawDegrees: orbitStartYaw)
+        }
+        orbiting = on
+    }
+
+    /// A drag while the orbit runs hands the camera to the viewer.
+    private func noteCamera(_ reported: SceneCameraPose) {
+        guard orbiting else { return }
+        let expected = framingPose(yawDegrees: yaw(at: Date()))
+        var yawDelta = abs(reported.azimuth - expected.azimuth)
+            .truncatingRemainder(dividingBy: 2 * .pi)
+        yawDelta = min(yawDelta, 2 * .pi - yawDelta)
+        if yawDelta > 0.1 || abs(reported.elevation - expected.elevation) > 0.08
+            || abs(reported.distance - expected.distance) > 0.15 {
+            orbitStartYaw = yaw(at: Date())
+            heldPose = reported
+            orbiting = false
+        }
+    }
+
+    /// The pose that fits the helmet and both probes between the top chrome and the dock at
+    /// any yaw — Android's `rememberFitOrbitRadius` on the subject extent, not the floor.
+    /// The distance is the worst case over a full turn, so the orbit never breathes.
+    private func framingPose(yawDegrees: Double) -> SceneCameraPose {
+        let width = Float(max(viewport.width, 1))
+        let height = Float(max(viewport.height, 1))
+        let top = Float(SceneViewTokens.Chrome.scrimTop)
+        let bottom = Float(SceneViewTokens.Chrome.scrimBottomMin)
+        let band = max(height - top - bottom, height * 0.35)
+        let tanV = tan(Float.pi / 6)
+        let tanH = tanV * width / height
+        let tanBand = tanV * band / height
+        let fill: Float = qaMode ? 0.9 : 0.8
+        let elevation = Self.orbitElevationDegrees * .pi / 180
+        var distance: Float = 0.5
+        for step in 0..<24 {
+            let a = Float(step) * .pi / 12
+            let right = SIMD3<Float>(cos(a), 0, -sin(a))
+            let up = SIMD3<Float>(-sin(elevation) * sin(a), cos(elevation), -sin(elevation) * cos(a))
+            let back = SIMD3<Float>(cos(elevation) * sin(a), sin(elevation), cos(elevation) * cos(a))
+            for sx in [-1, 1] as [Float] {
+                for sy in [-1, 1] as [Float] {
+                    for sz in [-1, 1] as [Float] {
+                        let corner = Self.subjectExtent / 2 * SIMD3(sx, sy, sz)
+                        let depth = simd_dot(corner, back)
+                        distance = max(distance, depth + abs(simd_dot(corner, right)) / (tanH * fill))
+                        distance = max(distance, depth + abs(simd_dot(corner, up)) / (tanBand * fill))
+                    }
                 }
             }
-        ) {
-            Text(rig.explainer)
-                .font(SceneViewTokens.TypeScale.body)
-                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                .fixedSize(horizontal: false, vertical: true)
         }
+        let a = Float(yawDegrees * .pi / 180)
+        let up = SIMD3<Float>(-sin(elevation) * sin(a), cos(elevation), -sin(elevation) * cos(a))
+        // Centre the subject on the band between the chrome, not on the screen.
+        let bandCentreOffset = (top + band / 2) - height / 2
+        let shift = bandCentreOffset / (height / 2) * distance * tanV
+        return SceneCameraPose(azimuth: a, elevation: elevation, distance: distance,
+                               target: SIMD3(0, 0, Self.stageZ) + up * shift)
     }
 
     // MARK: - Stage
 
-    /// The gaffer's pair plus a floor. Shared by all three rigs so that
+    /// Loads the hero once. On failure the stage keeps its probes and floor.
+    @MainActor
+    private func loadHeroIfNeeded() async {
+        guard heroNode == nil, !heroLoadFailed else { return }
+        do {
+            let node = try await ModelNode.load("khronos_damaged_helmet")
+            _ = node.scaleToUnits(Self.heroUnits)
+            _ = node.centerOrigin()
+            node.entity.position = .init(x: 0, y: 0, z: Self.stageZ)
+            heroNode = node
+        } catch {
+            heroLoadFailed = true
+        }
+    }
+
+    /// The hero, the gaffer's pair and a floor. Shared by all three rigs so that
     /// switching rig changes the *light* and nothing else.
     @MainActor
     private func addStage(to root: Entity) {
+        if let hero = heroNode {
+            root.addChild(hero.entity)
+        }
         // Chrome: a mirror. Metallic 1 / roughness ~0 is the ball that shows
         // what the environment is.
         let chrome = GeometryNode.sphere(
             radius: Self.probeRadius,
             material: .pbr(color: .white, metallic: 1.0, roughness: 0.05)
         )
-        chrome.entity.position = .init(x: -Self.probeSpacing, y: 0, z: Self.stageZ)
+        chrome.entity.position = .init(x: -Self.probeSpacing, y: Self.floorY + Self.probeRadius,
+                                       z: Self.stageZ + Self.probeOffsetZ)
         root.addChild(chrome.entity)
 
         // Matte: a diffuse grey. Its terminator is the key direction and the
@@ -267,18 +430,24 @@ struct LightingDemo: View {
                 roughness: 0.85
             )
         )
-        matte.entity.position = .init(x: Self.probeSpacing, y: 0, z: Self.stageZ)
+        matte.entity.position = .init(x: Self.probeSpacing, y: Self.floorY + Self.probeRadius,
+                                      z: Self.stageZ + Self.probeOffsetZ)
         root.addChild(matte.entity)
 
-        // A mid-grey floor, so the key's shadow has somewhere to land. Without
-        // it the Studio rig's shadow toggle is invisible.
-        let floor = GeometryNode.plane(
-            width: 4,
-            depth: 4,
-            color: SimpleMaterial.Color(red: 0.22, green: 0.23, blue: 0.25, alpha: 1)
+        // A slate floor, so the key's shadow has somewhere to land — Android's
+        // `FLOOR_COLOR` at roughness 0.45: glossy enough to hold a soft
+        // reflection of the helmet, which is what seats it on the floor.
+        var floorMaterial = PhysicallyBasedMaterial()
+        floorMaterial.baseColor = .init(tint: SceneViewTokens.Stage.lightingFloor)
+        floorMaterial.roughness = .init(floatLiteral: 0.45)
+        floorMaterial.metallic = .init(floatLiteral: 0)
+        floorMaterial.specular = .init(floatLiteral: 0.55)
+        let floor = ModelEntity(
+            mesh: .generatePlane(width: Self.floorSize, depth: Self.floorSize),
+            materials: [floorMaterial]
         )
-        floor.entity.position = .init(x: 0, y: Self.floorY, z: Self.stageZ)
-        root.addChild(floor.entity)
+        floor.position = .init(x: 0, y: Self.floorY, z: Self.stageZ)
+        root.addChild(floor)
     }
 
     // MARK: - Studio rig
@@ -307,18 +476,18 @@ struct LightingDemo: View {
         let keyPosition = Self.rigPosition(azimuth: keyAzimuth, elevation: Self.keyElevationDegrees)
         let fillPosition = Self.rigPosition(
             azimuth: keyAzimuth + Self.fillAzimuthOffsetDegrees,
-            elevation: 12
+            elevation: Self.fillElevationDegrees
         )
         let rimPosition = Self.rigPosition(
             azimuth: keyAzimuth + Self.rimAzimuthOffsetDegrees,
-            elevation: 45
+            elevation: Self.rimElevationDegrees
         )
 
         // Key — warm, focused, and the only light in the rig that casts a
         // shadow. The shadow is what makes moving it legible on the floor.
         let key = LightNode.spot(
             color: .warm,
-            intensity: 90_000,
+            intensity: 90_000 * Self.rigIntensityScale,
             innerAngle: .pi / 9,
             outerAngle: .pi / 5,
             attenuationRadius: 8
@@ -332,7 +501,7 @@ struct LightingDemo: View {
         // competing with the key's modelling.
         let fill = LightNode.point(
             color: .custom(r: 0.55, g: 0.68, b: 1.0),
-            intensity: 12_000,
+            intensity: 12_000 * Self.rigIntensityScale,
             attenuationRadius: 8
         )
         .position(fillPosition)
@@ -341,7 +510,7 @@ struct LightingDemo: View {
         // Rim — cold and behind, to separate the probes from the dark surround.
         let rim = LightNode.spot(
             color: .custom(r: 0.72, g: 0.86, b: 1.0),
-            intensity: 45_000,
+            intensity: 45_000 * Self.rigIntensityScale,
             innerAngle: .pi / 10,
             outerAngle: .pi / 6,
             attenuationRadius: 8
@@ -364,7 +533,7 @@ struct LightingDemo: View {
         color: SimpleMaterial.Color,
         to root: Entity
     ) {
-        let marker = GeometryNode.sphere(radius: 0.06, material: .unlit(color: color))
+        let marker = GeometryNode.sphere(radius: 0.045, material: .unlit(color: color))
         marker.entity.position = position
         root.addChild(marker.entity)
     }
