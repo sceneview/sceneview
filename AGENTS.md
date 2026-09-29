@@ -21,7 +21,7 @@ duplicated here, so nothing here can go stale against it.
 
 | You need | Read |
 |---|---|
-| Dependencies, min SDK, Kotlin version | [`llms.txt`](llms.txt) § *Setup* — Android `4.37.0`, minSdk 24, Kotlin 2.4.10; Apple SPM `from: "4.37.0"`, iOS 18 / macOS 15 / visionOS 2 |
+| Dependencies, min SDK, Kotlin version | [`llms.txt`](llms.txt) § *Setup* — Android `4.48.0`, minSdk 24, Kotlin 2.4.20; Apple SPM `from: "4.48.0"`, iOS 18 / macOS 15 / visionOS 2 |
 | A minimal Android, iOS and Web example, side by side | [`README.md`](README.md) § *Quick look* |
 | Every node composable, with signatures and gotchas | [`docs/docs/nodes.md`](docs/docs/nodes.md) — also at <https://sceneview.github.io/docs/nodes/> |
 | **Common mistakes**, with symptom and fix | [`docs/docs/nodes.md` § *Common mistakes*](docs/docs/nodes.md#common-mistakes) |

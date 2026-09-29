@@ -127,10 +127,10 @@ dependencies {
     implementation("io.github.sceneview:sceneview:4.48.0")
 
     // Jetpack XR Compose (spatial panels, layouts)
-    implementation("androidx.xr.compose:compose:1.0.0-alpha12")
+    implementation("androidx.xr.compose:compose:1.0.0-beta01")
 
     // Jetpack XR SceneCore (session, entities — optional)
-    implementation("androidx.xr.scenecore:scenecore:1.0.0-alpha12")
+    implementation("androidx.xr.scenecore:scenecore:1.0.0-beta02")
 }
 ```
 

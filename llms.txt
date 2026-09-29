@@ -3281,16 +3281,16 @@ See #1731.
 
 SceneView ships an opt-in layer for **ARCore for Jetpack XR** (`androidx.xr.arcore`) — the runtime that powers hand tracking and face tracking on Android XR headsets and glasses. It is **separate** from mobile ARCore (`com.google.ar.core`) and only meaningful on devices that expose the Jetpack XR Perception runtime.
 
-**Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-alpha14` and subject to breaking changes. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
+**Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-beta02` (pre-stable) and may still change. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
 
-**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)) — `XrFaceNode` face-tracking node + `ar-xr-face` demo.
+**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-beta02"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)) — `XrFaceNode` face-tracking node + `ar-xr-face` demo.
 
 **Opt-in dependency** (consumers add this themselves; `arsceneview/` declares it `compileOnly`):
 
 ```kotlin
 // app/build.gradle.kts — only if you target Android XR
 dependencies {
-    implementation(libs.androidx.xr.arcore)   // androidx.xr.arcore:arcore:1.0.0-alpha14
+    implementation(libs.androidx.xr.arcore)   // androidx.xr.arcore:arcore:1.0.0-beta02
 }
 ```
 
@@ -6225,9 +6225,9 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose` — **not published yet**. 4.26.0 is the latest
-release on Maven Central and does NOT contain this module; it ships in the next release.
-Do not emit a version coordinate for it — every released version resolves to 404.
+`io.github.sceneview:sceneview-compose:4.48.0` — on Maven Central since 4.27.0, released
+in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
+emit a version below 4.27.0 for it.
 
 **SCOPE — read before using.** This module is the *viewer subset* and will not grow past
 it: load a model, orbit it, light it, tap it. It is NOT a portable version of the full
@@ -6323,7 +6323,7 @@ public only because both bridges are separate modules. Not `@objc`, so not reach
 Kotlin.
 
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
-— Compose Multiplatform 1.11.1 publishes no such variant.
+— Compose Multiplatform 1.12.0 publishes no such variant.
 
 ### The whole public API
 

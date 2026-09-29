@@ -1,7 +1,7 @@
 # Android XR Integration
 
 !!! warning "Status: Planned / Experimental"
-    Android XR support is planned. The Jetpack XR SDK is in **Developer Preview** (alpha).
+    Android XR support is planned. The Jetpack XR SDK is in **beta** (not yet stable).
     APIs may change. This page documents the integration strategy for SceneView + Android XR.
 
 ## What is Android XR?
@@ -14,10 +14,10 @@ The developer toolkit is the **Jetpack XR SDK**, which includes:
 
 | Library | Purpose | Artifact |
 |---|---|---|
-| **Jetpack SceneCore** | 3D scene graph, entities, environments | `androidx.xr.scenecore:scenecore:1.0.0-alpha12` |
-| **Compose for XR** | Spatial Compose composables | `androidx.xr.compose:compose:1.0.0-alpha12` |
-| **ARCore for XR** | Planes, anchors, hand tracking | `androidx.xr.arcore:arcore:1.0.0-alpha12` |
-| **XR Runtime** | Session management, capabilities | `androidx.xr.runtime:runtime:1.0.0-alpha12` |
+| **Jetpack SceneCore** | 3D scene graph, entities, environments | `androidx.xr.scenecore:scenecore:1.0.0-beta02` |
+| **Compose for XR** | Spatial Compose composables | `androidx.xr.compose:compose:1.0.0-beta01` |
+| **ARCore for XR** | Planes, anchors, hand tracking | `androidx.xr.arcore:arcore:1.0.0-beta02` |
+| **XR Runtime** | Session management, capabilities | `androidx.xr.runtime:runtime:1.0.0-beta02` |
 
 ## How it relates to SceneView
 
@@ -63,8 +63,8 @@ dependencies {
     implementation("io.github.sceneview:sceneview:4.48.0")
 
     // Jetpack XR
-    implementation("androidx.xr.scenecore:scenecore:1.0.0-alpha12")
-    implementation("androidx.xr.compose:compose:1.0.0-alpha12")
+    implementation("androidx.xr.scenecore:scenecore:1.0.0-beta02")
+    implementation("androidx.xr.compose:compose:1.0.0-beta01")
 }
 ```
 
@@ -249,9 +249,9 @@ dependencies {
     implementation("io.github.sceneview:arsceneview:4.48.0")
 
     // Jetpack XR SDK
-    implementation("androidx.xr.scenecore:scenecore:1.0.0-alpha12")
-    implementation("androidx.xr.compose:compose:1.0.0-alpha12")
-    implementation("androidx.xr.arcore:arcore:1.0.0-alpha12")  // optional: spatial anchors, planes
+    implementation("androidx.xr.scenecore:scenecore:1.0.0-beta02")
+    implementation("androidx.xr.compose:compose:1.0.0-beta01")
+    implementation("androidx.xr.arcore:arcore:1.0.0-beta02")  // optional: spatial anchors, planes
 }
 ```
 
