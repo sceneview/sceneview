@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Repository:** 381 MiB of stale screenshots and QA captures that nothing builds, loads or links are gone from the tree (`docs/ux/captures`, `tools/qa-screenshots`, `docs/site-screenshots`, `samples/screenshots/android`, the root `qa-screenshots/` and three duplicate docs images). A checkout drops from 1.19 GiB to 0.82 GiB. No model, environment, video, golden or store graphic changed, and the removed files stay in git history.

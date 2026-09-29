@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **iOS demo: the Home reads like any app under its 3D header, as on Android ([#4188](https://github.com/sceneview/sceneview/pull/4188)).** The Featured shelf and the large picture cards gave way to the same list Android shows: compact grey rows with a small thumbnail, a title and a one-line description, grouped by section, with the New and Updated tags beside the title. On iPad the rows sit in two columns. The 3D header is unchanged, every demo keeps its place and its section, and the tags now stay visible in dark mode.

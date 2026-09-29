@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **iOS demo: Cosmos.** The iOS demo app now has the four Cosmos scenes (galaxy, star, particle burst, vortex flow) with the same captions and dock as Android. SceneViewSwift gains `SceneView.bloom(_:)` with `BloomOptions` (`strength`, `levels`, `resolution`, `threshold`, `thresholdLevel`), named after Android's bloom options; it needs iOS / macOS 26+ and does nothing on earlier versions.
