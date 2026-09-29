@@ -88,6 +88,18 @@ private const val REVEAL_SECONDS = 0.9f
 private const val DEFAULT_BLOOM = 0.45f
 
 /**
+ * How long the glow takes to come up once the loading cover hands over, in seconds (#4160).
+ * Bloom and the dust lanes only join after the first frame is on screen — their programs are
+ * the costliest to link — so they ramp in over this, eased out, and the galaxy ignites instead
+ * of popping brighter half a second after the cover lifts.
+ */
+private const val IGNITE_SECONDS = 0.7f
+
+/** A frame gap longer than this is a hitch, not time the glow spent ramping. */
+private const val IGNITE_HITCH_SECONDS = 0.1f
+private const val ONE_FRAME_SECONDS = 1f / 60f
+
+/**
  * **Cosmos** — four procedural, real-time space scenes lit by nothing but their own light and
  * a bloom pass: a four-arm spiral galaxy, a plasma star, a particle-track burst and a vortex flow
  * field. Nothing is a video or a texture; every point and stroke is geometry built on the CPU
@@ -221,6 +233,7 @@ fun CosmosDemo(onBack: () -> Unit) {
     }
 
     val clock = remember { CosmosClock() }
+    val ignition = remember { CosmosIgnition() }
     val galaxyNode = remember { arrayOfNulls<NodeImpl>(1) }
     val starNode = remember { arrayOfNulls<NodeImpl>(1) }
     val firstFrame = rememberFirstFrameState(engine)
@@ -276,7 +289,13 @@ fun CosmosDemo(onBack: () -> Unit) {
                     scene = CosmosScene.entries[(current.ordinal + 1) % CosmosScene.entries.size]
                 }
                 val time = if (frozen) QA_TIME[current.ordinal] else clock.sceneTime
-                val reveal = if (frozen) 1f else CosmosFraming.reveal(clock.sceneTime, REVEAL_SECONDS)
+                // The opening scene is not revealed: the loading cover already fades it in, and a
+                // reveal started under the cover finished after it, as a pop (#4160).
+                val reveal = if (frozen || !clock.switched) {
+                    1f
+                } else {
+                    CosmosFraming.reveal(clock.sceneTime, REVEAL_SECONDS)
+                }
                 val viewport = view.viewport
                 val aspect = if (viewport.height > 0) viewport.width.toFloat() / viewport.height else 0.5f
                 val pose = CosmosFraming.pose(current, time, aspect)
@@ -295,7 +314,10 @@ fun CosmosDemo(onBack: () -> Unit) {
                 sprites?.update(current, time, reveal)
                 ribbons?.update(current, time, reveal)
                 plasma?.update(current, time, reveal)
-                if (current == CosmosScene.Galaxy) dust?.setParameter("opacity", reveal)
+                if (ignition.advance(nanos, firstFrame.rendered.value, instant = frozen)) {
+                    view.bloomOptions = view.bloomOptions.also { it.strength = bloom * ignition.level }
+                }
+                if (current == CosmosScene.Galaxy) dust?.setParameter("opacity", reveal * ignition.level)
             },
         ) {
             val sceneMeshes = meshes[scene]
@@ -377,7 +399,8 @@ fun CosmosDemo(onBack: () -> Unit) {
         // is lit, so SSAO and shadows are pure cost; bloom is the whole look.
         // Bloom waits for the first frame on screen. Its programs are the costliest to link, and
         // on a software GL (the emulator) linking them held the loading cover for seconds; this
-        // way the galaxy shows first and the glow joins it during the fade-in.
+        // way the galaxy shows first. The glow then rises from zero over IGNITE_SECONDS (driven
+        // per frame in onFrame) — switched on at full strength it read as a pop (#4160).
         val onScreen = firstFrame.rendered.value
         LaunchedEffect(onScreen) {
             if (onScreen) Log.i(TAG, "on screen ${SystemClock.elapsedRealtime() - openedAt} ms after opening")
@@ -385,7 +408,7 @@ fun CosmosDemo(onBack: () -> Unit) {
         LaunchedEffect(view, bloom, onScreen) {
             view.bloomOptions = view.bloomOptions.also { options ->
                 options.enabled = bloom > 0f && onScreen
-                options.strength = bloom
+                options.strength = bloom * ignition.level
                 options.levels = 7
                 options.resolution = 512
                 options.threshold = true
@@ -529,11 +552,15 @@ private fun StagedMesh.upload(engine: Engine): GpuMesh {
 private class CosmosClock {
     var sceneTime = 0f
         private set
+    /** Whether the user (or the tour) has left the opening scene at least once. */
+    var switched = false
+        private set
     private var lastNanos = 0L
     private var scene: CosmosScene? = null
 
     fun advance(nanos: Long, current: CosmosScene, running: Boolean) {
         if (scene != current) {
+            if (scene != null) switched = true
             scene = current
             sceneTime = 0f
         } else if (running && lastNanos != 0L) {
@@ -541,6 +568,39 @@ private class CosmosClock {
             sceneTime += ((nanos - lastNanos) / 1e9f).coerceIn(0f, 0.1f)
         }
         lastNanos = nanos
+    }
+}
+
+/**
+ * The glow's level, 0 → 1 over [IGNITE_SECONDS] from the first frame on screen, eased out
+ * (cubic). Advanced by frame time, and a frame gap longer than [IGNITE_HITCH_SECONDS] counts
+ * as a single frame: enabling bloom stalls the next frame while its programs link (~0.35 s on the
+ * emulator), and that stall must not be spent from the ramp, or the glow lands half-lit.
+ */
+private class CosmosIgnition {
+    var level = 0f
+        private set
+    private var progress = 0f
+    private var lastNanos = 0L
+
+    /** Advances the ramp; true while [level] changed on this frame, including the last step. */
+    fun advance(nanos: Long, onScreen: Boolean, instant: Boolean): Boolean {
+        if (progress >= 1f || !onScreen) return false
+        progress = when {
+            instant -> 1f
+            lastNanos == 0L -> 0f
+            else -> {
+                // A hitch counts as one 60 Hz frame, so a device that is slow every frame still
+                // gets to full glow.
+                val gap = (nanos - lastNanos) / 1e9f
+                val dt = if (gap in 0f..IGNITE_HITCH_SECONDS) gap else ONE_FRAME_SECONDS
+                (progress + dt / IGNITE_SECONDS).coerceAtMost(1f)
+            }
+        }
+        lastNanos = nanos
+        val remaining = 1f - progress
+        level = 1f - remaining * remaining * remaining
+        return true
     }
 }
 
