@@ -44,6 +44,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
@@ -227,6 +228,8 @@ fun ARMeasureDemo(onBack: () -> Unit) {
         chromeToggleOnTap = false,
         onBack = onBack,
         peekHeader = when {
+            // One instruction at a time: while the coaching glyph speaks, the pill steps aside.
+            worldPoints.isEmpty() && coachingCue != ArGuidanceCue.NONE -> null
             worldPoints.isEmpty() -> stringResource(R.string.demo_ar_measure_hint_first)
             worldPoints.size == 1 -> stringResource(R.string.demo_ar_measure_hint_second)
             closedLoop -> stringResource(
