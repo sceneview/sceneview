@@ -24,7 +24,9 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -32,6 +34,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.rememberSurfaceScanCue
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberEngine
@@ -83,6 +86,16 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    var cameraReady by remember { mutableStateOf(false) }
+
+    // The phone-sweep coaching of the placement flow (and of the 3D AR Model Viewer app)
+    // until the first plane appears; the status pill below steps aside while it speaks.
+    val coachingCue = rememberSurfaceScanCue(
+        searching = totalDetected == 0,
+        cameraLost = trackingFailureReason != null,
+        cameraReady = cameraReady,
+        arUnavailable = arCoreAvailability != null,
+    )
 
     // Marker cube material — allocated once so toggling recompositions never leak a fresh
     // MaterialInstance. Semi-opaque amber so it reads against most real-world surfaces.
@@ -140,7 +153,8 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                 // #3341: on a device ARCore has ruled out, the flag this banner waits on
                 // never flips, so the banner would promise a scan under the SDK's "AR
                 // unavailable" card. Drop it and let the card carry reason and retry.
-                visible = noPlanesYet && arCoreAvailability == null,
+                visible = noPlanesYet && arCoreAvailability == null &&
+                    coachingCue == ArGuidanceCue.NONE,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -173,6 +187,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                 onSessionCreated = { session -> arSession = session },
                 onARCoreAvailability = { arCoreAvailability = it },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
+                onSessionUpdated = { _, _ -> if (!cameraReady) cameraReady = true },
             ) {
                 // ARPlaneManager parity: observe the live set of detected planes and react to
                 // the lifecycle. `onAdded` bumps the running total; the returned `State` drives
@@ -194,6 +209,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                     }
                 }
             }
+            ARCoachingOverlay(cue = coachingCue)
         }
     }
 }

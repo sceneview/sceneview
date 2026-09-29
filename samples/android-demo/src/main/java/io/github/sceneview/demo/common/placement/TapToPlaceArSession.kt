@@ -373,6 +373,11 @@ fun BoxScope.TapToPlaceStatusOverlays(
         delay(PLACEMENT_GESTURE_HINT_MS)
         gestureHintVisible = false
     }
+    // The first drag, pinch or twist proves the hint was read: it leaves right away, as in
+    // the 3D AR Model Viewer app, instead of talking over the gesture it described.
+    LaunchedEffect(state.activeGesture) {
+        if (state.activeGesture != null) gestureHintVisible = false
+    }
 
     // The resize read-out's own lifetime past the end of the live pinch (#3830): a window
     // to tap it back to 100 % when the model isn't there, a brief confirmation blip when it

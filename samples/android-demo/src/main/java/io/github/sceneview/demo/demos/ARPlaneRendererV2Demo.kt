@@ -19,13 +19,16 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.common.rememberSurfaceScanCue
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
@@ -70,6 +73,16 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     // banner waits on never flips then, so that banner has to read the verdict or
     // it promises a scan under the SDK's "AR unavailable" card, forever.
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
+    var cameraReady by remember { mutableStateOf(false) }
+
+    // The phone-sweep coaching of the placement flow (and of the 3D AR Model Viewer app)
+    // until the first surface appears; the status pill below steps aside while it speaks.
+    val coachingCue = rememberSurfaceScanCue(
+        searching = !planeDetected,
+        cameraLost = trackingFailureReason != null,
+        cameraReady = cameraReady,
+        arUnavailable = arCoreAvailability != null || arSessionFailed,
+    )
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
@@ -82,6 +95,8 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                 // #3341: on a device ARCore has ruled out, the SDK card carries the reason.
                 text = when {
                     arCoreAvailability != null -> null
+                    // One voice at a time: the coaching glyph is speaking.
+                    coachingCue != ArGuidanceCue.NONE -> null
                     trackingLost -> stringResource(R.string.ar_plane_v2_status_move)
                     placedAnchor != null -> stringResource(R.string.ar_plane_v2_status_placed)
                     planeDetected -> stringResource(R.string.ar_plane_v2_status_found)
@@ -108,6 +123,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                 onARCoreAvailability = { arCoreAvailability = it },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
                 onSessionUpdated = { _, frame ->
+                    if (!cameraReady) cameraReady = true
                     latestFrame.frame = frame
                     if (!planeDetected) {
                         planeDetected = frame.getUpdatedTrackables(Plane::class.java)
@@ -136,6 +152,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                     }
                 }
             }
+            ARCoachingOverlay(cue = coachingCue)
         }
     }
 }

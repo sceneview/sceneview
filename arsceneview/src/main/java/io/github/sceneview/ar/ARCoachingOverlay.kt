@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -52,11 +53,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
@@ -73,8 +76,10 @@ import kotlin.math.sin
  * itself in the enclosing [BoxScope]. Hide non-essential chrome while
  * [ArGuidanceState.isCoaching] is true.
  *
- * One glyph per [ArGuidanceCue] and one word at most on screen; the full sentence is the
- * accessible name, announced politely by TalkBack. Theme-independent ground (the camera
+ * One glyph per [ArGuidanceCue] and one short, plain sentence under it — "Move your phone
+ * slowly over the floor or a table." — as the 3D AR Model Viewer app and Apple's overlay
+ * both say it: a one-word caption ("Scan", "Look back") left first-time users guessing what
+ * to do. The sentence is also the accessible name, announced politely by TalkBack. Theme-independent ground (the camera
  * feed is the background) — only the scrim opacity follows light/dark. With animations
  * turned off in system settings the glyphs hold their most readable pose; fades remain.
  */
@@ -118,7 +123,7 @@ private fun CoachingContent(cue: ArGuidanceCue, surface: PlacementSurface) {
     val scrim = if (dark) CoachColors.ScrimDark else CoachColors.ScrimLight
     val border = if (dark) CoachColors.ScrimBorderDark else CoachColors.ScrimBorderLight
     val sentence = coachingSentence(cue, surface)
-    val word = coachingWord(cue)
+    val caption = sentence.takeIf { cue.hasCaption }
     Column(
         modifier = Modifier.semantics(mergeDescendants = false) {
             contentDescription = sentence
@@ -136,18 +141,24 @@ private fun CoachingContent(cue: ArGuidanceCue, surface: PlacementSurface) {
         ) {
             CoachGlyph(cue = cue, surface = surface, scrim = scrim)
         }
-        if (word != null) {
+        if (caption != null) {
             BasicText(
-                text = word,
+                text = caption,
                 modifier = Modifier
-                    .background(scrim, RoundedCornerShape(percent = 50))
-                    .border(1.dp, border, RoundedCornerShape(percent = 50))
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .widthIn(max = CoachMotion.CAPTION_MAX_WIDTH)
+                    .background(scrim, RoundedCornerShape(CoachMotion.CAPTION_RADIUS))
+                    .border(1.dp, border, RoundedCornerShape(CoachMotion.CAPTION_RADIUS))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    // The Column already carries the sentence as its accessible name.
+                    .clearAndSetSemantics {},
                 style = TextStyle(
                     color = CoachColors.OnScrim,
-                    fontSize = 14.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
                     fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
                 ),
+                maxLines = 3,
             )
         }
     }
@@ -170,13 +181,12 @@ private fun coachingSentence(cue: ArGuidanceCue, surface: PlacementSurface): Str
     }
 }
 
-@Composable
-private fun coachingWord(cue: ArGuidanceCue): String? = when (cue) {
-    ArGuidanceCue.SCAN -> stringResource(R.string.sceneview_coaching_word_scan)
-    ArGuidanceCue.TRACKING_LIMITED -> stringResource(R.string.sceneview_coaching_word_paused)
-    ArGuidanceCue.RELOCALIZING -> stringResource(R.string.sceneview_coaching_word_look_back)
-    ArGuidanceCue.NONE, ArGuidanceCue.INITIALIZING, ArGuidanceCue.SURFACE_FOUND -> null
-}
+/**
+ * Whether the cue writes its sentence under the glyph. The "found" beat is 600 ms of
+ * animation — a sentence there would flash too fast to read, so it stays the accessible name.
+ */
+private val ArGuidanceCue.hasCaption: Boolean
+    get() = this != ArGuidanceCue.NONE && this != ArGuidanceCue.SURFACE_FOUND
 
 /** Animations off in system settings, or a one-frame preview/screenshot. */
 @Composable
@@ -447,6 +457,12 @@ internal object CoachMotion {
     val DISC = 96.dp
     val GAP = 8.dp
     val SHADOW = 12.dp
+
+    /** The sentence wraps to two lines at most on a phone instead of spanning the screen. */
+    val CAPTION_MAX_WIDTH = 280.dp
+
+    /** `radius-md`: a two-line caption is a card, not a pill. */
+    val CAPTION_RADIUS = 16.dp
 }
 
 /** `DESIGN.md` AR tokens. Accents are the dark-scheme values in both themes (read on `ar-scrim`). */

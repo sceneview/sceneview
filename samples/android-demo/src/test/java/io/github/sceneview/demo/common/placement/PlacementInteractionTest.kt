@@ -335,13 +335,12 @@ class PlacementInteractionTest {
     ) = placementCoaching(phase, gestureHintVisible = hint, dragOffSurface = dragOffSurface, lowLight = lowLight)
 
     @Test
-    fun `the pill steps aside while the coaching overlay speaks, except for low light`() {
+    fun `the pill steps aside while the coaching overlay speaks, low light included`() {
+        // The glyph now writes its own sentence, low light included ("Paused. Move your
+        // phone more slowly, in a brighter spot."): the pill repeating it was two voices.
         PlacementPhase.entries.forEach { phase ->
-            val expected = PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT
-                .takeIf { phase == PlacementPhase.TRACKING_LOST }
-            assertEquals(
+            assertNull(
                 phase.name,
-                expected,
                 placementCoaching(phase, gestureHintVisible = true, lowLight = true, coachingActive = true),
             )
             assertNull(placementCoaching(phase, gestureHintVisible = true, coachingActive = true))

@@ -316,7 +316,7 @@ enum class PlacementCoachingMessage {
     /** Scanning: "Move slowly to find a surface." */
     MOVE_SLOWLY,
 
-    /** Tracking lost: "Tracking paused. Move slowly." */
+    /** Tracking lost: "Paused. Move your phone more slowly." */
     TRACKING_PAUSED,
 
     /** Tracking lost in the dark: "Try a brighter area." */
@@ -325,7 +325,7 @@ enum class PlacementCoachingMessage {
     /** Camera back, anchor not yet: "Finding your placement…" */
     FINDING_PLACEMENT,
 
-    /** Just placed: "Drag to move. Pinch or twist to adjust." — once. */
+    /** Just placed: "Drag to move. Pinch to resize. Twist to turn." — once. */
     GESTURE_HINT,
 
     /** A drag left every usable surface: "Keep the object on a surface." */
@@ -351,16 +351,19 @@ enum class PlacementCard {
  */
 const val PLACEMENT_STARTUP_STALL_MS = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS + 1_000L
 
-/** How long the post-placement gesture hint stays on screen, milliseconds. */
-const val PLACEMENT_GESTURE_HINT_MS = 3_500L
+/**
+ * How long the post-placement gesture hint stays on screen, milliseconds — unless the user
+ * starts a gesture first, which dismisses it. Six seconds, as the 3D AR Model Viewer app
+ * holds its "Drag to move" line: three sentences need the time to be read.
+ */
+const val PLACEMENT_GESTURE_HINT_MS = 6_000L
 
 /**
  * How long the resize read-out lingers after a pinch ends while the model is **not** at
  * real-world size — a window to tap it back to 100 % instead of pinching back through the
  * detent by hand ([#3830](https://github.com/sceneview/sceneview/issues/3830), matching AR
- * Quick Look's persistent "100 %" affordance). Same order of magnitude as
- * [PLACEMENT_GESTURE_HINT_MS] on purpose — both are "the window closes, try the gesture
- * again if you missed it" timings.
+ * Quick Look's persistent "100 %" affordance) — a "the window closes, try the gesture
+ * again if you missed it" timing.
  */
 const val PLACEMENT_SCALE_RESET_WINDOW_MS = 3_500L
 
@@ -379,7 +382,8 @@ const val PLACEMENT_SCALE_CONFIRM_MS = 900L
  *
  * While the SDK's animated coaching overlay is up ([coachingActive], i.e.
  * `ArGuidanceState.isCoaching`) the pill steps aside — one voice at a time, Apple's HIG rule
- * for coaching. The one exception is low light: the glyph can say "paused", not *why*.
+ * for coaching. The glyph writes its own sentence under it, low light included ("Paused.
+ * Move your phone more slowly, in a brighter spot."), so the pill has nothing to add.
  */
 fun placementCoaching(
     phase: PlacementPhase,
@@ -388,8 +392,7 @@ fun placementCoaching(
     lowLight: Boolean = false,
     coachingActive: Boolean = false,
 ): PlacementCoachingMessage? = if (coachingActive) {
-    PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT
-        .takeIf { phase == PlacementPhase.TRACKING_LOST && lowLight }
+    null
 } else when (phase) {
     PlacementPhase.INITIALIZING,
     PlacementPhase.NO_SURFACE,

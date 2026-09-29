@@ -41,16 +41,17 @@
     <string name="sceneview_plane_discovery_got_it">Got it</string>
     <string name="sceneview_plane_discovery_hand_animation">Hand moving a phone from side to side</string>
 
-    <!-- ARCoachingOverlay — one word on screen at most; the sentence is the accessible name.
-         Never say "tracking", "plane" or "ARCore" to the user. -->
+    <!-- ARCoachingOverlay — one plain sentence under the glyph, also its accessible name.
+         Never say "tracking", "plane" or "ARCore" to the user. The three one-word captions
+         are no longer drawn (the sentence replaced them) but stay for apps that read them. -->
     <string name="sceneview_coaching_word_scan">Scan</string>
     <string name="sceneview_coaching_word_paused">Paused</string>
     <string name="sceneview_coaching_word_look_back">Look back</string>
     <string name="sceneview_coaching_initializing">Getting ready. Hold your phone up and look around.</string>
-    <string name="sceneview_coaching_scan_surface">Move your phone slowly to find a surface.</string>
+    <string name="sceneview_coaching_scan_surface">Move your phone slowly over the floor or a table.</string>
     <string name="sceneview_coaching_scan_wall">Point your phone at a wall and move it slowly.</string>
     <string name="sceneview_coaching_found_surface">Surface found.</string>
     <string name="sceneview_coaching_found_wall">Wall found.</string>
-    <string name="sceneview_coaching_limited">Paused. Try moving your phone more slowly, in a brighter spot.</string>
-    <string name="sceneview_coaching_relocalizing">Point your phone back at where the object was.</string>
+    <string name="sceneview_coaching_limited">Paused. Move your phone more slowly, in a brighter spot.</string>
+    <string name="sceneview_coaching_relocalizing">Point your phone back at where you placed the object.</string>
 </resources>

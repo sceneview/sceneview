@@ -18,6 +18,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -40,6 +41,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
@@ -56,6 +58,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.demos.internal.MeasureCandidateControl
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.rememberSurfaceScanCue
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
@@ -193,6 +196,18 @@ fun ARMeasureDemo(onBack: () -> Unit) {
     DisposableEffect(Unit) {
         onDispose { points.forEach { it.anchor.detach() } }
     }
+
+    // The phone-sweep coaching of the placement flow (and of the 3D AR Model Viewer app)
+    // until the centre ray first lands on a surface. Latched: aiming off a table for a
+    // moment later is measuring, not searching, and must not bring the glyph back.
+    var surfaceSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(candidateReady) { if (candidateReady) surfaceSeen = true }
+    val coachingCue = rememberSurfaceScanCue(
+        searching = !surfaceSeen && worldPoints.isEmpty(),
+        cameraLost = cameraReady && !isTracking,
+        cameraReady = cameraReady,
+        arUnavailable = arCoreAvailability != null || arSessionFailed,
+    )
 
     val markerMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.Accent)
     val lineMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.Primary)
@@ -491,6 +506,8 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                         radius = SceneViewTokens.Glass.edgeWidth.toPx() * 3)
                 }
             }
+
+            ARCoachingOverlay(cue = coachingCue)
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
             ARCameraInitScrim(

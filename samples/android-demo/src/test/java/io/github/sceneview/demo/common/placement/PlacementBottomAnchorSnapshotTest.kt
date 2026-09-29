@@ -62,9 +62,9 @@ import kotlin.math.absoluteValue
  * ## The states
  *
  *  - **scanning** — "Move slowly to find a surface." — the coaching line alone;
- *  - **placed** — the one-shot "Drag to move. Pinch or twist to adjust." hint;
+ *  - **placed** — the one-shot "Drag to move. Pinch to resize. Twist to turn." hint;
  *  - **no surface** — the 10 s card, *View in 3D* / *Keep scanning*;
- *  - **tracking lost** in low light — "Tracking paused. Move slowly. Try a brighter area.";
+ *  - **tracking lost** in low light — "Paused. Move your phone more slowly. Try a brighter area.";
  *  - **gesture** — a live pinch read-out, "Preview size · 120 %", hint window closed.
  *
  * Every state is photographed light and dark; the flat white and flat black grounds are
@@ -255,7 +255,7 @@ class PlacementBottomAnchorSnapshotTest {
         composeRule.waitForIdle()
         // The banner and the card arrive through fades; an *idle* composition is not
         // necessarily a *settled* one. 2 s is past every transition and still inside the
-        // 3.5 s gesture-hint window, so `PLACED_HINT` photographs the hint.
+        // 6 s gesture-hint window, so `PLACED_HINT` photographs the hint.
         composeRule.mainClock.advanceTimeBy(2_000)
         composeRule.waitForIdle()
     }

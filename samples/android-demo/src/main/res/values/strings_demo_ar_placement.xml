@@ -28,13 +28,13 @@
     <!-- Automatic placement (plan §2.2) — the exact copy of the state machine. Shared by
          the AR View tab and the `ar-placement` demo through `TapToPlaceStatusOverlays`. -->
     <string name="ar_place_move_slowly">Move slowly to find a surface.</string>
-    <string name="ar_place_tracking_paused">Tracking paused. Move slowly.</string>
+    <string name="ar_place_tracking_paused">Paused. Move your phone more slowly.</string>
     <string name="ar_place_try_brighter_area">Try a brighter area.</string>
     <string name="ar_place_finding_placement">Finding your placement…</string>
-    <string name="ar_place_gesture_hint">Drag to move. Pinch or twist to adjust.</string>
+    <string name="ar_place_gesture_hint">Drag to move. Pinch to resize. Twist to turn.</string>
     <string name="ar_place_keep_on_surface">Keep the object on a surface.</string>
     <string name="ar_place_no_surface_title">No surface found.</string>
-    <string name="ar_place_no_surface_detail">Try a brighter, textured area.</string>
+    <string name="ar_place_no_surface_detail">Try a brighter area with a rug or visible floor detail.</string>
     <string name="ar_place_no_surface_detail_wall">Plain walls are harder to find. Try the wall-floor edge, or a wall with a frame or poster.</string>
     <string name="ar_place_view_in_3d">View in 3D</string>
     <string name="ar_place_keep_scanning">Keep scanning</string>

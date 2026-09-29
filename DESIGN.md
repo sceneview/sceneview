@@ -761,20 +761,29 @@ searches or loses tracking — Apple's `ARCoachingOverlayView` on iOS, its visua
 `ARCoachingOverlay` in `arsceneview` on Android. It shows the gesture instead of
 describing it.
 
-- Ground: a 96dp `ar-scrim` disc with the `ar-scrim-border` hairline and `shadow-lg`; an
-  optional one-word caption pill underneath in the same ground (`on-ar-scrim`,
-  `type-caption`), 8dp gap. The full sentence is the accessible name, announced politely.
+- Ground: a 96dp `ar-scrim` disc with the `ar-scrim-border` hairline and `shadow-lg`; the
+  cue's one plain sentence underneath in the same ground (`on-ar-scrim`, `type-body` at
+  `weight-medium`, centred), 8dp gap, `radius-md`, padding 16dp × 10dp, max width 280dp so
+  it wraps to two lines on a phone. The same sentence is the accessible name, announced
+  politely. It replaced a one-word caption ("Scan", "Look back") that left first-time users
+  guessing: the 3D AR Model Viewer app and Apple's overlay both write the instruction out.
 - One glyph per cue, strokes in `on-ar-scrim`, accents in the dark-scheme `primary` and
   `warning`, like the pill:
 
 | Cue | Glyph | Caption |
 |---|---|---|
-| Initializing (after 500ms) | Phone with an orbiting `primary` dot | — |
-| Scan (floor) | Phone sweeping over a dashed diamond (`motion-coach-sweep`) | Scan |
-| Scan (wall) | Phone sweeping in front of a dashed upright rectangle | Scan |
-| Surface found | Target fills with `primary`, a cube lands on it (`motion-coach-resolve`) | — |
-| Tracking limited | The scan glyph at 60%, half speed, a `warning` pause badge | Paused |
-| Relocalizing | The scan glyph with a rotating `warning` circular arrow | Look back |
+| Initializing (after 500ms) | Phone with an orbiting `primary` dot | Getting ready. Hold your phone up and look around. |
+| Scan (floor) | Phone sweeping over a dashed diamond (`motion-coach-sweep`) | Move your phone slowly over the floor or a table. |
+| Scan (wall) | Phone sweeping in front of a dashed upright rectangle | Point your phone at a wall and move it slowly. |
+| Surface found | Target fills with `primary`, a cube lands on it (`motion-coach-resolve`) | — (600ms, too short to read; accessible name "Surface found.") |
+| Tracking limited | The scan glyph at 60%, half speed, a `warning` pause badge | Paused. Move your phone more slowly, in a brighter spot. |
+| Relocalizing | The scan glyph with a rotating `warning` circular arrow | Point your phone back at where you placed the object. |
+
+The same glyph coaches every AR demo that has to find a surface before it can do anything
+(placement, wall placement, feature comparison, Measure, Plane Lifecycle, Plane Renderer):
+the placement flow drives it from `rememberArGuidanceState`, a demo with its own surface
+search from `rememberSurfaceScanCue`. After a placement, the one-shot "Drag to move. Pinch
+to resize. Twist to turn." pill stays 6s and leaves at the first gesture.
 
 - **Hide the chrome while it shows** (Apple HIG): status pills and hints step aside while
   the glyph is up and come back when it leaves. Action cards never do — the glyph is
