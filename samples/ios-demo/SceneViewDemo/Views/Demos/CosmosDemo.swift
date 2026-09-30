@@ -454,6 +454,11 @@ struct CosmosSceneLayers: Sendable {
     /// The flow's thousands of faint strokes lean on Android's HDR bloom haze, which the
     /// display-space pass here spreads less: they are lifted to the same on-screen brightness.
     static let flowGain: Float = 1.3
+    /// The star's magnetic loops ride the same HDR haze on Android, over its bright corona:
+    /// measured on the overview and the close-up, half as many of their pixels stood out from
+    /// the glow here. They are lifted to Android's count, and the dashes laid with it.
+    static let loopGain: Float = 1.8
+    static let loopDash = prominenceDash.scaled(loopGain)
 
     /// The star's wide blue glow at `r` silhouette radii, fitted to the Android capture's
     /// rings at 1.1, 1.3, 1.6 and 2 radii (minus what the halo sprites already give), and
@@ -503,7 +508,7 @@ struct CosmosSceneLayers: Sendable {
                 main: GlowBuilder.sprites(CosmosMeshes.starHalo(), view: view, minPixels: 1.1,
                                           gain: haloPulse, facing: facing),
                 strokes: GlowBuilder.dashedRibbons(CosmosMeshes.prominences(), view: spunView, minPixels: 1.0,
-                                                   dash: prominenceDash, tailTaper: 0.2),
+                                                   dash: loopDash, tailTaper: 0.2),
                 plasma: surface.image,
                 spheres: [CosmosSphere(center: .zero, radius: 1,
                                        limb: GlowBuilder.limb(limb, distance: simd_length(view.eye), resolution: 256))],
@@ -815,7 +820,7 @@ final class CosmosSceneEntities {
             let started = Date()
             let layer = await Task.detached(priority: .userInitiated) {
                 GlowBuilder.dashedRibbons(CosmosMeshes.prominences(), view: view, minPixels: 1.0,
-                                          dash: CosmosSceneLayers.prominenceDash, tailTaper: 0.2)
+                                          dash: CosmosSceneLayers.loopDash, tailTaper: 0.2)
             }.value
             NSLog("[Cosmos] loops laid again in %.3f s", Date().timeIntervalSince(started))
             guard let self else { return }

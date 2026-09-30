@@ -335,6 +335,30 @@ final class CosmosBakedTexture: @unchecked Sendable {
     }
 }
 
+/// One of the orbit trail's two ribbons, and the view it was last laid for.
+@MainActor
+final class CosmosTrailRibbon {
+    let entity: ModelEntity
+    let mesh: LowLevelMesh
+    /// The eye it was laid for, in the frame turning with the orbit; nil until laid.
+    var laidEye: SIMD3<Float>?
+    var laidFocal: Float = 0
+    var energy: Float = 1
+
+    init(entity: ModelEntity, mesh: LowLevelMesh) {
+        self.entity = entity
+        self.mesh = mesh
+    }
+
+    /// The eye has moved by more than `CosmosWorld.trailRelayShift` of its distance, or the
+    /// lens changed (a rotation, a resize).
+    func needsLaying(eye: SIMD3<Float>, focal: Float) -> Bool {
+        guard let laidEye else { return true }
+        let shift = simd_distance(eye, laidEye) / max(simd_length(laidEye), 1e-3)
+        return shift > CosmosWorld.trailRelayShift || abs(focal - laidFocal) > 0.02 * max(laidFocal, 1)
+    }
+}
+
 /// The ringed world on screen: the planet, its rings and the orbit trail, and how each frame
 /// drives them.
 @MainActor
@@ -342,13 +366,19 @@ final class CosmosWorld {
     /// The planet, at its orbit position in the tilted frame; the rings are its child.
     let planet: ModelEntity
     private let ring: ModelEntity
-    /// The trail's ribbon, laid out in world space every frame, facing the camera.
-    let trail: ModelEntity
+    /// The orbit trail: a pivot at the star turned with the orbit every frame, carrying two
+    /// ribbons laid in the orbit's own frame, facing the camera. One shows; the other is laid
+    /// again, off screen, once the camera has moved enough, and takes over once it has settled.
+    let trail: Entity
 
     private var planetMaterial: UnlitMaterial
     private var ringMaterial: UnlitMaterial
     private var trailMaterial: UnlitMaterial
-    private let trailMesh: LowLevelMesh
+    private let ribbons: [CosmosTrailRibbon]
+    /// The ribbon on screen.
+    private var shownRibbon = 0
+    /// When the ribbon laid off screen takes over, on the monotonic clock.
+    private var ribbonSwap: Double?
 
     private let planetTexture: CosmosBakedTexture
     private let ringTexture: CosmosBakedTexture
@@ -374,6 +404,14 @@ final class CosmosWorld {
     /// The trail's half width in world units, and the least it may be on screen, in pixels.
     static let trailHalfWidth: Float = 0.009
     static let trailMinPixels: Float = 1.2
+    /// How far the eye may move, as a share of its distance, before the trail is laid again:
+    /// about 3° of turn, which the ribbon's width hides.
+    static let trailRelayShift: Float = 0.05
+    /// How long a ribbon laid off screen waits before it shows. RealityKit renders a mesh
+    /// rewritten in the last frames only some of the time (on the simulator, the trail
+    /// rewritten every frame was missing from a third to a half of them), so the ribbon on
+    /// screen is never the one being written.
+    static let trailSettleSeconds: Double = 0.25
 
     /// Builds the world lit for `light`: the first frame it shows is already baked.
     init(programs: CosmosPrograms, light: CosmosWorldLight, time: Float) async throws {
@@ -405,8 +443,6 @@ final class CosmosWorld {
         planet.addChild(ring)
         self.ring = ring
 
-        let trailMesh = try Self.trailMesh()
-        self.trailMesh = trailMesh
         var trailMaterial = UnlitMaterial(program: programs.additive)
         let trailTexture = try await GlowEntity.texture(Self.trailImage())
         trailMaterial.color = .init(tint: .white, texture: .init(trailTexture, sampler: Self.sampler(wrapU: false)))
@@ -414,10 +450,20 @@ final class CosmosWorld {
         trailMaterial.writesDepth = false
         trailMaterial.faceCulling = .none
         self.trailMaterial = trailMaterial
-        let trail = ModelEntity(mesh: try await MeshResource(from: trailMesh), materials: [trailMaterial])
+        let trail = Entity()
         trail.name = "cosmos-trail"
-        // Hidden until `update` lays its first frame.
+        // Hidden until `update` lays its first ribbon.
         trail.isEnabled = false
+        var ribbons: [CosmosTrailRibbon] = []
+        for _ in 0..<2 {
+            let mesh = try Self.trailMesh()
+            let entity = ModelEntity(mesh: try await MeshResource(from: mesh), materials: [trailMaterial])
+            // Both stay in the scene; the one off screen is shrunk to a point inside the star.
+            entity.scale = SIMD3(repeating: Self.hiddenScale)
+            trail.addChild(entity)
+            ribbons.append(CosmosTrailRibbon(entity: entity, mesh: mesh))
+        }
+        self.ribbons = ribbons
         self.trail = trail
 
         await bake(light)
@@ -456,12 +502,13 @@ final class CosmosWorld {
             ring.model?.materials = [ringMaterial]
         }
 
-        let energy = layTrail(system: system, time: time, eye: eye, focal: focal)
+        let energy = placeTrail(system: system, time: time, eye: eye, focal: focal, now: now)
         let tint = min(max(reveal * system.trailVisibility(eye: eye, time: time) * energy, 0), 1)
-        if abs(tint - trailTint) > 1e-4 {
+        // A new material only once the change would show (under one 8-bit step otherwise).
+        if abs(tint - trailTint) > 1.0 / 512 || (tint <= 1e-3) != (trailTint <= 1e-3) {
             trailTint = tint
             trailMaterial.color.tint = GlowEntity.linearTint(CGFloat(tint))
-            trail.model?.materials = [trailMaterial]
+            for ribbon in ribbons { ribbon.entity.model?.materials = [trailMaterial] }
         }
         trail.isEnabled = tint > 1e-3
     }
@@ -495,22 +542,52 @@ final class CosmosWorld {
         baking = false
     }
 
-    /// Lays the trail along the orbit behind the planet, widened across the line of sight from
-    /// `eye`, into the mesh's own vertex buffer. Returns the share of its light a stroke held at
-    /// its least width keeps, at the planet end, where it is brightest.
-    private func layTrail(system: CosmosSystem, time: Float, eye: SIMD3<Float>, focal: Float) -> Float {
-        let head = CosmosSystem.orbitAngle(time)
+    /// Turns the trail with the orbit, lays a ribbon again once the camera has moved enough
+    /// and shows it once it has settled. Returns the shown ribbon's energy (see `layTrail`).
+    private func placeTrail(system: CosmosSystem, time: Float, eye: SIMD3<Float>, focal: Float,
+                            now: Double) -> Float {
+        // orbitPoint(head − s) = frame · R_y(head) · orbitPoint₀(−s): the arc behind the planet
+        // is fixed in a frame turning with it, so only the camera moves the ribbon's width.
+        let turn = system.frame * simd_quatf(angle: CosmosSystem.orbitAngle(time), axis: SIMD3(0, 1, 0))
+        trail.orientation = turn
+        let local = turn.inverse.act(eye)
+        let shown = ribbons[shownRibbon]
+        let hidden = ribbons[1 - shownRibbon]
+        if let swap = ribbonSwap {
+            if now >= swap {
+                hidden.entity.scale = .one
+                shown.entity.scale = SIMD3(repeating: Self.hiddenScale)
+                shownRibbon = 1 - shownRibbon
+                ribbonSwap = nil
+            }
+        } else if shown.laidEye == nil {
+            // The first ribbon shows straight away: the scene fades in from black anyway.
+            layTrail(shown, eye: local, focal: focal)
+            shown.entity.scale = .one
+        } else if shown.needsLaying(eye: local, focal: focal) {
+            layTrail(hidden, eye: local, focal: focal)
+            ribbonSwap = now + Self.trailSettleSeconds
+        }
+        return ribbons[shownRibbon].energy
+    }
+
+    /// Lays the trail along the orbit behind the planet, in the frame turning with it (planet
+    /// at angle 0), widened across the line of sight from `eye` (in that frame), into
+    /// `ribbon`'s mesh. Its energy is the share of its light a stroke held at its least width
+    /// keeps, at the planet end, where it is brightest.
+    private func layTrail(_ ribbon: CosmosTrailRibbon, eye: SIMD3<Float>, focal: Float) {
         let arc = CosmosSystem.trailDegrees * CosmosSystem.deg
         let count = Self.trailPoints
+        let radius = CosmosSystem.orbitRadius
         var energy: Float = 1
-        trailMesh.withUnsafeMutableBytes(bufferIndex: 0) { raw in
+        ribbon.mesh.replaceUnsafeMutableBytes(bufferIndex: 0) { raw in
             let floats = raw.bindMemory(to: Float.self)
             for i in 0..<count {
                 let u = Float(i) / Float(count - 1)
-                let a = head - u * arc
-                let p = system.orbitPoint(a)
+                let a = -u * arc
+                let p = SIMD3(radius * cos(a), 0, -radius * sin(a))
                 // The orbit runs toward decreasing angle behind the planet.
-                let tangent = system.frame.act(SIMD3(sin(a), 0, cos(a)))
+                let tangent = SIMD3(sin(a), 0, cos(a))
                 let toEye = eye - p
                 let depth = max(simd_length(toEye), 1e-3)
                 var side = simd_cross(tangent, toEye)
@@ -531,9 +608,6 @@ final class CosmosWorld {
                 floats[o + 5] = right.x
                 floats[o + 6] = right.y
                 floats[o + 7] = right.z
-                // RealityKit hands out one of several vertex buffers per write, each holding
-                // whatever it last got: every float of every vertex is written every time,
-                // or the ribbon reads a stale UV in some frames and vanishes.
                 let across = Self.trailAcross(i)
                 floats[o + 3] = across.u
                 floats[o + 4] = across.top
@@ -541,7 +615,29 @@ final class CosmosWorld {
                 floats[o + 9] = across.bottom
             }
         }
-        return energy
+        ribbon.mesh.replaceUnsafeMutableIndices { raw in Self.writeTrailIndices(raw) }
+        ribbon.laidEye = eye
+        ribbon.laidFocal = focal
+        ribbon.energy = energy
+    }
+
+    /// The scale of the ribbon off screen: a speck at the star's centre, hidden by the star.
+    private static let hiddenScale: Float = 1e-4
+
+    /// Two triangles per span between arc points.
+    private static func writeTrailIndices(_ raw: UnsafeMutableRawBufferPointer) {
+        let indices = raw.bindMemory(to: UInt32.self)
+        for i in 0..<(trailPoints - 1) {
+            let a = UInt32(i * 2)
+            let b = a + 2
+            let o = i * 6
+            indices[o] = a
+            indices[o + 1] = a + 1
+            indices[o + 2] = b
+            indices[o + 3] = a + 1
+            indices[o + 4] = b + 1
+            indices[o + 5] = b
+        }
     }
 
     /// The trail's texture coordinates at arc point `i`: `u` along the arc, and `v` on the
@@ -615,8 +711,8 @@ final class CosmosWorld {
         return try MeshResource.generate(from: [descriptor])
     }
 
-    /// The trail's ribbon: two vertices per arc point, written whole every frame by `layTrail`
-    /// (`u` along the arc, `v` across it, as `GlowBuilder.ribbons` lays its rows).
+    /// A trail ribbon: two vertices per arc point, written whole by `layTrail` each time it is
+    /// laid (`u` along the arc, `v` across it, as `GlowBuilder.ribbons` lays its rows).
     private static func trailMesh() throws -> LowLevelMesh {
         let count = trailPoints
         let descriptor = LowLevelMesh.Descriptor(
@@ -630,15 +726,8 @@ final class CosmosWorld {
             indexType: .uint32
         )
         let mesh = try LowLevelMesh(descriptor: descriptor)
-        mesh.withUnsafeMutableIndices { raw in
-            let indices = raw.bindMemory(to: UInt32.self)
-            for i in 0..<(count - 1) {
-                let a = UInt32(i * 2)
-                let b = a + 2
-                for (k, index) in [a, a + 1, b, a + 1, b + 1, b].enumerated() { indices[i * 6 + k] = index }
-            }
-        }
-        // The whole orbit, rings included: the arc moves every frame, its box does not.
+        mesh.replaceUnsafeMutableIndices { raw in writeTrailIndices(raw) }
+        // The whole orbit, rings included: the box holds whatever arc is laid.
         let reach = CosmosSystem.orbitRadius + CosmosSystem.ringOuter
         mesh.parts.replaceAll([
             LowLevelMesh.Part(indexCount: (count - 1) * 6, topology: .triangle,
