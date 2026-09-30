@@ -668,7 +668,10 @@ demos:
     evidence: >-
       Orange cube + grid, Orbit/Pan/Look pickers, hint rows
       (CameraControlsDemo.swift:33-47,90-114); Ferrari on opaque plane in a
-      2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only
+      2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only. Since
+      #4218 the Ferrari is bottom-aligned under a pivot on the floor
+      (Android's centerOrigin = Position(y = -1f)), so it stands on its
+      shadow at any pinch; the 3-subject stage is still Android-only
   - id: cosmos
     androidStatus: Working
     iosStatus: working
