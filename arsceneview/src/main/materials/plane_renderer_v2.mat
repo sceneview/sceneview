@@ -135,11 +135,13 @@ fragment {
         float spot = (1.0 - smoothstep(0.0, 0.45, spotDistance)) * focus;
 
         // ── Dot lattice ──────────────────────────────────────────────────────────────────
+        // Pixel footprint from the continuous UV: the wall stagger below jumps by half a cell
+        // at each row boundary, and fwidth across that jump drew a 1 px line along the rows.
+        float footprint = length(fwidth(uv));
         // Walls: every other row shifted by half a dot, a quieter staggered pattern.
         uv.x += wall * 0.5 * mod(floor(uv.y), 2.0);
         float2 cell = fract(uv) - 0.5;
         float d = length(cell);
-        float footprint = length(fwidth(uv));
         float radius = mix(0.09, 0.075, wall);
 
         // Slow ripples running outward from the reticle, on the focused plane only.
