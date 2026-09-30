@@ -96,7 +96,9 @@ class SpatialMixCore(
             // Silent at both ends of the block (not planted yet, or muted): skip it. Its filter
             // and delay line resume where they stopped, but the gain ramp then starts from zero,
             // so that stale state never reaches the ear.
-            if (gainLeft == 0f && gainRight == 0f && t.gainLeft == 0f && t.gainRight == 0f) {
+            val silentNow = gainLeft == 0f && gainRight == 0f
+            val silentNext = t.gainLeft == 0f && t.gainRight == 0f
+            if (silentNow && silentNext) {
                 delayLeft = targetDelayLeft
                 delayRight = targetDelayRight
                 coefficient = targetCoefficient

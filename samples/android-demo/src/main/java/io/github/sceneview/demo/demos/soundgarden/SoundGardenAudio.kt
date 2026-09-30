@@ -77,13 +77,13 @@ internal class SoundGardenAudio(private val core: SpatialMixCore) : AutoCloseabl
                 synchronized(lock) {
                     while (paused && running) lock.wait()
                 }
-                continue
-            }
-            core.render(block, BLOCK_FRAMES)
-            val written = track.write(block, 0, block.size, AudioTrack.WRITE_BLOCKING)
-            if (written < 0) {
-                Log.w(TAG, "AudioTrack.write failed ($written) — stopping the garden's audio")
-                break
+            } else {
+                core.render(block, BLOCK_FRAMES)
+                val written = track.write(block, 0, block.size, AudioTrack.WRITE_BLOCKING)
+                if (written < 0) {
+                    Log.w(TAG, "AudioTrack.write failed ($written) — stopping the garden's audio")
+                    break
+                }
             }
         }
     }

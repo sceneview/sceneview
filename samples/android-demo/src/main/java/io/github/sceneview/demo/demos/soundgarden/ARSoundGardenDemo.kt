@@ -385,10 +385,22 @@ private data class Orb(val asset: String, val nameRes: Int, val local: Float3, v
  * only (`DESIGN.md`), one hue per part, chosen to stay apart on a camera feed.
  */
 private val ORBS = listOf(
-    Orb("audio/garden_bells.ogg", R.string.demo_ar_sound_garden_part_bells, Float3(-0.7f, 1.0f, 0.45f), SceneViewColors.TintSoft),
-    Orb("audio/garden_beat.ogg", R.string.demo_ar_sound_garden_part_beat, Float3(0.7f, 0.35f, 0.45f), SceneViewTokens.ArOverlay.accentGuidance),
-    Orb("audio/garden_pad.ogg", R.string.demo_ar_sound_garden_part_pad, Float3(-0.55f, 1.35f, -0.65f), SceneViewColors.TintLight),
-    Orb("audio/garden_bass.ogg", R.string.demo_ar_sound_garden_part_bass, Float3(0.55f, 0.6f, -0.65f), SceneViewColors.Accent),
+    Orb(
+        "audio/garden_bells.ogg", R.string.demo_ar_sound_garden_part_bells,
+        Float3(-0.7f, 1.0f, 0.45f), SceneViewColors.TintSoft,
+    ),
+    Orb(
+        "audio/garden_beat.ogg", R.string.demo_ar_sound_garden_part_beat,
+        Float3(0.7f, 0.35f, 0.45f), SceneViewTokens.ArOverlay.accentGuidance,
+    ),
+    Orb(
+        "audio/garden_pad.ogg", R.string.demo_ar_sound_garden_part_pad,
+        Float3(-0.55f, 1.35f, -0.65f), SceneViewColors.TintLight,
+    ),
+    Orb(
+        "audio/garden_bass.ogg", R.string.demo_ar_sound_garden_part_bass,
+        Float3(0.55f, 0.6f, -0.65f), SceneViewColors.Accent,
+    ),
 )
 
 /** Per-frame values the scene draws, replaced as a whole each AR frame. */
@@ -399,7 +411,9 @@ private class GardenVisual(
     val shellAlpha: FloatArray,
 ) {
     companion object {
-        val EMPTY = GardenVisual(FloatArray(ORBS.size), FloatArray(ORBS.size), FloatArray(ORBS.size), FloatArray(ORBS.size))
+        val EMPTY = GardenVisual(
+            FloatArray(ORBS.size), FloatArray(ORBS.size), FloatArray(ORBS.size), FloatArray(ORBS.size),
+        )
     }
 }
 
