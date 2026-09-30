@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
@@ -46,8 +48,9 @@ import io.github.sceneview.sample.ui.DemoCategoryAccent
  *
  * The 3D header above is the only showpiece on the screen; everything under it reads like
  * the settings or the library of any well-made app, which is the point the Home makes: the
- * scene drops into an ordinary app. Anatomy: a `home-row-thumb` square of the demo's own
- * capture (the icon tile while none exists), title in `type-body` semibold, subtitle in
+ * scene drops into an ordinary app. Anatomy: a `home-row-media` picture of the demo's own
+ * capture, 5:4 like the capture itself so the generated scene reads instead of a 56 dp crop
+ * (the icon tile while none exists), title in `type-body` semibold, subtitle in
  * `type-caption` regular, the freshness / status chips on the title line so the subtitle
  * keeps the row's full width. The row sits on the `home-row-bg` tile and takes its corners
  * from its place in the group ([rowShape]), so a section reads as one grey block split by
@@ -64,6 +67,7 @@ fun DemoListRow(
     val dark = isSystemInDarkTheme()
     val accent = DemoCategoryAccent[demo.category, dark]
     val preview = demo.previewPainter()
+    val thumb: Modifier = Modifier.media()
     ListRow(
         title = stringResource(demo.titleRes),
         subtitle = stringResource(demo.subtitleRes),
@@ -77,10 +81,10 @@ fun DemoListRow(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center,
-                    modifier = Modifier.thumb(),
+                    modifier = thumb,
                 )
             } else {
-                GlyphThumb(icon = demo.icon, tint = accent)
+                GlyphThumb(icon = demo.icon, tint = accent, modifier = thumb)
             }
         },
         badges = {
@@ -171,12 +175,17 @@ private fun ListRow(
 private fun Modifier.thumb(): Modifier =
     size(SceneViewTokens.Home.rowThumb).clip(RoundedCornerShape(SceneViewTokens.Radius.sm))
 
+/** The leading picture of a demo row: `home-row-media`, 5:4 like the captures, `radius-sm`. */
+private fun Modifier.media(): Modifier = this
+    .width(SceneViewTokens.Home.rowMediaWidth)
+    .aspectRatio(SceneViewTokens.Home.rowMediaAspect)
+    .clip(RoundedCornerShape(SceneViewTokens.Radius.sm))
+
 /** A glyph on the thumb square, one step up the surface ramp from the row. */
 @Composable
-private fun GlyphThumb(icon: ImageVector, tint: Color) {
+private fun GlyphThumb(icon: ImageVector, tint: Color, modifier: Modifier = Modifier.thumb()) {
     Box(
-        modifier = Modifier
-            .thumb()
+        modifier = modifier
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
         contentAlignment = Alignment.Center,
     ) {

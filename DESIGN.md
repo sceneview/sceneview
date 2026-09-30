@@ -122,7 +122,8 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-subtitle` | rgba(255,255,255,0.80) | rgba(255,255,255,0.80) | Hero subtitle, max width 260dp |
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
-| `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid. Tried at the `glass-sheet` opacity: without a backdrop blur the card titles scrolling under the wordmark stay legible and read as an overlap bug, so it stays opaque |
+| `header-glass` | `surface` at 72 % over the list under it blurred `header-glass-blur` (24dp) | `surface` at 78 %, same blur | Sticky home header once the list scrolls under it (API 31+). The blurred copy is drawn over a `surface` ground, so no sharp title shows through: the rows read as colour moving behind frosted glass, never as an overlap. `on-surface` holds 8.7:1 (light) / 8.2:1 (dark) against the worst ground, `on-surface-variant` 4.9:1 / 4.2:1 (icons, 3:1 bar). The stage is a `TextureView`, so its frame is in the recorded copy too |
+| `header-overlay` | `surface` at 100 % | `surface` at 100 % | The same header below API 31 (no `RenderEffect`). Tried at the `glass-sheet` opacity: without a backdrop blur the card titles scrolling under the wordmark stay legible and read as an overlap bug, so without blur it stays opaque |
 | `card-glass` | `surface-container` (#ffffff) at 80 % over the card's own picture blurred 28dp — at 72 % a dark picture turned it a muddy grey | `surface-container` at 90 % (the `glass-sheet` value), same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
 | `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
@@ -133,8 +134,9 @@ app (Play Store, Google Photos settings), which is what the Home sets out to pro
 the "Featured" group, the "Browse online models" row, the category chips, then one group
 per category.
 
-A **row** is a `home-row-thumb` square of the demo's own capture (`radius-sm`; the demo's
-glyph on `surface-container-highest` while no capture exists), the title in `type-body`
+A **row** is a `home-row-media` picture of the demo's own capture, 5:4 like the capture so
+the generated scene reads rather than a 56dp crop of it (`radius-sm`; the demo's glyph on
+`surface-container-highest` while no capture exists), the title in `type-body`
 semibold, the subtitle in `type-caption` regular (`on-surface-variant`), and the "New" /
 "Updated" / status chips on the title line so the subtitle keeps the row's full width. Rows
 sit on `home-row-bg` and a group is one grey block: rows `home-row-gap` apart, the block's
@@ -146,7 +148,8 @@ grows.
 | Token | Value | Usage |
 |---|---|---|
 | `home-row-bg` | `surface-container-high` (#f1f3f5 / #2C3546) | A list row's tile — the same grey as a chip |
-| `home-row-thumb` | 56dp, `radius-sm` | Leading picture of a row; its glyph fallback draws a 28dp icon |
+| `home-row-media` | 120dp wide, 5:4 (96dp high), `radius-sm` | Leading picture of a demo row — about 3.7x the area of the thumb. Compared against a Featured carousel (the other 40 demos kept 56dp thumbs) and two-across tiles (titles wrapped to three lines, rows of uneven height) |
+| `home-row-thumb` | 56dp, `radius-sm` | Leading glyph square of a utility row ("Browse online models"); the glyph draws at 28dp |
 | `home-row-min-height` | 72dp | The M3 two-line list item with a 56dp leading image |
 | `home-row-padding` | 16dp across (`space-md`, also thumb-to-text), 8dp down (`space-sm`) | Row insets |
 | `home-row-gap` | 2dp | Seam of page between two rows of one group |
@@ -478,6 +481,8 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 - **No blur on Android.** A `SurfaceView` cannot be sampled by a Compose render
   effect, so glass over the scene is fill + border only. Do not emulate blur.
+  (The Home header is not over a `SurfaceView`: what scrolls under it is Compose and a
+  `TextureView`, which a `GraphicsLayer` can record, so it takes a real blur — `header-glass`.)
 - **Which is why the fill is 0.14, not 0.08.** 8 % white is a value borrowed from
   surfaces that back it with a real backdrop blur, where the blur separates the
   panel from the media by *structure* and the fill was never doing the work alone.
