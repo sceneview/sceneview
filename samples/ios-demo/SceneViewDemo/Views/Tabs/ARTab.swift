@@ -131,7 +131,8 @@ enum ARLauncherCatalogue {
 
 /// Static launcher shown when the AR tab is opened, before the user explicitly
 /// starts the camera session. Mirrors Android's `ArLauncherScreen` on
-/// `ArViewTab.kt` (#1211 item 3): hero icon + tagline + "Start AR Camera" CTA,
+/// `ArViewTab.kt` (#1211 item 3): the 3D hero (`ARHeroStage`) with the tagline,
+/// the AR status and the "Start AR Camera" CTA,
 /// followed by the AR demos as the Home's picture cards (`DemoMediaCard`,
 /// #4200): "Featured", then "All AR demos". Every card routes to a real demo
 /// screen presented full-screen above the AR tab.
@@ -149,6 +150,8 @@ private struct ARLauncherScreen: View {
     /// `.onAppear` does NOT re-fire when the app returns from Settings for
     /// an already-mounted view — `scenePhase` does.
     @Environment(\.scenePhase) private var scenePhase
+    /// Some of the hero is on screen: its 3D only runs then.
+    @State private var heroOnScreen = true
 
     private var state: ARLauncherState {
         if !arSupported { return .unsupported }
@@ -171,6 +174,16 @@ private struct ARLauncherScreen: View {
         case .ready:       return "camera.viewfinder"
         case .unsupported: return "xmark.octagon"
         case .cameraDenied: return "gearshape.fill"
+        }
+    }
+
+    /// The device's AR status, on the hero under the stage — Android's
+    /// `ar_status_*` line.
+    private var statusText: String {
+        switch state {
+        case .ready:        return "AR supported on this device."
+        case .unsupported:  return "AR not supported on this device."
+        case .cameraDenied: return "Camera access is off for this app."
         }
     }
 
@@ -225,68 +238,14 @@ private struct ARLauncherScreen: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Compact hero — the icon beside the tagline, as on Android's
-                // `ArLauncherScreen`. The title is the navigation title.
-                HStack(spacing: SceneViewTokens.Space.md) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        SceneViewTheme.primary.opacity(0.85),
-                                        SceneViewTheme.tertiary.opacity(0.70),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 56, height: 56)
-                        Image(systemName: "arkit")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .accessibilityHidden(true)
-
-                    Text("Place 3D models in your space, scan faces, anchor to terrain.")
-                        .font(.subheadline)
-                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, SceneViewTokens.Space.sm)
-
-                if state == .unsupported {
-                    // Nothing to tap, so no button: a status line, as on
-                    // Android's `ArLauncherScreen`. It used to be the primary
-                    // capsule disabled at 50 % opacity — white on a washed-out
-                    // blue, the one message explaining why AR is off, nearly
-                    // invisible in light mode (#3790). `on-surface` on
-                    // `surface-container-high` is 15.3:1 light / 13.5:1 dark.
-                    Label(ctaTitle, systemImage: ctaIcon)
-                        .font(.headline)
-                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                        .labelStyle(StatusLabelStyle())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, SceneViewTokens.Space.md)
-                        .background(SceneViewTokens.HomeColor.chipBackground, in: Capsule())
-                        .padding(.horizontal, 24)
-                        .accessibilityElement(children: .combine)
-                        .accessibilitySortPriority(1)
-                } else {
-                    Button(action: onCtaTap) {
-                        Label(ctaTitle, systemImage: ctaIcon)
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
-                            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 24)
-                    .accessibilityLabel(ctaTitle)
-                    .accessibilitySortPriority(1)
-                }
+                // The hero (#wow): AR playing on its own before the camera is
+                // ever opened — a detected floor, a reticle, bundled models
+                // placed on it — with the tagline, the device's AR status and
+                // the one call to action drawn over the stage (Android's
+                // `ArHero`). The title stays the navigation title (#3791).
+                hero
+                    .padding(.horizontal, 20)
+                    .padding(.top, SceneViewTokens.Space.sm)
 
                 Text(caption)
                     .font(.caption)
@@ -317,6 +276,69 @@ private struct ARLauncherScreen: View {
                 cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
             }
         }
+    }
+
+    // MARK: - Hero
+
+    /// The hero card: `ARHeroStage` playing behind the tagline, the device's
+    /// AR status and the one call to action. Dark in both themes, like the
+    /// Home hero — the copy is white, the button is the Home hero's white pill.
+    private var hero: some View {
+        let tokens = SceneViewTokens.ArHero.self
+        let home = SceneViewTokens.HomeColor.self
+        return ZStack {
+            ARHeroStage(active: heroOnScreen)
+            ARHeroViewfinder()
+            // Copy scrim at the foot of the stage: the status and the pill
+            // always read, whatever model is standing behind them.
+            LinearGradient(colors: [.clear, tokens.copyScrim], startPoint: .top, endPoint: .bottom)
+                .frame(height: tokens.height / 2)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .allowsHitTesting(false)
+
+            Text("Place models, scan faces, anchor to terrain.")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(home.heroTitle)
+                .containerRelativeFrame(.horizontal) { width, _ in width * tokens.copyWidthShare }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding([.top, .leading], SceneViewTokens.Space.lg)
+
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm + SceneViewTokens.Space.xs) {
+                HStack(spacing: SceneViewTokens.Space.sm) {
+                    Image(systemName: state == .ready ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: tokens.statusIcon))
+                        .foregroundStyle(state == .ready ? tokens.planeDot : SceneViewTokens.ARChrome.danger)
+                    Text(statusText)
+                        .font(.subheadline)
+                        .foregroundStyle(home.heroSubtitle)
+                }
+                .padding(.leading, SceneViewTokens.Space.sm)
+                .accessibilityElement(children: .combine)
+
+                if state != .unsupported {
+                    Button(action: onCtaTap) {
+                        Label(ctaTitle, systemImage: ctaIcon)
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: tokens.ctaHeight)
+                            .background(home.heroPillBackground, in: Capsule())
+                            .foregroundStyle(home.heroPillText)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(ctaTitle)
+                    .accessibilitySortPriority(1)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(SceneViewTokens.Space.md)
+        }
+        .frame(height: tokens.height)
+        .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous))
+        .environment(\.colorScheme, .dark)
+        // The stage only renders while some of it is on screen.
+        .onScrollVisibilityChange(threshold: 0.01) { heroOnScreen = $0 }
+        .onAppear { heroOnScreen = true }
+        .onDisappear { heroOnScreen = false }
     }
 
     // MARK: - Demo cards
@@ -351,19 +373,6 @@ private struct ARLauncherScreen: View {
             }
         }
         .padding(.horizontal, SceneViewTokens.Home.contentPadding)
-    }
-}
-
-/// Status line label: the glyph in `danger` (3.5:1 light / 3.8:1 dark on
-/// `surface-container-high`, above the 3:1 a graphic needs), the text in
-/// whatever foreground the caller set.
-private struct StatusLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: SceneViewTokens.Space.sm) {
-            configuration.icon
-                .foregroundStyle(SceneViewTokens.HomeColor.danger)
-            configuration.title
-        }
     }
 }
 

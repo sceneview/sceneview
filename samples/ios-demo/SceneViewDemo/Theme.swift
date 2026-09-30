@@ -707,6 +707,39 @@ enum SceneViewTokens {
         }
     }
 
+    /// The AR tab's hero stage — Android's `SceneViewTokens.ArHero`. Dark in
+    /// both themes, like the Home hero: it is a camera view before the camera.
+    enum ArHero {
+        static let height: CGFloat = 312
+        /// Stage gradient, top to floor (`#0B0F16` → `#14284A`).
+        static let stageTop = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+        static let stageBottom = Color(red: 0x14 / 255, green: 0x28 / 255, blue: 0x4A / 255)
+        /// Detected-plane dots, the ripple that runs through them and the
+        /// reticle (`#A4C1FF`), as RGB for the RealityKit material too.
+        static let planeDotRGB = (r: 0xA4 / 255.0, g: 0xC1 / 255.0, b: 0xFF / 255.0)
+        static let planeDot = Color(red: planeDotRGB.r, green: planeDotRGB.g, blue: planeDotRGB.b)
+        static let planeDotAlpha: Double = 0.22
+        static let planeRippleAlpha: Double = 0.85
+        static let planeDotRadius: CGFloat = 1.6
+        /// Viewfinder corner brackets.
+        static let bracket = Color.white.opacity(0x66 / 255.0)
+        static let bracketLength: CGFloat = 22
+        static let bracketStroke: CGFloat = 2
+        static let bracketInset: CGFloat = 16
+        /// Contact shadow under the placed model.
+        static let contactShadow = Color.black.opacity(0x99 / 255.0)
+        /// Scrim behind the copy at the foot of the stage.
+        static let copyScrim = stageTop.opacity(0xCC / 255.0)
+        /// `motion-ar-hero-ripple` — one ripple crossing the detected plane.
+        static let rippleSeconds: Double = 2.4
+        /// A model stays placed this long before the next one is placed.
+        static let placementSeconds: Double = 5.5
+        /// Share of the stage's width the copy may take: the models stand in the rest.
+        static let copyWidthShare: CGFloat = 0.6
+        static let statusIcon: CGFloat = 18
+        static let ctaHeight: CGFloat = 52
+    }
+
     /// Chrome tokens for a screen whose stage is the **camera feed**
     /// (`DESIGN.md` "AR Coaching Overlay" / "AR Overlay Card").
     ///

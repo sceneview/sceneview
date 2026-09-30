@@ -114,6 +114,7 @@
 		C10000000000000000000002 /* DemoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* DemoItem.swift */; };
 		C10000000000000000000003 /* ExploreTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* ExploreTab.swift */; };
 		C10000000000000000000004 /* ARTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* ARTab.swift */; };
+		C0DE4E60000000000000A001 /* ARHeroStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E60000000000000B001 /* ARHeroStage.swift */; };
 		C10000000000000000000006 /* AboutTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000006 /* AboutTab.swift */; };
 		C10000000000000000000007 /* AllShapesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000007 /* AllShapesDemo.swift */; };
 		C10000000000000000000008 /* MaterialsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* MaterialsDemo.swift */; };
@@ -342,6 +343,7 @@
 		C20000000000000000000002 /* DemoItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoItem.swift; sourceTree = "<group>"; };
 		C20000000000000000000003 /* ExploreTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreTab.swift; sourceTree = "<group>"; };
 		C20000000000000000000004 /* ARTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARTab.swift; sourceTree = "<group>"; };
+		C0DE4E60000000000000B001 /* ARHeroStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARHeroStage.swift; sourceTree = "<group>"; };
 		C20000000000000000000006 /* AboutTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutTab.swift; sourceTree = "<group>"; };
 		C20000000000000000000007 /* AllShapesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllShapesDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000008 /* MaterialsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaterialsDemo.swift; sourceTree = "<group>"; };
@@ -710,6 +712,7 @@
 			children = (
 				C20000000000000000000003 /* ExploreTab.swift */,
 				C20000000000000000000004 /* ARTab.swift */,
+				C0DE4E60000000000000B001 /* ARHeroStage.swift */,
 				F1805CCAE3BB264332107B4B /* ShowcaseTab.swift */,
 				C20000000000000000000006 /* AboutTab.swift */,
 			);
@@ -1136,6 +1139,7 @@
 				C10000000000000000000030 /* FavoritesManager.swift in Sources */,
 				C10000000000000000000003 /* ExploreTab.swift in Sources */,
 				C10000000000000000000004 /* ARTab.swift in Sources */,
+				C0DE4E60000000000000A001 /* ARHeroStage.swift in Sources */,
 				C10000000000000000000006 /* AboutTab.swift in Sources */,
 				C10000000000000000000007 /* AllShapesDemo.swift in Sources */,
 				C10000000000000000000008 /* MaterialsDemo.swift in Sources */,
