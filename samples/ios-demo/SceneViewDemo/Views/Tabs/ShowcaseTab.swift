@@ -537,12 +537,15 @@ private struct HomeHeader: View {
 /// glass — iOS 26 Liquid Glass, which samples, blurs and tints the rows passing
 /// under it, and `.ultraThinMaterial` before 26. Either way the rows read as
 /// colour moving behind frosted glass, never as sharp titles under the
-/// wordmark (the overlap bug that kept `header-overlay` opaque). With the
-/// search field open over the stage, the opaque `surface` of `header-overlay`,
-/// so the field never floats on the sky.
+/// wordmark (the overlap bug that kept `header-overlay` opaque): the glass
+/// carries `header-glass`'s `surface` veil (72 % / 78 %), since bare Liquid
+/// Glass let the titles read through. With the search field open over the
+/// stage, the opaque `surface` of `header-overlay`, so the field never floats
+/// on the sky.
 private struct HeaderGround: View {
     let scrolled: Bool
     let searchOpen: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -558,10 +561,16 @@ private struct HeaderGround: View {
 
     @ViewBuilder
     private var glass: some View {
+        let home = SceneViewTokens.HomeColor.self
+        // The `surface` veil over the blur: without it the titles scrolling
+        // under the wordmark stayed readable through bare glass.
+        let veil = home.surface.opacity(
+            colorScheme == .dark ? home.headerGlassAlphaDark : home.headerGlassAlphaLight
+        )
         if #available(iOS 26, macOS 26, visionOS 26, *) {
-            Color.clear.glassEffect(.regular, in: Rectangle())
+            veil.glassEffect(.regular, in: Rectangle())
         } else {
-            Rectangle().fill(.ultraThinMaterial)
+            veil.background(.ultraThinMaterial)
         }
     }
 }

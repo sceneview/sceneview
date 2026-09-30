@@ -449,6 +449,13 @@ enum SceneViewTokens {
         /// (`header-glass`: Liquid Glass on iOS 26, the material below), and
         /// this opaque fill only backs the open search field.
         static let headerOverlayAlpha: Double = 1
+        /// DESIGN.md `header-glass`: `surface` at **72 %** in light and **78 %**
+        /// in dark over the blurred list, as on Android. Bare Liquid Glass let
+        /// the row titles under the wordmark stay readable (measured on the
+        /// iOS 26 simulator, #4201) — the overlap bug `header-overlay` exists
+        /// to avoid — so the glass carries the same surface veil.
+        static let headerGlassAlphaLight: Double = 0.72
+        static let headerGlassAlphaDark: Double = 0.78
 
         /// `card-glass` — the frosted caption of a home card: `surface-container`
         /// at **80 %** in light and **90 %** in dark (the `glass-sheet` value),
