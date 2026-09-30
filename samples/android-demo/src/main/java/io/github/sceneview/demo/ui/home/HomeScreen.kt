@@ -426,7 +426,7 @@ fun HomeScreen(
                             DemoListRow(
                                 demo = demo,
                                 onClick = { onDemoClick(demo.id) },
-                                style = if (homeRowVariant == HomeRowVariant.Fused) HomeRowStyle.Fused else HomeRowStyle.Banner,
+                                style = HomeRowStyle.Banner,
                                 freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                                 modifier = Modifier
                                     .animateItem()
@@ -492,7 +492,7 @@ fun HomeScreen(
                         DemoListRow(
                             demo = demo,
                             onClick = { onDemoClick(demo.id) },
-                            style = if (homeRowVariant == HomeRowVariant.Banner) HomeRowStyle.Banner else HomeRowStyle.Fused,
+                            style = HomeRowStyle.Fused,
                             freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                             modifier = Modifier
                                 .animateItem(

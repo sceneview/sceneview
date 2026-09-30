@@ -20,11 +20,13 @@ class HomeListRowTest {
     @Test
     fun the_ambient_tint_lands_on_the_scheme_luminance_whatever_the_picture() {
         val seeds = listOf(Color.White, Color.Black, Color(0xFFE2734F), Color(0xFF1E3A8A), Color(0xFFFFEB3B))
+        // A Compose sRGB `Color` is 8 bits a channel: near white one step moves the
+        // luminance by up to ~0.003, hence the tolerance (iOS keeps doubles: 0.002).
         seeds.forEach { seed ->
             val dark = ambientTint(seed, dark = true)
             val light = ambientTint(seed, dark = false)
-            assertEquals(AMBIENT_LUMINANCE_DARK, luminance(Triple(dark.red, dark.green, dark.blue)), 0.002f)
-            assertEquals(AMBIENT_LUMINANCE_LIGHT, luminance(Triple(light.red, light.green, light.blue)), 0.002f)
+            assertEquals(AMBIENT_LUMINANCE_DARK, luminance(Triple(dark.red, dark.green, dark.blue)), 0.004f)
+            assertEquals(AMBIENT_LUMINANCE_LIGHT, luminance(Triple(light.red, light.green, light.blue)), 0.004f)
         }
     }
 

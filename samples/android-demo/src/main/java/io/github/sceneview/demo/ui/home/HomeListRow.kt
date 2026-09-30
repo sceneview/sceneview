@@ -64,12 +64,6 @@ enum class HomeRowStyle {
     Banner,
 }
 
-/** TEMPORARY — which layout the variant captures render. Removed once one is chosen. */
-internal enum class HomeRowVariant { Fused, Banner, Hybrid }
-
-/** TEMPORARY — see [HomeRowVariant]. */
-internal var homeRowVariant: HomeRowVariant = HomeRowVariant.Hybrid
-
 /**
  * One demo on the Home list (`home-row` / `home-banner` in `DESIGN.md`).
  *
