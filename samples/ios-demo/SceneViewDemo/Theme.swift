@@ -562,6 +562,30 @@ enum SceneViewTokens {
         /// `radius-xl`. The same picture in light and dark: it is the
         /// product's identity, not a themed surface.
         static let markSize: CGFloat = 80
+        /// `about-stage` — the band the SceneView mark floats in, in 3D (the
+        /// iOS twin of Android's `About.stageHeight`). The launcher icon
+        /// (`markSize`) stands at its centre until the stage has drawn.
+        static let stageHeight: CGFloat = 176
+        /// Width of the soft contact shadow under the floating mark.
+        static let stageShadowWidth: CGFloat = 132
+        /// Height of that shadow — a flat ellipse the mark hovers above.
+        static let stageShadowHeight: CGFloat = 18
+    }
+
+    /// The SceneView mark as a 3D object — Android's `SceneViewTokens.MarkColor`.
+    enum MarkColor {
+        /// The cube body — the mark's right face (`#3D7FD9`); the key light
+        /// shades the rest.
+        static let body = (r: 0x3D / 255.0, g: 0x7F / 255.0, b: 0xD9 / 255.0)
+        /// The lid inset on the top face — the mark's inner highlight (`#BDD3FF`).
+        static let lid = (r: 0xBD / 255.0, g: 0xD3 / 255.0, b: 0xFF / 255.0)
+        /// The two orbit rings and their satellites — the mark's top face (`#A4C1FF`).
+        static let orbit = (r: 0xA4 / 255.0, g: 0xC1 / 255.0, b: 0xFF / 255.0)
+        /// Contact shadow under the mark, at its core; transparent at the rim.
+        static let shadow = Color(
+            light: Color(red: 0x0B / 255, green: 0x1B / 255, blue: 0x3A / 255).opacity(0x2E / 255.0),
+            dark: Color.black.opacity(0x8C / 255.0)
+        )
     }
 
     /// `DESIGN.md` — Motion: the `ease-expressive` curve, the three durations,
