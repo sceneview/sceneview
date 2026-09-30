@@ -7,8 +7,9 @@ import SwiftUI
 /// The 3D header above is the only showpiece on the screen; everything under
 /// it reads like the settings or the library of any well-made app, which is the
 /// point the Home makes: the scene drops into an ordinary app. Anatomy: a
-/// `home-row-thumb` square of the demo's own capture (the category glyph while
-/// none exists), the title in `type-body` semibold, the subtitle in
+/// `home-row-media` picture of the demo's own capture, 5:4 like the capture so
+/// the generated scene reads rather than a 56 pt crop of it (#4201; the category
+/// glyph at the same size while none exists), the title in `type-body` semibold, the subtitle in
 /// `type-caption` regular, and the "New" / "Updated" / status chips on the
 /// title line so the subtitle keeps the row's full width. The row sits on the
 /// `home-row-bg` tile and takes its corners from its place in its group
@@ -24,16 +25,18 @@ struct DemoListRow: View {
         HomeListRow(title: demo.title, subtitle: demo.subtitle, corners: corners, onTap: onTap) {
             if let preview = demo.previewImageName {
                 // Anchored like Android's `FEATURED_MEDIA_ALIGNMENT`: a preview
-                // listed there keeps one edge in frame when cropped square.
+                // listed there keeps one edge in frame when cropped. The
+                // captures are 5:4 themselves, so at `home-row-media` the whole
+                // scene shows; the anchor only matters to a wider capture.
                 Color.clear
                     .overlay(alignment: HomeCatalogue.leadingAnchored.contains(demo.sceneId) ? .leading : .center) {
                         Image(preview)
                             .resizable()
                             .scaledToFill()
                     }
-                    .homeRowThumb()
+                    .homeRowMedia()
             } else {
-                HomeRowGlyphThumb(systemName: demo.icon, tint: demo.category.accent)
+                HomeRowGlyphThumb(systemName: demo.icon, tint: demo.category.accent, media: true)
             }
         } badges: {
             if let label = freshness.label {
@@ -194,19 +197,24 @@ private struct HomeRowButtonStyle: ButtonStyle {
     }
 }
 
-/// A glyph on the thumb square, one step up the surface ramp from the row.
+/// A glyph one step up the surface ramp from the row: on the `home-row-media`
+/// frame for a demo without a capture, on the `home-row-thumb` square for a
+/// utility row.
 private struct HomeRowGlyphThumb: View {
     let systemName: String
     let tint: Color
+    var media = false
 
     var body: some View {
-        ZStack {
+        let tile = ZStack {
             SceneViewTokens.HomeColor.surfaceContainerHighest
             Image(systemName: systemName)
                 .font(.system(size: SceneViewTokens.Home.rowThumbGlyph))
                 .foregroundStyle(tint)
         }
-        .homeRowThumb()
+        Group {
+            if media { tile.homeRowMedia() } else { tile.homeRowThumb() }
+        }
         .accessibilityHidden(true)
     }
 }
@@ -215,6 +223,13 @@ private extension View {
     /// The thumb square: `home-row-thumb`, `radius-sm`.
     func homeRowThumb() -> some View {
         frame(width: SceneViewTokens.Home.rowThumb, height: SceneViewTokens.Home.rowThumb)
+            .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
+    }
+
+    /// A demo row's picture: `home-row-media`, 120 pt at 5:4, `radius-sm`.
+    func homeRowMedia() -> some View {
+        let home = SceneViewTokens.Home.self
+        return frame(width: home.rowMediaWidth, height: home.rowMediaWidth / home.rowMediaAspect)
             .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
     }
 }

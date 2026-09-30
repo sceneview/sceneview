@@ -445,6 +445,9 @@ enum SceneViewTokens {
         /// DESIGN.md `header-overlay`: `surface` at 100 % in both modes. Light
         /// was 0.94; under the full-bleed Featured cards the 6 % see-through
         /// read as an overlap bug behind the wordmark and the status bar.
+        /// Since #4201 the header is glass once the list scrolls under it
+        /// (`header-glass`: Liquid Glass on iOS 26, the material below), and
+        /// this opaque fill only backs the open search field.
         static let headerOverlayAlpha: Double = 1
 
         /// `card-glass` — the frosted caption of a home card: `surface-container`
@@ -526,9 +529,15 @@ enum SceneViewTokens {
         // is a standard grouped list — two-line rows on neutral grey tiles, one
         // vertical scroll, no carousel. Android's `SceneViewTokens.Home.row*`.
 
-        /// `home-row-thumb` — the leading square of a row: the demo's capture
-        /// (`radius-sm`) or a glyph.
+        /// `home-row-thumb` — the leading glyph square of a utility row
+        /// ("Browse online models"), `radius-sm`.
         static let rowThumb: CGFloat = 56
+        /// `home-row-media` — a demo row's leading picture: 120 pt wide, 5:4
+        /// like the captures (96 pt high), so the generated scene reads instead
+        /// of a 56 pt crop of it — about 3.7x the area. Android's
+        /// `Home.rowMediaWidth` / `rowMediaAspect` (#4201).
+        static let rowMediaWidth: CGFloat = 120
+        static let rowMediaAspect: CGFloat = 5.0 / 4.0
         /// Glyph inside a `home-row-thumb` that has no capture.
         static let rowThumbGlyph: CGFloat = 28
         /// `home-row-min-height` — the two-line list item with a 56 pt image.
