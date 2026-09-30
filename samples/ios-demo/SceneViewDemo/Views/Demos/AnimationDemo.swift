@@ -2,91 +2,115 @@ import SwiftUI
 import RealityKit
 import SceneViewSwift
 
-/// Animation showcase — carousel of 5 animated 3D models with playback controls.
+/// Animation — a rigged character on a turntable, one clip at a time.
 ///
-/// Mirrors the Android `AnimationDemo` (`samples/android-demo/.../AnimationDemo.kt`)
-/// scope — same five subjects (Soldier + four streamed entries from the `animation`
-/// category of ``SampleAssets``), same play/pause + speed + loop chips. The Android
-/// version layers four "cinematic" camera shots (Hero / Reveal / Vertigo / Tracking)
-/// on top — those would require imperative camera control which is not yet exposed
-/// on `SceneView` iOS (#1034 first-person + pan modes shipped but not the full
-/// keyframed camera scripting). The iOS port honours the strict-subset rule from
-/// `feedback_ios_mirror_android.md`: ship the controls that map cleanly to RealityKit
-/// APIs available today (orbit camera + `auto-rotate`), surface the rest as
-/// "Coming soon" inside the controls sheet so the user can see the roadmap.
+/// Mirrors Android's `AnimationPhysicsDemo` (`samples/android-demo/.../AnimationPhysicsDemo.kt`):
+/// it opens on the same Khronos fox, with the same clip picker (Survey · Walk · Run), the
+/// same status card (clip · Playing/Paused · time / duration), play/pause, scrub, speed and
+/// Loop/Once, and the same subjects after it (Soldier, then the streamed `animation` slugs).
 ///
-/// ### Streaming pipeline (Stage 2, issue #1152)
+/// ### One USDZ, three clips
 ///
-/// Slot 0 ships the bundled `cyberpunk_character.usdz` as the historical hero — the
-/// same role the threejs soldier plays on Android. Slots 1–4 stream the four
-/// `animation` slugs from ``SampleAssets`` via ``SketchfabAssetResolver``. Empty
-/// API key (App Store builds) → the resolver returns the registered bundled
-/// fallback so the carousel always renders five subjects, no broken slots.
+/// A USDZ binds a single `SkelAnimation`, so RealityKit exposes one timeline where the glTF
+/// has three named clips. `khronos_fox_clips.usdz` lays Survey, Walk and Run end to end on
+/// that timeline (Blender NLA, frames 1–83 / 84–101 / 102–129 at 24 fps), and ``FoxClips``
+/// cuts it back into three resources with `AnimationView` trims. The playback controller's
+/// `time` then runs from 0 inside the chosen clip, exactly like Android's clip time.
 ///
-/// ### Honest-subset notes
+/// ### Stage
 ///
-/// - **Cinematic shots** (Hero / Reveal / Vertigo / Tracking) — not ported. The
-///   Android version drives spherical camera coordinates from Compose
-///   `Animatable` values; iOS would need a separate `RealityViewCameraControls`
-///   surface (#1034 only ships the user-gesture modes). Tracked separately.
-/// - **IBL slider** — not ported. iOS `SceneView` does not expose the IBL
-///   intensity dial yet (RealityKit `EnvironmentResource` is a singleton input).
-///   Auto-rotate is on so the lighting reads the same way on every frame.
+/// A skybox-less studio IBL over ``SceneViewTokens/Stage/studioBackdrop`` — Android's themed
+/// studio skybox: neutral grey in light, `stage-background` in dark.
+///
+/// ### Not ported (said in the sheet)
+///
+/// The cinematic camera shots, the brightness dial and the two-clip blend drive Filament's
+/// camera, IBL and `Animator.applyCrossFade` directly; iOS keeps the orbit camera with a
+/// slow turntable and one clip at a time.
 struct AnimationDemo: View {
-    /// Mirror of Android's `AnimationModel` private data class — exactly one of
-    /// `bundledAsset` / `streamedSlug` is non-nil, with a scale hint chosen so all
-    /// five carousel subjects read at similar on-screen size.
+    /// A subject of the carousel — exactly one of `bundledAsset` / `streamedSlug` is set.
     private struct AnimationSubject {
         let displayName: String
         let streamedSlug: SketchfabSlug?
         let bundledAsset: String?
         let scale: Float
+        /// Clip table cutting the model's single timeline into named clips, or `nil` for
+        /// one clip spanning the whole timeline.
+        let clipTable: [ClipRange]?
+        /// Clip the subject opens on — Android's `defaultAnimationIndex`.
+        let defaultClip: Int
 
-        init(
-            displayName: String,
-            streamedSlug: SketchfabSlug? = nil,
-            bundledAsset: String? = nil,
-            scale: Float
-        ) {
-            precondition(
-                (streamedSlug == nil) != (bundledAsset == nil),
-                "AnimationSubject must define exactly one of streamedSlug or bundledAsset."
-            )
+        init(displayName: String, streamedSlug: SketchfabSlug? = nil, bundledAsset: String? = nil,
+             scale: Float, clipTable: [ClipRange]? = nil, defaultClip: Int = 0) {
+            precondition((streamedSlug == nil) != (bundledAsset == nil),
+                         "AnimationSubject must define exactly one of streamedSlug or bundledAsset.")
             self.displayName = displayName
             self.streamedSlug = streamedSlug
             self.bundledAsset = bundledAsset
             self.scale = scale
+            self.clipTable = clipTable
+            self.defaultClip = defaultClip
         }
     }
 
+    /// A named span of a model's timeline, in seconds from its first frame.
+    private struct ClipRange {
+        let name: String
+        let start: Double
+        let end: Double
+    }
+
+    /// A clip ready to play: a looping and a play-once resource over the same span.
+    private struct Clip {
+        let name: String
+        let duration: Double
+        let looping: AnimationResource
+        let once: AnimationResource
+    }
+
+    /// The fox's three glTF clips on the concatenated timeline of `khronos_fox_clips.usdz`
+    /// (24 fps, time 0 = frame 1): Survey 1–83, Walk 84–101, Run 102–129.
+    private static let foxClips: [ClipRange] = [
+        ClipRange(name: "Survey", start: 0 / 24, end: 82 / 24),
+        ClipRange(name: "Walk", start: 83 / 24, end: 100 / 24),
+        ClipRange(name: "Run", start: 101 / 24, end: 128 / 24),
+    ]
+
+    /// The three.js soldier's moving clips on the timeline of `threejs_soldier_clips.usdz`
+    /// (24 fps, time 0 = frame 1): Idle 1–49, Walk 50–75, Run 76–93. The glTF's static
+    /// TPose is left out.
+    private static let soldierClips: [ClipRange] = [
+        ClipRange(name: "Idle", start: 0 / 24, end: 48 / 24),
+        ClipRange(name: "Walk", start: 49 / 24, end: 74 / 24),
+        ClipRange(name: "Run", start: 75 / 24, end: 92 / 24),
+    ]
+
     private static let subjects: [AnimationSubject] = {
-        let slugs = SampleAssets.byCategory["animation"] ?? []
         var items: [AnimationSubject] = [
-            // Slot 0 — bundled cyberpunk_character.usdz (iOS analogue of the Android
-            // `threejs_soldier.glb`). Keeps the carousel deterministic for store
-            // screenshots with no Sketchfab key.
-            AnimationSubject(
-                displayName: "Soldier",
-                bundledAsset: "cyberpunk_character",
-                scale: 1.0
-            ),
+            // Same first subject as Android: the Khronos fox, its three clips.
+            AnimationSubject(displayName: "Fox", bundledAsset: "khronos_fox_clips", scale: 1.0,
+                             clipTable: foxClips),
+            // Android's `threejs_soldier.glb`, opening on Walk like Android.
+            AnimationSubject(displayName: "Soldier", bundledAsset: "threejs_soldier_clips", scale: 1.0,
+                             clipTable: soldierClips, defaultClip: 1),
         ]
-        for slug in slugs {
-            items.append(
-                AnimationSubject(
-                    displayName: slug.displayName,
-                    streamedSlug: slug,
-                    scale: slug.scaleToUnits
-                )
-            )
+        for slug in SampleAssets.byCategory["animation"] ?? [] {
+            items.append(AnimationSubject(displayName: slug.displayName, streamedSlug: slug,
+                                          scale: slug.scaleToUnits))
         }
         return items
     }()
 
-    @State private var selectedIndex: Int = 0
-    @State private var isPlaying: Bool = true
-    @State private var loop: Bool = true
-    @State private var speed: Float = 1.0
+    @State private var selectedIndex = 0
+    @State private var clips: [Clip] = []
+    @State private var selectedClip = 0
+    @State private var isPlaying = true
+    @State private var loop = true
+    @State private var speed: Double = 1.0
+    /// Seconds into the selected clip — what the status card, the progress bar and the
+    /// scrub slider read. Sampled from the playback controller while playing.
+    @State private var clipTime: Double = 0
+    @State private var controller: AnimationPlaybackController?
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
     /// What the resolver handed back for a *streamed* subject (#2960).
@@ -94,231 +118,215 @@ struct AnimationDemo: View {
 
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
-    private var selectedSubject: AnimationSubject {
-        Self.subjects[selectedIndex]
-    }
+    private var selectedSubject: AnimationSubject { Self.subjects[selectedIndex] }
 
-    /// `nil` for slot 0: "Soldier" is loaded straight from the app bundle and
-    /// labelled as itself, so it has no origin question to answer — showing a
-    /// pill there would invent a substitution that never happened.
+    private var activeClip: Clip? { clips.indices.contains(selectedClip) ? clips[selectedClip] : nil }
+
+    /// `nil` for bundled subjects: they are loaded from the app bundle and labelled as
+    /// themselves, so there is no origin question to answer.
     private var assetSource: AssetSourceState? {
         guard selectedSubject.streamedSlug != nil else { return nil }
-        return AssetSourceProbe.of(
-            resolvedURL: resolvedURL,
-            hasAPIKey: hasSketchfabKey,
-            loaded: loadedNode != nil
-        )
+        return AssetSourceProbe.of(resolvedURL: resolvedURL, hasAPIKey: hasSketchfabKey,
+                                   loaded: loadedNode != nil)
     }
 
     var body: some View {
-        sceneContent
-            .demoChrome(status: {
-                AssetSourceStatus(state: assetSource,
-                                  isPlaceholder: selectedSubject.streamedSlug?.fallbackRole == .placeholder)
-            }) {
-                controlsSheet
-            }
-            .task {
-                _ = await SketchfabAssetResolver.shared.prefetchAll(category: "animation")
-            }
-            .task(id: selectedIndex) {
-                await loadSelectedSubject()
-            }
-            .task(id: PlaybackKey(isPlaying: isPlaying, loop: loop, speed: speed, index: selectedIndex)) {
-                applyPlaybackState()
-            }
+        stage
+            .demoChrome(
+                title: "Animation",
+                dock: [
+                    DockItem(icon: "repeat", label: "Loop", selected: loop) { loop.toggle() },
+                ],
+                accent: DockItem(icon: isPlaying ? "pause.fill" : "play.fill",
+                                 label: isPlaying ? "Pause" : "Play",
+                                 enabled: activeClip != nil) { togglePlayback() },
+                accessory: {
+                    VStack(spacing: SceneViewTokens.Space.sm) {
+                        statusCard
+                        if clips.count > 1 {
+                            DemoOptionStrip(Array(clips.indices), selection: $selectedClip) { clips[$0].name }
+                        }
+                    }
+                },
+                status: {
+                    AssetSourceStatus(state: assetSource,
+                                      isPlaceholder: selectedSubject.streamedSlug?.fallbackRole == .placeholder)
+                },
+                controls: { controlsSheet }
+            )
+            .task { _ = await SketchfabAssetResolver.shared.prefetchAll(category: "animation") }
+            .task(id: selectedIndex) { await loadSelectedSubject() }
+            .task(id: isPlaying) { await sampleClipTime() }
+            .onChange(of: selectedClip) { _, _ in startClip(at: 0) }
+            .onChange(of: loop) { _, _ in startClip(at: clipTime) }
+            .onChange(of: speed) { _, newSpeed in controller?.speed = Float(newSpeed) }
+            .onDisappear { controller?.stop() }
     }
 
-    @ViewBuilder
-    private var sceneContent: some View {
+    // MARK: Stage
+
+    private var stage: some View {
         ZStack {
-            // The scene stays mounted for the whole demo — it is never wrapped
-            // in `if let loadedNode` and never re-keyed with SwiftUI's `.id(_:)`.
-            // Both of those discard the `RealityView` and build a new one, and a
-            // re-created `RealityView` on iOS 26 Simulator intermittently comes
-            // back rendering nothing at all — no model, and no skybox either —
-            // permanently (#3008). `.contentID(_:)` swaps the model inside the
-            // scene that is already rendering instead.
-            //
-            // The key is an `Optional` on purpose: it must also change when the
-            // model finishes loading, not only when the subject chip changes.
-            // Keyed on the subject alone it would already sit at its final value
-            // while `loadedNode` is still `nil`, and the scene would stay empty.
+            SceneViewTokens.Stage.studioBackdrop
+            // The scene stays mounted for the whole demo — never wrapped in `if let` and
+            // never re-keyed with `.id(_:)`: a re-created `RealityView` on iOS 26 Simulator
+            // intermittently renders nothing at all, for good (#3008). `.contentID(_:)`
+            // swaps the model inside the scene that is already rendering. The key is
+            // optional so it also changes when the model finishes loading.
             SceneView { root in
                 guard let loadedNode else { return }
                 loadedNode.entity.position = .init(x: 0, y: 0, z: -2)
                 root.addChild(loadedNode.entity)
-                // The model only joins the scene here, when `.contentID` swaps
-                // it in — after `loadSelectedSubject` and the playback task
-                // have already run. RealityKit ignores `playAnimation` on an
-                // entity that is not in a scene, so the character stood in its
-                // rest pose on first open until a control was touched (#3907).
-                // Start playback once it is attached.
-                Task { @MainActor in await startPlaybackWhenAttached(loadedNode) }
+                // RealityKit ignores `playAnimation` on an entity outside a scene, so the
+                // character stood in its rest pose on first open (#3907). Start the clip
+                // once the entity is attached.
+                Task { @MainActor in await startWhenAttached(loadedNode) }
             }
             .cameraControls(.orbit)
             .autoRotate(speed: 0.3)
-            // Every subject here is a curated PBR model — the bundled
-            // cyberpunk_character.usdz or a streamed Sketchfab character —
-            // and a PBR surface is defined by what it reflects. With no
-            // IBL there is nothing to reflect and the carousel undersells
-            // its own subjects. Same `.studio` preset as ModelViewerDemo
-            // (#2114).
-            .environment(.studio)
+            .environment(Self.environment)
             .contentID(loadedContentKey)
-            .ignoresSafeArea()
 
             if loadedNode == nil {
-                VStack(spacing: 12) {
+                VStack(spacing: SceneViewTokens.Space.sm) {
                     ProgressView()
-                        .tint(.white)
-                    if let loadError {
-                        Text(loadError)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    } else {
-                        Text("Loading \(selectedSubject.displayName)…")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
+                    Text(loadError ?? "Loading \(selectedSubject.displayName)…")
+                        .font(SceneViewTokens.TypeScale.caption)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, SceneViewTokens.Space.lg)
                 }
             }
         }
-        .background(Color.black)
     }
 
-    /// What the scene's content closure currently builds: `nil` while the
-    /// subject is loading, the subject's identifier once its model is in hand.
-    /// Feeds ``SceneView/contentID(_:)`` — see the comment in `sceneContent`.
+    /// The studio IBL lights the character; the backdrop behind it is the themed colour.
+    private static var environment: SceneEnvironment {
+        var studio = SceneEnvironment.studio
+        studio.showSkybox = false
+        return studio
+    }
+
     private var loadedContentKey: String? {
         guard loadedNode != nil else { return nil }
         return selectedSubject.streamedSlug?.uid ?? selectedSubject.bundledAsset ?? "none"
     }
 
+    // MARK: Chrome
+
+    /// Android's top card — clip name, "Playing · 1.2 / 3.4 s" and a progress bar — as a
+    /// glass card above the dock.
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+            if let clip = activeClip {
+                Text(clip.name)
+                    .font(SceneViewTokens.TypeScale.chromeLabel)
+                Text("\(isPlaying ? "Playing" : "Paused") · \(Self.seconds(clipTime)) / \(Self.seconds(clip.duration)) s")
+                    .font(SceneViewTokens.TypeScale.chromeCaption.monospacedDigit())
+                    .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                ProgressView(value: min(clipTime / max(clip.duration, 0.0001), 1))
+                    .tint(SceneViewTokens.HomeColor.primary)
+            } else {
+                Text(selectedSubject.displayName)
+                    .font(SceneViewTokens.TypeScale.chromeLabel)
+                Text("Loading…")
+                    .font(SceneViewTokens.TypeScale.chromeCaption)
+                    .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                ProgressView(value: 0.0)
+                    .tint(SceneViewTokens.HomeColor.primary)
+            }
+        }
+        .foregroundStyle(SceneViewTokens.Glass.onGlass)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(SceneViewTokens.Space.md - SceneViewTokens.Space.xs)
+        .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Glass.pillHeight / 2,
+                                              style: .continuous),
+                         id: "status")
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("animation-status")
+    }
+
     @ViewBuilder
     private var controlsSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Subject carousel — chips matching Android's "Subject" row.
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Subject")
-                    .font(.subheadline.weight(.semibold))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(Self.subjects.enumerated()), id: \.offset) { index, subject in
-                            Button {
-                                selectedIndex = index
-                                #if os(iOS)
-                                SceneViewHaptic.shared.selection()
-                                #endif
-                            } label: {
-                                Text(subject.displayName)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(index == selectedIndex ? Color.black : Color.primary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        Capsule()
-                                            .fill(index == selectedIndex ? AnyShapeStyle(.white) : AnyShapeStyle(.gray.opacity(0.18)))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
+            if clips.count > 1 {
+                sheetLabel("Animation clip")
+                Picker("Animation clip", selection: $selectedClip) {
+                    ForEach(clips.indices, id: \.self) { Text(clips[$0].name).tag($0) }
                 }
+                .pickerStyle(.segmented)
             }
 
-            // Playback row — pause / play icon + speed + loop chips.
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Playback")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Button {
-                        isPlaying.toggle()
-                        #if os(iOS)
-                        SceneViewHaptic.shared.light()
-                        #endif
-                    } label: {
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title3)
-                            .padding(10)
-                            .background(.gray.opacity(0.15), in: Circle())
-                    }
-                    .accessibilityLabel(isPlaying ? "Pause" : "Play")
-                    .buttonStyle(.plain)
-                }
-
+            if let clip = activeClip {
                 LabeledSlider(
-                    label: "Speed",
-                    value: $speed,
-                    range: 0.25...3.0,
-                    valueText: String(format: "%.1fx", speed)
+                    label: "Scrub pose · pauses playback",
+                    value: Binding(get: { min(clipTime, clip.duration) }, set: { scrub(to: $0) }),
+                    range: 0...max(clip.duration, 0.0001),
+                    valueText: "\(Self.seconds(clipTime)) / \(Self.seconds(clip.duration)) s"
                 )
-
-                HStack(spacing: 8) {
-                    Button {
-                        loop = true
-                        #if os(iOS)
-                        SceneViewHaptic.shared.selection()
-                        #endif
-                    } label: {
-                        Text("Loop")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(loop ? AnyShapeStyle(.blue) : AnyShapeStyle(.gray.opacity(0.15)), in: Capsule())
-                            .foregroundStyle(loop ? .white : .primary)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        loop = false
-                        #if os(iOS)
-                        SceneViewHaptic.shared.selection()
-                        #endif
-                    } label: {
-                        Text("Once")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(!loop ? AnyShapeStyle(.blue) : AnyShapeStyle(.gray.opacity(0.15)), in: Capsule())
-                            .foregroundStyle(!loop ? .white : .primary)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
 
-            // Honest "Coming soon" surface — keep the iOS sheet honest about the
-            // Hero / Reveal / Vertigo / Tracking shots that haven't been ported.
-            Text("Cinematic camera shots (Hero / Reveal / Vertigo / Tracking) and the IBL intensity slider are Android-only in this release — coming to iOS in a future version.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            HStack {
+                sheetLabel("Playback")
+                Spacer()
+                Button(action: togglePlayback) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: SceneViewTokens.Layout.touchTarget,
+                               height: SceneViewTokens.Layout.touchTarget)
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .tint(SceneViewTokens.HomeColor.primary)
+                .disabled(activeClip == nil)
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
+            }
+
+            LabeledSlider(label: "Speed", value: $speed, range: 0.25...3.0, step: 0.25,
+                          valueText: String(format: "%.1f×", speed))
+
+            Picker("Repeat", selection: $loop) {
+                Text("Loop").tag(true)
+                Text("Once").tag(false)
+            }
+            .pickerStyle(.segmented)
+
+            sheetLabel("Subject")
+            Picker("Subject", selection: $selectedIndex) {
+                ForEach(Self.subjects.indices, id: \.self) { Text(Self.subjects[$0].displayName).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .tint(SceneViewTokens.HomeColor.primary)
+
+            Text("RealityKit plays one clip of the model's timeline at a time: AnimationView trims "
+                 + "each clip, and the playback controller's speed, pause and time drive it. The "
+                 + "cinematic camera shots, brightness dial and two-clip blend are on Android only.")
+                .font(SceneViewTokens.TypeScale.captionRegular)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
 
             if let slug = selectedSubject.streamedSlug {
-                // Credits the model actually on screen — streamed author or the
-                // bundled fallback's own author and licence (#2966).
+                // Credits the model actually on screen — streamed author or the bundled
+                // fallback's own author and licence (#2966).
                 AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
             }
         }
     }
 
-    // MARK: - Load + playback state
-
-    /// Key bundling everything that should cause the playback effect to re-run.
-    /// Hashable so `.task(id:)` can use it.
-    private struct PlaybackKey: Hashable {
-        let isPlaying: Bool
-        let loop: Bool
-        let speed: Float
-        let index: Int
+    private func sheetLabel(_ text: String) -> some View {
+        Text(text).font(.subheadline.weight(.semibold))
     }
+
+    private static func seconds(_ value: Double) -> String { String(format: "%.1f", value) }
+
+    // MARK: Loading
 
     @MainActor
     private func loadSelectedSubject() async {
         let subject = selectedSubject
+        controller?.stop()
+        controller = nil
         loadedNode = nil
+        clips = []
+        clipTime = 0
         loadError = nil
         resolvedURL = nil
         do {
@@ -334,38 +342,108 @@ struct AnimationDemo: View {
             }
             _ = node.scaleToUnits(subject.scale)
             _ = node.centerOrigin()
-            // Playback starts from the scene's content closure, once the
-            // entity is attached (see `startPlaybackWhenAttached`).
+            let built = Self.clips(of: node, table: subject.clipTable)
+            guard !Task.isCancelled else { return }
+            clips = built
+            selectedClip = built.indices.contains(subject.defaultClip) ? subject.defaultClip : 0
+            isPlaying = true
+            // The clip starts from the scene's content closure, once attached.
             loadedNode = node
         } catch {
             loadError = error.localizedDescription
         }
     }
 
-    /// Starts playback on `node` as soon as it is part of a RealityKit scene.
-    /// The content closure attaches it to a root that may itself join the
-    /// scene a frame later, so this waits a few frames rather than assuming.
+    /// Cuts the model's timeline into playable clips. RealityKit lists the same timeline
+    /// twice (a "global scene" and a "default subtree" animation), so only the first is used.
+    private static func clips(of node: ModelNode, table: [ClipRange]?) -> [Clip] {
+        guard let source = node.entity.availableAnimations.first else { return [] }
+        let full = source.definition.duration
+        let ranges = table ?? [ClipRange(name: "Clip 1", start: 0, end: full)]
+        return ranges.compactMap { range in
+            let end = min(range.end, full)
+            guard end > range.start else { return nil }
+            let loopView = AnimationView(source: source.definition, name: range.name,
+                                         trimStart: range.start, trimEnd: end)
+            // `.forwards` holds the last pose when a play-once clip ends, like Android.
+            let onceView = AnimationView(source: source.definition, name: range.name, fillMode: .forwards,
+                                         trimStart: range.start, trimEnd: end)
+            guard let looping = try? AnimationResource.generate(with: loopView),
+                  let once = try? AnimationResource.generate(with: onceView) else { return nil }
+            return Clip(name: range.name, duration: end - range.start,
+                        looping: looping.repeat(), once: once)
+        }
+    }
+
+    // MARK: Playback
+
     @MainActor
-    private func startPlaybackWhenAttached(_ node: ModelNode) async {
+    private func startWhenAttached(_ node: ModelNode) async {
         for _ in 0..<30 where node.entity.scene == nil {
             try? await Task.sleep(for: .milliseconds(16))
             guard !Task.isCancelled else { return }
         }
         // A newer subject may have replaced this one while we waited.
         guard node.entity === loadedNode?.entity else { return }
-        applyPlaybackState()
+        startClip(at: 0)
+    }
+
+    /// (Re)starts the selected clip at `time` seconds, paused or playing as the UI says.
+    @MainActor
+    private func startClip(at time: Double) {
+        guard let node = loadedNode, node.entity.scene != nil, let clip = activeClip else { return }
+        controller?.stop()
+        let playback = node.entity.playAnimation(loop ? clip.looping : clip.once,
+                                                 transitionDuration: 0.2, startsPaused: !isPlaying)
+        playback.speed = Float(speed)
+        let start = min(max(time, 0), clip.duration)
+        playback.time = start
+        controller = playback
+        clipTime = start
     }
 
     @MainActor
-    private func applyPlaybackState() {
-        // Not in a scene yet: `startPlaybackWhenAttached` will call back.
-        guard let loadedNode, loadedNode.entity.scene != nil else { return }
-        // Stop everything first so the new (loop, speed) combo wins. The
-        // `playAllAnimations` API drops every previously-tracked controller
-        // implicitly via `entity.playAnimation`, but `stopAllAnimations` is
-        // the safer reset.
-        loadedNode.stopAllAnimations()
-        guard isPlaying && loadedNode.animationCount > 0 else { return }
-        loadedNode.playAllAnimations(loop: loop, speed: speed)
+    private func togglePlayback() {
+        guard let clip = activeClip else { return }
+        if isPlaying {
+            controller?.pause()
+            isPlaying = false
+        } else {
+            isPlaying = true
+            // A play-once clip that already reached its end starts over, like Android.
+            if controller == nil || controller?.isComplete == true || (!loop && clipTime >= clip.duration - 0.01) {
+                startClip(at: 0)
+            } else {
+                controller?.resume()
+            }
+        }
+    }
+
+    @MainActor
+    private func scrub(to time: Double) {
+        isPlaying = false
+        guard let clip = activeClip else { return }
+        if controller == nil || controller?.isComplete == true { startClip(at: time) }
+        controller?.pause()
+        clipTime = min(max(time, 0), clip.duration)
+        controller?.time = clipTime
+    }
+
+    /// While playing, samples the controller's time about 30 times a second into
+    /// `clipTime`, and flips to Paused when a play-once clip ends.
+    @MainActor
+    private func sampleClipTime() async {
+        while isPlaying && !Task.isCancelled {
+            if let clip = activeClip, let controller {
+                if !loop && (controller.isComplete || controller.time >= clip.duration) {
+                    clipTime = clip.duration
+                    isPlaying = false
+                    return
+                }
+                clipTime = loop ? controller.time.truncatingRemainder(dividingBy: clip.duration)
+                                : min(controller.time, clip.duration)
+            }
+            try? await Task.sleep(for: .milliseconds(33))
+        }
     }
 }

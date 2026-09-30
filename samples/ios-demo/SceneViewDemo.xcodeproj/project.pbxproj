@@ -217,6 +217,8 @@
 		67036B2BB7EE12BD596AB1F7 /* khronos_lantern.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */; };
 		EE5AC4C13BBB781FED30597B /* khronos_toy_car.usdz in Resources */ = {isa = PBXBuildFile; fileRef = E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */; };
 		66ED22160BBB08C5B508AF55 /* khronos_fox.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 18D000109AEAF964E5DDC143 /* khronos_fox.usdz */; };
+		F0C5C11A0000000000000001 /* khronos_fox_clips.usdz in Resources */ = {isa = PBXBuildFile; fileRef = F0C5C11A0000000000000002 /* khronos_fox_clips.usdz */; };
+		F0C5C11A0000000000000003 /* threejs_soldier_clips.usdz in Resources */ = {isa = PBXBuildFile; fileRef = F0C5C11A0000000000000004 /* threejs_soldier_clips.usdz */; };
 		9B8C930A67638FE6BD6833AD /* khronos_damaged_helmet.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */; };
 		F50000000000000000000001 /* bell.wav in Resources */ = {isa = PBXBuildFile; fileRef = F60000000000000000000001 /* bell.wav */; };
 		E10000000000000000000001 /* studio.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* studio.hdr */; };
@@ -443,6 +445,8 @@
 		19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_lantern.usdz; sourceTree = "<group>"; };
 		E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_toy_car.usdz; sourceTree = "<group>"; };
 		18D000109AEAF964E5DDC143 /* khronos_fox.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_fox.usdz; sourceTree = "<group>"; };
+		F0C5C11A0000000000000002 /* khronos_fox_clips.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_fox_clips.usdz; sourceTree = "<group>"; };
+		F0C5C11A0000000000000004 /* threejs_soldier_clips.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = threejs_soldier_clips.usdz; sourceTree = "<group>"; };
 		2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_damaged_helmet.usdz; sourceTree = "<group>"; };
 		D77142EC848C995EDE06546D /* SketchfabConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabConfig.swift; path = SceneViewDemo/Services/SketchfabConfig.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002960 /* AssetSourceProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourceProbe.swift; path = SceneViewDemo/Services/AssetSourceProbe.swift; sourceTree = SOURCE_ROOT; };
@@ -822,6 +826,8 @@
 				19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */,
 				E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */,
 				18D000109AEAF964E5DDC143 /* khronos_fox.usdz */,
+				F0C5C11A0000000000000002 /* khronos_fox_clips.usdz */,
+				F0C5C11A0000000000000004 /* threejs_soldier_clips.usdz */,
 				B7E500000000000000000018 /* shiba.usdz */,
 				2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */,
 			);
@@ -1021,6 +1027,8 @@
 				67036B2BB7EE12BD596AB1F7 /* khronos_lantern.usdz in Resources */,
 				EE5AC4C13BBB781FED30597B /* khronos_toy_car.usdz in Resources */,
 				66ED22160BBB08C5B508AF55 /* khronos_fox.usdz in Resources */,
+				F0C5C11A0000000000000001 /* khronos_fox_clips.usdz in Resources */,
+				F0C5C11A0000000000000003 /* threejs_soldier_clips.usdz in Resources */,
 				9B8C930A67638FE6BD6833AD /* khronos_damaged_helmet.usdz in Resources */,
 				E10000000000000000000001 /* studio.hdr in Resources */,
 				E10000000000000000000002 /* outdoor_cloudy.hdr in Resources */,
