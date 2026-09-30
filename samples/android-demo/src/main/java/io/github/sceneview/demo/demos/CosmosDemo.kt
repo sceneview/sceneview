@@ -393,7 +393,9 @@ fun CosmosDemo(onBack: () -> Unit) {
                 firstFrame.onFrame(nanos)
                 val frozen = DemoSettings.qaMode || !motionEnabled
                 val current = scene
-                clock.advance(nanos, current, running = animating && !frozen)
+                // The clock waits for the loading cover to lift: the voyage's opening shot would
+                // otherwise play out under it.
+                clock.advance(nanos, current, running = animating && !frozen && firstFrame.rendered.value)
                 val time = if (frozen) QA_TIME[current.ordinal] else clock.sceneTime
                 // The opening scene is not revealed: the loading cover already fades it in, and a
                 // reveal started under the cover finished after it, as a pop (#4160).

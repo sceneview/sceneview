@@ -138,9 +138,12 @@ internal object CosmosVoyage {
                 VoyageKey(8.5f, VoyageAnchor.World, v(-0.9f, 5.3f, 1.4f), ORIGIN, focal = 26f, roll = -8f),
                 VoyageKey(12.5f, VoyageAnchor.World, v(1.9f, 0.62f, 1.55f), ORIGIN, focal = 28f,
                     caption = "Skimming the arms toward the core"),
-                VoyageKey(15.5f, VoyageAnchor.World, v(0.95f, 0.13f, 0.62f), ORIGIN, focal = 24f, roll = 6f,
-                    ahead = 0.35f),
-                VoyageKey(18f, VoyageAnchor.World, v(0.42f, 0.06f, 0.2f), ORIGIN, focal = 22f, ahead = 0.2f),
+                // Low over the arms, but outside the core's glow: inside it the frame burns to
+                // white and the jump's streaks would not read.
+                VoyageKey(15.5f, VoyageAnchor.World, v(1.3f, 0.16f, 0.95f), v(0f, 0.04f, 0f), focal = 24f,
+                    roll = 6f, ahead = 0.35f),
+                VoyageKey(18f, VoyageAnchor.World, v(0.95f, 0.1f, 0.6f), v(0f, 0.1f, 0f), focal = 22f,
+                    ahead = 0.2f),
             ),
         ),
         // Out of the jump into the collision point: the tracks fly past the lens, then the
@@ -179,9 +182,9 @@ internal object CosmosVoyage {
             shake = 0.3f,
             exit = VoyageExit.Fade,
             keys = listOf(
-                VoyageKey(0f, VoyageAnchor.Orbit, v(0.7f, 0.6f, 5.4f), ORIGIN, focal = 26f,
+                VoyageKey(0f, VoyageAnchor.Orbit, v(0.8f, 0.7f, 6.6f), ORIGIN, focal = 24f,
                     caption = "A hot blue star and its magnetic loops"),
-                VoyageKey(4f, VoyageAnchor.Orbit, v(3.1f, 1.0f, 3.2f), ORIGIN, focal = 30f, roll = 6f),
+                VoyageKey(4f, VoyageAnchor.Orbit, v(3.4f, 1.1f, 4.0f), ORIGIN, focal = 26f, roll = 6f),
                 VoyageKey(8f, VoyageAnchor.Orbit, v(4.6f, 1.6f, 0.2f), ORIGIN, focal = 30f),
                 VoyageKey(11.5f, VoyageAnchor.Planet, v(2.3f, 0.7f, 1.7f), ORIGIN, focal = 30f,
                     caption = "A ringed world in blue starlight"),
