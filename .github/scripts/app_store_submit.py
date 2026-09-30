@@ -979,8 +979,8 @@ except BaseException as e:
 # the problem entirely — it creates a fresh review request,
 # independently of any legacy appStoreVersionSubmission state.
 #
-# Flow: POST /v1/reviewSubmissions (IOS) →
-#       POST /v1/reviewSubmissionItems (attach version) →
+# Flow: reuse the open draft, or POST /v1/reviewSubmissions (IOS) →
+#       POST /v1/reviewSubmissionItems (attach version, 409 retried) →
 #       PATCH /v1/reviewSubmissions/{id} {submitted: true}
 # Fresh token before the submission, for the same reason 4c mints its
 # own — and more sharply here. This step's original token lasts 1200s,
@@ -991,8 +991,46 @@ except BaseException as e:
 # one running closest to expiry. Raised in review of PR #3013.
 headers = asc_headers()
 
+
+def apple_errors(resp):
+    """Everything Apple said about a refused call, uncut.
+
+    A 409 on a review item only says "This resource cannot be reviewed, please
+    check associated errors to see why"; the reasons themselves sit in
+    errors[].meta.associatedErrors. The old `text[:300]` cut every one of them
+    off, so the 4.50.0 run (36689249768, 2026-09-30) failed without saying why.
+    """
+    try:
+        errors = resp.json().get("errors")
+        if not errors:
+            return resp.text
+        lines = []
+        for e in errors:
+            lines.append(" ".join(str(x) for x in (
+                e.get("status"), e.get("code"), e.get("title"), e.get("detail")) if x))
+            for path, assoc in ((e.get("meta") or {}).get("associatedErrors") or {}).items():
+                for a in assoc or []:
+                    lines.append(f"  {path}: " + " ".join(str(x) for x in (
+                        a.get("code"), a.get("title"), a.get("detail")) if x))
+        return "\n".join(lines)
+    except Exception:  # noqa: BLE001 — a diagnostic must never mask the failure
+        return resp.text
+
+
+# A canceled reviewSubmission leaves review asynchronously: the PATCH answers
+# 200 while the submission is still CANCELING and its version still belongs to
+# it. Adding that version to a new submission in that window is refused (409
+# STATE_ERROR.ENTITY_STATE_INVALID), which is what kept 4.50.0 out of review.
+CANCEL_POLLS = 24
+CANCEL_POLL_S = 5
+# The same 409 retried: the cancel wait above covers the known race, and this
+# covers whatever else Apple finishes asynchronously on a record it was just
+# handed (build, retargeted versionString, metadata).
+ITEM_ATTEMPTS = 6
+ITEM_RETRY_S = 20
+
 try:
-    # 5a. Cancel any STALE open reviewSubmission first (#2301).
+    # 5a. Open reviewSubmissions: reuse the draft, cancel the rest (#2301).
     #
     # App Store Connect allows only ONE open reviewSubmission per
     # app. A previous run that died between the CREATE below and the
@@ -1010,17 +1048,39 @@ try:
     # them alone. Cancellation is PATCH {canceled: true} — there is
     # NO DELETE for reviewSubmissions (verified against Apple's API +
     # Fastlane spaceship; the issue's "DELETE" wording is wrong).
+    #
+    # A READY_FOR_REVIEW submission is a draft that was never sent, and it
+    # is REUSED rather than canceled: Apple refuses to cancel an unsubmitted
+    # draft (409 "Resource state is invalid", measured on 93812d16 on
+    # 2026-09-30), so the old cancel-then-CREATE left the draft in place and
+    # asked for a second one. fastlane's deliver reuses it the same way.
+    #
+    # Everything else (a rejection in UNRESOLVED_ISSUES, a submission in the
+    # queue) is canceled, and this run then WAITS for the cancel to finish
+    # before adding the version to a new submission. When Apple rejects a
+    # version, the rejected submission stays UNRESOLVED_ISSUES and still holds
+    # that version; claim_editable_version() reuses the version for this
+    # release, so the two calls meet on the same record. On 2026-09-30 the
+    # item CREATE ran right behind the cancel and Apple answered 409; the
+    # identical CREATE succeeded 23 minutes later with nothing changed.
     OPEN_STATES = "READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES"
     ls = requests.get(
         f"{BASE}/apps/{app_id}/reviewSubmissions"
         f"?filter[platform]=IOS&filter[state]={OPEN_STATES}&limit=10",
         headers=headers,
     )
-    print(f"Stale-open reviewSubmissions probe → {ls.status_code}")
+    print(f"Open reviewSubmissions probe → {ls.status_code}")
+    draft_id = None
+    canceled_ids = []
     if ls.status_code == 200:
         for stale in (ls.json() or {}).get("data", []):
             stale_id = stale["id"]
             stale_state = stale.get("attributes", {}).get("state", "?")
+            if stale_state == "READY_FOR_REVIEW" and draft_id is None:
+                draft_id = stale_id
+                print(f"Reusing the unsubmitted draft reviewSubmission {stale_id} "
+                      "(Apple does not cancel a draft; it is this app's one open slot)")
+                continue
             cancel = requests.patch(
                 f"{BASE}/reviewSubmissions/{stale_id}",
                 headers=headers,
@@ -1034,33 +1094,71 @@ try:
                 f"Canceling stale open reviewSubmission {stale_id} "
                 f"(was {stale_state}) → {cancel.status_code}"
             )
+            if cancel.status_code in (200, 201):
+                canceled_ids.append(stale_id)
+            else:
+                print(f"::warning::Apple refused to cancel reviewSubmission {stale_id}:\n"
+                      f"{apple_errors(cancel)}")
     elif ls.status_code not in (404,):
         # Non-fatal: a probe failure shouldn't block a fresh CREATE.
         print(f"::warning::Could not list reviewSubmissions: {ls.status_code} {ls.text[:200]}")
 
-    # Create review submission
-    rs_payload = {
-        "data": {
-            "type": "reviewSubmissions",
-            "attributes": {"platform": "IOS"},
-            "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}
+    # Wait until every canceled submission has actually closed. The by-id
+    # read answers 200 for this key (measured 2026-09-30). A read that fails
+    # ends the wait early; the item CREATE retry below still covers it.
+    pending = list(canceled_ids)
+    for attempt in range(1, CANCEL_POLLS + 1):
+        if not pending:
+            break
+        still = []
+        for sid in pending:
+            rd = requests.get(f"{BASE}/reviewSubmissions/{sid}", headers=asc_headers())
+            if rd.status_code != 200:
+                print(f"Could not read canceled reviewSubmission {sid} back ({rd.status_code}); "
+                      "not waiting on it")
+                continue
+            st = (rd.json() or {}).get("data", {}).get("attributes", {}).get("state")
+            if st != "COMPLETE":
+                still.append((sid, st))
+        if not still:
+            print(f"Canceled reviewSubmission(s) closed: {', '.join(canceled_ids)}")
+            pending = []
+            break
+        pending = [sid for sid, _ in still]
+        print(f"Waiting for the cancel to finish (attempt {attempt}/{CANCEL_POLLS}): "
+              + ", ".join(f"{sid} is {st}" for sid, st in still))
+        time.sleep(CANCEL_POLL_S)
+    if pending:
+        print(f"::warning::Canceled reviewSubmission(s) {', '.join(pending)} had not closed after "
+              f"~{CANCEL_POLLS * CANCEL_POLL_S}s; adding the version anyway (retried on 409)")
+
+    created_here = draft_id is None
+    if draft_id:
+        rs_id = draft_id
+    else:
+        rs_payload = {
+            "data": {
+                "type": "reviewSubmissions",
+                "attributes": {"platform": "IOS"},
+                "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}
+            }
         }
-    }
-    rs = requests.post(f"{BASE}/reviewSubmissions", headers=headers, json=rs_payload)
-    if rs.status_code not in (200, 201):
-        print(f"::error::reviewSubmissions CREATE failed: {rs.status_code} {rs.text[:300]}")
-        raise SystemExit(1)
-    try:
-        rs_id = rs.json()["data"]["id"]
-    except (ValueError, KeyError, TypeError) as ide:
-        # Apple accepted the CREATE but the body is unreadable, so we
-        # hold no id to cancel with — the one orphan the cleanup below
-        # structurally cannot reach. Say so instead of dying silently.
-        print(f"::error::reviewSubmissions CREATE returned {rs.status_code} with an unreadable body "
-              f"({ide}): a submission may have been created that this run cannot identify or cancel. "
-              "Check App Store Connect for an open, itemless submission.")
-        raise SystemExit(1)
-    print(f"Created reviewSubmission {rs_id}")
+        rs = requests.post(f"{BASE}/reviewSubmissions", headers=asc_headers(), json=rs_payload)
+        if rs.status_code not in (200, 201):
+            print(f"::error::reviewSubmissions CREATE failed: {rs.status_code}\n{apple_errors(rs)}")
+            raise SystemExit(1)
+        try:
+            rs_id = rs.json()["data"]["id"]
+        except (ValueError, KeyError, TypeError) as ide:
+            # Apple accepted the CREATE but the body is unreadable, so we
+            # hold no id to cancel with — the one orphan the cleanup below
+            # structurally cannot reach. Say so instead of dying silently.
+            print(f"::error::reviewSubmissions CREATE returned {rs.status_code} with an unreadable body "
+                  f"({ide}): a submission may have been created that this run cannot identify or cancel. "
+                  "Check App Store Connect for an open, itemless submission.")
+            raise SystemExit(1)
+        print(f"Created reviewSubmission {rs_id}")
+    headers = asc_headers()
 
     # W5 (#2893). From this point THIS run owns an OPEN, EMPTY
     # reviewSubmission. Every remaining failure path below used to
@@ -1098,6 +1196,19 @@ try:
     submitted_ok = False
     submit_answered = True  # False only while the PATCH is in flight
     try:
+        # A reused draft may already hold this version (a run that added it
+        # and then failed to submit): adding it twice is refused, so look.
+        already_in = False
+        if not created_here:
+            it = requests.get(
+                f"{BASE}/reviewSubmissions/{rs_id}/items?include=appStoreVersion", headers=headers)
+            if it.status_code == 200:
+                already_in = any(
+                    ((i.get("relationships", {}).get("appStoreVersion") or {}).get("data") or {})
+                    .get("id") == version_id
+                    for i in (it.json() or {}).get("data", []))
+            else:
+                print(f"Could not list the draft's items ({it.status_code}); adding the version")
         # Add version to submission
         item_payload = {
             "data": {
@@ -1108,11 +1219,27 @@ try:
                 }
             }
         }
-        ri = requests.post(f"{BASE}/reviewSubmissionItems", headers=headers, json=item_payload)
-        if ri.status_code not in (200, 201):
-            print(f"::error::reviewSubmissionItems CREATE failed: {ri.status_code} {ri.text[:300]}")
+        if already_in:
+            print(f"Version {version_id} is already in review submission {rs_id}")
+        for attempt in range(1, ITEM_ATTEMPTS + 1):
+            if already_in:
+                break
+            ri = requests.post(f"{BASE}/reviewSubmissionItems", headers=asc_headers(), json=item_payload)
+            if ri.status_code in (200, 201):
+                print(f"Added version {version_id} to review submission")
+                break
+            # Only Apple's "not in a valid state" 409 is worth waiting on; any
+            # other refusal is a real answer and fails now.
+            waitable = ri.status_code == 409 and "ENTITY_STATE_INVALID" in (ri.text or "")
+            if waitable and attempt < ITEM_ATTEMPTS:
+                print(f"::warning::reviewSubmissionItems CREATE → 409 (attempt {attempt}/{ITEM_ATTEMPTS}), "
+                      f"retrying in {ITEM_RETRY_S}s. Apple says:\n{apple_errors(ri)}")
+                time.sleep(ITEM_RETRY_S)
+                continue
+            print(f"::error::reviewSubmissionItems CREATE failed: {ri.status_code} "
+                  f"(attempt {attempt}/{ITEM_ATTEMPTS}). Apple says:\n{apple_errors(ri)}")
             raise SystemExit(1)
-        print(f"Added version {version_id} to review submission")
+        headers = asc_headers()
 
         # Submit for review
         patch_payload = {
@@ -1152,7 +1279,7 @@ try:
                 state = "? (response body unreadable)"
             print(f"Successfully submitted for App Store review! State: {state}")
         else:
-            print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
+            print(f"::error::Submission PATCH failed: {rp.status_code}\n{apple_errors(rp)}")
             raise SystemExit(1)
     finally:
         if not submitted_ok and not submit_answered:
@@ -1213,11 +1340,15 @@ try:
                     "live App Review submission. Check it in App Store Connect: if it is still assembled "
                     "but never submitted, cancel it there (the next deploy's stale probe also clears it)."
                 )
-        if not submitted_ok and submit_answered:
+        if not submitted_ok and submit_answered and not created_here:
+            # A draft this run found and reused is left as it was found: the
+            # next run reuses it again (5a), and Apple would refuse the cancel.
+            print(f"Left the reused draft reviewSubmission {rs_id} open; the next run reuses it")
+        elif not submitted_ok and submit_answered:
             try:
                 cancel = requests.patch(
                     f"{BASE}/reviewSubmissions/{rs_id}",
-                    headers=headers,
+                    headers=asc_headers(),
                     json={"data": {
                         "type": "reviewSubmissions",
                         "id": rs_id,
@@ -1227,10 +1358,13 @@ try:
                 if cancel.status_code in (200, 201):
                     print(f"Cleaned up the orphan reviewSubmission {rs_id} created by this run (canceled)")
                 else:
+                    # Apple refuses to cancel a draft that was never sent (409,
+                    # measured 2026-09-30). It is harmless: 5a reuses a draft
+                    # instead of creating a second one, so nothing to do by hand.
                     print(
-                        f"::warning::Could not cancel the orphan reviewSubmission {rs_id} this run created: "
-                        f"{cancel.status_code} {cancel.text[:200]} — cancel it by hand in App Store Connect, "
-                        "or it will block the next deploy until 5a's stale probe clears it"
+                        f"::warning::Apple kept the unsubmitted draft reviewSubmission {rs_id} this run "
+                        f"created ({cancel.status_code}); the next run reuses it. Apple says:\n"
+                        f"{apple_errors(cancel)}"
                     )
             except BaseException as ce:
                 print(

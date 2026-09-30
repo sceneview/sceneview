@@ -1,4 +1,6 @@
-"""Offline tests for app_store_submit.py's version-record guards — no network, no secrets.
+"""Offline tests for app_store_submit.py — no network, no secrets.
+
+Covers the version-record guards and the review submission (section 5).
 
 Run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_*.py'
 
@@ -7,6 +9,8 @@ the whole file with runpy against stub `jwt` and `requests` modules that answer
 App Store Connect's calls from a table. Every request is recorded, which is how
 a case proves that nothing was renamed, cancelled or created.
 """
+import contextlib
+import io
 import os
 import pathlib
 import runpy
@@ -146,6 +150,180 @@ class SubmitScriptTest(unittest.TestCase):
         # Not identified before the POST either, so the POST is what fails.
         self.assertIn(("POST", "https://api.appstoreconnect.apple.com/v1/appStoreVersions"),
                       calls)
+
+
+API = "https://api.appstoreconnect.apple.com/v1"
+
+
+def _item_409(detail_tail):
+    """Apple's 409 on a review item, with the reasons where Apple puts them."""
+    return _Response(409, {"errors": [{
+        "status": "409", "code": "STATE_ERROR.ENTITY_STATE_INVALID",
+        "title": "appStoreVersions with id '892059197' is not in valid state.",
+        "detail": "This resource cannot be reviewed, please check associated errors to see why.",
+        "meta": {"associatedErrors": {"/v1/appStoreVersions/892059197": [{
+            "code": "ENTITY_ERROR.ATTRIBUTE.INVALID",
+            "detail": "x" * 400 + detail_tail,
+        }]}},
+    }]})
+
+
+class ReviewSubmissionTest(unittest.TestCase):
+    """Section 5: the review submission, run end to end against a fake App Store Connect.
+
+    The record is the one 4.50.0 met on 2026-09-30: a version Apple rejected,
+    reused for the new release, whose rejected submission is still open
+    (UNRESOLVED_ISSUES) and holds that same version.
+    """
+
+    def run_submit(self, open_subs, sub_states=None, items=(), draft_items=()):
+        """Run the whole program; return (exit code, [(method, url)], stdout).
+
+        `open_subs` answers the open-reviewSubmissions probe. `sub_states`
+        maps a submission id to the states its by-id reads return in turn (the
+        last repeats). `items` is the sequence of answers to the review item
+        CREATE (the last repeats). `draft_items` lists the appStoreVersion ids
+        already in a reused draft.
+        """
+        calls = []
+        sub_states = {k: list(v) for k, v in (sub_states or {}).items()}
+        item_answers = list(items) or [_Response(201, {"data": {"id": "ITEM"}})]
+
+        def get(url, headers=None, **_):
+            calls.append(("GET", url))
+            if "/apps?filter[bundleId]" in url:
+                return _Response(200, {"data": [{"id": "APP"}]})
+            if "/builds?" in url:
+                return _Response(200, {
+                    "data": [{"id": "B1", "attributes": {"version": BUILD},
+                              "relationships": {"preReleaseVersion": {
+                                  "data": {"type": "preReleaseVersions", "id": "P1"}}}}],
+                    "included": [{"type": "preReleaseVersions", "id": "P1",
+                                  "attributes": {"platform": "IOS", "version": "4.50.0"}}],
+                })
+            if "/appStoreVersions?" in url and "include=appStoreVersionSubmission" in url:
+                return _Response(200, {"data": [_version("V", "4.48.0", "REJECTED")]})
+            if "/apps/APP/reviewSubmissions?" in url:
+                return _Response(200, {"data": open_subs})
+            if "/items?include=appStoreVersion" in url:
+                return _Response(200, {"data": [
+                    {"id": f"I{n}", "relationships": {"appStoreVersion": {
+                        "data": {"type": "appStoreVersions", "id": vid}}}}
+                    for n, vid in enumerate(draft_items)]})
+            if url.startswith(f"{API}/reviewSubmissions/"):
+                states = sub_states[url.rsplit("/", 1)[1]]
+                state = states.pop(0) if len(states) > 1 else states[0]
+                return _Response(200, {"data": {"attributes": {"state": state}}})
+            # Localization, app info: not what these cases are about.
+            return _Response(404, {"errors": [{"status": "404"}]})
+
+        def post(url, headers=None, json=None, **_):
+            calls.append(("POST", url))
+            if url == f"{API}/reviewSubmissions":
+                return _Response(201, {"data": {"id": "NEW"}})
+            if url == f"{API}/reviewSubmissionItems":
+                return item_answers.pop(0) if len(item_answers) > 1 else item_answers[0]
+            raise AssertionError(f"unexpected POST {url}")
+
+        def patch(url, headers=None, json=None, **_):
+            calls.append(("PATCH", url))
+            attrs = (json or {}).get("data", {}).get("attributes", {})
+            if attrs.get("canceled"):
+                sid = url.rsplit("/", 1)[1]
+                if sid == "NEW" or sub_states.get(sid) == ["READY_FOR_REVIEW"]:
+                    return _Response(409, {"errors": [{
+                        "status": "409", "code": "STATE_ERROR.ENTITY_STATE_INVALID",
+                        "title": "Resource state is invalid."}]})
+                return _Response(200, {"data": {"attributes": {"state": "CANCELING"}}})
+            if attrs.get("submitted"):
+                return _Response(200, {"data": {"attributes": {"state": "WAITING_FOR_REVIEW"}}})
+            return _Response(200, {"data": {}})
+
+        fake_requests = types.SimpleNamespace(get=get, post=post, patch=patch)
+        fake_jwt = types.SimpleNamespace(encode=lambda *a, **k: "token")
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as home:
+            keys = pathlib.Path(home, ".private_keys")
+            keys.mkdir()
+            (keys / "AuthKey_KEY.p8").write_text("not a real key")
+            env = {"HOME": home, "ASC_KEY_ID": "KEY", "ASC_ISSUER_ID": "ISSUER",
+                   "ASC_VERSION_STRING": "v4.50.0", "ASC_EXPECTED_BUILD": BUILD,
+                   "ASC_SUPERSEDE": "false", "GITHUB_WORKSPACE": home,
+                   "GITHUB_STEP_SUMMARY": str(pathlib.Path(home, "summary.md"))}
+            code = 0
+            with mock.patch.dict(os.environ, env), \
+                    mock.patch.dict(sys.modules, {"requests": fake_requests, "jwt": fake_jwt}), \
+                    mock.patch("time.sleep"), contextlib.redirect_stdout(out):
+                try:
+                    runpy.run_path(str(SCRIPT), run_name="__main__")
+                except SystemExit as e:
+                    code = e.code
+        return code, calls, out.getvalue()
+
+    @staticmethod
+    def _index(calls, call):
+        return calls.index(call)
+
+    def test_rejected_review_is_closed_before_its_version_is_added_again(self):
+        # 4.50.0 on 2026-09-30: the rejection (UNRESOLVED_ISSUES) held the very
+        # version being resubmitted. The item CREATE must wait for the cancel.
+        code, calls, out = self.run_submit(
+            open_subs=[{"id": "OLD", "attributes": {"state": "UNRESOLVED_ISSUES"}}],
+            sub_states={"OLD": ["CANCELING", "CANCELING", "COMPLETE"]})
+        self.assertEqual(code, 0, out)
+        reads = [i for i, c in enumerate(calls) if c == ("GET", f"{API}/reviewSubmissions/OLD")]
+        self.assertEqual(len(reads), 3, calls)
+        self.assertLess(self._index(calls, ("PATCH", f"{API}/reviewSubmissions/OLD")), reads[0])
+        self.assertLess(reads[-1], self._index(calls, ("POST", f"{API}/reviewSubmissionItems")))
+        self.assertIn("Successfully submitted for App Store review! State: WAITING_FOR_REVIEW", out)
+
+    def test_item_409_is_retried_and_apple_reasons_are_printed_in_full(self):
+        code, calls, out = self.run_submit(
+            open_subs=[],
+            items=[_item_409("THE-REAL-REASON"), _Response(201, {"data": {"id": "ITEM"}})])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(calls.count(("POST", f"{API}/reviewSubmissionItems")), 2)
+        # Past the 300 characters the old `text[:300]` kept.
+        self.assertIn("THE-REAL-REASON", out)
+        self.assertIn("/v1/appStoreVersions/892059197: ENTITY_ERROR.ATTRIBUTE.INVALID", out)
+        self.assertIn("State: WAITING_FOR_REVIEW", out)
+
+    def test_persistent_item_409_fails_with_the_reasons_and_no_hand_cleanup(self):
+        code, calls, out = self.run_submit(open_subs=[], items=[_item_409("STILL-INVALID")])
+        self.assertEqual(code, 1)
+        self.assertEqual(calls.count(("POST", f"{API}/reviewSubmissionItems")), 6)
+        self.assertIn("STILL-INVALID", out)
+        # One PATCH on the new submission: the cleanup cancel, never a submit.
+        self.assertEqual(calls.count(("PATCH", f"{API}/reviewSubmissions/NEW")), 1)
+        self.assertIn("the next run reuses it", out)
+        self.assertNotIn("cancel it by hand", out)
+
+    def test_other_refusals_are_not_retried(self):
+        code, calls, out = self.run_submit(
+            open_subs=[], items=[_Response(422, {"errors": [{"status": "422", "detail": "nope"}]})])
+        self.assertEqual(code, 1)
+        self.assertEqual(calls.count(("POST", f"{API}/reviewSubmissionItems")), 1)
+        self.assertIn("nope", out)
+
+    def test_open_draft_is_reused_not_canceled(self):
+        # Apple refuses to cancel an unsubmitted draft, and a second CREATE is
+        # not the way out of that: the draft is reused.
+        code, calls, out = self.run_submit(
+            open_subs=[{"id": "DRAFT", "attributes": {"state": "READY_FOR_REVIEW"}}],
+            sub_states={"DRAFT": ["READY_FOR_REVIEW"]})
+        self.assertEqual(code, 0, out)
+        self.assertNotIn(("POST", f"{API}/reviewSubmissions"), calls)
+        self.assertEqual([c for c in calls if c == ("PATCH", f"{API}/reviewSubmissions/DRAFT")],
+                         [("PATCH", f"{API}/reviewSubmissions/DRAFT")])  # the submit, no cancel
+        self.assertIn(("POST", f"{API}/reviewSubmissionItems"), calls)
+
+    def test_draft_already_holding_this_version_is_submitted_as_is(self):
+        code, calls, out = self.run_submit(
+            open_subs=[{"id": "DRAFT", "attributes": {"state": "READY_FOR_REVIEW"}}],
+            sub_states={"DRAFT": ["READY_FOR_REVIEW"]}, draft_items=["V"])
+        self.assertEqual(code, 0, out)
+        self.assertNotIn(("POST", f"{API}/reviewSubmissionItems"), calls)
+        self.assertIn("State: WAITING_FOR_REVIEW", out)
 
 
 if __name__ == "__main__":
