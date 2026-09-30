@@ -319,7 +319,7 @@ class PlaneRendererV2(
 
         private val DEFAULT_DOT_TINT = Float3(1.0f, 1.0f, 1.0f)
         private const val DEFAULT_DOT_ALPHA = 0.85f
-        private const val DEFAULT_SURFACE_ALPHA = 0.03f
+        private const val DEFAULT_SURFACE_ALPHA = 0.015f
     }
 }
 

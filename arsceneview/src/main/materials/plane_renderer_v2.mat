@@ -132,7 +132,7 @@ fragment {
         float spotDistance = variable_spotHit.w > 0.5
             ? distance(worldPos, variable_spotHit.xyz) : 1e3;
         float focus = clamp(materialParams.focus, 0.0, 1.0);
-        float spot = (1.0 - smoothstep(0.0, 0.55, spotDistance)) * focus;
+        float spot = (1.0 - smoothstep(0.0, 0.45, spotDistance)) * focus;
 
         // ── Dot lattice ──────────────────────────────────────────────────────────────────
         // Walls: every other row shifted by half a dot, a quieter staggered pattern.
@@ -140,7 +140,7 @@ fragment {
         float2 cell = fract(uv) - 0.5;
         float d = length(cell);
         float footprint = length(fwidth(uv));
-        float radius = mix(0.13, 0.10, wall);
+        float radius = mix(0.09, 0.075, wall);
 
         // Slow ripples running outward from the reticle, on the focused plane only.
         float time = getUserTime().x;
@@ -179,7 +179,7 @@ fragment {
 
         float alpha = dotMask * materialParams.gridAlpha * emphasis * (1.0 + front)
             + materialParams.surfaceAlpha * emphasis
-            + spot * 0.12;
+            + spot * 0.05;
         alpha *= edgeFade * distanceFade * reveal;
         alpha += ring * 0.85 * edgeFade * reveal;
         alpha = clamp(alpha * clamp(materialParams.opacity, 0.0, 1.0), 0.0, 1.0);

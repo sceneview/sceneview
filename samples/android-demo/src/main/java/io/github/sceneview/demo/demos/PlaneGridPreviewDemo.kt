@@ -267,7 +267,7 @@ private const val PLANE_RADIUS = 1.2f
 // PlaneRendererV2 defaults and per-type presets (internal to arsceneview), mirrored for the
 // V2 preview (#3507).
 private const val DOTS_PER_METRE = 10.0f
-private const val SURFACE_ALPHA = 0.03f
+private const val SURFACE_ALPHA = 0.015f
 private const val FLOOR_DOT_ALPHA = 0.85f
 private const val WALL_DOT_ALPHA = 0.70f
 private val FLOOR_DOT_TINT = Float3(1.0f, 1.0f, 1.0f)
