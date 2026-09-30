@@ -493,7 +493,9 @@ struct ModelViewerDemo: View {
             .presentationDragIndicator(.visible)
             #if os(iOS)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-            .presentationBackground(.regularMaterial)
+            // iOS 26: the system's Liquid Glass sheet at the medium detent, so
+            // the model the controls act on stays visible behind them.
+            .partialSheetBackground(.regularMaterial)
             .presentationCornerRadius(SceneViewTokens.Radius.xl)
             #endif
         }

@@ -47,7 +47,13 @@ struct GestureEditingDemo: View {
 
     var body: some View {
         sceneWithOverlays
-            .demoChrome { settingsSheet }
+            // The hint is the scaffold's accessory — a glass pill above the
+            // dock, in the same glass group — not a stage overlay: pinned to
+            // the stage's top edge it sat under the Dynamic Island.
+            .demoChrome(accessory: {
+                DemoHint(isEditable ? "Drag model to move · Pinch to resize · Twist to rotate"
+                                    : "Orbit mode — open Settings to edit")
+            }) { settingsSheet }
     }
 
     // MARK: - Scene
@@ -61,7 +67,6 @@ struct GestureEditingDemo: View {
                 gestureOverlay
             }
 
-            topHint
             loadingOverlay
         }
         .background(Color.black)
@@ -160,24 +165,6 @@ struct GestureEditingDemo: View {
 
     // MARK: - Overlays
 
-    private var topHint: some View {
-        VStack {
-            HStack(spacing: 6) {
-                Image(systemName: isEditable ? "hand.draw.fill" : "camera.fill")
-                Text(isEditable ? "Drag · Pinch · Rotate" : "Orbit mode — tap ⚙️ to edit")
-                    .font(.caption)
-            }
-            .foregroundStyle(.white.opacity(0.8))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-            .padding(.top, 12)
-            .allowsHitTesting(false)
-            Spacer()
-        }
-    }
-
     @ViewBuilder
     private var loadingOverlay: some View {
         if isLoading {
@@ -191,8 +178,7 @@ struct GestureEditingDemo: View {
                 .font(.caption2)
                 .foregroundStyle(.white)
                 .padding(8)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .glassBackground(in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 
