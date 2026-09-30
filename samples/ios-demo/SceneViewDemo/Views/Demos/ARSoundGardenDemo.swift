@@ -267,6 +267,11 @@ final class SoundGardenController: NSObject, ObservableObject {
                 MainActor.assumeIsolated { self?.headphones = Self.headphonesConnected() }
             }
         }
+        // Back on a garden that is still planted: the song starts again with it.
+        if anchor != nil, playStart == nil, !audioNodes.isEmpty {
+            for node in audioNodes { node.play() }
+            playStart = CACurrentMediaTime()
+        }
     }
 
     func shutdown() {

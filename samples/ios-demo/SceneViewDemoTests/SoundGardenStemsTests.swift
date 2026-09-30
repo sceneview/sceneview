@@ -1,4 +1,5 @@
 import XCTest
+import simd
 
 @testable import SceneViewDemo
 
