@@ -43,19 +43,24 @@ struct SpatialAudioDemo: View {
     @StateObject private var coordinator = SpatialAudioCoordinator()
 
     var body: some View {
+        // Read the safe area outside the chrome: inside it the stage ignores the
+        // safe area, the inset reads 0 and the legend slides under the title row.
         GeometryReader { proxy in
             ZStack(alignment: .top) {
                 scene
                     .ignoresSafeArea()
                 SpatialAudioLegend(distance: coordinator.distance, gain: coordinator.gain)
+                    // Chrome over the stage is theme-independent, like the title
+                    // row: light mode would wash the glass out to grey on grey.
+                    .environment(\.colorScheme, .dark)
                     .padding(.horizontal, SceneViewTokens.Chrome.margin)
                     .padding(.top, Self.topReserve(safeTop: proxy.safeAreaInsets.top))
                     .ignoresSafeArea(edges: .top)
             }
-        }
-        .background(SceneViewTokens.Stage.background)
-        .demoChrome {
-            controls
+            .background(SceneViewTokens.Stage.background)
+            .demoChrome {
+                controls
+            }
         }
         .task { await coordinator.loadIfNeeded() }
         .onChange(of: falloffMode) { _, mode in coordinator.setFalloff(mode.falloff) }
