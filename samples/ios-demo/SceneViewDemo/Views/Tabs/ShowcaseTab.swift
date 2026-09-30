@@ -16,8 +16,9 @@ import SceneViewSwift
 /// `HomeCatalogue.hiddenFromHome` keep their deep links but are not listed here.
 ///
 /// The header is a pinned overlay drawn over the scroll view: transparent
-/// while the hero is on screen, `surface` at 94 % light / 100 % dark plus a bottom hairline once
-/// the content has scrolled under it. Its search action swaps the wordmark row
+/// while the hero is on screen, glass plus a bottom hairline once the content
+/// has scrolled under it (`header-glass`, #4201: Liquid Glass on iOS 26, the
+/// ultra-thin material before). Its search action swaps the wordmark row
 /// for a 48 pt field that filters title / subtitle / category / tags
 /// (`filterDemos`, pure and unit-tested in `HomeFilterTests`).
 ///
@@ -495,8 +496,6 @@ struct DemoCover: View {
 // MARK: - Header
 
 private struct HomeHeader: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let scrolled: Bool
     /// Over the hero stage's sky rather than the page: the title row turns to
     /// the hero's fixed whites (Android `overStage`).
@@ -525,13 +524,54 @@ private struct HomeHeader: View {
                 .frame(height: SceneViewTokens.Home.cardOutlineWidth)
                 .opacity(scrolled ? 1 : 0)
         }
-        .background(
-            SceneViewTokens.HomeColor.surface
-                // DESIGN.md `header-overlay` is opaque in dark. No material:
-                // the pinned catalogue header must not sample scrolling artwork.
-                .opacity(scrolled || searchOpen ? (colorScheme == .dark ? 1 : SceneViewTokens.HomeColor.headerOverlayAlpha) : 0)
+        .background {
+            HeaderGround(scrolled: scrolled, searchOpen: searchOpen)
                 .ignoresSafeArea(edges: .top)
+                .animation(SceneViewTokens.Spring.fade, value: scrolled)
+        }
+    }
+}
+
+/// What the header stands on (`header-glass`, #4201). Over the hero: nothing,
+/// the wordmark sits on the stage's sky. Once the list has scrolled under it:
+/// glass — iOS 26 Liquid Glass, which samples, blurs and tints the rows passing
+/// under it, and `.ultraThinMaterial` before 26. Either way the rows read as
+/// colour moving behind frosted glass, never as sharp titles under the
+/// wordmark (the overlap bug that kept `header-overlay` opaque): the glass
+/// carries `header-glass`'s `surface` veil (72 % / 78 %), since bare Liquid
+/// Glass let the titles read through. With the search field open over the
+/// stage, the opaque `surface` of `header-overlay`, so the field never floats
+/// on the sky.
+private struct HeaderGround: View {
+    let scrolled: Bool
+    let searchOpen: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            if scrolled {
+                glass.transition(.opacity)
+            } else if searchOpen {
+                SceneViewTokens.HomeColor.surface
+                    .opacity(SceneViewTokens.HomeColor.headerOverlayAlpha)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var glass: some View {
+        let home = SceneViewTokens.HomeColor.self
+        // The `surface` veil over the blur: without it the titles scrolling
+        // under the wordmark stayed readable through bare glass.
+        let veil = home.surface.opacity(
+            colorScheme == .dark ? home.headerGlassAlphaDark : home.headerGlassAlphaLight
         )
+        if #available(iOS 26, macOS 26, visionOS 26, *) {
+            veil.glassEffect(.regular, in: Rectangle())
+        } else {
+            veil.background(.ultraThinMaterial)
+        }
     }
 }
 
