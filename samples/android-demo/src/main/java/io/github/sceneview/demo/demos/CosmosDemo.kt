@@ -12,6 +12,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cyclone
 import androidx.compose.material.icons.filled.Flare
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.android.filament.IndexBuffer
 import com.google.android.filament.Material
@@ -55,8 +58,12 @@ import io.github.sceneview.demo.demos.internal.CosmosMeshes
 import io.github.sceneview.demo.demos.internal.CosmosRig
 import io.github.sceneview.demo.demos.internal.CosmosScene
 import io.github.sceneview.demo.demos.internal.CosmosSystem
+import io.github.sceneview.demo.demos.internal.CosmosVoyage
+import io.github.sceneview.demo.demos.internal.CosmosVoyageCamera
 import io.github.sceneview.demo.demos.internal.GlowMesh
 import io.github.sceneview.demo.demos.internal.RIBBON_STRIDE
+import io.github.sceneview.demo.demos.internal.VoyageExit
+import io.github.sceneview.demo.demos.internal.orbitPose
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -82,9 +89,6 @@ import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.sin
 import com.google.android.filament.Box as FilamentBox
-
-/** Seconds each scene holds the screen before the tour moves on. */
-private const val TOUR_SECONDS = 14f
 
 /** One detonation of the burst, start to afterglow, in seconds. */
 private const val BURST_PERIOD_SECONDS = 5.5f
@@ -135,6 +139,15 @@ private const val ONE_FRAME_SECONDS = 1f / 60f
  *
  * Animation is uniforms only — time, the burst's head and fade, the galaxy's spin — so a frame
  * costs a handful of `setParameter` calls and no buffer upload.
+ *
+ * ### The voyage
+ *
+ * On opening, the camera goes on a **voyage** ([CosmosVoyage]): one continuous take per scene,
+ * written as a table of keyframes — eye, target, focal length, roll, look-ahead — and joined by
+ * jumps (light streaks, a surging wide lens) or fades. [CosmosVoyageCamera] turns the table into
+ * a pose each frame with a Catmull-Rom spline, a look-ahead aim and a little handheld sway. Any
+ * touch hands the camera back, eased; after [IDLE_RESUME_SECONDS] untouched the voyage jumps on
+ * to the next scene. The dock's accent starts or stops it.
  */
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
@@ -145,7 +158,12 @@ fun CosmosDemo(onBack: () -> Unit) {
     }
 
     var scene by remember { mutableStateOf(CosmosScene.Galaxy) }
-    var touring by remember { mutableStateOf(!DemoSettings.qaMode) }
+    // The voyage is on unless the user stopped it; `voyage` holds where it is in the render loop.
+    var voyageOn by remember { mutableStateOf(!DemoSettings.qaMode) }
+    val voyage = remember { VoyageState(playing = !DemoSettings.qaMode) }
+    val voyageCamera = remember { CosmosVoyageCamera() }
+    // The caption of the shot on screen while the voyage plays, null while the user has the camera.
+    var voyageCaption by remember { mutableStateOf<String?>(null) }
     var animating by remember { mutableStateOf(true) }
     var bloom by remember { mutableFloatStateOf(DEFAULT_BLOOM) }
     val motionEnabled = LocalMotionEnabled.current
@@ -219,6 +237,10 @@ fun CosmosDemo(onBack: () -> Unit) {
         val cpu = withContext(Dispatchers.Default) { CosmosMeshes.starField().staged() }
         value = cpu.upload(engine)
     }
+    val warpStreaks by produceState<GpuMesh?>(null, engine) {
+        val cpu = withContext(Dispatchers.Default) { CosmosVoyage.warpStreaks().staged() }
+        value = cpu.upload(engine)
+    }
     LaunchedEffect(engine, scene) {
         // The selected scene first, then the others in the background so a switch is instant.
         // The first galaxy layer goes ahead of everything: it is what a user sees first.
@@ -254,6 +276,10 @@ fun CosmosDemo(onBack: () -> Unit) {
         val mesh = stars
         onDispose { mesh?.destroy(engine) }
     }
+    DisposableEffect(engine, warpStreaks) {
+        val mesh = warpStreaks
+        onDispose { mesh?.destroy(engine) }
+    }
 
     val clock = remember { CosmosClock() }
     // The Star scene's camera: what it looks at, and the eased flight between two looks.
@@ -262,6 +288,10 @@ fun CosmosDemo(onBack: () -> Unit) {
     val rig = remember { CosmosRig() }
     val flight = remember { CosmosFlight(rig) }
     val planetNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val streakNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val freePose = remember { FloatArray(CosmosSystem.POSE_FLOATS) }
+    val orbitScratch = remember { FloatArray(ORBIT_SCRATCH_FLOATS) }
+    val dragDegreesPerPx = with(LocalDensity.current) { DRAG_DEGREES_PER_DP / 1.dp.toPx() }
     val orbitNode = remember { arrayOfNulls<NodeImpl>(1) }
     val minTapRadiusPx = with(LocalDensity.current) { SceneViewTokens.Space.xl.toPx() }
     LaunchedEffect(scene) {
@@ -279,18 +309,31 @@ fun CosmosDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.demo_cosmos_loading),
-        peekHeader = if (scene == CosmosScene.Star) focus.caption else scene.caption,
+        peekHeader = voyageCaption ?: if (scene == CosmosScene.Star) focus.caption else scene.caption,
         onResetSettings = {
-            touring = true
+            voyageOn = true
+            voyage.resumeNow()
             animating = true
             bloom = DEFAULT_BLOOM
         },
-        dock = listOf(
-            sceneDockItem(CosmosScene.Galaxy, scene) { scene = it; touring = false },
-            sceneDockItem(CosmosScene.Star, scene) { scene = it; touring = false },
-            sceneDockItem(CosmosScene.Burst, scene) { scene = it; touring = false },
-            sceneDockItem(CosmosScene.Flow, scene) { scene = it; touring = false },
-        ),
+        dock = CosmosScene.entries.map { target ->
+            sceneDockItem(target, scene) {
+                voyage.takeOver(flight)
+                scene = it
+            }
+        },
+        dockAccent = if (voyageOn && voyageCaption != null) {
+            DockItem(Icons.Filled.Pause, "Stop the voyage", {
+                voyageOn = false
+                voyage.takeOver(flight)
+            })
+        } else {
+            DockItem(Icons.Filled.RocketLaunch, "Start the voyage", {
+                voyageOn = true
+                animating = true
+                voyage.resumeNow()
+            })
+        },
         controls = {
             LabeledSlider(
                 label = "Bloom",
@@ -300,7 +343,10 @@ fun CosmosDemo(onBack: () -> Unit) {
                 decimals = 2,
             )
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
-            ToggleRow("Tour the scenes", touring) { touring = it }
+            ToggleRow("Voyage", voyageOn) { on ->
+                voyageOn = on
+                if (on) voyage.resumeNow() else voyage.takeOver(flight)
+            }
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             ToggleRow("Animate", animating) { animating = it }
         },
@@ -315,7 +361,13 @@ fun CosmosDemo(onBack: () -> Unit) {
             autoCenterContent = false,
             frameRatePolicy = FrameRatePolicy.Continuous(),
             renderInvalidator = renderInvalidator,
-            onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, _ ->
+            onGestureListener = rememberOnGestureListener(
+                onDown = { _, _ -> voyage.takeOver(flight) },
+                onScroll = { _, _, _, distance ->
+                    voyage.takeOver(flight)
+                    voyage.drag(scene, distance.x * dragDegreesPerPx, -distance.y * dragDegreesPerPx)
+                },
+                onSingleTapConfirmed = { event, _ ->
                 if (scene == CosmosScene.Star) {
                     val viewport = view.viewport
                     val hit = CosmosSystem.hit(
@@ -332,48 +384,102 @@ fun CosmosDemo(onBack: () -> Unit) {
                     if (next != focus) {
                         flight.start()
                         focus = next
+                        voyage.resetDrag()
                     }
-                    flight.userSteered = true
                 }
-            }),
+            },
+            ),
             onFrame = { nanos ->
                 firstFrame.onFrame(nanos)
                 val frozen = DemoSettings.qaMode || !motionEnabled
                 val current = scene
                 clock.advance(nanos, current, running = animating && !frozen)
-                if (touring && !frozen && clock.sceneTime > TOUR_SECONDS) {
-                    scene = CosmosScene.entries[(current.ordinal + 1) % CosmosScene.entries.size]
-                }
                 val time = if (frozen) QA_TIME[current.ordinal] else clock.sceneTime
                 // The opening scene is not revealed: the loading cover already fades it in, and a
                 // reveal started under the cover finished after it, as a pop (#4160).
-                val reveal = if (frozen || !clock.switched) {
+                val sceneReveal = if (frozen || !clock.switched) {
                     1f
                 } else {
                     CosmosFraming.reveal(clock.sceneTime, REVEAL_SECONDS)
                 }
                 val viewport = view.viewport
                 val aspect = if (viewport.height > 0) viewport.width.toFloat() / viewport.height else 0.5f
-                val pose = if (current == CosmosScene.Star) {
-                    // The tour flies out to the ringed world once, partway through the scene.
-                    val tourDue = touring && !frozen && clock.sceneTime > TOUR_PLANET_SECONDS
-                    if (tourDue && !flight.userSteered && focus == CosmosFocus.System) {
-                        flight.userSteered = true
-                        flight.start()
-                        focus = CosmosFocus.Planet
+                val step = voyage.step(nanos)
+                // The voyage runs on the scene's clock, so it stops with Animate and reduced motion.
+                if (!voyageOn || !animating || frozen) {
+                    voyage.takeOver(flight, waitForIdle = false)
+                } else if (voyage.dueToResume()) {
+                    voyage.resumeNow()
+                }
+                val pose: FloatArray
+                val focal: Float
+                if (voyage.playing) {
+                    val shot = CosmosVoyage.shotOf(current)
+                    if (clock.sceneTime > shot.seconds) {
+                        voyage.arrivedByWarp = shot.exit == VoyageExit.Warp
+                        scene = CosmosVoyage.next(current)
                     }
+                    voyageCamera.evaluate(shot, clock.sceneTime, time, aspect, voyage.arrivedByWarp)
+                    pose = voyageCamera.pose
+                    focal = voyageCamera.focal
+                    voyage.show(voyageCamera.fade, voyageCamera.streaks)
+                    if (voyageCaption != voyageCamera.caption) voyageCaption = voyageCamera.caption
+                } else {
+                    val framing = if (current == CosmosScene.Star) {
+                        rig.pose(focus, time, aspect)
+                    } else {
+                        CosmosFraming.pose(current, time, aspect)
+                    }
+                    framing.copyInto(freePose)
+                    orbitPose(freePose, voyage.yaw, voyage.pitch, orbitScratch)
                     // QA captures after a tap must show where the flight lands, not a frame of it.
                     val instant = !motionEnabled || DemoSettings.qaMode
-                    flight.advance(nanos, rig.pose(focus, time, aspect), instant)
-                } else {
-                    CosmosFraming.pose(current, time, aspect)
+                    val free = flight.advance(nanos, freePose, instant)
+                    val freeFocal = flight.focal(CosmosVoyageCamera.DEFAULT_FOCAL)
+                    if (voyage.leaving >= 0f) {
+                        // Jumping away from the free camera, on to the voyage's next scene.
+                        voyage.leaving += step / CosmosVoyageCamera.WARP_OUT_SECONDS
+                        voyageCamera.warpAway(free, freeFocal, voyage.leaving)
+                        pose = voyageCamera.pose
+                        focal = voyageCamera.focal
+                        voyage.show(voyageCamera.fade, voyageCamera.streaks)
+                        if (voyage.leaving >= 1f) {
+                            voyage.arrive()
+                            scene = CosmosVoyage.next(current)
+                        }
+                    } else {
+                        pose = free
+                        focal = freeFocal
+                        voyage.settle(step)
+                    }
+                    if (voyageCaption != null) voyageCaption = null
                 }
-                flight.record(pose, time)
+                val reveal = sceneReveal * voyage.fade
+                flight.record(pose, time, focal)
                 cameraNode.lookAt(
                     eye = Position(pose[0], pose[1], pose[2]),
                     center = Position(pose[3], pose[4], pose[5]),
                     up = Direction(pose[6], pose[7], pose[8]),
                 )
+                if (focal != voyage.appliedFocal) {
+                    voyage.appliedFocal = focal
+                    cameraNode.focalLength = focal.toDouble()
+                }
+                streakNode[0]?.let { node ->
+                    val visible = voyage.streaks > 0f
+                    if (node.isVisible != visible) node.isVisible = visible
+                    if (visible) {
+                        // The streaks ride with the camera: its eye, its view axis.
+                        node.position = Position(pose[0], pose[1], pose[2])
+                        node.lookAt(
+                            targetWorldPosition = Position(pose[3], pose[4], pose[5]),
+                            upDirection = Direction(pose[6], pose[7], pose[8]),
+                            smooth = false,
+                        )
+                        ribbons?.warp?.setParameter("time", voyage.warpClock)
+                        ribbons?.warp?.setParameter("intensity", voyage.streaks)
+                    }
+                }
                 if (!galaxyShown[0] && current == CosmosScene.Galaxy && galaxyLayers.isNotEmpty()) {
                     galaxyShown[0] = true
                     Log.i(TAG, "first galaxy frame ${SystemClock.elapsedRealtime() - openedAt} ms after opening")
@@ -405,6 +511,17 @@ fun CosmosDemo(onBack: () -> Unit) {
         ) {
             val sceneMeshes = meshes[scene]
             stars?.let { mesh -> sprites?.let { GlowMeshNode(mesh, it.starField) } }
+            val streaks = warpStreaks
+            if (streaks != null && ribbons != null) {
+                // The jump's light streaks ride with the camera, hidden outside a jump. The node
+                // is the one shown and hidden: a hidden parent hides its mesh.
+                Node(apply = {
+                    streakNode[0] = this
+                    isVisible = false
+                }) {
+                    GlowMeshNode(streaks, ribbons.warp)
+                }
+            }
             val materialsReady = sprites != null && ribbons != null && plasma != null && dust != null
             if (scene == CosmosScene.Galaxy && sprites != null) {
                 Node(apply = { galaxyNode[0] = this }) {
@@ -570,8 +687,19 @@ private fun MeshNodeImpl.configureGlow() {
 /** Frozen per-scene times for QA captures and reduced motion: each at its most telling moment. */
 private val QA_TIME = floatArrayOf(6f, 3f, 1.9f, 4f)
 
-/** When the tour flies out to the ringed world, in seconds into the Star scene. */
-private const val TOUR_PLANET_SECONDS = 5.5f
+/** Seconds without a touch before the voyage jumps on to the next scene. */
+private const val IDLE_RESUME_SECONDS = 12f
+
+/** How far a drag turns the free camera, in degrees per dp. */
+private const val DRAG_DEGREES_PER_DP = 0.3f
+
+/** How far the free camera may be dragged above or below its framing, in degrees. */
+private const val MAX_PITCH_DEGREES = 60f
+
+/** How long the scene takes to come back up when the user cuts a fade or a jump short, in seconds. */
+private const val FADE_BACK_SECONDS = 0.35f
+
+private const val ORBIT_SCRATCH_FLOATS = 15
 
 private const val TAG = "CosmosDemo"
 
@@ -679,6 +807,109 @@ private class CosmosClock {
 }
 
 /**
+ * Where the voyage is, for the render loop and the gestures (both on the main thread): whether it
+ * drives the camera, how far a jump away from the free camera has gone, how long since the user
+ * last touched, their drag, and the fade and streaks on screen.
+ */
+private class VoyageState(var playing: Boolean) {
+    /** Whether the shot on screen was reached through a jump: its first seconds finish it. */
+    var arrivedByWarp = false
+
+    /** Progress of a jump away from the free camera, 0 → 1; negative when none is under way. */
+    var leaving = -1f
+
+    /** Seconds since the user last touched, or null when there is nothing to wait out. */
+    private var idleSeconds: Float? = null
+
+    var yaw = 0f
+        private set
+    var pitch = 0f
+        private set
+
+    var fade = 1f
+        private set
+    var streaks = 0f
+        private set
+
+    /** Drives the streaks' pulses: runs through a jump whatever the scene clock does. */
+    var warpClock = 0f
+        private set
+
+    /** The focal length last written to the camera, so an unchanged one is not written again. */
+    var appliedFocal = CosmosVoyageCamera.DEFAULT_FOCAL
+
+    private var lastNanos = 0L
+
+    /** Advances the frame clock; returns this frame's step in seconds, a hitch clamped. */
+    fun step(nanos: Long): Float {
+        val dt = if (lastNanos == 0L) 0f else ((nanos - lastNanos) / 1e9f).coerceIn(0f, MAX_STEP_SECONDS)
+        lastNanos = nanos
+        idleSeconds = idleSeconds?.plus(dt)
+        warpClock += dt
+        return dt
+    }
+
+    /**
+     * The user took the camera: it is handed back from where it is, eased, and the voyage waits
+     * for [IDLE_RESUME_SECONDS] of calm — unless [waitForIdle] is false (the voyage was switched
+     * off, or Animate was), when it waits to be started again.
+     */
+    fun takeOver(flight: CosmosFlight, waitForIdle: Boolean = true) {
+        if (playing || leaving >= 0f) flight.start()
+        playing = false
+        leaving = -1f
+        idleSeconds = if (waitForIdle) 0f else null
+    }
+
+    /** Jumps on to the next scene now: the accent, the toggle, or the end of the idle wait. */
+    fun resumeNow() {
+        if (playing || leaving >= 0f) return
+        idleSeconds = null
+        leaving = 0f
+    }
+
+    fun dueToResume(): Boolean = !playing && leaving < 0f && (idleSeconds ?: 0f) > IDLE_RESUME_SECONDS
+
+    /** The jump away has landed: the voyage has the camera, in the next scene. */
+    fun arrive() {
+        playing = true
+        leaving = -1f
+        arrivedByWarp = true
+        resetDrag()
+    }
+
+    fun drag(scene: CosmosScene, dYaw: Float, dPitch: Float) {
+        // The flow field has an edge a turned camera would show: it stays on its framing.
+        if (scene == CosmosScene.Flow) return
+        yaw += dYaw
+        pitch = (pitch + dPitch).coerceIn(-MAX_PITCH_DEGREES, MAX_PITCH_DEGREES)
+    }
+
+    fun resetDrag() {
+        yaw = 0f
+        pitch = 0f
+    }
+
+    fun show(fade: Float, streaks: Float) {
+        this.fade = fade
+        this.streaks = streaks
+    }
+
+    /** The free camera: a fade or a jump the user cut short comes back up, the streaks go out. */
+    fun settle(dt: Float) {
+        val k = (dt / FADE_BACK_SECONDS).coerceIn(0f, 1f)
+        fade += (1f - fade) * k
+        streaks -= streaks * k
+        if (streaks < STREAKS_OFF) streaks = 0f
+    }
+
+    private companion object {
+        const val MAX_STEP_SECONDS = 0.1f
+        const val STREAKS_OFF = 0.01f
+    }
+}
+
+/**
  * The glow's level, 0 → 1 over [IGNITE_SECONDS] from the first frame on screen, eased out
  * (cubic). Advanced by frame time, and a frame gap longer than [IGNITE_HITCH_SECONDS] counts
  * as a single frame: enabling bloom stalls the next frame while its programs link (~0.35 s on the
@@ -712,7 +943,7 @@ private class CosmosIgnition {
 }
 
 private const val SPRITE_SLOTS = 8
-private const val RIBBON_SLOTS = 4
+private const val RIBBON_SLOTS = 5
 
 private class SpriteInstances(all: List<MaterialInstance>) {
     val starField = all[0]
@@ -773,6 +1004,7 @@ private class RibbonInstances(all: List<MaterialInstance>) {
     val flow = all[1]
     val prominences = all[2]
     val trail = all[3]
+    val warp = all[4]
 
     init {
         all.forEach { instance ->
@@ -806,6 +1038,13 @@ private class RibbonInstances(all: List<MaterialInstance>) {
         prominences.setParameter("tailTaper", 0.2f)
         // The orbit trail's fade is baked into its colours: a plain, steady stroke.
         trail.setParameter("minPixels", 1.2f)
+        // The jump's streaks: faint bodies under fast pulses running at the lens.
+        warp.setParameter("base", 0.25f)
+        warp.setParameter("dashAmp", 2.6f)
+        warp.setParameter("dashFreq", TWO_PI * 0.18f)
+        warp.setParameter("dashSpeed", 22f)
+        warp.setParameter("minPixels", 1.1f)
+        warp.setParameter("intensity", 0f)
     }
 
     fun update(scene: CosmosScene, time: Float, reveal: Float) {
