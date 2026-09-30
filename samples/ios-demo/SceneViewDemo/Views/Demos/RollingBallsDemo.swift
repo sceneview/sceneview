@@ -4,7 +4,7 @@ import SceneViewSwift
 
 // MARK: - Ball kinds
 
-/// The three ball materials of the tray. Same radius, restitution, rolling friction, mass,
+/// The three ball materials of the tray. Same radius, restitution, rolling resistance, mass,
 /// colour and surface as the Android `BallKind` in
 /// `samples/android-demo/.../demos/RollingBallsDemo.kt`.
 enum RollingBallKind: String, CaseIterable, Identifiable {
@@ -38,12 +38,14 @@ enum RollingBallKind: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Horizontal velocity kept per 120 Hz step while rolling on the floor.
-    var rollFriction: Float {
+    /// Rolling-resistance coefficient: the deceleration of a rolling ball is
+    /// `mu * |g.y|` plus a speed-proportional drag (see
+    /// ``RollingBallsSimulation/rolling(velocity:gravity:resistance:dt:)``).
+    var rollingResistance: Float {
         switch self {
-        case .rubber: return 0.99
-        case .steel: return 0.997
-        case .foam: return 0.96
+        case .rubber: return 0.03
+        case .steel: return 0.008
+        case .foam: return 0.08
         }
     }
 
@@ -99,7 +101,7 @@ struct RollingBall {
 ///
 /// **iOS-math-duplication note.** Android drives this from `PhysicsBody.step` (gravity and the
 /// floor bounce, `sceneview/.../node/PhysicsNode.kt`) plus the tray loop in the Android
-/// `RollingBallsDemo.kt` (rails, rolling friction, mass-weighted sphere impulses). iOS cannot
+/// `RollingBallsDemo.kt` (rails, rolling resistance, mass-weighted sphere impulses). iOS cannot
 /// consume either yet (#1033), so both are hand-ported here, kept numerically identical: same
 /// constants, same id-ordered loop, same opening shot. Reset therefore replays the same
 /// sequence of impacts on both platforms.
@@ -157,7 +159,7 @@ struct RollingBallsSimulation {
         }
     }
 
-    private mutating func add(_ kind: RollingBallKind, at p: SIMD3<Float>, velocity v: SIMD3<Float>) {
+    mutating func add(_ kind: RollingBallKind, at p: SIMD3<Float>, velocity v: SIMD3<Float>) {
         balls.append(RollingBall(id: nextId, kind: kind, position: p, velocity: v))
         nextId += 1
     }
@@ -189,9 +191,11 @@ struct RollingBallsSimulation {
                 if abs(vz) >= Self.impactSpeed { collisions += 1 }
                 vz = -vz * b.kind.restitution
             }
-            if p.y <= Self.floor + r && abs(v.y) < 0.2 {
-                vx *= b.kind.rollFriction
-                vz *= b.kind.rollFriction
+            if p.y <= Self.floor + r + 0.001 && abs(v.y) < 0.2 {
+                let rolled = Self.rolling(velocity: SIMD3(vx, v.y, vz), gravity: gravity,
+                                          resistance: b.kind.rollingResistance, dt: dt)
+                vx = rolled.x
+                vz = rolled.z
             }
             if abs(p.x) > limit || abs(p.z) > limit {
                 p.x = min(max(p.x, -limit), limit)
@@ -206,6 +210,34 @@ struct RollingBallsSimulation {
                 if resolvePair(a, b) { collisions += 1 }
             }
         }
+    }
+
+    /// Rolling contact of a solid sphere on the tray floor, applied after the step has already
+    /// integrated the full gravity.
+    ///
+    /// 1. A solid sphere that rolls without slipping accelerates at `5/7 · g·sinθ`, not
+    ///    `g·sinθ`: the step already added the whole horizontal gravity, so 2/7 of it comes off.
+    /// 2. Rolling resistance: a constant `mu · |g.y|` plus a `0.3 · speed` drag, which stops the
+    ///    ball outright rather than reversing it. A slope whose 5/7 pull is below `mu · |g.y|`
+    ///    never starts a resting ball, so a nearly level tray stays still.
+    ///
+    /// Pure, so the numbers are pinned by `RollingBallsSimulationTests`; Android's tray loop uses
+    /// the same two steps with the same coefficients.
+    static func rolling(velocity v: SIMD3<Float>, gravity g: SIMD3<Float>,
+                        resistance mu: Float, dt: Float) -> SIMD3<Float> {
+        var vx = v.x - (2.0 / 7.0) * g.x * dt
+        var vz = v.z - (2.0 / 7.0) * g.z * dt
+        let speed = (vx * vx + vz * vz).squareRoot()
+        let drop = (mu * abs(g.y) + 0.3 * speed) * dt
+        if speed <= drop {
+            vx = 0
+            vz = 0
+        } else {
+            let keep = (speed - drop) / speed
+            vx *= keep
+            vz *= keep
+        }
+        return SIMD3(vx, v.y, vz)
     }
 
     /// Separates two overlapping spheres by inverse mass and exchanges the impulse along the
@@ -261,18 +293,16 @@ struct RollingBallsSimulation {
 ///
 /// The iOS face of the Android `RollingBallsDemo` (#4083): same 1.6 m tray, same ball
 /// parameters, same opening shot and the same deterministic 120 Hz simulation (ported in
-/// ``RollingBallsSimulation``). With Tilt on, a drag tips the tray within ±20° and gravity is
-/// rotated into the tray's frame, so the balls roll downhill while the simulation stays flat.
+/// ``RollingBallsSimulation``). Tilt is on from the start: a drag tips the tray within ±35° and
+/// gravity is rotated into the tray's frame, so the balls roll downhill while the simulation
+/// stays flat. Tilt off hands the drag back to the camera orbit.
 struct RollingBallsDemo: View {
     @State private var coordinator = RollingBallsCoordinator()
     @State private var selectedKind: RollingBallKind = .rubber
-    @State private var tiltEnabled = false
+    @State private var tiltEnabled = true
     @State private var cameraPose: SceneCameraPose?
-    @State private var lastDrag: CGSize = .zero
 
-    private static let maxTilt: Float = 20
-    /// Degrees of tilt per point of drag — Android's 0.06°/px at ~2.6 px/pt.
-    private static let tiltPerPoint: Float = 0.15
+    private static let maxTilt = RollingBallsCoordinator.maxTilt
     private static let minElevation: Float = 12 * .pi / 180
     private static let maxElevation: Float = 75 * .pi / 180
 
@@ -287,7 +317,7 @@ struct RollingBallsDemo: View {
             dock: [
                 DockItem(icon: "move.3d", label: "Tilt", selected: tiltEnabled) {
                     tiltEnabled.toggle()
-                    lastDrag = .zero
+                    coordinator.endDrag()
                 },
                 DockItem(icon: "arrow.counterclockwise", label: "Reset") { reset() },
             ],
@@ -339,7 +369,10 @@ struct RollingBallsDemo: View {
             .autoCenterContent(false)
             .cameraPose(cameraPose)
             .onCameraChanged { pose in
-                Task { @MainActor in clampElevation(pose) }
+                Task { @MainActor in
+                    coordinator.cameraAzimuth = pose.azimuth
+                    clampElevation(pose)
+                }
             }
             .cameraGesturesEnabled(!tiltEnabled)
             if tiltEnabled {
@@ -357,21 +390,16 @@ struct RollingBallsDemo: View {
         return studio
     }
 
+    /// The drag only moves the tilt *target*; the coordinator's display-link tick eases the
+    /// rendered tray onto it. The last translation lives in the coordinator (not in `@State`), so
+    /// a drag event never re-renders this view.
     private var tiltDrag: some Gesture {
         DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                let dx = Float(value.translation.width - lastDrag.width)
-                let dy = Float(value.translation.height - lastDrag.height)
-                lastDrag = value.translation
-                coordinator.cancelLevel()
-                coordinator.pitch = clampTilt(coordinator.pitch + dy * Self.tiltPerPoint)
-                coordinator.roll = clampTilt(coordinator.roll - dx * Self.tiltPerPoint)
+            .onChanged { value in coordinator.drag(to: value.translation) }
+            .onEnded { value in
+                coordinator.drag(to: value.translation)
+                coordinator.endDrag()
             }
-            .onEnded { _ in lastDrag = .zero }
-    }
-
-    private func clampTilt(_ degrees: Float) -> Float {
-        min(max(degrees, -Self.maxTilt), Self.maxTilt)
     }
 
     /// Keeps the orbit between 12° and 75° above the tray, like Android's polar range.
@@ -385,13 +413,39 @@ struct RollingBallsDemo: View {
 
     // MARK: Framing
 
-    /// The camera pose that fits the tray (plus the balls' bounce room) between the chrome's
-    /// top and bottom scrims, seen from 32° above the near edge.
+    /// The camera pose that fits the tray between the chrome's top and bottom scrims, seen from
+    /// 40° above the near edge (Android's `PHYSICS_CAMERA_PITCH_DEGREES`; at 32° a tray tipped
+    /// 35° away showed its edge only): the level tray plus the balls' bounce room at 92 % of the
+    /// band, and the tray tipped to ±35° on both axes (it hangs 0.5 m under its pivot, so it
+    /// swings) within the full band.
     static func framingPose(for size: CGSize) -> SceneCameraPose {
-        let elevation: Float = 32 * .pi / 180
-        let fill: Float = 0.92
+        let elevation: Float = 40 * .pi / 180
         let extent = SIMD3<Float>(1.7, 0.75, 1.7)
         let target = SIMD3<Float>(0, -0.15, 0)
+        var points: [(point: SIMD3<Float>, fill: Float)] = []
+        for sx in [-1, 1] as [Float] {
+            for sy in [-1, 1] as [Float] {
+                for sz in [-1, 1] as [Float] {
+                    points.append((target + extent / 2 * SIMD3(sx, sy, sz), 0.92))
+                }
+            }
+        }
+        let half = RollingBallsSimulation.traySize / 2
+        let railTop = RollingBallsSimulation.floor + RollingBallsSimulation.railHeight
+        let tilts: [Float] = [-maxTilt, 0, maxTilt]
+        for pitch in tilts {
+            for roll in tilts {
+                let rotation = RollingBallsSimulation.trayRotation(pitchDegrees: pitch,
+                                                                   rollDegrees: roll)
+                for sx in [-1, 1] as [Float] {
+                    for sz in [-1, 1] as [Float] {
+                        for y in [RollingBallsSimulation.floor, railTop] {
+                            points.append((rotation.act(SIMD3(sx * half, y, sz * half)), 1))
+                        }
+                    }
+                }
+            }
+        }
         let width = Float(max(size.width, 1))
         let height = Float(max(size.height, 1))
         let top = Float(SceneViewTokens.Chrome.scrimTop)
@@ -403,15 +457,11 @@ struct RollingBallsDemo: View {
         let up = SIMD3<Float>(0, cos(elevation), -sin(elevation))
         let back = SIMD3<Float>(0, sin(elevation), cos(elevation))
         var distance: Float = 1
-        for sx in [-1, 1] as [Float] {
-            for sy in [-1, 1] as [Float] {
-                for sz in [-1, 1] as [Float] {
-                    let corner = extent / 2 * SIMD3(sx, sy, sz)
-                    let depth = simd_dot(corner, back)
-                    distance = max(distance, depth + abs(corner.x) / (tanH * fill))
-                    distance = max(distance, depth + abs(simd_dot(corner, up)) / (tanBand * fill))
-                }
-            }
+        for (point, fill) in points {
+            let offset = point - target
+            let depth = simd_dot(offset, back)
+            distance = max(distance, depth + abs(offset.x) / (tanH * fill))
+            distance = max(distance, depth + abs(simd_dot(offset, up)) / (tanBand * fill))
         }
         // Centre the tray on the band, not on the screen: shift the look-at point along the
         // camera's up axis by the band's offset from the screen centre.
@@ -483,7 +533,7 @@ struct RollingBallsDemo: View {
                 } label: {
                     Label("Level", systemImage: "level")
                 }
-                .disabled(coordinator.pitch == 0 && coordinator.roll == 0)
+                .disabled(coordinator.pitchTarget == 0 && coordinator.rollTarget == 0)
             }
             .buttonStyle(.bordered)
             .tint(SceneViewTokens.HomeColor.primary)
@@ -497,9 +547,9 @@ struct RollingBallsDemo: View {
 
             Text("Tilt the tray")
                 .font(.subheadline.weight(.semibold))
-            LabeledSlider(label: "Pitch · toward you", value: userTilt(\.pitch),
+            LabeledSlider(label: "Pitch · toward you", value: userTilt(\.pitchTarget),
                           range: -Self.maxTilt...Self.maxTilt, decimals: 0, unit: "°")
-            LabeledSlider(label: "Roll · left and right", value: userTilt(\.roll),
+            LabeledSlider(label: "Roll · left and right", value: userTilt(\.rollTarget),
                           range: -Self.maxTilt...Self.maxTilt, decimals: 0, unit: "°")
             Text("The tray hangs off one pivot node and the gravity vector is rotated into its "
                  + "frame, so the floor plane and rails stay flat in the simulation while the "
@@ -509,15 +559,12 @@ struct RollingBallsDemo: View {
         }
     }
 
-    /// A slider binding on one tilt axis. A user write cancels a running Level, so the easing
-    /// never fights the finger.
-    private func userTilt(_ axis: ReferenceWritableKeyPath<RollingBallsCoordinator, Float>) -> Binding<Float> {
+    /// A slider binding on one tilt axis's target. A user write cancels a running Level, so
+    /// the easing never fights the finger.
+    private func userTilt(_ axis: KeyPath<RollingBallsCoordinator, Float>) -> Binding<Float> {
         Binding(
             get: { coordinator[keyPath: axis] },
-            set: { value in
-                coordinator.cancelLevel()
-                coordinator[keyPath: axis] = clampTilt(value)
-            }
+            set: { value in coordinator.setTarget(axis, value) }
         )
     }
 
@@ -541,17 +588,39 @@ struct RollingBallsDemo: View {
 // MARK: - Coordinator
 
 /// Owns the tray entities, the simulation and the frame tick, so they survive view-body
-/// recomputation. The tick accumulates wall-clock time and runs fixed 120 Hz steps, like
-/// Android's frame driver.
+/// recomputation.
+///
+/// **Target vs rendered tilt.** The drag and the sliders only write a *target* inclination,
+/// accumulated synchronously from every gesture delta and clamped to ±35°. Once per display
+/// frame, ``tick(at:)`` eases the *rendered* inclination onto it (exponential smoothing,
+/// `tau` 50 ms while dragging, 120 ms for Level), then derives the pivot orientation and the
+/// simulation's gravity from that same rendered value before the fixed 120 Hz steps — so the
+/// tray on screen and the slope the balls feel never disagree, and the tray moves at the
+/// display's rate rather than at the touch rate. Same numbers as Android's tray loop.
 @MainActor
 @Observable
 final class RollingBallsCoordinator {
-    /// Tray pitch in degrees; positive lowers the near edge.
-    var pitch: Float = 0 { didSet { applyTilt() } }
-    /// Tray roll in degrees; positive raises the right edge.
-    var roll: Float = 0 { didSet { applyTilt() } }
+    static let maxTilt: Float = 35
+    /// Degrees of tilt per point of drag — Android's 0.06°/px at ~2.6 px/pt.
+    static let tiltPerPoint: Float = 0.15
+    /// Smoothing time constant while the finger or a slider drives the target.
+    static let dragTau: Double = 0.05
+    /// Smoothing time constant of Level (target back to 0).
+    static let levelTau: Double = 0.12
+
+    /// Target pitch in degrees; positive lowers the near edge.
+    private(set) var pitchTarget: Float = 0
+    /// Target roll in degrees; positive raises the right edge.
+    private(set) var rollTarget: Float = 0
     private(set) var bodies = 0
     private(set) var impacts = 0
+
+    /// Rendered tilt, eased onto the target once per frame. Not observed: it changes every frame
+    /// and nothing in SwiftUI draws it.
+    @ObservationIgnored private(set) var pitch: Float = 0
+    @ObservationIgnored private(set) var roll: Float = 0
+    /// Camera azimuth in radians, so a drag tips the tray relative to the screen after an orbit.
+    @ObservationIgnored var cameraAzimuth: Float = 0
 
     /// Scene key light: 5 000 lux from above-front-right, with shadows. Kept here so
     /// `.mainLight(.custom(_:))` sees the same entity on every body pass.
@@ -565,17 +634,23 @@ final class RollingBallsCoordinator {
     @ObservationIgnored private var simulation = RollingBallsSimulation()
     private let pivot = Entity()
     @ObservationIgnored private var ballEntities: [Int: Entity] = [:]
-    @ObservationIgnored private var timer: Timer?
-    @ObservationIgnored private var lastTick: TimeInterval?
+    /// Ball positions before the last fixed step, to draw each frame between two steps.
+    @ObservationIgnored private var previousPositions: [Int: SIMD3<Float>] = [:]
+    @ObservationIgnored private var frameLink: RollingBallsFrameLink?
+    @ObservationIgnored private var lastTick: CFTimeInterval?
+    @ObservationIgnored private var lastPublish: CFTimeInterval = 0
     @ObservationIgnored private var accumulator: TimeInterval = 0
     @ObservationIgnored private var built = false
     @ObservationIgnored private var floorEntity: Entity?
     @ObservationIgnored private var darkStage = false
-    /// Level easing: start angles and elapsed time, `nil` when idle.
-    @ObservationIgnored private var leveling: (pitch: Float, roll: Float, elapsed: TimeInterval)?
+    /// `true` while Level eases the tray back to 0 with ``levelTau``.
+    @ObservationIgnored private var leveling = false
+    /// Translation of the running drag at its previous event, `nil` between drags.
+    @ObservationIgnored private var lastTranslation: CGSize?
 
-    private static let levelDuration: TimeInterval = 0.4
     private static let step: TimeInterval = 8_333_333 / 1_000_000_000
+    /// How often the counters reach SwiftUI; the simulation itself is not throttled.
+    private static let publishInterval: CFTimeInterval = 0.1
 
     /// Attaches the tray to `root`, building it and the opening shot on first use, and starts
     /// the tick.
@@ -596,22 +671,50 @@ final class RollingBallsCoordinator {
         syncEntities()
     }
 
-    /// Replays the opening shot and snaps the tray level.
+    /// Replays the opening shot and snaps the tray level — target and rendered tilt at once.
     func reset() {
-        leveling = nil
-        setTilt(pitch: 0, roll: 0)
+        leveling = false
+        setTargets(pitch: 0, roll: 0)
+        pitch = 0
+        roll = 0
+        applyTilt()
         simulation.reset()
+        previousPositions.removeAll()
         syncEntities()
         publishCounts()
     }
 
-    /// Eases the tray back to level over 400 ms.
+    /// Eases the tray back to level (``levelTau``).
     func level() {
-        guard pitch != 0 || roll != 0 else { return }
-        leveling = (pitch, roll, 0)
+        guard pitchTarget != 0 || rollTarget != 0 || pitch != 0 || roll != 0 else { return }
+        leveling = true
+        setTargets(pitch: 0, roll: 0)
     }
 
-    func cancelLevel() { leveling = nil }
+    /// Accumulates one drag event into the tilt target. Every event's delta since the previous
+    /// one is applied, so no motion is lost however fast the finger moves.
+    func drag(to translation: CGSize) {
+        let previous = lastTranslation ?? .zero
+        lastTranslation = translation
+        let dx = Float(translation.width - previous.width)
+        let dy = Float(translation.height - previous.height)
+        guard dx != 0 || dy != 0 else { return }
+        leveling = false
+        let delta = Self.tiltDelta(dx: dx, dy: dy, azimuth: cameraAzimuth)
+        setTargets(pitch: pitchTarget + delta.pitch, roll: rollTarget + delta.roll)
+    }
+
+    func endDrag() { lastTranslation = nil }
+
+    /// A slider write on one axis's target.
+    func setTarget(_ axis: KeyPath<RollingBallsCoordinator, Float>, _ value: Float) {
+        leveling = false
+        if axis == \RollingBallsCoordinator.pitchTarget {
+            setTargets(pitch: value, roll: rollTarget)
+        } else {
+            setTargets(pitch: pitchTarget, roll: value)
+        }
+    }
 
     /// Recolours the tray floor for the colour scheme (Android's `StageSky.floor`).
     func setDarkStage(_ dark: Bool) {
@@ -620,56 +723,83 @@ final class RollingBallsCoordinator {
         if built { buildFloor() }
     }
 
-
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        frameLink?.invalidate()
+        frameLink = nil
         lastTick = nil
+    }
+
+    /// Starts the display-link tick; a no-op while it is already running.
+    func start() {
+        guard frameLink == nil else { return }
+        frameLink = RollingBallsFrameLink { [weak self] timestamp in self?.tick(at: timestamp) }
+    }
+
+    // MARK: Pure tilt maths
+
+    /// Pitch and roll deltas, in degrees, for a drag of (`dx`, `dy`) points seen from a camera
+    /// at `azimuth` radians. The screen delta is turned into the ground-plane direction the
+    /// finger points at (screen right is `(cos a, 0, -sin a)`, screen down is
+    /// `(sin a, 0, cos a)`), and that side of the tray goes down: the balls roll the way the
+    /// finger moves wherever the camera is.
+    static func tiltDelta(dx: Float, dy: Float, azimuth: Float) -> (pitch: Float, roll: Float) {
+        let c = cos(azimuth)
+        let s = sin(azimuth)
+        let worldX = dx * c + dy * s
+        let worldZ = -dx * s + dy * c
+        return (worldZ * tiltPerPoint, -worldX * tiltPerPoint)
+    }
+
+    /// One step of exponential smoothing: `current` moves `1 - exp(-dt / tau)` of the way to
+    /// `target`, which is frame-rate independent.
+    static func smoothed(_ current: Float, toward target: Float, dt: Double, tau: Double) -> Float {
+        let alpha = Float(1 - exp(-dt / tau))
+        let next = current + (target - current) * alpha
+        return abs(target - next) < 0.001 ? target : next
     }
 
     // MARK: Private
 
-    /// Starts the frame tick; a no-op while it is already running.
-    func start() {
-        guard timer == nil else { return }
-        let t = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
-        }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+    private func setTargets(pitch newPitch: Float, roll newRoll: Float) {
+        let p = min(max(newPitch, -Self.maxTilt), Self.maxTilt)
+        let r = min(max(newRoll, -Self.maxTilt), Self.maxTilt)
+        if pitchTarget != p { pitchTarget = p }
+        if rollTarget != r { rollTarget = r }
     }
 
-    private func tick() {
-        let now = ProcessInfo.processInfo.systemUptime
-        let elapsed = min(max(now - (lastTick ?? now), 0), 0.1)
-        lastTick = now
+    /// One display frame: ease the rendered tilt, apply it to the pivot and the gravity, run
+    /// the fixed steps due, then draw the balls between the last two steps.
+    private func tick(at timestamp: CFTimeInterval) {
+        let elapsed = min(max(timestamp - (lastTick ?? timestamp), 0), 0.1)
+        lastTick = timestamp
 
-        if let level = leveling {
-            let t = min((level.elapsed + elapsed) / Self.levelDuration, 1)
-            let eased = Float(1 - pow(1 - t, 3))
-            setTilt(pitch: level.pitch * (1 - eased), roll: level.roll * (1 - eased))
-            leveling = t >= 1 ? nil : (level.pitch, level.roll, level.elapsed + elapsed)
+        if pitch != pitchTarget || roll != rollTarget {
+            let tau = leveling ? Self.levelTau : Self.dragTau
+            pitch = Self.smoothed(pitch, toward: pitchTarget, dt: elapsed, tau: tau)
+            roll = Self.smoothed(roll, toward: rollTarget, dt: elapsed, tau: tau)
+            applyTilt()
+        } else if leveling {
+            leveling = false
         }
 
         accumulator += elapsed
-        var stepped = false
         while accumulator >= Self.step {
+            for ball in simulation.balls { previousPositions[ball.id] = ball.position }
             simulation.step()
             accumulator -= Self.step
-            stepped = true
         }
-        guard stepped else { return }
+        let alpha = Float(accumulator / Self.step)
         for ball in simulation.balls {
-            ballEntities[ball.id]?.position = ball.position
+            let before = previousPositions[ball.id] ?? ball.position
+            ballEntities[ball.id]?.position = before + (ball.position - before) * alpha
         }
-        publishCounts()
+        if timestamp - lastPublish >= Self.publishInterval {
+            lastPublish = timestamp
+            publishCounts()
+        }
     }
 
-    private func setTilt(pitch newPitch: Float, roll newRoll: Float) {
-        if pitch != newPitch { pitch = newPitch }
-        if roll != newRoll { roll = newRoll }
-    }
-
+    /// Pivot orientation and tray-frame gravity, both from the rendered tilt.
     private func applyTilt() {
         pivot.orientation = RollingBallsSimulation.trayRotation(pitchDegrees: pitch, rollDegrees: roll)
         simulation.gravity = RollingBallsSimulation.trayLocalGravity(pitchDegrees: pitch,
@@ -733,12 +863,11 @@ final class RollingBallsCoordinator {
         for (id, entity) in ballEntities where !live.contains(id) {
             entity.removeFromParent()
             ballEntities[id] = nil
+            previousPositions[id] = nil
         }
         for ball in simulation.balls {
-            if let entity = ballEntities[ball.id] {
-                entity.position = ball.position
-                continue
-            }
+            // Balls already on the tray keep the interpolated position the tick drew.
+            if ballEntities[ball.id] != nil { continue }
             let node = GeometryNode.sphere(
                 radius: ball.kind.radius,
                 material: .pbr(color: ball.kind.color, metallic: ball.kind.metallic,
@@ -749,5 +878,40 @@ final class RollingBallsCoordinator {
             ballEntities[ball.id] = node.entity
         }
         publishCounts()
+    }
+}
+
+// MARK: - Frame link
+
+/// Calls `tick` once per display refresh with the frame's `targetTimestamp` — the vsync-aligned
+/// time the frame will be shown at — so the tray advances at the display's own rate (120 Hz on
+/// ProMotion) with evenly spaced time steps.
+@MainActor
+final class RollingBallsFrameLink {
+    private let target: Target
+    private let link: CADisplayLink?
+
+    init(_ tick: @escaping @MainActor (CFTimeInterval) -> Void) {
+        target = Target(tick)
+        #if os(macOS)
+        // UIKit's `CADisplayLink(target:selector:)` is unavailable on macOS; AppKit vends the
+        // link from the screen it follows (macOS 14+).
+        link = (NSScreen.main ?? NSScreen.screens.first)?
+            .displayLink(target: target, selector: #selector(Target.step(_:)))
+        #else
+        link = CADisplayLink(target: target, selector: #selector(Target.step(_:)))
+        #endif
+        link?.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        link?.add(to: .main, forMode: .common)
+    }
+
+    func invalidate() { link?.invalidate() }
+
+    /// `CADisplayLink` needs an Objective-C target; it retains it, not the other way round.
+    @MainActor
+    private final class Target: NSObject {
+        private let tick: @MainActor (CFTimeInterval) -> Void
+        init(_ tick: @escaping @MainActor (CFTimeInterval) -> Void) { self.tick = tick }
+        @objc func step(_ link: CADisplayLink) { tick(link.targetTimestamp) }
     }
 }

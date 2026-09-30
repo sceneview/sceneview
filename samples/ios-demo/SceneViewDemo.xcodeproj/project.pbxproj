@@ -231,6 +231,7 @@
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
 		F00000000000000000000077 /* LabeledSliderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000076 /* LabeledSliderTests.swift */; };
 		A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000003158 /* LightingLabDemoTests.swift */; };
+		A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004210 /* RollingBallsSimulationTests.swift */; };
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
@@ -335,6 +336,7 @@
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000076 /* LabeledSliderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSliderTests.swift; path = SceneViewDemoTests/LabeledSliderTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000003158 /* LightingLabDemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightingLabDemoTests.swift; path = SceneViewDemoTests/LightingLabDemoTests.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004210 /* RollingBallsSimulationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RollingBallsSimulationTests.swift; path = SceneViewDemoTests/RollingBallsSimulationTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
@@ -632,6 +634,7 @@
 				B10000000000000000003584 /* ViewerAssetTests.swift */,
 				C4E5A0000000000000000005 /* ViewerEntranceTests.swift */,
 				A20000000000000000003158 /* LightingLabDemoTests.swift */,
+				A20000000000000000004210 /* RollingBallsSimulationTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
@@ -1293,6 +1296,7 @@
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
 				A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */,
+				A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */,
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
