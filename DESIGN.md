@@ -172,7 +172,7 @@ never truncated; the card grows.
 Tried and dropped (2026-09-30): the 2dp-seam grey block with a 120x96 inset picture — a
 cropped window in a grey slab, the picture framed rather than shown; every card a banner —
 the catalogue became a two-screen scroll per category; every card a sideways row — the
-Featured four lost the width their scenes are composed for.
+Featured demos lost the width their scenes are composed for.
 
 Catalogue **section headers** (the full-span label above each group of rows) use
 `on-surface` at `titleMedium` / `weight-semibold` — no colour of their own, because a
