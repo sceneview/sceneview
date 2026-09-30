@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.Engine
@@ -39,6 +40,7 @@ import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.VertexBuffer
+import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
@@ -46,9 +48,13 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.CosmosFlight
+import io.github.sceneview.demo.demos.internal.CosmosFocus
 import io.github.sceneview.demo.demos.internal.CosmosFraming
 import io.github.sceneview.demo.demos.internal.CosmosMeshes
+import io.github.sceneview.demo.demos.internal.CosmosRig
 import io.github.sceneview.demo.demos.internal.CosmosScene
+import io.github.sceneview.demo.demos.internal.CosmosSystem
 import io.github.sceneview.demo.demos.internal.GlowMesh
 import io.github.sceneview.demo.demos.internal.RIBBON_STRIDE
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -63,6 +69,7 @@ import io.github.sceneview.node.Node as NodeImpl
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.safeDestroyIndexBuffer
@@ -120,6 +127,11 @@ private const val ONE_FRAME_SECONDS = 1f / 60f
  *   material (`cosmos_dust.mat`) drawn last with a renderable priority of 7.
  * - The star is a `SphereNode` with a noise material (`cosmos_plasma.mat`): domain-warped fbm,
  *   ridged filaments and a Fresnel limb.
+ * - A ringed world orbits it ([CosmosSystem]), lit by the star as a point at the origin inside its
+ *   own unlit material (`cosmos_planet.mat`): a soft terminator, an atmosphere rim that scatters
+ *   forward when the star is behind it, and the rings' shadow found by one ray-plane test. The
+ *   rings (`cosmos_ring.mat`) are translucent and take the planet's shadow back. Tap it and the
+ *   camera flies there, eased (`ease-expressive`), round the star rather than through it.
  *
  * Animation is uniforms only — time, the burst's head and fade, the galaxy's spin — so a frame
  * costs a handful of `setParameter` calls and no buffer upload.
@@ -180,6 +192,17 @@ fun CosmosDemo(onBack: () -> Unit) {
             )
         }
     }
+    val planetMaterial by produceState<Material?>(null, materialLoader) {
+        value = materialLoader.loadMaterial("materials/cosmos_planet.filamat")
+    }
+    val ringMaterial by produceState<Material?>(null, materialLoader) {
+        value = materialLoader.loadMaterial("materials/cosmos_ring.filamat")
+    }
+    val world = remember(materialLoader, planetMaterial, ringMaterial) {
+        val planetBase = planetMaterial ?: return@remember null
+        val ringBase = ringMaterial ?: return@remember null
+        WorldInstances(materialLoader.createInstance(planetBase), materialLoader.createInstance(ringBase))
+    }
     val dust = remember(materialLoader, dustMaterial) {
         dustMaterial?.let { material -> materialLoader.createInstance(material).apply { setParameter("opacity", 0f) } }
     }
@@ -233,6 +256,18 @@ fun CosmosDemo(onBack: () -> Unit) {
     }
 
     val clock = remember { CosmosClock() }
+    // The Star scene's camera: what it looks at, and the eased flight between two looks.
+    var focus by remember { mutableStateOf(CosmosFocus.System) }
+    // One rig per render loop: the orbit and camera maths reuse its buffers, frame after frame.
+    val rig = remember { CosmosRig() }
+    val flight = remember { CosmosFlight(rig) }
+    val planetNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val orbitNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val minTapRadiusPx = with(LocalDensity.current) { SceneViewTokens.Space.xl.toPx() }
+    LaunchedEffect(scene) {
+        focus = CosmosFocus.System
+        flight.reset()
+    }
     val ignition = remember { CosmosIgnition() }
     val galaxyNode = remember { arrayOfNulls<NodeImpl>(1) }
     val starNode = remember { arrayOfNulls<NodeImpl>(1) }
@@ -244,7 +279,7 @@ fun CosmosDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.demo_cosmos_loading),
-        peekHeader = scene.caption,
+        peekHeader = if (scene == CosmosScene.Star) focus.caption else scene.caption,
         onResetSettings = {
             touring = true
             animating = true
@@ -280,6 +315,27 @@ fun CosmosDemo(onBack: () -> Unit) {
             autoCenterContent = false,
             frameRatePolicy = FrameRatePolicy.Continuous(),
             renderInvalidator = renderInvalidator,
+            onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, _ ->
+                if (scene == CosmosScene.Star) {
+                    val viewport = view.viewport
+                    val hit = CosmosSystem.hit(
+                        pose = flight.lastPose,
+                        time = flight.lastTime,
+                        width = viewport.width.toFloat(),
+                        height = viewport.height.toFloat(),
+                        x = event.x,
+                        y = event.y,
+                        minRadiusPx = minTapRadiusPx,
+                    )
+                    // A second tap on what is already in focus, or a tap on empty space, pulls back.
+                    val next = if (hit == null || hit == focus) CosmosFocus.System else hit
+                    if (next != focus) {
+                        flight.start()
+                        focus = next
+                    }
+                    flight.userSteered = true
+                }
+            }),
             onFrame = { nanos ->
                 firstFrame.onFrame(nanos)
                 val frozen = DemoSettings.qaMode || !motionEnabled
@@ -298,7 +354,21 @@ fun CosmosDemo(onBack: () -> Unit) {
                 }
                 val viewport = view.viewport
                 val aspect = if (viewport.height > 0) viewport.width.toFloat() / viewport.height else 0.5f
-                val pose = CosmosFraming.pose(current, time, aspect)
+                val pose = if (current == CosmosScene.Star) {
+                    // The tour flies out to the ringed world once, partway through the scene.
+                    val tourDue = touring && !frozen && clock.sceneTime > TOUR_PLANET_SECONDS
+                    if (tourDue && !flight.userSteered && focus == CosmosFocus.System) {
+                        flight.userSteered = true
+                        flight.start()
+                        focus = CosmosFocus.Planet
+                    }
+                    // QA captures after a tap must show where the flight lands, not a frame of it.
+                    val instant = !motionEnabled || DemoSettings.qaMode
+                    flight.advance(nanos, rig.pose(focus, time, aspect), instant)
+                } else {
+                    CosmosFraming.pose(current, time, aspect)
+                }
+                flight.record(pose, time)
                 cameraNode.lookAt(
                     eye = Position(pose[0], pose[1], pose[2]),
                     center = Position(pose[3], pose[4], pose[5]),
@@ -314,6 +384,19 @@ fun CosmosDemo(onBack: () -> Unit) {
                 sprites?.update(current, time, reveal)
                 ribbons?.update(current, time, reveal)
                 plasma?.update(current, time, reveal)
+                if (current == CosmosScene.Star) {
+                    orbitNode[0]?.quaternion = rig.trailRotation(time, aspect).toQuaternion()
+                    planetNode[0]?.apply {
+                        val at = rig.planetPosition(time, aspect)
+                        position = Position(at[0], at[1], at[2])
+                        quaternion = rig.planetRotation(time, aspect).toQuaternion()
+                    }
+                    world?.update(time, reveal)
+                    // The trail fades out as the camera closes on the planet: from the follow view
+                    // the arc behind it runs past the lens.
+                    val trail = rig.trailVisibility(pose[0], pose[1], pose[2], time, aspect)
+                    ribbons?.trail?.setParameter("intensity", reveal * trail)
+                }
                 if (ignition.advance(nanos, firstFrame.rendered.value, instant = frozen)) {
                     view.bloomOptions = view.bloomOptions.also { it.strength = bloom * ignition.level }
                 }
@@ -363,6 +446,25 @@ fun CosmosDemo(onBack: () -> Unit) {
                             GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Strokes), ribbons.prominences)
                         }
                         GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Main), sprites.halo)
+                        if (world != null) {
+                            // The trail turns with the planet: a static arc under a rotating node.
+                            Node(apply = { orbitNode[0] = this }) {
+                                GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Trail), ribbons.trail)
+                            }
+                            SphereNode(
+                                radius = CosmosSystem.PLANET_RADIUS,
+                                stacks = 48,
+                                slices = 64,
+                                materialInstance = world.planet,
+                                apply = {
+                                    planetNode[0] = this
+                                    isShadowCaster = false
+                                    isShadowReceiver = false
+                                },
+                            ) {
+                                GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Ring), world.ring)
+                            }
+                        }
                     }
                     CosmosScene.Burst -> {
                         GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Strokes), ribbons.burst)
@@ -468,6 +570,9 @@ private fun MeshNodeImpl.configureGlow() {
 /** Frozen per-scene times for QA captures and reduced motion: each at its most telling moment. */
 private val QA_TIME = floatArrayOf(6f, 3f, 1.9f, 4f)
 
+/** When the tour flies out to the ringed world, in seconds into the Star scene. */
+private const val TOUR_PLANET_SECONDS = 5.5f
+
 private const val TAG = "CosmosDemo"
 
 /** Renderable priority of the dust lanes: last, over the additive stars they darken. */
@@ -479,7 +584,7 @@ private const val NUCLEI = 4
 private val NUCLEUS_RADII = floatArrayOf(0.1f, 0.075f, 0.06f, 0.08f)
 
 /** Which mesh of a scene a buffer pair is. */
-private enum class CosmosPart { Main, Strokes, Dust }
+private enum class CosmosPart { Main, Strokes, Dust, Ring, Trail }
 
 private class SceneMeshes(val parts: Map<CosmosPart, GpuMesh>)
 
@@ -489,6 +594,8 @@ private fun buildScene(scene: CosmosScene): Map<CosmosPart, StagedMesh> = when (
     CosmosScene.Star -> mapOf(
         CosmosPart.Main to CosmosMeshes.starHalo().staged(),
         CosmosPart.Strokes to CosmosMeshes.prominences().staged(),
+        CosmosPart.Ring to CosmosSystem.ring().staged(),
+        CosmosPart.Trail to CosmosSystem.orbitTrail().staged(),
     )
     CosmosScene.Burst -> mapOf(
         CosmosPart.Main to CosmosMeshes.burstCore().staged(),
@@ -605,7 +712,7 @@ private class CosmosIgnition {
 }
 
 private const val SPRITE_SLOTS = 8
-private const val RIBBON_SLOTS = 3
+private const val RIBBON_SLOTS = 4
 
 private class SpriteInstances(all: List<MaterialInstance>) {
     val starField = all[0]
@@ -665,6 +772,7 @@ private class RibbonInstances(all: List<MaterialInstance>) {
     val burst = all[0]
     val flow = all[1]
     val prominences = all[2]
+    val trail = all[3]
 
     init {
         all.forEach { instance ->
@@ -696,6 +804,8 @@ private class RibbonInstances(all: List<MaterialInstance>) {
         prominences.setParameter("dashFreq", TWO_PI * 3.5f)
         prominences.setParameter("dashSpeed", 1.6f)
         prominences.setParameter("tailTaper", 0.2f)
+        // The orbit trail's fade is baked into its colours: a plain, steady stroke.
+        trail.setParameter("minPixels", 1.2f)
     }
 
     fun update(scene: CosmosScene, time: Float, reveal: Float) {
@@ -772,3 +882,36 @@ private class PlasmaInstances(val star: MaterialInstance, val nucleus: MaterialI
 }
 
 private const val TWO_PI = (2.0 * PI).toFloat()
+
+private fun FloatArray.toQuaternion() = Quaternion(this[0], this[1], this[2], this[3])
+
+/** The ringed world's two surfaces: the planet and its rings, both lit by the star at the origin. */
+private class WorldInstances(val planet: MaterialInstance, val ring: MaterialInstance) {
+    init {
+        planet.setParameter("time", 0f)
+        planet.setParameter("sunPosition", 0f, 0f, 0f)
+        planet.setParameter("sunColor", SUN_COLOR[0], SUN_COLOR[1], SUN_COLOR[2])
+        planet.setParameter("bandLight", 0.92f, 0.76f, 0.54f)
+        planet.setParameter("bandDark", 0.52f, 0.32f, 0.18f)
+        planet.setParameter("atmosphere", 0.22f, 0.5f, 1.0f)
+        planet.setParameter("ringInner", CosmosSystem.RING_INNER)
+        planet.setParameter("ringOuter", CosmosSystem.RING_OUTER)
+        planet.setParameter("intensity", 1f)
+        ring.setParameter("sunPosition", 0f, 0f, 0f)
+        ring.setParameter("sunColor", SUN_COLOR[0], SUN_COLOR[1], SUN_COLOR[2])
+        ring.setParameter("ringColor", 0.8f, 0.66f, 0.48f)
+        ring.setParameter("planetRadius", CosmosSystem.PLANET_RADIUS)
+        ring.setParameter("ringInner", CosmosSystem.RING_INNER)
+        ring.setParameter("ringOuter", CosmosSystem.RING_OUTER)
+        ring.setParameter("intensity", 1f)
+    }
+
+    fun update(time: Float, reveal: Float) {
+        planet.setParameter("time", time)
+        planet.setParameter("intensity", reveal)
+        ring.setParameter("intensity", reveal)
+    }
+}
+
+/** The blue star's light as it reaches the planet, linear. */
+private val SUN_COLOR = floatArrayOf(0.95f, 1.15f, 1.55f)

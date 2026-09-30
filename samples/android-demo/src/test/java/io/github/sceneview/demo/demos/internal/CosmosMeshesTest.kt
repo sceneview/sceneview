@@ -39,6 +39,8 @@ class CosmosMeshesTest {
             CosmosMeshes.flowBackdrop(),
             CosmosMeshes.prominences(),
             CosmosMeshes.starHalo(),
+            CosmosSystem.ring(),
+            CosmosSystem.orbitTrail(),
         ).forEach(::assertWellFormed)
     }
 
