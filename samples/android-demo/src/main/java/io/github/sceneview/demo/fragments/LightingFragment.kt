@@ -23,7 +23,7 @@ object LightingFragment : DemoFragment {
         subtitleRes = R.string.demo_lighting_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Lightbulb,
-        order = 24,
+        order = 25,
         tags = setOf("light", "hdr", "ibl", "studio", "key", "sun", "shadow", "pbr"),
         // #3496 rebuilt the screen as a three-rig showcase over a shared stage.
         updatedIn = "4.35.0",

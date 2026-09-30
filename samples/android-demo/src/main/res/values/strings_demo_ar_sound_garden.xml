@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="demo_ar_sound_garden_title">Sound Garden</string>
+    <string name="demo_ar_sound_garden_subtitle">Four glowing orbs play one song. Walk between them to remix it</string>
+
+    <!-- Onboarding, before the garden stands. -->
+    <string name="demo_ar_sound_garden_headphones">Put on headphones or turn the volume up, then point at the floor</string>
+    <string name="demo_ar_sound_garden_scan">Point at the floor. The garden plants itself.</string>
+    <string name="demo_ar_sound_garden_scan_lost">Move the device slowly to scan the floor…</string>
+    <string name="demo_ar_sound_garden_sounds_failed">The garden\'s sounds could not be loaded</string>
+
+    <!-- Hints, once it stands. -->
+    <string name="demo_ar_sound_garden_hint_walk">Walk up to an orb: its part gets louder</string>
+    <string name="demo_ar_sound_garden_hint_turn">Turn your back to an orb: it sounds muffled. Tap one to mute it.</string>
+
+    <string name="demo_ar_sound_garden_replant">Replant</string>
+    <string name="demo_ar_sound_garden_replant_caption">Plant the garden again where you look</string>
+
+    <!-- The four parts, one per orb. -->
+    <string name="demo_ar_sound_garden_part_bells">Bells</string>
+    <string name="demo_ar_sound_garden_part_beat">Beat</string>
+    <string name="demo_ar_sound_garden_part_pad">Pad</string>
+    <string name="demo_ar_sound_garden_part_bass">Bass</string>
+</resources>

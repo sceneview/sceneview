@@ -16,7 +16,7 @@ object CosmosFragment : DemoFragment {
         subtitleRes = R.string.demo_cosmos_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.AutoAwesome,
-        order = 33,
+        order = 34,
         tags = setOf("bloom", "emissive", "particles", "procedural", "shader", "galaxy", "space", "custom material"),
         sinceVersion = "4.49.0",
     )
