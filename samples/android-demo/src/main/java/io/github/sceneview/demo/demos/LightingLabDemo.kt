@@ -238,9 +238,13 @@ fun LightingLabDemo(onBack: () -> Unit) {
     DisposableEffect(stageBackdrop) {
         onDispose { engine.destroySkybox(stageBackdrop) }
     }
+    // Until the studio lands, the neutral fallback lights the bench on the same stage backdrop.
+    // Its own skybox is a black clear, and the background jumping from black to the stage
+    // colour when the HDR lands was the visible seam of the off-main load (#4174): now only the
+    // lighting on the subjects changes.
     val environment = remember(benchEnvironment, fallbackEnvironment, showSky, stageBackdrop) {
-        benchEnvironment?.let { if (showSky) it else it.copy(skybox = stageBackdrop) }
-            ?: fallbackEnvironment
+        val lighting = benchEnvironment ?: fallbackEnvironment
+        if (showSky && benchEnvironment != null) lighting else lighting.copy(skybox = stageBackdrop)
     }
     // Rotating the IBL turns the lighting; Filament's skybox does not turn with it. The slider is
     // disabled while the sky is drawn rather than letting the reflections slide off the picture.
