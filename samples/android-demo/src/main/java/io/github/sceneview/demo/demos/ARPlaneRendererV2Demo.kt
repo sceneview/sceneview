@@ -145,12 +145,13 @@ private class FrameHolder {
     var frame: Frame? = null
 }
 
-/** An anchor where [event] hits a tracked plane inside its polygon, or `null`. */
+/** An anchor where [event] hits a tracked floor or table inside its polygon, or `null`. */
 private fun Frame.placeOnPlane(event: MotionEvent): Anchor? {
     if (camera.trackingState != TrackingState.TRACKING) return null
     return hitTest(event).firstOrNull { result ->
         val plane = result.trackable
         plane is Plane &&
+            plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
             plane.trackingState == TrackingState.TRACKING &&
             plane.isPoseInPolygon(result.hitPose) &&
             result.distance <= MAX_PLACE_DISTANCE_METERS
