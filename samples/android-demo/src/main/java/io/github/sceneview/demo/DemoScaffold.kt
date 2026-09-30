@@ -209,6 +209,9 @@ data class DockItem(
  * without a frame the cover gives way to an explicit "Still loading…" card
  * with a Retry action ([onReset]) instead of a blank viewport. AR demos pass
  * `null` on purpose: their viewport is the live camera feed (#1361).
+ * [sceneReady], when given, names the viewport "Scene ready" instead of
+ * `firstFrameRendered`: a demo whose HDR lands after the cover lifts passes
+ * `FirstFrameState.sceneReady` so captures wait for it (#4174).
  *
  * **Settings sheet** (the single settings surface, #3328): a non-modal glass sheet
  * (#3827) — `surfaceContainer` at the `glass-sheet` opacity, 28 dp top radius, no
@@ -296,6 +299,7 @@ fun DemoScaffold(
     controls: (@Composable ColumnScope.() -> Unit)? = null,
     assetSource: AssetSourceState? = null,
     firstFrameRendered: androidx.compose.runtime.State<Boolean>? = null,
+    sceneReady: androidx.compose.runtime.State<Boolean>? = null,
     peekHeader: String? = null,
     onResetSettings: (() -> Unit)? = null,
     onReset: (() -> Unit)? = null,
@@ -576,7 +580,7 @@ fun DemoScaffold(
                 // first composition, which is how a black `materials` frame was captured and
                 // shipped as a passing QA screenshot. A demo with no first-frame state (AR:
                 // the viewport is the camera feed) is ready as soon as it is composed.
-                val sceneReady = demoSceneReady(firstFrameRendered?.value)
+                val viewportReady = demoSceneReady((sceneReady ?: firstFrameRendered)?.value)
                 val sceneReadyContentDescription = stringResource(R.string.demo_scene_ready_cd)
                 Box(
                     modifier = Modifier
@@ -594,7 +598,7 @@ fun DemoScaffold(
                             chromeToggled = !chromeToggled
                         }
                         .then(
-                            if (sceneReady) {
+                            if (viewportReady) {
                                 Modifier.semantics {
                                     contentDescription = sceneReadyContentDescription
                                 }

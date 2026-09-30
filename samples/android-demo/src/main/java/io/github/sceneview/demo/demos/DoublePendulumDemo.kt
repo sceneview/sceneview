@@ -182,11 +182,14 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     val envelopeCenter = pivot
     val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState(engine)
+    // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = hdrEnvironment != null)
 
     DemoScaffold(
         title = stringResource(R.string.demo_double_pendulum_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         // Release is the one thing to do here, so it lives on the scene; the
         // sheet keeps the parameters, which apply live as they are dragged.
         bottomOverlayReservesScene = true,

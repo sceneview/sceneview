@@ -2088,12 +2088,15 @@ private fun MultiModelSection(
     }
 
     val firstFrame = rememberFirstFrameState(engine)
+    // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = hdrEnvironment != null)
 
     DemoScaffold(
         title = stringResource(R.string.demo_multi_model_title),
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         dock = listOf(DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true })),
         controls = {
             Text("Visibility", style = MaterialTheme.typography.labelLarge)

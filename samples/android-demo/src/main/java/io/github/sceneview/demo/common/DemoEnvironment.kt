@@ -3,6 +3,7 @@
 package io.github.sceneview.demo.common
 
 import androidx.compose.runtime.Composable
+import io.github.sceneview.demo.FirstFrameState
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.loaders.EnvironmentLoader
@@ -41,6 +42,9 @@ import io.github.sceneview.rememberEnvironment
  *
  * The HDR decodes asynchronously; until it is ready this falls back to the
  * default neutral environment so the first frames never flash black either.
+ * Pass the demo's [firstFrame] and its "Scene ready" signal waits until the HDR has
+ * landed (bounded — see [FirstFrameState.holdUntil]), so a render golden never
+ * captures the fallback-lit frames. The loading cover does not wait for it.
  *
  * Demos whose *subject* is the environment ([io.github.sceneview.demo.demos.LightingLabDemo]'s
  * Sky / Environment / Reflections tabs) manage their own environment and must
@@ -48,7 +52,10 @@ import io.github.sceneview.rememberEnvironment
  * are likewise out of scope.
  */
 @Composable
-fun rememberModelDemoEnvironment(environmentLoader: EnvironmentLoader): Environment {
+fun rememberModelDemoEnvironment(
+    environmentLoader: EnvironmentLoader,
+    firstFrame: FirstFrameState? = null,
+): Environment {
     // Studio HDR — bundled in `assets/environments/`, already used by the
     // multi-model demo where the metallic lantern renders correctly. IBL only
     // (no skybox) so the model keeps floating on the demo's surface background.
@@ -59,6 +66,7 @@ fun rememberModelDemoEnvironment(environmentLoader: EnvironmentLoader): Environm
     )
     // Neutral fallback while the HDR is still decoding — avoids a black flash.
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
+    firstFrame?.holdUntil(landed = hdrEnvironment != null)
     return hdrEnvironment ?: fallbackEnvironment
 }
 
@@ -122,15 +130,19 @@ const val MATERIALS_SHOWCASE_HDR: String = "environments/studio_warm_2k.hdr"
  * launched with `--ez qa_mode true`, which pins it.
  *
  * Falls back to the neutral default while the HDR decodes, so the first frames
- * never flash black.
+ * never flash black; pass [firstFrame] so "Scene ready" waits until it lands.
  */
 @Composable
-fun rememberMaterialsShowcaseEnvironment(environmentLoader: EnvironmentLoader): Environment {
+fun rememberMaterialsShowcaseEnvironment(
+    environmentLoader: EnvironmentLoader,
+    firstFrame: FirstFrameState? = null,
+): Environment {
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
         MATERIALS_SHOWCASE_HDR,
         createSkybox = false,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
+    firstFrame?.holdUntil(landed = hdrEnvironment != null)
     return hdrEnvironment ?: fallbackEnvironment
 }

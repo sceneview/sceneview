@@ -204,9 +204,9 @@ private fun HomeHeroStage(
     val environmentLoader = rememberEnvironmentLoader(engine)
     val fallbackEnvironment = rememberEnvironment(environmentLoader, isOpaque = false)
     // The HDR lands when it lands; the flight starts under the plain environment. Skipped
-    // entirely on the light tier. Its decode and prefilter run on the main thread
-    // (`EnvironmentLoader.createHDREnvironment` is synchronous), so it is the costliest load
-    // here — which is why it is never started once Home is no longer resumed.
+    // entirely on the light tier. Its decode runs off the main thread but its upload and
+    // prefilter do not, so it is still the costliest load here — which is why it is never
+    // started once Home is no longer resumed.
     // Each load below is composed only while loads are allowed or once it has landed:
     // leaving composition cancels a load still in flight before it reaches the engine.
     var hdrLanded by remember { mutableStateOf(false) }

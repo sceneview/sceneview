@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
+import kotlinx.coroutines.flow.first
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.acos
@@ -437,8 +438,24 @@ fun rememberArPlaybackDataset(): File? {
  * shader compilation waits exactly as long as it should, and a scene that presents
  * them in the settle tail and parks is ready in 33 ms.
  *
- * @property rendered Read in the scaffold — `false` until the scene is really on
+ * ### The cover does not wait for the HDR; "Scene ready" does (#4174)
+ *
+ * An HDR environment decodes off the main thread and can land after the geometry, so a
+ * demo's first frames may be lit by the neutral fallback. Holding the cover until the HDR
+ * landed cost 0.4 to 1.4 s of cover on a Pixel 4a release build, so the cover keeps the
+ * rule above and lifts on the same frame whether or not the HDR is in.
+ *
+ * The viewport's "Scene ready" name is a different promise: the render goldens and device
+ * QA capture on it, and a capture of the fallback-lit frames is a wrong capture. A demo
+ * that loads an HDR calls [holdUntil] with "has it landed?", and [sceneReady] turns `true`
+ * once the scene is [rendered] and the content has landed. The wait is bounded: at most
+ * [CONTENT_WAIT_TIMEOUT_MS] from the first frame presented without the content, after
+ * which a load that failed (and so never lands) is treated as absent, never as a hang.
+ *
+ * @property rendered Drives the loading cover — `false` until the scene is really on
  *                    screen, then `true`. Never goes back to `false`.
+ * @property sceneReady Drives the "Scene ready" name — [rendered], plus the content passed
+ *                      to [holdUntil] has landed. Never goes back to `false`.
  * @property onFrame Pass straight to `SceneView(onFrame = …)`. Cheap after the
  *                   first call.
  */
@@ -449,21 +466,85 @@ class FirstFrameState internal constructor(
     /** How many frames the scene has presented so far, capped once [rendered] latches. */
     private var presentedFrames: Int = 0
 
+    /** `false` while content "Scene ready" must show is still loading; see [holdUntil]. */
+    private var contentLanded: Boolean = true
+
+    /** Set once the content wait is over: frames count whether the content landed or not. */
+    private var contentWaitOver: Boolean = false
+
+    /**
+     * `true` once the scene has presented a frame while its content was still loading. The
+     * bounded wait of [rememberFirstFrameState] starts here — not at composition, because on
+     * a software GL the first frame alone can take longer than any sensible content budget.
+     */
+    internal val waitingOnContent: androidx.compose.runtime.MutableState<Boolean> =
+        androidx.compose.runtime.mutableStateOf(false)
+
+    private val sceneReadyState: androidx.compose.runtime.MutableState<Boolean> =
+        androidx.compose.runtime.mutableStateOf(false)
+
     val rendered: androidx.compose.runtime.State<Boolean> get() = renderedState
 
+    val sceneReady: androidx.compose.runtime.State<Boolean> get() = sceneReadyState
+
     val onFrame: (frameTimeNanos: Long) -> Unit = {
-        if (!renderedState.value && presentedFrames < READY_PRESENTED_FRAMES) {
-            presentedFrames++
+        if (!renderedState.value) {
+            // The cover's rule, content or not: it lifts on the frame it lifted on before the
+            // HDR went off the main thread (#4174).
+            if (presentedFrames < READY_PRESENTED_FRAMES) presentedFrames++
+            if (presentedFrames >= READY_PRESENTED_FRAMES) latch()
         }
-        if (!renderedState.value && presentedFrames >= READY_PRESENTED_FRAMES) {
-            // Latches once the backend has executed what those frames queued: on a software
-            // GL that is the whole material-link time, on hardware ~100 ms. The cover is a
-            // static image, so the wait is invisible — and it is the only thing here that
-            // speaks to the driver rather than about it. Polled, never awaited (#3799);
-            // repeated calls while the fence is out are no-ops.
-            val drain = backendDrain
-            if (drain == null) renderedState.value = true else drain.start { renderedState.value = true }
+        if (!sceneReadyState.value) {
+            if (contentLanded || contentWaitOver) {
+                markSceneReady()
+            } else if (!waitingOnContent.value) {
+                // A frame without the content: real pixels, but not the demo's picture.
+                waitingOnContent.value = true
+            }
         }
+    }
+
+    /**
+     * Holds [sceneReady] at `false` until [landed] is `true` — pass "has this demo's HDR
+     * environment been applied?". Call it from composition, where that answer is read, so it
+     * follows the state. The cover ([rendered]) does not wait for it. [sceneReady] turns
+     * `true` on the first frame presented once the content has landed and the scene is
+     * [rendered], bounded by [CONTENT_WAIT_TIMEOUT_MS]; once `true` it stays `true` whatever
+     * [landed] does next (an environment swap is not a cold start).
+     */
+    fun holdUntil(landed: Boolean) {
+        contentLanded = landed
+    }
+
+    /**
+     * The bounded wait is over and the content has still not landed: stop holding. The
+     * scene may have parked since its last frame, so this marks it ready directly (or as
+     * soon as the cover's drain completes) rather than waiting for a frame that is never
+     * going to be presented.
+     */
+    internal fun contentWaitExpired() {
+        contentWaitOver = true
+        markSceneReady()
+    }
+
+    private fun markSceneReady() {
+        if (renderedState.value) sceneReadyState.value = true
+    }
+
+    private fun latch() {
+        // Latches once the backend has executed what those frames queued: on a software
+        // GL that is the whole material-link time, on hardware ~100 ms. The cover is a
+        // static image, so the wait is invisible — and it is the only thing here that
+        // speaks to the driver rather than about it. Polled, never awaited (#3799);
+        // repeated calls while the fence is out are no-ops.
+        val drain = backendDrain
+        if (drain == null) onDrained() else drain.start(::onDrained)
+    }
+
+    private fun onDrained() {
+        renderedState.value = true
+        // A scene can park on the frame that latched: "Scene ready" must not wait for another.
+        if (contentLanded || contentWaitOver) sceneReadyState.value = true
     }
 
     override fun onRemembered() = Unit
@@ -488,6 +569,20 @@ class FirstFrameState internal constructor(
  * the settle tail pays is a threshold that is never reached.
  */
 private const val READY_PRESENTED_FRAMES = 2
+
+/**
+ * Longest [FirstFrameState.holdUntil] holds "Scene ready" for content that has not landed,
+ * counted from the first frame the scene presented without it.
+ *
+ * A bundled HDR lands in well under a second on a phone. The budget is sized for the other
+ * end: a debuggable build decodes the HDR in interpreted Kotlin, and on the CI's software GL
+ * that decode competes with the rasteriser for the same cores while the IBL prefilter queues
+ * behind the first shader link — #4174 measured a debug decode at up to 17 s on a loaded
+ * host. Past this, the load is treated as failed and the scene shows without it; the
+ * scaffold's "Still loading…" card has been up since its own 12 s mark by then, so the wait
+ * is never a silent one.
+ */
+internal const val CONTENT_WAIT_TIMEOUT_MS = 30_000L
 
 /**
  * Is the viewport showing something worth looking at?
@@ -520,10 +615,33 @@ fun rememberFirstFrameState(
     val rendered = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    return androidx.compose.runtime.remember(engine) {
+    val state = androidx.compose.runtime.remember(engine) {
         FirstFrameState(rendered, engine?.let(::filamentBackendDrainWait))
     }
+    // The bound on FirstFrameState.holdUntil: it starts at the first frame presented without
+    // the content, so a demo that never holds never starts it.
+    androidx.compose.runtime.LaunchedEffect(state) {
+        androidx.compose.runtime.snapshotFlow { state.waitingOnContent.value }.first { it }
+        val heldSince = android.os.SystemClock.elapsedRealtime()
+        val latched = kotlinx.coroutines.withTimeoutOrNull(CONTENT_WAIT_TIMEOUT_MS) {
+            androidx.compose.runtime.snapshotFlow { state.sceneReady.value }.first { it }
+        }
+        val heldMs = android.os.SystemClock.elapsedRealtime() - heldSince
+        if (latched != null) {
+            // Grep-able in the render goldens' logcat: how long "Scene ready" waited on the HDR.
+            android.util.Log.i(FIRST_FRAME_LOG_TAG, "held for content ${heldMs}ms")
+        } else {
+            android.util.Log.w(
+                FIRST_FRAME_LOG_TAG,
+                "content did not land within ${heldMs}ms of the first frame; showing the scene without it",
+            )
+            state.contentWaitExpired()
+        }
+    }
+    return state
 }
+
+private const val FIRST_FRAME_LOG_TAG = "FirstFrameState"
 
 /**
  * Idle auto-orbit state for a camera that sweeps slowly around a target.

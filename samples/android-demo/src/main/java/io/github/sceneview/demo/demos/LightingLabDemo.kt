@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +49,7 @@ import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.Environment
+import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.node.FogNode
@@ -190,24 +193,21 @@ fun LightingLabDemo(onBack: () -> Unit) {
     val keyMarkerMaterial = rememberUnlitMaterialInstance(materialLoader, KEY_MARKER_COLOR)
 
     // ── Environments ─────────────────────────────────────────────────────────────────────────
-    // Built synchronously in composition, on the main thread, and destroyed by an explicit
-    // DisposableEffect — the same contract every environment-owning demo uses.
-    val benchEnvironment: Environment? = remember(environmentLoader) {
-        environmentLoader.createHDREnvironment(assetFileLocation = BENCH_ENVIRONMENT_FILE)
-    }
-    DisposableEffect(benchEnvironment) {
-        onDispose { benchEnvironment?.let { environmentLoader.destroyEnvironment(it) } }
-    }
+    // Loaded asynchronously: the HDR file read and decode run off the main thread, only the
+    // Filament upload and prefilter run on it, and the neutral fallback lights the bench until
+    // the studio lands. `rememberHDREnvironment` destroys the environment on leave.
+    val benchEnvironment: Environment? =
+        rememberHDREnvironment(environmentLoader, BENCH_ENVIRONMENT_FILE)
     /**
      * The local probe's IBL — built the first time the probe is switched on, never before, and
      * without a skybox.
      *
      * Both halves of that are #3554. This screen was the only demo in the catalogue that built
      * **two** 2 048² HDR environments at once, and it built the second one eagerly even though
-     * the probe it feeds starts off. `createHDREnvironment` is not a file read: each call decodes
-     * the HDR to a float equirect texture, renders it to a cubemap, then runs the specular
-     * prefilter over a full mip chain — so the default frame was paying for a second cubemap
-     * pyramid that nothing sampled.
+     * the probe it feeds starts off. An HDR environment is not a file read: each load decodes the
+     * HDR to a float equirect (off the main thread), uploads it, renders it to a cubemap, then
+     * runs the specular prefilter over a full mip chain on the GPU — so the default frame was
+     * paying for a second cubemap pyramid that nothing sampled.
      *
      * `createSkybox = false` is the other half, and it is free: [ReflectionProbeNode] only ever
      * reads `environment.indirectLight`, so the skybox this used to build could never be drawn.
@@ -216,21 +216,17 @@ fun LightingLabDemo(onBack: () -> Unit) {
      *
      * On the `demo-render-goldens` leg that matters more than it looks: SwiftShader presents no
      * frame at all there (`softwareRenderer=true`), so nothing on this screen is ever rasterised —
-     * but the allocations above still happen at composition, because they are what *builds* the
-     * environment rather than what draws it.
+     * but the allocations above still happen as soon as the load lands, because they are what
+     * *builds* the environment rather than what draws it.
      */
-    val probeEnvironment: Environment? = remember(environmentLoader, probeEnvironmentRequested) {
-        if (!probeEnvironmentRequested) {
-            null
-        } else {
-            environmentLoader.createHDREnvironment(
-                assetFileLocation = LightingStage.PROBE_ENVIRONMENT_FILE,
-                createSkybox = false,
-            )
-        }
-    }
-    DisposableEffect(probeEnvironment) {
-        onDispose { probeEnvironment?.let { environmentLoader.destroyEnvironment(it) } }
+    val probeEnvironment: Environment? = if (probeEnvironmentRequested) {
+        rememberHDREnvironment(
+            environmentLoader,
+            LightingStage.PROBE_ENVIRONMENT_FILE,
+            createSkybox = false,
+        )
+    } else {
+        null
     }
     val fallbackEnvironment = remember(environmentLoader) { createEnvironment(environmentLoader) }
     DisposableEffect(fallbackEnvironment) {
@@ -242,9 +238,13 @@ fun LightingLabDemo(onBack: () -> Unit) {
     DisposableEffect(stageBackdrop) {
         onDispose { engine.destroySkybox(stageBackdrop) }
     }
+    // Until the studio lands, the neutral fallback lights the bench on the same stage backdrop.
+    // Its own skybox is a black clear, and the background jumping from black to the stage
+    // colour when the HDR lands was the visible seam of the off-main load (#4174): now only the
+    // lighting on the subjects changes.
     val environment = remember(benchEnvironment, fallbackEnvironment, showSky, stageBackdrop) {
-        benchEnvironment?.let { if (showSky) it else it.copy(skybox = stageBackdrop) }
-            ?: fallbackEnvironment
+        val lighting = benchEnvironment ?: fallbackEnvironment
+        if (showSky && benchEnvironment != null) lighting else lighting.copy(skybox = stageBackdrop)
     }
     // Rotating the IBL turns the lighting; Filament's skybox does not turn with it. The slider is
     // disabled while the sky is drawn rather than letting the reflections slide off the picture.
@@ -259,6 +259,8 @@ fun LightingLabDemo(onBack: () -> Unit) {
         LightingStage.KEY_ELEVATION_DEGREES,
     )
     val firstFrame = rememberFirstFrameState(engine)
+    // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = benchEnvironment != null)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,
@@ -315,6 +317,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_lighting_lab_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         loadingLabel = stringResource(R.string.demo_lighting_loading),
         peekHeader = "Toggle shading or reflections to compare",
         onResetSettings = {

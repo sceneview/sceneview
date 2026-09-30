@@ -2,6 +2,7 @@ package io.github.sceneview.loaders
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.RawRes
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
@@ -19,12 +20,22 @@ import io.github.sceneview.texture.use
 import io.github.sceneview.utils.loadFileBuffer
 import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.whenBackendIdle
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.Buffer
+import java.nio.ByteBuffer
+
+/** `Texture.Builder.levels` value Filament clamps to the full mip chain, as HDRLoader does. */
+private const val ALL_MIP_LEVELS = 0xff
+private const val TAG = "EnvironmentLoader"
 
 /**
  * Utility for decoding an HDR file or consuming KTX1 files and producing Filament textures, IBLs,
@@ -86,15 +97,135 @@ class EnvironmentLoader(
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true
     ): Environment? {
-        // Since we directly destroy the texture we call the `use` function and so don't pass lifecycle
-        // to createTexture because it can be destroyed immediately.
-        val textureCubemap = HDRLoader.createTexture(
+        // HDRLoader decodes and uploads in a single JNI call, so this overload has to run its
+        // decode on the calling (main) thread. [loadHDREnvironment] decodes off it instead.
+        val equirect = HDRLoader.createTexture(
             engine = engine,
             buffer = buffer,
             options = textureOptions
-        )?.use(engine) { hdrTexture ->
+        ) ?: return null
+        return prefilterHDREnvironment(
+            equirect = equirect,
+            indirectLightSpecularFilter = indirectLightSpecularFilter,
+            indirectLightApply = indirectLightApply,
+            createSkybox = createSkybox
+        )
+    }
+
+    /**
+     * Uploads an already decoded HDR [image] as an equirect texture, then prefilters it.
+     *
+     * Filament calls only — the decode already happened, off the main thread, in
+     * [loadHDREnvironment]. The texture matches `HDRLoader.createTexture`'s: full mip chain,
+     * mipmappable usage, [HDRLoader.Options.desiredFormat], mipmaps generated for the equirect-to-cubemap pass.
+     */
+    private fun createHDREnvironmentFromImage(
+        image: RgbeImage,
+        indirectLightSpecularFilter: Boolean,
+        indirectLightApply: IndirectLight.Builder.() -> Unit,
+        textureOptions: HDRLoader.Options,
+        createSkybox: Boolean
+    ): Environment? {
+        val equirect = Texture.Builder()
+            .width(image.width)
+            .height(image.height)
+            .levels(ALL_MIP_LEVELS)
+            .sampler(Texture.Sampler.SAMPLER_2D)
+            .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE)
+            .format(textureOptions.desiredFormat)
+            .build(engine)
+        equirect.setImage(
+            engine,
+            0,
+            Texture.PixelBufferDescriptor(image.pixels, Texture.Format.RGB, Texture.Type.FLOAT)
+        )
+        equirect.generateMipmaps(engine)
+        return prefilterHDREnvironment(
+            equirect = equirect,
+            indirectLightSpecularFilter = indirectLightSpecularFilter,
+            indirectLightApply = indirectLightApply,
+            createSkybox = createSkybox
+        )
+    }
+
+    /**
+     * Reads and decodes the HDR at [url] off the main thread, then builds the environment on
+     * Main — the shared body of [loadHDREnvironment] and the HDR `loadKTX1Environment(url)`.
+     *
+     * The Main build is skipped when the caller was cancelled or the engine destroyed while the
+     * decode ran (a composable that left in the meantime), and an environment built by a caller
+     * cancelled during the build is destroyed before the cancellation is rethrown — see
+     * [buildOnMainUnlessGone].
+     */
+    private suspend fun loadHDREnvironmentOffMain(
+        url: String,
+        indirectLightSpecularFilter: Boolean,
+        indirectLightApply: IndirectLight.Builder.() -> Unit,
+        textureOptions: HDRLoader.Options,
+        createSkybox: Boolean
+    ): Environment? {
+        val buffer = context.loadFileBuffer(url) ?: return null
+        // The RGBE decode is pure CPU work: run it off the main thread. A file the Kotlin decoder
+        // does not support falls back to HDRLoader, which decodes on Main with the upload.
+        val image = withContext(Dispatchers.Default) { decodeRgbeOrNull(buffer) }
+        // Filament asserts on JNI thread mismatch — build on Main, mirroring
+        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
+        return buildOnMainUnlessGone(
+            isEngineValid = { engine.isValid },
+            destroy = ::destroyEnvironment,
+        ) {
+            if (image != null) {
+                createHDREnvironmentFromImage(
+                    image = image,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
+            } else {
+                createHDREnvironment(
+                    buffer = buffer,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
+            }
+        }
+    }
+
+    /**
+     * [RgbeDecoder.decode] on the calling dispatcher, checking for cancellation as it goes;
+     * `null` (so `HDRLoader` takes over) when the decoder cannot read the file.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun decodeRgbeOrNull(buffer: ByteBuffer): RgbeImage? {
+        val callerContext = currentCoroutineContext()
+        return try {
+            RgbeDecoder.decode(buffer) { callerContext.ensureActive() }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "RGBE decode failed, falling back to HDRLoader", error)
+            null
+        } catch (outOfMemory: OutOfMemoryError) {
+            Log.w(TAG, "RGBE decode out of memory, falling back to HDRLoader", outOfMemory)
+            null
+        }
+    }
+
+    /** Prefilters a 2D HDR [equirect] into an IBL (and skybox), consuming the equirect. */
+    private fun prefilterHDREnvironment(
+        equirect: Texture,
+        indirectLightSpecularFilter: Boolean,
+        indirectLightApply: IndirectLight.Builder.() -> Unit,
+        createSkybox: Boolean
+    ): Environment {
+        // Since we directly destroy the texture we call the `use` function and so don't pass lifecycle
+        // to createTexture because it can be destroyed immediately.
+        val textureCubemap = equirect.use(engine) { hdrTexture ->
             iblPrefilter.equirectangularToCubemap(equirect = hdrTexture)
-        } ?: return null
+        }
 
         val reflections = if (indirectLightSpecularFilter) {
             iblPrefilter.specularFilter(textureCubemap).also {
@@ -225,7 +356,11 @@ class EnvironmentLoader(
      *
      * Consumes the content of an HDR file and produces an [IndirectLight] and a [Skybox].
      *
-     * @param url The HDR File url.
+     * Prefer this over the synchronous `createHDREnvironment` overloads from UI code: the file
+     * read and the RGBE decode run off the main thread, and only the Filament calls (texture
+     * upload, cubemap and specular prefilter) run on [Dispatchers.Main].
+     *
+     * @param url The HDR File url, or a relative asset file location (`environments/sky_2k.hdr`).
      * @param indirectLightSpecularFilter Generates a prefiltered indirect light cubemap.
      * SpecularFilter is a GPU based implementation of the specular probe pre-integration filter.
      * ** Launch the heavier computation. Expect 100-200ms on the GPU.**
@@ -245,19 +380,13 @@ class EnvironmentLoader(
         indirectLightApply: IndirectLight.Builder.() -> Unit = {},
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
-    ): Environment? = context.loadFileBuffer(url)?.let { buffer ->
-        // Filament asserts on JNI thread mismatch — build on Main, mirroring
-        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
-        withContext(Dispatchers.Main) {
-            createHDREnvironment(
-                buffer = buffer,
-                indirectLightSpecularFilter = indirectLightSpecularFilter,
-                indirectLightApply = indirectLightApply,
-                textureOptions = textureOptions,
-                createSkybox = createSkybox
-            )
-        }
-    }
+    ): Environment? = loadHDREnvironmentOffMain(
+        url = url,
+        indirectLightSpecularFilter = indirectLightSpecularFilter,
+        indirectLightApply = indirectLightApply,
+        textureOptions = textureOptions,
+        createSkybox = createSkybox
+    )
 
     /**
      * Utility for producing environment resources from precompiled cmgen generated KTX files.
@@ -421,19 +550,13 @@ class EnvironmentLoader(
         indirectLightApply: IndirectLight.Builder.() -> Unit = {},
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
-    ): Environment? = context.loadFileBuffer(url)?.let { buffer ->
-        // Filament asserts on JNI thread mismatch — build on Main, mirroring
-        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
-        withContext(Dispatchers.Main) {
-            createHDREnvironment(
-                buffer = buffer,
-                indirectLightSpecularFilter = indirectLightSpecularFilter,
-                indirectLightApply = indirectLightApply,
-                textureOptions = textureOptions,
-                createSkybox = createSkybox
-            )
-        }
-    }
+    ): Environment? = loadHDREnvironmentOffMain(
+        url = url,
+        indirectLightSpecularFilter = indirectLightSpecularFilter,
+        indirectLightApply = indirectLightApply,
+        textureOptions = textureOptions,
+        createSkybox = createSkybox
+    )
 
     fun destroyEnvironment(environment: Environment) {
         environment.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
@@ -491,4 +614,36 @@ class EnvironmentLoader(
             if (deferred) logDeferredTeardown("IBL prefilter", startedAt)
         }
     }
+}
+
+/**
+ * Runs [build] on [mainDispatcher] unless the caller is already cancelled or the engine is gone,
+ * and hands back what it built — the Main half of an off-main load (#4174).
+ *
+ * The build is not wrapped in `NonCancellable`: a composable that leaves while the decode runs
+ * cancels the load, and [build] never starts — it would otherwise create Filament objects (and the
+ * loader's lazy `IBLPrefilter` context) after the loader was destroyed, or throw on an engine
+ * destroyed in the same frame. [build] does not suspend, so once started it runs to completion;
+ * if the caller was cancelled meanwhile, `withContext` throws on return and what was built is
+ * destroyed — while the engine is still alive, since a dead engine already reclaimed it.
+ */
+internal suspend fun <T : Any> buildOnMainUnlessGone(
+    mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    isEngineValid: () -> Boolean,
+    destroy: (T) -> Unit,
+    build: () -> T?,
+): T? {
+    var built: T? = null
+    try {
+        withContext(mainDispatcher) {
+            ensureActive()
+            if (isEngineValid()) built = build()
+        }
+    } catch (cancellation: CancellationException) {
+        built?.let { orphan ->
+            withContext(mainDispatcher + NonCancellable) { if (isEngineValid()) destroy(orphan) }
+        }
+        throw cancellation
+    }
+    return built
 }

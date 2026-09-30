@@ -179,6 +179,7 @@ fun CustomGeometryDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_custom_geometry_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         // The live proof that the mesh is generated, not loaded: the counts move with the
         // Segments slider, under the user's thumb.
         peekHeader = meshCountsLabel(parameters.segments),
@@ -217,7 +218,7 @@ fun CustomGeometryDemo(onBack: () -> Unit) {
             // Photo-studio IBL, no skybox: a metallic surface with nothing to reflect reads
             // as flat paint. The knot keeps floating on the theme background, which is what
             // lets the same scene look right in light and dark.
-            environment = rememberMaterialsShowcaseEnvironment(environmentLoader),
+            environment = rememberMaterialsShowcaseEnvironment(environmentLoader, firstFrame),
             // Framing lives in TorusKnot so the fit is arithmetic a unit test checks, not a
             // number tuned by eye. The orbit distance is the LENGTH of `orbitHomePosition`
             // — see GeometryLayout's note and #2930 — and `camera_distance` (#2652) is

@@ -238,6 +238,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     val environment = litEnvironment ?: fallbackEnvironment
 
     val firstFrame = rememberFirstFrameState(engine)
+    // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    firstFrame.holdUntil(landed = litEnvironment != null)
 
     val resetAll: () -> Unit = demoState::reset
 
@@ -255,6 +257,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_contact_shadow_preview_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         peekHeader = stringResource(
             if (shadowVisible) R.string.contact_shadow_peek_on
             else R.string.contact_shadow_peek_off
