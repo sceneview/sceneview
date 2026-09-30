@@ -66,7 +66,7 @@ class PlaneVisualizer(
          * ring and `y = 1` for the feathered inner ring (the Y channel is the edge-fade ramp, not
          * a height — both shaders overwrite it, `plane_renderer.mat` with `0.0` and
          * `plane_renderer_shadow.mat` with `0.005`). So the geometric normal is plane-local up for
-         * every vertex, exactly as [PlaneVisualizerV2] pre-fills for its flat fallback.
+         * every vertex, exactly as [PlaneVisualizerV2] does.
          */
         private val PLANE_LOCAL_UP = Float3(0.0f, 1.0f, 0.0f)
     }

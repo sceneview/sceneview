@@ -1,139 +1,134 @@
 package io.github.sceneview.ar
 
-import com.google.ar.core.Config
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for [PlaneVisualizerV2]'s pure-JVM helper math — the scan-in / reflection
- * fade-in time curve and the polygon scan-radius computation. Both helpers are
- * `internal` top-level functions deliberately so they can be exercised without
- * spinning up a Filament Engine, an ARCore Session, or a real Plane (see #2203 PR #3).
- *
- * Robolectric isn't required for these — `computeScanProgress`, `computeReflectionFadeIn`
- * and `computeScanRadius` are pure functions over primitives + a [FloatBuffer], so the
- * tests run on plain JUnit + the JVM.
+ * Unit tests for [PlaneVisualizerV2]'s pure-JVM parts: the per-plane animation
+ * ([PlaneRevealAnimation] — fade, focus, reveal front chasing a growing plane) and the polygon
+ * scan-radius computation. No Filament Engine, no ARCore Session.
  */
 class PlaneVisualizerV2Test {
 
-    // ── isDepthRebuildDue (#4095) ───────────────────────────────────────────────────
+    private val frame = 1f / 60f
 
-    /** `System.currentTimeMillis()` in 2026, what [PlaneVisualizerV2] passes as `now`. */
-    private val wallClockMs = 1_790_000_000_000L
+    private fun PlaneRevealAnimation.run(
+        seconds: Float,
+        show: Boolean = true,
+        focusTarget: Float = 0f,
+    ) {
+        var t = 0f
+        while (t < seconds) {
+            advance(frame, show, focusTarget)
+            t += frame
+        }
+    }
+
+    // ── approach ────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `the first depth rebuild is due at a real wall-clock time`() {
-        assertTrue(isDepthRebuildDue(wallClockMs, null))
-        // The old sentinel: the subtraction overflows negative and the rebuild never ran.
-        assertFalse(wallClockMs - Long.MIN_VALUE >= PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS)
+    fun `approach moves by at most the step and lands exactly on the target`() {
+        assertEquals(0.25f, approach(0f, 1f, 0.25f), 0f)
+        assertEquals(0.75f, approach(1f, 0f, 0.25f), 0f)
+        assertEquals(1f, approach(0.9f, 1f, 0.25f), 0f)
+        assertEquals(0.5f, approach(0.5f, 0.5f, 0f), 0f)
+    }
+
+    // ── Fade ────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a shown plane fades in over FADE_IN_SECONDS, not in one frame`() {
+        val anim = PlaneRevealAnimation()
+        anim.advance(frame, show = true, focusTarget = 0f)
+        assertTrue("one frame must not pop the plane in: ${anim.opacity}", anim.opacity < 0.1f)
+        anim.run(FADE_IN_SECONDS)
+        assertEquals(1f, anim.opacity, 0f)
     }
 
     @Test
-    fun `the first depth rebuild is due at time zero`() {
-        assertTrue(isDepthRebuildDue(0L, null))
+    fun `a hidden plane fades out to exactly zero`() {
+        val anim = PlaneRevealAnimation()
+        anim.run(1f)
+        anim.advance(frame, show = false, focusTarget = 0f)
+        assertTrue("fading out, not cut: ${anim.opacity}", anim.opacity in 0.5f..0.99f)
+        anim.run(FADE_OUT_SECONDS + frame, show = false)
+        assertEquals(0f, anim.opacity, 0f)
     }
 
     @Test
-    fun `a depth rebuild waits for its interval`() {
-        val interval = PlaneVisualizerV2.DEPTH_REBUILD_INTERVAL_MS
-        assertFalse(isDepthRebuildDue(wallClockMs + interval - 1, wallClockMs))
-        assertTrue(isDepthRebuildDue(wallClockMs + interval, wallClockMs))
+    fun `focus eases towards its target`() {
+        val anim = PlaneRevealAnimation()
+        anim.advance(frame, show = true, focusTarget = 1f)
+        assertTrue(anim.focus > 0f && anim.focus < 1f)
+        anim.run(FOCUS_SECONDS + frame, focusTarget = 1f)
+        assertEquals(1f, anim.focus, 0f)
     }
 
-    // ── acquirePlaneDepthImage (#4104 review) ────────────────────────────────────────
-
-    private fun failIfCalled(): String = throw AssertionError("depth acquired on a session without smoothed depth")
+    // ── Reveal ──────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `a session with depth disabled is never asked for a depth image`() {
-        assertNull(acquirePlaneDepthImage(Config.DepthMode.DISABLED, ::failIfCalled))
-    }
+    fun `a new plane is revealed by a front that reaches its edge within SCAN_IN_DURATION_MS`() {
+        val anim = PlaneRevealAnimation()
+        anim.targetRadius = 2f
+        anim.advance(frame, show = true, focusTarget = 0f)
+        assertTrue("the front starts at the centre: ${anim.revealRadius}", anim.revealRadius < 0.1f)
+        assertTrue("the front is on screen: ${anim.scanProgress}", anim.scanProgress < 1f)
 
-    @Test
-    fun `a raw-depth-only session is never asked for the smoothed image`() {
-        assertNull(acquirePlaneDepthImage(Config.DepthMode.RAW_DEPTH_ONLY, ::failIfCalled))
-    }
+        anim.run(PlaneVisualizerV2.SCAN_IN_DURATION_MS / 1000f)
+        assertEquals(2f, anim.revealRadius, REVEAL_CAUGHT_UP_M)
 
-    @Test
-    fun `no depth image is acquired before the renderer reports the depth mode`() {
-        assertNull(acquirePlaneDepthImage(null, ::failIfCalled))
-    }
-
-    @Test
-    fun `a throwing acquisition falls back instead of escaping`() {
-        // ARCore raises IllegalStateException when depth is degraded; escaping here made
-        // PlaneRendererV2.update's catch skip the whole plane update instead of drawing flat.
-        val degraded: () -> String = { throw IllegalStateException("depth is not available") }
-        assertNull(acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC, degraded))
+        anim.run(FRONT_GLOW_SECONDS + 2 * frame)
+        assertEquals("once caught up the shader skips the front", 1f, anim.scanProgress, 0f)
     }
 
     @Test
-    fun `an automatic-depth session reads its depth image`() {
-        assertEquals("depth", acquirePlaneDepthImage(Config.DepthMode.AUTOMATIC) { "depth" })
-    }
+    fun `a plane that grows gets its new area revealed, not popped in`() {
+        val anim = PlaneRevealAnimation()
+        anim.targetRadius = 1f
+        anim.run(2f)
+        assertEquals(1f, anim.scanProgress, 0f)
 
-    // ── computeScanProgress / computeReflectionFadeIn ───────────────────────────────
-
-    @Test
-    fun `scanProgress is 0 at the moment of first detection`() {
-        assertEquals(0f, computeScanProgress(0L), 0f)
-    }
-
-    @Test
-    fun `scanProgress is 05 at half the scan-in duration`() {
-        val halfDurationNanos = (PlaneVisualizerV2.SCAN_IN_DURATION_MS / 2L) * 1_000_000L
-        assertEquals(0.5f, computeScanProgress(halfDurationNanos), 1e-4f)
+        anim.targetRadius = 1.5f
+        anim.advance(frame, show = true, focusTarget = 0f)
+        assertTrue("the front is back on screen: ${anim.scanProgress}", anim.scanProgress < 1f)
+        assertTrue("it starts from the old edge: ${anim.revealRadius}", anim.revealRadius in 1f..1.1f)
+        anim.run(1f)
+        assertEquals(1.5f, anim.revealRadius, 0f)
     }
 
     @Test
-    fun `scanProgress is 10 at exactly the scan-in duration`() {
-        val fullDurationNanos = PlaneVisualizerV2.SCAN_IN_DURATION_MS * 1_000_000L
-        assertEquals(1f, computeScanProgress(fullDurationNanos), 1e-4f)
+    fun `a small extension is covered at no less than the minimum speed`() {
+        val anim = PlaneRevealAnimation()
+        anim.targetRadius = 1f
+        anim.run(2f)
+        anim.targetRadius = 1.1f
+        anim.run(0.1f / MIN_REVEAL_SPEED_M_PER_S + frame)
+        assertEquals(1.1f, anim.revealRadius, 0f)
     }
 
     @Test
-    fun `scanProgress stays clamped at 10 well past the scan-in duration`() {
-        // 1.5 s after detection — well past the 800 ms scan-in window. Verifies
-        // the coerceIn so the shader never sees `scanProgress > 1`, which would
-        // walk the ring off the polygon and produce a frame of garbage.
-        val pastNanos = 1_500L * 1_000_000L
-        assertEquals(1f, computeScanProgress(pastNanos), 0f)
+    fun `a plane that shrinks is clipped to its new size at once`() {
+        val anim = PlaneRevealAnimation()
+        anim.targetRadius = 2f
+        anim.run(2f)
+        anim.targetRadius = 1f
+        anim.advance(frame, show = true, focusTarget = 0f)
+        assertEquals(1f, anim.revealRadius, 0f)
+        assertTrue(anim.scanProgress >= 0.99f)
     }
 
     @Test
-    fun `scanProgress clamps negative elapsed to 0`() {
-        // Defensive: System.nanoTime is monotonic in practice but the helper must
-        // never feed a negative ring radius to the shader. `-100 ms` → 0.
-        assertEquals(0f, computeScanProgress(-100_000_000L), 0f)
-    }
-
-    @Test
-    fun `reflectionFadeIn is 0 at the moment of first detection`() {
-        assertEquals(0f, computeReflectionFadeIn(0L), 0f)
-    }
-
-    @Test
-    fun `reflectionFadeIn is 04 at 400ms`() {
-        val nanos = 400L * 1_000_000L
-        assertEquals(0.4f, computeReflectionFadeIn(nanos), 1e-4f)
-    }
-
-    @Test
-    fun `reflectionFadeIn is 10 at exactly the fade-in duration`() {
-        val nanos = PlaneVisualizerV2.REFLECTION_FADE_IN_MS * 1_000_000L
-        assertEquals(1f, computeReflectionFadeIn(nanos), 1e-4f)
-    }
-
-    @Test
-    fun `reflectionFadeIn stays clamped at 10 well past the fade-in duration`() {
-        val pastNanos = 1_500L * 1_000_000L
-        assertEquals(1f, computeReflectionFadeIn(pastNanos), 0f)
+    fun `scanProgress stays in the unit range throughout`() {
+        val anim = PlaneRevealAnimation()
+        anim.targetRadius = 3f
+        repeat(200) {
+            anim.advance(frame, show = true, focusTarget = 1f)
+            assertTrue(anim.scanProgress in 0f..1f)
+        }
     }
 
     // ── computeScanRadius ───────────────────────────────────────────────────────────
