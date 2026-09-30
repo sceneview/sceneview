@@ -48,6 +48,11 @@
     "lines-paths": {
       "prompt": "The closed route of the attached reference — exactly this shape: a loop through eight control points arranged on a circle and lifted by two full sine periods, so it waves up and down twice round the ring. The route is a smooth swept tube of pale blue #A4C1FF with a real thickness and real shading, not a hairline. Eight purple #6446CD beads sit on the control points, a larger soft-lilac #D2A8FF sphere marker rides the route with a slightly fatter lilac trail behind it, and directly below, flat on the ground plane, the same eight points are drawn as a dashed straight-segment polyline in deep blue #005BC1. Seen from about 27 degrees above. No grid, no props. Demonstrates lines, paths, splines and point sets drawn as swept tube geometry.",
       "ref": "lines_paths_route.webp"
+    },
+    "ar-placement": {
+      "prompt": "An augmented-reality photo taken with a phone held at chest height: the green vintage toy car of the attached reference, standing on its draped rust-red satin cloth pedestal (the cloth and the car are one model, keep both exactly as in the reference: the chrome bumpers, the yellow flame decals, the tail fins), placed at its true small size, about 30 cm tall, on the wooden floor of a real lived-in living room, a sofa and a rug softly out of focus behind it. The object sits in the lower-middle of the frame, seen from about 30 degrees above, grounded by a soft contact shadow under the cloth. No placement ring, no reticle, no plane grid, no dots, no UI of any kind. Demonstrates a 3D model placed automatically on a real floor at real-world scale.",
+      "ref": "toy_car.webp",
+      "ar": true
     }
   }
 }
