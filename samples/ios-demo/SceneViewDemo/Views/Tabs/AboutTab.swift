@@ -57,7 +57,7 @@ struct AboutTab: View {
     /// under it. On the page's `surface` the block reads as a masthead instead.
     private var identity: some View {
         VStack(spacing: SceneViewTokens.Space.sm) {
-            // `about-stage`: the launcher icon's cube as a real object, turning
+            // The stage: the launcher icon's cube as a real object, turning
             // between two orbit rings. The icon itself (`about-mark`) stands
             // in its place until the stage has drawn.
             AboutMarkStage()
@@ -255,7 +255,7 @@ private struct AboutMarkStage: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var visible = false
     #if os(iOS)
-    @State private var renderer = AboutMarkRenderer()
+    @State private var host = AboutMarkHost()
     #endif
     @State private var drawn = false
 
@@ -275,9 +275,12 @@ private struct AboutMarkStage: View {
 
             #if os(iOS)
             if visible {
-                AboutMarkScene(renderer: renderer,
+                AboutMarkScene(renderer: host.renderer,
                                moving: scenePhase == .active && !reduceMotion,
-                               onFirstFrame: { withAnimation(SceneViewTokens.Spring.fade) { drawn = true } })
+                               onFirstFrame: {
+                                   // A cut under Reduce Motion, the fade otherwise.
+                                   withAnimation(reduceMotion ? nil : SceneViewTokens.Spring.fade) { drawn = true }
+                               })
                     .opacity(drawn ? 1 : 0)
             }
             #endif
@@ -293,11 +296,29 @@ private struct AboutMarkStage: View {
         .frame(height: about.stageHeight)
         .allowsHitTesting(false)
         .onAppear { visible = true }
-        .onDisappear { visible = false }
+        // The next stage is a new `RealityView`: the icon stands in again
+        // until it has drawn, rather than a blank band for a frame.
+        .onDisappear { visible = false; drawn = false }
     }
 }
 
 #if os(iOS)
+/// Holds the About mark's renderer across the stage's re-creations. Cheap to
+/// create: SwiftUI builds a throwaway one each time it re-initialises the
+/// view, so the renderer and its entities are only built on first use — the
+/// `HomeHeroFlightHost` pattern.
+@MainActor
+private final class AboutMarkHost {
+    private var built: AboutMarkRenderer?
+
+    var renderer: AboutMarkRenderer {
+        if let built { return built }
+        let renderer = AboutMarkRenderer()
+        built = renderer
+        return renderer
+    }
+}
+
 /// The `RealityView` that shows the mark. Its own view, not SceneViewSwift's
 /// `SceneView`, for the same reason as the Home hero: the stage needs its own
 /// camera and a per-frame hook. The background stays clear — the page shows
@@ -323,7 +344,11 @@ private struct AboutMarkScene: View {
 /// world units, degrees and seconds.
 @MainActor
 private final class AboutMarkRenderer {
-    var moving = false
+    /// Whether the clock runs. A held stage stops its per-frame callback once
+    /// it has revealed (`idleIfDone`); setting this wakes it again.
+    var moving = false {
+        didSet { if moving != oldValue { wake() } }
+    }
 
     private let root = Entity()
     private let camera = PerspectiveCamera()
@@ -336,34 +361,74 @@ private final class AboutMarkRenderer {
     /// Scene seconds; starts on the rest pose so the first frame is composed.
     private var seconds = Mark.restSeconds
     private var stopUpdates: (() -> Void)?
+    /// The stage's reveal, called once the frame is final (`update`).
     private var onFirstFrame: (() -> Void)?
+    /// The studio IBL has landed, or failed to: the lighting is final.
+    private var lightingSettled = false
+    /// Frames drawn since the lighting settled, for this `RealityView`.
+    private var framesLit = 0
+    /// Whether a `RealityView` shows this renderer right now.
+    private var attached = false
 
     func install(in content: inout RealityViewCameraContent, onFirstFrame: @escaping () -> Void) {
         content.add(root)
         content.add(camera)
-        if !built { build() }
+        attached = true
         self.onFirstFrame = onFirstFrame
+        framesLit = 0
         stopUpdates?()
         let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated { self?.update(event.deltaTime) }
         }
         stopUpdates = { subscription.cancel() }
+        if !built { build() }
         pose()
     }
 
     func detach() {
+        attached = false
         stopUpdates?()
         stopUpdates = nil
     }
 
     private func update(_ delta: Double) {
-        if let onFirstFrame {
+        // Reveal only on a finished frame: the IBL loads asynchronously, and a
+        // cube drawn before it lands is lit by the key alone. The frame that
+        // first carries the IBL is followed by one more before the crossfade,
+        // like Android's `FRAMES_BEFORE_REVEAL`.
+        if lightingSettled { framesLit += 1 }
+        if let onFirstFrame, framesLit >= Mark.framesBeforeReveal {
             self.onFirstFrame = nil
             onFirstFrame()
         }
-        guard moving else { return }
-        seconds += delta
+        if moving {
+            // One long frame (the app back from the background) must not jump
+            // the mark forward: `HeroClock` and Android's `StageClock` cap it.
+            seconds += min(max(delta, 0), Mark.maxFrameSeconds)
+        }
         pose()
+        idleIfDone()
+    }
+
+    /// A held stage (Reduce Motion, app inactive) is final once it has
+    /// revealed and drawn a while at full opacity: no per-frame work until it
+    /// moves again, and RealityKit keeps showing the last frame. Idling on the
+    /// reveal frame itself left the band blank under Reduce Motion — the view
+    /// had last drawn while still transparent.
+    private func idleIfDone() {
+        guard !moving, onFirstFrame == nil,
+              framesLit >= Mark.framesBeforeReveal + Mark.framesHeldAfterReveal else { return }
+        stopUpdates?()
+        stopUpdates = nil
+    }
+
+    /// Back to one callback per frame after the stage went idle.
+    private func wake() {
+        guard stopUpdates == nil, attached, let scene = root.scene else { return }
+        let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
+            MainActor.assumeIsolated { self?.update(event.deltaTime) }
+        }
+        stopUpdates = { subscription.cancel() }
     }
 
     // MARK: Build
@@ -409,11 +474,18 @@ private final class AboutMarkRenderer {
         root.addChild(ringB)
 
         Task { @MainActor [weak self] in
-            guard let self, let resource = try? await SceneEnvironment.studio.load() else { return }
-            root.components.set(ImageBasedLightComponent(source: .single(resource), intensityExponent: 0))
-            for entity in [body, satelliteA] {
-                entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: root))
+            let resource = try? await SceneEnvironment.studio.load()
+            guard let self else { return }
+            if let resource {
+                root.components.set(ImageBasedLightComponent(source: .single(resource),
+                                                             intensityExponent: Mark.iblExponent))
+                for entity in [body, satelliteA] {
+                    entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: root))
+                }
             }
+            // Settled either way: without the IBL the key still draws the mark.
+            lightingSettled = true
+            wake()
         }
     }
 
@@ -500,13 +572,26 @@ private final class AboutMarkRenderer {
         static let verticalFov: Float = 46.4
         /// Key light from the upper right, a little in front.
         static let keyLight = SIMD3<Float>(-0.45, -0.82, -0.36)
-        /// Not Android's 70 000 lux: RealityKit exposes for its own ~2 000-lux
-        /// default, and at Filament's value the blue body clipped to white on
-        /// the simulator. Tuned by capture so the three faces read as the
-        /// mark's three blues.
-        static let keyLux: Float = 2_000
+        /// Android lights the mark with a 70 000-lux key over its default IBL.
+        /// The Home hero keeps Android's 95 000 lux because its helmet is dark
+        /// metal under a dim sunset sky; a saturated blue cube is not. From
+        /// 10 000 lux, RealityKit's tone mapping pushes the lit face's blue
+        /// past its top and the face turns sky-cyan; at 2 000 lux over the
+        /// untouched studio IBL the faces go dull and grey. Tuned side by side
+        /// with Android's capture (QA/demo-wow-ios/about/v2/tune): a 6 000-lux
+        /// key over the studio IBL at √2 (exponent 0.5) keeps the three
+        /// saturated blues of the mark.
+        static let keyLux: Float = 6_000
+        /// The studio IBL's intensity, as a power of two.
+        static let iblExponent: Float = 0.5
         /// Pose drawn under Reduce Motion: both satellites in front of the cube.
         static let restSeconds: Double = 1.4
+        /// Frames drawn with the lighting settled before the icon crossfades.
+        static let framesBeforeReveal = 2
+        /// Frames a held stage keeps drawing after its reveal before it idles.
+        static let framesHeldAfterReveal = 30
+        /// Longest step the clock takes in one frame.
+        static let maxFrameSeconds: Double = 0.1
 
         static let cubeUnits: Float = 1
         static let lidUnits: Float = 0.64

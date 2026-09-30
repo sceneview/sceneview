@@ -1427,8 +1427,11 @@ shell:
       guideline 3.1.1 (donation links outside In-App Purchase), #4197.
       The identity mark is a 3D stage since #4215 (AboutTab.swift
       AboutMarkStage: cube, two orbit rings, satellites, icon placeholder
-      crossfade; Android's AboutMarkStage constants from wow/demo-shell-android,
-      key light 2 000 lux)
+      crossfade once the lighting has landed; key light 6 000 lux over the
+      studio IBL at exponent 0.5, tuned against Android's capture). iOS is
+      ahead here: Android main still shows the flat icon, and its 3D stage
+      (MarkScene constants, from wow/demo-shell-android) comes with the
+      Android PR
   - surface: demo-chrome
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/DemoScaffold.kt

@@ -562,9 +562,11 @@ enum SceneViewTokens {
         /// `radius-xl`. The same picture in light and dark: it is the
         /// product's identity, not a themed surface.
         static let markSize: CGFloat = 80
-        /// `about-stage` — the band the SceneView mark floats in, in 3D (the
-        /// iOS twin of Android's `About.stageHeight`). The launcher icon
-        /// (`markSize`) stands at its centre until the stage has drawn.
+        /// The band the SceneView mark floats in, in 3D. iOS is ahead here:
+        /// Android `main` still shows the flat icon, and its 3D stage
+        /// (`About.stageHeight`, with the `DESIGN.md` token) comes with the
+        /// Android PR from `wow/demo-shell-android`. The launcher icon
+        /// (`markSize`) stands at the band's centre until the stage has drawn.
         static let stageHeight: CGFloat = 176
         /// Width of the soft contact shadow under the floating mark.
         static let stageShadowWidth: CGFloat = 132
