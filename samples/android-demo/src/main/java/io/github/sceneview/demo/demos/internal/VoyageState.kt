@@ -5,13 +5,16 @@ package io.github.sceneview.demo.demos.internal
  * drives the camera, how far a jump away from the free camera has gone, how long since the user
  * last touched the scene, their drag, and the fade and streaks on screen.
  *
- * Three ways to take the camera, three ways back:
+ * The voyage starts on its own: nobody has to find a button for it. Four ways to take the camera,
+ * four ways back:
  * - a touch or a drag in the scene ([takeOver]): the voyage waits for [IDLE_RESUME_SECONDS] of
- *   calm, then jumps on to the next scene;
- * - a dock tab, Stop or the Voyage toggle ([stop]): the voyage stays stopped until it is started
- *   again ([resumeNow]);
+ *   calm — time to look at the world just tapped — then jumps on to the next scene;
+ * - a dock tab ([pick]): the scene picked is shown still, and after [AUTO_START_SECONDS] of calm
+ *   the voyage takes off into that scene's own shot ([inPlace]);
  * - Animate or reduced motion off ([hold]): the voyage pauses, and once they are back it resumes
- *   after the same calm as a touch — unless it had been stopped.
+ *   after [AUTO_START_SECONDS] of calm — unless it had been stopped;
+ * - Stop or the Voyage toggle ([stop]): the one explicit way out, the voyage stays stopped until
+ *   it is started again ([resumeNow]).
  *
  * Allocation-free per frame.
  */
@@ -24,6 +27,17 @@ internal class VoyageState(var playing: Boolean) {
 
     /** Seconds since the user last touched the scene; [STOPPED] while nothing is to be waited out. */
     var idleSeconds = STOPPED
+        private set
+
+    /** How much calm [idleSeconds] waits for: longer after a touch in the scene than after a tab. */
+    var calmSeconds = IDLE_RESUME_SECONDS
+        private set
+
+    /**
+     * Whether the next take-off plays the scene on screen rather than the next one: the user picked
+     * it in the dock, so the voyage shows it before moving on.
+     */
+    var inPlace = false
         private set
 
     var yaw = 0f
@@ -72,9 +86,20 @@ internal class VoyageState(var playing: Boolean) {
     fun takeOver(flight: CosmosFlight) {
         handBack(flight)
         idleSeconds = 0f
+        calmSeconds = IDLE_RESUME_SECONDS
+        inPlace = false
     }
 
-    /** A dock tab, Stop, the toggle off: the camera is handed back until the voyage is started again. */
+    /** A dock tab: the scene picked is shown still, then the voyage takes off from it on its own. */
+    fun pick(flight: CosmosFlight) {
+        handBack(flight)
+        resetDrag()
+        idleSeconds = 0f
+        calmSeconds = AUTO_START_SECONDS
+        inPlace = true
+    }
+
+    /** Stop or the toggle off: the camera is handed back until the voyage is started again. */
     fun stop(flight: CosmosFlight) {
         handBack(flight)
         idleSeconds = STOPPED
@@ -87,7 +112,10 @@ internal class VoyageState(var playing: Boolean) {
     fun hold(flight: CosmosFlight) {
         val driving = playing || leaving >= 0f
         handBack(flight)
-        if (driving || idleSeconds >= 0f) idleSeconds = 0f
+        if (driving || idleSeconds >= 0f) {
+            idleSeconds = 0f
+            calmSeconds = AUTO_START_SECONDS
+        }
     }
 
     /** Jumps on to the next scene now: Start, the toggle, or the end of the calm. */
@@ -97,11 +125,12 @@ internal class VoyageState(var playing: Boolean) {
         leaving = 0f
     }
 
-    fun dueToResume(): Boolean = !playing && leaving < 0f && idleSeconds > IDLE_RESUME_SECONDS
+    fun dueToResume(): Boolean = !playing && leaving < 0f && idleSeconds > calmSeconds
 
-    /** The jump away has landed: the voyage has the camera, in the next scene. */
+    /** The jump away has landed: the voyage has the camera, in the next scene or, [inPlace], this one. */
     fun arrive() {
         playing = true
+        inPlace = false
         leaving = -1f
         arrivedByWarp = true
         resetDrag()
@@ -150,8 +179,11 @@ internal class VoyageState(var playing: Boolean) {
     }
 
     companion object {
-        /** Seconds without a touch before the voyage jumps on to the next scene. */
-        const val IDLE_RESUME_SECONDS = 12f
+        /** Seconds without a touch in the scene before the voyage jumps on to the next scene. */
+        const val IDLE_RESUME_SECONDS = 8f
+
+        /** Seconds a scene picked in the dock, or Animate back on, stays still before the voyage goes on. */
+        const val AUTO_START_SECONDS = 4f
 
         /** How far the free camera may be dragged above or below its framing, in degrees. */
         const val MAX_PITCH_DEGREES = 60f

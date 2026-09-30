@@ -73,7 +73,48 @@ class VoyageStateTest {
     }
 
     @Test
-    fun `a dock tab stops the voyage until it is started again`() {
+    fun `a dock tab shows the scene still, then the voyage takes off on its own`() {
+        val state = playing()
+        state.drag(CosmosScene.Galaxy, 30f, 10f)
+        state.pick(flight)
+        assertFalse(state.playing)
+        assertEquals(0f, state.yaw, 0f)
+        state.run(VoyageState.AUTO_START_SECONDS - 0.5f)
+        assertFalse(state.dueToResume())
+        state.run(1f)
+        assertTrue(state.dueToResume())
+    }
+
+    @Test
+    fun `a take-off after a dock tab plays the scene picked, after a touch the next one`() {
+        val state = playing()
+        state.pick(flight)
+        assertTrue(state.inPlace)
+        state.resumeNow()
+        state.arrive()
+        assertFalse(state.inPlace)
+        state.takeOver(flight)
+        assertFalse(state.inPlace)
+        // A touch after a tab: the user has looked at the scene, the voyage moves on.
+        state.pick(flight)
+        state.takeOver(flight)
+        assertFalse(state.inPlace)
+    }
+
+    @Test
+    fun `a touch after a dock tab waits for the longer calm`() {
+        val state = playing()
+        state.pick(flight)
+        state.run(1f)
+        state.takeOver(flight)
+        state.run(VoyageState.IDLE_RESUME_SECONDS - 0.5f)
+        assertFalse(state.dueToResume())
+        state.run(1f)
+        assertTrue(state.dueToResume())
+    }
+
+    @Test
+    fun `Stop keeps the voyage stopped until it is started again`() {
         val state = playing()
         state.stop(flight)
         assertFalse(state.playing)
@@ -91,8 +132,7 @@ class VoyageStateTest {
         assertEquals(40f, state.yaw, 0f)
         assertEquals(VoyageState.MAX_PITCH_DEGREES, state.pitch, 0f)
         // The dock switch to the flow field clears it; the flow field ignores new drags.
-        state.stop(flight)
-        state.resetDrag()
+        state.pick(flight)
         state.drag(CosmosScene.Flow, 25f, 5f)
         assertEquals(0f, state.yaw, 0f)
         assertEquals(0f, state.pitch, 0f)
@@ -106,7 +146,7 @@ class VoyageStateTest {
         assertFalse(state.playing)
         assertFalse(state.dueToResume())
         // Animate back: the calm counts from now.
-        state.run(VoyageState.IDLE_RESUME_SECONDS - 0.5f)
+        state.run(VoyageState.AUTO_START_SECONDS - 0.5f)
         assertFalse(state.dueToResume())
         state.run(1f)
         assertTrue(state.dueToResume())

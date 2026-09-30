@@ -149,8 +149,9 @@ private const val ONE_FRAME_SECONDS = 1f / 60f
  * jumps (light streaks, a surging wide lens) or fades. [CosmosVoyageCamera] turns the table into
  * a pose each frame with a Catmull-Rom spline, a look-ahead aim and a little handheld sway. Any
  * touch in the scene hands the camera back, eased; after [VoyageState.IDLE_RESUME_SECONDS]
- * untouched the voyage jumps on to the next scene. Picking a scene in the dock stops it, like the
- * dock's accent; the accent or the Voyage toggle starts it again.
+ * untouched the voyage jumps on to the next scene. A scene picked in the dock is shown still for
+ * [VoyageState.AUTO_START_SECONDS], then the voyage takes off from it. Only the dock's accent or
+ * the Voyage toggle stops it for good; either starts it again.
  */
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
@@ -321,10 +322,8 @@ fun CosmosDemo(onBack: () -> Unit) {
         },
         dock = CosmosScene.entries.map { target ->
             sceneDockItem(target, scene) {
-                // Picking a scene stops the voyage, as the old tour did: Start brings it back.
-                voyageOn = false
-                voyage.stop(flight)
-                voyage.resetDrag()
+                // The scene picked is shown still; a few seconds of calm and the voyage goes on.
+                voyage.pick(flight)
                 scene = it
             }
         },
@@ -423,6 +422,8 @@ fun CosmosDemo(onBack: () -> Unit) {
                 val pose: FloatArray
                 val focal: Float
                 val caption: String?
+                // Where a jump away from the free camera lands, on the frame it does.
+                var landing: CosmosScene? = null
                 if (voyage.playing) {
                     val shot = CosmosVoyage.shotOf(current)
                     val ending = clock.sceneTime > shot.seconds
@@ -462,15 +463,17 @@ fun CosmosDemo(onBack: () -> Unit) {
                         focal = voyageCamera.focal
                         voyage.show(voyageCamera.fade, voyageCamera.streaks)
                         if (voyage.leaving >= 1f) {
+                            // A scene picked in the dock gets its own shot before the voyage moves on.
+                            landing = if (voyage.inPlace) current else CosmosVoyage.next(current)
+                            if (landing == current) clock.restart() else scene = landing
                             voyage.arrive()
-                            scene = CosmosVoyage.next(current)
                         }
                     } else {
                         pose = free
                         focal = freeFocal
                         voyage.settle(step)
                     }
-                    caption = if (voyage.playing) CosmosVoyage.openingCaption(CosmosVoyage.next(current)) else null
+                    caption = landing?.let(CosmosVoyage::openingCaption)
                 }
                 if (voyageCaption != caption) voyageCaption = caption
                 val exposure = if (current == CosmosScene.Galaxy) {
@@ -818,6 +821,11 @@ private class CosmosClock {
             sceneTime += ((nanos - lastNanos) / 1e9f).coerceIn(0f, 0.1f)
         }
         lastNanos = nanos
+    }
+
+    /** The scene on screen starts over: the voyage plays its shot again from the top. */
+    fun restart() {
+        sceneTime = 0f
     }
 }
 
