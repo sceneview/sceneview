@@ -903,11 +903,12 @@ demos:
       A looping bell on a sphere orbiting a drawn ring with pulsing wave
       shells; a glass legend shows source, listener (you), live distance,
       volume and a meter; Inverse | Linear falloff.
-    parity: fake
+    parity: identical
     evidence: >-
-      SpatialAudioDemo.swift:185,255-259 gain from the orbiter-to-origin
-      distance, a constant 0.6 m, so the falloff picker changes nothing; no
-      ring, waves, legend or meter; baseline D7
+      SpatialAudioDemo.swift: same 0.32 m orbit, 0.10 m emitter, three
+      shells, 64-segment ring; gain from the source-to-camera distance via
+      SpatialAudioNode.updateGain, which turns RealityKit's own rolloff off
+      so the picked curve is the only distance law; legend + meter
   - id: two-d-in-three-d
     androidStatus: Working
     iosStatus: working
