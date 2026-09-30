@@ -42,6 +42,9 @@ struct CosmosDemo: View {
                 .cameraGesturesEnabled(false)
                 .cameraPose(CosmosEngine.fixedCamera)
                 .bloom(BloomOptions(strength: engine.bloom, levels: 7, resolution: 512, threshold: true))
+                .gesture(SpatialTapGesture().onEnded { tap in
+                    engine.tap(tap.location, in: geometry.size, minRadius: Float(SceneViewTokens.Space.xl))
+                })
                 if !engine.ready {
                     VStack(spacing: SceneViewTokens.Space.md) {
                         ProgressView().tint(.white)
@@ -74,7 +77,7 @@ struct CosmosDemo: View {
                 engine.animating = true
                 engine.bloom = CosmosEngine.defaultBloom
             },
-            accessory: { DemoHint(engine.scene.caption) }
+            accessory: { DemoHint(engine.scene == .star ? engine.focus.caption : engine.scene.caption) }
         ) {
             VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
                 LabeledSlider(label: "Bloom", value: $engine.bloom, range: 0...1, decimals: 2)
@@ -119,6 +122,8 @@ final class CosmosEngine {
     static let revealSeconds: Float = 0.9
     /// Frozen per-scene times for QA captures and reduced motion: each at its most telling moment.
     static let qaTime: [Float] = [6, 3, 1.9, 4]
+    /// When the tour flies the Star scene's camera out to the ringed world, in seconds.
+    static let tourPlanetSeconds: Float = 5.5
 
     /// SceneView's own camera is parked here; the tick moves the whole world instead, so
     /// the Android camera path (`CosmosFraming.pose`) is reproduced exactly.
@@ -130,9 +135,14 @@ final class CosmosEngine {
     var frozen = false
     /// The Bloom slider: drives the post-process pass and the baked halos alike.
     var bloom: Float = defaultBloom
+    /// What the Star scene's camera looks at; a tap on the planet or the star flies to it.
+    private(set) var focus: CosmosFocus = .system
     private(set) var ready = false
 
     @ObservationIgnored var viewport = CGSize(width: 1206, height: 2622)
+    /// The ringed world's orbit for the current viewport aspect, and the Star camera's flight.
+    @ObservationIgnored private var system = CosmosSystem(aspect: 1206 / 2622)
+    @ObservationIgnored private var flight = CosmosFlight()
     @ObservationIgnored private let world = Entity()
     @ObservationIgnored private var programs: CosmosPrograms?
     @ObservationIgnored private var starField: GlowEntity?
@@ -156,6 +166,22 @@ final class CosmosEngine {
         scene = kind
         touring = false
         ensureBuilt(kind)
+    }
+
+    /// A tap at `location` on a `size` viewport, both in points. In the Star scene it flies the
+    /// camera to what it lands on — the ringed world first, then the star; a second tap on what
+    /// is already in focus, or a tap on empty space, pulls back to the whole system.
+    func tap(_ location: CGPoint, in size: CGSize, minRadius: Float) {
+        guard scene == .star, let pose = flight.lastPose else { return }
+        let hit = system.hit(pose: pose, time: flight.lastTime,
+                             width: Float(size.width), height: Float(size.height),
+                             x: Float(location.x), y: Float(location.y), minRadius: minRadius)
+        let next = (hit == nil || hit == focus) ? .system : hit!
+        if next != focus {
+            flight.start()
+            focus = next
+        }
+        flight.userSteered = true
     }
 
     /// Ticks once per display refresh — up to 120 Hz on ProMotion — and resumes loading
@@ -247,7 +273,8 @@ final class CosmosEngine {
             CosmosSceneLayers.build(kind, view: view, time: time)
         }.value
         do {
-            let entities = try await CosmosSceneEntities(kind: kind, layers: layers, programs: programs, time: time)
+            let entities = try await CosmosSceneEntities(kind: kind, layers: layers, programs: programs, time: time,
+                                                         restEye: view.eye, system: system)
             NSLog("[Cosmos] %@ built in %.2f s", kind.label, Date().timeIntervalSince(started))
             return (entities, landscape)
         } catch {
@@ -286,6 +313,8 @@ final class CosmosEngine {
         if shownScene != current {
             shownScene = current
             sceneTime = 0
+            focus = .system
+            flight.reset()
         } else if animating && !frozen {
             // Clamp a long hitch (backgrounding) so the scene does not jump ahead.
             sceneTime += min(max(dt, 0), 0.1)
@@ -325,11 +354,27 @@ final class CosmosEngine {
 
         let time = frozen ? Self.qaTime[current.rawValue] : sceneTime
         let reveal = frozen ? 1 : CosmosFraming.reveal(sceneTime, duration: Self.revealSeconds)
-        let camera = camera(current, time: time)
-        placeWorld(camera)
+        if abs(system.aspect - aspect) > 1e-4 { system = CosmosSystem(aspect: aspect) }
+        let pose: CosmosPose
+        if current == .star {
+            // The tour flies out to the ringed world once, partway through the scene.
+            if touring && !frozen && sceneTime > Self.tourPlanetSeconds && !flight.userSteered && focus == .system {
+                flight.userSteered = true
+                flight.start()
+                focus = .planet
+            }
+            // QA captures and reduced motion show where a flight lands, not a frame of it.
+            pose = flight.advance(now: CACurrentMediaTime(), target: system.pose(focus, time: time), instant: frozen)
+        } else {
+            let camera = camera(current, time: time)
+            pose = CosmosPose(eye: camera.eye, target: .zero, up: camera.up)
+        }
+        flight.record(pose, time: time)
+        placeWorld(pose)
 
         starField?.setIntensity(reveal * (current == .flow ? 0.35 : 1), time: time)
-        entities.update(time: time, reveal: reveal, bloom: bloom, eye: camera.eye, live: !frozen)
+        entities.update(time: time, reveal: reveal, bloom: bloom, eye: pose.eye, live: !frozen,
+                        system: system, focal: focal, now: CACurrentMediaTime())
     }
 
     /// Where `kind`'s camera is at `time`, and which way is up on screen. The flow field is
@@ -346,8 +391,8 @@ final class CosmosEngine {
     }
 
     /// Moves the world so that SceneView's fixed camera sees it from the Android pose.
-    private func placeWorld(_ pose: (eye: SIMD3<Float>, up: SIMD3<Float>)) {
-        let desired = Self.lookAt(eye: pose.eye, target: .zero, up: pose.up)
+    private func placeWorld(_ pose: CosmosPose) {
+        let desired = Self.lookAt(eye: pose.eye, target: pose.target, up: pose.up)
         let camera = Self.lookAt(eye: Self.fixedCamera.cameraPosition(), target: Self.fixedCamera.target)
         world.transform = Transform(matrix: camera * desired.inverse)
     }
@@ -531,13 +576,19 @@ final class CosmosSceneEntities {
     /// The scene time `churn` last saw: the surface clock advances by its increments.
     private var churnClock: Float = 0
     private let churnTime: Float
+    /// The eye the scene's sprites and discs were baked for: the Star camera flies away from it.
+    private let restEye: SIMD3<Float>
+    /// The Star scene's ringed world, its rings and its orbit trail.
+    private var world: CosmosWorld?
 
     /// Seconds between two baked frames of the star's surface; the ball cross-fades between them.
     static let churnStep: Float = 1.5
 
-    init(kind: CosmosSceneKind, layers: CosmosSceneLayers, programs: CosmosPrograms, time: Float) async throws {
+    init(kind: CosmosSceneKind, layers: CosmosSceneLayers, programs: CosmosPrograms, time: Float,
+         restEye: SIMD3<Float>, system: CosmosSystem) async throws {
         self.kind = kind
         churnTime = time
+        self.restEye = restEye
         let program = programs.additive
         if let layer = layers.strokes { strokes = try await GlowEntity(layer, program: program) }
         if let layer = layers.main { main = try await GlowEntity(layer, program: program) }
@@ -567,6 +618,14 @@ final class CosmosSceneEntities {
             for ball in balls { spin.addChild(ball.entity) }
             if let strokes { spin.addChild(strokes.entity) }
             for glow in [main, corona].compactMap({ $0 }) + limbs.map(\.glow) { root.addChild(glow.entity) }
+            // Its world opens on the whole system: lit for that view before its first frame.
+            let world = try await CosmosWorld(programs: programs,
+                                              light: CosmosWorldLight(system: system, time: time,
+                                                                      eye: system.systemPose(time).eye),
+                                              time: time)
+            root.addChild(world.planet)
+            root.addChild(world.trail)
+            self.world = world
         case .galaxy:
             // Dust has to land on the stars it dims, whatever the depth sort thinks.
             let group = ModelSortGroup()
@@ -583,7 +642,10 @@ final class CosmosSceneEntities {
     /// - Parameters:
     ///   - eye: where the camera is, in this scene's coordinates.
     ///   - live: the clock runs (not a frozen QA or reduced-motion frame), so the star churns.
-    func update(time: Float, reveal: Float, bloom: Float, eye: SIMD3<Float>, live: Bool) {
+    ///   - system, focal, now: the ringed world's orbit, the lens and a monotonic clock in
+    ///     seconds, for the Star scene's world.
+    func update(time: Float, reveal: Float, bloom: Float, eye: SIMD3<Float>, live: Bool,
+                system: CosmosSystem, focal: Float, now: Double) {
         strokes?.scrollDashes(time: time)
         switch kind {
         case .galaxy:
@@ -596,13 +658,25 @@ final class CosmosSceneEntities {
             spin.scale = SIMD3(repeating: 1 + 0.012 * pulse)
             let surface = reveal * (1 + 0.08 * pulse) / CosmosSceneLayers.starPulse
             churn(time: live ? time : 0, intensity: surface)
+            // The camera flies: the limb disc and the corona were sized for the rest distance,
+            // so they are resized for the one the eye is at, and the halo — concentric sprites
+            // baked facing the rest eye — turns as a whole to face it.
+            let distance = max(simd_length(eye), 1.01)
+            let rest = max(simd_length(restEye), 1.01)
+            let limbScale = Self.limbSilhouette(distance) / Self.limbSilhouette(rest)
+            let coronaScale = Self.coronaSilhouette(distance) / Self.coronaSilhouette(rest)
             for limb in limbs {
                 limb.glow.setIntensity(surface)
-                limb.glow.entity.scale = spin.scale
+                limb.glow.entity.scale = spin.scale * SIMD3(limbScale, limbScale, 1)
+            }
+            corona?.entity.scale = SIMD3(repeating: coronaScale)
+            if let main {
+                main.entity.orientation = simd_quatf(from: simd_normalize(restEye), to: simd_normalize(eye))
             }
             strokes?.setIntensity(reveal)
             main?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
             corona?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
+            world?.update(system: system, time: time, eye: eye, reveal: reveal, now: now, focal: focal)
         case .burst:
             let envelope = CosmosMeshes.burstEnvelope((time / CosmosEngine.burstPeriod).truncatingRemainder(dividingBy: 1))
             strokes?.reveal(upTo: envelope.x)
@@ -704,6 +778,18 @@ final class CosmosSceneEntities {
     /// `churnBaking` stays set until it returns; the next `update` after that bakes again.
     func cancelChurn() {
         churnTask?.cancel()
+    }
+
+    /// The star's silhouette radius on the plane of its limb disc (`GlowBuilder.limb`) seen
+    /// from `distance`: the disc stays in that plane and is scaled across to cover it.
+    private static func limbSilhouette(_ distance: Float) -> Float {
+        (distance - 1.02) * tan(asin(min(1 / distance, 0.999)))
+    }
+
+    /// The star's silhouette radius on the corona's plane through its centre
+    /// (`GlowBuilder.corona`) seen from `distance`.
+    private static func coronaSilhouette(_ distance: Float) -> Float {
+        1 / max(1 - 1 / (distance * distance), 1e-3).squareRoot()
     }
 
     /// Width of a churned surface frame; the build's frame 0 keeps the full 1024.
