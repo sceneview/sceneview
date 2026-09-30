@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.automirrored.filled.ViewQuilt
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArPlaneNodeFragment : DemoFragment {
         titleRes = R.string.demo_ar_plane_node_title,
         subtitleRes = R.string.demo_ar_plane_node_subtitle,
         category = DemoCategory.PLACE_AR,
-        icon = Icons.Filled.Layers,
-        order = 11,
+        icon = Icons.AutoMirrored.Filled.ViewQuilt,
+        order = 25,
         tags = setOf("ar", "plane", "planenode", "lifecycle", "callback"),
     )
 

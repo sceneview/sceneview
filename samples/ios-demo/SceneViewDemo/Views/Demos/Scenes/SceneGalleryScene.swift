@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        square.grid.3x3.fill
-// @order       3
+// @order       34
 import SwiftUI
 
 enum SceneGalleryScene: DemoScene {

@@ -123,7 +123,7 @@ struct ARPointCloudDemo: View {
 
     private var simulatorPlaceholder: some View {
         VStack(spacing: 16) {
-            Image(systemName: "camera.metering.spot")
+            Image(systemName: "aqi.medium")
                 .font(.system(size: 56))
                 .foregroundStyle(.secondary)
             Text("AR Point Cloud")

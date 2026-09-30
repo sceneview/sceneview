@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        circle.lefthalf.filled
-// @order       23
+// @order       10
 import SwiftUI
 
 enum OcclusionMaterialScene: DemoScene {

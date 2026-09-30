@@ -3,8 +3,8 @@ package io.github.sceneview.demo.demos
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -349,10 +349,11 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         // bottom band (and over the camera on the AR View tab): a `primaryContainer` FAB
         // and a `secondaryContainer` disc, i.e. theme colours over a camera frame that has
         // no theme. The dock's Controls item (Settings) is appended by the scaffold, so
-        // this screen's dock is Models · Reset · Settings.
+        // this screen's dock is Models · Reset · Settings. Models is `Category`, the same
+        // glyph as the Model Viewer's Models item: one action, one icon across the app.
         dock = listOf(
             DockItem(
-                icon = Icons.Filled.ViewInAr,
+                icon = Icons.Filled.Category,
                 label = stringResource(R.string.ar_dock_models_label),
                 caption = stringResource(R.string.ar_dock_models_caption),
                 onClick = picker::openSheet,
