@@ -635,7 +635,7 @@ final class RollingBallsCoordinator {
     @ObservationIgnored private var ballEntities: [Int: Entity] = [:]
     /// Ball positions before the last fixed step, to draw each frame between two steps.
     @ObservationIgnored private var previousPositions: [Int: SIMD3<Float>] = [:]
-    @ObservationIgnored private var frameLink: CosmosFrameLink?
+    @ObservationIgnored private var frameLink: RollingBallsFrameLink?
     @ObservationIgnored private var lastTick: CFTimeInterval?
     @ObservationIgnored private var lastPublish: CFTimeInterval = 0
     @ObservationIgnored private var accumulator: TimeInterval = 0
@@ -731,7 +731,7 @@ final class RollingBallsCoordinator {
     /// Starts the display-link tick; a no-op while it is already running.
     func start() {
         guard frameLink == nil else { return }
-        frameLink = CosmosFrameLink { [weak self] timestamp in self?.tick(at: timestamp) }
+        frameLink = RollingBallsFrameLink { [weak self] timestamp in self?.tick(at: timestamp) }
     }
 
     // MARK: Pure tilt maths
@@ -877,5 +877,40 @@ final class RollingBallsCoordinator {
             ballEntities[ball.id] = node.entity
         }
         publishCounts()
+    }
+}
+
+// MARK: - Frame link
+
+/// Calls `tick` once per display refresh with the frame's `targetTimestamp` — the vsync-aligned
+/// time the frame will be shown at — so the tray advances at the display's own rate (120 Hz on
+/// ProMotion) with evenly spaced time steps.
+@MainActor
+final class RollingBallsFrameLink {
+    private let target: Target
+    private let link: CADisplayLink?
+
+    init(_ tick: @escaping @MainActor (CFTimeInterval) -> Void) {
+        target = Target(tick)
+        #if os(macOS)
+        // UIKit's `CADisplayLink(target:selector:)` is unavailable on macOS; AppKit vends the
+        // link from the screen it follows (macOS 14+).
+        link = (NSScreen.main ?? NSScreen.screens.first)?
+            .displayLink(target: target, selector: #selector(Target.step(_:)))
+        #else
+        link = CADisplayLink(target: target, selector: #selector(Target.step(_:)))
+        #endif
+        link?.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        link?.add(to: .main, forMode: .common)
+    }
+
+    func invalidate() { link?.invalidate() }
+
+    /// `CADisplayLink` needs an Objective-C target; it retains it, not the other way round.
+    @MainActor
+    private final class Target: NSObject {
+        private let tick: @MainActor (CFTimeInterval) -> Void
+        init(_ tick: @escaping @MainActor (CFTimeInterval) -> Void) { self.tick = tick }
+        @objc func step(_ link: CADisplayLink) { tick(link.targetTimestamp) }
     }
 }

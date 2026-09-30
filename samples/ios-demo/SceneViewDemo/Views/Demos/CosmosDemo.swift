@@ -742,25 +742,20 @@ final class CosmosPowerState {
     }
 }
 
-/// Calls `tick` once per display refresh, following ProMotion's rate. The timestamped form
-/// passes the frame's `targetTimestamp`, the vsync-aligned time the frame will be shown at.
+/// Calls `tick` once per display refresh, following ProMotion's rate.
 @MainActor
 final class CosmosFrameLink {
     private let target: Target
     private let link: CADisplayLink?
 
-    convenience init(_ tick: @escaping @MainActor () -> Void) {
-        self.init { (_: CFTimeInterval) in tick() }
-    }
-
-    init(_ tick: @escaping @MainActor (CFTimeInterval) -> Void) {
+    init(_ tick: @escaping @MainActor () -> Void) {
         target = Target(tick)
         #if os(macOS)
         // UIKit's `CADisplayLink(target:selector:)` is unavailable on macOS; AppKit vends the
         // link from the screen it follows (macOS 14+).
-        link = (NSScreen.main ?? NSScreen.screens.first)?.displayLink(target: target, selector: #selector(Target.step(_:)))
+        link = (NSScreen.main ?? NSScreen.screens.first)?.displayLink(target: target, selector: #selector(Target.step))
         #else
-        link = CADisplayLink(target: target, selector: #selector(Target.step(_:)))
+        link = CADisplayLink(target: target, selector: #selector(Target.step))
         #endif
         link?.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
         link?.add(to: .main, forMode: .common)
@@ -772,8 +767,8 @@ final class CosmosFrameLink {
     /// The link fires on the main run loop it was added to.
     @MainActor
     private final class Target: NSObject {
-        private let tick: @MainActor (CFTimeInterval) -> Void
-        init(_ tick: @escaping @MainActor (CFTimeInterval) -> Void) { self.tick = tick }
-        @objc func step(_ link: CADisplayLink) { tick(link.targetTimestamp) }
+        private let tick: @MainActor () -> Void
+        init(_ tick: @escaping @MainActor () -> Void) { self.tick = tick }
+        @objc func step() { tick() }
     }
 }
