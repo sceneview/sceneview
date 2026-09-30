@@ -170,8 +170,10 @@ struct GestureEditingDemo: View {
             .foregroundStyle(.white.opacity(0.8))
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
+            // Chrome over the stage: the app's glass (Liquid Glass on iOS 26,
+            // the floor + material + border stack before), not a bare material
+            // that resolves to the black stage behind it.
+            .glassBackground(in: Capsule())
             .padding(.top, 12)
             .allowsHitTesting(false)
             Spacer()
@@ -191,8 +193,7 @@ struct GestureEditingDemo: View {
                 .font(.caption2)
                 .foregroundStyle(.white)
                 .padding(8)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .glassBackground(in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 
