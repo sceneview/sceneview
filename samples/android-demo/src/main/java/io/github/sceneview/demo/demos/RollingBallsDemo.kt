@@ -285,7 +285,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
     // Soft shadows: the board hangs above the stage floor, and a hard-edged shadow there reads as
     // a cut-out. DPCF widens the penumbra with the distance to the caster, like a real softbox.
     LaunchedEffect(view) {
-        view.shadowType = View.ShadowType.DPCF
+        view.setShadowType(View.ShadowType.DPCF)
         renderInvalidator.requestRender()
     }
     val physicsEnvironment = remember(studioLight, stageSkybox) {
@@ -751,7 +751,7 @@ private class BoardMaterials(
     val rubber: List<MaterialInstance>,
 ) {
     val all: List<MaterialInstance>
-        get() = listOf(field, frameAlongX, frameAlongZ, frameAlongY, floor, steel, glass) + rubber
+        get() = listOf(this.field, frameAlongX, frameAlongZ, frameAlongY, floor, steel, glass) + rubber
 }
 
 @Composable

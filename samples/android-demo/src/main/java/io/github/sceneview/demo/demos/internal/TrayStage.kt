@@ -38,7 +38,7 @@ object TrayStage {
     const val STEEL_ROUGHNESS: Float = 0.06f
 
     /** `stage-tray-glass` — the glass marble: a pale aqua tint on the light passing through. */
-    val GLASS_COLOR: Color = Color(0xFFDDF2F4)
+    val GLASS_COLOR: Color = Color(0xFFBFE6EA)
     const val GLASS_ROUGHNESS: Float = 0.02f
     const val GLASS_IOR: Float = 1.5f
 
