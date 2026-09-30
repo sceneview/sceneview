@@ -172,7 +172,7 @@ struct MovableLightDemo: View {
                 Text(loadError)
                     .font(.caption)
                     .padding()
-                    .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
             }
 
         }
