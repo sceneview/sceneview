@@ -238,9 +238,6 @@ fun HomeScreen(
     // selected the chip already names it, and a lone header above a filtered grid
     // is chrome repeating what the user just tapped.
     val showSections = remember(visible) { visible.map { it.category }.distinct().size > 1 }
-    // Each row's place in its group: a group restarts at every section header, and the
-    // place decides which of the row's corners are the group's outer corners.
-    val groupPlaces = remember(visible, showSections) { groupPlaces(visible, showSections) }
 
     // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
     // featured page they feed (#3566). Derived from the demo's own declared
@@ -423,13 +420,13 @@ fun HomeScreen(
                                 .cascadeIn(cascade.delayFor(cascadeIndex++)),
                         )
                     }
-                    featuredShelf.forEachIndexed { index, demo ->
+                    featuredShelf.forEach { demo ->
                         val rowDelay = cascade.delayFor(cascadeIndex++)
                         item(key = "featured-${demo.id}") {
                             DemoListRow(
                                 demo = demo,
                                 onClick = { onDemoClick(demo.id) },
-                                shape = rowShape(index, featuredShelf.size, columns),
+                                style = HomeRowStyle.Banner,
                                 freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                                 modifier = Modifier
                                     .animateItem()
@@ -492,11 +489,10 @@ fun HomeScreen(
                     previousCategory = demo.category
                     val cardDelay = cascade.delayFor(cascadeIndex++)
                     item(key = "demo-${demo.id}") {
-                        val place = groupPlaces[demo.id]
                         DemoListRow(
                             demo = demo,
                             onClick = { onDemoClick(demo.id) },
-                            shape = rowShape(place?.index ?: 0, place?.count ?: 1, columns),
+                            style = HomeRowStyle.Fused,
                             freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                             modifier = Modifier
                                 .animateItem(
@@ -571,8 +567,9 @@ private fun SectionHeader(
         modifier = modifier
             .fillMaxWidth()
             .padding(
-                top = topGap - home.rowGap,
-                bottom = home.sectionHeaderBottomGap - home.rowGap,
+                // The first header's gap (`space-sm`) is under a row gap: never negative.
+                top = (topGap - home.rowGap).coerceAtLeast(0.dp),
+                bottom = (home.sectionHeaderBottomGap - home.rowGap).coerceAtLeast(0.dp),
             )
             .testTag(testTag),
     )
@@ -717,26 +714,6 @@ const val HERO_DEMO_ID = "model-viewer"
  * bespoke full-span artwork; the rest reuse their own grid captures.
  */
 private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "lighting")
-
-/** A row's place in its group: [index] of [count]. */
-internal data class GroupPlace(val index: Int, val count: Int)
-
-/**
- * Splits [visible] into groups at each section header, as the list lays them out, and
- * gives every demo its place in its group. Without sections the whole list is one group.
- */
-internal fun groupPlaces(visible: List<DemoEntry>, showSections: Boolean): Map<String, GroupPlace> {
-    val groups = mutableListOf<MutableList<DemoEntry>>()
-    var category: String? = null
-    visible.forEach { demo ->
-        if (groups.isEmpty() || (showSections && demo.category != category)) groups += mutableListOf<DemoEntry>()
-        groups.last() += demo
-        category = demo.category
-    }
-    return groups.flatMap { group ->
-        group.mapIndexed { index, demo -> demo.id to GroupPlace(index, group.size) }
-    }.toMap()
-}
 
 /**
  * The "Featured" group right under the hero: the samples we push, in priority

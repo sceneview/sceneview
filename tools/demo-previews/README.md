@@ -47,7 +47,7 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | Card | Golden | Crop (centre x, centre y, width, in golden pixels) |
 |---|---|---|
 | `materials` | `materials_default.png` | 540, 1102, 1080 — the nine-sphere grid |
-| `debug-overlay` | `debugoverlay_default.png` | 540, 800, 1400, black-padded — the stats HUD over its sphere |
+| `debug-overlay` | — | Superseded 2026-09-30: the card is now the iOS pair, see "Cards shared with Android" below. Was 540, 800, 1400, black-padded — the stats HUD over its sphere |
 | `camera-gestures` | `cameragestures_default.png` | 575, 1065, 1000 — the whole stage |
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
@@ -117,7 +117,8 @@ cp /tmp/ios/jpg/preview_fog_dark.jpg            $X/preview_fog.imageset/preview_
 cp /tmp/ios/jpg/preview_hero_model_viewer.jpg   $X/preview_hero_model_viewer.imageset/
 ```
 
-The other iOS imagesets (`preview_lighting`, `preview_camera_controls`, the AR cards, …) were
+The iOS cards of demos Android also lists are copies of the Android cards (see "Cards shared
+with Android" below). The other iOS imagesets were
 not produced by this pipeline and are not in the table; regenerate one only once its prompt is
 recorded here, so the recorded prompt is always the one that produced the committed image
 (#3474).
@@ -147,27 +148,36 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
 | `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
 
-`preview_rolling_balls` (#4083) is the same kind of capture on an iPhone 17 Pro simulator
-(iOS 26, 1206×2622), launched with `-demo rolling-balls`: the opening shot at rest, the
-same seven balls as the Android card. Crop: 603, 1377, 1121. One capture per appearance
-(`preview_rolling_balls_dark.jpg` for dark): the stage is the themed stage sky, as on Android.
+### Cards shared with Android (home rows, 2026-09-30)
 
-`preview_splat_preview` is the same kind of capture of `splat-preview`, launched with
-`-demo splat-preview`: the opening shot of the whole scan. It is not the Android card on
-purpose — iOS draws the capture as solid dots, not gaussian splats, so the card shows what the
-iOS screen shows. Crop: 603, 1042, 1206. One capture per appearance
-(`preview_splat_preview_dark.jpg` for dark): the stage is the themed stage sky.
+A demo both apps list shows **the same picture on both**: same source, same 5:4 crop, same
+light and dark pair. The home rows now dissolve the picture into a tint taken from it
+(`home-row-ambient`, `DESIGN.md`), so a different picture on each platform is a different
+row colour, not only a different thumbnail. Twelve iOS imagesets therefore carry the Android
+card, re-encoded from its two WebPs as JPEG q90 (`preview_<id>.jpg` light,
+`preview_<id>_dark.jpg` dark):
 
-The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
-same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their
-crops are in that capture's pixels. Same 5:4 crop, 800×640 JPEG q85, one universal JPEG.
-
-| Imageset | Capture | Crop |
+| Imageset | Android card | Replaced |
 |---|---|---|
-| `preview_ar_rerun` | `ar-rerun`, "Watch a sample session", 7 s into the bundled replay | 603, 1125, 1206 |
-| `preview_animation` | `animation`, bundled `cyberpunk_character` mid-clip | 603, 1420, 1206 |
-| `preview_ar_placement` | Not an AR capture: the Simulator has no ARKit. The Toy Car the demo places by default, opened in `model-viewer` | 603, 1330, 1206 |
-| `preview_ar_record_playback` | Not an AR capture, same reason. The Damaged Helmet the recorder places, opened in `model-viewer` | 603, 1300, 1206 |
+| `preview_animation` | `animation-physics` | a simulator capture of the bundled `cyberpunk_character` (Featured, #3907), light only |
+| `preview_ar_placement` | `ar-placement` | the Toy Car opened in `model-viewer` (no ARKit on the Simulator), light only |
+| `preview_ar_record_playback` | `ar-record-playback` | the Damaged Helmet opened in `model-viewer`, light only |
+| `preview_ar_rerun` | `ar-rerun` | a capture of the bundled replay 7 s in, light only |
+| `preview_camera_controls` | `camera-gestures` | a helmet-only render |
+| `preview_custom_mesh` | `custom-geometry` | a sphere-and-axes render |
+| `preview_lighting` | `lighting` | a spot-lit helmet render |
+| `preview_lines_paths` | `lines-paths` | a wireframe arch render |
+| `preview_materials` | `materials` | a helmet render (the `gen.py` row above is superseded) |
+| `preview_model_viewer` | `model-viewer` | the same helmet, a different crop |
+| `preview_rolling_balls` | `rolling-balls` | its own simulator capture (#4083) |
+| `preview_splat_preview` | `splat-preview` | its own simulator capture of the dot rendering (#4073) |
+
+The other way round, Android's `debug-overlay` card is the iOS pair (the `gen.py`
+`debug-overlay` prompt of #3308): the golden crop in the table above was a black frame with
+one small sphere, which the dissolving row turned into a black smear. WebP q85.
+
+The replaced files are in git history; bring one back only with a capture of the home next
+to it.
 
 ## Home hero banner
 
