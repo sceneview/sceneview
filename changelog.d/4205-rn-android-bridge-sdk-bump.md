@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **The React Native Android bridge no longer compiles against a 42-release-old SceneView ([#4205](https://github.com/sceneview/sceneview/issues/4205)).** `react-native/react-native-sceneview/android/build.gradle.kts` depended on `io.github.sceneview:(ar)sceneview:4.7.0` while the npm package itself, the README, and Maven Central all track 4.49.0. Bumped to 4.49.0 — the current latest published release — and verified against the real published artifacts via `tools/rn-android-compile`: no API migration was needed.

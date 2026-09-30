@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **The Android demo Home shows each demo's picture again, and its header turns to frosted glass ([#4201](https://github.com/sceneview/sceneview/pull/4201)).** Every row in the list now leads with a 5:4 picture of the demo, about four times the old thumbnail, so you can see the whole scene instead of a small crop. The list stays one column and titles are never cut. Once the list scrolls under the header, the header blurs the rows behind it instead of hiding them behind an opaque bar (Android 12 and later), in light and dark.
