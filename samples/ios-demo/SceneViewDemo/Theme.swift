@@ -340,16 +340,11 @@ enum SceneViewTokens {
             dark: Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
         )
         /// `surface-container-high` — #F1F3F5 / #2C3546, "a container on a
-        /// container": `home-row-bg`, the grey tile of every home list row.
+        /// container". Its dark luminance is the one a home row's ambient tint
+        /// is solved to (`HomeAmbient.luminanceDark`).
         static let surfaceContainerHigh = Color(
             light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
             dark: Color(red: 0x2C / 255, green: 0x35 / 255, blue: 0x46 / 255)
-        )
-        /// `surface-container-highest` — #E9ECEF / #354056: one step above a
-        /// home row, the ground of a row's glyph thumb while it has no capture.
-        static let surfaceContainerHighest = Color(
-            light: Color(red: 0xE9 / 255, green: 0xEC / 255, blue: 0xEF / 255),
-            dark: Color(red: 0x35 / 255, green: 0x40 / 255, blue: 0x56 / 255)
         )
         /// Home-section accents, sampled evenly along `gradient-hero` —
         /// `primary` (#005BC1 / #A4C1FF) to `tertiary` (#6446CD / #D2A8FF) —
@@ -532,34 +527,44 @@ enum SceneViewTokens {
         /// Fraction of the band's scroll travel the sky and the flight lag behind.
         static let heroParallax: CGFloat = 0.35
 
-        // Home list (`home-row-*` in DESIGN.md): under the 3D header the Home
-        // is a standard grouped list — two-line rows on neutral grey tiles, one
-        // vertical scroll, no carousel. Android's `SceneViewTokens.Home.row*`.
+        // Home list (`home-row-*` / `home-banner-*` in DESIGN.md): under the 3D
+        // header every demo is a row whose picture runs to the row's edges and
+        // dissolves into the picture's own colour (`HomeAmbient`). Android's
+        // `SceneViewTokens.Home.row*` / `banner*`, same values.
 
-        /// `home-row-thumb` — the leading glyph square of a utility row
-        /// ("Browse online models"), `radius-sm`.
-        static let rowThumb: CGFloat = 56
-        /// `home-row-media` — a demo row's leading picture: 120 pt wide, 5:4
-        /// like the captures (96 pt high), so the generated scene reads instead
-        /// of a 56 pt crop of it — about 3.7x the area. Android's
-        /// `Home.rowMediaWidth` / `rowMediaAspect` (#4201).
-        static let rowMediaWidth: CGFloat = 120
-        static let rowMediaAspect: CGFloat = 5.0 / 4.0
-        /// Glyph inside a `home-row-thumb` that has no capture.
-        static let rowThumbGlyph: CGFloat = 28
-        /// `home-row-min-height` — the two-line list item with a 56 pt image.
-        static let rowMinHeight: CGFloat = 72
-        /// Row insets: `space-md` across (also the thumb-to-text gap), `space-sm` down.
-        static let rowPaddingHorizontal: CGFloat = 16
-        static let rowPaddingVertical: CGFloat = 8
+        /// `home-row-height` — minimum height of a `home-row`; it grows with
+        /// Dynamic Type, never truncates.
+        static let rowHeight: CGFloat = 116
+        /// `home-row-radius` — every row is its own rounded card (`radius-lg`).
+        static let rowRadius: CGFloat = 20
+        /// `home-row-gap` — page between two rows.
+        static let rowGap: CGFloat = 10
+        /// `home-row-media-fraction` — share of a `home-row`'s width the picture
+        /// covers, top to bottom.
+        static let rowMediaFraction: CGFloat = 0.5
+        /// `home-row-dissolve` — where, along the picture, the dissolve into the
+        /// row's tint starts.
+        static let rowDissolveStart: CGFloat = 0.42
+        /// `home-row-text-start` — where the text starts, as a share of the row:
+        /// over the last, nearly clear part of the dissolve.
+        static let rowTextStartFraction: CGFloat = 0.44
+        /// Text insets of a row: `space-md` at the trailing edge, 14 pt down.
+        static let rowTextPaddingEnd: CGFloat = 16
+        static let rowTextPaddingVertical: CGFloat = 14
         /// Title-to-subtitle gap inside a row.
-        static let rowTextGap: CGFloat = 2
-        /// `home-row-gap` — the seam of page between two rows of one group.
-        static let rowGap: CGFloat = 2
-        /// `home-row-radius-outer` — a group's four outer corners (`radius-md`).
-        static let rowRadiusOuter: CGFloat = 16
-        /// `home-row-radius-inner` — every corner a row shares with a neighbour.
-        static let rowRadiusInner: CGFloat = 4
+        static let rowTextGap: CGFloat = 4
+        /// The glyph of a row with no capture ("Browse online models").
+        static let rowGlyph: CGFloat = 40
+        /// Opacity of the accent wash behind that glyph.
+        static let rowGlyphWashAlpha: Double = 0.18
+        /// `home-banner-aspect` — a `home-banner`'s picture is twice as wide as high.
+        static let bannerAspect: CGFloat = 2
+        /// `home-banner-dissolve` — where, down the picture, the dissolve starts.
+        static let bannerDissolveStart: CGFloat = 0.55
+        /// How far a banner's caption is pulled up into its dissolve.
+        static let bannerCaptionOverlap: CGFloat = 28
+        /// Side insets of a banner's caption.
+        static let bannerTextPaddingHorizontal: CGFloat = 16
         /// `home-row-min-width` — from two of these across, the list goes
         /// multi-column (an iPad).
         static let rowMinWidth: CGFloat = 340

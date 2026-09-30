@@ -125,35 +125,62 @@ final class DemoFreshnessTests: XCTestCase {
     }
 }
 
-/// Home list rows (#4186) — Android's `HomeListRowTest`.
+/// Home list rows (#4186) — Android's `HomeListRowTest`: the column
+/// arithmetic, and the colour each row takes from its picture.
 final class HomeListRowTests: XCTestCase {
-
-    func testOneColumnGroupRoundsOnlyItsOuterCorners() {
-        let first = HomeRowCorners(index: 0, count: 3, columns: 1)
-        let middle = HomeRowCorners(index: 1, count: 3, columns: 1)
-        let last = HomeRowCorners(index: 2, count: 3, columns: 1)
-        XCTAssertEqual(first, HomeRowCorners(topLeading: true, topTrailing: true, bottomTrailing: false, bottomLeading: false))
-        XCTAssertEqual(middle, HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: false, bottomLeading: false))
-        XCTAssertEqual(last, HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: true, bottomLeading: true))
-        XCTAssertEqual(HomeRowCorners(index: 0, count: 1, columns: 1), .lone)
-    }
-
-    func testShortLastLineEndsInAStep() {
-        // 5 rows, 2 across: the last line holds one row, so the row above the
-        // step owns the block's bottom-trailing corner.
-        XCTAssertEqual(HomeRowCorners(index: 1, count: 5, columns: 2),
-                       HomeRowCorners(topLeading: false, topTrailing: true, bottomTrailing: false, bottomLeading: false))
-        XCTAssertEqual(HomeRowCorners(index: 3, count: 5, columns: 2),
-                       HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: true, bottomLeading: false))
-        XCTAssertEqual(HomeRowCorners(index: 4, count: 5, columns: 2),
-                       HomeRowCorners(topLeading: false, topTrailing: false, bottomTrailing: true, bottomLeading: true))
-    }
 
     func testListColumnsFollowTheMinimumRowWidth() {
         XCTAssertEqual(homeListColumns(width: 0), 1)
         XCTAssertEqual(homeListColumns(width: 353), 1)   // iPhone 17 Pro
-        XCTAssertEqual(homeListColumns(width: 682), 2)   // 340 · 2 + one seam
-        XCTAssertEqual(homeListColumns(width: 1_024), 3) // 3 × 340 + 2 seams
+        XCTAssertEqual(homeListColumns(width: 690), 2)   // 340 · 2 + one 10 pt gap
+        XCTAssertEqual(homeListColumns(width: 1_040), 3) // 3 × 340 + 2 gaps
+    }
+
+    func testTheAmbientTintLandsOnTheAppearanceLuminanceWhateverThePicture() {
+        let seeds: [HomeAmbient.RGB] = [
+            .init(r: 1, g: 1, b: 1), .init(r: 0, g: 0, b: 0),
+            .init(r: 0xE2 / 255.0, g: 0x73 / 255.0, b: 0x4F / 255.0),
+            .init(r: 0x1E / 255.0, g: 0x3A / 255.0, b: 0x8A / 255.0),
+            .init(r: 1, g: 0xEB / 255.0, b: 0x3B / 255.0),
+        ]
+        for seed in seeds {
+            XCTAssertEqual(HomeAmbient.luminance(HomeAmbient.tint(seed: seed, dark: true)),
+                           HomeAmbient.luminanceDark, accuracy: 0.002)
+            XCTAssertEqual(HomeAmbient.luminance(HomeAmbient.tint(seed: seed, dark: false)),
+                           HomeAmbient.luminanceLight, accuracy: 0.002)
+        }
+    }
+
+    func testTextKeepsItsContrastOnEveryTint() {
+        let onSurfaceDark = HomeAmbient.RGB(r: 0xF3 / 255.0, g: 0xF4 / 255.0, b: 0xF6 / 255.0)
+        let onSurfaceDimDark = HomeAmbient.RGB(r: 0xA4 / 255.0, g: 0xAB / 255.0, b: 0xB7 / 255.0)
+        let onSurfaceDimLight = HomeAmbient.RGB(r: 0x3D / 255.0, g: 0x46 / 255.0, b: 0x54 / 255.0)
+        let seeds: [HomeAmbient.RGB] = [
+            .init(r: 1, g: 1, b: 1),
+            .init(r: 0xE2 / 255.0, g: 0x73 / 255.0, b: 0x4F / 255.0),
+            .init(r: 0x1E / 255.0, g: 0x3A / 255.0, b: 0x8A / 255.0),
+            .init(r: 0, g: 0xC8 / 255.0, b: 0x53 / 255.0),
+        ]
+        for seed in seeds {
+            let dark = HomeAmbient.tint(seed: seed, dark: true)
+            let light = HomeAmbient.tint(seed: seed, dark: false)
+            XCTAssertGreaterThanOrEqual(contrast(onSurfaceDark, dark), 7)
+            XCTAssertGreaterThanOrEqual(contrast(onSurfaceDimDark, dark), 4.5)
+            XCTAssertGreaterThanOrEqual(contrast(onSurfaceDimLight, light), 4.5)
+        }
+    }
+
+    func testAColouredSubjectOnAGreyFloorReadsAsItsColour() {
+        // Nine grey pixels and one orange one: the chroma weighting keeps the hue.
+        let grey: [UInt8] = [0x80, 0x80, 0x80, 0xFF]
+        let orange: [UInt8] = [0xFF, 0x7A, 0x1A, 0xFF]
+        let seed = HomeAmbient.seed(rgba: Array(repeating: grey, count: 9).flatMap { $0 } + orange)
+        XCTAssertGreaterThan(seed.r, seed.b + 0.05)
+    }
+
+    private func contrast(_ a: HomeAmbient.RGB, _ b: HomeAmbient.RGB) -> Double {
+        let la = HomeAmbient.luminance(a), lb = HomeAmbient.luminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
     }
 }
 
