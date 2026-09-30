@@ -192,6 +192,20 @@
       opacity: 0.85;
     }
 
+    .privacy-content code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      background: var(--color-surface-container-low);
+      color: var(--color-on-surface);
+      overflow-wrap: anywhere;
+    }
+
+    .privacy-content p code {
+      white-space: nowrap;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .privacy-hero { padding: 48px 0 32px; }
@@ -351,7 +365,7 @@
       <p>Releases up to 4.18.x shipped a consent-gated screen and voice recorder that uploaded to the SceneView feedback service. It has been removed; recordings sent by those versions are deleted automatically 90 days after they were received.</p>
 
       <h2 id="processors">Who Processes the Data, and for How Long</h2>
-      <p>Firebase is provided by Google, which processes this data on our behalf as a service provider under the <a href="https://firebase.google.com/terms/data-processing-terms" target="_blank" rel="noopener">Firebase data processing terms</a>. Data may be processed on Google servers outside your country, including in the United States. All of it travels over encrypted connections (TLS).</p>
+      <p>Firebase is provided by Google, which processes this data on our behalf as a service provider: Crashlytics and Cloud Messaging under the <a href="https://firebase.google.com/terms/data-processing-terms" target="_blank" rel="noopener">Firebase data processing terms</a>, and Google Analytics for Firebase under the <a href="https://www.google.com/analytics/terms/" target="_blank" rel="noopener">Google Analytics terms</a>. Data may be processed on Google servers outside your country, including in the United States. All of it travels over encrypted connections (TLS).</p>
       <table>
         <thead>
           <tr><th>Service</th><th>Data</th><th>Kept for</th></tr>
@@ -366,7 +380,7 @@
 
       <h2 id="your-choices">Your Choices</h2>
       <ul>
-        <li><strong>Turn off analytics and crash reporting:</strong> in the app, open <strong>Settings</strong> and switch off usage and crash reporting. From then on, that device sends no analytics events and no crash reports.</li>
+        <li><strong>Turn off analytics and crash reporting:</strong> in the app, open <strong>Settings</strong> and switch off usage and crash reporting. From then on, that device sends no analytics events and no crash reports. Switching it off also clears the analytics data waiting on the device and resets its app instance ID, so if you turn it back on, the app starts with a new one.</li>
         <li><strong>Turn off notifications:</strong> use the notification switch in the app&rsquo;s Settings, or your phone&rsquo;s notification settings for SceneView Demo. You can also decline the permission when the app asks.</li>
         <li><strong>Start over:</strong> uninstalling the app removes its identifiers from your device; a new installation gets new ones.</li>
         <li><strong>Ask for deletion or access:</strong> email <a href="mailto:thomas.gorisse@gmail.com?subject=SceneView%20Demo%20privacy%20request">thomas.gorisse@gmail.com</a>. Because the app has no accounts, we can only find data through an identifier from your device; we will tell you what we can find and delete it. Anything we cannot single out expires on the schedule above.</li>
