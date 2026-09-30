@@ -89,6 +89,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.sin
+import kotlin.math.sqrt
 import com.google.android.filament.Box as FilamentBox
 
 /** One detonation of the burst, start to afterglow, in seconds. */
@@ -472,7 +473,12 @@ fun CosmosDemo(onBack: () -> Unit) {
                     caption = if (voyage.playing) CosmosVoyage.openingCaption(CosmosVoyage.next(current)) else null
                 }
                 if (voyageCaption != caption) voyageCaption = caption
-                val reveal = sceneReveal * voyage.fade
+                val exposure = if (current == CosmosScene.Galaxy) {
+                    CosmosVoyage.galaxyExposure(sqrt(pose[0] * pose[0] + pose[1] * pose[1] + pose[2] * pose[2]))
+                } else {
+                    1f
+                }
+                val reveal = sceneReveal * voyage.fade * exposure
                 flight.record(pose, time, focal)
                 cameraNode.lookAt(
                     eye = Position(pose[0], pose[1], pose[2]),

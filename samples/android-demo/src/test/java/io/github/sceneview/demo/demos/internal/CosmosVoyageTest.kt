@@ -162,6 +162,21 @@ class CosmosVoyageTest {
     }
 
     @Test
+    fun `the galaxy only stops down in the jump into its core`() {
+        val camera = CosmosVoyageCamera()
+        val shot = CosmosVoyage.shotOf(CosmosScene.Galaxy)
+        val jump = shot.seconds - CosmosVoyageCamera.WARP_OUT_SECONDS
+        var darkest = 1f
+        for (t in frames(shot)) {
+            camera.evaluate(shot, t, t, 0.45f, arrivedByWarp = false)
+            val exposure = CosmosVoyage.galaxyExposure(dist(camera.pose, 0, floatArrayOf(0f, 0f, 0f), 0))
+            if (t < jump) assertTrue("dimmed at $t: $exposure", exposure > FULL_EXPOSURE)
+            darkest = minOf(darkest, exposure)
+        }
+        assertTrue("never dimmed: $darkest", darkest < 0.5f)
+    }
+
+    @Test
     fun `the planet stays in frame from the approach to the pull-back`() {
         val camera = CosmosVoyageCamera()
         val rig = CosmosRig()
@@ -232,6 +247,7 @@ class CosmosVoyageTest {
         const val MAX_WARP_SHARE = 0.125f
 
         const val CORE_GLOW_RADIUS = 1.45f
+        const val FULL_EXPOSURE = 0.9f
         const val GALAXY_SKIM_SECONDS = 12.5f
 
         /** The Star shot, from its first key at the planet to the system framing. */

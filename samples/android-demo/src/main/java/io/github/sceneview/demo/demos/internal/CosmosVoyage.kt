@@ -208,6 +208,14 @@ internal object CosmosVoyage {
     /** The caption a shot opens on: shown from the frame the voyage switches to [scene]. */
     fun openingCaption(scene: CosmosScene): String = shotOf(scene).keys.first().caption.orEmpty()
 
+    /**
+     * How much of the galaxy's light reaches a camera [distance] from its core, 0 → 1: the jump
+     * out of the galaxy pushes the eye into the bulge, where tens of thousands of additive sprites
+     * stack up and burn the frame to white before the jump's black. The light stops down as the
+     * eye closes in, like an exposure; everywhere the voyage flies before that, it is 1.
+     */
+    fun galaxyExposure(distance: Float): Float = smoothstep(CORE_DARK_RADIUS, CORE_LIT_RADIUS, distance)
+
     /** The shot of [scene]: the voyage visits every scene once. */
     fun shotOf(scene: CosmosScene): VoyageShot = SHOTS.first { it.scene == scene }
 
@@ -261,6 +269,9 @@ internal object CosmosVoyage {
         }
         return builder.build()
     }
+
+    const val CORE_DARK_RADIUS = 0.45f
+    const val CORE_LIT_RADIUS = 1.1f
 
     private const val STREAK_MIN_RADIUS = 0.25f
     private const val STREAK_MAX_RADIUS = 2.6f
