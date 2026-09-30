@@ -95,10 +95,12 @@ class RgbeDecoderTest {
         assertNull(RgbeDecoder.decode(header(20_000, 20_000) + ByteArray(4)))
         // Within Filament's limits but above the JVM ceiling: HDRLoader decodes it natively.
         assertNull(RgbeDecoder.decode(header(16_384, 8_192) + ByteArray(4)))
+        assertNull(RgbeDecoder.decode(header(8_192, 4_096) + ByteArray(4)))
+        assertEquals(4_096L * 2_048L, RgbeDecoder.MAX_DECODE_PIXELS)
         // Dimensions that overflow an Int.
         assertNull(RgbeDecoder.decode("#?RADIANCE\n\n-Y 99999999999 +X 8\n".toByteArray() + ByteArray(4)))
         // Plausible dimensions, far too few bytes for the scanlines: refused up front.
-        assertNull(RgbeDecoder.decode(header(8_192, 4_096) + byteArrayOf(2, 2, 32, 0)))
+        assertNull(RgbeDecoder.decode(header(4_096, 2_048) + byteArrayOf(2, 2, 32, 0)))
     }
 
     @Test

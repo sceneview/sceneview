@@ -35,11 +35,11 @@ internal object RgbeDecoder {
     const val MAX_PIXELS = 16_384L * 16_384L
 
     /**
-     * Largest image decoded on the JVM side (8k × 4k, 384 MiB of floats). Above it the float
+     * Largest image decoded on the JVM side (4k × 2k, 96 MiB of RGB floats). Above it the float
      * buffer would sit next to the file bytes in the app heap budget, so the caller hands the
      * file to `HDRLoader`, which decodes natively.
      */
-    const val MAX_DECODE_PIXELS = 8_192L * 4_096L
+    const val MAX_DECODE_PIXELS = 4_096L * 2_048L
 
     private const val MIN_RLE_WIDTH = 8
     private const val MAX_RLE_WIDTH = 0x7fff

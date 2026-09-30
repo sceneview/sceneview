@@ -21,6 +21,7 @@ import io.github.sceneview.utils.loadFileBuffer
 import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.whenBackendIdle
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -151,9 +152,10 @@ class EnvironmentLoader(
      * Reads and decodes the HDR at [url] off the main thread, then builds the environment on
      * Main — the shared body of [loadHDREnvironment] and the HDR `loadKTX1Environment(url)`.
      *
-     * The Main block runs to completion even if the caller is cancelled meanwhile, so a
-     * half-built environment never leaks: a cancelled caller gets the built environment
-     * destroyed and the cancellation rethrown.
+     * The Main build is skipped when the caller was cancelled or the engine destroyed while the
+     * decode ran (a composable that left in the meantime), and an environment built by a caller
+     * cancelled during the build is destroyed before the cancellation is rethrown — see
+     * [buildOnMainUnlessGone].
      */
     private suspend fun loadHDREnvironmentOffMain(
         url: String,
@@ -166,38 +168,30 @@ class EnvironmentLoader(
         // The RGBE decode is pure CPU work: run it off the main thread. A file the Kotlin decoder
         // does not support falls back to HDRLoader, which decodes on Main with the upload.
         val image = withContext(Dispatchers.Default) { decodeRgbeOrNull(buffer) }
-        currentCoroutineContext().ensureActive()
-        var environment: Environment? = null
-        try {
-            // Filament asserts on JNI thread mismatch — build on Main, mirroring
-            // MaterialLoader.loadMaterial / ModelLoader.loadModel.
-            withContext(Dispatchers.Main + NonCancellable) {
-                environment = if (image != null) {
-                    createHDREnvironmentFromImage(
-                        image = image,
-                        indirectLightSpecularFilter = indirectLightSpecularFilter,
-                        indirectLightApply = indirectLightApply,
-                        textureOptions = textureOptions,
-                        createSkybox = createSkybox
-                    )
-                } else {
-                    createHDREnvironment(
-                        buffer = buffer,
-                        indirectLightSpecularFilter = indirectLightSpecularFilter,
-                        indirectLightApply = indirectLightApply,
-                        textureOptions = textureOptions,
-                        createSkybox = createSkybox
-                    )
-                }
+        // Filament asserts on JNI thread mismatch — build on Main, mirroring
+        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
+        return buildOnMainUnlessGone(
+            isEngineValid = { engine.isValid },
+            destroy = ::destroyEnvironment,
+        ) {
+            if (image != null) {
+                createHDREnvironmentFromImage(
+                    image = image,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
+            } else {
+                createHDREnvironment(
+                    buffer = buffer,
+                    indirectLightSpecularFilter = indirectLightSpecularFilter,
+                    indirectLightApply = indirectLightApply,
+                    textureOptions = textureOptions,
+                    createSkybox = createSkybox
+                )
             }
-            currentCoroutineContext().ensureActive()
-        } catch (cancellation: CancellationException) {
-            environment?.let { built ->
-                withContext(Dispatchers.Main + NonCancellable) { destroyEnvironment(built) }
-            }
-            throw cancellation
         }
-        return environment
     }
 
     /**
@@ -620,4 +614,36 @@ class EnvironmentLoader(
             if (deferred) logDeferredTeardown("IBL prefilter", startedAt)
         }
     }
+}
+
+/**
+ * Runs [build] on [mainDispatcher] unless the caller is already cancelled or the engine is gone,
+ * and hands back what it built — the Main half of an off-main load (#4174).
+ *
+ * The build is not wrapped in `NonCancellable`: a composable that leaves while the decode runs
+ * cancels the load, and [build] never starts — it would otherwise create Filament objects (and the
+ * loader's lazy `IBLPrefilter` context) after the loader was destroyed, or throw on an engine
+ * destroyed in the same frame. [build] does not suspend, so once started it runs to completion;
+ * if the caller was cancelled meanwhile, `withContext` throws on return and what was built is
+ * destroyed — while the engine is still alive, since a dead engine already reclaimed it.
+ */
+internal suspend fun <T : Any> buildOnMainUnlessGone(
+    mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    isEngineValid: () -> Boolean,
+    destroy: (T) -> Unit,
+    build: () -> T?,
+): T? {
+    var built: T? = null
+    try {
+        withContext(mainDispatcher) {
+            ensureActive()
+            if (isEngineValid()) built = build()
+        }
+    } catch (cancellation: CancellationException) {
+        built?.let { orphan ->
+            withContext(mainDispatcher + NonCancellable) { if (isEngineValid()) destroy(orphan) }
+        }
+        throw cancellation
+    }
+    return built
 }
