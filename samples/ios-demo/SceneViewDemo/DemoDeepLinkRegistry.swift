@@ -93,9 +93,8 @@ enum DemoDeepLinkRegistry {
         //   - picking-collision → collision     (default tab: RayHitTest)
         //   - animation-physics → animation     (default tab: Animation)
         //   - two-d-in-three-d  → text          (default tab: Text)
-        //   - lighting-lab      → dynamic-sky   (default tab: Sky — NOT
-        //     `environment`; #2769's own suggestion predates checking
-        //     Android's actual default, which is Sky)
+        // (`lighting-lab` left this list when it got its own scene: the
+        // Lighting Lab is a real iOS screen now, not an alias to `dynamic-sky`.)
         // A full "regrouped umbrella UI" (Android's exact combined-tab
         // layout) is explicitly out of scope for this lot — see the doc
         // comment above.
@@ -104,12 +103,14 @@ enum DemoDeepLinkRegistry {
         "picking-collision": "collision",
         "animation-physics": "animation",
         "two-d-in-three-d": "text",
-        "lighting-lab": "dynamic-sky",
 
         // Retired scene ids (#4083) — a scene replaced by a new one keeps its
         // old deep link alive. `physics` (RealityKit cubes) became the Rolling
         // Balls tray, like Android's `DeepLinkRouter` alias.
         "physics": "rolling-balls",
+        // `reflection-probes` became the Lighting Lab, like Android's
+        // `DeepLinkRouter` alias (#3496).
+        "reflection-probes": "lighting-lab",
     ]
 
     /// Deep-linkable ids with no `*Scene.swift` file — accepted by the gate,
