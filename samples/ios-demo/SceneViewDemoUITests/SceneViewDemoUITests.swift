@@ -29,6 +29,7 @@
 
 import Foundation
 import XCTest
+import UIKit
 
 final class SceneViewDemoUITests: XCTestCase {
 
@@ -110,6 +111,83 @@ final class SceneViewDemoUITests: XCTestCase {
             snapshot(app, String(format: "%02d-demo-%@", index + 6, slug(id)))
             app.terminate()
         }
+    }
+
+    /// Exercise the real renderer: advancing animation must change the character pixels,
+    /// while pausing must hold them. The crop excludes all controls and the status bar.
+    func testFoxAnimationTransport() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "animation"]
+        app.launch()
+        let pause = app.buttons["Pause"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 30))
+        let ready = NSPredicate(format: "enabled == true")
+        let loaded = XCTNSPredicateExpectation(predicate: ready, object: pause)
+        XCTAssertEqual(XCTWaiter.wait(for: [loaded], timeout: 30), .completed)
+        Thread.sleep(forTimeInterval: 2)
+
+        func stagePixels() throws -> [UInt8] {
+            let image = try XCTUnwrap(app.screenshot().image.cgImage)
+            let crop = try XCTUnwrap(image.cropping(to: CGRect(
+                x: Double(image.width) * 0.1, y: Double(image.height) * 0.2,
+                width: Double(image.width) * 0.8, height: Double(image.height) * 0.4
+            )))
+            var pixels = [UInt8](repeating: 0, count: 96 * 96 * 4)
+            try pixels.withUnsafeMutableBytes { storage in
+                let context = try XCTUnwrap(CGContext(data: storage.baseAddress, width: 96, height: 96,
+                    bitsPerComponent: 8, bytesPerRow: 96 * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.draw(crop, in: CGRect(x: 0, y: 0, width: 96, height: 96))
+            }
+            return pixels
+        }
+        func difference(_ first: [UInt8], _ second: [UInt8]) -> Double {
+            zip(first, second).reduce(0.0) { $0 + abs(Double($1.0) - Double($1.1)) }
+                / Double(first.count)
+        }
+
+        let surveyStart = try stagePixels()
+        Thread.sleep(forTimeInterval: 0.7)
+        let surveyMotion = difference(surveyStart, try stagePixels())
+        XCTAssertGreaterThan(surveyMotion, 0.1, "Survey must animate on first open")
+
+        for clip in ["Walk", "Run"] {
+            app.buttons[clip].tap()
+            XCTAssertTrue(app.buttons[clip].isSelected)
+            Thread.sleep(forTimeInterval: 0.5)
+            let first = try stagePixels()
+            Thread.sleep(forTimeInterval: 0.3)
+            XCTAssertGreaterThan(difference(first, try stagePixels()), 0.1,
+                                 "\(clip) must visibly animate")
+        }
+        pause.tap()
+        XCTAssertTrue(app.buttons["Play"].exists)
+        Thread.sleep(forTimeInterval: 1)
+        let held = try stagePixels()
+        Thread.sleep(forTimeInterval: 0.7)
+        XCTAssertLessThan(difference(held, try stagePixels()), 0.1,
+                          "Pause must hold the actual rendered pose")
+        snapshot(app, "fox-paused")
+        let orbitStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.42))
+        let orbitEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.47))
+        orbitStart.press(forDuration: 0.1, thenDragTo: orbitEnd)
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertGreaterThan(difference(held, try stagePixels()), 1,
+                             "Orbit must change the view of the paused character")
+        snapshot(app, "fox-orbit")
+
+        let speed = app.sliders["animation-speed"]
+        XCTAssertTrue(speed.exists)
+        speed.adjust(toNormalizedSliderPosition: 1)
+        XCTAssertTrue(app.staticTexts["2×"].exists)
+        app.buttons["Survey"].tap()
+        XCTAssertTrue(pause.exists, "Selecting a clip from pause starts playback")
+        app.buttons["Loop"].tap()
+        let finished = app.buttons["Play"]
+        XCTAssertTrue(finished.waitForExistence(timeout: 10), "Once must finish and show Play")
+        finished.tap()
+        XCTAssertTrue(pause.exists, "A completed clip can be replayed")
     }
 
     // MARK: - Black-viewport probe (#3008)

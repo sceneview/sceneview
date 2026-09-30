@@ -77,7 +77,6 @@ enum BundledAssetCredits {
         "Models/shiba.usdz": .init(name: "Shiba", author: "zixisun51", license: "CC-BY 4.0"),
         "Models/khronos_fox.usdz": .init(name: "Fox", author: "PixelMannen, tomkranis", license: "CC-BY 4.0"),
         "Models/khronos_fox_clips.usdz": .init(name: "Fox", author: "PixelMannen, tomkranis", license: "CC-BY 4.0"),
-        "Models/threejs_soldier_clips.usdz": .init(name: "Soldier", author: "Tomás Laulhé, Don McCurdy", license: "CC0 1.0"),
         "Models/khronos_lantern.usdz": .init(name: "Lantern", author: "Microsoft", license: "CC-BY 4.0"),
     ]
 }
