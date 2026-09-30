@@ -500,7 +500,11 @@ private final class AboutMarkRenderer {
         static let verticalFov: Float = 46.4
         /// Key light from the upper right, a little in front.
         static let keyLight = SIMD3<Float>(-0.45, -0.82, -0.36)
-        static let keyLux: Float = 70_000
+        /// Not Android's 70 000 lux: RealityKit exposes for its own ~2 000-lux
+        /// default, and at Filament's value the blue body clipped to white on
+        /// the simulator. Tuned by capture so the three faces read as the
+        /// mark's three blues.
+        static let keyLux: Float = 2_000
         /// Pose drawn under Reduce Motion: both satellites in front of the cube.
         static let restSeconds: Double = 1.4
 
