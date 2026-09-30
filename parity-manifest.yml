@@ -1378,6 +1378,7 @@ shell:
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Tabs/ARTab.swift
+      - samples/ios-demo/SceneViewDemo/Views/Tabs/ARHeroStage.swift
       - samples/ios-demo/SceneViewDemo/Views/Components/ARPlacementExperience.swift
       - samples/ios-demo/SceneViewDemo/Views/Components/ARExperienceContainer.swift
     contract: >-
@@ -1393,7 +1394,10 @@ shell:
       caption, status and freshness chips) opened through DemoCover like a
       Home row (ARTab.swift ARLauncherCatalogue); Scene Geometry keeps the
       iOS LiDAR subtitle (no Geospatial on ARKit). Android
-      ArViewTab.kt:345,619,747
+      ArViewTab.kt:345,619,747. The launcher opens on a rendered 3D hero
+      since #4216 (ARHeroStage.swift: dotted floor with a 2.4 s ripple,
+      breathing reticle, fox/piano/shiba placed in turn every 5.5 s; the
+      piano stands in for Android's sheen chair)
   - surface: explore
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/explore/ExploreTabScreen.kt
