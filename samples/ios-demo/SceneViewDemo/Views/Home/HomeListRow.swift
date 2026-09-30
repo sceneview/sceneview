@@ -270,9 +270,9 @@ private extension View {
     /// What shows through is the row's own tint.
     func homeDissolve(towards edge: HomeDissolveEdge, from start: CGFloat) -> some View {
         let stops = (0...8).map { i -> Gradient.Stop in
-            let u = CGFloat(i) / 8
-            return Gradient.Stop(color: .black.opacity(0.5 * (1 + cos(.pi * u))),
-                                 location: start + (1 - start) * u)
+            let u = Double(i) / 8
+            return Gradient.Stop(color: .black.opacity(0.5 * (1 + cos(Double.pi * u))),
+                                 location: start + (1 - start) * CGFloat(u))
         }
         let gradient = Gradient(stops: [Gradient.Stop(color: .black, location: 0)] + stops)
         return mask {
