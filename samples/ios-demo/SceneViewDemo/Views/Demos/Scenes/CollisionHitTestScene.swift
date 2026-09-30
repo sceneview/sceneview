@@ -4,8 +4,8 @@
 // @category    interaction
 // @section     view3d
 // @available   true
-// @icon        capsule.fill
-// @order       8
+// @icon        hand.tap.fill
+// @order       38
 // @tags        picking,hit-test,collision,ray,viewnode,overlay
 import SwiftUI
 

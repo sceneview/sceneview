@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterCenterFocus
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArDepthOcclusionFragment : DemoFragment {
         titleRes = R.string.demo_ar_depth_occlusion_title,
         subtitleRes = R.string.demo_ar_depth_occlusion_subtitle,
         category = DemoCategory.UNDERSTAND,
-        icon = Icons.Filled.FilterCenterFocus,
-        order = 38,
+        icon = Icons.Filled.Layers,
+        order = 36,
         tags = setOf("ar", "depth", "occlusion", "arcore"),
     )
 

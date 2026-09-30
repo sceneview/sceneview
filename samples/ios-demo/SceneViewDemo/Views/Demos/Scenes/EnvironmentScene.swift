@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        sun.haze.fill
-// @order       26
+// @order       5
 import SwiftUI
 
 enum EnvironmentScene: DemoScene {

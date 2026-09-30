@@ -82,6 +82,13 @@ balls come to rest. Crop: x 40–1040, y 580–1380 (5:4, the whole frame of the
 to 800×640, WebP q85, one capture per theme: its stage is the themed stage sky, so the dark
 card is the dark stage.
 
+`cosmos` had no card and fell back to its icon, although it leads the Featured shelf. Its
+card is an emulator capture (Pixel_7a, 1080×2400) of `--es demo cosmos` once the spiral
+galaxy has rendered: the full-width 1080×864 band centred on the galaxy's bright pixels
+(window y 779–1643), resized to 800×640, WebP q80. Space is black
+in both themes, so light and dark are the same pixels. The iOS `preview_cosmos` imageset
+carries the same crop as JPEG q90.
+
 ## iOS imagesets
 
 The iOS demo reads the same art from `samples/ios-demo/SceneViewDemo/Assets.xcassets/

@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        sparkles
-// @order       38
+// @order       1
 // @tags        bloom,emissive,particles,procedural,shader,galaxy,space,custom material
 // @sinceVersion 4.49.0
 import SwiftUI

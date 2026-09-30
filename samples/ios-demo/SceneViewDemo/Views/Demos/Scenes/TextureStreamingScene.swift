@@ -4,8 +4,8 @@
 // @category    content
 // @section     create
 // @available   true
-// @icon        circle.dotted.and.circle
-// @order       22
+// @icon        swatchpalette.fill
+// @order       7
 import SwiftUI
 
 enum TextureStreamingScene: DemoScene {

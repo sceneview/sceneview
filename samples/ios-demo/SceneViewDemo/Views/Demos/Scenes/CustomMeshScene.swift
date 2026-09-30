@@ -4,8 +4,8 @@
 // @category    advanced
 // @section     create
 // @available   true
-// @icon        diamond.fill
-// @order       30
+// @icon        hexagon.fill
+// @order       8
 // @tags        geometry,mesh,extrusion,composite,procedural
 import SwiftUI
 
