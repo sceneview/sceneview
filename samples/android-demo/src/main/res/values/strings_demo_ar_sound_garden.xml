@@ -13,8 +13,9 @@
     <string name="demo_ar_sound_garden_hint_walk">Walk up to an orb: its part gets louder</string>
     <string name="demo_ar_sound_garden_hint_turn">Turn your back to an orb: it sounds muffled. Tap one to mute it.</string>
 
-    <string name="demo_ar_sound_garden_replant">Replant</string>
-    <string name="demo_ar_sound_garden_replant_caption">Plant the garden again where you look</string>
+    <!-- The dock shows the caption under the icon; the label is what TalkBack reads. -->
+    <string name="demo_ar_sound_garden_replant">Plant the garden again where you look</string>
+    <string name="demo_ar_sound_garden_replant_caption">Replant</string>
 
     <!-- The four parts, one per orb. -->
     <string name="demo_ar_sound_garden_part_bells">Bells</string>
