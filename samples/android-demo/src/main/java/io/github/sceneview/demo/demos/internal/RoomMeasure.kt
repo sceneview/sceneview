@@ -117,7 +117,17 @@ object MeasureDrawing {
     const val SOLID_HEIGHT = 32
 
     private const val SOLID_U = 0.5f
-    private const val SOLID_V = 1f - SOLID_HEIGHT / 2f / ATLAS_HEIGHT
+
+    /**
+     * V of the atlas's pixel row [y], counted from the top of the drawn bitmap: this atlas is
+     * sampled bottom-up, like [PointColorAtlas]. Counted from the top, as first written, the
+     * emulator drew every label mirrored from the other row, and the lines sampled a
+     * transparent row, so the floor showed a stray strip and no dimension line.
+     */
+    fun vOf(y: Float): Float = 1f - y / ATLAS_HEIGHT
+
+    /** V of the solid strip's middle row. */
+    private val solidV: Float = vOf(ATLAS_HEIGHT - SOLID_HEIGHT / 2f)
 
     /**
      * The width side (0 or 2) and the depth side (1 or 3) of [measure] whose outside faces the eye
@@ -181,8 +191,8 @@ object MeasureDrawing {
         val hw = textWidth / 2f
         val hh = textHeight / 2f
         val u1 = (textWidth / textHeight * ROW_HEIGHT / ATLAS_WIDTH).coerceAtMost(1f)
-        val v0 = row * ROW_HEIGHT.toFloat() / ATLAS_HEIGHT
-        val v1 = (row + 1) * ROW_HEIGHT.toFloat() / ATLAS_HEIGHT
+        val v0 = vOf(row * ROW_HEIGHT.toFloat())
+        val v1 = vOf((row + 1) * ROW_HEIGHT.toFloat())
         val tl = mesh.vertex(mx - rx * hw - ox * hh, y, mz - rz * hw - oz * hh, 0f, v0)
         val tr = mesh.vertex(mx + rx * hw - ox * hh, y, mz + rz * hw - oz * hh, u1, v0)
         val br = mesh.vertex(mx + rx * hw + ox * hh, y, mz + rz * hw + oz * hh, u1, v1)
@@ -214,10 +224,10 @@ object MeasureDrawing {
         if (length < 1e-6f) return
         val px = -(z1 - z0) / length * halfWidth
         val pz = (x1 - x0) / length * halfWidth
-        val a = mesh.vertex(x0 + px, y, z0 + pz, SOLID_U, SOLID_V)
-        val b = mesh.vertex(x1 + px, y, z1 + pz, SOLID_U, SOLID_V)
-        val c = mesh.vertex(x1 - px, y, z1 - pz, SOLID_U, SOLID_V)
-        val d = mesh.vertex(x0 - px, y, z0 - pz, SOLID_U, SOLID_V)
+        val a = mesh.vertex(x0 + px, y, z0 + pz, SOLID_U, solidV)
+        val b = mesh.vertex(x1 + px, y, z1 + pz, SOLID_U, solidV)
+        val c = mesh.vertex(x1 - px, y, z1 - pz, SOLID_U, solidV)
+        val d = mesh.vertex(x0 - px, y, z0 - pz, SOLID_U, solidV)
         mesh.quad(a, b, c, d)
     }
 

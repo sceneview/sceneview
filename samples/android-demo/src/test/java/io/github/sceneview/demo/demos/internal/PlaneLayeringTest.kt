@@ -16,7 +16,14 @@ class PlaneLayeringTest {
     private val floorY = -1.3f
 
     /** A horizontal square at height [y], [size] metres wide, corner at ([x], [z]). */
-    private fun square(id: Int, y: Float, x: Float = 0f, z: Float = 0f, size: Float = 2f, kind: DebugPlaneKind = DebugPlaneKind.Floor) =
+    private fun square(
+        id: Int,
+        y: Float,
+        x: Float = 0f,
+        z: Float = 0f,
+        size: Float = 2f,
+        kind: DebugPlaneKind = DebugPlaneKind.Floor,
+    ) =
         DebugPlane(id, kind, floatArrayOf(x, y, z, x + size, y, z, x + size, y, z + size, x, y, z + size))
 
     /** A wall in the plane x = [x], from the floor up 2.4 m. */
@@ -73,7 +80,10 @@ class PlaneLayeringTest {
     fun `a wall wound the other way still steps towards the room`() {
         val wall = wall(9, x = 2f)
         val n = wall.vertexCount
-        val reversed = DebugPlane(9, wall.kind, FloatArray(wall.polygon.size) { i -> wall.polygon[(n - 1 - i / 3) * 3 + i % 3] })
+        val reversed = DebugPlane(
+            9, wall.kind,
+            FloatArray(wall.polygon.size) { i -> wall.polygon[(n - 1 - i / 3) * 3 + i % 3] },
+        )
         val layering = PlaneLayering(floorY, Vec3(0.5f, 0f, 1f), listOf(5, 9))
         val x = layering.fill(reversed).filterIndexed { i, _ -> i % 3 == 0 }.toSet().single()
         assertEquals(2f - PlaneLayering.STEP_M, x, 1e-6f)
@@ -93,8 +103,9 @@ class PlaneLayeringTest {
         val early = PlaneLayering(floorY, null, listOf(2, 7))
         val later = PlaneLayering(floorY, null, listOf(2, 7, 11))
         assertEquals(early.rankOf(7), later.rankOf(7))
-        assertEquals(PlaneLayering.RANKS - 1, PlaneLayering(floorY, null, (1..PlaneLayering.RANKS).toList()).rankOf(PlaneLayering.RANKS))
-        assertEquals(0, PlaneLayering(floorY, null, (1..PlaneLayering.RANKS + 1).toList()).rankOf(PlaneLayering.RANKS + 1))
+        val ranks = PlaneLayering.RANKS
+        assertEquals(ranks - 1, PlaneLayering(floorY, null, (1..ranks).toList()).rankOf(ranks))
+        assertEquals(0, PlaneLayering(floorY, null, (1..ranks + 1).toList()).rankOf(ranks + 1))
     }
 
     @Test

@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import android.graphics.Typeface
 import androidx.annotation.ColorInt
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Engine
@@ -400,10 +401,11 @@ internal class ReplayLayers(
             node.isVisible = plane != null
             if (plane == null || layering == null) continue
             val placed = layering.fill(plane)
-            if (!changed(node, listOf(System.identityHashCode(plane), placed.contentHashCode()))) continue
-            mesh.clear()
-            ReplayGeometry.addTexturedPlane(mesh, plane.polygon, media.manifest.textureFor(id)!!, placed)
-            node.upload(mesh)
+            if (changed(node, listOf(System.identityHashCode(plane), placed.contentHashCode()))) {
+                mesh.clear()
+                ReplayGeometry.addTexturedPlane(mesh, plane.polygon, media.manifest.textureFor(id)!!, placed)
+                node.upload(mesh)
+            }
         }
     }
 
@@ -448,12 +450,15 @@ internal class ReplayLayers(
      * of the ground, and the solid strip the lines sample.
      */
     private fun drawMeasureLabels(labels: Pair<String, String>) {
-        val bitmap = Bitmap.createBitmap(MeasureDrawing.ATLAS_WIDTH, MeasureDrawing.ATLAS_HEIGHT, Bitmap.Config.ARGB_8888)
+        val width = MeasureDrawing.ATLAS_WIDTH
+        val height = MeasureDrawing.ATLAS_HEIGHT
+        val row = MeasureDrawing.ROW_HEIGHT
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = measureInk
             textSize = MEASURE_FONT_PX
-            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val halo = Paint(ink).apply {
             color = measureHalo
@@ -461,14 +466,14 @@ internal class ReplayLayers(
             strokeWidth = MEASURE_HALO_PX
             strokeJoin = Paint.Join.ROUND
         }
-        listOf(labels.first, labels.second).forEachIndexed { row, text ->
-            val baseline = row * MeasureDrawing.ROW_HEIGHT + (MeasureDrawing.ROW_HEIGHT - ink.ascent() - ink.descent()) / 2f
+        listOf(labels.first, labels.second).forEachIndexed { index, text ->
+            val baseline = index * row + (row - ink.ascent() - ink.descent()) / 2f
             canvas.drawText(text, MEASURE_PAD_PX, baseline, halo)
             canvas.drawText(text, MEASURE_PAD_PX, baseline, ink)
-            measureLabelWidths[row] = (ink.measureText(text) + 2 * MEASURE_PAD_PX).coerceAtMost(MeasureDrawing.ATLAS_WIDTH.toFloat())
+            measureLabelWidths[index] = (ink.measureText(text) + 2 * MEASURE_PAD_PX).coerceAtMost(width.toFloat())
         }
         val solid = MeasureDrawing.ATLAS_HEIGHT - MeasureDrawing.SOLID_HEIGHT
-        canvas.drawRect(0f, solid.toFloat(), MeasureDrawing.ATLAS_WIDTH.toFloat(), MeasureDrawing.ATLAS_HEIGHT.toFloat(), Paint().apply { color = measureInk })
+        canvas.drawRect(0f, solid.toFloat(), width.toFloat(), height.toFloat(), Paint().apply { color = measureInk })
         val texture = texture(bitmap)
         measureMaterial.setTexture(texture, clamp)
         if (measureTexture !== atlas) {
@@ -599,11 +604,14 @@ internal class ReplayLayers(
 
         /** A millimetre over the grid: the dimensions are drawn on the floor, not in it. */
         const val MEASURE_LIFT_M = 0.003f
-        /** The label's box, in pixels: its figures' capitals are ~40 % of it. */
-        const val MEASURE_TEXT_PX = 34f
+        /**
+         * The label's box, in pixels: its figures' capitals are ~40 % of it, and the floor seen
+         * at a slant shortens it further.
+         */
+        const val MEASURE_TEXT_PX = 72f
         const val MEASURE_TEXT_MIN_M = 0.04f
         const val MEASURE_TEXT_MAX_M = 0.9f
-        const val MEASURE_OFFSET_PX = 24f
+        const val MEASURE_OFFSET_PX = 28f
         const val MEASURE_OFFSET_MIN_M = 0.06f
         const val MEASURE_OFFSET_MAX_M = 0.9f
 

@@ -29,7 +29,8 @@ class PlaneLayering(
     private val inside: Vec3?,
     ids: Collection<Int>,
 ) {
-    private val ranks: Map<Int, Int> = ids.distinct().sorted().withIndex().associate { (index, id) -> id to index % RANKS }
+    private val ranks: Map<Int, Int> =
+        ids.distinct().sorted().withIndex().associate { (index, id) -> id to index % RANKS }
 
     /** The rank of plane [id]: 0 for a plane this layering was not built with. */
     fun rankOf(id: Int): Int = ranks[id] ?: 0
@@ -84,7 +85,8 @@ class PlaneLayering(
 
         /** Whether [plane] is a patch of the floor at [floorY], and so is laid flat on it. */
         fun isGround(plane: DebugPlane, floorY: Float): Boolean =
-            plane.kind == DebugPlaneKind.Floor && plane.vertexCount >= 3 && abs(meanY(plane.polygon) - floorY) <= GROUND_BAND_M
+            plane.kind == DebugPlaneKind.Floor && plane.vertexCount >= 3 &&
+                abs(meanY(plane.polygon) - floorY) <= GROUND_BAND_M
 
         /** The layering of [frame]'s planes, over the floor at [floorY], towards its walked path. */
         fun of(frame: ArDebugFrame, floorY: Float): PlaneLayering =

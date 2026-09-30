@@ -17,14 +17,16 @@ class RoomMeasureTest {
     private val floorY = -1.4f
 
     /** Point ([a], [b]) in a room turned [yaw] radians: a along its width, b along its depth. */
-    private fun turned(a: Float, b: Float, yaw: Float) = floatArrayOf(a * cos(yaw) - b * sin(yaw), a * sin(yaw) + b * cos(yaw))
+    private fun turned(a: Float, b: Float, yaw: Float) =
+        floatArrayOf(a * cos(yaw) - b * sin(yaw), a * sin(yaw) + b * cos(yaw))
 
     /** A wall from ([a0], [b0]) to ([a1], [b1]) in the turned room, floor to 2.4 m. */
     private fun wall(id: Int, a0: Float, b0: Float, a1: Float, b1: Float, yaw: Float): DebugPlane {
         val (x0, z0) = turned(a0, b0, yaw).let { it[0] to it[1] }
         val (x1, z1) = turned(a1, b1, yaw).let { it[0] to it[1] }
         val top = floorY + 2.4f
-        return DebugPlane(id, DebugPlaneKind.Wall, floatArrayOf(x0, floorY, z0, x1, floorY, z1, x1, top, z1, x0, top, z0))
+        val polygon = floatArrayOf(x0, floorY, z0, x1, floorY, z1, x1, top, z1, x0, top, z0)
+        return DebugPlane(id, DebugPlaneKind.Wall, polygon)
     }
 
     /** A 3.4 × 4.1 m room turned [yaw], its four walls a little short of the corners, as ARCore finds them. */
@@ -57,7 +59,10 @@ class RoomMeasureTest {
     fun `a table top alone is no room`() {
         val table = DebugPlane(
             7, DebugPlaneKind.Floor,
-            floatArrayOf(0f, floorY + 0.45f, 0f, 1.2f, floorY + 0.45f, 0f, 1.2f, floorY + 0.45f, 0.8f, 0f, floorY + 0.45f, 0.8f),
+            floatArrayOf(
+                0f, floorY + 0.45f, 0f, 1.2f, floorY + 0.45f, 0f,
+                1.2f, floorY + 0.45f, 0.8f, 0f, floorY + 0.45f, 0.8f,
+            ),
         )
         assertNull(RoomMeasure.of(listOf(table), floorY))
         assertNull(RoomMeasure.of(emptyList(), floorY))
@@ -117,5 +122,29 @@ class RoomMeasureTest {
         val xs = (0 until mesh.vertexCount).map { mesh.positions[it * 3] to mesh.positions[it * 3 + 2] }
         val spread = xs.maxOf { (x, z) -> hypot(x - cx, z - cz) }
         assertTrue(spread > measure.width / 2f)
+    }
+    @Test
+    fun `lines sample the solid strip and labels read upright, the atlas read bottom-up`() {
+        val measure = RoomMeasure.of(room(0.4f), floorY)!!
+        val mesh = DebugMesh()
+        MeasureDrawing.addDimension(mesh, measure, 1, floorY, 0.2f, 0.01f, textHeight = 0.12f, textWidth = 0.3f)
+        fun row(vertex: Int) = (1f - mesh.uvs[vertex * 2 + 1]) * MeasureDrawing.ATLAS_HEIGHT
+        // The first ribbon is the dimension line: its four corners inside the solid strip.
+        for (i in 0 until 4) {
+            val strip = MeasureDrawing.ATLAS_HEIGHT - MeasureDrawing.SOLID_HEIGHT
+            assertTrue("line vertex $i reads row ${row(i)}", row(i) >= strip)
+        }
+        // The label is the last quad: top-left, top-right, bottom-right, bottom-left, on row 1.
+        val n = mesh.vertexCount
+        assertEquals(MeasureDrawing.ROW_HEIGHT.toFloat(), row(n - 4), 1e-3f)
+        assertEquals(MeasureDrawing.ROW_HEIGHT.toFloat(), row(n - 3), 1e-3f)
+        assertEquals(2f * MeasureDrawing.ROW_HEIGHT, row(n - 2), 1e-3f)
+        assertEquals(2f * MeasureDrawing.ROW_HEIGHT, row(n - 1), 1e-3f)
+        // Its top edge is the one nearer the room.
+        val c = measure.corners
+        val cx = (c[0] + c[2] + c[4] + c[6]) / 4f
+        val cz = (c[1] + c[3] + c[5] + c[7]) / 4f
+        fun distance(vertex: Int) = hypot(mesh.positions[vertex * 3] - cx, mesh.positions[vertex * 3 + 2] - cz)
+        assertTrue(distance(n - 4) < distance(n - 1))
     }
 }

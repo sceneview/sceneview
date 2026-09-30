@@ -567,7 +567,8 @@ object ArDebugGeometry {
     ) {
         for (plane in planes) {
             if (!textured(plane.id)) addFan(out(fillLayerOf(plane.kind)), layering?.fill(plane) ?: plane.polygon)
-            addOutline(out(outlineLayerOf(plane.kind)), layering?.outline(plane) ?: plane.polygon, style.outlineHalfWidth)
+            val outline = layering?.outline(plane) ?: plane.polygon
+            addOutline(out(outlineLayerOf(plane.kind)), outline, style.outlineHalfWidth)
         }
     }
 
