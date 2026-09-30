@@ -12,7 +12,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,16 +28,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Cached
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,13 +68,17 @@ import androidx.compose.ui.unit.sp
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
-import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.ALL_DEMOS
-import io.github.sceneview.demo.DemoCategory
+import io.github.sceneview.demo.BuildConfig
+import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.freshness
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.home.DemoMediaCard
+import io.github.sceneview.demo.ui.home.FEATURED_MEDIA_ALIGNMENT
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.isArDemo
@@ -90,7 +87,6 @@ import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.sample.ui.DemoCategoryAccent
 import kotlinx.coroutines.delay
 import java.util.UUID
 
@@ -345,7 +341,7 @@ fun ArViewTabContent(
         // scaffold appends Settings itself.
         dock = listOf(
             DockItem(
-                icon = Icons.Filled.ViewInAr,
+                icon = Icons.Filled.Category,
                 label = stringResource(R.string.ar_dock_models_label),
                 caption = stringResource(R.string.ar_dock_models_caption),
                 onClick = picker::openSheet,
@@ -585,37 +581,20 @@ private fun ArLauncherScreen(
             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
         )
 
-        // Featured grid — the curator's pick (FEATURED_AR_DEMOS, 6 cards).
-        // Mirrors the Samples-tab `DemoCard` pattern (gradient icon header
-        // on top + title + subtitle below) so the AR View tab feels like
-        // the same app when the user switches tabs (#1185).
-        val featured = remember { FEATURED_AR_DEMOS }
+        // Featured grid — the curator's pick (FEATURED_AR_DEMOS, 6 cards). Each card is
+        // the Home's own `DemoMediaCard`: the demo's preview picture with its caption on
+        // frosted glass, not a category icon on a gradient band, so the AR tab reads as
+        // the same app as the Showcase and Explore (#3993). The featured tiles keep their
+        // curated title and subtitle over the registry entry's picture and status.
+        val featured = remember { FEATURED_AR_DEMOS.toDemoEntries() }
         val featuredIds = remember(featured) { featured.map { it.id }.toSet() }
-        val dark = isSystemInDarkTheme()
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            featured.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { demo ->
-                        ArDemoCard(
-                            title = stringResource(demo.titleRes),
-                            subtitle = stringResource(demo.subtitleRes),
-                            icon = demo.icon,
-                            dark = dark,
-                            onClick = { onArDemoClick(demo.id) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
-                }
-            }
-        }
+        ArDemoGrid(demos = featured, onArDemoClick = onArDemoClick)
 
         // All AR demos — every AR entry in ALL_DEMOS, minus the ones already shown
         // in Featured. Pre-#2231 these were reachable only via the Samples tab →
-        // half the AR feature surface was hidden on this screen. Each DemoEntry
-        // already carries titleRes / subtitleRes / icon, so the same ArDemoCard
-        // renders them. Since #2239 split AR across four catalogue sections the
-        // test is [isArDemo], not one category equality.
+        // half the AR feature surface was hidden on this screen. Since #2239 split AR
+        // across four catalogue sections the test is [isArDemo], not one category
+        // equality.
         val remainingArDemos = remember(featuredIds) {
             ALL_DEMOS
                 .filter { it.isArDemo }
@@ -633,23 +612,7 @@ private fun ArLauncherScreen(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(start = 4.dp, top = 4.dp),
             )
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                remainingArDemos.chunked(2).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { demo ->
-                            ArDemoCard(
-                                title = stringResource(demo.titleRes),
-                                subtitle = stringResource(demo.subtitleRes),
-                                icon = demo.icon,
-                                dark = dark,
-                                onClick = { onArDemoClick(demo.id) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
+            ArDemoGrid(demos = remainingArDemos, onArDemoClick = onArDemoClick)
         }
 
         Spacer(Modifier.height(12.dp))
@@ -657,76 +620,29 @@ private fun ArLauncherScreen(
 }
 
 /**
- * Mirrors `DemoListScreen.kt`'s `DemoCard` — gradient-tinted icon header
- * on top + title + subtitle below — using the AR category
- * green accent so the launcher's demo cards feel like the same component
- * as the Samples-tab grid (#1185).
+ * Two columns of `DemoMediaCard` — the Home's catalogue card, preview picture on top and
+ * caption on the picture's own frosted glass — with the [SceneViewTokens.Home.gridGutter]
+ * gutter. A row's two captions share one floor (`rowPeers`), so the cards of a row end level
+ * whatever their subtitles' length. A card carries the same "New" / "Updated" marker as on
+ * the Home, from the same [freshness] rule.
  */
 @Composable
-private fun ArDemoCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    dark: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // The Samples-tab AR accent, read from the shared palette rather than
-    // recopied, so the two grids cannot drift into looking like two apps.
-    // The AR View tab is one screen about AR as a whole, so it takes the first of
-    // the two AR section accents rather than any one section's (#2239, #3836).
-    val accent = DemoCategoryAccent[DemoCategory.PLACE_AR, dark]
-
-    Surface(
-        modifier = modifier
-            .heightIn(min = 168.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp,
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                accent.copy(alpha = 0.32f),
-                                accent.copy(alpha = 0.14f),
-                            ),
-                        ),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    lineHeight = 16.sp,
-                )
+private fun ArDemoGrid(demos: List<DemoEntry>, onArDemoClick: (String) -> Unit) {
+    val gutter = SceneViewTokens.Home.gridGutter
+    Column(verticalArrangement = Arrangement.spacedBy(gutter)) {
+        demos.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(gutter)) {
+                row.forEach { demo ->
+                    DemoMediaCard(
+                        demo = demo,
+                        onClick = { onArDemoClick(demo.id) },
+                        modifier = Modifier.weight(1f),
+                        freshness = demo.freshness(BuildConfig.VERSION_NAME),
+                        mediaAlignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center,
+                        rowPeers = { row },
+                    )
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -736,32 +652,36 @@ private data class FeaturedArDemo(
     val id: String,
     @StringRes val titleRes: Int,
     @StringRes val subtitleRes: Int,
-    val icon: ImageVector,
 )
 
-// Per-demo icons differentiate the AR-View grid tiles at a glance — pre-#2195
-// every tile rendered the same generic `Icons.Filled.ViewInAr` and the user
-// could not tell them apart. Choices mirror the semantic intent rather than
-// the demo's literal subject so a quick visual scan reads "place / face /
-// cloud / city / layers / pose" without needing to read the title.
+/**
+ * The registry entries behind the featured tiles, each under its curated title and subtitle.
+ * A featured id with no registry entry is dropped rather than drawn as a card with no demo
+ * behind it.
+ */
+private fun List<FeaturedArDemo>.toDemoEntries(): List<DemoEntry> = mapNotNull { featured ->
+    ALL_DEMOS.firstOrNull { it.id == featured.id }
+        ?.copy(titleRes = featured.titleRes, subtitleRes = featured.subtitleRes)
+}
+
+// The curator's pick for the top of the AR tab. Each tile shows its demo's preview
+// picture (`DemoPreviews`); pre-#2195 every tile was the same `ViewInAr` glyph, then one
+// Material icon per demo until the tab took the Home's picture cards.
 private val FEATURED_AR_DEMOS = listOf(
     FeaturedArDemo(
         id = "ar-placement",
         titleRes = R.string.featured_ar_placement_title,
         subtitleRes = R.string.featured_ar_placement_subtitle,
-        icon = Icons.Filled.AddLocationAlt,
     ),
     FeaturedArDemo(
         id = "ar-face",
         titleRes = R.string.featured_ar_face_title,
         subtitleRes = R.string.featured_ar_face_subtitle,
-        icon = Icons.Filled.Face,
     ),
     FeaturedArDemo(
         id = "ar-cloud-anchor",
         titleRes = R.string.featured_ar_cloud_anchor_title,
         subtitleRes = R.string.featured_ar_cloud_anchor_subtitle,
-        icon = Icons.Filled.Cloud,
     ),
     // #3463 — `ar-streetscape` became the second mode of the Scene Geometry card. The
     // featured tile names the live id, not the retired one: the "All AR demos" grid below
@@ -771,19 +691,16 @@ private val FEATURED_AR_DEMOS = listOf(
         id = "ar-scene-mesh",
         titleRes = R.string.featured_ar_scene_geometry_title,
         subtitleRes = R.string.featured_ar_scene_geometry_subtitle,
-        icon = Icons.Filled.LocationCity,
     ),
     FeaturedArDemo(
         id = "ar-depth-occlusion",
         titleRes = R.string.featured_ar_depth_occlusion_title,
         subtitleRes = R.string.featured_ar_depth_occlusion_subtitle,
-        icon = Icons.Filled.Layers,
     ),
     FeaturedArDemo(
         id = "ar-pose",
         titleRes = R.string.featured_ar_pose_title,
         subtitleRes = R.string.featured_ar_pose_subtitle,
-        icon = Icons.Filled.SelfImprovement,
     ),
 )
 

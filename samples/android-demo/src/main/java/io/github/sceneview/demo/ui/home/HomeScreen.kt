@@ -2,8 +2,10 @@
 
 package io.github.sceneview.demo.ui.home
 
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.snap
@@ -75,6 +77,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
@@ -95,6 +104,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.BuildConfig
@@ -131,16 +141,22 @@ object HomeTestTags {
     fun sectionHeader(category: String): String =
         "home-section-" + category.lowercase().replace(Regex("[^a-z0-9]+"), "-")
 
-    /** Test tag of the "Featured" shelf header, right under the hero. */
+    /** Test tag of the "Featured" group header, right under the hero. */
     const val FEATURED_SECTION = "home-section-featured"
+
+    /** Test tag of one demo's row in the home list. */
+    fun row(demoId: String): String = "home-row-$demoId"
 }
 
 /**
- * The Showcase tab (design spec §2): one `LazyVerticalGrid`, no nested
- * scroll. Full-span header spacer, hero, the "Featured" shelf
- * ([FEATURED_SECTION_IDS], priority order), a [BrowseOnlineModelsCard] that opens
- * the online gallery and the chip row, then every demo as a [DemoMediaCard] in flat
- * editorial [DemoEntry.order], one section per category.
+ * The Showcase tab (design spec §2): one `LazyVerticalGrid`, one vertical scroll, no
+ * nested scroll. Full-span header spacer, hero, then a standard Material 3 list: the
+ * "Featured" group ([FEATURED_SECTION_IDS], priority order), a [BrowseOnlineRow] that
+ * opens the online gallery, the chip row, then every demo as a [DemoListRow] in flat
+ * editorial [DemoEntry.order], one grouped section per category. The 3D header is the
+ * one showpiece; what is under it looks like any well-made app, which is what the Home
+ * sets out to show — the scene drops into an ordinary app. One column on a phone,
+ * [homeListColumns] from `home-row-min-width` up.
  *
  * Under the grid, and not part of it, sits the live stage (#3948): the dusk flight of
  * [HomeHeroScene] over a sky this screen paints, from the top edge of the display to
@@ -257,7 +273,7 @@ fun HomeScreen(
         }
     }
 
-    // The "Featured" shelf under the hero: the demos we push, in priority order.
+    // The "Featured" group under the hero: the demos we push, in priority order.
     val featuredShelf = remember(byId) { FEATURED_SECTION_IDS.mapNotNull { byId[it] } }
 
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
@@ -317,153 +333,194 @@ fun HomeScreen(
     val heroHeight = if (expanded) home.heroHeightExpanded else home.heroHeight
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Box(modifier = modifier.fillMaxSize()) {
-        // The stage: composed once, under the grid, alive as long as this screen is
-        // (#3948, #3949). It starts above the Scaffold's status-bar inset so the sky
-        // runs to the top edge, covers the header band and the featured band, and
-        // bleeds a little further before fading into the page. Its vertical travel
-        // follows the band's grid item, read at draw time — no recomposition per
-        // scrolled pixel — with the sky and the flight lagging a touch behind for depth.
-        if (!searching) {
-            HomeHeroStage(
-                gridState = gridState,
-                active = heroActive,
-                height = statusBarTop + home.headerHeight + home.heroTopGap + heroHeight +
-                    home.heroStageBleed,
-                topInset = statusBarTop,
-                restTop = home.headerHeight + home.heroTopGap,
-                inspectionMode = inspectionMode,
-            )
-        }
+    val columns = homeListColumns(LocalConfiguration.current.screenWidthDp)
 
-        LazyVerticalGrid(
-            state = gridState,
-            columns = GridCells.Adaptive(if (expanded) home.gridMinCellExpanded else home.gridMinCell),
-            contentPadding = PaddingValues(
-                start = home.contentPadding,
-                end = home.contentPadding,
-                bottom = home.gridBottomInset,
-            ),
-            verticalArrangement = Arrangement.spacedBy(home.gridGutter),
-            horizontalArrangement = Arrangement.spacedBy(home.gridGutter),
+    // The header's glass: the page under it, recorded once per frame and drawn again,
+    // blurred, behind the header (API 31+, where `RenderEffect` exists).
+    val backdrop = rememberGraphicsLayer()
+    val glass = HEADER_GLASS_SUPPORTED
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .testTag(HomeTestTags.GRID),
+                .then(
+                    if (glass) {
+                        Modifier.drawWithContent {
+                            backdrop.record { this@drawWithContent.drawContent() }
+                            drawLayer(backdrop)
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
-            // The pinned header overlay covers this band; the spacer keeps the
-            // hero from starting underneath it.
-            item(key = "header-spacer", span = { GridItemSpan(maxLineSpan) }) {
-                Spacer(Modifier.height(home.headerHeight + home.heroTopGap - home.gridGutter))
-            }
-            // While a query is typed the featured pager gives way so the results
-            // start under the header and stay visible above the keyboard (#3308).
-            if (!searching) item(key = HERO_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
-                HomeFeaturedPager(
-                    pages = featuredPages,
-                    height = heroHeight,
-                    onDemoClick = onDemoClick,
-                    onWhatsNewClick = { showWhatsNew = true },
-                    pagerState = featuredPagerState,
-                    modifier = Modifier.testTag(HomeTestTags.HERO),
-                )
-            }
-            // The "Featured" shelf: what we want seen first, right under the hero and
-            // above the catalogue, so the flagship samples never wait for a scroll to
-            // the section they are filed in. Its cards repeat in their own sections
-            // below — the catalogue stays complete — under a distinct item key.
-            if (!searching && featuredShelf.isNotEmpty()) {
-                item(key = "section-featured", span = { GridItemSpan(maxLineSpan) }) {
-                    SectionHeader(
-                        title = stringResource(R.string.home_section_featured),
-                        testTag = HomeTestTags.FEATURED_SECTION,
-                        modifier = Modifier
-                            .animateItem()
-                            .cascadeIn(cascade.delayFor(cascadeIndex++)),
-                    )
-                }
-                featuredShelf.forEach { demo ->
-                    val cardDelay = cascade.delayFor(cascadeIndex++)
-                    item(key = "featured-${demo.id}") {
-                        DemoMediaCard(
-                            demo = demo,
-                            onClick = { onDemoClick(demo.id) },
-                            freshness = freshnessById[demo.id] ?: DemoFreshness.None,
-                            modifier = Modifier
-                                .animateItem()
-                                .cascadeIn(cardDelay),
-                        )
-                    }
-                }
-            }
+            // The stage: composed once, under the grid, alive as long as this screen is
+            // (#3948, #3949). It starts above the Scaffold's status-bar inset so the sky
+            // runs to the top edge, covers the header band and the featured band, and
+            // bleeds a little further before fading into the page. Its vertical travel
+            // follows the band's grid item, read at draw time — no recomposition per
+            // scrolled pixel — with the sky and the flight lagging a touch behind for depth.
             if (!searching) {
-                item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
-                    BrowseOnlineModelsCard(
-                        onClick = onBrowseOnlineClick,
-                        modifier = Modifier
-                            .animateItem()
-                            .cascadeIn(cascade.delayFor(cascadeIndex++)),
-                    )
-                }
-            }
-            item(key = "chips", span = { GridItemSpan(maxLineSpan) }) {
-                CategoryChipRow(
-                    selected = selectedCategory,
-                    onSelect = onCategoryChange,
-                    modifier = Modifier.padding(
-                        top = home.chipRowTopGap - home.gridGutter,
-                        bottom = home.gridTopGap - home.gridGutter,
-                    ),
+                HomeHeroStage(
+                    gridState = gridState,
+                    active = heroActive,
+                    height = statusBarTop + home.headerHeight + home.heroTopGap + heroHeight +
+                        home.heroStageBleed,
+                    topInset = statusBarTop,
+                    restTop = home.headerHeight + home.heroTopGap,
+                    inspectionMode = inspectionMode,
                 )
             }
-            if (visible.isEmpty() && searching) {
-                item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                    EmptySearchState(query = query, onClear = { onQueryChange("") })
+
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(columns),
+                contentPadding = PaddingValues(
+                    start = home.contentPadding,
+                    end = home.contentPadding,
+                    bottom = home.gridBottomInset,
+                ),
+                // Rows of one group sit `home-row-gap` apart, so a group reads as one grey
+                // block; every full-span item below carries its own spacing minus this gap.
+                verticalArrangement = Arrangement.spacedBy(home.rowGap),
+                horizontalArrangement = Arrangement.spacedBy(home.rowGap),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(HomeTestTags.GRID),
+            ) {
+                // The pinned header overlay covers this band; the spacer keeps the
+                // hero from starting underneath it.
+                item(key = "header-spacer", span = { GridItemSpan(maxLineSpan) }) {
+                    Spacer(Modifier.height(home.headerHeight + home.heroTopGap - home.rowGap))
                 }
-            }
-            // Sections. `visible` is already in editorial order, and the registry
-            // keeps a category's demos contiguous within it (asserted by
-            // DemoRegistryIntegrityTest), so a section boundary is simply "the
-            // category changed" — no grouping pass, no re-sort, and the cards keep
-            // the exact order the collator emitted.
-            var previousCategory: String? = null
-            visible.forEach { demo ->
-                if (showSections && demo.category != previousCategory) {
-                    item(
-                        key = "section-${demo.category}",
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) {
+                // While a query is typed the featured pager gives way so the results
+                // start under the header and stay visible above the keyboard (#3308).
+                if (!searching) item(key = HERO_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
+                    HomeFeaturedPager(
+                        pages = featuredPages,
+                        height = heroHeight,
+                        onDemoClick = onDemoClick,
+                        onWhatsNewClick = { showWhatsNew = true },
+                        pagerState = featuredPagerState,
+                        modifier = Modifier.testTag(HomeTestTags.HERO),
+                    )
+                }
+                // The "Featured" group: what we want seen first, right under the hero and
+                // above the catalogue, so the flagship samples never wait for a scroll to
+                // the section they are filed in. Its rows repeat in their own sections
+                // below — the catalogue stays complete — under a distinct item key.
+                if (!searching && featuredShelf.isNotEmpty()) {
+                    item(key = "section-featured", span = { GridItemSpan(maxLineSpan) }) {
                         SectionHeader(
-                            title = stringResource(categoryDisplayNameRes(demo.category)),
-                            testTag = HomeTestTags.sectionHeader(demo.category),
+                            title = stringResource(R.string.home_section_featured),
+                            testTag = HomeTestTags.FEATURED_SECTION,
                             modifier = Modifier
                                 .animateItem()
                                 .cascadeIn(cascade.delayFor(cascadeIndex++)),
                         )
                     }
-                }
-                previousCategory = demo.category
-                val cardDelay = cascade.delayFor(cascadeIndex++)
-                item(key = "demo-${demo.id}") {
-                    DemoMediaCard(
-                        demo = demo,
-                        onClick = { onDemoClick(demo.id) },
-                        freshness = freshnessById[demo.id] ?: DemoFreshness.None,
-                        modifier = Modifier
-                            .animateItem(
-                                fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
-                                placementSpec = spring(
-                                    dampingRatio = SceneViewTokens.Spring.dampingRatio,
-                                    stiffness = SceneViewTokens.Spring.stiffness,
-                                ),
+                    featuredShelf.forEach { demo ->
+                        val rowDelay = cascade.delayFor(cascadeIndex++)
+                        item(key = "featured-${demo.id}") {
+                            DemoListRow(
+                                demo = demo,
+                                onClick = { onDemoClick(demo.id) },
+                                style = HomeRowStyle.Banner,
+                                freshness = freshnessById[demo.id] ?: DemoFreshness.None,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .cascadeIn(rowDelay),
                             )
-                            .cascadeIn(cardDelay),
+                        }
+                    }
+                }
+                if (!searching) {
+                    item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
+                        BrowseOnlineRow(
+                            onClick = onBrowseOnlineClick,
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeIn(cascade.delayFor(cascadeIndex++))
+                                .padding(top = home.groupGap - home.rowGap),
+                        )
+                    }
+                }
+                item(key = "chips", span = { GridItemSpan(maxLineSpan) }) {
+                    CategoryChipRow(
+                        selected = selectedCategory,
+                        onSelect = onCategoryChange,
+                        modifier = Modifier.padding(
+                            top = home.chipRowTopGap - home.rowGap,
+                            bottom = home.gridTopGap - home.rowGap,
+                        ),
                     )
                 }
-            }
+                if (visible.isEmpty() && searching) {
+                    item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                        EmptySearchState(query = query, onClear = { onQueryChange("") })
+                    }
+                }
+                // Sections. `visible` is already in editorial order, and the registry
+                // keeps a category's demos contiguous within it (asserted by
+                // DemoRegistryIntegrityTest), so a section boundary is simply "the
+                // category changed" — no grouping pass, no re-sort, and the cards keep
+                // the exact order the collator emitted.
+                var previousCategory: String? = null
+                visible.forEach { demo ->
+                    if (showSections && demo.category != previousCategory) {
+                        // The first header sits right under the chip row, which already
+                        // carries its own gap.
+                        val first = previousCategory == null
+                        item(
+                            key = "section-${demo.category}",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            SectionHeader(
+                                title = stringResource(categoryDisplayNameRes(demo.category)),
+                                testTag = HomeTestTags.sectionHeader(demo.category),
+                                topGap = if (first) SceneViewTokens.Space.sm else home.sectionHeaderTopGap,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .cascadeIn(cascade.delayFor(cascadeIndex++)),
+                            )
+                        }
+                    }
+                    previousCategory = demo.category
+                    val cardDelay = cascade.delayFor(cascadeIndex++)
+                    item(key = "demo-${demo.id}") {
+                        DemoListRow(
+                            demo = demo,
+                            onClick = { onDemoClick(demo.id) },
+                            style = HomeRowStyle.Fused,
+                            freshness = freshnessById[demo.id] ?: DemoFreshness.None,
+                            modifier = Modifier
+                                .animateItem(
+                                    fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
+                                    placementSpec = spring(
+                                        dampingRatio = SceneViewTokens.Spring.dampingRatio,
+                                        stiffness = SceneViewTokens.Spring.stiffness,
+                                    ),
+                                )
+                                .cascadeIn(cardDelay),
+                        )
+                    }
+                }
 
+            }
+        }
+
+        if (glass) {
+            HeaderGlass(
+                backdrop = backdrop,
+                visible = scrolled,
+                height = statusBarTop + home.headerHeight + home.cardOutlineWidth,
+                topInset = statusBarTop,
+            )
         }
 
         HomeHeader(
+            glass = glass,
             scrolled = scrolled,
             overStage = !scrolled && !searching,
             query = query,
@@ -495,7 +552,12 @@ fun HomeScreen(
  * colour (see DESIGN.md).
  */
 @Composable
-private fun SectionHeader(title: String, testTag: String, modifier: Modifier = Modifier) {
+private fun SectionHeader(
+    title: String,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    topGap: Dp = SceneViewTokens.Home.sectionHeaderTopGap,
+) {
     val home = SceneViewTokens.Home
     Text(
         text = title,
@@ -505,8 +567,9 @@ private fun SectionHeader(title: String, testTag: String, modifier: Modifier = M
         modifier = modifier
             .fillMaxWidth()
             .padding(
-                top = home.sectionHeaderTopGap - home.gridGutter,
-                bottom = home.sectionHeaderBottomGap - home.gridGutter,
+                // The first header's gap (`space-sm`) is under a row gap: never negative.
+                top = (topGap - home.rowGap).coerceAtLeast(0.dp),
+                bottom = (home.sectionHeaderBottomGap - home.rowGap).coerceAtLeast(0.dp),
             )
             .testTag(testTag),
     )
@@ -653,24 +716,26 @@ const val HERO_DEMO_ID = "model-viewer"
 private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "lighting")
 
 /**
- * The "Featured" shelf right under the hero: the samples we push, in priority
- * order — the flagship replay, then the newest and most recently reworked demos.
- * [HERO_DEMO_ID] is not repeated here; it is the hero itself. Older samples built
- * on earlier models stay in their sections, which are themselves in priority order
+ * The "Featured" group right under the hero: the samples we push, most striking
+ * first — the galaxy, the room rebuilt from a scan, then AR and the scan viewer.
+ * [HERO_DEMO_ID] is not repeated here; it is the hero itself. The rest stay in their
+ * sections, which are themselves ordered the same way
  * (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
  */
 internal val FEATURED_SECTION_IDS = listOf(
-    "ar-rerun", // Rerun AR replay — the flagship, reworked in 4.46
+    "cosmos", // a glowing galaxy, then a flight through it — the app's most striking scene
+    "ar-rerun", // Rerun AR replay — the scanned room rebuilt in 3D, the flagship
     // Record your room there, then stand it on your table here.
     "ar-splat-room", // "Your room, as a dollhouse" — your own Rerun recording in AR, 4.46
-    "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
-    "animation-physics", // reworked so every control shows its effect, 4.41
     "ar-placement", // tap-to-place, picker shows each model's own thumbnail, 4.39
+    "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
     "ar-record-playback", // records and replays in place (#3914)
 )
 
 @Composable
 private fun HomeHeader(
+    /** A blurred copy of the page is drawn under the header: its fill is `header-glass`. */
+    glass: Boolean,
     scrolled: Boolean,
     /** The stage's sky is behind the row: white type, light status-bar icons. */
     overStage: Boolean,
@@ -694,7 +759,8 @@ private fun HomeHeader(
     RequestLightStatusBarIcons(active = overStage)
     val overlay by animateColorAsState(
         targetValue = if (scrolled) {
-            MaterialTheme.colorScheme.surface.copy(alpha = SceneViewTokens.HomeColor.headerOverlayAlpha)
+            val alpha = if (glass) headerGlassAlpha() else SceneViewTokens.HomeColor.headerOverlayAlpha
+            MaterialTheme.colorScheme.surface.copy(alpha = alpha)
         } else {
             Color.Transparent
         },
@@ -797,7 +863,7 @@ private fun TitleRow(
             contentDescription = null,
             modifier = Modifier.size(home.markSize),
         )
-        Spacer(Modifier.width(SceneViewTokens.Space.sm + 2.dp))
+        Spacer(Modifier.width(home.markGap))
         Text(
             text = stringResource(R.string.app_name),
             style = SceneViewTokens.Type.title,
@@ -901,10 +967,10 @@ private fun SearchRow(
  */
 private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
     null to R.string.category_short_all,
-    DemoCategory.VIEW_3D to R.string.category_short_view_3d,
-    DemoCategory.PLACE_AR to R.string.category_short_place_ar,
-    DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
     DemoCategory.CREATE to R.string.category_short_create,
+    DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
+    DemoCategory.PLACE_AR to R.string.category_short_place_ar,
+    DemoCategory.VIEW_3D to R.string.category_short_view_3d,
     DemoCategory.UNDERSTAND to R.string.category_short_understand,
 )
 
@@ -940,7 +1006,7 @@ private fun CategoryChipRow(
  * Widens the node by [inset] on each side and shifts it so it lines up with
  * the parent's outer edge — an edge-to-edge row inside a padded column.
  */
-private fun Modifier.bleedHorizontal(inset: Dp): Modifier = layout { measurable, constraints ->
+internal fun Modifier.bleedHorizontal(inset: Dp): Modifier = layout { measurable, constraints ->
     val px = inset.roundToPx()
     val width = constraints.maxWidth + 2 * px
     val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
@@ -1013,3 +1079,55 @@ private fun EmptySearchState(query: String, onClear: () -> Unit) {
         }
     }
 }
+
+/**
+ * The header's backdrop: the page under the header — list, and the stage while it is
+ * still there — drawn again from [backdrop] and blurred `header-glass-blur`, from the top
+ * of the display to the header's hairline. The header's own `header-glass` fill sits on it.
+ */
+@Composable
+private fun HeaderGlass(
+    backdrop: GraphicsLayer,
+    visible: Boolean,
+    height: Dp,
+    topInset: Dp,
+) {
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(SceneViewTokens.Duration.shortMillis),
+        label = "headerGlass",
+    )
+    val density = LocalDensity.current
+    val blurPx = with(density) { SceneViewTokens.Home.headerGlassBlur.toPx() }
+    val topInsetPx = with(density) { topInset.toPx() }
+    // The grid is transparent over the page, so the recorded copy is too: the page goes
+    // under it first, or the sharp list would show through the blurred one's thin spots.
+    val page = MaterialTheme.colorScheme.surface
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .offset(y = -topInset)
+            .graphicsLayer {
+                this.alpha = alpha
+                clip = true
+                renderEffect = if (alpha > 0f) BlurEffect(blurPx, blurPx, TileMode.Clamp) else null
+            }
+            .drawBehind {
+                if (alpha > 0f) {
+                    drawRect(page)
+                    translate(top = topInsetPx) { drawLayer(backdrop) }
+                }
+            }
+            .clearAndSetSemantics { },
+    )
+}
+
+/** `header-glass` for the current scheme. */
+@Composable
+private fun headerGlassAlpha(): Float =
+    if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.headerGlassAlphaDark
+    else SceneViewTokens.HomeColor.headerGlassAlphaLight
+
+/** `RenderEffect` blur exists from API 31; below it the header stays opaque `surface`. */
+private val HEADER_GLASS_SUPPORTED = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S

@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -18,11 +20,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -38,23 +43,41 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import com.google.android.filament.MaterialInstance
+import com.google.android.filament.View
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Ray
+import dev.romainguy.kotlin.math.dot
+import dev.romainguy.kotlin.math.length
+import dev.romainguy.kotlin.math.normalize
+import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.DEFAULT_ORBIT_ELEVATION_DEGREES
+import io.github.sceneview.demo.common.StageSkyFog
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.common.rememberStageSkybox
+import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.material.setColor
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberRenderInvalidator
+import io.github.sceneview.rememberView
+import io.github.sceneview.utils.screenToRay
 import io.github.sceneview.utils.readBuffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -64,14 +87,36 @@ import kotlin.math.sin
 
 private const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
 
-/** Origin the PiP camera always looks at. */
-private val ORIGIN = Position(0f, 0f, 0f)
+/** The helmet's largest side, in metres; it stands on the floor. */
+private const val HELMET_SIZE = 0.5f
 
-// Orbit preset tuning. The camera circles the model in the horizontal plane at
-// a slight elevation; one full sweep takes ORBIT_PERIOD_NANOS.
-private const val ORBIT_RADIUS = 0.85f
-private const val ORBIT_HEIGHT = 0.3f
+/** How far from the centre a tap can walk the helmet: both cameras keep the whole stage in frame. */
+private const val STAGE_HALF_EXTENT = 0.35f
+
+/** A tap whose ray passes this close to the helmet's centre turns it rather than moving it. */
+private const val HELMET_PICK_RADIUS = 0.2f
+
+/** How long an edit takes to play out, in both views at once. */
+private const val EDIT_GLIDE_MILLIS = 450
+
+/** The point both cameras aim at: the stage's centre, a little above the floor. */
+private val STAGE_CENTRE = Position(0f, 0.2f, 0f)
+
+/** Look-down of the main camera's home shot. */
+private const val MAIN_ELEVATION_DEGREES = 24f
+
+// Orbit preset tuning. The camera circles the stage at a slight elevation; one
+// full sweep takes ORBIT_PERIOD_NANOS.
+private const val ORBIT_RADIUS = 1.45f
+private const val ORBIT_HEIGHT = 0.75f
 private const val ORBIT_PERIOD_NANOS = 12_000_000_000L
+
+/** Floor and grid: 25 cm squares, 4 either side — a 2 m square around the stage. */
+private const val FLOOR_SIZE = 90f
+private const val GRID_SPACING = 0.25f
+private const val GRID_HALF_LINES = 4
+private const val GRID_LINE_WIDTH = 0.008f
+private const val GRID_LINE_HEIGHT = 0.002f
 
 /**
  * Secondary camera (picture-in-picture) demo.
@@ -113,8 +158,15 @@ private const val ORBIT_PERIOD_NANOS = 12_000_000_000L
  *     The chips would fire and the PiP would visually freeze at the
  *     manipulator's home position.
  *
- * Both views also share a single hoisted [rememberEnvironment] so the neutral
- * IBL / skybox is built once rather than once per SceneView.
+ * Both views draw one shared scene state (#4083): the helmet's position on the
+ * floor and its heading. A tap in either view — on the floor to walk the helmet
+ * there, on the helmet to turn it — writes that state, so an edit made through
+ * one camera is visibly applied in the other. Each tap is resolved against the
+ * tapped view's own camera (`View.screenToRay`), which is the other half of the
+ * lesson: picking works per view, whichever camera the user is looking through.
+ *
+ * Both views also share one environment (studio IBL + themed stage sky), so it is
+ * built once rather than once per SceneView; the stage fog is per view.
  *
  * The PiP uses [SurfaceType.TextureSurface] so it composites correctly over
  * the main [SurfaceType.Surface] view. It rides [DemoScaffold]'s `topOverlay`
@@ -130,26 +182,80 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // One environment shared by both SceneViews — the neutral IBL is otherwise
-    // loaded + built twice (each SceneView defaults to its own rememberEnvironment).
-    val environment = rememberEnvironment(environmentLoader)
+    // Both views stand the helmet on the same floor under a themed stage sky (#4083): the
+    // neutral grey void this replaced gave neither camera a ground to read the other's edit
+    // against. The skybox and IBL are shared; the fog is per view, because it lives on the view.
+    val mainView = rememberView(engine)
+    val pipView = rememberView(engine)
+    val renderInvalidator = rememberRenderInvalidator()
+    val pipRenderInvalidator = rememberRenderInvalidator()
+    val sky = themedStageSky()
+    val stageSkybox = rememberStageSkybox(engine, sky, renderInvalidator::requestRender)
+    StageSkyFog(mainView, sky, renderInvalidator::requestRender)
+    StageSkyFog(pipView, sky, pipRenderInvalidator::requestRender)
+    val baseEnvironment = rememberModelDemoEnvironment(environmentLoader)
+    val environment = remember(baseEnvironment, stageSkybox) {
+        baseEnvironment.copy(skybox = stageSkybox)
+    }
+    val gridColor = sky.grid
+    val floorMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(sky.floor, metallic = 0f, roughness = 0.7f)
+    }
+    val gridMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(gridColor, metallic = 0f, roughness = 0.8f)
+    }
+    LaunchedEffect(floorMaterial, gridMaterial, sky.floor, gridColor) {
+        floorMaterial.setColor(sky.floor)
+        gridMaterial.setColor(gridColor)
+        renderInvalidator.requestRender()
+        pipRenderInvalidator.requestRender()
+    }
 
     // One GLB parse, two resource-sharing instances — see invariant #1.
     val instances = rememberInstancedHelmet(modelLoader, count = 2)
     val mainInstance = instances.getOrNull(0)
     val pipInstance = instances.getOrNull(1)
 
-    var cameraPreset by rememberSaveable { mutableStateOf(CameraPreset.TOP) }
+    var cameraPreset by rememberSaveable { mutableStateOf(CameraPreset.CORNER) }
+
+    // The one scene state both views draw (#4083): where the helmet stands and which way it
+    // faces. A tap in either view writes it and both views render it, so an edit made through
+    // one camera shows up in the other at once — one scene, two cameras, not two copies.
+    var helmetX by rememberSaveable { mutableFloatStateOf(0f) }
+    var helmetZ by rememberSaveable { mutableFloatStateOf(0f) }
+    var helmetYaw by rememberSaveable { mutableFloatStateOf(0f) }
+    var lastEdit by rememberSaveable { mutableStateOf<EditSource?>(null) }
+    val animatedX by animateFloatAsState(helmetX, tween(EDIT_GLIDE_MILLIS), label = "helmetX")
+    val animatedZ by animateFloatAsState(helmetZ, tween(EDIT_GLIDE_MILLIS), label = "helmetZ")
+    val animatedYaw by animateFloatAsState(helmetYaw, tween(EDIT_GLIDE_MILLIS), label = "helmetYaw")
+    val helmetPosition = Position(animatedX, 0f, animatedZ)
+    val helmetRotation = Rotation(y = animatedYaw)
+
+    // A tap on the helmet turns it a quarter turn; a tap on the floor walks it there, kept on
+    // the stage so neither camera loses it. Resolved against the tapped view's own camera.
+    fun edit(view: View, xPx: Float, yPx: Float, source: EditSource) {
+        val ray = view.screenToRay(xPx, yPx) ?: return
+        val centre = Float3(helmetX, HELMET_SIZE / 2f, helmetZ)
+        if (rayPassesWithin(ray, centre, HELMET_PICK_RADIUS)) {
+            helmetYaw += 90f
+        } else {
+            val floorHit = rayHitsFloor(ray) ?: return
+            helmetX = floorHit.x.coerceIn(-STAGE_HALF_EXTENT, STAGE_HALF_EXTENT)
+            helmetZ = floorHit.z.coerceIn(-STAGE_HALF_EXTENT, STAGE_HALF_EXTENT)
+        }
+        lastEdit = source
+    }
 
     val pipCameraNode = rememberCameraNode(engine)
     // Positions the PiP camera. A fixed preset (Top / Side / Front / Corner)
     // parks the camera once; the Orbit preset runs a frame loop that keeps
-    // sweeping the camera around the model — independently of the user's
+    // sweeping the camera around the stage — independently of the user's
     // main-view orbit, which is the whole point of a dedicated `cameraNode`.
     LaunchedEffect(cameraPreset) {
         cameraPreset.eye?.let { eye ->
             pipCameraNode.position = eye
-            pipCameraNode.lookAt(ORIGIN)
+            pipCameraNode.lookAt(STAGE_CENTRE)
+            pipRenderInvalidator.requestRender()
             return@LaunchedEffect
         }
         // Orbit: one full sweep every ORBIT_PERIOD_NANOS, driven by the display
@@ -165,7 +271,8 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                     y = ORBIT_HEIGHT,
                     z = cos(angle) * ORBIT_RADIUS,
                 )
-                pipCameraNode.lookAt(ORIGIN)
+                pipCameraNode.lookAt(STAGE_CENTRE)
+                pipRenderInvalidator.requestRender()
             }
         }
     }
@@ -178,7 +285,11 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
         firstFrameRendered = firstFrame.rendered,
         bottomOverlay = {
             DemoStatusBanner(
-                text = stringResource(R.string.demo_secondary_camera_status, stringResource(cameraPreset.labelRes)),
+                text = when (lastEdit) {
+                    EditSource.MAIN -> stringResource(R.string.demo_secondary_camera_status_main_edit)
+                    EditSource.PIP -> stringResource(R.string.demo_secondary_camera_status_pip_edit)
+                    null -> stringResource(R.string.demo_secondary_camera_status_prompt)
+                },
                 tone = DemoStatusTone.Guidance,
             )
         },
@@ -216,6 +327,15 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                     )
                 }
             }
+            OutlinedButton(
+                onClick = {
+                    helmetX = 0f
+                    helmetZ = 0f
+                    helmetYaw = 0f
+                    lastEdit = null
+                },
+                enabled = lastEdit != null,
+            ) { Text(stringResource(R.string.demo_secondary_camera_reset)) }
         },
         topOverlay = {
             val pipDescription = stringResource(
@@ -246,17 +366,30 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                     surfaceType = SurfaceType.TextureSurface,
                     engine = engine,
+                    view = pipView,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
                     environmentLoader = environmentLoader,
                     environment = environment,
+                    renderInvalidator = pipRenderInvalidator,
                     cameraNode = pipCameraNode,
                     cameraManipulator = null,
+                    // The helmet moves; re-centring on the scene's bounds would move the stage.
+                    autoCenterContent = false,
+                    onGestureListener = rememberOnGestureListener(
+                        onSingleTapConfirmed = { event, _ ->
+                            edit(pipView, event.x, event.y, EditSource.PIP)
+                        },
+                    ),
                 ) {
+                    StageFloor(floorMaterial, gridMaterial)
                     pipInstance?.let { instance ->
                         ModelNode(
                             modelInstance = instance,
-                            scaleToUnits = 0.5f,
+                            scaleToUnits = HELMET_SIZE,
+                            centerOrigin = Position(y = -1f),
+                            position = helmetPosition,
+                            rotation = helmetRotation,
                         )
                     }
                 }
@@ -279,33 +412,104 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
             )
         }
     ) {
+        // #3426 — the main view is fitted to its subject. Since #4083 the subject is the stage
+        // the helmet can walk on, not the helmet alone, so a move to the stage's edge stays in
+        // frame; a slight look-down shows the floor the edit lands on.
+        val mainRadius = rememberFitOrbitRadius(
+            extentX = STAGE_HALF_EXTENT * 2f + HELMET_SIZE,
+            extentY = HELMET_SIZE,
+            extentZ = STAGE_HALF_EXTENT * 2f + HELMET_SIZE,
+            elevationDegrees = MAIN_ELEVATION_DEGREES,
+        )
+        val mainPitch = Math.toRadians(MAIN_ELEVATION_DEGREES.toDouble())
         SceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
+            view = mainView,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
             environment = environment,
+            renderInvalidator = renderInvalidator,
             onFrame = firstFrame.onFrame,
-            // #3426 — the main view passed no manipulator, so it inherited the library's stock
-            // 2.78 m pose for a subject normalised to 0.5 units: the helmet the demo is *about*
-            // read as a small object adrift in the frame, and smaller than the same helmet in the
-            // picture-in-picture inset beside it. Fitted to the subject.
+            // The helmet moves; re-centring on the scene's bounds would move the stage with it.
+            autoCenterContent = false,
             cameraManipulator = rememberCameraManipulator(
-                orbitRadius = rememberFitOrbitRadius(
-                    extentX = 0.5f, extentY = 0.5f, extentZ = 0.5f,
-                    elevationDegrees = DEFAULT_ORBIT_ELEVATION_DEGREES,
-                )
+                orbitHomePosition = Position(
+                    x = STAGE_CENTRE.x,
+                    y = STAGE_CENTRE.y + mainRadius * sin(mainPitch).toFloat(),
+                    z = STAGE_CENTRE.z + mainRadius * cos(mainPitch).toFloat(),
+                ),
+                targetPosition = STAGE_CENTRE,
+            ),
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { event, _ ->
+                    edit(mainView, event.x, event.y, EditSource.MAIN)
+                },
             ),
         ) {
+            StageFloor(floorMaterial, gridMaterial)
             mainInstance?.let { instance ->
                 ModelNode(
                     modelInstance = instance,
-                    scaleToUnits = 0.5f,
+                    scaleToUnits = HELMET_SIZE,
+                    centerOrigin = Position(y = -1f),
+                    position = helmetPosition,
+                    rotation = helmetRotation,
                 )
             }
         }
     }
+}
+
+/** Which camera the last edit was made through. */
+private enum class EditSource { MAIN, PIP }
+
+/**
+ * The floor both views share: a plane that runs out into the stage sky's fog, and a grid over
+ * the stage the helmet can walk on, so a move reads as a distance in either camera.
+ */
+@Composable
+private fun SceneScope.StageFloor(
+    floorMaterial: MaterialInstance,
+    gridMaterial: MaterialInstance,
+) {
+    PlaneNode(
+        size = Size(x = FLOOR_SIZE, y = 0f, z = FLOOR_SIZE),
+        normal = Direction(y = 1f),
+        materialInstance = floorMaterial,
+    )
+    val span = GRID_SPACING * GRID_HALF_LINES * 2f
+    repeat(GRID_HALF_LINES * 2 + 1) { i ->
+        val offset = (i - GRID_HALF_LINES) * GRID_SPACING
+        CubeNode(
+            size = Size(x = GRID_LINE_WIDTH, y = GRID_LINE_HEIGHT, z = span),
+            position = Position(x = offset, y = GRID_LINE_HEIGHT / 2f),
+            materialInstance = gridMaterial,
+        )
+        CubeNode(
+            size = Size(x = span, y = GRID_LINE_HEIGHT, z = GRID_LINE_WIDTH),
+            position = Position(y = GRID_LINE_HEIGHT / 2f, z = offset),
+            materialInstance = gridMaterial,
+        )
+    }
+}
+
+/** Where [ray] meets the floor (`y = 0`), or `null` if it points at the sky. */
+private fun rayHitsFloor(ray: Ray): Float3? {
+    if (ray.direction.y >= -1e-4f) return null
+    val t = -ray.origin.y / ray.direction.y
+    return ray.origin + ray.direction * t
+}
+
+/** Whether [ray] passes within [radius] of [point], in front of its origin. */
+private fun rayPassesWithin(ray: Ray, point: Float3, radius: Float): Boolean {
+    val direction = normalize(ray.direction)
+    val toPoint = point - ray.origin
+    val along = dot(toPoint, direction)
+    if (along <= 0f) return false
+    val closest = ray.origin + direction * along
+    return length(point - closest) <= radius
 }
 
 /**
@@ -342,10 +546,10 @@ private fun rememberInstancedHelmet(
 private enum class CameraPreset(@StringRes val labelRes: Int, val eye: Position?) {
     // Y=0.85 with X=0.01 to avoid a gimbal singularity in lookAt's up-vector
     // resolution when the camera sits exactly above the origin.
-    TOP(R.string.demo_secondary_camera_chip_top, Position(0.01f, 0.85f, 0f)),
-    SIDE(R.string.demo_secondary_camera_chip_side, Position(0.85f, 0.1f, 0f)),
-    FRONT(R.string.demo_secondary_camera_chip_front, Position(0f, 0.1f, 0.85f)),
-    CORNER(R.string.demo_secondary_camera_chip_corner, Position(0.6f, 0.45f, 0.6f)),
+    TOP(R.string.demo_secondary_camera_chip_top, Position(0.01f, 1.9f, 0f)),
+    SIDE(R.string.demo_secondary_camera_chip_side, Position(1.5f, 0.35f, 0f)),
+    FRONT(R.string.demo_secondary_camera_chip_front, Position(0f, 0.35f, 1.5f)),
+    CORNER(R.string.demo_secondary_camera_chip_corner, Position(1.05f, 0.85f, 1.05f)),
 
     // No fixed eye — the demo's LaunchedEffect sweeps the PiP camera around the
     // model on its own, regardless of how the user orbits the main view.

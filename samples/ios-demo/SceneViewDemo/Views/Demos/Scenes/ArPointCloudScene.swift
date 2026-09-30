@@ -4,9 +4,9 @@
 // @category    ar
 // @section     understand
 // @available   true
-// @icon        camera.metering.spot
+// @icon        aqi.medium
 // @iosOnly     true
-// @order       44
+// @order       46
 // @tags        ar,point-cloud,feature-points,tracking
 import SwiftUI
 

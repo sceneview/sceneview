@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "image_plane_animated_butterfly.jpg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

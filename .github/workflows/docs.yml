@@ -36,6 +36,9 @@ on:
     paths:
       - 'docs/**'
       - 'website-static/**'
+      - 'assets/manifest.json'
+      - 'tools/fetch-assets.sh'
+      - '.github/actions/fetch-assets/**'
       - 'llms.txt'
       - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'
@@ -65,10 +68,25 @@ permissions:
 jobs:
   build:
     name: Build website + docs
+    # A data release (hd-pack-v1, assets-v1) must not redeploy the site from
+    # its tag's commit, which can be older than main. SDK releases are v*;
+    # data release tags must never start with "v".
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (web)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: web
+
+      # The site serves CC-BY models: /credits.html is what attributes them.
+      # Never deploy a page whose generated list disagrees with
+      # assets/catalog.json or with the models actually served (same gate as
+      # ci.yml → build, "Check asset credits").
+      - name: Check asset credits
+        run: python3 .claude/scripts/generate-credits.py --check
 
       # ── 1. Copy static website (marketing site — root) ─────────────────
       - name: Assemble site root from static HTML
@@ -302,6 +320,15 @@ jobs:
             echo "OK   site/.nojekyll"
           else
             echo "::error::Missing site/.nojekyll — Jekyll would drop dotfiles incl. /.well-known/ (#1998)"
+            fail=1
+          fi
+          # The platform models are fetched, not committed: every one listed
+          # in assets/manifest.json must be present with its sha256 before the
+          # site ships, or the viewer pages would 404 on their models.
+          if bash tools/fetch-assets.sh --check --scope web; then
+            echo "OK   web assets (assets/manifest.json, sha256 verified)"
+          else
+            echo "::error::website-static/models/platforms does not match assets/manifest.json — see the fetch-assets errors above"
             fail=1
           fi
           [ "$fail" -eq 0 ] || exit 1

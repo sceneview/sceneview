@@ -5,18 +5,20 @@ import SceneViewSwift
 /// `ImageNode` — flat pictures standing in 3D space, hung here as a curved
 /// gallery wall. Named `ImageDemo` to mirror the Android demo of the same name.
 ///
-/// The pictures are the app's own bundled model portraits (`model_thumb_*` in
+/// The pictures are the app's own bundled model portraits (`image_plane_*` in
 /// the asset catalog), loaded with `ImageNode.load` — real images, not
-/// colour swatches (#3788).
+/// colour swatches (#3788). They are square and opaque on purpose: the planes
+/// are 1:1 and their unlit material draws no alpha, so the viewer's
+/// transparent 5:4 `model_thumb_*` cards would stretch and show black corners.
 struct ImageDemo: View {
     /// Asset-catalog image and caption for each frame, left to right, top row first.
-    private static let pictures: [(asset: String, caption: String)] = [
-        ("model_thumb_khronos_fox", "Fox"),
-        ("model_thumb_khronos_damaged_helmet", "Helmet"),
-        ("model_thumb_khronos_lantern", "Lantern"),
-        ("model_thumb_khronos_toy_car", "Toy Car"),
-        ("model_thumb_shiba", "Shiba"),
-        ("model_thumb_animated_butterfly", "Butterfly"),
+    static let pictures: [(asset: String, caption: String)] = [
+        ("image_plane_khronos_fox", "Fox"),
+        ("image_plane_khronos_damaged_helmet", "Helmet"),
+        ("image_plane_khronos_lantern", "Lantern"),
+        ("image_plane_khronos_toy_car", "Toy Car"),
+        ("image_plane_shiba", "Shiba"),
+        ("image_plane_animated_butterfly", "Butterfly"),
     ]
     private static let columns = 3
     private static let pictureSize: Float = 0.45

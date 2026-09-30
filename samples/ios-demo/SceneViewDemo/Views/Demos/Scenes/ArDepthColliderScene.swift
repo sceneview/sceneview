@@ -4,10 +4,10 @@
 // @category    ar
 // @section     understand
 // @available   true
-// @icon        circle.grid.cross.fill
+// @icon        basketball.fill
 // @iosOnly     true
 // @status      knownIssue
-// @order       43
+// @order       45
 // @tags        ar,depth,physics,collision,rigid-body
 import SwiftUI
 
@@ -118,8 +118,7 @@ struct ARDepthColliderDemo: View {
     /// revision of this file gave the fallback floor and each ball their own
     /// `AnchorEntity(world:)`, which meant a dropped ball fell straight through the
     /// "floor" on any non-LiDAR device — caught in review before merge. Mirrors
-    /// `PhysicsDemo.swift`'s single `root` parameter, which does the same thing for its
-    /// non-AR scene.
+    /// the single `root` the retired non-AR physics demo used for the same reason.
     @State private var simRoot: AnchorEntity?
     /// Dropped-ball entities, so `resetBalls()` can detach exactly the balls it added
     /// (not the floor) via `removeFromParent()`.

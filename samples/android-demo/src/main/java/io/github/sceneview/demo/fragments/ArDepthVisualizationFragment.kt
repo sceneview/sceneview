@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Gradient
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,7 +15,7 @@ object ArDepthVisualizationFragment : DemoFragment {
         titleRes = R.string.demo_ar_depth_visualization_title,
         subtitleRes = R.string.demo_ar_depth_visualization_subtitle,
         category = DemoCategory.UNDERSTAND,
-        icon = Icons.Filled.Palette,
+        icon = Icons.Filled.Gradient,
         order = 40,
         tags = setOf("ar", "depth", "visualization", "false-color", "depth-map"),
     )

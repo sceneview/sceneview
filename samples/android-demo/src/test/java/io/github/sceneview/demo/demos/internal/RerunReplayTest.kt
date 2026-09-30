@@ -95,9 +95,10 @@ class RerunReplayTest {
 
     @Test
     fun `the atlas gives each point its own texel, in order`() {
-        assertUv(0.5f / 128, 0.5f / 128, PointColorAtlas.uvOf(0))
-        assertUv(1.5f / 128, 0.5f / 128, PointColorAtlas.uvOf(1))
-        assertUv(0.5f / 128, 1.5f / 128, PointColorAtlas.uvOf(128))
+        // V from the last row: the image material reads the raw atlas upload bottom-up (#4095).
+        assertUv(0.5f / 128, 1f - 0.5f / 128, PointColorAtlas.uvOf(0))
+        assertUv(1.5f / 128, 1f - 0.5f / 128, PointColorAtlas.uvOf(1))
+        assertUv(0.5f / 128, 1f - 1.5f / 128, PointColorAtlas.uvOf(128))
         assertEquals(PointColorAtlas.uvOf(128 * 128 - 1), PointColorAtlas.uvOf(1_000_000))
     }
 

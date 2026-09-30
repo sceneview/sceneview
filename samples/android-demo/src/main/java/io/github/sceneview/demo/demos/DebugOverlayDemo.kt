@@ -43,26 +43,33 @@ import androidx.compose.ui.text.font.FontFamily
 import com.google.android.filament.LightManager
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.SceneView
-import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
-import io.github.sceneview.demo.driving
-import io.github.sceneview.demo.rememberContinuousCameraManipulator
+import io.github.sceneview.demo.common.StageSkyFog
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.common.rememberStageSkybox
+import io.github.sceneview.demo.common.themedStageSky
+import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
-import dev.romainguy.kotlin.math.length
-import dev.romainguy.kotlin.math.normalize
+import io.github.sceneview.material.setColor
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberRenderInvalidator
+import io.github.sceneview.rememberView
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.utils.rememberDebugStats
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
 
@@ -107,6 +114,8 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     var stressAborted by remember { mutableStateOf(false) }
 
     val engine = rememberEngine()
+    val view = rememberView(engine)
+    val renderInvalidator = rememberRenderInvalidator()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -156,26 +165,59 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     // change. The animated distance below tweens toward this.
     val targetDistance = remember(targetCount) { autoFitDistance(targetCount) }
 
-    // The stock manipulator takes its orbit home at construction, so a new auto-fit distance is a
-    // new manipulator — one per stress-test toggle. `SceneView` never sees it: it is handed the
-    // screen's one camera writer, which dollies from the pose on screen to the new distance. This
-    // used to be a spring re-keying a fresh manipulator every 5 cm of travel: some twenty
-    // rebuilds a second, each one a cut, and each one dropping whatever orbit the user had set —
-    // the camera juddered out in steps and snapped back onto the +Z axis.
-    val cameraNode = rememberCameraNode(engine)
-    val continuity = rememberContinuousCameraManipulator(blendMillis = FIT_DOLLY_MILLIS)
-    val fitManipulator = remember(targetDistance) {
-        // A new count reframes, it does not re-aim: dolly along the line of sight the user set.
-        val sightLine = continuity.eyePosition
-            ?.takeIf { length(it) > MIN_SIGHT_LINE_M }
-            ?.let { normalize(it) }
-            ?: Position(z = 1f)
-        createDefaultCameraManipulator(
-            eyePosition = sightLine * targetDistance,
-            targetPosition = Position(0f),
-        )
+    // The spheres stand on a floor under a themed stage sky (#4083): with nothing but the grid on
+    // a black clear colour, the only thing in frame was the grid itself, so the scene read as a
+    // flat picture and the overlay's numbers had no 3D to be about.
+    val sky = themedStageSky()
+    val stageSkybox = rememberStageSkybox(engine, sky, renderInvalidator::requestRender)
+    StageSkyFog(view, sky, renderInvalidator::requestRender)
+    val baseEnvironment = rememberModelDemoEnvironment(environmentLoader)
+    val environment = remember(baseEnvironment, stageSkybox) {
+        baseEnvironment.copy(skybox = stageSkybox)
     }
-    val cameraManipulator = continuity.driving(fitManipulator)
+    val floorMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(sky.floor, metallic = 0f, roughness = 0.7f)
+    }
+    val gridMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(sky.grid, metallic = 0f, roughness = 0.8f)
+    }
+    LaunchedEffect(floorMaterial, gridMaterial, sky.floor, sky.grid) {
+        floorMaterial.setColor(sky.floor)
+        gridMaterial.setColor(sky.grid)
+        renderInvalidator.requestRender()
+    }
+
+    // The grid rests on the floor: lifted by its own half-height, so the bottom row sits just
+    // above y = 0 whatever the count, and the camera aims at the grid's centre.
+    val gridLift = remember(targetCount) { gridHalfHeight(targetCount) + NODE_RADIUS + FLOOR_GAP }
+
+    // The camera turns around the grid (#4083): a slow turntable that shows the spheres as a
+    // volume, with layers sliding past each other, instead of the one head-on view that made
+    // 1 000 spheres look like a flat 10 × 10 sheet. A new count is a new framing, which the
+    // manipulator eases into rather than cuts.
+    //
+    // The tour is bounded: it runs for [ORBIT_TOUR_MILLIS] after each new count, then coasts to
+    // a stop. A camera that never stops renders every frame, and the overlay's "idle · rendering
+    // on demand" state — the point of this screen as much as the frame rate — could never show.
+    var touring by remember { mutableStateOf(true) }
+    LifecycleAwareLaunchedEffect(targetCount) {
+        touring = true
+        delay(ORBIT_TOUR_MILLIS)
+        touring = false
+    }
+    val cameraNode = rememberCameraNode(engine)
+    val elevation = Math.toRadians(ORBIT_ELEVATION_DEGREES.toDouble())
+    val cameraManipulator = rememberHeroOrbitCameraManipulator(
+        trigger = touring,
+        radius = targetDistance * cos(elevation).toFloat(),
+        yHeight = targetDistance * sin(elevation).toFloat(),
+        durationMillis = ORBIT_TURN_MILLIS,
+        staticYaw = ORBIT_QA_YAW_DEGREES,
+        target = Position(y = gridLift),
+        // Keep a drag above the floor (#3794): the eye never drops below the aim point, which
+        // itself sits above the floor, so an upward drag cannot carry the camera under it.
+        maxPolarDegrees = ORBIT_MAX_POLAR_DEGREES,
+    )
 
     // Progressive spawn: incrementally bring `currentCount` toward `targetCount` so the
     // user sees nodes appear in real time instead of staring at a frozen UI thread.
@@ -227,7 +269,9 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                         }
                     },
                 enabled = currentCount >= targetCount,
-            ) { Text(if (stressRunning) "Stop test" else "Start stress test") }
+            ) {
+                Text(if (stressRunning) "Stop test" else "Start stress test")
+            }
 
             DemoStatusBanner(
                 text = when {
@@ -391,10 +435,17 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
+                view = view,
                 modelLoader = modelLoader,
+                materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
+                environment = environment,
+                renderInvalidator = renderInvalidator,
                 cameraNode = cameraNode,
                 cameraManipulator = cameraManipulator,
+                // The grid is centred by construction; re-centring on its bounds as spheres
+                // spawn would slide the whole stage under the camera on every batch.
+                autoCenterContent = false,
                 onFrame = { frameTimeNanos ->
                     firstFrame.onFrame(frameTimeNanos)
                     stats.onFrame(frameTimeNanos, nodeCount = currentCount)
@@ -418,6 +469,29 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     },
                 )
 
+                // The floor the grid stands on, ruled at the spheres' own spacing. Neither
+                // moves, so a camera turn reads against them even with a single sphere, which
+                // looks the same from every side.
+                PlaneNode(
+                    size = Size(x = FLOOR_SIZE, y = 0f, z = FLOOR_SIZE),
+                    normal = Direction(y = 1f),
+                    materialInstance = floorMaterial,
+                )
+                val floorSpan = NODE_SPACING * FLOOR_GRID_HALF_LINES * 2f
+                repeat(FLOOR_GRID_HALF_LINES * 2 + 1) { i ->
+                    val offset = (i - FLOOR_GRID_HALF_LINES) * NODE_SPACING
+                    CubeNode(
+                        size = Size(x = FLOOR_GRID_LINE_WIDTH, y = FLOOR_GRID_LINE_HEIGHT, z = floorSpan),
+                        position = Position(x = offset, y = FLOOR_GRID_LINE_HEIGHT / 2f),
+                        materialInstance = gridMaterial,
+                    )
+                    CubeNode(
+                        size = Size(x = floorSpan, y = FLOOR_GRID_LINE_HEIGHT, z = FLOOR_GRID_LINE_WIDTH),
+                        position = Position(y = FLOOR_GRID_LINE_HEIGHT / 2f, z = offset),
+                        materialInstance = gridMaterial,
+                    )
+                }
+
                 // Spawn `currentCount` procedural spheres in a centered 3-axis grid.
                 // SphereNode is a built-in SDK primitive (24×24 tessellation ≈ 1152
                 // tris each), so the perf cost comes purely from draw calls +
@@ -440,7 +514,9 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     ((currentCount + cols * rows - 1) / (cols * rows)).coerceAtLeast(1)
                 } else 1
                 val xOffset = -(cols - 1) / 2f * NODE_SPACING
-                val yOffset = -(rows - 1) / 2f * NODE_SPACING
+                // Centred on x and z, standing on the floor on y.
+                val yOffset = -(rows - 1) / 2f * NODE_SPACING +
+                    gridHalfHeight(currentCount) + NODE_RADIUS + FLOOR_GAP
                 val zOffset = (layers - 1) / 2f * NODE_SPACING
                 //
                 // PERF NOTE: each SphereNode here allocates its own VertexBuffer +
@@ -669,11 +745,45 @@ private const val STRESS_TICK_MS = 50L
 /** Distance for a single sphere — close enough to fill ~25 % of vertical FOV at 35°. */
 private const val SINGLE_SPHERE_DISTANCE = 0.8f
 
-/** How long the camera takes to dolly to a new auto-fit distance. */
-private const val FIT_DOLLY_MILLIS = 900L
+/** Look-down of the orbit: enough to see the grid's top face and the floor around it. */
+private const val ORBIT_ELEVATION_DEGREES = 22f
 
-/** Closer to the grid's centre than this, the eye has no line of sight worth keeping. */
-private const val MIN_SIGHT_LINE_M = 1e-3f
+/** One full camera turn around the grid. */
+private const val ORBIT_TURN_MILLIS = 24_000
+
+/**
+ * How long the camera tours after each new count before it parks: a third of a turn, enough to
+ * see the layers slide past each other, then the scene goes back to rendering on demand.
+ */
+private const val ORBIT_TOUR_MILLIS = 8_000L
+
+/**
+ * Drag clamp, in degrees from straight up: short of horizontal, so the eye stays above the grid's
+ * centre and therefore above the floor.
+ */
+private const val ORBIT_MAX_POLAR_DEGREES = 85f
+
+/** Azimuth the orbit is frozen at under `qa_mode`: off-axis, so the layers read in depth. */
+private const val ORBIT_QA_YAW_DEGREES = 35f
+
+/** Clearance between the bottom row of spheres and the floor. */
+private const val FLOOR_GAP = 0.02f
+
+/** Side of the floor: well past where the stage sky's fog has swallowed it. */
+private const val FLOOR_SIZE = 90f
+
+/** Floor grid lines each side of the centre, one per sphere spacing: ±2.7 m, past the widest field. */
+private const val FLOOR_GRID_HALF_LINES = 15
+private const val FLOOR_GRID_LINE_WIDTH = 0.006f
+private const val FLOOR_GRID_LINE_HEIGHT = 0.002f
+
+/** Half the height of the sphere grid's centre lines for [nodeCount] spheres (see [autoFitDistance]). */
+internal fun gridHalfHeight(nodeCount: Int): Float {
+    if (nodeCount <= 1) return 0f
+    val cols = minOf(10, nodeCount)
+    val rows = minOf(10, ((nodeCount + cols - 1) / cols)).coerceAtLeast(1)
+    return (rows - 1) / 2f * NODE_SPACING
+}
 
 /**
  * Camera distance that frames a 10×10×N sphere grid (sphere radius [NODE_RADIUS],

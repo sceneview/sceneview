@@ -9,7 +9,36 @@ import SceneViewSwift
 struct BundledViewerModel: Identifiable, Equatable {
     let assetName: String
     let displayName: String
+    /// One line under the name in the picker, saying what the model shows —
+    /// Android's `demo_model_desc_*` strings, verbatim where the model is shared.
+    var description: String? = nil
+    /// HD pack asset id (`assets/hd-pack/ios.json`) when the model is not in
+    /// the bundle but downloaded once; `nil` for a bundled USDZ.
+    var hdPackID: String? = nil
+    /// The bundled USDZ shown instantly while the HD asset is not on disk.
+    /// `nil` for an HD-only model (Museum & Space): its thumbnail stands in.
+    var standInAssetName: String? = nil
+    /// Turn about +Y, degrees, applied when the model is put on stage —
+    /// Android's `frontYaw`, same sign (right-handed, counter-clockwise seen
+    /// from above). The camera opens head-on (``ModelViewerDemo/openingAzimuth``);
+    /// a model that reads better three-quarter carries its own turn here.
+    var frontYaw: Float = 0
+    /// `false` for a model shown static: its clips stay listed under Animate
+    /// but do not start on their own (Perseverance ships 23 rigging clips).
+    var autoplaysAnimations: Bool = true
     var id: String { assetName }
+
+    /// No bundled USDZ at all: the model exists only once the HD pack has it.
+    var isHDOnly: Bool { hdPackID != nil && standInAssetName == nil }
+
+    /// The bundled resource to load when the HD asset is not available.
+    /// `nil` for an HD-only model.
+    var bundledResourceName: String? { isHDOnly ? nil : (standInAssetName ?? assetName) }
+
+    /// What "View in AR" places. Always a bundled USDZ: the HD file is not
+    /// used in AR until a real-device run proves it (follow-up to #4147).
+    /// `nil` for an HD-only model, which "View in AR" does not offer.
+    var arResourceName: String? { bundledResourceName }
 
     /// Asset-catalog thumbnail, or `nil` when none was generated for this model.
     var thumbnailName: String? {
@@ -28,19 +57,6 @@ struct ViewerEnvironment: Identifiable, Equatable {
     let assetName: String
     let displayName: String
 
-    /// Was this HDR authored as a *place* you could stand in, or as a lighting rig?
-    ///
-    /// The distinction is visible in the `env_thumb_*` chrome balls: `studio` and
-    /// `studio_warm` reflect softbox panels — they are light sources, and drawing
-    /// their skybox puts the model in a grey equipment room. `sunset`,
-    /// `outdoor_cloudy`, `night_sky` and `rooftop_night` reflect a horizon, a field,
-    /// the Milky Way and a city skyline — hiding those throws away the thing you
-    /// just picked, which is what #3583 is about.
-    ///
-    /// This drives the *default* backdrop state only. An explicit toggle by the user
-    /// always wins and is remembered — see `skyboxOverride` in `ModelViewerDemo`.
-    let authoredAsPlace: Bool
-
     var id: String { assetName }
 
     var thumbnailName: String? {
@@ -57,6 +73,8 @@ struct ViewerEnvironment: Identifiable, Equatable {
 
 struct ModelPickerSheet: View {
     let models: [BundledViewerModel]
+    /// The "Museum & Space" section: HD pack models with no bundled copy.
+    var museum: [BundledViewerModel] = []
     let selected: BundledViewerModel
     let surpriseAvailable: Bool
     let surpriseLoading: Bool
@@ -64,7 +82,9 @@ struct ModelPickerSheet: View {
     let onSurprise: () -> Void
     let onBrowse: () -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 140), spacing: SceneViewTokens.Space.sm)]
+    /// Two cards per row, as on Android; three on a regular-width screen (iPad).
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var columnCount: Int { sizeClass == .regular ? 3 : 2 }
 
     var body: some View {
         ScrollView {
@@ -115,47 +135,135 @@ struct ModelPickerSheet: View {
                     .padding(.horizontal, SceneViewTokens.Space.md)
                 }
 
-                LazyVGrid(columns: columns, spacing: SceneViewTokens.Space.sm) {
-                    ForEach(models) { model in
-                        Button {
-                            onSelect(model)
-                        } label: {
-                            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
-                                ZStack {
-                                    SceneViewTokens.HomeColor.chipBackground
-                                    if let thumb = model.thumbnailName {
-                                        Image(thumb).resizable().scaledToFill()
-                                    } else {
-                                        Image(systemName: "cube.transparent")
-                                            .font(.title2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .aspectRatio(1, contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
-                                Text(model.displayName)
-                                    .font(SceneViewTokens.TypeScale.caption)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                            }
-                            .padding(SceneViewTokens.Space.sm)
-                            .background(
-                                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-                                    .strokeBorder(SceneViewTheme.primary,
-                                                  lineWidth: model == selected ? SceneViewTokens.Layout.selectedOutlineWidth : 0)
-                            )
-                        }
-                        .buttonStyle(PressScaleButtonStyle())
-                        .accessibilityLabel(model.displayName)
-                        .accessibilityAddTraits(model == selected ? .isSelected : [])
-                    }
+                modelGrid(models)
+
+                if !museum.isEmpty {
+                    // HD pack models with no bundled copy, same card as the
+                    // grid above; Android's picker has the same section, same order.
+                    Text("Museum & Space")
+                        .font(SceneViewTokens.TypeScale.card)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, SceneViewTokens.Space.md)
+                        .padding(.top, SceneViewTokens.Space.sm)
+                        .accessibilityAddTraits(.isHeader)
+                    modelGrid(museum)
                 }
-                .padding(.horizontal, SceneViewTokens.Space.md)
 
                 ViewerSheetRow(title: "Browse online models…", subtitle: nil, loading: false, action: onBrowse)
             }
             .padding(.vertical, SceneViewTokens.Space.md)
         }
+    }
+
+    /// Cards in rows of ``columnCount``. A `Grid`, not a `LazyVGrid`: a row
+    /// takes the height of its tallest card, so a description that wraps to a
+    /// second line grows both cards of the row — Android's `CardRow`.
+    private func modelGrid(_ items: [BundledViewerModel]) -> some View {
+        let rows = stride(from: 0, to: items.count, by: columnCount).map {
+            Array(items[$0 ..< min($0 + columnCount, items.count)])
+        }
+        return Grid(horizontalSpacing: SceneViewTokens.Space.sm, verticalSpacing: SceneViewTokens.Space.sm) {
+            ForEach(rows, id: \.first?.id) { row in
+                GridRow(alignment: .top) {
+                    ForEach(row) { model in
+                        ModelPickerCard(model: model, selected: model == selected) { onSelect(model) }
+                    }
+                    // A lone last card keeps its column width.
+                    ForEach(row.count ..< columnCount, id: \.self) { _ in
+                        Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, SceneViewTokens.Space.md)
+    }
+}
+
+/// One model in the picker — Android's `PickerCard`: 5:4 media over a
+/// `card` title and a two-line description, on `surface-container-high` with
+/// the 1 pt `outline-subtle` hairline; the model on screen gets the 2 pt
+/// `primary` outline instead.
+///
+/// The media is the `model_thumb_*` render: the model alone on a transparent
+/// 600×480 (5:4, `mediaAspect`) canvas, so it sits straight on the card's own
+/// `surface-container-high` fill in both themes, as on Android. The files are
+/// Android's `model_thumb_*.webp` re-encoded as HEIC with alpha; the two
+/// iOS-only models (Cyberpunk Hovercar, Butterfly) are rendered the same way
+/// from their USDZ (see `tools/demo-previews/README.md`).
+struct ModelPickerCard: View {
+    let model: BundledViewerModel
+    let selected: Bool
+    let action: () -> Void
+
+    // Card text follows Dynamic Type like the Home cards (`DemoMediaCard`):
+    // the token sizes are the default-size values, scaled with the text style
+    // of the same size.
+    @ScaledMetric(relativeTo: .headline) private var titleSize = SceneViewTokens.TypeScale.cardSize
+    @ScaledMetric(relativeTo: .footnote) private var captionSize = SceneViewTokens.TypeScale.captionSize
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack {
+                    if let thumb = model.thumbnailName {
+                        Image(thumb).resizable().scaledToFit()
+                    } else {
+                        Image(systemName: "cube.transparent")
+                            .font(.title2)
+                            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceFaint)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(SceneViewTokens.Layout.mediaAspect, contentMode: .fit)
+                .clipped()
+
+                VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                    // The full name, never "Apollo 11 Comma…": at the default
+                    // size it is 219 pt against ~150 pt of text on a phone, too
+                    // long for one line even at 0.85, so the title wraps to a
+                    // second line and only shrinks past that.
+                    Text(model.displayName)
+                        .font(.system(size: titleSize, weight: .semibold))
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .minimumScaleFactor(0.85)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let description = model.description {
+                        Text(description)
+                            .font(.system(size: captionSize, weight: .regular))
+                            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, SceneViewTokens.Home.cardTextPaddingTop)
+                .padding(.horizontal, SceneViewTokens.Home.cardTextPaddingHorizontal)
+                .padding(.bottom, SceneViewTokens.Home.cardTextPaddingBottom)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(SceneViewTokens.HomeColor.surfaceContainerHigh)
+            .clipShape(shape)
+            .overlay {
+                shape.strokeBorder(
+                    selected ? SceneViewTokens.HomeColor.primary : SceneViewTokens.HomeColor.outlineSubtle,
+                    lineWidth: selected ? SceneViewTokens.Layout.selectedOutlineWidth
+                                        : SceneViewTokens.Home.cardOutlineWidth
+                )
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(PressScaleButtonStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.displayName)
+        .accessibilityValue(model.description ?? "")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }
 

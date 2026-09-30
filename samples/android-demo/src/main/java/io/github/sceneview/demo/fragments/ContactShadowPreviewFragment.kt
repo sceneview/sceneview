@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Gradient
+import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -19,8 +19,8 @@ object ContactShadowPreviewFragment : DemoFragment {
         // `arsceneview`) and the demo is a non-AR studio scene — filing it under AR made
         // users expect a camera pass-through and read the screen as broken.
         category = DemoCategory.CREATE,
-        icon = Icons.Filled.Gradient,
-        order = 25,
+        icon = Icons.Filled.Contrast,
+        order = 10,
         tags = setOf("shadow", "contact-shadow", "procedural", "grounding", "no-camera"),
         status = DemoStatus.InReview,
     )

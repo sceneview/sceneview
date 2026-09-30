@@ -24,9 +24,9 @@ import org.robolectric.annotation.GraphicsMode
  *
  * Each test runs with [LocalInspectionMode] forced on so the "What's new"
  * loader is skipped — the goldens pin the home chrome (pinned header, hero,
- * category chips, media cards in editorial order, status chips, the closing
- * "Browse online models" card, both palettes, `fontScale = 1.5` reflow and the
- * tablet `Adaptive(220.dp)` column count), not a release's version string.
+ * category chips, the grouped list rows in editorial order, status chips, the
+ * "Browse online models" row, both palettes, `fontScale = 1.5` reflow and the
+ * tablet column count of `homeListColumns`), not a release's version string.
  *
  * That last clause was an intention, not a property, until #3666: the freshness
  * chips ("New" / "Updated") and the "What's new in 4.x" featured page are
@@ -74,9 +74,10 @@ class HomeScreenSnapshotTest {
     @Test
     @Config(fontScale = 1.5f)
     fun home_largeFont() {
-        // Accessibility reflow: card title and subtitle are one line each with
-        // ellipsis, the hero copy is capped at 2 lines / 260 dp — an oversized
-        // font scale is exactly where clipping would show.
+        // Accessibility reflow: row titles and subtitles are never truncated
+        // (#3603), so each list row must grow with them past its 72 dp minimum;
+        // the hero copy is capped at 2 lines / 260 dp — an oversized font scale
+        // is exactly where clipping would show.
         captureRoboImage("src/test/snapshots/home_large_font.png", roborazziOptions = HOST_TOLERANT) {
             SceneViewDemoTheme(darkTheme = false) {
                 Home()
@@ -87,7 +88,7 @@ class HomeScreenSnapshotTest {
     @Test
     @Config(qualifiers = "w1280dp-h800dp-xhdpi")
     fun home_tablet() {
-        // `GridCells.Adaptive(220.dp)` above 600 dp: the cards reflow into more
+        // `homeListColumns` on a wide window: the list rows split into three
         // columns and the hero grows to 400 dp. Pinned so that stays deliberate.
         captureRoboImage("src/test/snapshots/home_tablet.png", roborazziOptions = HOST_TOLERANT) {
             SceneViewDemoTheme(darkTheme = false) {

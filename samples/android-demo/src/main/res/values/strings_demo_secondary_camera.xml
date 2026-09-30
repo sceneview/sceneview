@@ -15,8 +15,11 @@
     <string name="demo_secondary_camera_chip_side">Side</string>
     <string name="demo_secondary_camera_chip_top">Top</string>
     <string name="demo_secondary_camera_pip_cd">Picture-in-picture camera view: %1$s</string>
-    <string name="demo_secondary_camera_main">Main camera · drag to orbit</string>
+    <string name="demo_secondary_camera_main">Main camera · drag to orbit, tap to edit</string>
     <string name="demo_secondary_camera_pip_label">PiP — %1$s view</string>
-    <string name="demo_secondary_camera_status">PiP: %1$s — change the main view; this camera stays independent.</string>
-    <string name="demo_secondary_camera_explainer">Two cameras render the same scene content into two render targets: an interactive main view and an independent TextureSurface inset, sharing model resources.</string>
+    <string name="demo_secondary_camera_status_prompt">Tap the floor in either view to move the helmet, or tap the helmet to turn it.</string>
+    <string name="demo_secondary_camera_status_main_edit">Edited in the main view — the inset shows the same change from its own angle.</string>
+    <string name="demo_secondary_camera_status_pip_edit">Edited in the inset — the main view shows the same change from its own angle.</string>
+    <string name="demo_secondary_camera_reset">Reset the helmet</string>
+    <string name="demo_secondary_camera_explainer">One scene, two cameras: an interactive main view and an independent TextureSurface inset render the same state. An edit made through either camera — a move, a turn — appears in both.</string>
 </resources>

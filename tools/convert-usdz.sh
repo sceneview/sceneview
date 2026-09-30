@@ -48,6 +48,11 @@
 #                      exists in --out-dir (default: skip — idempotent reruns)
 #   --blender <path>   Explicit Blender executable (default: $BLENDER_BIN,
 #                      then /Applications/Blender.app/…, then `blender` in PATH)
+#   --transmission-as-alpha
+#                      Map glTF KHR_materials_transmission to alpha-blended
+#                      opacity (UsdPreviewSurface has no transmission). Off by
+#                      default so existing conversions are byte-for-byte
+#                      unchanged; used for the HD pack's Flight Helmet lenses.
 #   -h, --help         Show this help
 #
 # Example — the 4 Khronos sample models this script was written for:
@@ -116,6 +121,7 @@ inputs=()
 out_dir=""
 force=false
 blender_bin="${BLENDER_BIN:-}"
+transmission_as_alpha=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -124,6 +130,8 @@ while [ $# -gt 0 ]; do
             out_dir="$2"; shift 2 ;;
         --force)
             force=true; shift ;;
+        --transmission-as-alpha)
+            transmission_as_alpha=1; shift ;;
         --blender)
             [ $# -ge 2 ] || { echo -e "${RED}--blender requires a value${NC}" >&2; exit 2; }
             blender_bin="$2"; shift 2 ;;
@@ -177,6 +185,7 @@ import bpy
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 src_glb, dst_usdz = argv[0], argv[1]
+transmission_as_alpha = len(argv) > 2 and argv[2] == "1"
 
 # Start from a truly empty scene so nothing from Blender's factory startup
 # file (default cube/camera/light) leaks into the export.
@@ -186,6 +195,39 @@ import_result = bpy.ops.import_scene.gltf(filepath=src_glb)
 if import_result != {'FINISHED'}:
     print(f"IMPORT FAILED: {import_result}", file=sys.stderr)
     sys.exit(1)
+
+# glTF `KHR_materials_transmission` (clear glass) has no UsdPreviewSurface
+# equivalent: exported as-is, a transmissive material lands in the USDZ with
+# `opacity = 1` and RealityKit draws the glass as an opaque slab (the Flight
+# Helmet's goggle lenses, HD pack v1). Fall back to alpha blending, which
+# UsdPreviewSurface does carry: the base-colour texture's own alpha when it has
+# one (the Flight Helmet authored its lens opacity there before the asset moved
+# to transmission), otherwise a constant derived from the transmission factor.
+# Opt-in (--transmission-as-alpha) so other conversions stay exactly as before.
+for mat in (bpy.data.materials if transmission_as_alpha else []):
+    if not mat.use_nodes:
+        continue
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    for bsdf in (n for n in nodes if n.type == 'BSDF_PRINCIPLED'):
+        tw_socket = bsdf.inputs.get('Transmission Weight') or bsdf.inputs.get('Transmission')
+        if tw_socket is None or tw_socket.is_linked or tw_socket.default_value <= 0:
+            continue
+        alpha = bsdf.inputs['Alpha']
+        if alpha.is_linked:
+            continue
+        base = bsdf.inputs['Base Color']
+        tex = base.links[0].from_node if base.is_linked else None
+        if tex is not None and tex.type == 'TEX_IMAGE' and tex.image is not None \
+                and tex.image.channels == 4:
+            links.new(tex.outputs['Alpha'], alpha)
+            how = f"base-colour alpha of {tex.image.name}"
+        else:
+            alpha.default_value = max(0.1, 1.0 - 0.8 * tw_socket.default_value)
+            how = f"constant {alpha.default_value:.2f}"
+        tw_socket.default_value = 0.0
+        if hasattr(mat, 'surface_render_method'):
+            mat.surface_render_method = 'BLENDED'
+        print(f"TRANSMISSION {mat.name}: opacity from {how}")
 
 export_result = bpy.ops.wm.usd_export(
     filepath=dst_usdz,
@@ -266,8 +308,8 @@ for src in "${inputs[@]}"; do
 
     echo -e "${BLUE}==${NC} $base.glb -> $base.usdz"
     if log="$("$blender_bin" --background --factory-startup --python "$driver" -- \
-                "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" "$dst" 2>&1)"; then
-        echo "$log" | grep -E "^REPORT|^WARNING" || true
+                "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" "$dst" "$transmission_as_alpha" 2>&1)"; then
+        echo "$log" | grep -E "^REPORT|^WARNING|^TRANSMISSION" || true
         if [ -s "$dst" ]; then
             size_h="$(du -h "$dst" | cut -f1)"
             echo -e "  ${GREEN}OK${NC} $dst ($size_h)"

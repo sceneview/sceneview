@@ -14,7 +14,7 @@
 # `camera_distance` deep-link param — Maestro has no pinch gesture, so this
 # is the only way the harness can exercise 3D camera zoom. model-viewer is the
 # natural host: it drives the shared hero-orbit camera the param overrides.
-appId: io.github.sceneview.demo
+appId: io.github.sceneview.demo.qa
 ---
 - runFlow:
     file: flows/demo.yaml

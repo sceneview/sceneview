@@ -175,7 +175,9 @@ data class RerunStoredSession(
                 source = source,
                 duration = trace.duration,
                 pathMetres = ArDebugStats.pathLength(last.trail),
-                points = last.mapPointCount,
+                // A `.svscan` v2's dense cloud is the scan's points: the scan HUD counted it live
+                // and the replay draws it in place of ARCore's sparse feature points.
+                points = trace.pointCountAt(trace.duration, capture.manifest.dense?.count ?: 0),
                 planes = last.planes.size,
                 photos = trace.imageCount,
             )
@@ -219,8 +221,21 @@ class RerunSessionStore(val root: File) {
         .mapNotNull { dir ->
             runCatching { RerunStoredSession.parse(File(dir, INFO).readText()) }.getOrNull()
                 ?.takeIf { it.id == dir.name }
+                ?.countingDense(dir)
         }
         .sortedByDescending { it.createdAt }
+
+    /**
+     * A dense scan kept before its `session.json` counted the dense cloud (it counted ARCore's
+     * sparse map, capped at 12k, while the scan HUD showed the cloud): its points read again from
+     * its manifest, so the list says what the scan and its replay say.
+     */
+    private fun RerunStoredSession.countingDense(dir: File): RerunStoredSession {
+        val dense = runCatching {
+            ReplayManifest.parse(File(dir, RerunCapturePack.MANIFEST).readText())?.dense?.count
+        }.getOrNull()
+        return if (dense != null && dense > 0 && dense != points) copy(points = dense) else this
+    }
 
     /**
      * Keeps [capture] as a new session. The capture files are written before `session.json`, so a

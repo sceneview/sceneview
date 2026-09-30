@@ -12,6 +12,7 @@ import io.github.sceneview.demo.R
 object ModelThumbnails {
     private val resources: Map<String, Int> = mapOf(
         "khronos_damaged_helmet" to R.drawable.model_thumb_khronos_damaged_helmet,
+        "khronos_flight_helmet" to R.drawable.model_thumb_khronos_flight_helmet,
         "khronos_fox" to R.drawable.model_thumb_khronos_fox,
         "khronos_glam_velvet_sofa" to R.drawable.model_thumb_khronos_glam_velvet_sofa,
         "khronos_iridescent_dish" to R.drawable.model_thumb_khronos_iridescent_dish,
@@ -23,6 +24,12 @@ object ModelThumbnails {
         // thumbnail rather than a placeholder.
         "shiba" to R.drawable.model_thumb_shiba,
         "threejs_soldier" to R.drawable.model_thumb_threejs_soldier,
+        // HD pack scans with no bundled stand-in: keyed by the entry's `thumbnailStem`, rendered
+        // from the downloaded GLB itself. The viewer also shows them on the stage until it loads.
+        "hd_apollo11_exterior" to R.drawable.model_thumb_hd_apollo11_exterior,
+        "hd_apollo11_interior" to R.drawable.model_thumb_hd_apollo11_interior,
+        "hd_woolly_mammoth" to R.drawable.model_thumb_hd_woolly_mammoth,
+        "hd_perseverance" to R.drawable.model_thumb_hd_perseverance,
     )
     fun resourceFor(assetName: String): Int? = resources[assetName]
 }

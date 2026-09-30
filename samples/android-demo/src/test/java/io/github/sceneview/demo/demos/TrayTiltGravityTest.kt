@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pure-JVM cover for the `animation-physics` tray tilt (#3621).
+ * Pure-JVM cover for the `rolling-balls` tray tilt (#3621).
  *
  * The tray is a pivot node rotated by `(pitch, 0, roll)`; the simulation keeps its flat floor and
  * axis-aligned rails and only ever sees gravity expressed in that rotated frame. These tests pin

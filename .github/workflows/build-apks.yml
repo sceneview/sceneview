@@ -42,6 +42,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android tv)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android tv
 
       - uses: ./.github/actions/setup-gradle
 
@@ -63,10 +67,16 @@ jobs:
           # the bundled featured models and disables search. See
           # samples/android-demo/.../sketchfab/ for the BuildConfig wiring.
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        # `-PdemoPlainDebug=true`: this debug APK is the public one (GitHub
+        # Release asset, tools/try-demo.sh --download, docs/docs/try.md), so it
+        # keeps the plain `io.github.sceneview.demo` id, "SceneView" label and
+        # store icon. Without it the android-demo debug build is the side-by-side
+        # QA app (`io.github.sceneview.demo.qa`, "SV QA") — see #4138.
         run: |
           ./gradlew \
             :samples:android-demo:assembleDebug \
             :samples:android-tv-demo:assembleDebug \
+            -PdemoPlainDebug=true \
             --console=plain
 
       - name: Collect APKs

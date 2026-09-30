@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.Portrait
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArPeopleOcclusionFragment : DemoFragment {
         titleRes = R.string.demo_ar_people_occlusion_title,
         subtitleRes = R.string.demo_ar_people_occlusion_subtitle,
         category = DemoCategory.UNDERSTAND,
-        icon = Icons.Filled.Accessibility,
-        order = 37,
+        icon = Icons.Filled.Portrait,
+        order = 35,
         tags = setOf("ar", "occlusion", "people", "segmentation", "depth"),
     )
 

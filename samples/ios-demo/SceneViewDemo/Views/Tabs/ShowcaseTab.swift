@@ -3,18 +3,22 @@ import SceneViewSwift
 
 /// The Showcase tab — the iOS twin of Android's `HomeScreen.kt`.
 ///
-/// One scroll view, no nested scroll, no background scene: a 56 pt header
-/// (cube mark + wordmark + search), the `HomeHero`, the "Featured" shelf
-/// (`HomeCatalogue.featuredIds`), the section chip row, then every demo as a
-/// `DemoMediaCard` under its `DemoSection` header in editorial `DemoItem.order`,
-/// closed by a `BrowseOnlineModelsCard` that pushes the online gallery
-/// (`ExploreTab`, embedded) onto this stack. Layout and order mirror Android's
-/// `HomeScreen.kt` (#3907); demos in `HomeCatalogue.hiddenFromHome` keep
-/// their deep links but are not listed here.
+/// One vertical scroll, no nested scroll: a 56 pt header (cube mark +
+/// wordmark + search), the `HomeHero` on its live 3D stage, then the list
+/// — the "Featured" banners (`HomeCatalogue.featuredIds`), a
+/// `BrowseOnlineRow` that pushes the online gallery (`ExploreTab`, embedded)
+/// onto this stack, the section chip row, then every demo as a `DemoListRow`
+/// under its `DemoSection` header in editorial `DemoItem.order`. The 3D header
+/// is the one showpiece; what is under it looks like any well-made app, which
+/// is what the Home sets out to show (#4186). One column on an iPhone, as many
+/// `home-row-min-width` columns as fit on an iPad (`homeListColumns`). Layout
+/// and order mirror Android's `HomeScreen.kt` (#3907, #4186); demos in
+/// `HomeCatalogue.hiddenFromHome` keep their deep links but are not listed here.
 ///
 /// The header is a pinned overlay drawn over the scroll view: transparent
-/// while the hero is on screen, `surface` at 94 % light / 100 % dark plus a bottom hairline once
-/// the content has scrolled under it. Its search action swaps the wordmark row
+/// while the hero is on screen, glass plus a bottom hairline once the content
+/// has scrolled under it (`header-glass`, #4201: Liquid Glass on iOS 26, the
+/// ultra-thin material before). Its search action swaps the wordmark row
 /// for a 48 pt field that filters title / subtitle / category / tags
 /// (`filterDemos`, pure and unit-tested in `HomeFilterTests`).
 ///
@@ -38,22 +42,36 @@ struct ShowcaseTab: View {
     @State private var comingSoonScene: DemoItem?
     @State private var showExplore = false
     /// The `matchedTransitionSource` id of whatever opened the current demo. A
-    /// featured demo is on screen twice (shelf and section), so the zoom has to
-    /// know which of the two cards it grows out of.
+    /// featured demo is on screen twice (Featured and its section), so the zoom
+    /// has to know which of the two rows it grows out of.
     @State private var transitionSourceId = ""
 
     /// Source namespace for the iOS 18 zoom presentation transition: the tapped
-    /// card (or the hero) morphs into the full-screen demo instead of the demo
+    /// row (or the hero) morphs into the full-screen demo instead of the demo
     /// sliding up over it with no visual link to what was tapped (#3599).
     @Namespace private var cardNamespace
 
     /// Drives the entrance cascade (``StaggeredReveal``): flipped once, one
     /// frame after the catalogue appears, and never back. It lives here, on the
-    /// screen, rather than in each item: a card in a `LazyVGrid` is rebuilt
+    /// screen, rather than in each item: a row in a `LazyVGrid` is rebuilt
     /// whenever the grid is — constantly, while the hero's 3D stage renders —
     /// and per-item state would replay the fade forever. Read from the parent,
-    /// a rebuilt card is simply already revealed.
+    /// a rebuilt row is simply already revealed.
     @State private var catalogueRevealed = false
+
+    /// The page's scroll offset, for the hero stage's travel and parallax.
+    /// An observable object rather than `@State`, so only the stage's
+    /// scroll-driven frames — not this whole screen — redraw as the page scrolls.
+    @State private var heroScroll = HomeHeroScroll()
+    /// The hero's flight, kept for the life of the screen: the 3D view is
+    /// unmounted off screen, behind a demo, in the background and during a
+    /// search, and resumes on the frame it left (``HomeHeroFlightHost``).
+    @State private var heroFlight = HomeHeroFlightHost()
+    /// The status bar's height: the hero stage starts above the content, at
+    /// the top edge of the display.
+    @State private var topInset: CGFloat = 0
+    /// Width of the list between the page's side insets, for its column count.
+    @State private var listWidth: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
@@ -61,7 +79,7 @@ struct ShowcaseTab: View {
     private var expanded: Bool { sizeClass == .regular }
 
     /// The hero's 3D stage runs only here: visible tab, foreground app, nothing
-    /// presented on top. Everything else tears it down — see ``HomeHero``.
+    /// presented on top. Everything else tears it down — see ``HomeHeroStage``.
     private var heroLive: Bool {
         isActive
             && scenePhase == .active
@@ -83,14 +101,14 @@ struct ShowcaseTab: View {
             .compactMap { byId[$0.id] }
     }
 
-    /// The Featured shelf, in priority order. Hidden while searching and shown
+    /// The "Featured" group, in priority order. Hidden while searching and shown
     /// whatever chip is selected — Android parity.
     private var featured: [DemoItem] {
         let byId = Dictionary(uniqueKeysWithValues: homeScenes.map { ($0.sceneId, $0) })
         return HomeCatalogue.featuredIds.compactMap { byId[$0] }
     }
 
-    /// `demos` cut into sections, in `DemoSection` order. Each card carries its
+    /// `demos` cut into sections, in `DemoSection` order. Each row carries its
     /// reading-order index across the whole list, for the entrance cascade.
     private func sections(of demos: [DemoItem]) -> [HomeSectionGroup] {
         let indexed = Array(demos.enumerated())
@@ -103,32 +121,44 @@ struct ShowcaseTab: View {
 
     private var showFeatured: Bool { !searching && !featured.isEmpty }
 
+    /// One column on an iPhone, `home-row-min-width` columns on an iPad.
+    private var columnCount: Int { homeListColumns(width: listWidth) }
+
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: expanded ? SceneViewTokens.Home.gridMinCellExpanded
-                                              : SceneViewTokens.Home.gridMinCell),
-                  spacing: SceneViewTokens.Home.gridGutter)]
+        Array(repeating: GridItem(.flexible(), spacing: SceneViewTokens.Home.rowGap, alignment: .top),
+              count: columnCount)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // The pinned header overlay covers this band; the spacer keeps
-                    // the hero from starting underneath it.
-                    Color.clear.frame(height: SceneViewTokens.Home.headerHeight + SceneViewTokens.Home.heroTopGap)
+                    VStack(alignment: .leading, spacing: 0) {
+                        // The pinned header overlay covers this band; the spacer keeps
+                        // the hero from starting underneath it.
+                        Color.clear.frame(height: SceneViewTokens.Home.headerHeight + SceneViewTokens.Home.heroTopGap)
 
-                    // While a query is active the hero steps aside so the results
-                    // sit right under the header (Android parity).
-                    if !searching {
-                        HomeHero(height: expanded ? SceneViewTokens.Home.heroHeightExpanded
-                                                  : SceneViewTokens.Home.heroHeight,
-                                 live: heroLive) {
-                            open(sceneId: Self.heroDemoId)
+                        // While a query is active the hero steps aside so the results
+                        // sit right under the header (Android parity).
+                        if !searching {
+                            HomeHero(height: heroHeight) {
+                                open(sceneId: Self.heroDemoId)
+                            }
+                            #if os(iOS)
+                            .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
+                            #endif
+                            .staggeredReveal(position: 0, revealed: catalogueRevealed)
                         }
-                        #if os(iOS)
-                        .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
-                        #endif
-                        .staggeredReveal(position: 0, revealed: catalogueRevealed)
+                    }
+                    // The dusk sky and the live flight, under the header and the
+                    // hero band, full-bleed from the top edge of the display.
+                    .background(alignment: .top) {
+                        if !searching {
+                            HomeHeroStage(height: heroStageHeight, topInset: topInset,
+                                          restTop: heroRestTop, live: heroLive, scroll: heroScroll,
+                                          flight: heroFlight)
+                                .padding(.horizontal, -SceneViewTokens.Home.contentPadding)
+                        }
                     }
 
                     if showFeatured {
@@ -137,17 +167,17 @@ struct ShowcaseTab: View {
                             .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
                             .accessibilityIdentifier("home-section-featured")
                             .staggeredReveal(position: 1, revealed: catalogueRevealed)
-                        LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                            ForEach(Array(featured.enumerated()), id: \.element.sceneId) { index, demo in
-                                let sourceId = "featured-\(demo.sceneId)"
-                                DemoMediaCard(demo: demo) { open(demo, from: sourceId) }
-                                    #if os(iOS)
-                                    .matchedTransitionSource(id: sourceId, in: cardNamespace)
-                                    #endif
-                                    .accessibilityIdentifier("home-featured-\(demo.sceneId)")
-                                    .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
-                            }
-                        }
+                        featuredGroup
+                    }
+
+                    // Under "Featured", `home-group-gap` below it, full width —
+                    // Android's `browse-online` list row. It steps aside with
+                    // the hero while a query is live.
+                    if !searching {
+                        BrowseOnlineRow { showExplore = true }
+                            .padding(.top, SceneViewTokens.Home.groupGap)
+                            .accessibilityIdentifier("home-browse-online")
+                            .staggeredReveal(position: chipRevealPosition - 1, revealed: catalogueRevealed)
                     }
 
                     CategoryChipRow(selected: $selectedSection)
@@ -175,32 +205,48 @@ struct ShowcaseTab: View {
                         EmptySearchState(query: query) { query = "" }
                     }
 
-                    sectionedGrid(visible)
+                    sectionedList(visible)
                         .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
-
-                    if !searching {
-                        LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                            BrowseOnlineModelsCard { showExplore = true }
-                                .staggeredReveal(position: chipRevealPosition + 1 + visible.count,
-                                                 revealed: catalogueRevealed)
-                        }
-                        .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
-                    }
                 }
                 .animation(SceneViewTokens.Spring.fade, value: searching)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { listWidth = $0 }
                 .padding(.horizontal, SceneViewTokens.Home.contentPadding)
                 .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
             }
             .background(SceneViewTokens.HomeColor.surface)
             .scrollDismissesKeyboard(.immediately)
+            // "Scrolled" once the header band has gone under the header, as on
+            // Android (the grid's header spacer leaving the viewport): until
+            // then the header sits on the stage's sky.
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top > SceneViewTokens.Home.heroTopGap
+                geometry.contentOffset.y + geometry.contentInsets.top > heroRestTop
             } action: { _, isScrolled in
                 withAnimation(SceneViewTokens.Spring.fade) { scrolled = isScrolled }
             }
-            .overlay(alignment: .top) {
-                HomeHeader(scrolled: scrolled, query: $query, searchOpen: $searchOpen)
+            // The stage's offset stops at its own height: past it the stage is
+            // off screen, the transform stops changing and nothing is written.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                min(geometry.contentOffset.y + geometry.contentInsets.top, heroStageHeight)
+            } action: { _, offset in
+                heroScroll.offset = offset
             }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top < heroStageHeight - topInset
+            } action: { _, onScreen in
+                heroScroll.onScreen = onScreen
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentInsets.top
+            } action: { _, inset in
+                topInset = inset
+            }
+            .overlay(alignment: .top) {
+                HomeHeader(scrolled: scrolled, overStage: overStage, query: $query, searchOpen: $searchOpen)
+            }
+            #if os(iOS)
+            // Light status-bar icons while they sit on the sky.
+            .toolbarColorScheme(overStage ? .dark : nil, for: .navigationBar)
+            #endif
             .hideNavigationBar()
             .navigationDestination(isPresented: $showExplore) {
                 ExploreTab(embedded: true)
@@ -233,14 +279,14 @@ struct ShowcaseTab: View {
             #if os(iOS)
             .fullScreenCover(item: $fullScreenScene) { scene in
                 DemoCover(scene: scene) { fullScreenScene = nil }
-                    // The card that was tapped expands into the demo, and
+                    // The row that was tapped expands into the demo, and
                     // collapses back into it on close. Before this, a demo
                     // appeared with the stock cover slide and nothing tied it
-                    // to the card the thumb had just hit (#3599). The source is
-                    // the `DemoMediaCard` — or the `HomeHero` when the demo is
+                    // to what the thumb had just hit (#3599). The source is
+                    // the `DemoListRow` — or the `HomeHero` when the demo is
                     // opened from it, which is why both carry a
                     // `matchedTransitionSource` (`transitionSourceId`: the
-                    // scene id, or `featured-<id>` for a Featured shelf card).
+                    // scene id, or `featured-<id>` for a Featured row).
                     .navigationTransition(.zoom(sourceID: transitionSourceId, in: cardNamespace))
                     // The zoom transition brings the system's interactive
                     // dismissal with it: a pinch-in or a downward drag anywhere
@@ -253,9 +299,12 @@ struct ShowcaseTab: View {
                     // open and on close.
                     .interactiveDismissDisabled()
             }
-            #else
+            #elseif os(macOS)
             .sheet(item: $fullScreenScene) { scene in
                 DemoCover(scene: scene) { fullScreenScene = nil }
+                    // A macOS sheet sizes to its content's ideal size, and a 3D stage
+                    // has none: without a floor the demo opened as a 390×100 strip.
+                    .frame(minWidth: 960, minHeight: 640)
             }
             #endif
         }
@@ -264,40 +313,84 @@ struct ShowcaseTab: View {
     /// The demo the hero opens.
     static let heroDemoId = "model-viewer"
 
-    /// Every visible demo under its section header. Headers are drawn only
-    /// when more than one section is on screen: with a single chip selected,
-    /// the chip already names it (DESIGN.md, section headers).
+    private var heroHeight: CGFloat {
+        expanded ? SceneViewTokens.Home.heroHeightExpanded : SceneViewTokens.Home.heroHeight
+    }
+
+    /// Where the hero band starts below the content's top edge.
+    private var heroRestTop: CGFloat {
+        SceneViewTokens.Home.headerHeight + SceneViewTokens.Home.heroTopGap
+    }
+
+    /// The stage: status bar, header band, hero band, then the bleed that fades
+    /// into the page — Android's `HomeHeroStage` height.
+    private var heroStageHeight: CGFloat {
+        topInset + heroRestTop + heroHeight + SceneViewTokens.Home.heroStageBleed
+    }
+
+    /// The header sits on the stage's sky: white type and light status-bar icons.
+    private var overStage: Bool { !scrolled && !searching && !searchOpen }
+
+    /// The "Featured" group under the hero — Android's featured rows (#4186):
+    /// the demos we push, one `home-banner` each, in priority order. They
+    /// repeat as rows in their own sections below, so the catalogue stays
+    /// complete.
+    private var featuredGroup: some View {
+        LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.rowGap) {
+            ForEach(Array(featured.enumerated()), id: \.element.sceneId) { index, demo in
+                let sourceId = "featured-\(demo.sceneId)"
+                DemoListRow(demo: demo, style: .banner) {
+                    open(demo, from: sourceId)
+                }
+                #if os(iOS)
+                .matchedTransitionSource(id: sourceId, in: cardNamespace)
+                #endif
+                .accessibilityIdentifier("home-featured-\(demo.sceneId)")
+                .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
+            }
+        }
+    }
+
+    /// Every visible demo under its section header, each demo its own
+    /// card. Headers are drawn only when more than one section is on
+    /// screen: with a single chip selected, the chip already names it
+    /// (DESIGN.md, section headers).
     @ViewBuilder
-    private func sectionedGrid(_ demos: [DemoItem]) -> some View {
+    private func sectionedList(_ demos: [DemoItem]) -> some View {
         let groups = sections(of: demos)
         let showSections = groups.count > 1
         let firstCardSlot = chipRevealPosition + 1
         ForEach(Array(groups.enumerated()), id: \.element.section) { groupIndex, group in
             if showSections {
                 HomeSectionHeader(title: group.section.title)
-                    // The chip row already leaves `gridTopGap` under it.
+                    // The first header sits right under the chip row, which
+                    // already leaves `gridTopGap` under it: `space-sm` more,
+                    // less the seam Android's list lays between the two.
                     .padding(.top, groupIndex == 0
-                             ? SceneViewTokens.Home.sectionHeaderTopGap - SceneViewTokens.Home.gridTopGap
+                             ? max(0, SceneViewTokens.Space.sm - SceneViewTokens.Home.rowGap)
                              : SceneViewTokens.Home.sectionHeaderTopGap)
                     .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
                     .accessibilityIdentifier("home-section-\(group.section.rawValue)")
             }
-            LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                ForEach(group.cards, id: \.demo.sceneId) { card in
-                    DemoMediaCard(demo: card.demo) { open(card.demo, from: card.demo.sceneId) }
-                        #if os(iOS)
-                        .matchedTransitionSource(id: card.demo.sceneId, in: cardNamespace)
-                        #endif
-                        .staggeredReveal(position: firstCardSlot + card.index, revealed: catalogueRevealed)
+            LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.rowGap) {
+                ForEach(Array(group.cards.enumerated()), id: \.element.demo.sceneId) { place, card in
+                    DemoListRow(demo: card.demo) {
+                        open(card.demo, from: card.demo.sceneId)
+                    }
+                    #if os(iOS)
+                    .matchedTransitionSource(id: card.demo.sceneId, in: cardNamespace)
+                    #endif
+                    .accessibilityIdentifier("home-row-\(card.demo.sceneId)")
+                    .staggeredReveal(position: firstCardSlot + card.index, revealed: catalogueRevealed)
                 }
             }
         }
     }
 
-    /// Reveal slot of the chip row: after the hero (0) and, when shown, the
-    /// Featured header and its cards.
+    /// Reveal slot of the chip row: after the hero (0), when shown the Featured
+    /// header and its rows, and the "Browse online models" row.
     private var chipRevealPosition: Int {
-        showFeatured ? featured.count + 2 : 1
+        (showFeatured ? featured.count + 2 : 1) + (searching ? 0 : 1)
     }
 
     private func open(sceneId: String) {
@@ -402,9 +495,10 @@ struct DemoCover: View {
 // MARK: - Header
 
 private struct HomeHeader: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let scrolled: Bool
+    /// Over the hero stage's sky rather than the page: the title row turns to
+    /// the hero's fixed whites (Android `overStage`).
+    var overStage = false
     @Binding var query: String
     @Binding var searchOpen: Bool
 
@@ -418,7 +512,7 @@ private struct HomeHeader: View {
                     }
                     .transition(.opacity)
                 } else {
-                    TitleRow { searchOpen = true }
+                    TitleRow(overStage: overStage) { searchOpen = true }
                         .transition(.opacity)
                 }
             }
@@ -429,17 +523,59 @@ private struct HomeHeader: View {
                 .frame(height: SceneViewTokens.Home.cardOutlineWidth)
                 .opacity(scrolled ? 1 : 0)
         }
-        .background(
-            SceneViewTokens.HomeColor.surface
-                // DESIGN.md `header-overlay` is opaque in dark. No material:
-                // the pinned catalogue header must not sample scrolling artwork.
-                .opacity(scrolled || searchOpen ? (colorScheme == .dark ? 1 : SceneViewTokens.HomeColor.headerOverlayAlpha) : 0)
+        .background {
+            HeaderGround(scrolled: scrolled, searchOpen: searchOpen)
                 .ignoresSafeArea(edges: .top)
+                .animation(SceneViewTokens.Spring.fade, value: scrolled)
+        }
+    }
+}
+
+/// What the header stands on (`header-glass`, #4201). Over the hero: nothing,
+/// the wordmark sits on the stage's sky. Once the list has scrolled under it:
+/// glass — iOS 26 Liquid Glass, which samples, blurs and tints the rows passing
+/// under it, and `.ultraThinMaterial` before 26. Either way the rows read as
+/// colour moving behind frosted glass, never as sharp titles under the
+/// wordmark (the overlap bug that kept `header-overlay` opaque): the glass
+/// carries `header-glass`'s `surface` veil (72 % / 78 %), since bare Liquid
+/// Glass let the titles read through. With the search field open over the
+/// stage, the opaque `surface` of `header-overlay`, so the field never floats
+/// on the sky.
+private struct HeaderGround: View {
+    let scrolled: Bool
+    let searchOpen: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            if scrolled {
+                glass.transition(.opacity)
+            } else if searchOpen {
+                SceneViewTokens.HomeColor.surface
+                    .opacity(SceneViewTokens.HomeColor.headerOverlayAlpha)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var glass: some View {
+        let home = SceneViewTokens.HomeColor.self
+        // The `surface` veil over the blur: without it the titles scrolling
+        // under the wordmark stayed readable through bare glass.
+        let veil = home.surface.opacity(
+            colorScheme == .dark ? home.headerGlassAlphaDark : home.headerGlassAlphaLight
         )
+        if #available(iOS 26, macOS 26, visionOS 26, *) {
+            veil.glassEffect(.regular, in: Rectangle())
+        } else {
+            veil.background(.ultraThinMaterial)
+        }
     }
 }
 
 private struct TitleRow: View {
+    var overStage = false
     let onSearch: () -> Void
 
     var body: some View {
@@ -452,12 +588,14 @@ private struct TitleRow: View {
             Text("SceneView")
                 .font(SceneViewTokens.TypeScale.title)
                 .tracking(SceneViewTokens.TypeScale.titleTracking)
-                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                .foregroundStyle(overStage ? SceneViewTokens.HomeColor.heroTitle : SceneViewTokens.HomeColor.onSurface)
+                .animation(SceneViewTokens.Spring.fade, value: overStage)
             Spacer()
             Button(action: onSearch) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                    .foregroundStyle(overStage ? SceneViewTokens.HomeColor.heroSubtitle : SceneViewTokens.HomeColor.onSurfaceDim)
+                    .animation(SceneViewTokens.Spring.fade, value: overStage)
                     .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
             }
             .buttonStyle(.plain)
@@ -518,7 +656,7 @@ private struct SearchRow: View {
 
 // MARK: - Section headers
 
-/// One home section and its cards; `index` is the card's position across the
+/// One home section and its rows; `index` is the row's position across the
 /// whole visible list, which drives the entrance cascade.
 private struct HomeSectionGroup {
     struct Card {

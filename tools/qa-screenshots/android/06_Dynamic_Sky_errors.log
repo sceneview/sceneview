@@ -1,3 +1,0 @@
-04-13 02:20:08.008 29116 29116 E AndroidRuntime: FATAL EXCEPTION: main
-04-13 02:20:08.008 29116 29116 E AndroidRuntime: java.lang.IllegalStateException: UiAutomationService android.accessibilityservice.IAccessibilityServiceClient$Stub$Proxy@2446ed5already registered!
-04-13 02:20:08.008 29116 29116 E AndroidRuntime: java.lang.IllegalStateException: UiAutomationService android.accessibilityservice.IAccessibilityServiceClient$Stub$Proxy@2446ed5already registered!

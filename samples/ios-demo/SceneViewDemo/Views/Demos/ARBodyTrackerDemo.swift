@@ -83,7 +83,7 @@ struct ARBodyTrackerDemo: View {
     }
 
     private var simulatorPlaceholder: some View {
-        ARUnavailableStage(icon: "figure.walk.motion", message: "Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
+        ARUnavailableStage(icon: "figure.arms.open", message: "Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
     }
 }
 
@@ -100,6 +100,9 @@ private struct BodyTrackingARViewRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+        // The camera composition is stated on the view, as `ARSceneView`
+        // does, never inherited from what the process rendered before (#3912).
+        arView.environment.background = .cameraFeed()
         isSupported = ARBodyTrackingConfiguration.isSupported
         guard isSupported else { return arView }
 
@@ -111,6 +114,14 @@ private struct BodyTrackingARViewRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: ARView, context: Context) {}
+
+    /// Closing the screen stops the camera: without this the body-tracking
+    /// session kept the rear camera until the view happened to be released,
+    /// and the next AR screen's session competed with it.
+    static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {
+        uiView.session.pause()
+        uiView.session.delegate = nil
+    }
 
     @MainActor
     class Coordinator: NSObject, ARSessionDelegate {

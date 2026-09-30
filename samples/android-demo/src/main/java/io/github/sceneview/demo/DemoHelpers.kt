@@ -1551,6 +1551,17 @@ class EntranceCameraManipulator(
         fallback = null
     }
 
+    /**
+     * A new model on stage: forget the orbit, any captured flight start and any double-tap zoom,
+     * as a freshly built instance would. Reusing the instance instead of rebuilding it keeps
+     * `SceneView` from gliding the camera from the previous model's pose (#3932's swap glide).
+     */
+    fun startOver() {
+        fallback = null
+        flightStartEye = null
+        zoomAnimationDuration = 0f
+    }
+
     /** Eye position for the current [progress] — [eye] itself once the flight is over. */
     private fun currentEye(): Position {
         val eye = eye()

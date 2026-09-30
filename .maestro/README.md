@@ -335,7 +335,7 @@ no crash" mandate. The earlier assessment ("not adopted — blocked on an AGP
 
 - **No AGP-9 bump is required.** The old blocker was the headless Gradle runner
   building the app itself. `JOURNEYS_CUSTOM_APP_ID` runs a journey against an
-  **already-installed** APK (our emulator-installed `io.github.sceneview.demo`)
+  **already-installed** APK (our emulator-installed debug build, `io.github.sceneview.demo.qa`)
   instead of driving a Gradle build — sidestepping the AGP-9 requirement
   entirely. This repo can stay on its current AGP.
 - **Out of Studio Labs — but NOT yet headless.** Journeys has shipped in Studio

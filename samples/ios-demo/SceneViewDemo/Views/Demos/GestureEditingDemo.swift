@@ -31,8 +31,13 @@ struct GestureEditingDemo: View {
     /// When `false` camera orbits freely.
     @State private var isEditable = true
 
-    // Transform state (mirrors entity transform; preserved across scene rebuilds)
-    @State private var modelPosition = SIMD3<Float>(0, 0, -2)
+    /// Height of the floor the car stands on. The model is bottom-aligned at
+    /// load (Android's `centerOrigin = Position(y = -1f)`), so a pivot at this
+    /// height puts the wheels on the floor at any scale, as on Android.
+    private static let floorY: Float = -0.45
+
+    // Transform state (mirrors the pivot's transform; preserved across scene rebuilds)
+    @State private var modelPosition = SIMD3<Float>(0, Self.floorY, -2)
     @State private var modelScale: Float = 0.6
     @State private var modelRotationY: Float = 0
 
@@ -47,7 +52,13 @@ struct GestureEditingDemo: View {
 
     var body: some View {
         sceneWithOverlays
-            .demoChrome { settingsSheet }
+            // The hint is the scaffold's accessory — a glass pill above the
+            // dock, in the same glass group — not a stage overlay: pinned to
+            // the stage's top edge it sat under the Dynamic Island.
+            .demoChrome(accessory: {
+                DemoHint(isEditable ? "Drag model to move · Pinch to resize · Twist to rotate"
+                                    : "Orbit mode — open Settings to edit")
+            }) { settingsSheet }
     }
 
     // MARK: - Scene
@@ -61,7 +72,6 @@ struct GestureEditingDemo: View {
                 gestureOverlay
             }
 
-            topHint
             loadingOverlay
         }
         .background(Color.black)
@@ -71,17 +81,22 @@ struct GestureEditingDemo: View {
     private var sceneView: some View {
         SceneView { root in
             if let model = loadedModel {
-                model.entity.position = modelPosition
-                model.entity.scale = SIMD3(repeating: modelScale)
-                model.entity.orientation = simd_quatf(angle: modelRotationY, axis: [0, 1, 0])
-                root.addChild(model.entity)
+                // The gestures move, scale and turn a pivot on the floor; the
+                // model under it keeps its bottom-aligned offset, so its wheels
+                // stay on the floor whatever the pinch.
+                let pivot = Entity()
+                pivot.position = modelPosition
+                pivot.scale = SIMD3(repeating: modelScale)
+                pivot.orientation = simd_quatf(angle: modelRotationY, axis: [0, 1, 0])
+                pivot.addChild(model.entity)
+                root.addChild(pivot)
                 // Capture entity for direct mutation by gesture overlay
-                DispatchQueue.main.async { modelEntityRef = model.entity }
+                DispatchQueue.main.async { modelEntityRef = pivot }
             }
 
             // Ground plane for depth reference
             let floor = GeometryNode.plane(width: 6, depth: 6, color: .darkGray)
-            floor.entity.position = SIMD3(0, -0.45, -2)
+            floor.entity.position = SIMD3(0, Self.floorY, -2)
             root.addChild(floor.entity)
         }
         .cameraControls(isEditable ? .none : .orbit)
@@ -160,24 +175,6 @@ struct GestureEditingDemo: View {
 
     // MARK: - Overlays
 
-    private var topHint: some View {
-        VStack {
-            HStack(spacing: 6) {
-                Image(systemName: isEditable ? "hand.draw.fill" : "camera.fill")
-                Text(isEditable ? "Drag · Pinch · Rotate" : "Orbit mode — tap ⚙️ to edit")
-                    .font(.caption)
-            }
-            .foregroundStyle(.white.opacity(0.8))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-            .padding(.top, 12)
-            .allowsHitTesting(false)
-            Spacer()
-        }
-    }
-
     @ViewBuilder
     private var loadingOverlay: some View {
         if isLoading {
@@ -191,8 +188,7 @@ struct GestureEditingDemo: View {
                 .font(.caption2)
                 .foregroundStyle(.white)
                 .padding(8)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xs, style: .continuous))
         }
     }
 
@@ -232,7 +228,7 @@ struct GestureEditingDemo: View {
     // MARK: - Helpers
 
     private func resetTransform() {
-        modelPosition = SIMD3(0, 0, -2)
+        modelPosition = SIMD3(0, Self.floorY, -2)
         modelScale = 0.6
         modelRotationY = 0
         pinchBaseScale = 0.6
@@ -246,6 +242,9 @@ struct GestureEditingDemo: View {
         do {
             // Ferrari F40 — bundled PBR USDZ, looks great when scaled/rotated
             let node = try await ModelNode.load("ferrari_f40")
+            // Bottom-aligned before it is parented: the tyres' lowest point
+            // becomes the node origin, which the pivot puts on the floor.
+            node.centerOrigin(normalized: [0, -1, 0])
             loadedModel = node
             isLoading = false
         } catch {

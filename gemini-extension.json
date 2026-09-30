@@ -1,6 +1,6 @@
 {
   "name": "sceneview",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "SceneView 3D & AR SDK — API reference, samples, code validation and generation for Android, Apple and Web.",
   "mcpServers": {
     "sceneview": {

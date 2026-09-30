@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: the Model Viewer frames the model above an open sheet, and leaves a margin at the screen edges ([#4053](https://github.com/sceneview/sceneview/issues/4053)).** Opening the Lighting sheet, or the Settings sheet at its resting height, eases the camera so the whole model sits in the band above the glass instead of losing its lower third under it; closing the sheet eases it back. A wide model is fitted by its front face with 7 % of the width left on each side, so a sofa or a chest no longer runs into both edges.

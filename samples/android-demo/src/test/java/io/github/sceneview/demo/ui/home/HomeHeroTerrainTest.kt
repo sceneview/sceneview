@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.ui.home
 
+import io.github.sceneview.math.Direction
+import io.github.sceneview.math.normalToTangent
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -134,5 +136,36 @@ class HomeHeroTerrainTest {
         assertEquals(4_480, buildHeroTerrain(light).triangleCount)
         // Both strips are long enough that the far end sits past the fog cut-off.
         assertTrue(abs(full.zFar) > 80f)
+    }
+
+    @Test
+    fun `the upload buffers carry what Geometry would have uploaded, packed off the main thread`() {
+        val mesh = buildHeroTerrain(HeroTerrainSpec(columns = 6, rows = 9))
+        val packed = mesh.packForUpload()
+        val n = mesh.vertexCount
+        assertEquals(n, packed.vertexCount)
+        assertEquals(n * 3, packed.positions.limit())
+        assertEquals(n * 4, packed.tangents.limit())
+        assertEquals(n * 4, packed.colors.limit())
+        assertEquals(mesh.indices.size, packed.indexCount)
+        assertTrue("direct, so Filament's async copy reads stable memory", packed.positions.isDirect)
+        for (i in 0 until n) {
+            assertEquals(mesh.positions[i * 3 + 1], packed.positions.get(i * 3 + 1), 0f)
+            assertEquals(mesh.colors[i * 4 + 2], packed.colors.get(i * 4 + 2), 0f)
+            // The same tangent frame `Geometry`'s own upload derives from the normal.
+            val q = normalToTangent(Direction(mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2]))
+            assertArrayEquals(
+                "vertex $i",
+                floatArrayOf(q.x, q.y, q.z, q.w),
+                FloatArray(4) { packed.tangents.get(i * 4 + it) },
+                0f,
+            )
+        }
+        for (i in mesh.indices.indices) assertEquals(mesh.indices[i], packed.indices.get(i))
+        for (axis in 0 until 3) {
+            val values = (0 until n).map { mesh.positions[it * 3 + axis] }
+            assertEquals((values.min() + values.max()) / 2f, packed.center[axis], 1e-4f)
+            assertEquals((values.max() - values.min()) / 2f, packed.halfExtent[axis], 1e-4f)
+        }
     }
 }

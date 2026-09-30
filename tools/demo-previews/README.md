@@ -47,11 +47,12 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | Card | Golden | Crop (centre x, centre y, width, in golden pixels) |
 |---|---|---|
 | `materials` | `materials_default.png` | 540, 1102, 1080 — the nine-sphere grid |
-| `debug-overlay` | `debugoverlay_default.png` | 540, 800, 1400, black-padded — the stats HUD over its sphere |
+| `debug-overlay` | — | Superseded 2026-09-30: the card is now the iOS pair, see "Cards shared with Android" below. Was 540, 800, 1400, black-padded — the stats HUD over its sphere |
 | `camera-gestures` | `cameragestures_default.png` | 575, 1065, 1000 — the whole stage |
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
+| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083). The dark card is its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); its stage is the same grey |
 | `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
@@ -73,6 +74,20 @@ room as a miniature: an emulator capture (Pixel_7a, 1080×2400) of the dollhouse
 (`dollhouse-3d` QA state) after a `record` QA take of the bundled session, one per theme — the
 AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band from y = 958
 (5:4), resized to 800×640, WebP q82.
+
+`rolling-balls` became its own demo in #4083 and has no render golden: its card is an
+emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
+wooden board (maple field, walnut frame, since the redesign) and the rubber, glass and steel
+balls come to rest. Crop: x 40–1040, y 580–1380 (5:4, the whole frame of the board), resized
+to 800×640, WebP q85, one capture per theme: its stage is the themed stage sky, so the dark
+card is the dark stage.
+
+`cosmos` had no card and fell back to its icon, although it leads the Featured shelf. Its
+card is an emulator capture (Pixel_7a, 1080×2400) of `--es demo cosmos` once the spiral
+galaxy has rendered: the full-width 1080×864 band centred on the galaxy's bright pixels
+(window y 779–1643), resized to 800×640, WebP q80. Space is black
+in both themes, so light and dark are the same pixels. The iOS `preview_cosmos` imageset
+carries the same crop as JPEG q90.
 
 ## iOS imagesets
 
@@ -110,14 +125,15 @@ cp /tmp/ios/jpg/preview_fog_dark.jpg            $X/preview_fog.imageset/preview_
 cp /tmp/ios/jpg/preview_hero_model_viewer.jpg   $X/preview_hero_model_viewer.imageset/
 ```
 
-The other iOS imagesets (`preview_lighting`, `preview_camera_controls`, the AR cards, …) were
+The iOS cards of demos Android also lists are copies of the Android cards (see "Cards shared
+with Android" below). The other iOS imagesets were
 not produced by this pipeline and are not in the table; regenerate one only once its prompt is
 recorded here, so the recorded prompt is always the one that produced the committed image
 (#3474).
 
 ### iOS cards cropped from simulator captures (#3786)
 
-Fourteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
+Thirteen iOS scenes have no Android twin in `drawable-nodpi/` and showed the SF Symbol tile.
 Their cards are real captures of the demo, not generated: the keyless Debug build on the
 iPhone 17 Pro Max simulator (iOS 26.3, 1320×2868), opened through `sceneview://demo/<id>`
 with QA mode on so the orbit is frozen, cropped 5:4 around the subject and resized to
@@ -134,23 +150,42 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_texture_streaming` | `texture-streaming`, Gold preset | 673, 1478, 1000 |
 | `preview_gesture_editing` | `gesture-editing` | 660, 1110, 1200 |
 | `preview_occlusion_material` | `occlusion-material` | 660, 1307, 960 |
-| `preview_physics` | `physics`, bundled cubes at rest | 680, 1480, 600 |
 | `preview_reflection_probes` | `reflection-probes` | 652, 1412, 1000 |
 | `preview_shape` | `shape`, Star | 639, 1400, 1100 |
 | `preview_multi_model` | `multi-model`, keyless stand-ins (what the App Store build shows) | 650, 1458, 1300 |
 | `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
 | `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
 
-The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
-same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their
-crops are in that capture's pixels. Same 5:4 crop, 800×640 JPEG q85, one universal JPEG.
+### Cards shared with Android (home rows, 2026-09-30)
 
-| Imageset | Capture | Crop |
+A demo both apps list shows **the same picture on both**: same source, same 5:4 crop, same
+light and dark pair. The home rows now dissolve the picture into a tint taken from it
+(`home-row-ambient`, `DESIGN.md`), so a different picture on each platform is a different
+row colour, not only a different thumbnail. Twelve iOS imagesets therefore carry the Android
+card, re-encoded from its two WebPs as JPEG q90 (`preview_<id>.jpg` light,
+`preview_<id>_dark.jpg` dark):
+
+| Imageset | Android card | Replaced |
 |---|---|---|
-| `preview_ar_rerun` | `ar-rerun`, "Watch a sample session", 7 s into the bundled replay | 603, 1125, 1206 |
-| `preview_animation` | `animation`, bundled `cyberpunk_character` mid-clip | 603, 1420, 1206 |
-| `preview_ar_placement` | Not an AR capture: the Simulator has no ARKit. The Toy Car the demo places by default, opened in `model-viewer` | 603, 1330, 1206 |
-| `preview_ar_record_playback` | Not an AR capture, same reason. The Damaged Helmet the recorder places, opened in `model-viewer` | 603, 1300, 1206 |
+| `preview_animation` | `animation-physics` | a simulator capture of the bundled `cyberpunk_character` (Featured, #3907), light only |
+| `preview_ar_placement` | `ar-placement` | the Toy Car opened in `model-viewer` (no ARKit on the Simulator), light only |
+| `preview_ar_record_playback` | `ar-record-playback` | the Damaged Helmet opened in `model-viewer`, light only |
+| `preview_ar_rerun` | `ar-rerun` | a capture of the bundled replay 7 s in, light only |
+| `preview_camera_controls` | `camera-gestures` | a helmet-only render |
+| `preview_custom_mesh` | `custom-geometry` | a sphere-and-axes render |
+| `preview_lighting` | `lighting` | a spot-lit helmet render |
+| `preview_lines_paths` | `lines-paths` | a wireframe arch render |
+| `preview_materials` | `materials` | a helmet render (the `gen.py` row above is superseded) |
+| `preview_model_viewer` | `model-viewer` | the same helmet, a different crop |
+| `preview_rolling_balls` | `rolling-balls` | its own simulator capture (#4083) |
+| `preview_splat_preview` | `splat-preview` | its own simulator capture of the dot rendering (#4073) |
+
+The other way round, Android's `debug-overlay` card is the iOS pair (the `gen.py`
+`debug-overlay` prompt of #3308): the golden crop in the table above was a black frame with
+one small sphere, which the dissolving row turned into a black smear. WebP q85.
+
+The replaced files are in git history; bring one back only with a capture of the home next
+to it.
 
 ## Home hero banner
 
@@ -198,22 +233,50 @@ both themes. The throwaway screen is not committed: re-render by rebuilding it f
 above, and review every thumbnail over both card fills next to the viewer's first frame of
 the same model before it ships.
 
+### HD pack thumbnails
+
+`model_thumb_hd_<id>.webp` (Apollo 11 exterior and interior, woolly mammoth, Perseverance) are
+the cards of the sheet's "Museum & Space" section. These models ship no bundled stand-in, so the
+viewer also shows the thumbnail on the stage until the downloaded GLB is on screen. They are
+Blender 4.4 renders of the exact GLB the pack serves (`assets/hd-pack/android.json`), same light,
+lens and angles as above (30° yaw, 18° pitch, bounding sphere fit, transparent film, 80 % of
+600×480, `cwebp -q 90`). Cycles for all but the Apollo interior, which is rendered with EEVEE
+and back-face culling on its single-sided materials: that is what Filament does, and what opens
+the capsule's walls so the cabin shows. Perseverance is posed at the start of its first clip,
+the pose the viewer holds. The mammoth and the rover open turned by `frontYaw = -30°`, so their
+30° thumbnails are the very angle the viewer opens on (the camera turned rather than the model).
+
+### On iOS
+
+`samples/ios-demo/SceneViewDemo/Assets.xcassets/model_thumb_<asset>.imageset` uses
+the same files: a model shared with Android ships Android's WebP decoded with `dwebp` and
+re-encoded as HEIC with alpha (`sips -s format heic -s formatOptions 85`; an asset catalog
+takes no WebP). A HEIC source is a sixth of the PNG, but `actool` also keeps an ARGB
+fallback copy of each HEIF, so the compiled `Assets.car` grows by about 870 KB (+17 %)
+where PNG sources would cost about 200 KB more. The two iOS-only models, Cyberpunk Hovercar
+and Butterfly, have no GLB on Android: they are rendered from their USDZ by an offline
+SceneKit pass under the same `chinese_garden` light (exposure adaptation off, +0.7 EV), with
+the same 50 mm lens, 30°/18° view, trim and 80 % fit on a transparent 600×480 canvas. The
+Image Planes demo keeps its own opaque square pictures (`image_plane_*`): its unlit planes
+draw no alpha.
+
 ### Scene cards
 
 The sheet's "Scenes" row holds one card, the Park, in two files: the sheet shows the one this
 build will load (`SketchfabConfig.apiKey`), so the card is what the scene opens on (#4039).
 
-- `model_picker_park.webp`: a **keyless** debug build, so the bundled fallback models only
-  (lantern, lantern, shiba, soldier). Emulator capture (Pixel_7a, 1080×2400) of
-  `--es demo multi-model --ef camera_distance 6.5`, window x 0–1080, y 780–1644, resized to
-  600×480.
+- `model_picker_park.webp`: the bundled fallback models only (soldier, sheen chair, lantern,
+  shiba), what a **keyless** build loads. Emulator capture (Pixel_7a, 1080×2400) of
+  `--es demo multi-model --ez qa_mode true` (orbit frozen) after `pm clear` with Wi-Fi and data
+  off, so a keyed build falls back too. Window x 0–1080, y 790–1654, resized to 600×480 and
+  encoded with `cwebp -q 85`.
 - `model_picker_park_streamed.webp`: a **keyed** debug build, so the four streamed `park`
-  registry models. Same capture with `--ez qa_mode true` (orbit frozen), window x 0–1080,
-  y 832–1696, resized to 600×480 and encoded with `cwebp -q 85`. The image shows CC-BY 4.0
-  models, credited where the app credits them, under "Park (Multi-model)" in the Credits
-  sheet: "Oak Trees" by bumstrum, "Stylized Tree" by yonimantz09, "Mighty Oak Trees" by
-  Jagobo and "Skovfogedegen Oak" by rigsters (`SampleAssets.kt`). Re-capture it when the
-  `park` category changes.
+  registry models. Same capture online, window x 0–1080, y 880–1744, same resize and encoding.
+  The image shows CC-BY 4.0 models, credited where the app credits them, under "Park
+  (Multi-model)" in the Credits sheet: "Oak Trees" by bumstrum, "Simple Park Bench" by Planetrix23,
+  "Street Lamp" by bez_glaza and "Plant Bush" by Batuhan13 (`SampleAssets.kt`).
+
+Re-capture both when the `park` category or the Park's lawn changes.
 
 The Scene Gallery card (`model_picker_gallery.webp`, a collage of four bundled fallbacks) left
 with the Scene Gallery in #4039.

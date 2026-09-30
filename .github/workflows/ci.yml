@@ -23,6 +23,7 @@ name: CI
 #   - web-desktop    Kotlin/JS + Compose Desktop     (gated on `web`)
 #   - flutter-demo   plugin analyze+test, demo APK  (gated on `flutter`)
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
+#   - app-store-scripts  App Store submit/catch-up unit tests (gated on `app-store-scripts`)
 
 on:
   push:
@@ -144,6 +145,8 @@ jobs:
       build-system: ${{ steps.filter.outputs.build-system }}
       # `changelog.d/**` fragment edits — gates `changelog-lint` below.
       changelog: ${{ steps.filter.outputs.changelog }}
+      # The App Store submit/catch-up programs — gates `app-store-scripts`.
+      app-store-scripts: ${{ steps.filter.outputs.app-store-scripts }}
     steps:
       # Checked out only on `push`. `dorny/paths-filter` reads the diff from
       # the GitHub API on `pull_request` and never touches the working tree; it
@@ -236,6 +239,22 @@ jobs:
               - 'samples/android-demo/**'
               - 'samples/android-tv-demo/**'
               - 'samples/common/**'
+              # The demos' binary assets (tools/fetch-assets.sh).
+              - 'assets/manifest.json'
+              - 'tools/fetch-assets.sh'
+              - '.github/actions/fetch-assets/**'
+              # The credits gate in `build` (generate-credits.py --check): its
+              # inputs and every file it generates or mirrors.
+              - 'assets/catalog.json'
+              - 'assets/CREDITS.md'
+              - 'assets/audio/CREDITS.md'
+              - '.claude/scripts/generate-credits.py'
+              - 'samples/ios-demo/SceneViewDemo/Resources/BundledCredits.json'
+              - 'samples/ios-demo/SceneViewDemo/Audio/CREDITS.md'
+              - 'samples/web-demo/site/credits.json'
+              - 'samples/web-demo/site/audio/CREDITS.md'
+              - 'website-static/credits.html'
+              - 'website-static/models/platforms/thumbnails/**'
             # `web` gates the Gradle Kotlin/JS build of the sceneview-web
             # library plus the desktop-demo compile (#2540) that lives in the
             # same job. samples/web-demo is a plain static site (no Gradle
@@ -278,6 +297,13 @@ jobs:
             # filter exists to be.
             changelog:
               - 'changelog.d/**'
+            # The programs that submit to Apple and their offline tests. Not
+            # under `shared` either: nothing in the Gradle build reaches them.
+            # This workflow file is listed so a change to the job re-runs it.
+            app-store-scripts:
+              - '.github/workflows/ci.yml'
+              - '.github/scripts/app_store_*'
+              - '.github/scripts/test_app_store_*'
 
       # The `outputs:` block above warns that a missing output evaluates to the
       # empty string and silently skips every downstream job — "a gate that can
@@ -300,6 +326,7 @@ jobs:
             compose=${{ steps.filter.outputs.compose }}
             build-system=${{ steps.filter.outputs.build-system }}
             changelog=${{ steps.filter.outputs.changelog }}
+            app-store-scripts=${{ steps.filter.outputs.app-store-scripts }}
         run: |
           set -euo pipefail
           bad=0
@@ -376,6 +403,26 @@ jobs:
       - name: Check changelog fragment format
         run: bash .claude/scripts/check-changelog-fragments.sh
 
+  # ── App Store submit / catch-up programs ─────────────────────────────────
+  # `app_store_submit.py` and `app_store_catchup.py` decide what reaches Apple,
+  # and `app-store-catch-up.yml` runs them on a cron with no human watching.
+  # Their tests are offline (stubbed App Store Connect, no secrets, stdlib
+  # only), so they cost a checkout and a second of Python — run on every PR
+  # that touches them, not only when the cron next fires.
+  app-store-scripts:
+    name: App Store scripts tests
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.app-store-scripts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Run the offline App Store script tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_*.py' -v
+
   # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
   # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until
   # this job existed, its header named a blocking check in `ci.yml` ->
@@ -435,6 +482,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android tv)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android tv
 
       - uses: ./.github/actions/setup-gradle
 
@@ -454,6 +505,23 @@ jobs:
             :samples:android-demo:assembleDebug \
             :samples:android-tv-demo:assembleDebug \
             --stacktrace
+
+      # The APKs above embed the files assets/manifest.json lists. Fail if one
+      # is missing, differs from its manifest sha256, or was committed to git
+      # again instead of going through `tools/fetch-assets.sh --register`.
+      - name: Check binary assets
+        run: bash tools/fetch-assets.sh --check --scope android --scope tv
+
+      # Every generated CREDITS file (assets/CREDITS.md, the APK's CREDITS.md,
+      # the iOS and web demos' credits JSON, the list on the website's
+      # credits.html) must match what
+      # generate-credits.py renders from assets/catalog.json and the bundled
+      # files, and every bundled file must be credited. Ran in no workflow from
+      # #3244 (which deleted `repo-hygiene`) until #4151. It reads manifest
+      # entries whether or not they are fetched, so the result does not depend
+      # on the scopes materialised above.
+      - name: Check asset credits
+        run: python3 .claude/scripts/generate-credits.py --check
 
       # The release BUNDLE is a different packaging path from the debug APK:
       # R8 rewrites the Kotlin metadata resources and AGP 9's pre-bundle step
@@ -480,6 +548,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android
 
       - uses: ./.github/actions/setup-gradle
 
@@ -552,6 +624,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch binary assets (android tv)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: android tv
 
       - uses: ./.github/actions/setup-gradle
 

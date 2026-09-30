@@ -48,4 +48,9 @@
     <!-- %1$d models ready so far, %2$d models in the scene. -->
     <string name="demo_multi_model_loading_fetching">Fetching the models (%1$d of %2$d)…</string>
     <string name="demo_multi_model_loading_decoding">Decoding the models (%1$d of %2$d)…</string>
+    <!-- Lighting sheet (EnvironmentSheet). "Brightness" rather than "IBL intensity":
+         the slider scales the environment light, and the sheet is read by users. -->
+    <string name="viewer_lighting_brightness">Brightness</string>
+    <string name="viewer_lighting_show_environment">Show environment</string>
+    <string name="viewer_lighting_reset">Reset lighting</string>
 </resources>

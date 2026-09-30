@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.BorderClear
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArPlaneRendererV2Fragment : DemoFragment {
         titleRes = R.string.demo_ar_plane_renderer_v2_title,
         subtitleRes = R.string.demo_ar_plane_renderer_v2_subtitle,
         category = DemoCategory.PLACE_AR,
-        icon = Icons.Filled.GridOn,
-        order = 11,
+        icon = Icons.Filled.BorderClear,
+        order = 26,
         tags = setOf("ar", "plane", "renderer", "depth", "pbr", "hdr"),
     )
 

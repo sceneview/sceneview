@@ -5,8 +5,9 @@
 // @section     create
 // @available   true
 // @icon        lightbulb.fill
-// @order       24
+// @order       6
 // @tags        light,ibl,environment,studio,key,fill,rim,sun,shadow,chrome,pbr
+// @updatedIn   4.35.0
 import SwiftUI
 
 // Title and subtitle mirror Android's `demo_lighting_title` /

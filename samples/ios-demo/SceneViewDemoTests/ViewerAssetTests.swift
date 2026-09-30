@@ -53,12 +53,119 @@ final class ViewerAssetTests: XCTestCase {
     }
     #endif
 
+    /// A bundled model ships its own USDZ; an HD pack model ships its
+    /// stand-in instead, so the stage is never empty offline.
     func testEveryBundledModelShipsItsUSDZ() {
         for model in models {
+            let resource = model.bundledResourceName ?? "<none>"
             XCTAssertNotNil(
-                Bundle.main.url(forResource: model.assetName, withExtension: "usdz"),
-                "\(model.displayName) is listed in the picker but \(model.assetName).usdz is not in the bundle."
+                Bundle.main.url(forResource: resource, withExtension: "usdz"),
+                "\(model.displayName) is listed in the picker but \(resource).usdz is not in the bundle."
             )
+        }
+    }
+
+    /// Every HD pack model names a stand-in and an id the bundled manifest knows.
+    /// "View in AR" never reaches for the HD file (#4147): every model places
+    /// a USDZ that ships in the bundle, and an HD-only model offers no AR.
+    func testEveryARModelResolvesToABundledResource() {
+        for model in ModelViewerDemo.bundledModels {
+            let resource = model.arResourceName ?? "<none>"
+            XCTAssertNotNil(
+                Bundle.main.url(forResource: resource, withExtension: "usdz"),
+                "\(model.displayName) would open AR on \(resource).usdz, which is not in the bundle."
+            )
+        }
+        for model in ModelViewerDemo.museumModels {
+            XCTAssertNil(model.arResourceName, "\(model.displayName) is HD-only: View in AR must stay off.")
+        }
+    }
+
+    // MARK: Museum & Space (HD-only)
+
+    /// Same ids, order and titles as Android's "Museum & Space" section; the
+    /// pill copy comes from the manifest title, so both must agree.
+    func testMuseumSectionMatchesTheSharedContract() {
+        let manifest = HDPackManifest.loadBundled()
+        let museum = ModelViewerDemo.museumModels
+        XCTAssertEqual(museum.map(\.hdPackID),
+                       ["apollo11-exterior", "apollo11-interior", "woolly-mammoth", "perseverance"])
+        XCTAssertEqual(museum.map(\.displayName),
+                       ["Apollo 11 Command Module", "Apollo 11 Interior", "Woolly Mammoth", "Perseverance Rover"])
+        for model in museum {
+            XCTAssertTrue(model.isHDOnly, "\(model.displayName) must have no bundled stand-in.")
+            let asset = manifest.asset(id: model.hdPackID ?? "")
+            XCTAssertNotNil(asset, "\(model.displayName): \(model.hdPackID ?? "nil") is absent from ios.json.")
+            XCTAssertEqual(asset?.title, model.displayName, "Pill title and picker tile must match.")
+            XCTAssertEqual(asset.map { ($0.file as NSString).pathExtension }, "usdz")
+            XCTAssertNotNil(asset?.scale, "\(model.displayName) must go on stage at real-world size.")
+        }
+        // Smithsonian Apollo scans are in centimetres; the rest in metres.
+        XCTAssertEqual(museum.map { manifest.asset(id: $0.hdPackID ?? "")?.scale }, [0.01, 0.01, 1, 1])
+        // The rover's 23 rigging clips never start on their own.
+        XCTAssertEqual(museum.map(\.autoplaysAnimations), [true, true, true, false])
+    }
+
+    #if canImport(UIKit)
+    /// Picker tile and stage poster (before download) are the same render.
+    func testEveryMuseumModelResolvesAThumbnail() {
+        for model in ModelViewerDemo.museumModels {
+            XCTAssertNotNil(model.thumbnailName, "\(model.displayName) has no model_thumb_\(model.assetName) imageset.")
+        }
+    }
+
+    /// The picker card paints its own `surface-container-high` fill and the
+    /// poster stands on the stage, so every render is the model alone on a
+    /// transparent 5:4 canvas — Android's `model_thumb_*.webp` contract. A
+    /// render baked on a background shows as a dark box on the light card.
+    func testPickerThumbnailsAreTransparentAtTheCardAspect() throws {
+        for model in models + ModelViewerDemo.museumModels {
+            let name = try XCTUnwrap(model.thumbnailName, "\(model.displayName) has no thumbnail.")
+            let image = try XCTUnwrap(UIImage(named: name)?.cgImage, "\(name) does not decode.")
+            XCTAssertEqual(Double(image.width) / Double(image.height),
+                           Double(SceneViewTokens.Layout.mediaAspect), accuracy: 0.01,
+                           "\(name) is \(image.width)×\(image.height), not the card's 5:4.")
+            XCTAssertEqual(Self.cornerAlphas(image), [0, 0, 0, 0],
+                           "\(name) has opaque corners: its background is baked in.")
+        }
+    }
+
+    /// Image Planes hangs square pictures on unlit planes, which draw no
+    /// alpha: its own opaque squares, never the transparent 5:4 card renders.
+    func testImagePlanePicturesAreOpaqueSquares() throws {
+        for picture in ImageDemo.pictures {
+            let image = try XCTUnwrap(UIImage(named: picture.asset)?.cgImage, "\(picture.asset) is missing.")
+            XCTAssertEqual(image.width, image.height, "\(picture.asset) would be stretched on its square plane.")
+            XCTAssertEqual(Self.cornerAlphas(image), [255, 255, 255, 255],
+                           "\(picture.asset) has transparent corners: they render black on an unlit plane.")
+        }
+    }
+
+    /// Alpha of the four corner pixels, drawn into an 8-bit RGBA context.
+    static func cornerAlphas(_ image: CGImage) -> [UInt8] {
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        return [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)].map { x, y in
+            pixels[(y * width + x) * 4 + 3]
+        }
+    }
+    #endif
+
+    func testEveryHDPackModelResolvesInTheManifest() {
+        let manifest = HDPackManifest.loadBundled()
+        // The bundled grid's HD models always have a stand-in; only the
+        // Museum & Space section is HD-only (tested above).
+        for model in models where model.hdPackID != nil {
+            XCTAssertNotNil(model.standInAssetName, "\(model.displayName) has no bundled stand-in.")
+            XCTAssertNotNil(manifest.asset(id: model.hdPackID!),
+                            "\(model.displayName) points at HD asset \(model.hdPackID!), absent from ios.json.")
         }
     }
 
@@ -73,20 +180,273 @@ final class ViewerAssetTests: XCTestCase {
         )
     }
 
-    /// The #3583 smart default: a studio rig is a light source, so its backdrop
-    /// stays hidden; an environment authored as a place is meant to be seen.
-    func testOnlyStudioRigsHideTheirBackdropByDefault() {
-        let hidden = environments.filter { !$0.authoredAsPlace }.map(\.assetName)
-        XCTAssertEqual(hidden, ["studio", "studio_warm"])
+    /// The viewer opens on the navy stage, the HDR lighting the model but not
+    /// drawn behind it, as Android's does since #4179. The Android value is
+    /// read from its source, so a change on either side fails here.
+    func testEnvironmentBackdropStartsHiddenLikeAndroid() throws {
+        XCTAssertFalse(ModelViewerDemo.showsEnvironmentByDefault)
+        XCTAssertEqual(try Self.androidShowsEnvironmentByDefault(),
+                       ModelViewerDemo.showsEnvironmentByDefault)
     }
 
-    /// A first run must land on an environment whose backdrop is worth drawing,
-    /// otherwise "show the environment by default" (#3583) resolves to nothing:
-    /// the smart default above would hide the backdrop of a studio rig forever.
-    func testFirstRunEnvironmentIsAPlace() {
-        let first = environments.first { $0.assetName == "outdoor_cloudy" }
-        XCTAssertNotNil(first, "the first-run environment left the catalog")
-        XCTAssertEqual(first?.authoredAsPlace, true)
+    /// Every picker card carries its one line, and a model Android also ships
+    /// reads Android's `demo_model_desc_*` string word for word. The strings
+    /// are read from the Android sources, so a change on either side fails
+    /// here instead of drifting silently.
+    func testPickerDescriptionsMatchAndroid() throws {
+        let android = try Self.androidModelDescriptions()
+        // iOS asset name → Android `demo_model_desc_<key>`.
+        let keys: [String: String] = [
+            "khronos_damaged_helmet": "damaged_helmet",
+            "khronos_flight_helmet": "flight_helmet",
+            "khronos_lantern": "lantern",
+            "khronos_toy_car": "toy_car",
+            "hd_apollo11_exterior": "apollo11_exterior",
+            "hd_apollo11_interior": "apollo11_interior",
+            "hd_woolly_mammoth": "woolly_mammoth",
+            "hd_perseverance": "perseverance",
+        ]
+        // The Museum & Space lines reach Android's sources with #4166; until
+        // then only the others are there. Once any museum line exists, all must.
+        let museumKeys: Set = ["apollo11_exterior", "apollo11_interior", "woolly_mammoth", "perseverance"]
+        let bundledKeys = Set(keys.values).subtracting(museumKeys)
+        let androidHasMuseum = museumKeys.contains { android[$0] != nil }
+        var compared = 0
+        for model in models + ModelViewerDemo.museumModels {
+            XCTAssertFalse((model.description ?? "").isEmpty, "\(model.displayName) has no picker description.")
+            guard let key = keys[model.assetName] else { continue }
+            guard let expected = android[key] else {
+                XCTAssertFalse(bundledKeys.contains(key) || androidHasMuseum,
+                               "Android has no demo_model_desc_\(key) for \(model.displayName).")
+                continue
+            }
+            XCTAssertEqual(model.description, expected, "\(model.displayName) drifted from Android.")
+            compared += 1
+        }
+        XCTAssertGreaterThanOrEqual(compared, bundledKeys.count)
+    }
+
+    /// `demo_model_desc_*` from the Android demo's string resources, keyed
+    /// without the prefix. Simulator tests run on the host file system, so the
+    /// sources are read in place from the checkout.
+    static func androidModelDescriptions(file: StaticString = #filePath) throws -> [String: String] {
+        let values = URL(fileURLWithPath: "\(file)")
+            .deletingLastPathComponent()      // SceneViewDemoTests
+            .deletingLastPathComponent()      // ios-demo
+            .deletingLastPathComponent()      // samples
+            .appendingPathComponent("android-demo/src/main/res/values")
+        let pattern = try NSRegularExpression(
+            pattern: #"<string name="demo_model_desc_([a-z0-9_]+)">([^<]*)</string>"#)
+        var out: [String: String] = [:]
+        for name in ["strings_demo_model_viewer.xml", "strings_hd_pack.xml"] {
+            let xml = try String(contentsOf: values.appendingPathComponent(name), encoding: .utf8)
+            for match in pattern.matches(in: xml, range: NSRange(xml.startIndex..., in: xml)) {
+                guard let key = Range(match.range(at: 1), in: xml),
+                      let text = Range(match.range(at: 2), in: xml) else { continue }
+                out[String(xml[key])] = String(xml[text])
+                    .replacingOccurrences(of: #"\'"#, with: "'")
+                    .replacingOccurrences(of: "&amp;", with: "&")
+            }
+        }
+        return out
+    }
+
+    /// The viewer opens every model the way Android does: camera head-on and
+    /// `VIEWER_PITCH_DEGREES` above, each model turned by its own `frontYaw`.
+    /// Both are read from the Android sources, so a change on either side
+    /// fails here instead of drifting silently.
+    func testViewerOpensEachModelInAndroidsPose() throws {
+        XCTAssertEqual(ModelViewerDemo.openingAzimuth, 0, "Android's camera opens head-on (+Z).")
+        let pitch = try Self.androidViewerPitchDegrees()
+        XCTAssertEqual(ModelViewerDemo.openingElevation * 180 / .pi, pitch, accuracy: 0.001)
+
+        let yaws = try Self.androidFrontYaws()
+        var shared = 0
+        for model in ModelViewerDemo.bundledModels + ModelViewerDemo.museumModels {
+            guard let yaw = yaws[model.assetName] else { continue }
+            XCTAssertEqual(model.frontYaw, yaw, "\(model.displayName): Android turns it \(yaw)°.")
+            shared += 1
+        }
+        // Damaged Helmet, Flight Helmet, Lantern, Toy Car and the four museum models.
+        XCTAssertGreaterThanOrEqual(shared, 8, "Lost track of the Android model list.")
+        XCTAssertEqual(yaws["hd_woolly_mammoth"], -30, "Android's mammoth `frontYaw` not found.")
+    }
+
+    /// The initial value of Android's `showEnvironment` in `ModelViewerDemo.kt`.
+    static func androidShowsEnvironmentByDefault(file: StaticString = #filePath) throws -> Bool {
+        let kotlin = try String(contentsOf: androidDemoSources(file)
+            .appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
+        let pattern = try NSRegularExpression(
+            pattern: #"var showEnvironment by remember \{ mutableStateOf\((true|false)\) \}"#)
+        guard let match = pattern.firstMatch(in: kotlin, range: NSRange(kotlin.startIndex..., in: kotlin)),
+              let text = Range(match.range(at: 1), in: kotlin) else {
+            XCTFail("`showEnvironment` not found in ModelViewerDemo.kt")
+            return true
+        }
+        return kotlin[text] == "true"
+    }
+
+    /// Android's `DemoMath.VIEWER_PITCH_DEGREES`.
+    static func androidViewerPitchDegrees(file: StaticString = #filePath) throws -> Float {
+        let kotlin = try String(contentsOf: androidDemoSources(file)
+            .appendingPathComponent("internal/DemoMath.kt"), encoding: .utf8)
+        let pattern = try NSRegularExpression(pattern: #"VIEWER_PITCH_DEGREES = ([0-9.]+)f"#)
+        guard let match = pattern.firstMatch(in: kotlin, range: NSRange(kotlin.startIndex..., in: kotlin)),
+              let text = Range(match.range(at: 1), in: kotlin),
+              let degrees = Float(kotlin[text]) else {
+            XCTFail("VIEWER_PITCH_DEGREES not found in DemoMath.kt")
+            return .nan
+        }
+        return degrees
+    }
+
+    /// Every `BundledViewerModel` in the Android demo → its `frontYaw` in
+    /// degrees (`0` when unset), keyed by `thumbnailStem` or, without one,
+    /// by the stem of its `models/<stem>.glb` asset — the iOS `assetName`.
+    static func androidFrontYaws(file: StaticString = #filePath) throws -> [String: Float] {
+        let kotlin = try String(contentsOf: androidDemoSources(file)
+            .appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
+        let yaw = try NSRegularExpression(pattern: #"frontYaw = (-?[0-9.]+)f"#)
+        let stem = try NSRegularExpression(pattern: #"thumbnailStem = "([a-z0-9_]+)""#)
+        let asset = try NSRegularExpression(pattern: #"^\s*"models/([a-z0-9_]+)\.glb""#)
+        func first(_ re: NSRegularExpression, in text: String) -> String? {
+            guard let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let r = Range(m.range(at: 1), in: text) else { return nil }
+            return String(text[r])
+        }
+        var out: [String: Float] = [:]
+        // One chunk per constructor call, cut at the first ")" — the end of
+        // `R.string.x` never has one, and no argument nests a call — so a
+        // later field of the file cannot leak into an entry.
+        for chunk in kotlin.components(separatedBy: "BundledViewerModel(").dropFirst() {
+            guard let close = chunk.firstIndex(of: ")") else { continue }
+            let entry = String(chunk[..<close])
+            guard let key = first(stem, in: entry) ?? first(asset, in: entry) else { continue }
+            out[key] = first(yaw, in: entry).flatMap(Float.init) ?? 0
+        }
+        return out
+    }
+
+    /// `samples/android-demo/.../demo/demos`, read in place: simulator tests
+    /// run on the host file system.
+    static func androidDemoSources(_ file: StaticString) -> URL {
+        URL(fileURLWithPath: "\(file)")
+            .deletingLastPathComponent()      // SceneViewDemoTests
+            .deletingLastPathComponent()      // ios-demo
+            .deletingLastPathComponent()      // samples
+            .appendingPathComponent("android-demo/src/main/java/io/github/sceneview/demo/demos")
+    }
+
+    /// A museum scan opens under the neutral Studio, never under the garden's
+    /// green; every other model keeps the first-run environment.
+    func testMuseumModelsOpenUnderStudio() {
+        for model in ModelViewerDemo.museumModels {
+            let env = ModelViewerDemo.openingEnvironment(for: model)
+            XCTAssertEqual(env.assetName, "studio_warm", "\(model.displayName)")
+            XCTAssertEqual(env.displayName, "Studio")
+        }
+        for model in models {
+            XCTAssertEqual(ModelViewerDemo.openingEnvironment(for: model), ModelViewerDemo.defaultEnvironment,
+                           "\(model.displayName)")
+        }
+    }
+}
+
+/// The Model Viewer's lighting sequences (``ViewerLighting``), same rule as
+/// Android's `LaunchedEffect(isMuseumModel)` (#4166): Studio replaces the
+/// default garden for a museum scan, and only Studio the app put there is
+/// taken back when the shelf is left.
+@MainActor
+final class ViewerLightingTests: XCTestCase {
+    private var garden: ViewerEnvironment { ModelViewerDemo.defaultEnvironment }
+    private var bundled: BundledViewerModel { ModelViewerDemo.bundledModels[0] }
+    private var museum: BundledViewerModel { ModelViewerDemo.museumModels[0] }
+    private var otherMuseum: BundledViewerModel { ModelViewerDemo.museumModels[1] }
+    private func env(_ asset: String) -> ViewerEnvironment {
+        ModelViewerDemo.environments.first { $0.assetName == asset }!
+    }
+
+    func testMuseumAndBundledRoundTripWithoutAPick() {
+        var lighting = ViewerLighting()
+        XCTAssertEqual(lighting.environment, garden)
+        lighting.select(museum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+        lighting.select(otherMuseum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"), "museum to museum keeps Studio")
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden, "leaving the shelf gives the garden back")
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    func testUserPickSticksAcrossModels() {
+        var lighting = ViewerLighting()
+        lighting.pick(env("sunset"))
+        lighting.select(museum)
+        XCTAssertEqual(lighting.environment, env("sunset"), "a picked lighting is never overridden")
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("sunset"))
+    }
+
+    func testPickOnTheShelfSticksWhenLeaving() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.pick(env("studio"))
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("studio"))
+        // Picking Studio itself is the user's choice too: it stays.
+        lighting.pick(env("studio_warm"))
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+    }
+
+    func testPickingTheGardenBackLetsTheShelfSwapAgain() {
+        // Android's rule keys on "still the garden", not on who chose it.
+        var lighting = ViewerLighting()
+        lighting.pick(garden)
+        lighting.select(museum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+    }
+
+    func testResetReturnsToTheModelsOpeningLighting() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.pick(env("night_sky"))
+        lighting.reset(for: museum)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden, "Studio from a reset is still the app's")
+
+        lighting.pick(env("sunset"))
+        lighting.reset(for: bundled)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    func testResetWithASurpriseModelOnStageUsesTheGarden() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.reset(for: nil)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    func testGlobalResetIsFirstRun() {
+        var lighting = ViewerLighting()
+        lighting.select(museum)
+        lighting.pick(env("sunset"))
+        lighting.resetAll()
+        XCTAssertEqual(lighting.environment, garden)
+        XCTAssertFalse(lighting.museumApplied)
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, garden)
+    }
+
+    /// `qa_mode` sets the store stage as a pick: no model switch drops it.
+    func testStoreStageSurvivesModelSwitches() {
+        var lighting = ViewerLighting()
+        lighting.pick(env("studio_warm"))
+        lighting.select(museum)
+        lighting.select(bundled)
+        XCTAssertEqual(lighting.environment, env("studio_warm"))
     }
 }
 

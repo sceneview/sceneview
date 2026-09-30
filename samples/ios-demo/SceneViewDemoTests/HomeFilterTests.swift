@@ -56,4 +56,132 @@ final class HomeFilterTests: XCTestCase {
     }
 }
 
+/// `DemoFreshness` — the same cases as Android's `DemoFreshnessTest`, so the
+/// two platforms flag the same cards from the same declarations.
+@MainActor
+final class DemoFreshnessTests: XCTestCase {
+    private func recent(_ version: String?, _ build: String, window: Int = DemoFreshness.windowMinors) -> Bool {
+        DemoFreshness.isRecent(version, buildVersion: build, window: window)
+    }
+
+    func testWindowCoversTheBuildAndThePreviousMinorOnly() {
+        XCTAssertTrue(recent("4.35.0", "4.35.0"))
+        XCTAssertTrue(recent("4.34.0", "4.35.0"))
+        XCTAssertFalse(recent("4.33.0", "4.35.0"))
+        XCTAssertFalse(recent("4.33.9", "4.35.2"))
+    }
+
+    func testAheadOfTheBuildIsFreshAndAnOlderMajorIsNot() {
+        XCTAssertTrue(recent("4.35.0", "4.34.0"))
+        XCTAssertTrue(recent("5.0.0", "4.34.0"))
+        XCTAssertFalse(recent("4.99.0", "5.0.0"))
+    }
+
+    func testSuffixesAreIgnoredAndMalformedVersionsNeverEarnAChip() {
+        XCTAssertTrue(recent("4.35.0", "4.35.0-main.abc1234"))
+        XCTAssertTrue(recent("4.35.0", "4.35.0+ci.7"))
+        for bad in [nil, "", "v4.35.0", "4", "main"] as [String?] {
+            XCTAssertFalse(recent(bad, "4.35.0"), "\(bad ?? "nil")")
+        }
+        XCTAssertFalse(recent("4.35.0", "not-a-version"))
+    }
+
+    func testAWiderWindowCanBeAskedFor() {
+        XCTAssertFalse(recent("4.32.0", "4.35.0"))
+        XCTAssertTrue(recent("4.32.0", "4.35.0", window: 3))
+    }
+
+    func testNewWinsOverUpdated() {
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: nil, updatedIn: nil, buildVersion: "4.35.0"), .none)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.35.0", updatedIn: nil, buildVersion: "4.35.0"), .new)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: nil, updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.35.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .new)
+        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.20.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
+    }
+
+    /// Every scene declaration earns its chip in the build it names. The values
+    /// themselves are checked against the Android fragments, through
+    /// `parity-manifest.yml`, by `collate-ios-demos.sh` on every build: a
+    /// declaration that drifts from Android fails the build, not this test.
+    func testEverySceneDeclarationEarnsItsChipInItsOwnVersion() {
+        let declared = GeneratedScenes.all().filter { $0.sinceVersion != nil || $0.updatedIn != nil }
+        XCTAssertFalse(declared.isEmpty)
+        for item in declared {
+            if let since = item.sinceVersion {
+                XCTAssertEqual(DemoFreshness.of(item, buildVersion: since), .new, item.sceneId)
+            }
+            if let updated = item.updatedIn, item.sinceVersion == nil {
+                XCTAssertEqual(DemoFreshness.of(item, buildVersion: updated), .updated, item.sceneId)
+            }
+        }
+    }
+
+    /// Materials is a procedural sphere wall, as on Android: it needs no
+    /// Sketchfab key, so it stays on the home of a keyless build too.
+    func testMaterialsIsOnTheHomeWithOrWithoutAKey() {
+        XCTAssertTrue(HomeCatalogue.isOnHome("materials", hasSketchfabKey: true))
+        XCTAssertTrue(HomeCatalogue.isOnHome("materials", hasSketchfabKey: false))
+        XCTAssertTrue(HomeCatalogue.isOnHome("model-viewer", hasSketchfabKey: false))
+    }
+}
+
+/// Home list rows (#4186) — Android's `HomeListRowTest`: the column
+/// arithmetic, and the colour each row takes from its picture.
+final class HomeListRowTests: XCTestCase {
+
+    func testListColumnsFollowTheMinimumRowWidth() {
+        XCTAssertEqual(homeListColumns(width: 0), 1)
+        XCTAssertEqual(homeListColumns(width: 353), 1)   // iPhone 17 Pro
+        XCTAssertEqual(homeListColumns(width: 690), 2)   // 340 · 2 + one 10 pt gap
+        XCTAssertEqual(homeListColumns(width: 1_040), 3) // 3 × 340 + 2 gaps
+    }
+
+    func testTheAmbientTintLandsOnTheAppearanceLuminanceWhateverThePicture() {
+        let seeds: [HomeAmbient.RGB] = [
+            .init(r: 1, g: 1, b: 1), .init(r: 0, g: 0, b: 0),
+            .init(r: 0xE2 / 255.0, g: 0x73 / 255.0, b: 0x4F / 255.0),
+            .init(r: 0x1E / 255.0, g: 0x3A / 255.0, b: 0x8A / 255.0),
+            .init(r: 1, g: 0xEB / 255.0, b: 0x3B / 255.0),
+        ]
+        for seed in seeds {
+            XCTAssertEqual(HomeAmbient.luminance(HomeAmbient.tint(seed: seed, dark: true)),
+                           HomeAmbient.luminanceDark, accuracy: 0.002)
+            XCTAssertEqual(HomeAmbient.luminance(HomeAmbient.tint(seed: seed, dark: false)),
+                           HomeAmbient.luminanceLight, accuracy: 0.002)
+        }
+    }
+
+    func testTextKeepsItsContrastOnEveryTint() {
+        let onSurfaceDark = HomeAmbient.RGB(r: 0xF3 / 255.0, g: 0xF4 / 255.0, b: 0xF6 / 255.0)
+        let onSurfaceDimDark = HomeAmbient.RGB(r: 0xA4 / 255.0, g: 0xAB / 255.0, b: 0xB7 / 255.0)
+        let onSurfaceDimLight = HomeAmbient.RGB(r: 0x3D / 255.0, g: 0x46 / 255.0, b: 0x54 / 255.0)
+        let seeds: [HomeAmbient.RGB] = [
+            .init(r: 1, g: 1, b: 1),
+            .init(r: 0xE2 / 255.0, g: 0x73 / 255.0, b: 0x4F / 255.0),
+            .init(r: 0x1E / 255.0, g: 0x3A / 255.0, b: 0x8A / 255.0),
+            .init(r: 0, g: 0xC8 / 255.0, b: 0x53 / 255.0),
+        ]
+        for seed in seeds {
+            let dark = HomeAmbient.tint(seed: seed, dark: true)
+            let light = HomeAmbient.tint(seed: seed, dark: false)
+            XCTAssertGreaterThanOrEqual(contrast(onSurfaceDark, dark), 7)
+            XCTAssertGreaterThanOrEqual(contrast(onSurfaceDimDark, dark), 4.5)
+            XCTAssertGreaterThanOrEqual(contrast(onSurfaceDimLight, light), 4.5)
+        }
+    }
+
+    func testAColouredSubjectOnAGreyFloorReadsAsItsColour() {
+        // Nine grey pixels and one orange one: the chroma weighting keeps the hue.
+        let grey: [UInt8] = [0x80, 0x80, 0x80, 0xFF]
+        let orange: [UInt8] = [0xFF, 0x7A, 0x1A, 0xFF]
+        let seed = HomeAmbient.seed(rgba: Array(repeating: grey, count: 9).flatMap { $0 } + orange)
+        XCTAssertGreaterThan(seed.r, seed.b + 0.05)
+    }
+
+    private func contrast(_ a: HomeAmbient.RGB, _ b: HomeAmbient.RGB) -> Double {
+        let la = HomeAmbient.luminance(a), lb = HomeAmbient.luminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+}
+
 #endif

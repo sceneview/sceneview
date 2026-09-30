@@ -527,6 +527,26 @@ for codelab in docs/docs/codelabs/codelab-3d-swiftui.md docs/docs/codelabs/codel
     fi
 done
 
+# README.md — the isolated Flutter usage-snippet comment
+# (`// pubspec.yaml → flutter_sceneview: ^X.Y.Z`). This is NOT the same slot
+# as `flutter/.../README.md`'s pub-install snippet checked above: that one is
+# the line a Flutter user actually copies to run `flutter pub get`, and must
+# lag to whatever is really live on pub.dev. This one is illustrative
+# boilerplate atop a Dart usage example in the monorepo README, read
+# alongside the Android/Compose Maven coordinates in the same file (and the
+# `## Install` table below them) that already track VERSION_NAME. Nothing
+# scanned it: the Maven-coordinate loop only matches
+# `io\.github\.sceneview:sceneview:`, so this caret line drifted silently for
+# 10 releases (^4.39.0 while the rest of the file said 4.49.0) before anyone
+# noticed (#1693-style gap — see the free-form checks above). ERROR-level and
+# auto-fixed like the rest of the README, unlike the Flutter README carve-out.
+README_FLUTTER_SNIPPET="$REPO_ROOT/README.md"
+if [ -f "$README_FLUTTER_SNIPPET" ]; then
+    V=$(grep -m1 -oE '// pubspec\.yaml.*flutter_sceneview: \^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$README_FLUTTER_SNIPPET" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    add_check "README.md (Flutter usage-snippet comment)" "${V:-NOT FOUND}"
+fi
+
 # Flutter snippet inside llms.txt (`flutter_sceneview: ^X.Y.Z`) — separate
 # from the maven `sceneview:` line, so the existing -m1 check misses it.
 # REPORT-ONLY (WARN), never bumped: this is the same pub.dev caret coordinate
@@ -1451,6 +1471,18 @@ if changed:
             echo -e "  Fixed: $codelab (SPM version rule $CURRENT -> $SOURCE_VERSION)"
         fi
     done
+    #   README.md — the isolated Flutter usage-snippet comment. Unlike the
+    #   Flutter README's own pub-install snippet, this one is illustrative
+    #   boilerplate meant to track VERSION_NAME like the rest of the file, so
+    #   (unlike that carve-out) it IS auto-fixed here.
+    if [ -f "$README_FLUTTER_SNIPPET" ]; then
+        CURRENT=$(grep -m1 -oE '// pubspec\.yaml.*flutter_sceneview: \^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$README_FLUTTER_SNIPPET" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/flutter_sceneview: \^$CURRENT/flutter_sceneview: ^$SOURCE_VERSION/" "$README_FLUTTER_SNIPPET"
+            echo -e "  Fixed: README.md (Flutter usage-snippet comment $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
 
     # Fix website-static/index.html version refs (#2562, #3234). This used to
     # be the ONLY unanchored blanket sweep in the script — `s/OLD/NEW/g` over

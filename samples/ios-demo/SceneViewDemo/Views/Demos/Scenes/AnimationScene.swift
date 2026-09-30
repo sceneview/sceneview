@@ -5,8 +5,9 @@
 // @section     view3d
 // @available   true
 // @icon        figure.run
-// @order       4
+// @order       31
 // @tags        animation,skeletal,physics,rigid-body,collision,gltf
+// @updatedIn   4.48.0
 import SwiftUI
 
 enum AnimationScene: DemoScene {

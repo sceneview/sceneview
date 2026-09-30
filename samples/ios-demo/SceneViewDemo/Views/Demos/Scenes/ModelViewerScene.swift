@@ -1,12 +1,13 @@
 // @sceneId     model-viewer
-// @title       Model Viewer
-// @subtitle    Load and display 3D models
+// @title       Models
+// @subtitle    Explore a model in 3D or in your room
 // @category    basics3D
 // @section     view3d
 // @available   true
-// @icon        cube.transparent.fill
-// @order       1
+// @icon        rotate.3d
+// @order       32
 // @tags        gltf,glb,hdr,ibl,orbit,ar,viewer
+// @updatedIn   4.35.0
 import SwiftUI
 
 enum ModelViewerScene: DemoScene {

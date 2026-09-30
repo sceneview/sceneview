@@ -86,6 +86,7 @@ import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
 import io.github.sceneview.demo.theme.DebugPalette
@@ -138,8 +139,10 @@ import kotlin.math.roundToInt
  * pass: it adds the points' colours and the photos.
  */
 internal class ArDebugRecorder {
-    private var lastPointsNanos = Long.MIN_VALUE
-    private var lastPlanesNanos = Long.MIN_VALUE
+    // Gates, not `Long.MIN_VALUE` timestamps: `now - Long.MIN_VALUE` overflows negative, and a
+    // real-device scan recorded no point and no plane at all (#4095).
+    private val pointsGate = IntervalGate(POINTS_INTERVAL_NS)
+    private val planesGate = IntervalGate(PLANES_INTERVAL_NS)
     private val planeIds = HashMap<Plane, Int>()
     private val livePlanes = HashSet<Plane>()
     private val anchorIds = HashMap<Anchor, Int>()
@@ -165,22 +168,28 @@ internal class ArDebugRecorder {
         trace.addPose(nanos, display)
 
         val capture = scan?.takeIf { it.trace === trace }
-        val pointsDue = nanos - lastPointsNanos >= POINTS_INTERVAL_NS
+        capture?.recordDepthStats(nanos)
+        val pointsDue = pointsGate.isDue(nanos)
         val photoDue = capture?.wantsPhoto(display) == true
-        // One camera image per frame at most, shared by the colours and the photo.
-        val image = if (capture != null && (pointsDue || photoDue)) capture.acquire(frame) else null
+        // A new raw-depth image (Rerun v2 dense map), when the scan has depth and is free to fuse.
+        val depth = capture?.acquireDepth(frame)
+        // One camera image per frame at most, shared by the colours, the photo and the depth.
+        val needsImage = pointsDue || photoDue || depth != null
+        val image = if (needsImage) capture?.acquire(frame) else null
         try {
             if (pointsDue) {
-                lastPointsNanos = nanos
+                pointsGate.mark(nanos)
                 recordPoints(trace, nanos, frame, capture, image)
             }
             if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
+            if (capture != null && depth != null && image != null) capture.fuseDepth(depth, image)
         } finally {
             image?.close()
+            depth?.close()
         }
 
-        if (nanos - lastPlanesNanos >= PLANES_INTERVAL_NS) {
-            lastPlanesNanos = nanos
+        if (planesGate.isDue(nanos)) {
+            planesGate.mark(nanos)
             recordPlanes(trace, nanos, session)
         }
 
@@ -248,8 +257,8 @@ internal class ArDebugRecorder {
 
     private fun reset(trace: ArDebugTrace) {
         recordedFor = trace
-        lastPointsNanos = Long.MIN_VALUE
-        lastPlanesNanos = Long.MIN_VALUE
+        pointsGate.reset()
+        planesGate.reset()
         planeIds.clear()
         livePlanes.clear()
         anchorIds.clear()
@@ -304,6 +313,8 @@ internal class DebugLayerNode(
     private var ownedIndexBuffer: IndexBuffer = indexBuffer
     private var vertexCapacity = INITIAL_CAPACITY
     private var indexCapacity = INITIAL_CAPACITY
+    private var uploadedIndices = 3
+    private var shownIndices = 3
 
     init {
         // The buffers are uninitialised until the first upload: draw one degenerate triangle.
@@ -348,6 +359,8 @@ internal class DebugLayerNode(
             renderableManager.setGeometryAt(
                 renderableInstance, 0, PrimitiveType.TRIANGLES, vertexTarget, indexTarget, 0, indexCount,
             )
+            uploadedIndices = indexCount
+            shownIndices = indexCount
         } catch (t: Throwable) {
             newVertexBuffer?.let { engine.safeDestroyVertexBuffer(it) }
             newIndexBuffer?.let { engine.safeDestroyIndexBuffer(it) }
@@ -363,6 +376,19 @@ internal class DebugLayerNode(
             ownedIndexBuffer = newIndexBuffer
             indexCapacity = newIndexBuffer.indexCount
         }
+    }
+
+    /**
+     * Draws only the first [count] indices of the last [upload] — a prefix of its triangles, with
+     * no re-upload: how the replay reveals a dense cloud as it grew. Clamped to what was uploaded.
+     */
+    fun showIndices(count: Int) {
+        val shown = (count - count % 3).coerceIn(3, uploadedIndices)
+        if (shown == shownIndices) return
+        shownIndices = shown
+        renderableManager.setGeometryAt(
+            renderableInstance, 0, PrimitiveType.TRIANGLES, ownedVertexBuffer, ownedIndexBuffer, 0, shown,
+        )
     }
 
     override fun destroy() {
@@ -694,7 +720,9 @@ internal fun ArDebugSceneView(
                 if (frame.anchors != anchors) anchors = frame.anchors
                 if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
                     clock.statsAtNanos = frameTimeNanos
-                    session.stats = ArDebugStats.of(frame, trace.duration)
+                    // A replay with a dense cloud counts its surfels, as the sessions list does.
+                    val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
+                    session.stats = ArDebugStats.of(frame, trace.duration, points)
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.

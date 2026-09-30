@@ -172,8 +172,7 @@ struct MovableLightDemo: View {
                 Text(loadError)
                     .font(.caption)
                     .padding()
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous))
             }
 
         }

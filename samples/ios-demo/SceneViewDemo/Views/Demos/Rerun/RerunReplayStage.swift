@@ -463,28 +463,11 @@ final class RerunStageRenderer {
 
     private static let placeholder: MeshResource = MeshResource.generatePlane(width: 0.001, depth: 0.001)
 
-    private static let nearest: MaterialParameters.Texture.Sampler = {
-        let descriptor = MTLSamplerDescriptor()
-        descriptor.minFilter = .nearest
-        descriptor.magFilter = .nearest
-        descriptor.mipFilter = .notMipmapped
-        descriptor.sAddressMode = .clampToEdge
-        descriptor.tAddressMode = .clampToEdge
-        return MaterialParameters.Texture.Sampler(descriptor)
-    }()
+    private static var nearest: MaterialParameters.Texture.Sampler { RerunRealityKit.nearest }
 
-    /// RealityKit samples textures from the bottom-left; the shared geometry writes them from
-    /// the top-left like Filament, so v is flipped here, once.
-    static func resource(_ mesh: RerunMesh) -> MeshResource? {
-        guard !mesh.isEmpty else { return nil }
-        var descriptor = MeshDescriptor()
-        descriptor.positions = MeshBuffers.Positions(mesh.positions)
-        if mesh.uvs.count == mesh.positions.count {
-            descriptor.textureCoordinates = MeshBuffers.TextureCoordinates(mesh.uvs.map { SIMD2($0.x, 1 - $0.y) })
-        }
-        descriptor.primitives = .triangles(mesh.indices)
-        return try? MeshResource.generate(from: [descriptor])
-    }
+    /// See ``RerunRealityKit/resource(_:)`` — shared with the Real-World Scan demo, which
+    /// also builds on macOS.
+    static func resource(_ mesh: RerunMesh) -> MeshResource? { RerunRealityKit.resource(mesh) }
 
     static func texture(_ image: CGImage) -> TextureResource? {
         try? TextureResource(image: image, withName: nil, options: .init(semantic: .color))

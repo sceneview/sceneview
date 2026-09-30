@@ -28,9 +28,10 @@ package io.github.sceneview.demo.sketchfab
  * streams them:
  *
  *  - `solar` — animated companions / orbital decoration for `OrbitalARDemo`.
- *  - `gallery` — variety pack for `SceneGalleryDemo`.
+ *  - `gallery` — variety pack of the removed `SceneGalleryDemo` (#4102); part of the Model
+ *    Viewer's "Surprise me" pool now.
  *  - `animation` — skeletal-animated models for `AnimationDemo`.
- *  - `park` — outdoor tree set for the `MultiModelDemo` park composition.
+ *  - `park` — the Model Viewer's Park: two oaks, a bench, a street lamp and a fern.
  *  - `ar_placement` — household-scale items for `ARPlacementDemo` /
  *    `ARPlacementDemo` (which absorbed `ARInstantPlacementDemo` in #3405).
  *  - `physics` — crash-test bodies for `PhysicsDemo`.
@@ -113,32 +114,13 @@ object SampleAssets {
             tags = listOf("insect", "swarm"),
         ),
 
-        // ── Gallery (SceneGalleryDemo) ─────────────────────────────────────
-        // 4 variety-pack models. Each gallery chip points at a *distinct*
-        // bundled GLB so two chips never render the identical fallback model
-        // when offline (#1433). `displayName` / `author` describe the streamed
-        // Sketchfab model; the chosen fallback visually resembles it.
-        SketchfabSlug(
-            uid = "42e02439c61049d681c897441d40aaa1",
-            displayName = "Nile (Classical Statue)",
-            author = "rigsters",
-            licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            // Restored to `khronos_toy_car.glb` now that the asset is fixed (#1433).
-            // The bundled GLB previously had a valid header but failed to parse in
-            // `gltfio` ("Unable to parse glTF file"): a babylon.js export bug left an
-            // out-of-bounds `clearcoatTexture` index and webp images on the core
-            // `source` instead of via `EXT_texture_webp`. #2390 worked around it by
-            // repointing this fallback (and "Coffee Mug") at decodable GLBs, which
-            // made "Nile" share the helmet with "Vintage Camera" (a #1433 relaxation).
-            // The asset has been re-exported (dangling texture dropped, normalized,
-            // Draco decompressed) so it decodes; restoring it makes all four gallery
-            // chips distinct again.
-            fallbackBundledPath = "models/khronos_toy_car.glb",
-            scaleToUnits = 0.85f,
-            hasBakedAnimation = false,
-            category = "gallery",
-            tags = listOf("sculpture", "scan"),
-        ),
+        // ── Gallery (was SceneGalleryDemo, removed in #4102) ───────────────
+        // Every entry here is in the Model Viewer's "Surprise me" pool; the Credits sheet titles
+        // this group after it. The Nile statue scan left with #4103: no screen showed it since
+        // #4102, and a model nobody sees has no business in the Credits sheet. The Skovfogedegen
+        // Oak moved in from `park` at the same time: the Park no longer stands it, the pool does.
+        // `displayName` / `author` describe the streamed Sketchfab model; the fallback is the
+        // bundled GLB a keyless build shows instead.
         SketchfabSlug(
             uid = "88ed6191446749b9a9e24b995bcb5e1d",
             displayName = "PBR Low-Poly Fox",
@@ -171,6 +153,17 @@ object SampleAssets {
             hasBakedAnimation = false,
             category = "gallery",
             tags = listOf("hard-surface", "pbr"),
+        ),
+        SketchfabSlug(
+            uid = "fd582b0d4a8c4af1a1b5c4f21a481c93",
+            displayName = "Skovfogedegen Oak",
+            author = "rigsters",
+            licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+            fallbackBundledPath = "models/threejs_soldier.glb",
+            scaleToUnits = 2.30f,
+            hasBakedAnimation = false,
+            category = "gallery",
+            tags = listOf("nature", "tree", "scan"),
         ),
 
         // ── Animation (AnimationDemo) ──────────────────────────────────────
@@ -220,52 +213,58 @@ object SampleAssets {
             tags = listOf("character", "mech"),
         ),
 
-        // ── Park scene composition (MultiModelDemo) ────────────────────────
-        // 4 outdoor trees that compose the "park" scene — a small grove the
-        // MultiModelDemo arranges around the placement reticle.
+        // ── Park scene composition (Model Viewer's Park) ───────────────────
+        // One corner of a park, not four trees (#4103): a pair of oaks, a bench under them, a
+        // street lamp and a fern, on a lawn in a garden. The earlier set was four tree scans
+        // (63 MB of GLB, one of them 34.6 MB) drawn at unrelated sizes in a grey studio; these
+        // four weigh 12.5 MB together, so the cold load is about five times shorter.
+        //
+        // The fallbacks are pairwise distinct because the Park shows all four at once, and two of
+        // them resemble what they stand for: the lamp falls back to the Khronos lantern, the bench
+        // to the sheen chair.
         SketchfabSlug(
             uid = "d841c3bcc5324daebee50f45619e05fc",
             displayName = "Oak Trees",
             author = "bumstrum",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/khronos_lantern.glb",
-            scaleToUnits = 2.40f,
+            fallbackBundledPath = "models/threejs_soldier.glb",
+            scaleToUnits = 2.00f,
             hasBakedAnimation = false,
             category = "park",
             tags = listOf("nature", "tree"),
         ),
         SketchfabSlug(
-            uid = "6d1aeea748f147789004bc03e1930d32",
-            displayName = "Stylized Tree",
-            author = "yonimantz09",
+            uid = "378cd6e6f505493aa8e22f68db1cabec",
+            displayName = "Simple Park Bench",
+            author = "Planetrix23",
+            licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+            fallbackBundledPath = "models/khronos_sheen_chair.glb",
+            scaleToUnits = 0.70f,
+            hasBakedAnimation = false,
+            category = "park",
+            tags = listOf("furniture", "outdoor"),
+        ),
+        SketchfabSlug(
+            uid = "6881aa1e84b047d79860fa9297e05e22",
+            displayName = "Street Lamp",
+            author = "bez_glaza",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
-            scaleToUnits = 1.80f,
+            scaleToUnits = 1.10f,
             hasBakedAnimation = false,
             category = "park",
-            tags = listOf("nature", "tree"),
+            tags = listOf("lighting", "outdoor"),
         ),
         SketchfabSlug(
-            uid = "4f6ab5594a8a415aba3f958682b9ced5",
-            displayName = "Mighty Oak Trees",
-            author = "Jagobo",
+            uid = "42cb7fad10ba44ecbc9ae9cf5fdd63b6",
+            displayName = "Plant Bush",
+            author = "Batuhan13",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/shiba.glb",
-            scaleToUnits = 2.60f,
+            scaleToUnits = 0.45f,
             hasBakedAnimation = false,
             category = "park",
-            tags = listOf("nature", "tree"),
-        ),
-        SketchfabSlug(
-            uid = "fd582b0d4a8c4af1a1b5c4f21a481c93",
-            displayName = "Skovfogedegen Oak",
-            author = "rigsters",
-            licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
-            scaleToUnits = 2.30f,
-            hasBakedAnimation = false,
-            category = "park",
-            tags = listOf("nature", "tree", "scan"),
+            tags = listOf("nature", "plant"),
         ),
 
         // ── AR placement (ARPlacementDemo — the one placement flow, #3405) ─

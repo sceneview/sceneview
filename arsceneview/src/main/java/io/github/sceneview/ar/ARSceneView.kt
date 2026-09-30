@@ -113,6 +113,7 @@ import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberScene
 import io.github.sceneview.rememberARView
 import io.github.sceneview.safeDestroyEnvironment
+import io.github.sceneview.sortTransformsIfUnsorted
 import io.github.sceneview.safeDestroyIndirectLight
 import kotlinx.coroutines.delay
 import java.io.File
@@ -1615,6 +1616,9 @@ fun ARSceneView(
                         }
                     }
 
+                    // Before any node's onFrame, as in SceneView: animator commits then reindex
+                    // nothing under the nodes' cached transform handles.
+                    engine.sortTransformsIfUnsorted()
                     modelLoader.updateLoad()
                     childNodes.forEach { it.onFrame(frameTimeNanos) }
 

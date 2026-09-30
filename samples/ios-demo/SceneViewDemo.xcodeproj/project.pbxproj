@@ -17,6 +17,7 @@
 		B7E400000000000000000003 /* RerunGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000003 /* RerunGeometry.swift */; };
 		B7E400000000000000000004 /* RerunReplaySession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000004 /* RerunReplaySession.swift */; };
 		B7E400000000000000000005 /* RerunReplayStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000005 /* RerunReplayStage.swift */; };
+		5A1A70000000000000000006 /* RerunRealityKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000006 /* RerunRealityKit.swift */; };
 		B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000006 /* RerunReplayChrome.swift */; };
 		B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000007 /* RerunShowcaseDemo.swift */; };
 		B7E400000000000000000008 /* RerunExportScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000008 /* RerunExportScene.swift */; };
@@ -36,15 +37,26 @@
 		B7E400000000000000000017 /* RerunCaptureRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */; };
 		B7E400000000000000000018 /* shiba.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000018 /* shiba.usdz */; };
 		B7E400000000000000000019 /* shiba.glb in Resources */ = {isa = PBXBuildFile; fileRef = B7E500000000000000000019 /* shiba.glb */; };
+		5A1A70000000000000000001 /* SplatScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000001 /* SplatScan.swift */; };
+		5A1A70000000000000000002 /* SplatPreviewDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000002 /* SplatPreviewDemo.swift */; };
+		5A1A70000000000000000003 /* SplatPreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000003 /* SplatPreviewScene.swift */; };
+		5A1A70000000000000000004 /* SplatScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000004 /* SplatScanTests.swift */; };
+		5A1A70000000000000000005 /* raccoon_family.spz in Resources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000005 /* raccoon_family.spz */; };
 		B7E40000000000000000001A /* showcase in Resources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000001A /* showcase */; };
 		2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */; };
 		B10000000000000000003585 /* ViewerAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000003584 /* ViewerAssetTests.swift */; };
+		C4E5A0000000000000000006 /* ViewerEntranceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000005 /* ViewerEntranceTests.swift */; };
+		C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */; };
+		C4E5A0000000000000000002 /* ViewerEntrance.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000001 /* ViewerEntrance.swift */; };
 		D13CADF7F6A0750FD91AE404 /* ShowcaseTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1805CCAE3BB264332107B4B /* ShowcaseTab.swift */; };
 		FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4EC /* ViewerSheets.swift */; };
 		FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4ED /* OpenedFileViewer.swift */; };
 		F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE31566D2309ACB52F2541CF /* HomeFilter.swift */; };
 		B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */; };
 		4D3AFF95252330C277928054 /* HomeHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251CDB4D89CD0202517E852 /* HomeHero.swift */; };
+		C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B001 /* HomeHeroFlight.swift */; };
+		C0DE4E50000000000000A002 /* HomeHeroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B002 /* HomeHeroScene.swift */; };
+		C0DE4E50000000000000A003 /* HomeListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B003 /* HomeListRow.swift */; };
 		7E28E9DEA941B656301CDA67 /* DemoScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DDC7D4F688438DB5EBE4ED /* DemoScene.swift */; };
 		F962AD205078EAFC5201865B /* AnimationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C649EB882E1792036DA612 /* AnimationScene.swift */; };
 		96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63582A5C1EEB276B6E9CA85 /* ArAugmentedFacesScene.swift */; };
@@ -72,8 +84,8 @@
 		63639070635D8E5F607E8E11 /* ModelViewerScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B05E7EA7457BA4E219A3B18 /* ModelViewerScene.swift */; };
 		7F3779F3EAE0CB8A8E2163A8 /* MovableLightScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E53E9763AF7F1FAC9F526D /* MovableLightScene.swift */; };
 		C6718D6992125E496CA5E387 /* MultiModelScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0144763A2AAFBA2F921AA6C /* MultiModelScene.swift */; };
-		BEA1469B6B63E6A1C636864B /* PhysicsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EDDD0A932E79C5088AEF26 /* PhysicsScene.swift */; };
-		D5304A7821A99E09C8746927 /* ReflectionProbesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC5EEABA6D7A33E6E4C2ED2 /* ReflectionProbesScene.swift */; };
+		BEA1469B6B63E6A1C636864B /* RollingBallsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EDDD0A932E79C5088AEF26 /* RollingBallsScene.swift */; };
+		D5304A7821A99E09C8746927 /* LightingLabScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC5EEABA6D7A33E6E4C2ED2 /* LightingLabScene.swift */; };
 		922DE8B725A90B5B9D794809 /* SceneGalleryScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EA61BCBF55BC370123347AE /* SceneGalleryScene.swift */; };
 		DD3FF7C0836D9DD90C767D6D /* ShapeExtrudeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0C8E686D511E4A17E75291 /* ShapeExtrudeScene.swift */; };
 		A3BAB0EC281F966421D8019A /* SpatialAudioScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C1442A5E282461B7581066 /* SpatialAudioScene.swift */; };
@@ -83,6 +95,10 @@
 		593E4FADBA93AF1190A3A67E /* SketchfabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C214F8F9A1B35560E551895 /* SketchfabModels.swift */; };
 		95BE47B4B9B828745697FB4B /* SketchfabConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77142EC848C995EDE06546D /* SketchfabConfig.swift */; };
 		A10000000000000000002960 /* AssetSourceProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002960 /* AssetSourceProbe.swift */; };
+		A10000000000000000004D01 /* HDPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D01 /* HDPack.swift */; };
+		A10000000000000000004D02 /* HDPackViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D02 /* HDPackViews.swift */; };
+		A10000000000000000004D03 /* ios.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D03 /* ios.json */; };
+		A10000000000000000004D04 /* HDPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004D04 /* HDPackTests.swift */; };
 		A10000000000000000002966 /* BundledAssetCredits.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002966 /* BundledAssetCredits.swift */; };
 		A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* SceneViewDemoApp.swift */; };
 		A10000010000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* Assets.xcassets */; };
@@ -108,8 +124,15 @@
 		C10000000000000000000013 /* ImagePlaneDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000013 /* ImagePlaneDemo.swift */; };
 		C10000000000000000000014 /* LightTypesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000014 /* LightTypesDemo.swift */; };
 		C10000000000000000000015 /* DynamicSkyDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000015 /* DynamicSkyDemo.swift */; };
-		C10000000000000000000017 /* PhysicsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000017 /* PhysicsDemo.swift */; };
+		C10000000000000000000017 /* RollingBallsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000017 /* RollingBallsDemo.swift */; };
 		C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000062 /* DoublePendulumDemo.swift */; };
+		C0500000000000000000C051 /* CosmosDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C061 /* CosmosDemo.swift */; };
+		C0500000000000000000C052 /* CosmosMeshes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C062 /* CosmosMeshes.swift */; };
+		C0500000000000000000C053 /* CosmosGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C063 /* CosmosGlow.swift */; };
+		C0500000000000000000C055 /* CosmosSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C065 /* CosmosSystem.swift */; };
+		C0500000000000000000C056 /* CosmosWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C066 /* CosmosWorld.swift */; };
+		C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C067 /* CosmosSystemTests.swift */; };
+		C0500000000000000000C054 /* CosmosScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C064 /* CosmosScene.swift */; };
 		C10000000000000000000018 /* CameraControlsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000018 /* CameraControlsDemo.swift */; };
 		C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000C1 /* CollisionHitTestDemo.swift */; };
 		C100000000000000000000CE /* GestureEditingDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000CE /* GestureEditingDemo.swift */; };
@@ -136,7 +159,7 @@
 		E500000000000000000000F3 /* qrcode.png in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F3 /* qrcode.png */; };
 		E500000000000000000000F4 /* BundledCredits.json in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F4 /* BundledCredits.json */; };
 		C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D0 /* ShapeExtrudeDemo.swift */; };
-		C100000000000000000000D1 /* ReflectionProbesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D1 /* ReflectionProbesDemo.swift */; };
+		C100000000000000000000D1 /* LightingLabDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D1 /* LightingLabDemo.swift */; };
 		C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D2 /* VideoTextureDemo.swift */; };
 		C100000000000000000000D3 /* OcclusionMaterialDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D3 /* OcclusionMaterialDemo.swift */; };
 		C100000000000000000000D4 /* OcclusionMaterialScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D4 /* OcclusionMaterialScene.swift */; };
@@ -186,7 +209,6 @@
 		D10000000000000000000014 /* lamborghini_countach.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000014 /* lamborghini_countach.usdz */; };
 		D10000000000000000000015 /* nike_air_jordan.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000015 /* nike_air_jordan.usdz */; };
 		D10000000000000000000016 /* ferrari_f40.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000016 /* ferrari_f40.usdz */; };
-		D10000000000000000000017 /* porsche_911_turbo.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000017 /* porsche_911_turbo.usdz */; };
 		D10000000000000000000018 /* ps5_dualsense.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000018 /* ps5_dualsense.usdz */; };
 		D10000000000000000000019 /* tesla_cybertruck.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000019 /* tesla_cybertruck.usdz */; };
 		D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001A /* mercedes_a45_amg.usdz */; };
@@ -204,10 +226,12 @@
 		E10000000000000000000005 /* studio_warm.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000005 /* studio_warm.hdr */; };
 		E10000000000000000000006 /* autumn_field.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000006 /* autumn_field.hdr */; };
 		E10000000000000000000007 /* night_sky.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000007 /* night_sky.hdr */; };
+		E10000000000000000000008 /* chinese_garden.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000008 /* chinese_garden.hdr */; };
 		ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */; };
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
 		F00000000000000000000077 /* LabeledSliderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000076 /* LabeledSliderTests.swift */; };
-		A20000000000000000003159 /* ReflectionProbesDemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000003158 /* ReflectionProbesDemoTests.swift */; };
+		A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000003158 /* LightingLabDemoTests.swift */; };
+		A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004210 /* RollingBallsSimulationTests.swift */; };
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
@@ -249,6 +273,7 @@
 		B7E500000000000000000003 /* RerunGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunGeometry.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunGeometry.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000004 /* RerunReplaySession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplaySession.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplaySession.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000005 /* RerunReplayStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayStage.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000006 /* RerunRealityKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunRealityKit.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunRealityKit.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000006 /* RerunReplayChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunReplayChrome.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunReplayChrome.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000007 /* RerunShowcaseDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunShowcaseDemo.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000008 /* RerunExportScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunExportScene.swift; path = SceneViewDemo/Views/Demos/Rerun/RerunExportScene.swift; sourceTree = SOURCE_ROOT; };
@@ -268,15 +293,26 @@
 		B7E500000000000000000017 /* RerunCaptureRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RerunCaptureRecorderTests.swift; path = SceneViewDemoTests/RerunCaptureRecorderTests.swift; sourceTree = SOURCE_ROOT; };
 		B7E500000000000000000018 /* shiba.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = shiba.usdz; sourceTree = "<group>"; };
 		B7E500000000000000000019 /* shiba.glb */ = {isa = PBXFileReference; lastKnownFileType = file; name = shiba.glb; path = ../android-demo/src/main/assets/models/shiba.glb; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000001 /* SplatScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatScan.swift; sourceTree = "<group>"; };
+		5A1A71000000000000000002 /* SplatPreviewDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatPreviewDemo.swift; sourceTree = "<group>"; };
+		5A1A71000000000000000003 /* SplatPreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SplatPreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SplatPreviewScene.swift; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000004 /* SplatScanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SplatScanTests.swift; path = SceneViewDemoTests/SplatScanTests.swift; sourceTree = SOURCE_ROOT; };
+		5A1A71000000000000000005 /* raccoon_family.spz */ = {isa = PBXFileReference; lastKnownFileType = file; name = raccoon_family.spz; path = ../android-demo/src/main/assets/splats/raccoon_family.spz; sourceTree = SOURCE_ROOT; };
 		B7E50000000000000000001A /* showcase */ = {isa = PBXFileReference; lastKnownFileType = folder; name = showcase; path = ../android-demo/src/main/assets/rerun/showcase; sourceTree = SOURCE_ROOT; };
 		9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilterTests.swift; path = SceneViewDemoTests/HomeFilterTests.swift; sourceTree = SOURCE_ROOT; };
 		B10000000000000000003584 /* ViewerAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerAssetTests.swift; path = SceneViewDemoTests/ViewerAssetTests.swift; sourceTree = SOURCE_ROOT; };
+		C4E5A0000000000000000005 /* ViewerEntranceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerEntranceTests.swift; path = SceneViewDemoTests/ViewerEntranceTests.swift; sourceTree = SOURCE_ROOT; };
+		C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerMaterialRepairs.swift; path = SceneViewDemo/Views/Viewer/ViewerMaterialRepairs.swift; sourceTree = SOURCE_ROOT; };
+		C4E5A0000000000000000001 /* ViewerEntrance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerEntrance.swift; path = SceneViewDemo/Views/Viewer/ViewerEntrance.swift; sourceTree = SOURCE_ROOT; };
 		F1805CCAE3BB264332107B4B /* ShowcaseTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShowcaseTab.swift; path = SceneViewDemo/Views/Tabs/ShowcaseTab.swift; sourceTree = SOURCE_ROOT; };
 		446371A911170C776F03B4EC /* ViewerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerSheets.swift; path = SceneViewDemo/Views/Viewer/ViewerSheets.swift; sourceTree = SOURCE_ROOT; };
 		446371A911170C776F03B4ED /* OpenedFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenedFileViewer.swift; path = SceneViewDemo/Views/Viewer/OpenedFileViewer.swift; sourceTree = SOURCE_ROOT; };
 		DE31566D2309ACB52F2541CF /* HomeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilter.swift; path = SceneViewDemo/Views/Home/HomeFilter.swift; sourceTree = SOURCE_ROOT; };
 		A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoMediaCard.swift; path = SceneViewDemo/Views/Home/DemoMediaCard.swift; sourceTree = SOURCE_ROOT; };
 		A251CDB4D89CD0202517E852 /* HomeHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHero.swift; path = SceneViewDemo/Views/Home/HomeHero.swift; sourceTree = SOURCE_ROOT; };
+		C0DE4E50000000000000B001 /* HomeHeroFlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroFlight.swift; path = SceneViewDemo/Views/Home/HomeHeroFlight.swift; sourceTree = SOURCE_ROOT; };
+		C0DE4E50000000000000B002 /* HomeHeroScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroScene.swift; path = SceneViewDemo/Views/Home/HomeHeroScene.swift; sourceTree = SOURCE_ROOT; };
+		C0DE4E50000000000000B003 /* HomeListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeListRow.swift; path = SceneViewDemo/Views/Home/HomeListRow.swift; sourceTree = SOURCE_ROOT; };
 		5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComingSoonScreen.swift; path = SceneViewDemo/Views/ComingSoonScreen.swift; sourceTree = SOURCE_ROOT; };
 		6C214F8F9A1B35560E551895 /* SketchfabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabModels.swift; path = SceneViewDemo/Services/SketchfabModels.swift; sourceTree = SOURCE_ROOT; };
 		8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabService.swift; path = SceneViewDemo/Services/SketchfabService.swift; sourceTree = SOURCE_ROOT; };
@@ -299,7 +335,8 @@
 		F10000000000000000000002 /* SceneViewDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneViewDemoUITests.swift; path = SceneViewDemoUITests/SceneViewDemoUITests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000076 /* LabeledSliderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSliderTests.swift; path = SceneViewDemoTests/LabeledSliderTests.swift; sourceTree = SOURCE_ROOT; };
-		A20000000000000000003158 /* ReflectionProbesDemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReflectionProbesDemoTests.swift; path = SceneViewDemoTests/ReflectionProbesDemoTests.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000003158 /* LightingLabDemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightingLabDemoTests.swift; path = SceneViewDemoTests/LightingLabDemoTests.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004210 /* RollingBallsSimulationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RollingBallsSimulationTests.swift; path = SceneViewDemoTests/RollingBallsSimulationTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
@@ -320,8 +357,15 @@
 		C20000000000000000000013 /* ImagePlaneDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePlaneDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000014 /* LightTypesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTypesDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000015 /* DynamicSkyDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicSkyDemo.swift; sourceTree = "<group>"; };
-		C20000000000000000000017 /* PhysicsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicsDemo.swift; sourceTree = "<group>"; };
+		C20000000000000000000017 /* RollingBallsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingBallsDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000062 /* DoublePendulumDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoublePendulumDemo.swift; sourceTree = "<group>"; };
+		C0600000000000000000C061 /* CosmosDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosDemo.swift; sourceTree = "<group>"; };
+		C0600000000000000000C062 /* CosmosMeshes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosMeshes.swift; sourceTree = "<group>"; };
+		C0600000000000000000C063 /* CosmosGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosGlow.swift; sourceTree = "<group>"; };
+		C0600000000000000000C065 /* CosmosSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosSystem.swift; sourceTree = "<group>"; };
+		C0600000000000000000C066 /* CosmosWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosWorld.swift; sourceTree = "<group>"; };
+		C0600000000000000000C067 /* CosmosSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosSystemTests.swift; path = SceneViewDemoTests/CosmosSystemTests.swift; sourceTree = SOURCE_ROOT; };
+		C0600000000000000000C064 /* CosmosScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosScene.swift; path = SceneViewDemo/Views/Demos/Scenes/CosmosScene.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000018 /* CameraControlsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControlsDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000C1 /* CollisionHitTestDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollisionHitTestDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000CE /* GestureEditingDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureEditingDemo.swift; sourceTree = "<group>"; };
@@ -352,7 +396,7 @@
 		E600000000000000000000F3 /* qrcode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = qrcode.png; sourceTree = "<group>"; };
 		E600000000000000000000F4 /* BundledCredits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BundledCredits.json; sourceTree = "<group>"; };
 		C200000000000000000000D0 /* ShapeExtrudeDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeExtrudeDemo.swift; sourceTree = "<group>"; };
-		C200000000000000000000D1 /* ReflectionProbesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionProbesDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000D1 /* LightingLabDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightingLabDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D2 /* VideoTextureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTextureDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D3 /* OcclusionMaterialDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcclusionMaterialDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D5 /* DebugOverlayDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayDemo.swift; sourceTree = "<group>"; };
@@ -391,7 +435,6 @@
 		D20000000000000000000014 /* lamborghini_countach.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = lamborghini_countach.usdz; sourceTree = "<group>"; };
 		D20000000000000000000015 /* nike_air_jordan.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = nike_air_jordan.usdz; sourceTree = "<group>"; };
 		D20000000000000000000016 /* ferrari_f40.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = ferrari_f40.usdz; sourceTree = "<group>"; };
-		D20000000000000000000017 /* porsche_911_turbo.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = porsche_911_turbo.usdz; sourceTree = "<group>"; };
 		D20000000000000000000018 /* ps5_dualsense.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = ps5_dualsense.usdz; sourceTree = "<group>"; };
 		D20000000000000000000019 /* tesla_cybertruck.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = tesla_cybertruck.usdz; sourceTree = "<group>"; };
 		D2000000000000000000001A /* mercedes_a45_amg.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = mercedes_a45_amg.usdz; sourceTree = "<group>"; };
@@ -403,6 +446,10 @@
 		2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_damaged_helmet.usdz; sourceTree = "<group>"; };
 		D77142EC848C995EDE06546D /* SketchfabConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabConfig.swift; path = SceneViewDemo/Services/SketchfabConfig.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002960 /* AssetSourceProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourceProbe.swift; path = SceneViewDemo/Services/AssetSourceProbe.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D01 /* HDPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HDPack.swift; path = SceneViewDemo/Services/HDPack.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D02 /* HDPackViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HDPackViews.swift; path = SceneViewDemo/Views/Components/HDPackViews.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D03 /* ios.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = ios.json; path = ../../assets/hd-pack/ios.json; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004D04 /* HDPackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HDPackTests.swift; path = SceneViewDemoTests/HDPackTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002966 /* BundledAssetCredits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetCredits.swift; path = SceneViewDemo/Services/BundledAssetCredits.swift; sourceTree = SOURCE_ROOT; };
 		E20000000000000000000001 /* studio.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = studio.hdr; sourceTree = "<group>"; };
 		E20000000000000000000002 /* outdoor_cloudy.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = outdoor_cloudy.hdr; sourceTree = "<group>"; };
@@ -411,6 +458,7 @@
 		E20000000000000000000005 /* studio_warm.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = studio_warm.hdr; sourceTree = "<group>"; };
 		E20000000000000000000006 /* autumn_field.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = autumn_field.hdr; sourceTree = "<group>"; };
 		E20000000000000000000007 /* night_sky.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = night_sky.hdr; sourceTree = "<group>"; };
+		E20000000000000000000008 /* chinese_garden.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = chinese_garden.hdr; sourceTree = "<group>"; };
 		E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovableLightDemo.swift; path = SceneViewDemo/Views/Demos/MovableLightDemo.swift; sourceTree = SOURCE_ROOT; };
 		F3DDC7D4F688438DB5EBE4ED /* DemoScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScene.swift; path = SceneViewDemo/Utilities/DemoScene.swift; sourceTree = SOURCE_ROOT; };
 		85C649EB882E1792036DA612 /* AnimationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AnimationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/AnimationScene.swift; sourceTree = SOURCE_ROOT; };
@@ -440,8 +488,8 @@
 		4B05E7EA7457BA4E219A3B18 /* ModelViewerScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModelViewerScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ModelViewerScene.swift; sourceTree = SOURCE_ROOT; };
 		74E53E9763AF7F1FAC9F526D /* MovableLightScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovableLightScene.swift; path = SceneViewDemo/Views/Demos/Scenes/MovableLightScene.swift; sourceTree = SOURCE_ROOT; };
 		E0144763A2AAFBA2F921AA6C /* MultiModelScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MultiModelScene.swift; path = SceneViewDemo/Views/Demos/Scenes/MultiModelScene.swift; sourceTree = SOURCE_ROOT; };
-		24EDDD0A932E79C5088AEF26 /* PhysicsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhysicsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PhysicsScene.swift; sourceTree = SOURCE_ROOT; };
-		BAC5EEABA6D7A33E6E4C2ED2 /* ReflectionProbesScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReflectionProbesScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ReflectionProbesScene.swift; sourceTree = SOURCE_ROOT; };
+		24EDDD0A932E79C5088AEF26 /* RollingBallsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RollingBallsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/RollingBallsScene.swift; sourceTree = SOURCE_ROOT; };
+		BAC5EEABA6D7A33E6E4C2ED2 /* LightingLabScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightingLabScene.swift; path = SceneViewDemo/Views/Demos/Scenes/LightingLabScene.swift; sourceTree = SOURCE_ROOT; };
 		C200000000000000000000D4 /* OcclusionMaterialScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OcclusionMaterialScene.swift; path = SceneViewDemo/Views/Demos/Scenes/OcclusionMaterialScene.swift; sourceTree = SOURCE_ROOT; };
 		C200000000000000000000D6 /* DebugOverlayScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugOverlayScene.swift; path = SceneViewDemo/Views/Demos/Scenes/DebugOverlayScene.swift; sourceTree = SOURCE_ROOT; };
 		C200000000000000000000F8 /* ArPeopleOcclusionScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPeopleOcclusionScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPeopleOcclusionScene.swift; sourceTree = SOURCE_ROOT; };
@@ -493,6 +541,7 @@
 				B7E500000000000000000003 /* RerunGeometry.swift */,
 				B7E500000000000000000004 /* RerunReplaySession.swift */,
 				B7E500000000000000000005 /* RerunReplayStage.swift */,
+				5A1A71000000000000000006 /* RerunRealityKit.swift */,
 				B7E500000000000000000006 /* RerunReplayChrome.swift */,
 				B7E500000000000000000007 /* RerunShowcaseDemo.swift */,
 				B7E500000000000000000008 /* RerunExportScene.swift */,
@@ -519,6 +568,8 @@
 			children = (
 				446371A911170C776F03B4EC /* ViewerSheets.swift */,
 				446371A911170C776F03B4ED /* OpenedFileViewer.swift */,
+				C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */,
+				C4E5A0000000000000000001 /* ViewerEntrance.swift */,
 			);
 			name = Viewer;
 			sourceTree = "<group>";
@@ -530,6 +581,9 @@
 				DE31566D2309ACB52F2541CF /* HomeFilter.swift */,
 				A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */,
 				A251CDB4D89CD0202517E852 /* HomeHero.swift */,
+				C0DE4E50000000000000B001 /* HomeHeroFlight.swift */,
+				C0DE4E50000000000000B002 /* HomeHeroScene.swift */,
+				C0DE4E50000000000000B003 /* HomeListRow.swift */,
 			);
 			name = Home;
 			sourceTree = "<group>";
@@ -544,6 +598,8 @@
 				5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */,
 				D77142EC848C995EDE06546D /* SketchfabConfig.swift */,
 				A20000000000000000002960 /* AssetSourceProbe.swift */,
+				A20000000000000000004D01 /* HDPack.swift */,
+				A20000000000000000004D02 /* HDPackViews.swift */,
 				A20000000000000000002966 /* BundledAssetCredits.swift */,
 				6C214F8F9A1B35560E551895 /* SketchfabModels.swift */,
 				8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */,
@@ -572,14 +628,19 @@
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
+				C0600000000000000000C067 /* CosmosSystemTests.swift */,
+				5A1A71000000000000000004 /* SplatScanTests.swift */,
 				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
 				B10000000000000000003584 /* ViewerAssetTests.swift */,
-				A20000000000000000003158 /* ReflectionProbesDemoTests.swift */,
+				C4E5A0000000000000000005 /* ViewerEntranceTests.swift */,
+				A20000000000000000003158 /* LightingLabDemoTests.swift */,
+				A20000000000000000004210 /* RollingBallsSimulationTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
 				F000000000000000000000A0 /* ARExperienceModelTests.swift */,
 				A20000000000000000002962 /* AssetSourceProbeTests.swift */,
+				A20000000000000000004D04 /* HDPackTests.swift */,
 				A20000000000000000002968 /* BundledAssetCreditsTests.swift */,
 				F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */,
 			);
@@ -677,8 +738,16 @@
 				C20000000000000000000013 /* ImagePlaneDemo.swift */,
 				C20000000000000000000014 /* LightTypesDemo.swift */,
 				C20000000000000000000015 /* DynamicSkyDemo.swift */,
-				C20000000000000000000017 /* PhysicsDemo.swift */,
+				C20000000000000000000017 /* RollingBallsDemo.swift */,
+				5A1A71000000000000000001 /* SplatScan.swift */,
+				5A1A71000000000000000002 /* SplatPreviewDemo.swift */,
+				5A1A71000000000000000005 /* raccoon_family.spz */,
 				C20000000000000000000062 /* DoublePendulumDemo.swift */,
+				C0600000000000000000C061 /* CosmosDemo.swift */,
+				C0600000000000000000C062 /* CosmosMeshes.swift */,
+				C0600000000000000000C063 /* CosmosGlow.swift */,
+				C0600000000000000000C065 /* CosmosSystem.swift */,
+				C0600000000000000000C066 /* CosmosWorld.swift */,
 				C20000000000000000000018 /* CameraControlsDemo.swift */,
 				C200000000000000000000C1 /* CollisionHitTestDemo.swift */,
 				C200000000000000000000CE /* GestureEditingDemo.swift */,
@@ -697,7 +766,7 @@
 				C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */,
 				C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */,
 				C200000000000000000000D0 /* ShapeExtrudeDemo.swift */,
-				C200000000000000000000D1 /* ReflectionProbesDemo.swift */,
+				C200000000000000000000D1 /* LightingLabDemo.swift */,
 				C200000000000000000000D2 /* VideoTextureDemo.swift */,
 				C200000000000000000000D3 /* OcclusionMaterialDemo.swift */,
 				C200000000000000000000D5 /* DebugOverlayDemo.swift */,
@@ -745,7 +814,6 @@
 				D20000000000000000000014 /* lamborghini_countach.usdz */,
 				D20000000000000000000015 /* nike_air_jordan.usdz */,
 				D20000000000000000000016 /* ferrari_f40.usdz */,
-				D20000000000000000000017 /* porsche_911_turbo.usdz */,
 				D20000000000000000000018 /* ps5_dualsense.usdz */,
 				D20000000000000000000019 /* tesla_cybertruck.usdz */,
 				D2000000000000000000001A /* mercedes_a45_amg.usdz */,
@@ -770,6 +838,7 @@
 				E20000000000000000000005 /* studio_warm.hdr */,
 				E20000000000000000000006 /* autumn_field.hdr */,
 				E20000000000000000000007 /* night_sky.hdr */,
+				E20000000000000000000008 /* chinese_garden.hdr */,
 			);
 			path = Environments;
 			sourceTree = "<group>";
@@ -788,6 +857,7 @@
 			children = (
 				E600000000000000000000F3 /* qrcode.png */,
 				E600000000000000000000F4 /* BundledCredits.json */,
+				A20000000000000000004D03 /* ios.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -807,6 +877,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70000010000000000000003 /* Build configuration list for PBXNativeTarget "SceneViewDemo" */;
 			buildPhases = (
+				A60000010000000000000005 /* Fetch assets */,
 				A60000010000000000000004 /* Collate iOS demos */,
 				A60000010000000000000003 /* Validate store secrets */,
 				A60000010000000000000001 /* Sources */,
@@ -913,11 +984,13 @@
 			files = (
 				B7E400000000000000000018 /* shiba.usdz in Resources */,
 				B7E400000000000000000019 /* shiba.glb in Resources */,
+				5A1A70000000000000000005 /* raccoon_family.spz in Resources */,
 				B7E40000000000000000001A /* showcase in Resources */,
 				A10000010000000000000002 /* Assets.xcassets in Resources */,
 				F50000000000000000000001 /* bell.wav in Resources */,
 				E500000000000000000000F3 /* qrcode.png in Resources */,
 				E500000000000000000000F4 /* BundledCredits.json in Resources */,
+				A10000000000000000004D03 /* ios.json in Resources */,
 				E500000000000000000000D3 /* sample.mp4 in Resources */,
 				D10000000000000000000001 /* game_boy_classic.usdz in Resources */,
 				D10000000000000000000002 /* tree_scene.usdz in Resources */,
@@ -940,7 +1013,6 @@
 				D10000000000000000000014 /* lamborghini_countach.usdz in Resources */,
 				D10000000000000000000015 /* nike_air_jordan.usdz in Resources */,
 				D10000000000000000000016 /* ferrari_f40.usdz in Resources */,
-				D10000000000000000000017 /* porsche_911_turbo.usdz in Resources */,
 				D10000000000000000000018 /* ps5_dualsense.usdz in Resources */,
 				D10000000000000000000019 /* tesla_cybertruck.usdz in Resources */,
 				D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */,
@@ -957,6 +1029,7 @@
 				E10000000000000000000005 /* studio_warm.hdr in Resources */,
 				E10000000000000000000006 /* autumn_field.hdr in Resources */,
 				E10000000000000000000007 /* night_sky.hdr in Resources */,
+				E10000000000000000000008 /* chinese_garden.hdr in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -970,6 +1043,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A60000010000000000000005 /* Fetch assets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../assets/manifest.json",
+			);
+			name = "Fetch assets";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Models/ and Environments/ are not in git: they live on the `assets-v1`\n# GitHub Release, listed in assets/manifest.json. Materialise them before\n# Copy Bundle Resources so every build (Xcode, xcodebuild, fastlane, CI)\n# embeds the same bytes, or fails here instead of shipping without models.\n# Once ~/.cache/sceneview-assets is warm this is an offline hash check.\nset -eu\nbash \"${SRCROOT}/../../tools/fetch-assets.sh\" --scope ios\n";
+			showEnvVarsInLog = 0;
+		};
 		A60000010000000000000004 /* Collate iOS demos */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 0;
@@ -1022,6 +1116,7 @@
 				B7E400000000000000000003 /* RerunGeometry.swift in Sources */,
 				B7E400000000000000000004 /* RerunReplaySession.swift in Sources */,
 				B7E400000000000000000005 /* RerunReplayStage.swift in Sources */,
+				5A1A70000000000000000006 /* RerunRealityKit.swift in Sources */,
 				B7E400000000000000000006 /* RerunReplayChrome.swift in Sources */,
 				B7E400000000000000000007 /* RerunShowcaseDemo.swift in Sources */,
 				B7E400000000000000000008 /* RerunExportScene.swift in Sources */,
@@ -1040,9 +1135,14 @@
 				D13CADF7F6A0750FD91AE404 /* ShowcaseTab.swift in Sources */,
 				FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */,
 				FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */,
+				C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */,
+				C4E5A0000000000000000002 /* ViewerEntrance.swift in Sources */,
 				F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */,
 				B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */,
 				4D3AFF95252330C277928054 /* HomeHero.swift in Sources */,
+				C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */,
+				C0DE4E50000000000000A002 /* HomeHeroScene.swift in Sources */,
+				C0DE4E50000000000000A003 /* HomeListRow.swift in Sources */,
 				A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */,
 				C10000000000000000000002 /* DemoItem.swift in Sources */,
 				C10000000000000000000030 /* FavoritesManager.swift in Sources */,
@@ -1058,8 +1158,15 @@
 				C10000000000000000000013 /* ImagePlaneDemo.swift in Sources */,
 				C10000000000000000000014 /* LightTypesDemo.swift in Sources */,
 				C10000000000000000000015 /* DynamicSkyDemo.swift in Sources */,
-				C10000000000000000000017 /* PhysicsDemo.swift in Sources */,
+				C10000000000000000000017 /* RollingBallsDemo.swift in Sources */,
+				5A1A70000000000000000001 /* SplatScan.swift in Sources */,
+				5A1A70000000000000000002 /* SplatPreviewDemo.swift in Sources */,
 				C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */,
+				C0500000000000000000C051 /* CosmosDemo.swift in Sources */,
+				C0500000000000000000C052 /* CosmosMeshes.swift in Sources */,
+				C0500000000000000000C053 /* CosmosGlow.swift in Sources */,
+				C0500000000000000000C055 /* CosmosSystem.swift in Sources */,
+				C0500000000000000000C056 /* CosmosWorld.swift in Sources */,
 				C10000000000000000000018 /* CameraControlsDemo.swift in Sources */,
 				C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */,
 				C100000000000000000000CE /* GestureEditingDemo.swift in Sources */,
@@ -1071,6 +1178,8 @@
 				0C0448E495F77BF795D1C647 /* ComingSoonScreen.swift in Sources */,
 				95BE47B4B9B828745697FB4B /* SketchfabConfig.swift in Sources */,
 				A10000000000000000002960 /* AssetSourceProbe.swift in Sources */,
+				A10000000000000000004D01 /* HDPack.swift in Sources */,
+				A10000000000000000004D02 /* HDPackViews.swift in Sources */,
 				A10000000000000000002966 /* BundledAssetCredits.swift in Sources */,
 				593E4FADBA93AF1190A3A67E /* SketchfabModels.swift in Sources */,
 				B4A94ABD8B5DA5F4E4CE4834 /* SketchfabService.swift in Sources */,
@@ -1099,7 +1208,7 @@
 				C100000000000000000000F6 /* ARPlaneNodeDemo.swift in Sources */,
 				C100000000000000000000F7 /* ARPointCloudDemo.swift in Sources */,
 				C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */,
-				C100000000000000000000D1 /* ReflectionProbesDemo.swift in Sources */,
+				C100000000000000000000D1 /* LightingLabDemo.swift in Sources */,
 				C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */,
 				C100000000000000000000D3 /* OcclusionMaterialDemo.swift in Sources */,
 				C100000000000000000000D4 /* OcclusionMaterialScene.swift in Sources */,
@@ -1140,6 +1249,7 @@
 				142DB7943F0D5AAC072D8C3D /* CollisionHitTestScene.swift in Sources */,
 				4174B93766B7BD3B8D98783F /* CustomMeshScene.swift in Sources */,
 				BD016517EAC148510B51E258 /* DoublePendulumScene.swift in Sources */,
+				C0500000000000000000C054 /* CosmosScene.swift in Sources */,
 				CDDC40367454570BA7AF147F /* DynamicSkyScene.swift in Sources */,
 				595BE7B36EE44F0893381277 /* EnvironmentScene.swift in Sources */,
 				A8F7A49A69BCF88DD6C97314 /* GeometryScene.swift in Sources */,
@@ -1151,8 +1261,9 @@
 				63639070635D8E5F607E8E11 /* ModelViewerScene.swift in Sources */,
 				7F3779F3EAE0CB8A8E2163A8 /* MovableLightScene.swift in Sources */,
 				C6718D6992125E496CA5E387 /* MultiModelScene.swift in Sources */,
-				BEA1469B6B63E6A1C636864B /* PhysicsScene.swift in Sources */,
-				D5304A7821A99E09C8746927 /* ReflectionProbesScene.swift in Sources */,
+				BEA1469B6B63E6A1C636864B /* RollingBallsScene.swift in Sources */,
+				5A1A70000000000000000003 /* SplatPreviewScene.swift in Sources */,
+				D5304A7821A99E09C8746927 /* LightingLabScene.swift in Sources */,
 				922DE8B725A90B5B9D794809 /* SceneGalleryScene.swift in Sources */,
 				DD3FF7C0836D9DD90C767D6D /* ShapeExtrudeScene.swift in Sources */,
 				A3BAB0EC281F966421D8019A /* SpatialAudioScene.swift in Sources */,
@@ -1177,16 +1288,21 @@
 				B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */,
 				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
+				C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */,
+				5A1A70000000000000000004 /* SplatScanTests.swift in Sources */,
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,
+				C4E5A0000000000000000006 /* ViewerEntranceTests.swift in Sources */,
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
-				A20000000000000000003159 /* ReflectionProbesDemoTests.swift in Sources */,
+				A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */,
+				A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */,
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
 				F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */,
 				A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */,
+				A10000000000000000004D04 /* HDPackTests.swift in Sources */,
 				A10000000000000000002968 /* BundledAssetCreditsTests.swift in Sources */,
 				F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */,
 			);
@@ -1346,7 +1462,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.47.0;
+				MARKETING_VERSION = 4.50.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;
@@ -1381,7 +1497,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.47.0;
+				MARKETING_VERSION = 4.50.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;

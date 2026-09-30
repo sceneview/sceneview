@@ -730,5 +730,32 @@ class DisplayTypeEnumTest(unittest.TestCase):
             al.DISPLAY_TYPE_MAP = original
 
 
+class EditableVersionTest(unittest.TestCase):
+    """A version pulled out of review (DEVELOPER_REJECTED) or rejected by Apple
+    is still editable, and app_store_submit.py reuses it for the next release.
+    If the screenshot sync does not see it, that release ships with a stale
+    screenshot set and only a warning says so (2026-09-28, 4.42.0 withdrawn)."""
+
+    class _Recorder:
+        def __init__(self, payload):
+            self.urls = []
+            self._payload = payload
+
+        def get(self, url, headers=None, timeout=None):
+            self.urls.append(url)
+            resp = _StubResponse(self._payload)
+            resp.raise_for_status = lambda: None
+            return resp
+
+    def test_rejected_states_count_as_editable(self):
+        req = self._Recorder({"data": [{"id": "V42", "attributes": {"versionString": "4.42.0"}}]})
+        self.assertEqual(al._editable_version(req, {}, "APP"), ("V42", "4.42.0"))
+        states = req.urls[0].split("filter[appStoreState]=")[1].split("&")[0].split(",")
+        for state in ("PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED",
+                      "METADATA_REJECTED", "READY_FOR_REVIEW"):
+            self.assertIn(state, states)
+        self.assertIn("filter[platform]=IOS", req.urls[0])
+
+
 if __name__ == "__main__":
     unittest.main()

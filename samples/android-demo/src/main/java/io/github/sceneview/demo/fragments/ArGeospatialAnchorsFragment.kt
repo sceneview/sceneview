@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -23,8 +23,8 @@ object ArGeospatialAnchorsFragment : DemoFragment {
         titleRes = R.string.demo_ar_geospatial_anchors_title,
         subtitleRes = R.string.demo_ar_geospatial_anchors_subtitle,
         category = DemoCategory.PLACE_AR,
-        icon = Icons.Filled.Landscape,
-        order = 17,
+        icon = Icons.Filled.Explore,
+        order = 19,
         // 4.41.0: one loader, the status stays on screen, every dropped anchor
         // is visible (#3832).
         updatedIn = "4.41.0",

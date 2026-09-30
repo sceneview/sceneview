@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.FilterCenterFocus
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -18,8 +18,8 @@ object SplatPreviewFragment : DemoFragment {
         titleRes = R.string.demo_splat_preview_title,
         subtitleRes = R.string.demo_splat_preview_subtitle,
         category = DemoCategory.VIEW_3D,
-        icon = Icons.Filled.Landscape,
-        order = 2,
+        icon = Icons.Filled.FilterCenterFocus,
+        order = 27,
         tags = setOf("splat", "gaussian", "radiance-field", "point-cloud", "scan", "spz", "ply"),
         // #3620 replaced the procedural sphere with a real phone capture.
         updatedIn = "4.37.0",

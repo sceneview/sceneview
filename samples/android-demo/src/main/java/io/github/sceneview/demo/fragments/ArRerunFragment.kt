@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.filled.Polyline
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArRerunFragment : DemoFragment {
         titleRes = R.string.demo_ar_rerun_title,
         subtitleRes = R.string.demo_ar_rerun_subtitle,
         category = DemoCategory.DEV_TOOLS,
-        icon = Icons.Filled.ViewInAr,
-        order = 18,
+        icon = Icons.Filled.Polyline,
+        order = 12,
         tags = setOf("ar", "rerun", "replay", "3d", "streaming", "pose", "plane", "point cloud", "debug"),
         updatedIn = "4.46.0",
     )

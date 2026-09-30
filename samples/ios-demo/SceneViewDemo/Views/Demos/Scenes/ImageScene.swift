@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        photo.fill
-// @order       35
+// @order       13
 import SwiftUI
 
 enum ImageScene: DemoScene {

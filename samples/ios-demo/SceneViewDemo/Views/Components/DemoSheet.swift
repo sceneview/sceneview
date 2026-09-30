@@ -11,7 +11,7 @@ import SceneViewSwift
 /// SceneView { ... }
 ///     .demoChrome(
 ///         title: "Model Viewer",
-///         dock: [DockItem(icon: "scope", label: "Recenter") { recenter() }],
+///         dock: [DockItem(icon: "arrow.counterclockwise.circle", label: "Recenter") { recenter() }],
 ///         accent: DockItem(icon: "arkit", label: "View in AR") { openAR() }
 ///     ) {
 ///         // any SwiftUI controls — sliders, pickers, toggles…

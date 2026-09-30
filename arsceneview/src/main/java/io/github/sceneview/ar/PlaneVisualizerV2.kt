@@ -10,66 +10,53 @@ import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Camera
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
-import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float3
-import io.github.sceneview.ar.arcore.buildPlaneDepthMeshGeometry
-import io.github.sceneview.ar.arcore.depthImage
-import io.github.sceneview.ar.arcore.rawDepthConfidenceImage
 import io.github.sceneview.ar.scene.PlaneRendererV2
 import io.github.sceneview.ar.scene.planeMaterialPresetFor
 import io.github.sceneview.collision.Matrix
 import io.github.sceneview.collision.TransformProvider
-import io.github.sceneview.material.setParameter
 import io.github.sceneview.math.normalToTangent
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
- * Renders a single ARCore Plane using native Filament geometry — V2 implementation.
+ * Renders a single ARCore [Plane] as a field of soft, world-anchored dots — V2 implementation
+ * ([#3507](https://github.com/sceneview/sceneview/issues/3507), rebuild of
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203)).
  *
- * **V2 is an experimental opt-in — it is not the default.** The default is
- * [io.github.sceneview.ar.scene.PlaneRendererBase.Version.V1], drawn by [PlaneVisualizer].
- * v4.16.0 briefly shipped V2 as the default, but on-device QA showed the V2 visual output not
- * matching the design intent, so v4.16.1 reverted the default to V1 while V2 is polished. V1
- * was never deprecated and remains fully supported. Opt into V2 with
- * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` — see
- * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella and the
- * research notes.
+ * **V2 is an opt-in.** The default is
+ * [io.github.sceneview.ar.scene.PlaneRendererBase.Version.V1], drawn by [PlaneVisualizer]. Opt
+ * into V2 with `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)`.
  *
- * **PR #3 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the V2
- * plane is now a real PBR surface lit by the real room. Four user-visible effects:
+ * What the user sees, all of it drawn by `plane_renderer_v2.mat` over a flat feathered mesh:
  *
- * 1. **PBR lit shading** — the V2 material switched from `shadingModel: unlit` (PR #2) to
- *    `shadingModel: lit`. The fragment stage assigns `metallic` / `roughness` /
- *    `reflectance` so Filament's PBR pipeline lights the plane the same way it lights any
- *    other lit `MaterialInstance`.
- * 2. **HDR cubemap reflection** — `scene.indirectLight` is fed each frame by
- *    [io.github.sceneview.ar.light.LightEstimator] from ARCore's
- *    `acquireEnvironmentalHdrCubeMap()` + `environmentalHdrAmbientSphericalHarmonics`. The
- *    lit plane samples that IBL automatically — a glossy floor visibly reflects the
- *    ceiling lights and window glow.
- * 3. **Scan-in ring** — when a plane is first detected, a thin bright ring expands
- *    outward from the polygon centroid over 800 ms. First-contact magic. Driven by the
- *    `scanProgress` + `scanPlaneRadius` material uniforms updated each frame.
- * 4. **Reflection fade-in** — `reflectionFadeIn` ramps from 0 to 1 over the first second
- *    of the plane's life. The shader modulates `metallic` + `reflectance` by it so the
- *    PBR contribution brightens up smoothly rather than snapping in when ARCore's HDR
- *    cubemap estimate first stabilises.
+ * 1. **Dots, not a slab.** Small round dots lying on the surface, anchored to the world so they
+ *    stay put while ARCore re-centres and grows the plane. Floors and ceilings get a square
+ *    lattice, walls a smaller staggered one.
+ * 2. **Soft edges.** The dots fade out over the last 20 cm of the polygon (same feathered mesh
+ *    as V1: the inner ring carries `y = 1`, the outer ring `y = 0`), with distance from the
+ *    camera, and into an even tone where they would shimmer.
+ * 3. **Reveal as the plane grows.** A bright front sweeps out from the plane's centre the
+ *    first time it appears, and again over the new area each time ARCore extends it.
+ * 4. **Focus.** The plane under the centre of the screen is brighter and carries a pool of
+ *    light, a thin 12 cm ring and slow ripples where the camera points.
+ * 5. **Tidy exit.** Hiding or disabling a plane fades it out instead of cutting it.
  *
- * The depth path now uploads **two** vertex attributes — `POSITION` (PR #2) and the new
- * `TANGENTS` quaternion frame derived from the smooth per-vertex normals already
- * computed by [io.github.sceneview.ar.arcore.PlaneDepthMeshGeometry]. PBR specular
- * highlights wrap correctly across bumps and slopes instead of looking faceted. The flat
- * fallback fills the tangent buffer with the quaternion for plane-local `(0, 1, 0)` so a
- * flat plane lights like a level surface.
+ * The mesh is rebuilt on every [updatePlane] (at `PlaneRendererV2.maxHitTestPerSecond`) into
+ * preallocated buffers; the animations advance in [tick], called every frame, which only
+ * writes the uniforms that changed. Neither path allocates.
  *
  * Threading: every Filament JNI call must run on the render thread, same as V1.
- * [PlaneRendererV2.update] is called on that thread, so [setFrame] and [updatePlane]
- * inherit the right context — do not poke this class from a background coroutine.
+ * [PlaneRendererV2.update] is called on that thread — do not poke this class from a background
+ * coroutine.
  */
 class PlaneVisualizerV2(
     private val engine: Engine,
@@ -79,59 +66,40 @@ class PlaneVisualizerV2(
 
     companion object {
         /**
-         * Minimum interval, in milliseconds, between two depth-driven mesh rebuilds.
-         * 200 ms = 5 Hz — same rate as [io.github.sceneview.ar.node.DepthMeshNode], well
-         * below ARCore's ~30 Hz frame delivery so the rebuild does not soak the budget.
+         * No longer used: V2 draws a flat feathered mesh and does not read ARCore depth any
+         * more (#3507). Kept for binary compatibility.
          */
         const val DEPTH_REBUILD_INTERVAL_MS: Long = 200L
 
         /**
-         * Duration, in milliseconds, of the scan-in ring expansion played the first time
-         * a plane appears (PR #3). 800 ms matches the value validated with the user
-         * 2026-05-25 — long enough to read as a deliberate animation, short enough that
-         * it does not delay the moment the plane becomes useful for interaction.
+         * Time, in milliseconds, the reveal front takes to sweep a new plane from its centre to
+         * its edge. Each later extension is swept at the same speed, so it takes less (the
+         * front never moves slower than 1 m/s).
          */
         const val SCAN_IN_DURATION_MS: Long = 800L
 
         /**
-         * Duration, in milliseconds, of the IBL reflection fade-in (PR #3). ~1 s gives
-         * ARCore's HDR cubemap estimate time to stabilise so the PBR pipeline ramps from
-         * diffuse-only to fully lit smoothly — the surface never "snaps" the reflection
-         * on once the cubemap first arrives.
+         * No longer used: the V2 surface is unlit and has no reflection to fade in (#3507).
+         * Kept for binary compatibility.
          */
         const val REFLECTION_FADE_IN_MS: Long = 1000L
 
-        // V2 buffer sizing — much larger than V1's polygon-only path because a depth grid
-        // can carry ~880 verts for a 160×90 depth image at stride 4. Headroom for stride 2
-        // (~3500 verts) is intentionally NOT covered: stride 4 is the established default,
-        // and exceeding the cap drops the rebuild silently rather than crashing.
-        private const val MAX_VERTS = 2048
-        private const val MAX_INDICES = MAX_VERTS * 6
+        // V1's feathered fan: an outer ring on the polygon and an inner ring pulled 20 cm in.
+        private const val MAX_BOUNDARY_VERTS = 128
+        private const val MAX_VERTS = MAX_BOUNDARY_VERTS * 2
+        private const val MAX_INDICES = MAX_BOUNDARY_VERTS * 6 + (MAX_BOUNDARY_VERTS - 2) * 3
+        private const val FEATHER_LENGTH = 0.2f
+        private const val FEATHER_SCALE = 0.2f
 
         private const val FLOAT_BYTES = 4
         private const val INT_BYTES = 4
-
-        // PR #3 ships per-vertex POSITION + TANGENTS. Filament's PBR pipeline uses
-        // TANGENTS (a quaternion encoding tangent/bitangent/normal) as the per-vertex
-        // normal input — there is no separate NORMAL attribute in the enum. We compute
-        // the quaternion from each vertex's smooth normal via `normalToTangent(...)`
-        // (shared math from sceneview-core) and upload it as 4 floats per vertex.
         private const val POSITION_STRIDE = 3 * FLOAT_BYTES
         private const val TANGENT_STRIDE = 4 * FLOAT_BYTES
-
-        // PR #3 separates POSITION and TANGENTS into two backing buffers (bufferCount=2)
-        // — same pattern as `sceneview/.../geometries/Geometry.kt`. Keeps each attribute
-        // upload self-contained and matches the canonical sceneview vertex layout, so a
-        // future maintainer extending the V2 buffer with UV0/COLOR can follow the same
-        // structure without re-interleaving.
         private const val BUFFER_INDEX_POSITION = 0
         private const val BUFFER_INDEX_TANGENT = 1
+        private const val BUFFER_COUNT = 2
 
-        // ── V1-flat fallback constants (kept intact) ────────────────────────────────────
-        private const val VERTS_PER_BOUNDARY_VERT = 2
-        private const val FEATHER_LENGTH = 0.2f
-        private const val FEATHER_SCALE = 0.2f
-        private const val MAX_BOUNDARY_VERTS = 128
+        private val PLANE_LOCAL_UP = Float3(0f, 1f, 0f)
     }
 
     private val planeMatrix = Matrix()
@@ -140,26 +108,19 @@ class PlaneVisualizerV2(
     private var isEnabled = true
     private var isShadowReceiver = false
     private var isVisible = false
+    private var isTracking = false
 
     private var planeSubmeshMaterial: MaterialInstance? = null
     private var shadowSubmeshMaterial: MaterialInstance? = null
 
     private val entity = EntityManager.get().create()
 
-    /**
-     * Cached `TransformManager` instance handle for [entity].
-     *
-     * `0` means "not yet looked up". The plane entity and its transform component are created
-     * once and live for the visualizer's lifetime (rebuilding the renderable in place does not
-     * touch the transform component), so the handle is stable — we pay the `getInstance` JNI
-     * thunk once instead of on every update tick. Mirrors the lazy-once caching #2280 applied
-     * to `Node.transformInstance` (#2269, #2287). A `0` result is never frozen.
-     */
+    // Looked up once: the entity and its transform component live as long as the visualizer.
     private var transformInstance: Int = 0
 
     private val vertexBuffer: VertexBuffer = VertexBuffer.Builder()
         .vertexCount(MAX_VERTS)
-        .bufferCount(2)
+        .bufferCount(BUFFER_COUNT)
         .attribute(
             VertexBuffer.VertexAttribute.POSITION,
             BUFFER_INDEX_POSITION,
@@ -167,6 +128,8 @@ class PlaneVisualizerV2(
             0,
             POSITION_STRIDE,
         )
+        // plane_renderer_v2 only needs POSITION, but the shadow catcher is a shadowMultiplier
+        // material and Filament makes those require TANGENTS (PlaneVisualizerAttributeContractTest).
         .attribute(
             VertexBuffer.VertexAttribute.TANGENTS,
             BUFFER_INDEX_TANGENT,
@@ -174,9 +137,6 @@ class PlaneVisualizerV2(
             0,
             TANGENT_STRIDE,
         )
-        // Quaternion components live in [-1, 1] but Filament's lit pipeline does NOT
-        // expect TANGENTS to be `.normalized(...)`-flagged when uploaded as FLOAT4
-        // (the flag is for integer formats). Matches `Geometry.kt`'s float4 branch.
         .build(engine)
 
     private val indexBuffer: IndexBuffer = IndexBuffer.Builder()
@@ -184,116 +144,98 @@ class PlaneVisualizerV2(
         .bufferType(IndexBuffer.Builder.IndexType.UINT)
         .build(engine)
 
-    // Reusable direct buffers. Allocating a fresh ByteBuffer per frame is the canonical
-    // pattern for Filament uploads (see DepthMeshNode #1841 — Filament's setBufferAt copies
-    // asynchronously so the buffer cannot be reused). We cache one of each size to amortise
-    // the allocation across frames *within the same rebuild path*; the contents are copied
-    // by Filament before the next rebuild can clobber them because the rebuild itself runs
-    // on the render thread and is gated by the 200 ms interval.
+    // Reused direct buffers and their typed views, created once (V1's upload pattern). The
+    // mesh is rewritten at most `maxHitTestPerSecond` times a second, long after Filament
+    // consumed the previous upload.
     private val positionData: ByteBuffer =
         ByteBuffer.allocateDirect(MAX_VERTS * POSITION_STRIDE).order(ByteOrder.nativeOrder())
-    private val tangentData: ByteBuffer =
-        ByteBuffer.allocateDirect(MAX_VERTS * TANGENT_STRIDE).order(ByteOrder.nativeOrder())
+    private val positionFloats: FloatBuffer = positionData.asFloatBuffer()
     private val indexData: ByteBuffer =
         ByteBuffer.allocateDirect(MAX_INDICES * INT_BYTES).order(ByteOrder.nativeOrder())
+    private val indexInts = indexData.asIntBuffer()
 
-    // Reusable scratch FloatArray for the per-vertex tangent quaternion encoding. Sized
-    // for MAX_VERTS so a worst-case depth rebuild never re-allocates. Filled in
-    // `uploadGeometry` from the per-vertex normals via `normalToTangent(...)`.
-    private val tangentScratch = FloatArray(MAX_VERTS * 4)
-
-    private var builtPrimitiveCount = 0
-
-    /**
-     * Reusable 2-element backing list for [updateRenderable]'s primitive selection (#2328 / #2402).
-     *
-     * This runs once per plane per frame whenever V2 is opted into. Building the primitive list
-     * with a fresh `buildList { }` each call churned one short-lived list per plane per frame; the
-     * selection is recomputed into this single reused list every call (cleared first via
-     * [selectPlanePrimitives]), so no cached state can go stale — only the allocation is removed.
-     * Single-threaded (main/render thread), so the shared field is race-free.
-     */
-    private val primitivesScratch = ArrayList<MaterialInstance>(2)
-    private var currentVertexCount = 0
     private var currentIndexCount = 0
-    private var lastDepthRebuildMs: Long = Long.MIN_VALUE
+    private var builtPrimitiveCount = 0
+    private val primitivesScratch = ArrayList<MaterialInstance>(2)
 
-    // Frame + camera handed in by PlaneRendererV2.update before each updatePlane call.
-    private var currentFrame: Frame? = null
-    private var currentCamera: Camera? = null
-
-    // Cached scratch matrices — building these per frame would add GC pressure.
-    private val cameraToPlaneLocal = FloatArray(16)
-    private val cameraPoseMatrix = FloatArray(16)
-    private val planeInvMatrix = FloatArray(16)
-
-    // ── PR #3 scan-in animation state ───────────────────────────────────────────────
-    // First wall-clock timestamp (System.nanoTime) at which this plane was observed
-    // TRACKING. The scan-in + reflection fade-in are driven by elapsed wall-clock since
-    // this moment — NOT by ARCore frame timestamps, because frame timestamps pause when
-    // the surface is occluded and would freeze the animation mid-way. `null` until the
-    // first tracking frame; once set it never resets — a subsumed plane is destroyed and
-    // a brand-new visualizer instance picks up its own `firstDetectedTimeNanos`.
-    private var firstDetectedTimeNanos: Long? = null
-
-    // Max plane-local distance from origin to any polygon vertex, refreshed when the
-    // polygon hash changes (cheap O(boundaryVerts)). Sets `scanPlaneRadius` so the ring
-    // sweeps from the centroid out to the furthest edge of the actual detected polygon.
-    private var scanPlaneRadius: Float = 0f
-
-    // Hash of the last polygon used for the scanPlaneRadius computation — lets us skip
-    // the O(n) recompute when the polygon hasn't moved. ARCore reuses the FloatBuffer so
-    // we hash the raw float bytes via vertex count + a couple of corner samples; a full
-    // hash per frame would defeat the purpose.
-    private var lastPolygonHash: Int = 0
-
-    // Latched `true` once both animation phases have reached their final value, so we
-    // can skip the per-frame `setParameter` calls (avoid JNI churn for every frame after
-    // the animation completes — typically the entire steady-state lifetime of the plane).
-    private var animationIdle: Boolean = false
-
-    // ── PR #4 type-aware shading state ──────────────────────────────────────────────
-    // Last `plane.type` value the per-instance material was configured for. `null` means
-    // the preset has not been applied yet (first call to `applyPlaneTypePreset()` will
-    // push it). On every `updatePlane()` we compare against `plane.type` — if ARCore
-    // re-classified the plane (rare, but legal: a horizontal plane re-merged with a
-    // vertical neighbour can flip), we re-push the 3 setParameter calls. The cost is
-    // 3 JNI calls only on change — steady-state lifetime is free.
     private var lastAppliedPlaneType: Plane.Type? = null
+
+    // ── Animation state, advanced by tick() ───────────────────────────────────────────────
+    private val animation = PlaneRevealAnimation()
+    private var focusTarget = 0f
+    private var lastTickNanos = 0L
+
+    // Last values written to the material, so an idle plane costs no JNI call per frame.
+    private var pushedOpacity = Float.NaN
+    private var pushedFocus = Float.NaN
+    private var pushedProgress = Float.NaN
+    private var pushedRadius = Float.NaN
+
+    init {
+        // One constant tangent frame (plane-local up) for every vertex slot: the mesh is flat in
+        // the plane's own frame and the pose rides on the entity transform. Uploaded once.
+        val tangent = normalToTangent(PLANE_LOCAL_UP)
+        val tangentData = ByteBuffer
+            .allocateDirect(MAX_VERTS * TANGENT_STRIDE)
+            .order(ByteOrder.nativeOrder())
+        val floats = tangentData.asFloatBuffer()
+        repeat(MAX_VERTS) {
+            floats.put(tangent.x)
+            floats.put(tangent.y)
+            floats.put(tangent.z)
+            floats.put(tangent.w)
+        }
+        tangentData.rewind()
+        vertexBuffer.setBufferAt(
+            engine,
+            BUFFER_INDEX_TANGENT,
+            tangentData,
+            0,
+            MAX_VERTS * TANGENT_STRIDE
+        )
+    }
 
     fun setEnabled(enabled: Boolean) {
         if (isEnabled != enabled) {
             isEnabled = enabled
-            updatePlane()
+            refreshRenderable()
         }
     }
 
     fun setShadowReceiver(shadowReceiver: Boolean) {
         if (isShadowReceiver != shadowReceiver) {
             isShadowReceiver = shadowReceiver
-            updatePlane()
+            refreshRenderable()
         }
     }
 
     fun setVisible(visible: Boolean) {
         if (isVisible != visible) {
             isVisible = visible
-            updatePlane()
+            refreshRenderable()
         }
+    }
+
+    /**
+     * How much this plane is the one the user is aiming at, `0..1` — the renderer passes `1`
+     * for the plane under the centre of the screen. Eased by [tick].
+     */
+    internal fun setFocus(focus: Float) {
+        focusTarget = focus.coerceIn(0f, 1f)
     }
 
     fun setPlaneMaterial(materialInstance: MaterialInstance) {
         planeSubmeshMaterial = materialInstance
-        // PR #4 — the type-aware preset lives on this MaterialInstance, so a fresh
-        // instance starts at the shared `planeMaterial` defaults. Apply once here so
-        // the first render carries the right values even if `updatePlane()` hasn't
-        // fired yet (e.g. `setShadowReceiver(true)` before the first frame). Pass
-        // `null` as the cached type to force the apply on the new instance.
         lastAppliedPlaneType = applyTypePresetIfChanged(
             instance = materialInstance,
             type = plane.type,
             lastAppliedType = null,
         )
+        pushedOpacity = Float.NaN
+        pushedFocus = Float.NaN
+        pushedProgress = Float.NaN
+        pushedRadius = Float.NaN
+        pushUniforms()
         if (builtPrimitiveCount > 0) updateRenderable()
     }
 
@@ -303,54 +245,29 @@ class PlaneVisualizerV2(
     }
 
     /**
-     * Threads the latest [Frame] + [Camera] through to the depth-driven rebuild path.
-     * Called by [io.github.sceneview.ar.scene.PlaneRendererV2.update] before each
-     * [updatePlane]. Either argument may be null — the visualizer then falls back to the
-     * V1 flat-polygon mesh transparently.
+     * No longer used: V2 does not read the camera frame since it stopped building a depth mesh
+     * (#3507). Kept for binary compatibility.
      */
-    fun setFrame(frame: Frame?, camera: Camera?) {
-        currentFrame = frame
-        currentCamera = camera
-    }
+    @Suppress("UNUSED_PARAMETER", "UnusedParameter")
+    fun setFrame(frame: Frame?, camera: Camera?) = Unit
 
     override fun getTransformationMatrix(): Matrix = planeMatrix
 
+    /**
+     * Re-reads the plane's pose, polygon and type from ARCore and re-uploads the mesh.
+     */
     fun updatePlane() {
-        if (!isEnabled || (!isVisible && !isShadowReceiver)) {
-            removePlaneFromScene()
+        isTracking = plane.trackingState == TrackingState.TRACKING
+        if (!isTracking) {
+            refreshRenderable()
             return
         }
-        if (plane.trackingState != TrackingState.TRACKING) {
-            removePlaneFromScene()
-            return
-        }
-
         plane.centerPose.toMatrix(planeMatrix.data, 0)
-
-        // PR #3: latch the first-tracking wall-clock time and recompute the polygon
-        // radius if it shifted (ARCore grows planes as more geometry is observed). Both
-        // are cheap — fall through to the mesh rebuild as before.
-        if (firstDetectedTimeNanos == null) {
-            firstDetectedTimeNanos = System.nanoTime()
+        if (!rebuildMesh()) {
+            currentIndexCount = 0
+            removePlaneFromScene()
+            return
         }
-        refreshScanRadius()
-
-        val now = System.currentTimeMillis()
-        val depthMeshRebuilt = tryRebuildDepthMesh(now)
-        if (depthMeshRebuilt) lastDepthRebuildMs = now
-
-        if (!depthMeshRebuilt && currentVertexCount == 0) {
-            // No fresh depth mesh AND nothing already on screen — try the flat fallback.
-            if (!rebuildFlatMesh()) {
-                removePlaneFromScene()
-                return
-            }
-        }
-
-        // PR #4: re-apply the per-`plane.type` preset whenever ARCore re-classifies the
-        // plane (rare but legal — e.g. a horizontal plane re-merged with a vertical
-        // neighbour). `applyTypePresetIfChanged` is a no-op when the type hasn't
-        // changed, so the steady-state cost is one Boolean compare per frame.
         planeSubmeshMaterial?.let { instance ->
             lastAppliedPlaneType = applyTypePresetIfChanged(
                 instance = instance,
@@ -358,440 +275,148 @@ class PlaneVisualizerV2(
                 lastAppliedType = lastAppliedPlaneType,
             )
         }
-
-        // PR #3: push the scan-in + fade-in uniforms BEFORE updateRenderable so the
-        // first frame the plane is added to the scene already carries the right values
-        // (scanProgress ≈ 0, reflectionFadeIn ≈ 0). Without this the ring would
-        // not appear on the very first frame of the plane's life.
-        pushAnimationUniforms()
-        updateRenderable()
-        addPlaneToScene()
+        animation.targetRadius = computeScanRadius(plane.polygon) + REVEAL_MARGIN_M
+        refreshRenderable()
     }
 
     /**
-     * Eligibility + rate-limit + try the depth path. Returns true when the depth-driven
-     * mesh was actually rebuilt and uploaded this call, false in every other case
-     * (tracking lost, depth unavailable, interval not yet elapsed, polygon empty, etc).
-     * The caller falls back to [rebuildFlatMesh] when this returns false AND the buffer
-     * is empty.
+     * Advances the fade, focus and reveal animations to [nowNanos] and writes the uniforms
+     * that changed. Called every frame by [PlaneRendererV2.update]; allocation-free.
      */
-    private fun tryRebuildDepthMesh(now: Long): Boolean {
-        val frame = currentFrame ?: return false
-        val camera = currentCamera ?: return false
-        if (camera.trackingState != TrackingState.TRACKING) return false
-        if (now - lastDepthRebuildMs < DEPTH_REBUILD_INTERVAL_MS) return false
-        return rebuildDepthMesh(frame, camera)
-    }
-
-    /**
-     * Builds a depth-driven plane-clipped mesh for this frame and uploads it to Filament.
-     * Returns true on success, false when depth is unavailable / unusable so the caller
-     * can fall back to [rebuildFlatMesh]. Catches Throwable defensively: a depth-API
-     * failure must never cascade into a render-thread crash — PR #2's hard rule is that
-     * V2 always degrades to V1's flat polygon, never to a stack trace.
-     */
-    @Suppress("ReturnCount", "TooGenericExceptionCaught")
-    private fun rebuildDepthMesh(frame: Frame, camera: Camera): Boolean {
-        val depthImage = frame.depthImage() ?: return false
-        try {
-            val intrinsics = computeScaledIntrinsics(camera, depthImage.width, depthImage.height)
-                ?: return false
-            val polygon = copyPolygonForClipping() ?: return false
-            computeCameraToPlaneLocal(camera.pose)
-            return buildAndUploadDepthMesh(frame, depthImage, intrinsics, polygon)
-        } catch (e: Throwable) {
-            android.util.Log.d("SceneView", "PlaneVisualizerV2 depth rebuild failed; falling back to flat", e)
-            return false
-        } finally {
-            depthImage.close()
+    internal fun tick(nowNanos: Long) {
+        val dtSeconds = if (lastTickNanos == 0L) 0f else {
+            ((nowNanos - lastTickNanos) / 1e9f).coerceIn(0f, MAX_TICK_SECONDS)
         }
-    }
-
-    private fun buildAndUploadDepthMesh(
-        frame: Frame,
-        depthImage: android.media.Image,
-        intrinsics: ScaledIntrinsics,
-        polygon: FloatArray,
-    ): Boolean {
-        val depthPlane = depthImage.planes[0]
-        val rowStrideShorts = depthPlane.rowStride / 2
-        val depthBuffer = depthPlane.buffer.order(ByteOrder.nativeOrder()).asShortBuffer()
-        val confidenceImage = frame.rawDepthConfidenceImage()
-        try {
-            val geometry = buildPlaneDepthMeshGeometry(
-                depthBuffer = depthBuffer,
-                depthWidth = depthImage.width,
-                depthHeight = depthImage.height,
-                rowStrideShorts = rowStrideShorts,
-                fx = intrinsics.fx, fy = intrinsics.fy,
-                cx = intrinsics.cx, cy = intrinsics.cy,
-                cameraToPlaneLocal = cameraToPlaneLocal,
-                polygon = polygon,
-                confidenceBuffer = confidenceImage?.planes?.get(0)
-                    ?.buffer?.order(ByteOrder.nativeOrder()),
-                confidenceRowStrideBytes = confidenceImage?.planes?.get(0)?.rowStride ?: 0,
-                confidenceWidth = confidenceImage?.width ?: 0,
-                confidenceHeight = confidenceImage?.height ?: 0,
-            )
-            if (geometry.vertexCount > MAX_VERTS ||
-                geometry.indices.size > MAX_INDICES ||
-                geometry.triangleCount == 0
-            ) {
-                // Over-cap blobs would corrupt Filament buffers; an empty mesh would render
-                // nothing. Either way fall back rather than upload broken data.
-                return false
-            }
-            uploadGeometry(
-                positions = geometry.positions,
-                normals = geometry.normals,
-                indices = geometry.indices,
-                vertexCount = geometry.vertexCount,
-            )
-            return true
-        } finally {
-            confidenceImage?.close()
-        }
-    }
-
-    /**
-     * Scales ARCore camera intrinsics (reported for the full-resolution CPU image) into
-     * the depth image's coordinate frame. Returns null when ARCore reports degenerate
-     * intrinsics (zero focal length or zero image dimensions, #1812) — propagating null
-     * triggers the flat-fallback rather than poisoning every depth-driven vertex with
-     * `Inf` coordinates.
-     */
-    private fun computeScaledIntrinsics(
-        camera: Camera,
-        depthWidth: Int,
-        depthHeight: Int,
-    ): ScaledIntrinsics? {
-        val intrinsics = camera.imageIntrinsics
-        val intrinsicWidth = intrinsics.imageDimensions[0]
-        val intrinsicHeight = intrinsics.imageDimensions[1]
-        val rawFx = intrinsics.focalLength[0]
-        val rawFy = intrinsics.focalLength[1]
-        if (intrinsicWidth <= 0 || intrinsicHeight <= 0) return null
-        if (rawFx == 0f || rawFy == 0f) return null
-        val scaleX = depthWidth / intrinsicWidth.toFloat()
-        val scaleY = depthHeight / intrinsicHeight.toFloat()
-        return ScaledIntrinsics(
-            fx = rawFx * scaleX,
-            fy = rawFy * scaleY,
-            cx = intrinsics.principalPoint[0] * scaleX,
-            cy = intrinsics.principalPoint[1] * scaleY,
+        lastTickNanos = nowNanos
+        val wasShowing = animation.opacity > 0f
+        animation.advance(
+            dtSeconds = dtSeconds,
+            show = isShowingPlane(),
+            focusTarget = focusTarget,
         )
+        pushUniforms()
+        // The plane submesh leaves the renderable once it has faded all the way out.
+        if (wasShowing != animation.opacity > 0f) refreshRenderable()
     }
 
-    /**
-     * Snapshots the plane polygon into a freshly-allocated `[x0, z0, x1, z1, ...]`
-     * FloatArray we own — ARCore's FloatBuffer is recycled across frames so the geometry
-     * helper cannot retain it. Returns null when the polygon is still empty (the plane
-     * has not yet grown its boundary).
-     */
-    private fun copyPolygonForClipping(): FloatArray? {
-        val polygonBuffer = plane.polygon
-        polygonBuffer.rewind()
-        if (polygonBuffer.remaining() < 6) return null // <3 points → can't clip
-        val polygon = FloatArray(polygonBuffer.remaining())
-        polygonBuffer.get(polygon)
-        return polygon
-    }
+    private fun isShowingPlane() = isEnabled && isVisible && isTracking
 
-    /**
-     * Recomputes [scanPlaneRadius] from the current plane polygon — the max plane-local
-     * distance from origin to any polygon vertex. The scan-in ring sweeps from the
-     * centroid out to this radius. Skips when the polygon hash has not changed since
-     * the last call (cheap optimisation — ARCore grows planes monotonically, so the
-     * radius typically converges within the first second).
-     *
-     * Public surface stays unchanged: only [scanPlaneRadius] is updated.
-     */
-    private fun refreshScanRadius() {
-        val polygonBuffer = plane.polygon
-        polygonBuffer.rewind()
-        val vertexCount = polygonBuffer.remaining() / 2
-        if (vertexCount == 0) {
-            scanPlaneRadius = 0f
-            lastPolygonHash = 0
-            return
-        }
-        // Cheap polygon hash: count + first + last corners. ARCore reuses the underlying
-        // FloatBuffer instance, so reading two corners + the count gives us a stable
-        // "did this polygon shift?" signal without scanning every vertex on every frame.
-        val firstX = polygonBuffer.get(0)
-        val firstZ = polygonBuffer.get(1)
-        val lastX = polygonBuffer.get(vertexCount * 2 - 2)
-        val lastZ = polygonBuffer.get(vertexCount * 2 - 1)
-        val hash = vertexCount
-            .let { 31 * it + firstX.toRawBits() }
-            .let { 31 * it + firstZ.toRawBits() }
-            .let { 31 * it + lastX.toRawBits() }
-            .let { 31 * it + lastZ.toRawBits() }
-        if (hash == lastPolygonHash && scanPlaneRadius > 0f) return
-        lastPolygonHash = hash
-        scanPlaneRadius = computeScanRadius(polygonBuffer)
-    }
-
-    /**
-     * Pushes [scanProgress] + [reflectionFadeIn] + [scanPlaneRadius] uniforms onto the
-     * per-instance plane material. Bails after both animations have reached their
-     * terminal value to avoid hammering JNI for every frame for the entire steady-state
-     * lifetime of the plane.
-     */
-    private fun pushAnimationUniforms() {
-        if (animationIdle) return
+    private fun pushUniforms() {
         val instance = planeSubmeshMaterial ?: return
-        val startNanos = firstDetectedTimeNanos ?: return
-        val elapsedNanos = System.nanoTime() - startNanos
-        val scanProgress = computeScanProgress(elapsedNanos)
-        val reflectionFadeIn = computeReflectionFadeIn(elapsedNanos)
-
-        instance.setParameter("scanProgress", scanProgress)
-        instance.setParameter("reflectionFadeIn", reflectionFadeIn)
-        instance.setParameter("scanPlaneRadius", scanPlaneRadius)
-
-        if (scanProgress >= 1f && reflectionFadeIn >= 1f) {
-            // Latch one final time to make absolutely sure the steady-state values are
-            // on the GPU, then stop pushing.
-            animationIdle = true
+        if (animation.opacity != pushedOpacity) {
+            instance.setParameter(MATERIAL_OPACITY, animation.opacity)
+            pushedOpacity = animation.opacity
+        }
+        if (animation.focus != pushedFocus) {
+            instance.setParameter(MATERIAL_FOCUS, animation.focus)
+            pushedFocus = animation.focus
+        }
+        val progress = animation.scanProgress
+        if (progress != pushedProgress) {
+            instance.setParameter(PlaneRendererV2.MATERIAL_SCAN_PROGRESS, progress)
+            pushedProgress = progress
+        }
+        if (animation.revealRadius != pushedRadius) {
+            instance.setParameter(PlaneRendererV2.MATERIAL_SCAN_PLANE_RADIUS, animation.revealRadius)
+            pushedRadius = animation.revealRadius
         }
     }
 
     /**
-     * V1's fan + boundary-strip geometry — unchanged math, plus a `(0, 1, 0)` normal for
-     * every vertex so the V2 lit shader sees a level surface.
-     *
-     * Kept as the fallback because: ARCore depth is opt-in, not every device supports it,
-     * and the first few frames after [Frame.acquireDepthImage16Bits] is invoked typically
-     * throw `NotYetAvailableException`. A flat plane on the floor still beats no plane at
-     * all.
+     * V1's feathered fan, written straight into the reused upload buffers: the polygon as an
+     * outer ring at `y = 0`, then the same ring pulled [FEATHER_LENGTH] inwards at `y = 1`.
+     * The shader reads that `y` as the edge ramp and flattens it.
      */
-    private fun rebuildFlatMesh(): Boolean {
+    private fun rebuildMesh(): Boolean {
         val boundary = plane.polygon
         boundary.rewind()
         val boundaryVertexCount = boundary.limit() / 2
-        if (boundaryVertexCount == 0 || boundaryVertexCount > MAX_BOUNDARY_VERTS) return false
+        if (boundaryVertexCount < 3 || boundaryVertexCount > MAX_BOUNDARY_VERTS) return false
 
-        val numVerts = boundaryVertexCount * VERTS_PER_BOUNDARY_VERT
-        val numIndices = (boundaryVertexCount * 6) + ((boundaryVertexCount - 2) * 3)
-        if (numVerts > MAX_VERTS || numIndices > MAX_INDICES) return false
-
-        val positions = FloatArray(numVerts * 3)
-        val normals = FloatArray(numVerts * 3)
-        val indices = IntArray(numIndices)
-
-        // Pre-fill every normal with plane-local up so the lit shader reads as flat.
-        var ni = 1
-        while (ni < normals.size) {
-            normals[ni] = 1f
-            ni += 3
+        positionFloats.clear()
+        for (i in 0 until boundaryVertexCount) {
+            positionFloats.put(boundary.get(i * 2)).put(0f).put(boundary.get(i * 2 + 1))
         }
-
-        writeFlatVertices(boundary, positions)
-        writeFlatIndices(boundaryVertexCount, indices)
-
-        uploadGeometry(positions = positions, normals = normals, indices = indices, vertexCount = numVerts)
-        return true
-    }
-
-    /**
-     * V1-style vertex emission: an outer boundary ring (the raw plane polygon at y=0)
-     * followed by a same-count inner ring scaled inward by [FEATHER_SCALE]. Both rings
-     * sit at y=0 in V2 (V1 used y=1 on the inner ring to carry the per-vertex feather
-     * via `texCoordsAlpha.z` — V2's shader cannot abuse Y the same way without breaking
-     * the depth-path math, so the feathered Y signal is dropped). [positions] must be
-     * sized for `boundaryVertexCount * VERTS_PER_BOUNDARY_VERT` vertices.
-     */
-    private fun writeFlatVertices(
-        boundary: java.nio.FloatBuffer,
-        positions: FloatArray,
-    ) {
-        boundary.rewind()
-        var write = 0
-        while (boundary.hasRemaining()) {
-            val x = boundary.get()
-            val z = boundary.get()
-            positions[write * 3] = x
-            positions[write * 3 + 1] = 0f
-            positions[write * 3 + 2] = z
-            write++
-        }
-        boundary.rewind()
-        while (boundary.hasRemaining()) {
-            val x = boundary.get()
-            val z = boundary.get()
-            val magnitude = Math.hypot(x.toDouble(), z.toDouble()).toFloat()
+        for (i in 0 until boundaryVertexCount) {
+            val x = boundary.get(i * 2)
+            val z = boundary.get(i * 2 + 1)
+            val magnitude = sqrt(x * x + z * z)
             val scale = if (magnitude != 0f) {
-                1f - minOf(FEATHER_LENGTH / magnitude, FEATHER_SCALE)
+                1f - min(FEATHER_LENGTH / magnitude, FEATHER_SCALE)
             } else {
                 1f - FEATHER_SCALE
             }
-            positions[write * 3] = x * scale
-            positions[write * 3 + 1] = 0f
-            positions[write * 3 + 2] = z * scale
-            write++
+            positionFloats.put(x * scale).put(1f).put(z * scale)
         }
-    }
-
-    /**
-     * V1-style index emission: an interior fan over the inner ring + a boundary strip
-     * stitching outer ring to inner ring. [indices] must be sized
-     * `boundaryVertexCount * 6 + (boundaryVertexCount - 2) * 3`.
-     */
-    private fun writeFlatIndices(boundaryVertexCount: Int, indices: IntArray) {
-        val firstInner = boundaryVertexCount
-        var idx = 0
-        for (i in 0 until boundaryVertexCount - 2) {
-            indices[idx++] = firstInner
-            indices[idx++] = firstInner + i + 1
-            indices[idx++] = firstInner + i + 2
-        }
-        for (i in 0 until boundaryVertexCount) {
-            val o1 = i
-            val o2 = (i + 1) % boundaryVertexCount
-            val n1 = firstInner + i
-            val n2 = firstInner + (i + 1) % boundaryVertexCount
-            indices[idx++] = o1
-            indices[idx++] = o2
-            indices[idx++] = n1
-            indices[idx++] = n1
-            indices[idx++] = o2
-            indices[idx++] = n2
-        }
-    }
-
-    private fun uploadGeometry(
-        positions: FloatArray,
-        normals: FloatArray,
-        indices: IntArray,
-        vertexCount: Int,
-    ) {
-        // PR #3 ships per-vertex POSITION and TANGENTS. Filament's PBR pipeline reads
-        // TANGENTS (an xyzw quaternion encoding the tangent/bitangent/normal frame) as
-        // the per-vertex normal input — there is no separate NORMAL slot in the
-        // VertexAttribute enum (see #2203 PR #3 brief). Encoding the normals via
-        // `normalToTangent(...)` matches the canonical sceneview vertex layout in
-        // `sceneview/.../geometries/Geometry.kt:227`.
-        positionData.clear()
-        val positionFloats = positionData.asFloatBuffer()
-        positionFloats.put(positions, 0, vertexCount * 3)
+        val vertexCount = boundaryVertexCount * 2
         positionData.rewind()
         vertexBuffer.setBufferAt(
             engine, BUFFER_INDEX_POSITION, positionData, 0, vertexCount * POSITION_STRIDE
         )
 
-        // Encode each smooth normal as a quaternion tangent frame into `tangentScratch`,
-        // then upload as FLOAT4. The encoded frame survives Filament's interpolation
-        // gracefully because quaternions are renormalised in the lit pipeline.
-        encodeTangents(normals, vertexCount, tangentScratch)
-        tangentData.clear()
-        val tangentFloats = tangentData.asFloatBuffer()
-        tangentFloats.put(tangentScratch, 0, vertexCount * 4)
-        tangentData.rewind()
-        vertexBuffer.setBufferAt(
-            engine, BUFFER_INDEX_TANGENT, tangentData, 0, vertexCount * TANGENT_STRIDE
-        )
-
-        indexData.clear()
-        val ints = indexData.asIntBuffer()
-        ints.put(indices)
-        indexData.rewind()
-        indexBuffer.setBuffer(engine, indexData, 0, indices.size * INT_BYTES)
-
-        currentVertexCount = vertexCount
-        currentIndexCount = indices.size
-    }
-
-    /**
-     * Encodes [vertexCount] plane-local unit normals from [normals] into [out] as
-     * xyzw quaternion tangent frames (4 floats per vertex) using the same
-     * `normalToTangent` math the rest of the codebase uses for static geometry.
-     *
-     * `out` must be at least `vertexCount * 4` floats. The first 3 floats of each
-     * triplet in [normals] are interpreted as the (x, y, z) unit normal; any extras
-     * are ignored. A zero-length normal (degenerate input) falls back to plane-local
-     * `(0, 1, 0)` so the lit shader never sees NaN — matching the
-     * `buildPlaneDepthMeshGeometry` documented fallback.
-     */
-    private fun encodeTangents(
-        normals: FloatArray,
-        vertexCount: Int,
-        out: FloatArray,
-    ) {
-        var src = 0
-        var dst = 0
-        repeat(vertexCount) {
-            val nx = normals[src]
-            val ny = normals[src + 1]
-            val nz = normals[src + 2]
-            val lenSq = nx * nx + ny * ny + nz * nz
-            val normal = if (lenSq > 1e-8f) Float3(nx, ny, nz) else Float3(0f, 1f, 0f)
-            val q = normalToTangent(normal)
-            out[dst] = q.x
-            out[dst + 1] = q.y
-            out[dst + 2] = q.z
-            out[dst + 3] = q.w
-            src += 3
-            dst += 4
+        indexInts.clear()
+        val firstInner = boundaryVertexCount
+        for (i in 0 until boundaryVertexCount - 2) {
+            indexInts.put(firstInner).put(firstInner + i + 1).put(firstInner + i + 2)
         }
+        for (i in 0 until boundaryVertexCount) {
+            val next = (i + 1) % boundaryVertexCount
+            indexInts.put(i).put(next).put(firstInner + i)
+            indexInts.put(firstInner + i).put(next).put(firstInner + next)
+        }
+        currentIndexCount = indexInts.position()
+        indexData.rewind()
+        indexBuffer.setBuffer(engine, indexData, 0, currentIndexCount * INT_BYTES)
+        return true
     }
 
-    /**
-     * Computes the column-major 4x4 transforming camera-space points into plane-local space:
-     *
-     *     cameraToPlaneLocal = plane.centerPose.inverse() ⊗ camera.pose
-     *
-     * ARCore [Pose.toMatrix] writes a 4x4 column-major into a float[16], which is the
-     * convention every consumer in this file uses.
-     */
-    private fun computeCameraToPlaneLocal(cameraPose: Pose) {
-        cameraPose.toMatrix(cameraPoseMatrix, 0)
-        plane.centerPose.inverse().toMatrix(planeInvMatrix, 0)
-        multiplyMatrix4x4(planeInvMatrix, cameraPoseMatrix, cameraToPlaneLocal)
+    private fun refreshRenderable() {
+        if (currentIndexCount == 0) {
+            removePlaneFromScene()
+            return
+        }
+        updateRenderable()
     }
 
     private fun updateRenderable() {
         val primitives = selectPlanePrimitives(
-            isVisible = isVisible,
+            // Keep drawing while fading out; drop the submesh once invisible.
+            isVisible = isShowingPlane() || animation.opacity > 0f,
             planeMaterial = planeSubmeshMaterial,
-            isShadowReceiver = isShadowReceiver,
+            isShadowReceiver = isEnabled && isTracking && isShadowReceiver,
             shadowMaterial = shadowSubmeshMaterial,
             out = primitivesScratch
         )
-
         if (primitives.isEmpty() || currentIndexCount == 0) {
             removePlaneFromScene()
             return
         }
 
         val rm = engine.renderableManager
-
         if (builtPrimitiveCount != primitives.size) {
             if (builtPrimitiveCount > 0) rm.destroy(entity)
-            RenderableManager.Builder(primitives.size)
+            val builder = RenderableManager.Builder(primitives.size)
                 .castShadows(false)
                 .receiveShadows(true)
                 .culling(false)
                 .boundingBox(com.google.android.filament.Box(0f, 0f, 0f, 10f, 0.5f, 10f))
-                .apply {
-                    primitives.forEachIndexed { idx, mat ->
-                        geometry(
-                            idx,
-                            RenderableManager.PrimitiveType.TRIANGLES,
-                            vertexBuffer,
-                            indexBuffer,
-                            0,
-                            currentIndexCount,
-                        )
-                        material(idx, mat)
-                        blendOrder(idx, idx)
-                    }
-                }
-                .build(engine, entity)
+            for (idx in primitives.indices) {
+                builder.geometry(
+                    idx,
+                    RenderableManager.PrimitiveType.TRIANGLES,
+                    vertexBuffer,
+                    indexBuffer,
+                    0,
+                    currentIndexCount,
+                )
+                builder.material(idx, primitives[idx])
+                builder.blendOrder(idx, idx)
+            }
+            builder.build(engine, entity)
             builtPrimitiveCount = primitives.size
         } else {
             val inst = rm.getInstance(entity)
-            primitives.forEachIndexed { idx, mat ->
+            for (idx in primitives.indices) {
                 rm.setGeometryAt(
                     inst,
                     idx,
@@ -801,17 +426,16 @@ class PlaneVisualizerV2(
                     0,
                     currentIndexCount,
                 )
-                rm.setMaterialInstanceAt(inst, idx, mat)
+                rm.setMaterialInstanceAt(inst, idx, primitives[idx])
             }
         }
 
-        // The instance handle is stable for the entity's lifetime, so it's looked up once and
-        // cached (#2287). A 0 result (no transform component yet) is retried on the next tick.
         val transformManager = engine.transformManager
         if (transformInstance == 0) {
             transformInstance = transformManager.getInstance(entity)
         }
         transformManager.setTransform(transformInstance, planeMatrix.data)
+        addPlaneToScene()
     }
 
     fun destroy() {
@@ -837,49 +461,109 @@ class PlaneVisualizerV2(
     }
 }
 
+// Material parameters added by #3507, set per plane by the visualizer only.
+private const val MATERIAL_OPACITY = "opacity"
+private const val MATERIAL_FOCUS = "focus"
+
+/** Past the furthest polygon vertex, so the front's soft tail clears the edge too. */
+private const val REVEAL_MARGIN_M = 0.35f
+
+/** A frame gap longer than this (app paused, first frame) does not jump the animations. */
+private const val MAX_TICK_SECONDS = 0.1f
+
+internal const val FADE_IN_SECONDS = 0.30f
+internal const val FADE_OUT_SECONDS = 0.40f
+internal const val FOCUS_SECONDS = 0.25f
+internal const val FRONT_GLOW_SECONDS = 0.30f
+internal const val MIN_REVEAL_SPEED_M_PER_S = 1.0f
+
+/** Gap, in metres, below which the reveal front counts as caught up with the plane edge. */
+internal const val REVEAL_CAUGHT_UP_M = 0.02f
+
 /**
- * `a` and `b` are column-major 4x4 matrices (length-16 FloatArrays). Writes `out = a · b`.
- * Used by [PlaneVisualizerV2] to compose plane-local-from-world with world-from-camera into
- * a single matrix the geometry helper applies to every camera-space sample.
- *
- * Pure top-level helper — easier to test than a private method on the visualizer.
+ * The per-plane animation state of [PlaneVisualizerV2]: whole-plane fade, focus, and the reveal
+ * front chasing the plane's edge as ARCore grows it. Pure — no Filament, no ARCore — so it is
+ * unit-tested frame by frame.
  */
-internal fun multiplyMatrix4x4(a: FloatArray, b: FloatArray, out: FloatArray) {
-    require(a.size == 16 && b.size == 16 && out.size == 16) {
-        "All three matrices must be 4x4 (size 16)"
+internal class PlaneRevealAnimation {
+    /** Whole-plane opacity, `0..1`. */
+    var opacity = 0f
+        private set
+
+    /** Focus emphasis, `0..1`. */
+    var focus = 0f
+        private set
+
+    /** Plane-local radius, in metres, the reveal front has reached. */
+    var revealRadius = 0f
+        private set
+
+    /** Brightness of the reveal front, `0..1`; `0` once the front has caught up. */
+    var frontGlow = 0f
+        private set
+
+    /** Plane-local radius the front has to reach: furthest polygon vertex plus a margin. */
+    var targetRadius = 0f
+
+    /**
+     * The `scanProgress` uniform: `1` = nothing to reveal (the shader skips the front
+     * entirely), below `1` = the front is on screen, `1 - frontGlow` bright.
+     */
+    val scanProgress: Float
+        get() = if (isRevealDone) 1f else min(1f - frontGlow, MAX_ACTIVE_PROGRESS)
+
+    private val isRevealDone: Boolean
+        get() = frontGlow == 0f && targetRadius - revealRadius <= REVEAL_CAUGHT_UP_M
+
+    fun advance(dtSeconds: Float, show: Boolean, focusTarget: Float) {
+        opacity = approach(
+            opacity,
+            if (show) 1f else 0f,
+            dtSeconds / if (show) FADE_IN_SECONDS else FADE_OUT_SECONDS,
+        )
+        focus = approach(focus, focusTarget, dtSeconds / FOCUS_SECONDS)
+
+        // A plane that shrank (ARCore merged or refined it) is simply clipped to its new size.
+        if (targetRadius < revealRadius) revealRadius = targetRadius
+        // Speed scales with the plane, so the front crosses a whole new plane from its centre in
+        // SCAN_IN_DURATION_MS whatever its size; it never crawls below MIN_REVEAL_SPEED_M_PER_S.
+        val speed = max(
+            MIN_REVEAL_SPEED_M_PER_S,
+            targetRadius * MILLIS_PER_SECOND / PlaneVisualizerV2.SCAN_IN_DURATION_MS
+        )
+        revealRadius = approach(revealRadius, targetRadius, speed * dtSeconds)
+        frontGlow = approach(
+            frontGlow,
+            if (targetRadius - revealRadius > REVEAL_CAUGHT_UP_M) 1f else 0f,
+            dtSeconds / FRONT_GLOW_SECONDS,
+        )
     }
-    for (col in 0..3) {
-        for (row in 0..3) {
-            var sum = 0f
-            for (k in 0..3) {
-                sum += a[k * 4 + row] * b[col * 4 + k]
-            }
-            out[col * 4 + row] = sum
-        }
+
+    private companion object {
+        // Keeps the shader on its reveal branch while the front is still moving.
+        const val MAX_ACTIVE_PROGRESS = 0.999f
+        const val MILLIS_PER_SECOND = 1000f
     }
+}
+
+/** Moves [current] towards [target] by at most [maxDelta], landing exactly on it. */
+internal fun approach(current: Float, target: Float, maxDelta: Float): Float {
+    val delta = target - current
+    return if (abs(delta) <= maxDelta) target else current + if (delta > 0f) maxDelta else -maxDelta
 }
 
 /**
  * Returns the max plane-local distance from origin to any vertex of [polygon]. ARCore
  * delivers the polygon as interleaved `[x0, z0, x1, z1, ...]` floats in plane-local
- * coordinates (Y is the plane normal). The visualizer's scan-in ring sweeps from the
- * polygon centroid (= plane origin) out to this radius, so the ring reaches the actual
- * boundary of the detected surface — not an arbitrary constant.
+ * coordinates (Y is the plane normal). The reveal front sweeps from the plane origin out to
+ * this radius.
  *
- * Empty buffer → 0 (no polygon to scan). Single vertex → its distance. The buffer's
- * position is restored before return.
- *
- * Pure top-level helper, `internal` so [PlaneVisualizerV2Test] can call it without
- * spinning up an Engine or a Plane.
+ * Empty buffer → 0. The buffer's position is restored before return.
  */
 internal fun computeScanRadius(polygon: FloatBuffer): Float {
     val savedPos = polygon.position()
     polygon.rewind()
     val vertexCount = polygon.remaining() / 2
-    if (vertexCount == 0) {
-        polygon.position(savedPos)
-        return 0f
-    }
     var maxSq = 0f
     for (i in 0 until vertexCount) {
         val x = polygon.get(i * 2)
@@ -888,55 +572,13 @@ internal fun computeScanRadius(polygon: FloatBuffer): Float {
         if (dSq > maxSq) maxSq = dSq
     }
     polygon.position(savedPos)
-    return kotlin.math.sqrt(maxSq)
+    return sqrt(maxSq)
 }
 
 /**
- * Returns the scan-in animation progress in `[0, 1]` for the given
- * [elapsedNanos] since [PlaneVisualizerV2]'s first tracking frame.
- *
- * `0` at the moment of first detection, `1.0` at or past
- * [PlaneVisualizerV2.SCAN_IN_DURATION_MS] (800 ms). Clamped at both ends so the
- * shader never sees NaN or a negative ring radius. Pure top-level helper, `internal`
- * so the math is unit-testable without an Engine.
- */
-internal fun computeScanProgress(elapsedNanos: Long): Float {
-    if (elapsedNanos <= 0L) return 0f
-    val elapsedMs = elapsedNanos / 1_000_000f
-    val progress = elapsedMs / PlaneVisualizerV2.SCAN_IN_DURATION_MS
-    return progress.coerceIn(0f, 1f)
-}
-
-/**
- * Returns the reflection fade-in progress in `[0, 1]` for the given
- * [elapsedNanos] since [PlaneVisualizerV2]'s first tracking frame.
- *
- * `0` at the moment of first detection, `1.0` at or past
- * [PlaneVisualizerV2.REFLECTION_FADE_IN_MS] (~1 s). The shader scales `metallic` +
- * `reflectance` by this value so the PBR contribution ramps in smoothly while ARCore's
- * HDR cubemap estimate is still stabilising.
- *
- * Pure top-level helper, `internal` so the math is unit-testable without an Engine.
- */
-internal fun computeReflectionFadeIn(elapsedNanos: Long): Float {
-    if (elapsedNanos <= 0L) return 0f
-    val elapsedMs = elapsedNanos / 1_000_000f
-    val progress = elapsedMs / PlaneVisualizerV2.REFLECTION_FADE_IN_MS
-    return progress.coerceIn(0f, 1f)
-}
-
-/**
- * Pushes the [planeMaterialPresetFor] preset onto [instance] when [type] differs
- * from [lastAppliedType]. Returns the updated cached type — pass it back into the
- * `lastAppliedType` argument on the next call.
- *
- * Three `setParameter` JNI calls — only runs on change. Steady-state cost is one
- * Boolean compare per frame. A null [lastAppliedType] forces the apply (used the
- * first time a `MaterialInstance` is bound to a visualizer in
- * [PlaneVisualizerV2.setPlaneMaterial]).
- *
- * Top-level + `internal` so the routing is unit-testable without an Engine + a real
- * ARCore Plane, and so the visualizer class stays under detekt's 25-function cap.
+ * Pushes the [planeMaterialPresetFor] dot colour and strength onto [instance] when [type]
+ * differs from [lastAppliedType]. Returns the updated cached type — pass it back into the
+ * `lastAppliedType` argument on the next call. A null [lastAppliedType] forces the apply.
  */
 internal fun applyTypePresetIfChanged(
     instance: MaterialInstance,
@@ -945,26 +587,12 @@ internal fun applyTypePresetIfChanged(
 ): Plane.Type {
     if (lastAppliedType == type) return type
     val preset = planeMaterialPresetFor(type)
-    instance.setParameter(PlaneRendererV2.MATERIAL_METALLIC, preset.metallic)
-    instance.setParameter(PlaneRendererV2.MATERIAL_ROUGHNESS, preset.roughness)
     instance.setParameter(
         PlaneRendererV2.MATERIAL_GRID_TINT,
         preset.gridR,
         preset.gridG,
         preset.gridB,
     )
+    instance.setParameter(PlaneRendererV2.MATERIAL_GRID_ALPHA, preset.dotAlpha)
     return type
 }
-
-/**
- * Resolution-scaled ARCore camera intrinsics — the same `(fx, fy, cx, cy)` quartet
- * [io.github.sceneview.ar.arcore.unprojectDepthPixel] takes, with the scaling from
- * full-resolution image to depth-image already applied. Kept top-level + `internal` so
- * the scaling math is unit-testable; the visualizer fills it once per frame.
- */
-internal data class ScaledIntrinsics(
-    val fx: Float,
-    val fy: Float,
-    val cx: Float,
-    val cy: Float,
-)

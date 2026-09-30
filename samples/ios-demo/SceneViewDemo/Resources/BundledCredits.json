@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 42,
+  "total": 46,
   "sections": [
     {
       "title": "3D models",
@@ -142,7 +142,7 @@
         {
           "file": "Models/khronos_fox.usdz",
           "name": "Fox",
-          "author": "PixelMannen (model), tomkranis (rigging & animation)",
+          "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
           "license": "CC-BY-4.0",
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
@@ -240,16 +240,6 @@
           "note": ""
         },
         {
-          "file": "Models/porsche_911_turbo.usdz",
-          "name": "1975 Porsche 911 (930) Turbo",
-          "author": "Lionsharp Studios",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",
-          "size": 12351092,
-          "note": ""
-        },
-        {
           "file": "Models/ps5_dualsense.usdz",
           "name": "PlayStation 5 DualSense",
           "author": "AHarmlessPotato",
@@ -328,6 +318,16 @@
           "sourceUrl": "https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd",
           "size": 13440458,
           "note": ""
+        },
+        {
+          "file": "shiba.glb",
+          "name": "Shiba",
+          "author": "zixisun51",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c",
+          "size": 669048,
+          "note": ""
         }
       ]
     },
@@ -343,6 +343,16 @@
           "sourceUrl": "https://polyhaven.com",
           "size": 4374736,
           "note": "Poly Haven publishes its whole library under CC0-1.0"
+        },
+        {
+          "file": "Environments/chinese_garden.hdr",
+          "name": "Chinese Garden",
+          "author": "Sergej Majboroda",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://polyhaven.com/a/chinese_garden",
+          "size": 1783624,
+          "note": ""
         },
         {
           "file": "Environments/night_sky.hdr",
@@ -396,7 +406,7 @@
         },
         {
           "file": "Environments/sunset.hdr",
-          "name": "Sunset",
+          "name": "Seascape",
           "author": "Poly Haven",
           "license": "CC0-1.0",
           "licenseUrl": "https://polyhaven.com/license",
@@ -438,6 +448,36 @@
           "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
           "size": 529360,
           "note": "Generated with ffmpeg — 10 s / 1280×720 / H.264 brand animation for `TwoDInThreeDDemo`"
+        },
+        {
+          "file": "raccoon_family.spz",
+          "name": "Raccoon family (SPZ sample capture)",
+          "author": "Niantic Labs",
+          "license": "MIT",
+          "licenseUrl": "https://github.com/nianticlabs/spz/blob/main/LICENSE",
+          "sourceUrl": "https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz",
+          "size": 3306117,
+          "note": "Real phone capture shipped with the SPZ format; cropped to the subject (932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`"
+        },
+        {
+          "file": "showcase/showcase-media.bin",
+          "name": "showcase-media.bin",
+          "author": "SceneView project",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+          "size": 884958,
+          "note": "Camera frames and plane photos (WebP) of the same Pixel 9 recording, packed for `ARRerunDemo`"
+        },
+        {
+          "file": "showcase/showcase-session.jsonl",
+          "name": "showcase-session.jsonl",
+          "author": "SceneView project",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+          "size": 1368809,
+          "note": "Replay of a room recorded on a Pixel 9, camera path and points reconstructed with COLMAP — `ARRerunDemo`"
         }
       ]
     }

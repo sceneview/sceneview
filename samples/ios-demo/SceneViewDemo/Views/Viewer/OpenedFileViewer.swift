@@ -257,7 +257,7 @@ struct OpenedFileViewer: View {
     }
 
     private var dock: [DockItem] {
-        [DockItem(icon: "scope", label: "Recenter") { recenterGeneration += 1 }]
+        [DockItem(icon: "arrow.counterclockwise.circle", label: "Recenter") { recenterGeneration += 1 }]
     }
 
     // MARK: - Loading

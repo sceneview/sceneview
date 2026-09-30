@@ -6,8 +6,9 @@
 // @available   true
 // @icon        arkit
 // @iosOnly     true
-// @order       10
+// @order       22
 // @tags        ar,plane,automatic-placement,anchor,gltf,model
+// @updatedIn   4.39.0
 import SwiftUI
 
 enum ArPlacementScene: DemoScene {

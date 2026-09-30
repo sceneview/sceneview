@@ -38,7 +38,7 @@
     <!-- Header of the shelf right under the hero: the samples we push, in priority order. -->
     <string name="home_section_featured">Featured</string>
     <string name="home_browse_title">Browse online models</string>
-    <string name="home_browse_subtitle">Sketchfab, Icosa and Poly Haven</string>
+    <string name="home_browse_subtitle">Discover models from online collections</string>
     <string name="home_empty_query">No demo matches \'%1$s\'</string>
     <string name="home_clear">Clear</string>
 </resources>

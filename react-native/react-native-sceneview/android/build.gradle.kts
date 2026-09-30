@@ -45,14 +45,20 @@ kotlin {
 }
 
 dependencies {
-    // SceneView — track the last PUBLISHED release on Maven Central (4.7.0).
-    // The bridge Kotlin already targets the 4.x API surface (the `SceneView { }`
-    // composable, `rememberEngine`, the `SceneScope` node DSL); only these
-    // coordinates lagged behind on the year-old 3.6.0. Keep this aligned with
-    // the latest published artifact, NOT the in-development `VERSION_NAME`
-    // (see #1494).
-    implementation("io.github.sceneview:sceneview:4.7.0")
-    implementation("io.github.sceneview:arsceneview:4.7.0")
+    // SceneView — track the last PUBLISHED release on Maven Central
+    // (4.49.0 as of this bump). Keep this aligned with the latest published
+    // artifact, NOT the in-development `VERSION_NAME` (see #1494) — that is
+    // why this pin is checked WARN-only by `check_plugin_sdk_dep` in
+    // sync-versions.sh and deliberately excluded from every `--fix` sweep
+    // there: auto-syncing it to VERSION_NAME would point the bridge at an
+    // artifact that does not exist on Maven Central yet during the release
+    // window, which is exactly the failure #1494 exists to prevent. Bumping
+    // this coordinate stays a deliberate, by-hand step tied to "what is
+    // actually on Maven Central today", verified by compiling
+    // tools/rn-android-compile before merge — not something to wire to a
+    // generator.
+    implementation("io.github.sceneview:sceneview:4.49.0")
+    implementation("io.github.sceneview:arsceneview:4.49.0")
 
     // React Native
     implementation("com.facebook.react:react-android")

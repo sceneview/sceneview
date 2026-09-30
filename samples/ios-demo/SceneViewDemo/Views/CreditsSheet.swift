@@ -30,6 +30,7 @@ struct CreditsSheet: View {
                         .foregroundStyle(.secondary)
 
                     bundledSection
+                    hdPackSection
                     streamedSection
                 }
                 .padding(.horizontal, 20)
@@ -87,6 +88,30 @@ struct CreditsSheet: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .materialGlassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    // MARK: - HD pack (downloaded once)
+
+    /// Credits of the HD pack come from its bundled manifest
+    /// (`assets/hd-pack/ios.json`), which carries author, license and source
+    /// for every file whether or not it is on disk yet.
+    @ViewBuilder
+    private var hdPackSection: some View {
+        let assets = HDPackStore.shared.manifest.assets
+        if !assets.isEmpty {
+            sectionHeader("HD scenes (downloaded)")
+                .padding(.top, 8)
+            VStack(spacing: 8) {
+                ForEach(assets) { asset in
+                    creditsRow(
+                        icon: "sparkles.tv",
+                        title: asset.title,
+                        subtitle: "by \(asset.author) — \(asset.license)",
+                        url: URL(string: asset.source)
+                    )
+                }
+            }
         }
     }
 
@@ -172,7 +197,10 @@ struct CreditsSheet: View {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    // Three lines: "by NASA/JPL-Caltech — NASA Media Usage
+                    // Guidelines (no endorsement implied; …)" is the licence
+                    // itself, and must not be cut to an ellipsis.
+                    .lineLimit(3)
             }
 
             Spacer(minLength: 4)
@@ -199,7 +227,10 @@ struct CreditsSheet: View {
     private func label(for category: String) -> String {
         switch category {
         case "solar": return "Solar (Orbital AR)"
-        case "gallery": return "Gallery"
+        // Named after the screen that shows them. Android titles the same group "Model Viewer
+        // (Surprise me)" because its Scene Gallery is gone (#4102); iOS still has one, and its
+        // Surprise me streams Sketchfab's live feeds rather than this group.
+        case "gallery": return "Scene Gallery"
         case "animation": return "Animation"
         case "park": return "Park (Multi-model)"
         case "ar_placement": return "AR Placement"

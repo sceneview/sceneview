@@ -1,0 +1,923 @@
+{
+  "_comment": "Binary 3D assets kept out of git. Each file is stored on the GitHub Release below under its sha256 and materialised at `path` by `bash tools/fetch-assets.sh`. Add or refresh an entry with `bash tools/fetch-assets.sh --register <path>`; source/licence come from assets/catalog.json (CREDITS.md stays generated from there).",
+  "release": {
+    "repo": "sceneview/sceneview",
+    "tag": "assets-v1"
+  },
+  "baseUrl": "https://github.com/sceneview/sceneview/releases/download/assets-v1",
+  "scopes": {
+    "android": {
+      "dirs": [
+        "samples/android-demo/src/main/assets/models",
+        "samples/android-demo/src/main/assets/environments",
+        "samples/android-demo/src/main/assets/splats"
+      ],
+      "extensions": [
+        ".glb",
+        ".hdr",
+        ".spz",
+        ".ply"
+      ]
+    },
+    "ios": {
+      "dirs": [
+        "samples/ios-demo/SceneViewDemo/Models",
+        "samples/ios-demo/SceneViewDemo/Environments"
+      ],
+      "extensions": [
+        ".usdz",
+        ".hdr"
+      ],
+      "needs": [
+        "android"
+      ],
+      "_why": "the iOS demo bundles ../android-demo/src/main/assets/models/shiba.glb and ../android-demo/src/main/assets/splats/raccoon_family.spz"
+    },
+    "tv": {
+      "dirs": [
+        "samples/android-tv-demo/src/main/assets/models"
+      ],
+      "extensions": [
+        ".glb"
+      ],
+      "needs": [
+        "android"
+      ],
+      "_why": "the TV app also packages ../android-demo/src/main/assets"
+    },
+    "web": {
+      "dirs": [
+        "website-static/models/platforms"
+      ],
+      "extensions": [
+        ".glb"
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "samples/android-demo/src/main/assets/environments/chinese_garden_2k.hdr",
+      "scope": "android",
+      "sha256": "0ebefc734b593f4845739360d778c5e1cd854b873cf4008ff4a92dceabf82314",
+      "size": 1783624,
+      "source": "https://polyhaven.com/a/chinese_garden",
+      "license": "CC0-1.0",
+      "author": "Sergej Majboroda"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/environments/night_sky_2k.hdr",
+      "scope": "android",
+      "sha256": "3831cff6a46395cb0d0af9a23826c055e576099e268831bdb60b210934c8a205",
+      "size": 1748871,
+      "source": "https://polyhaven.com/a/dikhololo_night",
+      "license": "CC0-1.0",
+      "author": "Greg Zaal"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/environments/outdoor_cloudy_2k.hdr",
+      "scope": "android",
+      "sha256": "4d35cf790915471ffd17f7858f5e7fc77afa81097867a743b9cc3c3dd9dd4949",
+      "size": 1648041,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/environments/rooftop_night_2k.hdr",
+      "scope": "android",
+      "sha256": "8a48e1323e900920a504ac40e672e2ceca60787efd35348f099dd802000d66fb",
+      "size": 1630876,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/environments/sky_on_fire_2k.hdr",
+      "scope": "android",
+      "sha256": "eae66d621f29054aa064ab778c7b104fafd294b6610b13c57da94168ec5abd70",
+      "size": 1493430,
+      "source": "https://polyhaven.com/a/the_sky_is_on_fire",
+      "license": "CC0-1.0",
+      "author": "Greg Zaal"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/environments/studio_2k.hdr",
+      "scope": "android",
+      "sha256": "65dac5dcbfb435e49fc503c0bd966d0ad307bbba96bbfd54a28ddfff06b01116",
+      "size": 1651939,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/environments/studio_warm_2k.hdr",
+      "scope": "android",
+      "sha256": "5a7c640c089dbb2c5b4bc731214cbc57eae28ea1c8063990a4f4659a1d7d091c",
+      "size": 1512887,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/environments/sunset_2k.hdr",
+      "scope": "android",
+      "sha256": "8b9dc6b9f746919cd66032c4b2c70146e4c0919d1be61f7949ae35b2cf732426",
+      "size": 1198468,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/khronos_damaged_helmet.glb",
+      "scope": "android",
+      "sha256": "ae1c83ada65823f4f562d5c791843fa30e837dd5ded1766105b56a0654fdc5bb",
+      "size": 3485948,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
+      "license": "CC-BY-NC-4.0",
+      "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/khronos_fox.glb",
+      "scope": "android",
+      "sha256": "d4dda1047f1ae22a8c6a69457396300d1c36d9aceb79432938880e7f734daee2",
+      "size": 96112,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+      "license": "CC-BY-4.0",
+      "author": "PixelMannen (model), tomkranis (rigging & animation)"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/khronos_glam_velvet_sofa.glb",
+      "scope": "android",
+      "sha256": "67202c74a1a33377771f162dc7fad612a6c9bd51ee15124c488e9851d9ac5266",
+      "size": 3149844,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa",
+      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/khronos_iridescent_dish.glb",
+      "scope": "android",
+      "sha256": "1540b4a36b790a907f4824cfe848ba481b3da3cc8070172b7b3ba178f78a7ed1",
+      "size": 5742828,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives",
+      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/khronos_lantern.glb",
+      "scope": "android",
+      "sha256": "e29c4cfc010b9910def525b2a1345cfd459dde79f16a9d5d8d63fbb66abeb8a3",
+      "size": 9008428,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern",
+      "license": "CC0-1.0",
+      "author": "Microsoft"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/khronos_sheen_chair.glb",
+      "scope": "android",
+      "sha256": "f0af2a2b102d28d540236306ae19f8fb36842df76bd38cf76f063f9bd2853399",
+      "size": 4125648,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
+      "license": "CC0-1.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/khronos_toy_car.glb",
+      "scope": "android",
+      "sha256": "8f5bd4830ee22b310c4b84cfe9cd82b818704d24dd2530dcc3f4a428665d945f",
+      "size": 2152460,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar",
+      "license": "CC-BY-4.0",
+      "author": "KhronosGroup"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/shiba.glb",
+      "scope": "android",
+      "sha256": "21215a951c2d8b171b4c9500369bf01a60aeaa346a1e89091213396768bffed3",
+      "size": 669048,
+      "source": "https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c",
+      "license": "CC-BY-4.0",
+      "author": "zixisun51"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/threejs_soldier.glb",
+      "scope": "android",
+      "sha256": "cdd26ddebc758a66e1317190571a5a8206689d0d4a658924e07ad370ad492fc6",
+      "size": 2338396,
+      "source": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
+      "license": "CC0-1.0",
+      "author": "Tomás Laulhé (modified by Don McCurdy)"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/splats/raccoon_family.spz",
+      "scope": "android",
+      "sha256": "71a7677843a970e6f56b9c08b6fa2259a0afe39bc03d70053f8461215c37771b",
+      "size": 3306117,
+      "source": "https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz",
+      "license": "MIT",
+      "author": "Niantic Labs"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/splats/rainbow_sphere.ply",
+      "scope": "android",
+      "sha256": "ac781217d736620275a22aadc0039a20229c7a7eb1558e686e073810d62c0f60",
+      "size": 448451,
+      "source": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+      "license": "Apache-2.0",
+      "author": "SceneView project"
+    },
+    {
+      "path": "samples/android-tv-demo/src/main/assets/models/khronos_duck.glb",
+      "scope": "tv",
+      "sha256": "65bf938f54d6073e619e76e007820bbf980cdc3dc0daec0d94830ffc4ae54ab5",
+      "size": 120484,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Duck",
+      "license": "SCEA Shared Source License",
+      "author": "Sony Computer Entertainment"
+    },
+    {
+      "path": "samples/android-tv-demo/src/main/assets/models/nike_air_jordan.glb",
+      "scope": "tv",
+      "sha256": "dd510104b6271bb1bfb715046b8ebe6231da56e85a179d6b4d813433e7a8598d",
+      "size": 31001140,
+      "source": "https://sketchfab.com/3d-models/nike-air-jordan-fd462c530d974f33a523d88a7562f1cf",
+      "license": "CC-BY-4.0",
+      "author": "Ar41k"
+    },
+    {
+      "path": "samples/android-tv-demo/src/main/assets/models/toon_cat.glb",
+      "scope": "tv",
+      "sha256": "f76291f5d37d60fc58e8006a1111a5960958545fc4d9592988682ad3a9aaef81",
+      "size": 205288,
+      "source": "https://sketchfab.com/3d-models/toon-cat-free-b2bd1ee7858444bda366110a2d960386",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/autumn_field.hdr",
+      "scope": "ios",
+      "sha256": "c54d0b38c90417419f83ed695c56f47675565536b0d3aa9a023a7472a70ed844",
+      "size": 4374736,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/chinese_garden.hdr",
+      "scope": "ios",
+      "sha256": "0ebefc734b593f4845739360d778c5e1cd854b873cf4008ff4a92dceabf82314",
+      "size": 1783624,
+      "source": "https://polyhaven.com/a/chinese_garden",
+      "license": "CC0-1.0",
+      "author": "Sergej Majboroda"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/night_sky.hdr",
+      "scope": "ios",
+      "sha256": "35b5ef6d664b9d32db5ef852f52f97b4227a0dca1830e9c8bdb3af5dc2f169cf",
+      "size": 7050455,
+      "source": "https://polyhaven.com/a/dikhololo_night",
+      "license": "CC0-1.0",
+      "author": "Greg Zaal"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/outdoor_cloudy.hdr",
+      "scope": "ios",
+      "sha256": "3fbd33f279f29bd64925c1dd3214fd46c627493d21f1100248b6b1098da4d06e",
+      "size": 6480797,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/rooftop_night.hdr",
+      "scope": "ios",
+      "sha256": "8ace3b81da7659381998ea4423fb4c7ffc1310ac27c4baa7a32088bd093de82e",
+      "size": 6509158,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/studio.hdr",
+      "scope": "ios",
+      "sha256": "9d021b5b0202cf8e984cc788f7699da670e4765372e5ba6cee19a496cad737aa",
+      "size": 6470014,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/studio_warm.hdr",
+      "scope": "ios",
+      "sha256": "6e677b7421f4a14f0844dece04243c4ab3f4bf1a05bf4bb79e29368b3ecc7746",
+      "size": 5930381,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Environments/sunset.hdr",
+      "scope": "ios",
+      "sha256": "799e6fa9a58dfbec1426d62486aa87fa097a85cf16bb121c79f9ee1125a54288",
+      "size": 4344656,
+      "source": "https://polyhaven.com",
+      "license": "CC0-1.0",
+      "author": "Poly Haven"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/animated_butterfly.usdz",
+      "scope": "ios",
+      "sha256": "c45d6eba8b59d2c51be2719ef8a9320b2f6235d54bdb3cc5c0cd3e4c3d2b727a",
+      "size": 3228959,
+      "source": "https://sketchfab.com/3d-models/animated-flying-fluttering-butterfly-loop-80f8d9a6dadc411e89ca366cb0cfb0d9",
+      "license": "CC-BY-4.0",
+      "author": "LasquetiSpice"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/audi_tt.usdz",
+      "scope": "ios",
+      "sha256": "1cdc8070d1c72e21b754fdec8bba95e269efa3d6871e174d608b7652d8c8e8b5",
+      "size": 6817323,
+      "source": "https://sketchfab.com/3d-models/2007-audi-tt-coupe-b548ef872a8b4164a700e5b8cdb85a14",
+      "license": "CC-BY-NC-SA-4.0",
+      "author": "Ddiaz Design"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/black_dragon.usdz",
+      "scope": "ios",
+      "sha256": "bca2aa7dada6218e06f51518a6872b4765fc5c925804078ea35daa02bf971658",
+      "size": 16031277,
+      "source": "https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36",
+      "license": "CC-BY-4.0",
+      "author": "Arturs J"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/bmw_m3_e30.usdz",
+      "scope": "ios",
+      "sha256": "fd59c09e36825a05c61eb761eabf4846d9e93b12d4d5ae1985b6afe453d41404",
+      "size": 9669385,
+      "source": "https://sketchfab.com/3d-models/bmw-m3-coupe-e30-1986-8fa21fe97a6042a2a09e0b09fd546b91",
+      "license": "CC-BY-NC-4.0",
+      "author": "Lexyc16"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/cyberpunk_car.usdz",
+      "scope": "ios",
+      "sha256": "bf5d877fdf8b23d18719e78bddca3421819d8db1d4da62ba42b17229779650ab",
+      "size": 2928603,
+      "source": "https://sketchfab.com/3d-models/cyberpunk-car-b4301ff99d214d16a7a43708a5866bf0",
+      "license": "CC-BY-4.0",
+      "author": "4d_Bob"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/cyberpunk_character.usdz",
+      "scope": "ios",
+      "sha256": "52c7f19294257f5b16ed2dec9eda7f36f9d789ea6964c83ad439831600c94fac",
+      "size": 8152320,
+      "source": "https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51",
+      "license": "CC-BY-4.0",
+      "author": "Esk"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/cyberpunk_hovercar.usdz",
+      "scope": "ios",
+      "sha256": "1cf38e850f10f9a4a0b7f3d1dd270ce306a29eb5f95beec7d6e5f1f77b2339e2",
+      "size": 3695242,
+      "source": "https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c",
+      "license": "CC-BY-4.0",
+      "author": "Karol Miklas (modified by SceneView — display plinth removed)"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/earthquake_california.usdz",
+      "scope": "ios",
+      "sha256": "85fd6115f0e7fb7720eb4e6dfdc61211d4d560257388522eeb1b26e1c8fe4295",
+      "size": 25335648,
+      "source": "https://sketchfab.com/3d-models/august-7-2024-m52-earthquake-in-california-9c38a08933154e128bb550246285f9e4",
+      "license": "CC-BY-4.0",
+      "author": "Kyle"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/fantasy_book.usdz",
+      "scope": "ios",
+      "sha256": "1bdb83ac7fd002859d8a3ff6708dd8dc6a2781100084eeb7f1c7de0c3265aea3",
+      "size": 3214600,
+      "source": "https://sketchfab.com/3d-models/medieval-fantasy-book-06d5a80a04fc4c5ab552759e9a97d91a",
+      "license": "CC-BY-4.0",
+      "author": "Pixel"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/ferrari_f40.usdz",
+      "scope": "ios",
+      "sha256": "3bc64ddf2d80394aa6e40d85d054e339bad3df2e2ab4635d146fc0ae1036f667",
+      "size": 4264019,
+      "source": "https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70",
+      "license": "CC-BY-4.0",
+      "author": "Black Snow"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/fiat_punto.usdz",
+      "scope": "ios",
+      "sha256": "a5d43ea6f39c1140c249b1b2eb9eb59d6e6a0df9a8898bc6ad643358772af373",
+      "size": 3028932,
+      "source": "https://sketchfab.com/3d-models/free-1995-fiat-punto-gt-48db6facb4b64e99b60f36b8c01185e1",
+      "license": "CC-BY-4.0",
+      "author": "Karol Miklas"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/game_boy_classic.usdz",
+      "scope": "ios",
+      "sha256": "492c7435cdaa881bebea600091a731f626d84672169a4797d76a5c052334061c",
+      "size": 5431874,
+      "source": "https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f",
+      "license": "CC-BY-4.0",
+      "author": "JonhyOliver"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/khronos_damaged_helmet.usdz",
+      "scope": "ios",
+      "sha256": "c8fca87bf4ee6b0f13e11f0740d2d6cfea417f85141cf18dd9bdad0543641219",
+      "size": 4191290,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
+      "license": "CC-BY-NC-4.0",
+      "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/khronos_fox.usdz",
+      "scope": "ios",
+      "sha256": "4b794d7df67ed5cf6b6d29d0e601991c941b28b1a63253df2809dfe6ec615b61",
+      "size": 139880,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+      "license": "CC-BY-4.0",
+      "author": "PixelMannen (model), tomkranis (rigging & animation)"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/khronos_lantern.usdz",
+      "scope": "ios",
+      "sha256": "7891ad9dc6aa241863d8c979562818c07b70b4686aee9ea77cd438566a1ea04d",
+      "size": 9356255,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern",
+      "license": "CC0-1.0",
+      "author": "Microsoft"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/khronos_toy_car.usdz",
+      "scope": "ios",
+      "sha256": "b9a0e77282503e0663e5e202a2910dc6fb477824f2cf369738c26482cc379d14",
+      "size": 9171863,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar",
+      "license": "CC-BY-4.0",
+      "author": "KhronosGroup"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/lamborghini_countach.usdz",
+      "scope": "ios",
+      "sha256": "d02a43bef851e5172c807221cebdfbd517a10db0189a29e40bd529d472f26e3d",
+      "size": 8965293,
+      "source": "https://sketchfab.com/3d-models/2021-lamborghini-countach-lpi-800-4-d76b94884432422b966d1a7f8815afb5",
+      "license": "CC-BY-NC-4.0",
+      "author": "Lexyc16"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/mercedes_a45_amg.usdz",
+      "scope": "ios",
+      "sha256": "f249fb49127b240328c7825f1f8343678ac7982d0c6d265467745c0879f10e42",
+      "size": 9050162,
+      "source": "https://sketchfab.com/3d-models/mercedes-benz-a45-amg-2018-9482f251f9c34a6e91d7777db5934cfc",
+      "license": "CC-BY-NC-4.0",
+      "author": "Lexyc16"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/mosquito_amber.usdz",
+      "scope": "ios",
+      "sha256": "1a6197aa3c3262136fa408bd1e5e6dc592a5d36147157cf0848101e79c866830",
+      "size": 3683955,
+      "source": "https://sketchfab.com/3d-models/mosquito-in-amber-53a61d58c09b4d2ab30e269aa3e22078",
+      "license": "CC-BY-4.0",
+      "author": "Loïc Norgeot"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/nike_air_jordan.usdz",
+      "scope": "ios",
+      "sha256": "323c70b22a30b5c3d1f63b6323327ec7adbac8d3fb3f109012417ba07439a639",
+      "size": 10820512,
+      "source": "https://sketchfab.com/3d-models/nike-air-jordan-fd462c530d974f33a523d88a7562f1cf",
+      "license": "CC-BY-4.0",
+      "author": "Ar41k"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/nintendo_switch.usdz",
+      "scope": "ios",
+      "sha256": "580275d204cedf643b9a8b99180cbd25fda3198df28bb88312f3bb6cbbfb9fcd",
+      "size": 846974,
+      "source": "https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4",
+      "license": "CC-BY-NC-4.0",
+      "author": "Mikkel Garde Blaase"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/phoenix_bird.usdz",
+      "scope": "ios",
+      "sha256": "4032b7261d1ea334fbbb2ed17cd8d17669fc76801c9e6f8786c3f935add4d819",
+      "size": 1162886,
+      "source": "https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042",
+      "license": "CC-BY-4.0",
+      "author": "NORBERTO-3D"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/porsche_911.usdz",
+      "scope": "ios",
+      "sha256": "1a095acd3d56dab712f627ebce3f518d7bc84139e6e3414d4db4841b97b49198",
+      "size": 12351092,
+      "source": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",
+      "license": "CC-BY-4.0",
+      "author": "Karol Miklas"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/ps5_dualsense.usdz",
+      "scope": "ios",
+      "sha256": "36a7990e81db956fa86f58c0c7fb85097ff3c368175c038c20b0979e6f1b00c0",
+      "size": 3297630,
+      "source": "https://sketchfab.com/3d-models/playstation-5-dualsense-878c1f882808477ab81c2fe86d5a3936",
+      "license": "CC-BY-4.0",
+      "author": "AHarmlessPotato"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/red_car.usdz",
+      "scope": "ios",
+      "sha256": "0be7bfb111329af8b4905df6f0824ffda44ea18d5d8264e75c5fba06f675ecc3",
+      "size": 241457,
+      "source": "https://www.fab.com/listings/c86be43c-3923-4c98-b752-40bedb121239",
+      "license": "CC-BY-4.0",
+      "author": "SerjogaSan"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/retro_piano.usdz",
+      "scope": "ios",
+      "sha256": "8d1738aed0d3f6da00f9e1dd126f78a2fc977819c58374cff770b65fc81ddc46",
+      "size": 1926166,
+      "source": "https://sketchfab.com/3d-models/retro-piano-fd4971cd71564319aa2132266d208185",
+      "license": "CC-BY-NC-4.0",
+      "author": "DailyArt"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/shelby_cobra.usdz",
+      "scope": "ios",
+      "sha256": "c73b46b18591146b02f7384c0ef660597b83cd8721796d2bd1b8a5c374e7c244",
+      "size": 5121065,
+      "source": "https://sketchfab.com/3d-models/1965-ac-shelby-cobra-427-wwwvecarzcom-3e9c994c428b44f087d64e738428886c",
+      "license": "CC-BY-NC-SA-4.0",
+      "author": "vecarz"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/shiba.usdz",
+      "scope": "ios",
+      "sha256": "e1fb62029ad40224bc2510ef0ea326640b82cec4662c1e31bd86c4a8008b117c",
+      "size": 385610,
+      "source": "https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c",
+      "license": "CC-BY-4.0",
+      "author": "zixisun51"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/ship_in_clouds.usdz",
+      "scope": "ios",
+      "sha256": "356d1d463edaf71257928b67610606c851aab8c776363121f05877984df1b74c",
+      "size": 6727605,
+      "source": "https://sketchfab.com/3d-models/ship-in-clouds-c475323dc7f24e26ba2009c08c8e1941",
+      "license": "CC-BY-4.0",
+      "author": "Bastien Genbrugge"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/tesla_cybertruck.usdz",
+      "scope": "ios",
+      "sha256": "0d28034e25634b243c546bc8bef75c3db84dfe5965cedf37d8768779d30b377e",
+      "size": 4343008,
+      "source": "https://sketchfab.com/3d-models/tesla-cybertruck-657e71b3e2ad468196668e9c9df708fb",
+      "license": "CC-BY-4.0",
+      "author": "hashikemu"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/tree_scene.usdz",
+      "scope": "ios",
+      "sha256": "cab455e7970e81f2f32cbf2a9eaeab5a89312704eada7e5b91c080d70af3e412",
+      "size": 13440458,
+      "source": "https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd",
+      "license": "CC-BY-4.0",
+      "author": "mateustorresg (modified by SceneView — grass-tuft prims removed)"
+    },
+    {
+      "path": "website-static/models/platforms/AnimatedAstronaut.glb",
+      "scope": "web",
+      "sha256": "7264e88a90d58f00f15ca1d41f58105a7045f066735a3eeeab81ea5f5ac81b76",
+      "size": 20250184,
+      "source": "https://sketchfab.com/3d-models/animated-floating-astronaut-in-space-suit-loop-e2c4b146e58141e4b87917456a9970b1",
+      "license": "CC-BY-4.0",
+      "author": "LasquetiSpice"
+    },
+    {
+      "path": "website-static/models/platforms/AnimatedElephant.glb",
+      "scope": "web",
+      "sha256": "b5717fcb42225138c3831e2e97d7c1d0a5e6edae2b235d5f6c902659ea0398f6",
+      "size": 3994644,
+      "source": "https://sketchfab.com/3d-models/elephant-animation-idle-a8e7e10f005f4baab0a2f5079d759fcd",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/AnimatedTrex.glb",
+      "scope": "web",
+      "sha256": "a4895ef979393e36fce6188226ba4f4fabda258babf1a00192bc2866d9842154",
+      "size": 6612924,
+      "source": "https://sketchfab.com/3d-models/animated-t-rex-dinosaur-biting-attack-loop-5bbcadb7d9274843abb5ada35767dba1",
+      "license": "CC-BY-4.0",
+      "author": "LasquetiSpice"
+    },
+    {
+      "path": "website-static/models/platforms/AntiqueCamera.glb",
+      "scope": "web",
+      "sha256": "ae89695479ad997f09ebea8060a5ad01312ad8fe7ffb92f73b4e895109feecd2",
+      "size": 17540348,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/AntiqueCamera",
+      "license": "CC-BY-4.0",
+      "author": "KhronosGroup (UX3D)"
+    },
+    {
+      "path": "website-static/models/platforms/CarConcept.glb",
+      "scope": "web",
+      "sha256": "c272098089d78c5cd9fd9f24ff50ee8acf8d932c55f2d55fc10adb6c8998966b",
+      "size": 11778688,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
+      "license": "CC-BY-4.0",
+      "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)"
+    },
+    {
+      "path": "website-static/models/platforms/CasioKeyboard.glb",
+      "scope": "web",
+      "sha256": "90e868183a48d83d1ccd7aaac081cab8a97bfa87cbccb9760d6673fb95fb18b6",
+      "size": 2344764,
+      "source": "https://sketchfab.com/3d-models/keyboard-casio-vl-tone-be22fbe1ef0044f3bedc6e3edf459593",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/ChronographWatch.glb",
+      "scope": "web",
+      "sha256": "8e875fcd83efb433afed9ef1c18b2c2b2e075e2bf48371cadfd2a3cf529f1aef",
+      "size": 7446368,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch",
+      "license": "CC-BY-4.0",
+      "author": "KhronosGroup"
+    },
+    {
+      "path": "website-static/models/platforms/CoffeeCart.glb",
+      "scope": "web",
+      "sha256": "ab393bbbc0288adeed0063ea08002d4ad41114566b238d048e55843d3c27f658",
+      "size": 15946512,
+      "source": "https://sketchfab.com/3d-models/coffee-cart-1a97f872c1ac4a83a0132cd749d0b2a8",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/DamagedHelmet.glb",
+      "scope": "web",
+      "sha256": "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8",
+      "size": 3773916,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
+      "license": "CC-BY-NC-4.0",
+      "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)"
+    },
+    {
+      "path": "website-static/models/platforms/Duck.glb",
+      "scope": "web",
+      "sha256": "65bf938f54d6073e619e76e007820bbf980cdc3dc0daec0d94830ffc4ae54ab5",
+      "size": 120484,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Duck",
+      "license": "SCEA Shared Source License",
+      "author": "Sony Computer Entertainment"
+    },
+    {
+      "path": "website-static/models/platforms/Fox.glb",
+      "scope": "web",
+      "sha256": "d97044e701822bac5a62696459b27d7b375aada5de8574ed4362edbba94771f7",
+      "size": 162852,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+      "license": "CC-BY-4.0",
+      "author": "PixelMannen (model), tomkranis (rigging & animation)"
+    },
+    {
+      "path": "website-static/models/platforms/GameBoyClassic.glb",
+      "scope": "web",
+      "sha256": "7ee2518797d7cdc5b89c636214ebab476e7e541ec06499971816b8624e8373c3",
+      "size": 2866976,
+      "source": "https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f",
+      "license": "CC-BY-4.0",
+      "author": "JonhyOliver"
+    },
+    {
+      "path": "website-static/models/platforms/IridescenceLamp.glb",
+      "scope": "web",
+      "sha256": "17cfdc79ec9e38fadb28db159734c5f9592ca423977b546e5057e350ba29ff13",
+      "size": 4083912,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp",
+      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
+    },
+    {
+      "path": "website-static/models/platforms/KindredLol.glb",
+      "scope": "web",
+      "sha256": "13a163f8b24c5e33d1d146640da2016e3497101be1a304577c32cda2c92ccfab",
+      "size": 27923312,
+      "source": "https://sketchfab.com/3d-models/kindred-league-of-legends-rigged-06a32da82b0441c39950296315307400",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/KoiFish.glb",
+      "scope": "web",
+      "sha256": "487d5062b04de9112dc67e285e6cbf2535ccf516c666131501a4e29b50d74b6e",
+      "size": 5005124,
+      "source": "https://sketchfab.com/3d-models/koi-fish-236859b809984f52b70c94fd040b9c59",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/Lantern.glb",
+      "scope": "web",
+      "sha256": "a79458c4b02d695187a952f23a63b8bf278e7bc3d316a3c2a314f2d6974181f1",
+      "size": 9564264,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern",
+      "license": "CC0-1.0",
+      "author": "Microsoft"
+    },
+    {
+      "path": "website-static/models/platforms/MaterialsVariantsShoe.glb",
+      "scope": "web",
+      "sha256": "e1d7cb190382111e5a5b37b51e9a7f007f7eb2ab1b6185e0188e8d0a0d1265a7",
+      "size": 7833592,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe",
+      "license": "CC-BY-4.0",
+      "author": "Shopify"
+    },
+    {
+      "path": "website-static/models/platforms/MosquitoInAmber.glb",
+      "scope": "web",
+      "sha256": "1c0b49000650e8a8c00d69bc8d64e46d33527871a47d74e4f2278887325cc35f",
+      "size": 24229904,
+      "source": "https://sketchfab.com/3d-models/mosquito-in-amber-53a61d58c09b4d2ab30e269aa3e22078",
+      "license": "CC-BY-4.0",
+      "author": "Loïc Norgeot"
+    },
+    {
+      "path": "website-static/models/platforms/NightCity.glb",
+      "scope": "web",
+      "sha256": "0f484f70c311cd85b6f22876372d668d67f98fbe608173dcb0fe8541c7e8c6ff",
+      "size": 4214148,
+      "source": "https://sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/SheenChair.glb",
+      "scope": "web",
+      "sha256": "f0af2a2b102d28d540236306ae19f8fb36842df76bd38cf76f063f9bd2853399",
+      "size": 4125648,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
+      "license": "CC0-1.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
+    },
+    {
+      "path": "website-static/models/platforms/Sneaker.glb",
+      "scope": "web",
+      "sha256": "e1d7cb190382111e5a5b37b51e9a7f007f7eb2ab1b6185e0188e8d0a0d1265a7",
+      "size": 7833592,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe",
+      "license": "CC-BY-4.0",
+      "author": "Shopify"
+    },
+    {
+      "path": "website-static/models/platforms/SunglassesKhronos.glb",
+      "scope": "web",
+      "sha256": "25d72dd0869c99f94a3c0d6dfe0707714eca056e531f6ff77e7545719c86ab8c",
+      "size": 371188,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos",
+      "license": "CC-BY-4.0",
+      "author": "Khronos"
+    },
+    {
+      "path": "website-static/models/platforms/ToonCat.glb",
+      "scope": "web",
+      "sha256": "f76291f5d37d60fc58e8006a1111a5960958545fc4d9592988682ad3a9aaef81",
+      "size": 205288,
+      "source": "https://sketchfab.com/3d-models/toon-cat-free-b2bd1ee7858444bda366110a2d960386",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/Trumpet.glb",
+      "scope": "web",
+      "sha256": "78c20f012089c2b011ae58df8fef34ce3d7674ba15eaa9fdb3b9097e91f79d4b",
+      "size": 2741980,
+      "source": "https://sketchfab.com/3d-models/trumpet-3f2d4f5b962340b2933012e1bc634d88",
+      "license": "CC-BY-4.0",
+      "author": ""
+    },
+    {
+      "path": "website-static/models/platforms/VelvetSofa.glb",
+      "scope": "web",
+      "sha256": "67202c74a1a33377771f162dc7fad612a6c9bd51ee15124c488e9851d9ac5266",
+      "size": 3149844,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa",
+      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)"
+    },
+    {
+      "path": "website-static/models/platforms/WaterBottle.glb",
+      "scope": "web",
+      "sha256": "b337e526fd6a162013c2984aeec163f5fbb4f717252724dfc3f3458bd51df94b",
+      "size": 8966700,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle",
+      "license": "CC0-1.0",
+      "author": "KhronosGroup"
+    },
+    {
+      "path": "website-static/models/platforms/canon_eos_rp.glb",
+      "scope": "web",
+      "sha256": "b5cdac4bba72d029e6e164a3602aefab2472ec4e7d644f74397e7f4c9879b2bb",
+      "size": 11895244,
+      "source": "https://sketchfab.com/3d-models/canon-eos-rp-mirrorless-camera-3d-model-cd470005397c48ec8b68bb8a4609ecd1",
+      "license": "CC-BY-4.0",
+      "author": "fahadratul"
+    },
+    {
+      "path": "website-static/models/platforms/dji_mavic_3.glb",
+      "scope": "web",
+      "sha256": "8aaece3760fab41819d84719b560e5834a81fef3a4205e44d5d28de26bf860eb",
+      "size": 9894232,
+      "source": "https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b",
+      "license": "CC-BY-4.0",
+      "author": "aurumjuda747"
+    },
+    {
+      "path": "website-static/models/platforms/ferrari_f40.glb",
+      "scope": "web",
+      "sha256": "a1ec281f1c219c049ecd07e4ef20c69d26c233b6270614743ca015a7f5713674",
+      "size": 8058920,
+      "source": "https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70",
+      "license": "CC-BY-4.0",
+      "author": "Black Snow"
+    },
+    {
+      "path": "website-static/models/platforms/jbl_tour_one_m3.glb",
+      "scope": "web",
+      "sha256": "af7c9c34a4f51bf87ae7d0e09e781c67b3825602783a4d55c204608424ca2f1c",
+      "size": 5537296,
+      "source": "https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16",
+      "license": "CC-BY-4.0",
+      "author": "cubemodelex"
+    },
+    {
+      "path": "website-static/models/platforms/moto_helmet.glb",
+      "scope": "web",
+      "sha256": "1dbef2dd8bac59436d74d957ee8b80fb7b2216101417b9fcc78d7c25d749ea20",
+      "size": 3576408,
+      "source": "https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac",
+      "license": "CC-BY-4.0",
+      "author": "sayedgamal655"
+    },
+    {
+      "path": "website-static/models/platforms/photorealistic_guitar.glb",
+      "scope": "web",
+      "sha256": "1c77f0b6dd81ba943cc00806a40620cf8ee2214a86e1e69a77b8e88635ec4336",
+      "size": 826316,
+      "source": "https://sketchfab.com/3d-models/photorealistic-western-guitar-f8d68a2c328345418db71b36f44168b9",
+      "license": "CC-BY-4.0",
+      "author": "Keandir"
+    },
+    {
+      "path": "website-static/models/platforms/rolex_watch.glb",
+      "scope": "web",
+      "sha256": "02437768bce9c85624d18269af7f87defb87953d6655e982205c9e95450b573b",
+      "size": 2569860,
+      "source": "https://sketchfab.com/3d-models/rolex-watch-0fde5c5f56d841cda53ae4a01f66dfaf",
+      "license": "CC-BY-4.0",
+      "author": "sudo-self"
+    },
+    {
+      "path": "website-static/models/platforms/school_backpack.glb",
+      "scope": "web",
+      "sha256": "a7c44e766b91ff51256b8ddab0b0df03a5e67989dbab4a1db2800729a4726327",
+      "size": 3475684,
+      "source": "https://sketchfab.com/3d-models/school-backpack-524d7fc724094ead9f203ed06bae76e1",
+      "license": "CC-BY-4.0",
+      "author": "MadeByYeshe"
+    },
+    {
+      "path": "website-static/models/platforms/sneaker_vibe.glb",
+      "scope": "web",
+      "sha256": "86ad3fa6b49b29e8ce081aaed3d0aaef4cf81499aeb5f5a0d36a3a8912b92628",
+      "size": 5301456,
+      "source": "https://sketchfab.com/3d-models/sneaker-vibe-1e52862eb2634fa3b5c13bf9e261945b",
+      "license": "CC-BY-4.0",
+      "author": "vmmaniac"
+    }
+  ]
+}

@@ -319,17 +319,41 @@ object SceneViewTokens {
         val outlineSubtleDark = Color(0xFF46516A)
 
         const val headerOverlayAlpha = 1f
+
+        /** `header-glass`, light: `surface` over a blurred copy of the list under the header. */
+        const val headerGlassAlphaLight = 0.72f
+
+        /** `header-glass`, dark. */
+        const val headerGlassAlphaDark = 0.78f
+
+        /**
+         * `card-glass`, light — the frosted caption of a home card: `surface-container`
+         * (white) at 80 % over a blurred copy of the card's own image, so the caption is
+         * tinted by the picture it describes instead of sitting in a white box under it. At
+         * 72 % a dark picture pulled the glass to a muddy grey; 80 % keeps it frosted white.
+         * The blur averages the image, so the worst ground is a uniformly black one: there
+         * `on-surface` holds 10.6:1 and `on-surface-variant` 5.9:1.
+         */
+        const val cardGlassAlphaLight = 0.80f
+
+        /**
+         * `card-glass`, dark — `surface-container` at 90 %, the `glass-sheet` value. Light
+         * pictures do reach dark mode (the Animation card's stage is a light grey): at 85 %
+         * its caption measured 4.4:1, under AA. At 90 % the worst ground, a uniformly white
+         * image, holds `on-surface-variant` at 4.56:1 and `on-surface` at 9.6:1.
+         */
+        const val cardGlassAlphaDark = 0.90f
     }
 
     /** Home screen geometry (design spec §2) — `home-*` tokens. */
     object Home {
         val headerHeight = 56.dp
         val markSize = 24.dp
+        /** Gap between the header's leading glyph (mark or back arrow) and its title. */
+        val markGap = 10.dp
         val searchFieldHeight = 48.dp
         val contentPadding = 20.dp
         val gridGutter = 12.dp
-        val gridMinCell = 156.dp
-        val gridMinCellExpanded = 220.dp
         val heroHeight = 320.dp
         val heroHeightExpanded = 400.dp
         val heroPadding = 24.dp
@@ -344,23 +368,19 @@ object SceneViewTokens {
         val gridTopGap = 20.dp
         val gridBottomInset = 32.dp
         /**
-         * Space above a catalogue section header (#2239) — `space-2xl`. Large enough
-         * that the header reads as belonging to what follows rather than floating
-         * between two card rows.
+         * Space above a catalogue section header (#2239) — `space-lg`. Enough that the
+         * header reads as belonging to the group under it rather than to the one above.
          */
-        val sectionHeaderTopGap = 32.dp
-        /** Space between a section header and its first card row — `space-sm`. */
-        val sectionHeaderBottomGap = 16.dp
+        val sectionHeaderTopGap = 24.dp
+        /** Space between a section header and its group of rows. */
+        val sectionHeaderBottomGap = 12.dp
         val cardRadius = 20.dp
         val cardTextPaddingTop = 12.dp
         val cardTextPaddingHorizontal = 14.dp
         val cardTextPaddingBottom = 14.dp
         val cardOutlineWidth = 1.dp
         val iconTileGlyph = 40.dp
-        /** Globe badge on the "Browse online models" collage — `hero-pill` colours. */
-        val browseBadgeSize = 32.dp
-        val browseBadgeGlyph = 18.dp
-        /** Width from which the hero grows and the grid uses [gridMinCellExpanded]. */
+        /** Width from which the hero grows to [heroHeightExpanded]. */
         const val expandedWidthDp = 600
         const val heroScrimStart = 0.5f
 
@@ -372,6 +392,83 @@ object SceneViewTokens {
 
         /** Where [HomeColor.heroSkyHorizon] sits in the stage, as a fraction of its height. */
         const val heroSkyHorizon = 0.44f
+
+        /**
+         * `card-media-aspect` — a catalogue card's picture is square, not 5:4: the caption
+         * no longer sits in a box of its own under it, so the picture takes the room.
+         */
+        const val cardMediaAspect = 1f
+
+        /** `card-glass-blur` — how far a card's own image is blurred under its caption. */
+        val cardGlassBlur = 28.dp
+
+        /**
+         * `card-glass-melt` — the band over which a card's sharp picture dissolves into its
+         * frosted caption. There is no line between the two: the image turns into the glass.
+         */
+        val cardGlassMelt = 28.dp
+
+
+        // ── Home list (`home-row-*`, `home-banner-*` in DESIGN.md) ────────────
+        // Under the 3D header the Home is a list of pictures: each row is its demo's
+        // capture, edge to edge, dissolving into the capture's own colour
+        // (`home-row-ambient`), one vertical scroll, no carousel.
+
+        /** `home-row-height` — the least height of a row; it grows with its text. */
+        val rowHeight = 116.dp
+
+        /** `home-row-radius` — every row's four corners (`card-radius`). */
+        val rowRadius = 20.dp
+
+        /** `home-row-gap` — page between two rows. */
+        val rowGap = 10.dp
+
+        /** `home-row-media` — the share of the row's width its picture fills, top to bottom. */
+        const val rowMediaFraction = 0.5f
+
+        /**
+         * `home-row-dissolve` — where, across the picture, it starts dissolving into the
+         * row's tint; it is gone at its trailing edge.
+         */
+        const val rowDissolveStart = 0.42f
+
+        /**
+         * Where the text starts, as a share of the row's width: inside the dissolve, where
+         * the picture is down to about a tenth, so the two overlap without the picture
+         * reaching the letters.
+         */
+        const val rowTextStartFraction = 0.44f
+
+        /** Row text insets: `space-md` at the trailing edge, 14 dp above and below. */
+        val rowTextPaddingEnd = 16.dp
+        val rowTextPaddingVertical = 14.dp
+
+        /** Title-to-subtitle gap inside a row. */
+        val rowTextGap = 4.dp
+
+        /** Glyph of a row that has no picture (a demo without a capture, a utility row). */
+        val rowGlyph = 40.dp
+
+        /** `home-row-min-width` — from two of these across, the list goes multi-column. */
+        val rowMinWidth = 340.dp
+
+        /** Gap between two groups that have no section header between them. */
+        val groupGap = 16.dp
+
+        /** `home-banner-aspect` — a Featured row's picture, across the row's width. */
+        const val bannerAspect = 2f
+
+        /** `home-banner-dissolve` — where, down the picture, it starts dissolving. */
+        const val bannerDissolveStart = 0.55f
+
+        /** How far a banner's caption is pulled up into its picture's dissolve. */
+        val bannerCaptionOverlap = 28.dp
+
+        /** A banner caption's side insets. */
+        val bannerTextPaddingHorizontal = 16.dp
+
+        /** `header-glass-blur` — backdrop blur of the sticky header over the scrolled list. */
+        val headerGlassBlur = 24.dp
     }
 
     /**
@@ -596,6 +693,12 @@ object SceneViewTokens {
         const val longMillis = 700
         /** Design spec §6 — the one fade (`tween(300, FastOutSlowIn)`). */
         const val fadeMillis = 300
+        /**
+         * `motion-handover` — the loading cover giving way to the first rendered
+         * frame (#4160). Short on purpose: the scene is already there, so every
+         * extra millisecond of fade is the user waiting on a veil, not on work.
+         */
+        const val handoverMillis = 150
     }
 
     /**

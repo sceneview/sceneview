@@ -31,6 +31,11 @@ and fails on any this script does not name.
   samples/ios-demo/SceneViewDemo/Resources/BundledCredits.json
                                                    GENERATED (bundled scope, JSON, #3214)
   samples/web-demo/site/credits.json               GENERATED (bundled scope, JSON, #3214)
+  website-static/credits.html                      GENERATED REGION (bundled scope, HTML):
+                                                   only the part between the
+                                                   `BEGIN/END GENERATED CREDITS`
+                                                   markers; the page around it
+                                                   is hand-written
   assets/audio/CREDITS.md                          SOURCE    (hand-written)
   samples/ios-demo/SceneViewDemo/Audio/CREDITS.md  MIRROR    (of the above)
   samples/web-demo/site/audio/CREDITS.md           MIRROR    (of the above)
@@ -44,7 +49,9 @@ Rules for the two GENERATED files:
   - Flag entries with missing required fields so they get fixed upstream.
 
 `--check` regenerates in memory and compares against the committed files
-without writing. It is a hard CI gate (`ci.yml` → `repo-hygiene`): CREDITS.md
+without writing. It is a hard CI gate (`ci.yml` → `build`, step "Check asset
+credits"; the `repo-hygiene` job that first ran it was deleted by #3244 and the
+gate ran nowhere until #4151): CREDITS.md
 is what discharges the attribution clause of every model's license, so a model
 added to catalog.json but never credited is a compliance gap, not a cosmetic
 one. Deterministic regenerate-and-compare has no false-positive risk, so it
@@ -60,6 +67,7 @@ Exit code:
 from __future__ import annotations
 
 import json
+import re
 import os
 import sys
 from collections import defaultdict
@@ -68,6 +76,9 @@ from pathlib import Path
 ROOT = Path(os.environ.get("GENERATE_CREDITS_ROOT") or Path(__file__).resolve().parent.parent.parent)
 CATALOG = ROOT / "assets" / "catalog.json"
 CREDITS = ROOT / "assets" / "CREDITS.md"
+# Binary assets kept out of git (fetched by tools/fetch-assets.sh). They are
+# bundled whether or not they have been materialised in this working tree.
+MANIFEST = ROOT / "assets" / "manifest.json"
 
 # Licenses we are allowed to ship in an open-source project intended for
 # commercial distribution (Play Store, App Store, Maven Central).
@@ -94,7 +105,7 @@ UNSAFE_LICENSES = {
 # ─── Bundled scopes ───────────────────────────────────────────────────────────
 # A "bundled scope" is a directory whose entire contents ship inside a store
 # artefact, plus the CREDITS.md that travels with them. `assets/CREDITS.md`
-# lists all 90 catalogue models; only 19 files reach the APK. Crediting the
+# lists all 89 catalogue models; only 19 files reach the APK. Crediting the
 # catalogue in the APK would be noise, and crediting nothing is what we had —
 # so the APK copy is generated from the files that are actually there.
 ANDROID_ASSETS = "samples/android-demo/src/main/assets"
@@ -131,6 +142,10 @@ BUNDLED_SCOPES = [
         # demand a credit line for itself.
         "ignore_suffixes": (".md",),
         "format": "markdown",
+        # HD pack (2026-09-29): models the app downloads after install. They are not in
+        # the APK, but the app shows them, so their credits travel with it — read from the
+        # same manifest the download reads, never copied by hand.
+        "hd_manifest": "assets/hd-pack/android.json",
     },
     # ── JSON scopes (#3214) ──────────────────────────────────────────────────
     # The iOS and web demos cannot show a Markdown file to a user, so their
@@ -151,6 +166,10 @@ BUNDLED_SCOPES = [
         "artefact": "the App Store build",
         "ignore_suffixes": (".md", ".json"),
         "format": "json",
+        # The Xcode project also copies files that live outside `assets_dir`
+        # (`../android-demo/...` references, #4167): read them from the project
+        # itself so a new cross-tree reference cannot ship uncredited.
+        "pbxproj": "samples/ios-demo/SceneViewDemo.xcodeproj/project.pbxproj",
     },
     {
         "id": "web-demo",
@@ -162,7 +181,36 @@ BUNDLED_SCOPES = [
         "ignore_suffixes": (".md", ".json"),
         "format": "json",
     },
+    # ── Website scope ────────────────────────────────────────────────────────
+    # sceneview.github.io serves the platform-showcase models from
+    # `website-static/models/platforms` (fetched from the assets release, see
+    # assets/manifest.json). Until this scope existed the site linked to the
+    # repo's full-catalogue CREDITS.md, which did not name 26 of its 35 files.
+    # The credits are rendered into the public page itself: `format: html`
+    # rewrites only the region between WEBSITE_CREDITS_BEGIN and
+    # WEBSITE_CREDITS_END in `out`, so the page chrome stays hand-written and
+    # `--check` still fails when the list and the served models disagree.
+    # `thumbnails/` holds renders of the models credited on the same card, not
+    # separate works, so they are not listed twice.
+    {
+        "id": "website",
+        "assets_dir": "website-static",
+        "subdirs": ("models/platforms",),
+        "ignore_dirs": ("thumbnails",),
+        "out": "website-static/credits.html",
+        "title": "3D model credits — sceneview.github.io",
+        "artefact": "the sceneview.github.io website",
+        "ignore_suffixes": (".md", ".json"),
+        "format": "html",
+        "thumbnails": "models/platforms/thumbnails",
+    },
 ]
+
+WEBSITE_CREDITS_BEGIN = (
+    "<!-- BEGIN GENERATED CREDITS: rendered from assets/catalog.json by "
+    ".claude/scripts/generate-credits.py. Do not edit by hand. -->"
+)
+WEBSITE_CREDITS_END = "<!-- END GENERATED CREDITS -->"
 
 # ─── Mirrors ──────────────────────────────────────────────────────────────────
 # `assets/audio/CREDITS.md` is hand-written on purpose: `bell.wav` is generated
@@ -269,6 +317,55 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Compiled from `samples/android-demo/src/main/materials/hero_terrain.mat` (#3948)",
     },
+    "cosmos_sprite.filamat": {
+        "name": "cosmos_sprite.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/cosmos_sprite.mat` (Cosmos demo, #4152)",
+    },
+    "cosmos_ribbon.filamat": {
+        "name": "cosmos_ribbon.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/cosmos_ribbon.mat` (Cosmos demo, #4152)",
+    },
+    "cosmos_plasma.filamat": {
+        "name": "cosmos_plasma.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/cosmos_plasma.mat` (Cosmos demo, #4152)",
+    },
+    "cosmos_dust.filamat": {
+        "name": "cosmos_dust.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/cosmos_dust.mat` (Cosmos demo, #4152)",
+    },
+    "cosmos_planet.filamat": {
+        "name": "cosmos_planet.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/cosmos_planet.mat` (Cosmos ringed world, #4192)",
+    },
+    "cosmos_ring.filamat": {
+        "name": "cosmos_ring.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/cosmos_ring.mat` (Cosmos ringed world, #4192)",
+    },
+    "tray_wood.filamat": {
+        "name": "tray_wood.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/tray_wood.mat` (Rolling Balls board)",
+    },
     # Hand-authored 1 kB 3MF fixtures for the web /open page (#3512).
     "printed-icosahedron.3mf": {
         "name": "printed-icosahedron.3mf",
@@ -288,6 +385,7 @@ NON_CATALOG_BUNDLED = {
         "name": "Raccoon family (SPZ sample capture)",
         "author": "Niantic Labs",
         "license": "MIT",
+        "licenseUrl": "https://github.com/nianticlabs/spz/blob/main/LICENSE",
         "sourceUrl": "https://github.com/nianticlabs/spz/blob/main/samples/racoonfamily.spz",
         "note": "Real phone capture shipped with the SPZ format; cropped to the subject "
         "(932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`",
@@ -381,6 +479,14 @@ def catalog_by_basename() -> dict[str, dict]:
             f = (fmt or {}).get("file")
             if f:
                 index.setdefault(Path(f).name, m)
+    # `shippedAs` names the other basenames the same asset is served under —
+    # the website's `models/platforms/AntiqueCamera.glb` is the catalogue's
+    # `khronos_antique_camera.glb`. Declared per entry rather than guessed from
+    # the file name, and indexed after every `formats` file so an alias never
+    # shadows a real catalogue file.
+    for m in models:
+        for alias in m.get("shippedAs") or ():
+            index.setdefault(Path(alias).name, m)
     for e in envs:
         f = e.get("file")
         if f:
@@ -403,6 +509,11 @@ def license_url(lic: str) -> str:
         "CC-BY-NC-4.0": "https://creativecommons.org/licenses/by-nc/4.0/",
         "CC-BY-NC-SA-4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "Apache-2.0": "https://www.apache.org/licenses/LICENSE-2.0",
+        "SCEA Shared Source License": "https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/LICENSES/SCEA.txt",
+        # HD pack (2026-09-29): NASA 3D Resources models are not copyrighted, but NASA's media
+        # guidelines forbid logos and any implied endorsement — the licence string says both.
+        "NASA Media Usage Guidelines (no endorsement implied; insignia removed)":
+            "https://www.nasa.gov/nasa-brand-center/images-and-media/",
     }
     return table.get(lic, "")
 
@@ -419,7 +530,7 @@ def format_entry(m: dict) -> str:
     name = m.get("name") or m.get("id") or "(unnamed)"
     author = m.get("author", "").strip()
     lic = m.get("license", "").strip()
-    lic_link = license_url(lic)
+    lic_link = (m.get("licenseUrl") or "").strip() or license_url(lic)
     src = m.get("sourceUrl", "").strip()
     lic_md = f"[{lic}]({lic_link})" if lic_link else lic
     return f"- **[{name}]({src})** by {author} — {lic_md}"
@@ -536,6 +647,74 @@ def render_catalog_credits(models: list[dict]) -> str:
     return "\n".join(lines) + "\n", len(complete), len(incomplete), len(unsafe)
 
 
+def manifest_sizes() -> dict[str, int]:
+    """Repo-relative path -> size of every file in assets/manifest.json."""
+    if not MANIFEST.exists():
+        return {}
+    with open(MANIFEST) as f:
+        return {e["path"]: e["size"] for e in json.load(f).get("files", [])}
+
+
+_PBX_FILE_REF = re.compile(
+    r"^\s*(?P<id>[0-9A-F]{24,32}) /\*[^*]*\*/ = \{isa = PBXFileReference;(?P<body>[^\n]*)\};\s*$",
+    re.M,
+)
+_PBX_RESOURCE = re.compile(r"/\* [^*]* in Resources \*/ = \{isa = PBXBuildFile; fileRef = (?P<ref>[0-9A-F]{24,32})")
+
+
+def pbxproj_external_resources(scope: dict) -> dict[Path, str]:
+    """Files the Xcode project copies into the app from outside `assets_dir`.
+
+    Only `sourceTree = SOURCE_ROOT` references in the Resources phase whose
+    path leaves the assets folder count (the `../android-demo/...` ones). A
+    folder reference ships its whole tree. Returns absolute path -> the path
+    the file has inside the app bundle (what the credits list shows).
+    """
+    rel_proj = scope.get("pbxproj")
+    if not rel_proj:
+        return {}
+    proj = ROOT / rel_proj
+    if not proj.is_file():
+        return {}
+    text = proj.read_text()
+    in_resources = {m.group("ref") for m in _PBX_RESOURCE.finditer(text)}
+    source_root = proj.parent.parent
+    base = ROOT / scope["assets_dir"]
+    fetched = {ROOT / rel for rel in manifest_sizes()}
+    out: dict[Path, str] = {}
+    for m in _PBX_FILE_REF.finditer(text):
+        if m.group("id") not in in_resources:
+            continue
+        body = m.group("body")
+        path_m = re.search(r"\bpath = (?P<p>\"[^\"]*\"|[^;]+);", body)
+        if not path_m or "sourceTree = SOURCE_ROOT" not in body:
+            continue
+        # normpath, not resolve(): paths stay in the same form as ROOT, which
+        # the manifest lookup and relative_to(ROOT) below depend on.
+        target = Path(os.path.normpath(source_root / path_m.group("p").strip('"')))
+        if base == target or base in target.parents:
+            continue
+        name = target.name
+        if "lastKnownFileType = folder" in body or target.is_dir():
+            # A folder reference ships whatever is under it, including files only
+            # fetched by tools/fetch-assets.sh and not yet on this checkout's disk.
+            on_disk = {q for q in target.rglob("*") if q.is_file()} if target.is_dir() else set()
+            for q in sorted(on_disk | {q for q in fetched if target in q.parents}):
+                out[q] = f"{name}/{q.relative_to(target).as_posix()}"
+        elif target.is_file() or target in fetched:
+            out[target] = name
+    return out
+
+
+def bundle_rel(scope: dict, p: Path) -> str:
+    """Path of a bundled file as the credits list shows it."""
+    base = ROOT / scope["assets_dir"]
+    try:
+        return p.relative_to(base).as_posix()
+    except ValueError:
+        return pbxproj_external_resources(scope)[p]
+
+
 def scan_bundled(scope: dict) -> list[Path]:
     """Every file that ships inside the scope's artefact, sorted.
 
@@ -551,13 +730,25 @@ def scan_bundled(scope: dict) -> list[Path]:
     roots = [base / d for d in scope.get("subdirs", ())] or [base]
     out_abs = ROOT / scope["out"]
     out: list[Path] = []
-    for p in sorted(q for r in roots if r.is_dir() for q in r.rglob("*")):
-        if not p.is_file():
-            continue
+    on_disk = {q for r in roots if r.is_dir() for q in r.rglob("*") if q.is_file()}
+    # A file listed in assets/manifest.json ships in the artefact even when this
+    # checkout has not run tools/fetch-assets.sh yet: credit it all the same, so
+    # the generated files never depend on the state of the working tree.
+    fetched = {ROOT / rel for rel in manifest_sizes()}
+    in_roots = {p for p in fetched if any(r in p.parents for r in roots)}
+    for p in sorted(on_disk | in_roots):
         rel = p.relative_to(base).as_posix()
         if any(part.startswith(".") for part in rel.split("/")):
             continue
+        if any(part in scope.get("ignore_dirs", ()) for part in rel.split("/")[:-1]):
+            continue
         if p == out_abs:
+            continue
+        if p.suffix in scope["ignore_suffixes"]:
+            continue
+        out.append(p)
+    for p, rel in pbxproj_external_resources(scope).items():
+        if any(part.startswith(".") for part in rel.split("/")):
             continue
         if p.suffix in scope["ignore_suffixes"]:
             continue
@@ -580,8 +771,8 @@ def classify_bundled(scope: dict, index: dict[str, dict]) -> tuple[list, list, l
     blanket: list[tuple[str, dict, int]] = []
     uncredited: list[str] = []
     for p in scan_bundled(scope):
-        rel = p.relative_to(base).as_posix()
-        size = p.stat().st_size
+        rel = bundle_rel(scope, p)
+        size = p.stat().st_size if p.is_file() else manifest_sizes()[p.relative_to(ROOT).as_posix()]
         declared = NON_CATALOG_BUNDLED.get(p.name)
         if declared is not None:
             credited.append((rel, declared, size))
@@ -637,7 +828,8 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
     lines.append(f"contents of `{scope['assets_dir']}` by")
     lines.append(f"[`.claude/scripts/generate-credits.py`]({to_root}.claude/scripts/generate-credits.py).")
     lines.append("Re-run that script after adding, removing or re-compressing a bundled asset;")
-    lines.append("`ci.yml` → `repo-hygiene` fails if this file and the assets disagree.")
+    lines.append("`ci.yml` → `build` (step \"Check asset credits\") fails if this file and the")
+    lines.append("assets disagree.")
     lines.append("")
     total = len(credited) + len(blanket)
     lines.append(f"Assets bundled: **{total}**.")
@@ -663,7 +855,7 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
             author = (entry.get("author") or "").strip()
             lic = (entry.get("license") or "").strip()
             src = (entry.get("sourceUrl") or "").strip()
-            lic_link = license_url(lic)
+            lic_link = (entry.get("licenseUrl") or "").strip() or license_url(lic)
             lic_md = f"[{lic}]({lic_link})" if lic_link else lic
             title = f"[{name}]({src})" if src else name
             line = f"- `{rel}` — **{title}** by {author} — {lic_md} ({human_size(size)})"
@@ -692,7 +884,36 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
                 lines.append(f"- `{rel}` — **{name}**{by} ({human_size(size)})")
             lines.append("")
 
+    hd = scope.get("hd_manifest")
+    if hd:
+        lines.extend(render_hd_pack_section(hd, to_root))
+
     return "\n".join(lines) + "\n", uncredited
+
+
+def render_hd_pack_section(manifest_rel: str, to_root: str) -> list[str]:
+    """Credits of the HD pack: downloaded after install, credited from its manifest."""
+    manifest = json.loads((ROOT / manifest_rel).read_text(encoding="utf-8"))
+    assets = sorted(manifest.get("assets", []), key=lambda a: a["id"])
+    if not assets:
+        return []
+    lines = ["## HD pack (downloaded after install)", ""]
+    lines.append(
+        "Not bundled: each model downloads from the `hd-pack-v1` GitHub Release when the user "
+        "asks for it; only the Flight Helmet is fetched ahead, on Wi-Fi."
+    )
+    lines.append(f"Listed from [`{manifest_rel}`]({to_root}{manifest_rel}).")
+    lines.append("")
+    for a in assets:
+        lic = a["license"].strip()
+        lic_link = license_url(lic)
+        lic_md = f"[{lic}]({lic_link})" if lic_link else lic
+        lines.append(
+            f"- `{a['id']}` — **[{a['title']}]({a['source']})** by {a['author']} — "
+            f"{lic_md} ({human_size(int(a['bytes']))})"
+        )
+    lines.append("")
+    return lines
 
 
 def render_bundled_credits_json(scope: dict, index: dict[str, dict]) -> tuple[str, list[str]]:
@@ -715,7 +936,7 @@ def render_bundled_credits_json(scope: dict, index: dict[str, dict]) -> tuple[st
             "name": entry.get("name") or entry.get("id") or Path(rel).name,
             "author": (entry.get("author") or "").strip(),
             "license": lic,
-            "licenseUrl": license_url(lic),
+            "licenseUrl": (entry.get("licenseUrl") or "").strip() or license_url(lic),
             "sourceUrl": (entry.get("sourceUrl") or "").strip(),
             "size": size,
             "note": (entry.get("note") or "").strip(),
@@ -755,6 +976,81 @@ def render_bundled_credits_json(scope: dict, index: dict[str, dict]) -> tuple[st
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n", uncredited
 
 
+def render_bundled_credits_html(scope: dict, index: dict[str, dict]) -> tuple[str, list[str]]:
+    """The website's credits page: `out` with its generated region re-rendered.
+
+    One card per catalogue entry (the same model served under two file names
+    is one work, credited once, both files listed). Blanket-licensed assets are
+    not expected here; they would be rendered like the JSON scopes do.
+    Returns ("", uncredited) when the page or its markers are missing — main()
+    reports that as an error rather than writing a page from scratch.
+    """
+    from html import escape
+
+    credited, blanket, uncredited = classify_bundled(scope, index)
+    page_path = ROOT / scope["out"]
+    thumbs_dir = ROOT / scope["assets_dir"] / scope.get("thumbnails", "")
+
+    cards: dict[int, dict] = {}
+    for rel, entry, size in credited:
+        card = cards.setdefault(id(entry), {"entry": entry, "files": []})
+        card["files"].append((rel, size))
+    for rel, entry, size in blanket:
+        meta = SOURCE_BLANKET_LICENSE[(entry.get("source") or "").lower()]
+        shown = dict(entry, license=meta["license"], sourceUrl=meta["siteUrl"],
+                     author=(entry.get("author") or "").strip() or meta["label"])
+        cards.setdefault(id(entry), {"entry": shown, "files": []})["files"].append((rel, size))
+
+    ordered = sorted(cards.values(), key=lambda c: ((c["entry"].get("name") or "").lower(), c["files"][0][0]))
+    licenses: dict[str, int] = defaultdict(int)
+    for c in ordered:
+        licenses[(c["entry"].get("license") or "").strip()] += 1
+    n_files = sum(len(c["files"]) for c in ordered)
+
+    ind = "      "
+    out: list[str] = [WEBSITE_CREDITS_BEGIN]
+    summary = " · ".join(f"{escape(lic)} × {n}" for lic, n in sorted(licenses.items(), key=lambda t: (-t[1], t[0])))
+    out.append(f'{ind}<p class="credits-summary"><strong>{len(ordered)} models</strong> in {n_files} files · {summary}</p>')
+    out.append(f'{ind}<ul class="credits-grid">')
+    for c in ordered:
+        e = c["entry"]
+        name = escape(e.get("name") or e.get("id") or Path(c["files"][0][0]).name)
+        author = escape((e.get("author") or "").strip())
+        lic = (e.get("license") or "").strip()
+        lic_url = (e.get("licenseUrl") or "").strip() or license_url(lic)
+        src = escape((e.get("sourceUrl") or "").strip(), quote=True)
+        stem = Path(c["files"][0][0]).stem
+        thumb = thumbs_dir / f"{stem}.webp"
+        out.append(f'{ind}  <li class="credits-card">')
+        if thumb.is_file():
+            thumb_url = f"/{scope['thumbnails']}/{thumb.name}"
+            out.append(f'{ind}    <img class="credits-card__thumb" src="{thumb_url}" alt="" width="256" height="256" loading="lazy" decoding="async">')
+        else:
+            out.append(f'{ind}    <div class="credits-card__thumb credits-card__thumb--empty" aria-hidden="true"></div>')
+        out.append(f'{ind}    <div class="credits-card__body">')
+        out.append(f'{ind}      <h3 class="credits-card__name"><a href="{src}" target="_blank" rel="noopener">{name}</a></h3>')
+        out.append(f'{ind}      <p class="credits-card__author">by {author}</p>')
+        chip = (f'<a class="credits-card__license" href="{escape(lic_url, quote=True)}" target="_blank" rel="noopener license">{escape(lic)}</a>'
+                if lic_url else f'<span class="credits-card__license">{escape(lic)}</span>')
+        out.append(f'{ind}      {chip}')
+        files = ", ".join(f"<code>{escape(Path(rel).name)}</code> ({human_size(size)})" for rel, size in sorted(c["files"]))
+        out.append(f'{ind}      <p class="credits-card__files">{files}</p>')
+        out.append(f'{ind}    </div>')
+        out.append(f'{ind}  </li>')
+    out.append(f'{ind}</ul>')
+    out.append(f'{ind}{WEBSITE_CREDITS_END}')
+    region = "\n".join(out)
+
+    if not page_path.is_file():
+        return "", uncredited
+    page = page_path.read_text(encoding="utf-8")
+    start = page.find(WEBSITE_CREDITS_BEGIN)
+    end = page.find(WEBSITE_CREDITS_END)
+    if start < 0 or end < start:
+        return "", uncredited
+    return page[:start] + region + page[end + len(WEBSITE_CREDITS_END):], uncredited
+
+
 def main() -> int:
     # Reject unknown arguments instead of falling through to the write path.
     # `--chekc` must NOT silently regenerate the file and exit 0: that turns
@@ -782,6 +1078,15 @@ def main() -> int:
     for scope in BUNDLED_SCOPES:
         if scope.get("format") == "json":
             content, uncredited = render_bundled_credits_json(scope, index)
+        elif scope.get("format") == "html":
+            content, uncredited = render_bundled_credits_html(scope, index)
+            if not content:
+                print(
+                    f"error: {scope['out']} is missing or lacks the generated-region markers\n"
+                    f"  {WEBSITE_CREDITS_BEGIN}\n  {WEBSITE_CREDITS_END}",
+                    file=sys.stderr,
+                )
+                return 1
         else:
             content, uncredited = render_bundled_credits(scope, index)
         outputs.append((ROOT / scope["out"], content))

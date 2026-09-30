@@ -1,6 +1,7 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import SwiftUI
 import RealityKit
+import Combine
 
 /// A SwiftUI view for rendering 3D content using RealityKit.
 ///
@@ -158,6 +159,10 @@ public struct SceneView: View {
     // Default `false` — pan-then-orbit keeps the panned pivot. Closes #1236.
     var recentersTargetOnOrbit: Bool = false
 
+    // Bloom post-process (iOS / macOS 26+). `nil` until `.bloom(_:)` is called,
+    // so no existing scene pays for the pass.
+    var bloomOptions: BloomOptions?
+
     // Identity of the value the `content` closure builds from. `nil` (the
     // default) means the content is built exactly once, on `RealityView`
     // `make:` — the behaviour every existing caller gets. Set via
@@ -221,7 +226,8 @@ public struct SceneView: View {
             requestedCameraPoseGeneration: requestedCameraPoseGeneration,
             onCameraChanged: onCameraChanged,
             cameraGesturesEnabled: cameraGesturesEnabled,
-            onEntityTappedHit: onEntityTappedHit
+            onEntityTappedHit: onEntityTappedHit,
+            bloomOptions: bloomOptions
         )
     }
 
@@ -441,6 +447,31 @@ public struct SceneView: View {
         return copy
     }
 
+    /// Adds a bloom pass: pixels brighter than the threshold bleed a soft glow onto their
+    /// neighbours. The pass works on the displayed frame, in display space: brightness runs
+    /// from `0` (black) to `1` (white), and with the default ``BloomOptions/thresholdLevel``
+    /// of `0.6` whatever shows brighter than 60 % blooms — bright unlit or emissive colours.
+    ///
+    /// Mirrors the Android `View.bloomOptions` fields (`strength`, `levels`, `resolution`,
+    /// `threshold`). Runs on iOS 26 / macOS 26 and later (RealityKit's
+    /// `customPostProcessing`); on earlier systems the scene renders unchanged. Unavailable
+    /// on visionOS. When the frame comes in a format the pass does not handle (an EDR /
+    /// extended-range frame, for one), the frame is passed through untouched: no glow.
+    ///
+    /// The pass is attached once, when the view is created, whenever the modifier is present;
+    /// every later change — strength, levels, `.disabled` — applies live, and a zero strength
+    /// costs one copy of the frame.
+    ///
+    /// ```swift
+    /// SceneView { root in /* glowing content */ }
+    ///     .bloom(BloomOptions(strength: 0.45))
+    /// ```
+    public func bloom(_ options: BloomOptions) -> SceneView {
+        var copy = self
+        copy.bloomOptions = options
+        return copy
+    }
+
     /// Controls whether the library translates the user-content root entity
     /// so its centroid lands at the orbit pivot on the first frame the
     /// scene's `visualBounds` is non-empty. Default `true`. Closes #1026.
@@ -578,6 +609,11 @@ public struct SceneView: View {
     /// ``CameraControls/minRadius``…``CameraControls/maxRadius``. ``onCameraChanged(_:)``
     /// reports the clamped result, so a pose that could not be honoured verbatim says so
     /// instead of leaving your state and the screen disagreeing.
+    ///
+    /// A written pose that moves the camera takes it from the fit-to-bounds pass, as a
+    /// drag does: the pass stops re-fitting distance and target while the content's
+    /// bounds settle, so a pose animated frame by frame is not pulled back to the fit.
+    /// A ``contentID(_:)`` swap or a ``recenterCamera(_:)`` hands the camera back.
     ///
     /// Has no effect in the native camera modes (``CameraControlMode/none``, `.tilt`,
     /// `.dolly`), where Apple's `realityViewCameraControls(_:)` owns the
@@ -743,6 +779,12 @@ private final class SceneEntities: ObservableObject {
     let perspCamera = PerspectiveCamera()
     #endif
 
+    #if os(iOS) && targetEnvironment(simulator)
+    /// A projection refresh in flight after a render-surface resize (#4182): the scene-update
+    /// subscription that restores the camera's near plane, and the value it restores.
+    var projectionRefresh: (subscription: any Cancellable, baseNear: Float)?
+    #endif
+
     deinit {
         // Real teardown path for per-entity gesture handlers (#2038).
         // A `NodeGesture` handler closure that captures the node it is
@@ -845,6 +887,9 @@ private struct SceneViewRepresentation: View {
     /// Tap handler that also wants the world-space hit point, from
     /// ``SceneView/onEntityTapHit(_:)``.
     let onEntityTappedHit: ((SceneTapHit) -> Void)?
+
+    /// Bloom pass settings, from ``SceneView/bloom(_:)``; `nil` when the modifier is absent.
+    let bloomOptions: BloomOptions?
 
     /// Mutable camera-orbit state, held in a **reference type** so mutating it
     /// (auto-rotate, drag, pinch) does NOT invalidate the SwiftUI body. The
@@ -992,6 +1037,8 @@ private struct SceneViewRepresentation: View {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
+        /// Whether the bloom pass has been attached to the content (once, at creation).
+        var bloomInstalled = false
         /// Last camera state pushed onto the RealityKit entities by
         /// ``applyCamera()``. Compared (with float tolerance) each frame so a
         /// no-op camera apply — the common case while idle, and on every
@@ -1068,7 +1115,8 @@ private struct SceneViewRepresentation: View {
         /// World-space centroid of the content union AABB, as last computed by
         /// ``refreshContentCentering()``. `.zero` until the first valid pass.
         var contentWorldCenter: SIMD3<Float> = .zero
-        /// Set when a pinch or an orbit drag moves the camera; while set,
+        /// Set when a pinch, an orbit drag or a ``SceneView/cameraPose(_:)``
+        /// write moves the camera; while set,
         /// ``refreshContentCentering()`` no longer re-fits the radius or the
         /// pivot unless the content grew materially (#4009). Cleared by every
         /// re-arm of the framing pass.
@@ -1078,6 +1126,11 @@ private struct SceneViewRepresentation: View {
         var fittedDiagonal: Float = 0
     }
     @State private var appliedCache = AppliedCache()
+
+    #if !os(visionOS)
+    /// Metal pipelines and textures of the bloom pass, kept across frames and option changes.
+    @State private var bloomResources = BloomResources()
+    #endif
 
     /// Loaded HDR resource cached for the `RealityView.update:` closure so
     /// it can apply `content.environment = .skybox(resource)` every frame
@@ -1360,6 +1413,16 @@ private struct SceneViewRepresentation: View {
         // horizontally if the framing assumed a square viewport.
         GeometryReader { proxy in
             realityView
+                #if os(iOS) && targetEnvironment(simulator)
+                // In the iOS Simulator, RealityKit leaves the render surface at its launch
+                // size after a rotation, so the scene only fills a portrait-wide strip
+                // (#4182). A real iPhone resizes it on its own, and writing the surface
+                // there freezes a portrait projection (horizontal stretch), so this is
+                // compiled for the simulator only.
+                .background(RenderSurfaceResizer(size: proxy.size) {
+                    refreshProjectionAfterSurfaceResize()
+                })
+                #endif
                 .onChange(of: proxy.size) { _, newSize in
                     updateViewportAspect(newSize)
                 }
@@ -1376,6 +1439,42 @@ private struct SceneViewRepresentation: View {
                 }
         }
     }
+
+    #if os(iOS) && targetEnvironment(simulator)
+    /// Makes RealityKit re-derive the camera projection once ``RenderSurfaceResizer`` has
+    /// resized the render surface (#4182).
+    ///
+    /// The projection only follows the new surface when the camera component changes, so
+    /// the near plane is moved by one part in ten thousand, which nothing on screen can
+    /// show. It is restored on the **third** scene update after the nudge. RealityKit
+    /// emits one update per frame, before rendering it, so at least two frames render
+    /// with the nudged value. A revert on the next main-queue turn could land before any
+    /// frame, leaving a net no-op. The near plane is used, not the field of view, because
+    /// `applyCamera()` resets the field of view to its baseline whenever SwiftUI runs
+    /// `update:`, which a rotation does. SceneView never writes the near plane.
+    private func refreshProjectionAfterSurfaceResize() {
+        let entities = self.entities
+        let camera = entities.perspCamera
+        guard let scene = camera.scene else { return }
+        // A resize while an earlier refresh is pending keeps that refresh's base value, so
+        // back-to-back rotations can never leave the near plane drifted.
+        let baseNear = entities.projectionRefresh?.baseNear ?? camera.camera.near
+        entities.projectionRefresh?.subscription.cancel()
+        let nudged = baseNear * 1.0001
+        camera.camera.near = nudged
+        var updates = 0
+        let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak entities] _ in
+            updates += 1
+            guard updates >= 3, let entities else { return }
+            if entities.perspCamera.camera.near == nudged {
+                entities.perspCamera.camera.near = baseNear
+            }
+            entities.projectionRefresh?.subscription.cancel()
+            entities.projectionRefresh = nil
+        }
+        entities.projectionRefresh = (subscription, baseNear)
+    }
+    #endif
 
     /// Records the viewport aspect ratio from a layout size. Re-frames the
     /// content on the next `update:` tick if the aspect changed materially
@@ -1434,9 +1533,12 @@ private struct SceneViewRepresentation: View {
         }
         #else
         RealityView { realityContent in
+            // Before setupScene: see applyBloom for why the order matters.
+            applyBloom(&realityContent, install: true)
             setupScene(&realityContent)
         } update: { content in
             applyCamera()
+            applyBloom(&content, install: false)
             // Re-run the content closure if `.contentID(_:)` moved. Duplicated
             // from the `.task(id:)` on purpose: `update:` always runs on the
             // CURRENT view, so it closes the one ordering hole the task cannot
@@ -1484,6 +1586,26 @@ private struct SceneViewRepresentation: View {
         }
         #endif
     }
+
+    #if !os(visionOS)
+    /// Hands the current options to the bloom pass, and installs the pass when `install` is set.
+    ///
+    /// RealityKit traps if `customPostProcessing` is assigned while the scene's active camera
+    /// is an app-provided camera entity (it carries no view descriptors) — and SceneView's
+    /// orbit camera is one. So the pass is installed once, from `make`, before
+    /// ``setupScene(_:)`` adds that camera; later changes (strength, levels, `.disabled`)
+    /// reach it through the shared ``BloomResources``, never through a new effect. A view
+    /// without the `.bloom` modifier never gets the pass; one with it always does, even at a
+    /// zero strength, so that turning the glow up later just works.
+    private func applyBloom(_ content: inout RealitySceneContent, install: Bool) {
+        guard #available(iOS 26.0, macOS 26.0, *) else { return }
+        // A modifier dropped from the chain later leaves an installed pass copying through.
+        bloomResources.options = bloomOptions ?? .disabled
+        guard install, bloomOptions != nil, !appliedCache.bloomInstalled else { return }
+        appliedCache.bloomInstalled = true
+        content.renderingEffects.customPostProcessing = .effect(BloomPostProcess(resources: bloomResources))
+    }
+    #endif
 
     // MARK: - Scene Setup
 
@@ -1846,9 +1968,6 @@ private struct SceneViewRepresentation: View {
     /// (which grows the union materially) always re-frames. Fed into
     /// ``FramingStabilityTracker``.
     private static let framingStabilityEpsilon: Float = 0.01
-    /// Union growth (diagonal ratio) past which the framing pass takes the
-    /// camera back from the user: another streamed model landed (#4009).
-    private static let refitGrowthThreshold: Float = 1.25
 
     /// How long the content union must hold steady before the framing pass
     /// latches `didCenterContent`. Must exceed the worst-case gap between two
@@ -2036,8 +2155,9 @@ private struct SceneViewRepresentation: View {
         // back to the fit. Only a union that grew materially (another
         // streamed model landing) takes the camera back; Recenter, a content
         // swap or a rotation re-arm the pass and clear the flag.
-        if appliedCache.userMovedCamera,
-           diagonal <= appliedCache.fittedDiagonal * Self.refitGrowthThreshold {
+        if SceneView.fitKeepsTakenCamera(taken: appliedCache.userMovedCamera,
+                                    diagonal: diagonal,
+                                    fittedDiagonal: appliedCache.fittedDiagonal) {
             camera.orbitRadius = min(max(camera.orbitRadius, camera.minRadius), camera.maxRadius)
             if stable {
                 appliedCache.didCenterContent = true
@@ -2205,7 +2325,18 @@ private struct SceneViewRepresentation: View {
             || requestedCameraPoseGeneration != appliedCache.requestedPoseGeneration {
             appliedCache.requestedPose = requested
             appliedCache.requestedPoseGeneration = requestedCameraPoseGeneration
+            let live = camera.pose
             camera.apply(pose: requested)
+            // A write that moves the camera is the host taking it, exactly like a
+            // drag (#4009): the fit-to-bounds pass must not pull it back to the
+            // fitted pose on its next tick while the bounds settle, or an
+            // animated pose (a fly-in) fights the fit every ~33 ms. An echo of
+            // the live pose — the mirrored-state pattern above — moves nothing
+            // and claims nothing. A content swap, Recenter or rotation re-arms
+            // the pass and hands the camera back to it, as for a gesture.
+            if SceneView.poseWriteTakesCamera(requested: requested, live: live) {
+                appliedCache.userMovedCamera = true
+            }
         }
 
         // Diff-guard (#2331): every per-mode branch below is a pure function of
@@ -2663,6 +2794,30 @@ private struct SceneViewRepresentation: View {
             .onEnded { value in
                 NodeGesture.dispatchLongPress(on: value.entity)
             }
+    }
+}
+
+// MARK: - Who owns the camera during the fit (#4009, #4184)
+
+extension SceneView {
+    /// Union growth (diagonal ratio) past which the framing pass takes the
+    /// camera back from the user: another streamed model landed (#4009).
+    static let refitGrowthThreshold: Float = 1.25
+
+    /// Whether a ``cameraPose(_:)`` write takes the camera from the
+    /// fit-to-bounds pass, as a drag does: only a write that moves it. An echo
+    /// of the live pose — a host mirroring ``onCameraChanged(_:)`` back —
+    /// moves nothing and claims nothing.
+    static func poseWriteTakesCamera(requested: SceneCameraPose, live: SceneCameraPose) -> Bool {
+        !requested.approximatelyMatches(live)
+    }
+
+    /// Whether the fit-to-bounds pass leaves a camera the user (or a host
+    /// pose write) has taken where it is (#4009): yes, unless the content
+    /// union grew materially since the last fit — another streamed model
+    /// landing — which takes the camera back.
+    static func fitKeepsTakenCamera(taken: Bool, diagonal: Float, fittedDiagonal: Float) -> Bool {
+        taken && diagonal <= fittedDiagonal * refitGrowthThreshold
     }
 }
 #endif // os(iOS) || os(macOS) || os(visionOS)

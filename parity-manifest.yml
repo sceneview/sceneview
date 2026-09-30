@@ -63,8 +63,10 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-27): 49 rows, 29 working / 0 stub / 20 android-only.
+# Current slice-5 ledger (2026-09-29): 51 rows, 32 working / 0 stub / 19 android-only.
+# (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
+# (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -273,25 +275,68 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (31) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/AnimationPhysicsDemo.kt
-    ios: [animation, physics]
+    ios: [animation]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/PhysicsDemo.swift
     contract: >-
-      One card, Animation | Physics. Animation: Fox, Soldier + 4 streamed
-      models, play/pause/speed/loop, camera Hero/Reveal/Vertigo/Tracking/Free.
-      Physics: Rubber/Steel/Foam ball tray, Drop/Drop 10, tilt
+      Animation (the Physics tab left for `rolling-balls` in #4083): Fox,
+      Soldier + 4 streamed models, play/pause/speed/loop, camera
+      Hero/Reveal/Vertigo/Tracking/Free
     parity: diverges
     evidence: >-
       No Fox; 'Soldier' = cyberpunk_character (AnimationDemo.swift:64-72); on
-      screen 'camera shots…Android-only' (:288); physics drops cubes + a ball
-      (PhysicsDemo.swift:152-175); D7 spinner unverified
+      screen 'camera shots…Android-only' (:288); D7 spinner unverified
+  - id: rolling-balls
+    androidStatus: Working
+    iosStatus: working
+    category: VIEW_3D
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RollingBallsDemo.kt
+    ios: [rolling-balls]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift
+    contract: >-
+      Rubber/Steel/Foam ball tray on the themed stage sky (light and dark); opening shot of a
+      steel cue into a six-ball rubber pyramid; material chips drop one ball;
+      Drop, Tilt, Reset on the scene; sheet with counts, Drop 10, Level,
+      pitch and roll sliders
+    parity: diverges
+    evidence: >-
+      #4083: iOS is a Swift port of the Android fixed-step simulation. Captured
+      on Pixel_7a and iPhone 17 Pro sim: same opening shot at rest (Bodies 7 ·
+      impacts 113 on both), and the same drag tilt (tip toward you: impacts
+      151 on both; tip sideways: balls pile in one corner). Both stages follow
+      the theme from the same tokens. Diverges in chrome only: iOS puts Drop,
+      Tilt, Reset and Settings in one bottom toolbar
+  - id: splat-preview
+    androidStatus: Working
+    iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row: iOS opens the same capture but
+      draws each point as a small solid dot, not a soft camera-sorted
+      gaussian. SceneViewSwift has no SplatNode yet (item 2 of #2646) and
+      RealityKit has no point primitive; the screen says so on its visible
+      peek line ("points drawn as dots") and in its sheet.
+    category: VIEW_3D
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SplatPreviewDemo.kt
+    ios: [splat-preview]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/SplatPreviewDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/SplatScan.swift
+    contract: >-
+      Render the bundled raccoon_family.spz as a Gaussian-splat cloud,
+      orbitable, with a splat-count slider and a file readout
+    parity: diverges
+    evidence: >-
+      Same file (the Android asset, referenced by the Xcode project), same
+      decode (SPZReader, a Swift port of SpzParser's v2/v3 path), same orbit
+      home (scanFraming), same copy, same "Points drawn" slider. Diverges in
+      the look: a point cloud of 233 808 opaque dots instead of splats.
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working
@@ -623,7 +668,61 @@ demos:
     evidence: >-
       Orange cube + grid, Orbit/Pan/Look pickers, hint rows
       (CameraControlsDemo.swift:33-47,90-114); Ferrari on opaque plane in a
-      2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only
+      2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only. Since
+      #4218 the Ferrari is bottom-aligned under a pivot on the floor
+      (Android's centerOrigin = Position(y = -1f)), so it stands on its
+      shadow at any pinch; the 3-subject stage is still Android-only
+  - id: cosmos
+    androidStatus: Working
+    iosStatus: working
+    reason: >-
+      Capability caveat: the bloom runs through RealityKit custom
+      post-processing, iOS 26+ only; on iOS 18-25 the scenes draw without it.
+    category: CREATE
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CosmosDemo.kt
+    ios: [cosmos]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosMeshes.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosGlow.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosSystem.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosWorld.swift
+    contract: >-
+      Four procedural, real-time scenes in additive HDR light plus bloom: a
+      four-arm spiral galaxy of 60 000 camera-facing star sprites with
+      alpha-blended dust lanes, built in layers so it shows within a second, a plasma
+      star (noise-shaded sphere, Fresnel limb, magnetic loops), a looping
+      burst of ~460 charged-particle tracks, and a vortex flow field of
+      streamlines with travelling pulses. The Star scene opens on a whole
+      system: a ringed world orbits the star, lit by it (terminator,
+      atmosphere rim, ring shadow on the planet, planet shadow on the rings,
+      fading orbit trail); tapping the planet or the star flies the camera
+      there on ease-expressive, round the star (#4192). Dock picks a scene;
+      an optional tour cycles them and flies to the planet once; Bloom
+      slider; no video, no texture.
+    parity: diverges
+    evidence: >-
+      Same meshes, seeds, cameras, captions and dock. No custom shader on iOS
+      (UnlitMaterial additive quads, camera-facing on the CPU). Motion is
+      rebuilt without a shader: ribbon dashes travel by scrolling a repeating
+      dash atlas through textureCoordinateTransform (dash colours quantized
+      per octave to fit one 8192-texel atlas), stars twinkle through eight
+      phase groups with one material each, and the star surface churns by
+      cross-fading 512x256 plasma frames baked in the background every 1.5 s
+      of scene time (held in Low Power Mode or at a serious thermal state).
+      The ringed world (#4192) shares CosmosSystem's constants, poses, eased
+      flight and tap hit test with Android (unit-tested); its planet and
+      ring shaders are evaluated on the CPU into a 1024x512 planet map and a
+      256x1024 ring map, re-baked off the main thread at up to 8 Hz while
+      the orbit or the camera moves; the star's halo turns and its limb and
+      corona resize as the camera flies. The Flow landscape quarter-turn is ported and rebuilt when the viewport
+      crosses square; captured in a macOS window, where only the brightest
+      light shows (the dim light is lost on macOS in Galaxy and Flow; cause
+      not yet traced). Remaining gaps: the flow nuclei do
+      not churn, the galaxy is built in one pass, the Settings sheet has no
+      "Settings" title (DemoChrome has no parameter for it), and the bloom is
+      added in display space with a baked filmic roll-off standing in for
+      Filament's tone map
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working
@@ -710,26 +809,29 @@ demos:
       reset.
     parity: diverges
     evidence: >-
-      LightTypesDemo.swift:250-282 no helmet (Android LightingDemo.kt:500);
-      :136 four of seven HDRs; one control per rig, no exposure, dock or
-      reset; plus 3 legacy cards
+      Helmet, probe balls, slate floor, orbit dock and reset now match
+      (#4175); left: LightTypesDemo.swift:172 four of seven HDRs, :559-580
+      one control per rig, no exposure or IBL rotation; plus 3 legacy cards
   - id: lighting-lab
     androidStatus: Working
     iosStatus: working
     category: CREATE
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/LightingLabDemo.kt
-    ios: [reflection-probes]
+    ios: [lighting-lab]
     iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/ReflectionProbesDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/LightingLabDemo.swift
     contract: >-
       A workbench on the lighting stage, one fixed key over a studio IBL,
       every knob live: exposure, IBL intensity and rotation, sky,
       reflection-probe zone, SSAO, fog, anti-aliasing.
-    parity: fake
+    parity: diverges
     evidence: >-
-      No lab screen; ReflectionProbesDemo.swift:33,45 probe HDR == global HDR
-      and :99,:119 every mesh sits in the probe, so the local override never
-      shows; lighting-lab aliases to dynamic-sky
+      LightingLabDemo.swift: same stage, 48/38 spot key, studio_warm bench,
+      live IBL intensity, sky toggle, sunset ReflectionProbeNode applied
+      while the camera is inside its zone. No IBL rotation (turning the IBL
+      entity renders pixel-identical at 0 and 174 deg on iOS 26.3), no
+      exposure, SSAO, fog, MSAA/FXAA or dithering: RealityView on iOS
+      exposes none, stated in the sheet
   - id: lines-paths
     androidStatus: Working
     iosStatus: working
@@ -763,9 +865,11 @@ demos:
       sliders, compare split) | Occlusion modes.
     parity: diverges
     evidence: >-
-      MaterialsDemo.swift:46-125 streams Sketchfab KHR models (the keyless
-      fallbacks lack the extension the legend names); 3 separate cards;
-      Android MaterialsDemo.kt:6-42,190-194
+      Gallery wall matches since #4175 (nine procedural presets, sweep,
+      tap to focus); left: no Inspect or Occlusion mode and no HDR switch,
+      a pale themed stage instead of Android's blurred grey studio
+      (MaterialsDemo.swift:106-110), crystal is transparency not
+      transmission (no RealityKit lobe, :29-31); 3 separate cards
   - id: model-viewer
     androidStatus: Working
     iosStatus: working
@@ -785,7 +889,9 @@ demos:
     evidence: >-
       Models Fox/Hovercar/Butterfly vs Sofa/Chair/Dish/Soldier
       (ModelViewerDemo.swift:37-44 vs .kt:277-283); lands on outdoor_cloudy
-      sky (.swift:69,150); no Park row, Browse→ExploreTab (.swift:368)
+      sky (.swift:69,150); no Park row, Browse→ExploreTab (.swift:368); HD
+      poster capped at 400 pt (Theme.swift Stage.posterMaxWidth), Android's
+      spans the stage
   - id: picking-collision
     androidStatus: Working
     iosStatus: working
@@ -815,11 +921,12 @@ demos:
       A looping bell on a sphere orbiting a drawn ring with pulsing wave
       shells; a glass legend shows source, listener (you), live distance,
       volume and a meter; Inverse | Linear falloff.
-    parity: fake
+    parity: identical
     evidence: >-
-      SpatialAudioDemo.swift:185,255-259 gain from the orbiter-to-origin
-      distance, a constant 0.6 m, so the falloff picker changes nothing; no
-      ring, waves, legend or meter; baseline D7
+      SpatialAudioDemo.swift: same 0.32 m orbit, 0.10 m emitter, three
+      shells, 64-segment ring; gain from the source-to-camera distance via
+      SpatialAudioNode.updateGain, which turns RealityKit's own rolloff off
+      so the picked curve is the only distance law; legend + meter
   - id: two-d-in-three-d
     androidStatus: Working
     iosStatus: working
@@ -851,7 +958,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1181,26 +1288,6 @@ demos:
       SecondaryCameraDemo.kt:144 pipCameraNode, :345-352 presets. Feasible: a
       2nd non-AR RealityView with its own PerspectiveCamera over a cloned
       entity (or RealityRenderer, iOS 18)
-  - id: splat-preview
-    androidStatus: Working
-    iosStatus: android-only
-    reason: >-
-      No iOS screen — blocked on an iOS SplatNode renderer, tracked as
-      item 2 of #2646 (#2768 documents the gap but explicitly parks the
-      port as a maintainer decision, not an implementation owner). Its
-      coming-soon Scene stub was deleted in #3231.
-    category: VIEW_3D
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SplatPreviewDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      Render the bundled raccoon_family.spz as a Gaussian-splat cloud,
-      orbitable, with a splat-count slider and a file readout
-    parity: missing
-    evidence: >-
-      SplatPreviewDemo.kt:51 (raccoon_family.spz), :196 points slider;
-      SceneViewSwift has no SplatNode (#2646/#3654); feasible with
-      LowLevelMesh + Metal sort (code-only)
   - id: video-recording
     androidStatus: Working
     iosStatus: android-only
@@ -1282,21 +1369,34 @@ shell:
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Tabs/ShowcaseTab.swift
       - samples/ios-demo/SceneViewDemo/Views/Home/HomeHero.swift
-      - samples/ios-demo/SceneViewDemo/Views/Home/DemoMediaCard.swift
+      - samples/ios-demo/SceneViewDemo/Views/Home/HomeListRow.swift
       - samples/ios-demo/SceneViewDemo/Views/Home/HomeFilter.swift
     contract: >-
-      Header (search + What's new), 3-page featured pager (Models live,
-      Materials, Lighting, + What's-new page), Featured shelf
-      (FEATURED_SECTION_IDS, Rerun first), Browse-online card, 5 chips,
-      section headers, cards by order with New/Updated chips
+      Header (search + What's new) that turns to frosted glass once the
+      list scrolls under it (surface 72 % / 78 % over a 24dp blur, API 31+),
+      3-page featured pager (Models live, Materials, Lighting, + What's-new
+      page), then a list of picture cards: "Featured" as 2:1 banners
+      dissolving downward (FEATURED_SECTION_IDS, Cosmos then Rerun first), Browse-online
+      row, 5 chips, section headers, one card per demo with its capture
+      over the leading half dissolving sideways into an ambient ground
+      taken from the picture (HomeAmbient, luminance 0.035 dark / 0.84
+      light), 20dp corners, 10dp apart, New/Updated chip on the title line,
+      one column on a phone
     parity: diverges
     evidence: >-
-      Featured shelf, 5 section chips and section headers match since #3907
-      (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); the shelf skips
-      splat-preview (#2646) and ar-splat-room (#4075), which have no iOS screen. Still diverges:
-      single HomeHero instead of the pager, no What's new, Browse-online card
-      last instead of under the shelf, and six broken demos are kept off the
-      home (HomeCatalogue.hiddenFromHome)
+      Featured order, 5 section chips and section headers match since #3907
+      (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); Featured skips
+      ar-splat-room (#4075), which has no iOS screen. The grouped list
+      matches since home-rows-fused-ambient (HomeListRow.swift: fused rows
+      and Featured banners, HomeAmbient with Android's arithmetic and test
+      cases, Theme.swift row tokens equal to SceneViewTokens.Home, 340pt
+      iPad columns, Browse-online row under Featured), from the same
+      captures (12 imagesets shared with Android, tools/demo-previews/README.md).
+      The header turns to glass once scrolled (ShowcaseTab.swift
+      HeaderGround: iOS 26 Liquid Glass, ultraThinMaterial before) since
+      #4208. Still diverges: single HomeHero instead of the pager, no What's
+      new, and six broken demos are kept off the home
+      (HomeCatalogue.hiddenFromHome)
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt
@@ -1325,10 +1425,11 @@ shell:
       (Sketchfab/Icosa/Poly Haven), curated samples
     parity: diverges
     evidence: >-
-      Android says iOS 'still shows the previous layout'
-      ExploreTabScreen.kt:97; iOS entry is the last grid item
-      ShowcaseTab.swift:137; same 3 sources; D2 error states now exist
-      :352,:763 (code-only)
+      Since the second home parity pass: the same hero stage (first
+      Trending model, source pill, title, View in 3D) above a Trending rail
+      that leaves it out, and the source picker is a segmented control (the
+      iOS counterpart of Android's connected button group). iOS keeps its
+      inline search field instead of the floating search pill.
   - surface: about
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/RootScreen.kt
@@ -1342,7 +1443,15 @@ shell:
     evidence: >-
       iOS: 5 flat cards, no groups, no Send feedback, no Release notes
       AboutTab.swift:95-134; other tagline :78; Android RootScreen.kt:381-440;
-      Support card matches :154-176
+      no Support card on iOS by design: App Review rejected 4.48.0 under
+      guideline 3.1.1 (donation links outside In-App Purchase), #4197.
+      The identity mark is a 3D stage since #4215 (AboutTab.swift
+      AboutMarkStage: cube, two orbit rings, satellites, icon placeholder
+      crossfade once the lighting has landed; key light 6 000 lux over the
+      studio IBL at exponent 0.5, tuned against Android's capture). iOS is
+      ahead here: Android main still shows the flat icon, and its 3D stage
+      (MarkScene constants, from wow/demo-shell-android) comes with the
+      Android PR
   - surface: demo-chrome
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/DemoScaffold.kt

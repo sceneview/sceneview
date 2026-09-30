@@ -6,6 +6,8 @@ package io.github.sceneview.demo.demos.internal
  *
  * One scene, one `world` root node whose children carry the wire format's entity names:
  * - `world/points` — the point cloud, mode `POINTS`, `COLOR_0` as linear float RGB;
+ * - `world/dense` — a `.svscan` v2's dense cloud, mode `POINTS`, `COLOR_0` as normalised
+ *   `UNSIGNED_BYTE` RGBA and unit `NORMAL`s;
  * - `world/camera/path` — the camera's positions as a `LINE_STRIP`;
  * - `world/camera/keyframes` — one small frustum (`LINES`) per recorded photo, the photo paths
  *   and times in the node's `extras`;
@@ -72,6 +74,7 @@ object RerunGlbWriter {
         val gltf = RerunGltfBuilder(codec)
         val world = ArrayList<Int>()
         gltf.addPoints(scene.points, scene.pointColors)?.let { world += it }
+        scene.dense?.takeIf { it.count > 0 }?.let { dense -> gltf.addDense(dense)?.let { world += it } }
         gltf.addCameraPath(scene.cameraPath)?.let { world += it }
         gltf.addKeyframes(scene.keyframes, scene.lens)?.let { world += it }
         for (plane in scene.planes) gltf.addPlane(plane)?.let { world += it }

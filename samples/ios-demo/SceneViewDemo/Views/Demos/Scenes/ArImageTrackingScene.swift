@@ -4,9 +4,9 @@
 // @category    ar
 // @section     understand
 // @available   true
-// @icon        viewfinder.circle.fill
+// @icon        photo.artframe
 // @iosOnly     true
-// @order       39
+// @order       44
 // @tags        ar,image,tracking,augmented-image,marker
 import SwiftUI
 

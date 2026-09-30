@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.WebAsset
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -22,8 +22,8 @@ object TwoDInThreeDFragment : DemoFragment {
         titleRes = R.string.demo_two_d_in_three_d_title,
         subtitleRes = R.string.demo_two_d_in_three_d_subtitle,
         category = DemoCategory.CREATE,
-        icon = Icons.Filled.Layers,
-        order = 29,
+        icon = Icons.Filled.WebAsset,
+        order = 9,
         tags = setOf(
             "2d", "viewnode", "compose", "billboard", "quad", "label", "annotation",
             "text", "image", "video", "occlusion",

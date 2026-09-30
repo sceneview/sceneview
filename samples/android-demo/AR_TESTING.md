@@ -29,7 +29,7 @@ Four layers of real-rendering tests in `samples/android-demo/src/androidTest/`:
 
 All run on `connectedDebugAndroidTest` (real device / hardware-accelerated emulator —
 SwiftShader CI crashes on Filament pixel readback). Diff images on failure dump to
-`/sdcard/Android/data/io.github.sceneview.demo/files/render-test-output/` for review.
+`/sdcard/Android/data/io.github.sceneview.demo.qa/files/render-test-output/` for review.
 
 ## Frame-indexed AR screenshot regression (#1050)
 
@@ -191,14 +191,14 @@ fixtures under 50 MB each.
 ### 2. Record on device
 
 ```
-adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-record-playback
+adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es demo ar-record-playback
 ```
 
 > ⚠️ **Do not use `android run` for this.** It has a measured install no-op —
 > it prints success-shaped output, rejects an activity the platform resolves,
 > and exits 0 having installed nothing, leaving the previous build on the
 > device (#2796, #2854, #2990). Stay on `adb` above, and confirm the install
-> landed with `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
+> landed with `adb shell dumpsys package io.github.sceneview.demo.qa | grep lastUpdateTime`.
 
 (An older note here said `android run` merely lacked `--es` intent extras
 "until v0.8+". That framing is obsolete: the problem is not a missing feature

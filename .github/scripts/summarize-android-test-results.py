@@ -91,6 +91,11 @@ def main() -> int:
     ap.add_argument("--source", default=None, help="androidTest source file whose @Test count is the denominator")
     ap.add_argument("--title", default="Instrumented tests")
     ap.add_argument("--captures-dir", default=None)
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 on a failed case, on no results, or on fewer executed cases than declared",
+    )
     args = ap.parse_args()
 
     results_dir = Path(args.results_dir)
@@ -164,7 +169,9 @@ def main() -> int:
     if target:
         with open(target, "a", encoding="utf-8") as fh:
             fh.write(summary + "\n")
-    # Advisory by contract: the workflow decides whether the job blocks.
+    # Advisory by default: the workflow decides whether the job blocks, by passing --strict.
+    if args.strict and (not cases or failed or (expected and executed < expected)):
+        return 1
     return 0
 
 

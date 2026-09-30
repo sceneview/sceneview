@@ -27,7 +27,7 @@
 #                                 video, texture-streaming)
 #     Interaction .......... 3   (camera-controls, collision, gesture-editing)
 #     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
-#                                 materials, spatial-audio, reflection-probes,
+#                                 materials, spatial-audio, lighting-lab,
 #                                 occlusion-material, debug-overlay)
 #     Augmented Reality .... 31  (ar-placement — the single placement entry —
 #                                 ar-orbital, ar-lighting, ar-rerun — launch-only;

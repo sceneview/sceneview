@@ -14,10 +14,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -31,16 +31,20 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.Icon
@@ -70,6 +74,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
@@ -81,13 +86,10 @@ import io.github.sceneview.demo.sources.ModelSourceId
 import io.github.sceneview.demo.sources.rememberModelSources
 import io.github.sceneview.demo.ui.explore.components.FeaturedModelCard
 import io.github.sceneview.demo.ui.explore.components.SpatialHero
+import io.github.sceneview.demo.ui.home.DemoMediaCard
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.demo.ui.demoToggleButtonColors
-import io.github.sceneview.sample.ui.demoCategoryAccent
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.supervisorScope
 
 /**
  * Curated 3D-model discovery feed — the demo app's Spatial Gallery home: a
@@ -128,11 +130,17 @@ fun ExploreTabScreen(
     //   - searchResults non-empty  → render results section, hide trending/staff/recent
     var activeSearchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<GalleryModel>?>(null) }
+    // `true` when the last search failed or timed out (#3993) — shows the retry
+    // card instead of "No results", which would blame the query for a dead link.
+    var searchFailed by remember { mutableStateOf(false) }
+    var searchRetryTick by remember { mutableStateOf(0) }
 
     // Feeds keyed by the source's advertised [FeedKind]s (each source exposes
     // its own subset — Poly Haven has no "staff picks", for instance).
     var feedsByKind by remember { mutableStateOf<Map<FeedKind, List<GalleryModel>>>(emptyMap()) }
-    var loadingFeeds by remember { mutableStateOf(false) }
+    // Loading → Ready / Empty / Failed (#3993). A stalled or failed load ends in
+    // an error card with a retry instead of spinners that never stop.
+    var feedsStatus by remember { mutableStateOf(FeedsStatus.Loading) }
     var isRefreshing by remember { mutableStateOf(false) }
     // `true` once a feed/search request fails with HTTP 401/403 — the API key
     // is present but rejected (revoked, wrong scope, typo'd secret). Drives the
@@ -157,6 +165,7 @@ fun ExploreTabScreen(
             searchQuery = ""
             activeSearchQuery = ""
             searchResults = null
+            searchFailed = false
             feedsByKind = emptyMap()
             keyRejected = false
         }
@@ -164,39 +173,33 @@ fun ExploreTabScreen(
 
     /** (Re)load the selected source's feeds on source switch, animated toggle, first composition, or pull-to-refresh. */
     LaunchedEffect(selectedSource.id, animatedOnly, refreshTick) {
-        loadingFeeds = true
+        feedsStatus = FeedsStatus.Loading
         // Reset the Sketchfab "key rejected" banner before every (re)load so a
         // transient 401/403 that clears drops the banner instead of latching it.
         keyRejected = false
         val source = selectedSource
-        // supervisorScope so a single feed failure (transient 429, network blip,
-        // decode error) doesn't cancel the sibling feeds — surviving feeds still
-        // render (#980, #2645). Each `catchingFeed` re-throws CancellationException
-        // so the parent LaunchedEffect cancellation (source switch, toggle,
-        // pull-to-refresh, navigation away) tears down in-flight requests cleanly.
-        // A Sketchfab 401/403 flips `keyRejected` so the banner shows instead of
-        // the feed silently self-hiding (#2095).
+        // [loadFeeds] runs the feeds in a supervisorScope, each under
+        // EXPLORE_FEED_TIMEOUT_MS (#3993): one failing or stalled feed never
+        // cancels its siblings (#980, #2645), and none can spin forever. A
+        // cancellation of this effect (source switch, toggle, pull-to-refresh,
+        // navigation away) still tears the requests down. A Sketchfab 401/403
+        // flips `keyRejected` so the banner explains the failure (#2095).
         try {
-            supervisorScope {
-                val onRejected = { keyRejected = true }
-                val deferred = source.feedKinds.map { kind ->
-                    kind to async {
-                        catchingFeed(onRejected) {
-                            source.feed(
-                                kind = kind,
-                                animatedOnly = animatedOnly && source.supportsAnimatedFilter,
-                                limit = 10,
-                            )
-                        }
-                    }
-                }
-                feedsByKind = deferred.associate { (kind, d) -> kind to d.await() }
+            val load = loadFeeds(
+                kinds = source.feedKinds,
+                onFailure = { if (it.isSketchfabUnavailable()) keyRejected = true },
+            ) { kind ->
+                source.feed(
+                    kind = kind,
+                    animatedOnly = animatedOnly && source.supportsAnimatedFilter,
+                    limit = 10,
+                )
             }
+            feedsByKind = load.feeds
+            feedsStatus = load.status
         } finally {
-            // try/finally so loadingFeeds + isRefreshing always reset even if the
-            // coroutine was cancelled mid-flight (otherwise the skeleton spinners
-            // would stay forever after navigating away mid-refresh).
-            loadingFeeds = false
+            // try/finally so isRefreshing always resets even if the coroutine
+            // was cancelled mid-flight.
             isRefreshing = false
         }
     }
@@ -231,32 +234,26 @@ fun ExploreTabScreen(
     // exposes it on the feed endpoints; the CC sources have no such concept), so
     // the animated chip has no effect on search results. Re-keys on the source
     // id so switching catalogs re-runs the query against the new one.
-    LaunchedEffect(activeSearchQuery, selectedSource.id) {
+    LaunchedEffect(activeSearchQuery, selectedSource.id, searchRetryTick) {
         if (activeSearchQuery.isBlank()) return@LaunchedEffect
         searchResults = null  // signal loading
-        searchResults = try {
+        searchFailed = false
+        // Bounded by EXPLORE_FEED_TIMEOUT_MS like the feeds (#3993): a search that
+        // never answers ends in the error card with a retry, not an endless spinner.
+        // Only a rejected key (401/403) latches the "Sketchfab unavailable" banner
+        // here. A WAF challenge deliberately does not (#2644): it is transient bot
+        // mitigation, and `keyRejected` is only reset by the feeds effect, so
+        // latching it made a brief throttle masquerade as a dead key.
+        val result = fetchWithTimeout(
+            onFailure = { if (it is SketchfabService.SketchfabError.KeyRejected) keyRejected = true },
+        ) {
             selectedSource.search(
                 query = activeSearchQuery,
                 limit = 24,
             )
-        } catch (ce: kotlinx.coroutines.CancellationException) {
-            throw ce
-        } catch (t: Throwable) {
-            // Only a rejected key (401/403 — dead, revoked, or mis-scoped
-            // token) latches the permanent "Sketchfab unavailable" banner.
-            // A WAF challenge is deliberately NOT latched here (#2644): it is
-            // transient bot mitigation, historically tripped by fast typing
-            // stacking un-cancellable search calls — and `keyRejected` is only
-            // reset by the feeds effect (pull-to-refresh / animated toggle),
-            // so latching it made a brief throttle masquerade as a dead key.
-            // Now that SketchfabService cancels superseded calls the burst is
-            // gone at the source; a residual WAF blip / 429 / network error
-            // surfaces the search empty state and clears on the next query.
-            if (t is SketchfabService.SketchfabError.KeyRejected) {
-                keyRejected = true
-            }
-            emptyList()
         }
+        searchFailed = result !is FeedResult.Loaded
+        searchResults = result.modelsOrEmpty
     }
 
     val body = @Composable {
@@ -275,6 +272,7 @@ fun ExploreTabScreen(
                 if (newValue.isBlank()) {
                     activeSearchQuery = ""
                     searchResults = null
+                    searchFailed = false
                 }
             },
             onSearchSubmit = { q ->
@@ -293,7 +291,10 @@ fun ExploreTabScreen(
             curatedSamples = curatedSamples,
             onSampleClick = onSampleClick,
             feedsByKind = feedsByKind,
-            loadingFeeds = loadingFeeds,
+            feedsStatus = feedsStatus,
+            onRetryFeeds = { refreshTick++ },
+            searchFailed = searchFailed,
+            onRetrySearch = { searchRetryTick++ },
             onModelClick = { selectedModel = it },
         )
     }
@@ -349,9 +350,13 @@ private fun ExploreBody(
     curatedSamples: List<DemoEntry>,
     onSampleClick: (DemoEntry) -> Unit,
     feedsByKind: Map<FeedKind, List<GalleryModel>>,
-    loadingFeeds: Boolean,
+    feedsStatus: FeedsStatus,
+    onRetryFeeds: () -> Unit,
+    searchFailed: Boolean,
+    onRetrySearch: () -> Unit,
     onModelClick: (GalleryModel) -> Unit,
 ) {
+    val loadingFeeds = feedsStatus == FeedsStatus.Loading
     val isSearching = activeSearchQuery.isNotBlank()
     // Only Sketchfab's "key rejected" (401/403) surfaces the unavailable banner;
     // the CC sources never reach it, and a missing Sketchfab key simply drops the
@@ -366,16 +371,47 @@ private fun ExploreBody(
             .fillMaxSize()
             .verticalScroll(scroll)
             .padding(
-                start = SceneViewTokens.Layout.containerPaddingMobile,
-                end = SceneViewTokens.Layout.containerPaddingMobile,
-                top = SceneViewTokens.Space.sm,
+                start = SceneViewTokens.Home.contentPadding,
+                end = SceneViewTokens.Home.contentPadding,
                 bottom = LIST_BOTTOM_GUTTER,
             ),
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg),
     ) {
-        Spacer(Modifier.height(SceneViewTokens.Space.xs))
-
-        TextButton(onClick = onBack) { Text("← Showcase") }
+        // Home's header, glyph for glyph: `Home.headerHeight` tall from the top of
+        // the page, `Home.contentPadding` in, the back glyph in the slot Home gives
+        // its mark and the same gap before `type-title` — switching between the two
+        // screens leaves the title where it was. The 48 dp touch target overflows
+        // the 24 dp slot evenly, so the glyph sits on the content edge.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SceneViewTokens.Home.headerHeight),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.size(SceneViewTokens.Home.markSize),
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.requiredSize(SceneViewTokens.Layout.touchTarget),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.cd_back_button),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+            Spacer(Modifier.width(SceneViewTokens.Home.markGap))
+            Text(
+                text = stringResource(R.string.home_browse_title),
+                style = SceneViewTokens.Type.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (searchExpanded || isSearching) {
             SearchField(
                 value = searchQuery,
@@ -414,23 +450,14 @@ private fun ExploreBody(
                     modifier = Modifier
                         .padding(SceneViewTokens.Space.md),
                 )
-            Box(modifier = Modifier.fillMaxWidth()) {
-                if (hero != null) {
-                    SpatialHero(model = hero, onViewIn3D = { onModelClick(hero) })
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(SceneViewTokens.Layout.heroStageHeight)
-                            .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (loadingFeeds) ContainedLoadingIndicator()
-                    }
-                }
-
-            }
+            ExploreStage(
+                hero = hero,
+                feedsStatus = feedsStatus,
+                sourceName = selectedSource.id.displayName,
+                sketchfabUnavailable = showSketchfabBanner,
+                onRetry = onRetryFeeds,
+                onModelClick = onModelClick,
+            )
         }
 
         // "Sketchfab unavailable" banner (#2095) — only when the Sketchfab key was
@@ -445,6 +472,14 @@ private fun ExploreBody(
             // searchResults == null ⇒ still loading; empty ⇒ ran but 0 hits;
             // non-empty ⇒ render carousel.
             when {
+                // A rejected Sketchfab key already has its banner above; a retry
+                // card blaming the connection would be wrong and could not work.
+                searchFailed && showSketchfabBanner -> Unit
+                searchFailed -> FeedUnavailableCard(
+                    title = stringResource(R.string.explore_feed_error_title, selectedSource.id.displayName),
+                    body = stringResource(R.string.explore_feed_error_body),
+                    onRetry = onRetrySearch,
+                )
                 searchResults == null -> FeedSection(
                     title = stringResource(R.string.explore_search_results),
                     models = emptyList(),
@@ -483,7 +518,7 @@ private fun ExploreBody(
             )
 
             if (curatedSamples.isNotEmpty()) {
-                CarouselSection(title = stringResource(R.string.explore_built_with_sceneview)) {
+                CarouselSection(title = stringResource(R.string.explore_try_a_demo)) {
                     val state = rememberLazyListState()
                     LazyRow(
                         state = state,
@@ -491,8 +526,16 @@ private fun ExploreBody(
                         contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.xs),
                         flingBehavior = rememberSnapFlingBehavior(lazyListState = state),
                     ) {
-                        items(curatedSamples) { sample ->
-                            SampleCard(sample = sample, onClick = { onSampleClick(sample) })
+                        items(curatedSamples, key = { it.id }) { sample ->
+                            // The home grid's own card (#3993): the demo's captured
+                            // preview, not a category icon on a gradient. The whole row
+                            // sets each caption's floor, so the carousel ends level.
+                            DemoMediaCard(
+                                demo = sample,
+                                onClick = { onSampleClick(sample) },
+                                rowPeers = { curatedSamples },
+                                modifier = Modifier.width(SAMPLE_CARD_WIDTH),
+                            )
                         }
                     }
                 }
@@ -679,6 +722,12 @@ private fun CompactBrowseRail(
 internal object ExploreTestTags {
     const val ANIMATED_FILTER = "explore_filter_animated"
 
+    /** The error / empty card with a retry that replaces a failed load (#3993). */
+    const val FEED_UNAVAILABLE = "explore_feed_unavailable"
+
+    /** The featured stage's spinner while the feeds load. */
+    const val STAGE_LOADING = "explore_stage_loading"
+
     /** Tag of the source picker button for [id]. */
     fun sourceOption(id: ModelSourceId): String = "explore_source_${id.slug}"
 }
@@ -780,6 +829,111 @@ private fun SketchfabDisabledBanner(keyRejected: Boolean = false) {
     }
 }
 
+/**
+ * The featured stage at the top of the gallery: the hero model once the feeds
+ * load, a spinner while they do, and — when the load ended with nothing to
+ * feature (#3993) — a card that says why, with a retry, in the stage's own
+ * footprint so nothing below it jumps.
+ *
+ * When [sketchfabUnavailable] (the key was rejected, and the "Sketchfab
+ * unavailable" banner below explains it) the card is left out: "check your
+ * connection, then try again" would be wrong, and retrying cannot fix a key.
+ */
+@Composable
+internal fun ExploreStage(
+    hero: GalleryModel?,
+    feedsStatus: FeedsStatus,
+    sourceName: String,
+    sketchfabUnavailable: Boolean,
+    onRetry: () -> Unit,
+    onModelClick: (GalleryModel) -> Unit,
+) {
+    when {
+        hero != null -> SpatialHero(model = hero, onViewIn3D = { onModelClick(hero) })
+        feedsStatus == FeedsStatus.Loading -> Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SceneViewTokens.Layout.heroStageHeight)
+                .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .testTag(ExploreTestTags.STAGE_LOADING),
+            contentAlignment = Alignment.Center,
+        ) {
+            ContainedLoadingIndicator()
+        }
+        sketchfabUnavailable -> Unit
+        else -> {
+            val empty = feedsStatus == FeedsStatus.Empty
+            FeedUnavailableCard(
+                title = stringResource(
+                    if (empty) R.string.explore_feed_empty_title else R.string.explore_feed_error_title,
+                    sourceName,
+                ),
+                body = stringResource(
+                    if (empty) R.string.explore_feed_empty_body else R.string.explore_feed_error_body,
+                ),
+                onRetry = onRetry,
+                modifier = Modifier.height(SceneViewTokens.Layout.heroStageHeight),
+            )
+        }
+    }
+}
+
+/**
+ * What the featured stage (or the search results) shows when a load ends with
+ * nothing to show (#3993): the reason in one line, what to do in another, and a
+ * retry. Neutral container, not error-coloured — like the Sketchfab banner, the
+ * tab is degraded but the samples and the other sources still work.
+ */
+@Composable
+private fun FeedUnavailableCard(
+    title: String,
+    body: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(SceneViewTokens.Space.lg)
+            .testTag(ExploreTestTags.FEED_UNAVAILABLE),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm, Alignment.CenterVertically),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.CloudOff,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(SceneViewTokens.Space.x2l),
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(SceneViewTokens.Space.xs))
+        FilledTonalButton(onClick = onRetry) {
+            Icon(
+                Icons.Filled.Refresh,
+                contentDescription = null,
+                modifier = Modifier.size(ButtonDefaults.IconSize),
+            )
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+            Text(stringResource(R.string.explore_retry))
+        }
+    }
+}
+
 @Composable
 private fun CarouselSection(
     title: String,
@@ -794,38 +948,6 @@ private fun CarouselSection(
         )
         content()
     }
-}
-
-/**
- * Run [block] and return its result, or `emptyList()` if it throws — but
- * re-throw `CancellationException` so structured concurrency stays intact
- * (the parent `LaunchedEffect` cancellation must propagate through the
- * `supervisorScope` `await` calls).
- *
- * A [SketchfabService.SketchfabError.KeyRejected] (HTTP 401/403) additionally
- * fires [onKeyRejected] so the caller can surface the "Sketchfab unavailable"
- * banner instead of letting the feed silently collapse to an empty list
- * (#2095). All other failures (429 / network blip / decode error) just yield
- * an empty list as before.
- */
-private suspend inline fun <T> catchingFeed(
-    onKeyRejected: () -> Unit = {},
-    crossinline block: suspend () -> List<T>,
-): List<T> = try {
-    block()
-} catch (e: CancellationException) {
-    throw e
-} catch (t: Throwable) {
-    // Both KeyRejected (401/403) and WafChallenge (202 + empty body from
-    // the AWS CloudFront WAF in front of Sketchfab) surface the
-    // "Sketchfab unavailable" banner so the user sees an explanation
-    // rather than three silently self-hiding feed sections (#2095, #2191).
-    if (t is SketchfabService.SketchfabError.KeyRejected ||
-        t is SketchfabService.SketchfabError.WafChallenge
-    ) {
-        onKeyRejected()
-    }
-    emptyList()
 }
 
 @Composable
@@ -877,71 +999,6 @@ private fun FeedSection(
                     ),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
-    val accent = demoCategoryAccent(sample.category)
-    Box(
-        modifier = Modifier
-            .width(SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l * 3)
-            .aspectRatio(SceneViewTokens.Layout.mediaAspect)
-            .clip(RoundedCornerShape(SceneViewTokens.Radius.lg))
-            .background(
-                brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                    colors = listOf(
-                        accent.copy(alpha = SceneViewTokens.SpatialGalleryColor.glassSurfaceLight.alpha),
-                        MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ),
-                ),
-            )
-            .clickable(onClick = onClick),
-    ) {
-        // Full-card scrim, same treatment as FeaturedModelCard: the white title
-        // must stay readable whatever the accent gradient behind it resolves to.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(
-                            SceneViewTokens.SpatialGalleryColor.stageScrimStart,
-                            SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
-                        ),
-                    ),
-                ),
-        )
-        Icon(
-            imageVector = sample.icon,
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(SceneViewTokens.Space.x2l),
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .padding(SceneViewTokens.Space.sm),
-            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
-        ) {
-            Text(
-                text = stringResource(sample.titleRes),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = androidx.compose.ui.graphics.Color.White,
-                maxLines = 1,
-            )
-            Text(
-                text = stringResource(sample.subtitleRes),
-                style = MaterialTheme.typography.bodySmall,
-                color = androidx.compose.ui.graphics.Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -1053,3 +1110,11 @@ private fun RecentSearchesSection(
         }
     }
 }
+
+/**
+ * Width of a demo card in the "Try a demo" row: the trending cards' width, so the
+ * two rows read as one family. At 232 dp the next card showed ~140 dp — enough
+ * of "Geometry Primit…" to read as a clipped title rather than a peek; at this
+ * width only a sliver of it shows, which reads as "scroll for more".
+ */
+private val SAMPLE_CARD_WIDTH = SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l

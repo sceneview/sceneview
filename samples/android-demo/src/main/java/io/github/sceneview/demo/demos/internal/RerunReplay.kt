@@ -73,6 +73,41 @@ class ReplayPlaneTexture(
     }
 }
 
+/**
+ * Who recorded a `.svscan` v2 and with what: [tier] `lidar`, `depth`, `mono` or `sparse`,
+ * [depthSource] `arkit_lidar`, `arcore_raw_depth`, `ai_mono` or `feature_points`.
+ */
+data class ScanDevice(val platform: String, val model: String, val tier: String, val depthSource: String) {
+    companion object {
+        const val TIER_DEPTH = "depth"
+        const val TIER_SPARSE = "sparse"
+        const val SOURCE_RAW_DEPTH = "arcore_raw_depth"
+        const val SOURCE_FEATURE_POINTS = "feature_points"
+    }
+}
+
+/**
+ * The dense cloud of a `.svscan` v2: the SVPC blob at [path] in the media archive ([SvpcCodec]),
+ * [count] surfels of [voxelM], with normals when [normals], inside [bounds]
+ * (`[minX, minY, minZ, maxX, maxY, maxZ]`).
+ */
+data class ReplayDense(
+    val path: String,
+    val count: Int,
+    val voxelM: Float,
+    val normals: Boolean,
+    val bounds: FloatArray,
+) {
+    override fun equals(other: Any?) = other is ReplayDense && path == other.path && count == other.count &&
+        voxelM == other.voxelM && normals == other.normals && bounds.contentEquals(other.bounds)
+
+    override fun hashCode() = path.hashCode() * 31 + count
+
+    companion object {
+        const val PATH = "dense/points.bin"
+    }
+}
+
 /** What the manifest says about the replay. */
 class ReplayManifest(
     val lens: ReplayLens,
@@ -82,6 +117,14 @@ class ReplayManifest(
     val textures: List<ReplayPlaneTexture>,
     /** Each photo's place in the media archive, keyed by the path the log and manifest use. */
     val media: Map<String, MediaSpan> = emptyMap(),
+    /** `1` for every scan before Rerun v2 (no `version` key), `2` from it on. */
+    val version: Int = 1,
+    /** Who recorded it (v2); `null` for a v1 scan. */
+    val device: ScanDevice? = null,
+    /** The dense cloud (v2 tiers `lidar`, `depth`, `mono`); `null` when there is none. */
+    val dense: ReplayDense? = null,
+    /** Milliseconds spent building the dense cloud after Stop (`built.denseMs`), `0` when live. */
+    val denseMs: Long = 0L,
 ) {
     fun textureFor(planeId: Int): ReplayPlaneTexture? = textures.firstOrNull { it.planeId == planeId }
 
@@ -115,7 +158,12 @@ class ReplayManifest(
                 val length = (obj["length"] as? JsonPrimitive)?.intOrNull ?: return@mapNotNull null
                 if (offset < 0 || length <= 0) null else path to MediaSpan(offset, length)
             }.toMap()
+            val built = root["built"] as? JsonObject
             return ReplayManifest(
+                version = (root["version"] as? JsonPrimitive)?.intOrNull ?: 1,
+                device = (root["device"] as? JsonObject)?.let(::parseDevice),
+                dense = (root["dense"] as? JsonObject)?.let(::parseDense),
+                denseMs = (built?.get("denseMs") as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L,
                 media = media,
                 lens = lens,
                 frameRate = root.float("frameRate").takeIf { it > 0f } ?: DEFAULT_FRAME_RATE,
@@ -127,7 +175,31 @@ class ReplayManifest(
 
         private const val DEFAULT_FRAME_RATE = 10f
 
+        /** The v2 `device` section: who recorded the scan, and with which depth source. */
+        private fun parseDevice(obj: JsonObject) = ScanDevice(
+            platform = obj.string("platform") ?: "",
+            model = obj.string("model") ?: "",
+            tier = obj.string("tier") ?: ScanDevice.TIER_SPARSE,
+            depthSource = obj.string("depthSource") ?: ScanDevice.SOURCE_FEATURE_POINTS,
+        )
+
+        /** The v2 `dense` section; `null` without a path or with no points. */
+        private fun parseDense(obj: JsonObject): ReplayDense? {
+            val path = obj.string("path") ?: return null
+            val count = (obj["count"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 } ?: return null
+            val bounds = (obj["bounds"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.floatOrNull }
+            return ReplayDense(
+                path = path,
+                count = count,
+                voxelM = obj.float("voxelM").takeIf { it > 0f } ?: DenseFusion.VOXEL_M,
+                normals = (obj["normals"] as? JsonPrimitive)?.content == "true",
+                bounds = bounds?.takeIf { it.size == 6 }?.toFloatArray() ?: FloatArray(6),
+            )
+        }
+
         private fun JsonObject.float(key: String): Float = (this[key] as? JsonPrimitive)?.floatOrNull ?: 0f
+
+        private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.content
 
         private fun JsonObject.vec(key: String): Vec3? {
             val array = this[key] as? JsonArray ?: return null
@@ -147,19 +219,26 @@ object PointColorAtlas {
     /** Texels per side: 128² = 16 384, over [ArDebugTrace.MAX_MAP_POINTS]. */
     const val SIZE = 128
 
-    /** Texture coordinates of point [index]'s texel centre. */
-    fun uvOf(index: Int): Pair<Float, Float> {
-        val i = index.coerceIn(0, SIZE * SIZE - 1)
-        return ((i % SIZE) + 0.5f) / SIZE to ((i / SIZE) + 0.5f) / SIZE
+    /**
+     * Texture coordinates of point [index]'s texel centre, row `index / SIZE` of [pixels].
+     *
+     * V counts from the atlas's last row: the image material reads a raw `Texture.setImage`
+     * upload like this one bottom-up (the photos, uploaded from a `Bitmap`, read top-down). With
+     * V counted from the first row, every point sampled a row [pixels] never wrote — transparent,
+     * so the whole coloured layer drew nothing (#4095).
+     */
+    fun uvOf(index: Int, size: Int = SIZE): Pair<Float, Float> {
+        val i = index.coerceIn(0, size * size - 1)
+        return ((i % size) + 0.5f) / size to 1f - ((i / size) + 0.5f) / size
     }
 
     /**
      * RGBA bytes, row-major, of the atlas for [colors] (`0xFFRRGGBB`, `0` meaning "none"):
      * a point without a colour gets [fallback].
      */
-    fun pixels(colors: IntArray, fallback: Int): ByteArray {
-        val out = ByteArray(SIZE * SIZE * 4)
-        for (i in 0 until minOf(colors.size, SIZE * SIZE)) {
+    fun pixels(colors: IntArray, fallback: Int, size: Int = SIZE): ByteArray {
+        val out = ByteArray(size * size * 4)
+        for (i in 0 until minOf(colors.size, size * size)) {
             val c = colors[i].takeIf { it != 0 } ?: fallback
             out[i * 4] = (c shr 16 and 0xFF).toByte()
             out[i * 4 + 1] = (c shr 8 and 0xFF).toByte()

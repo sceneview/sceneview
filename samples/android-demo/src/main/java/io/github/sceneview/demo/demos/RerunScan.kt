@@ -2,12 +2,17 @@ package io.github.sceneview.demo.demos
 
 import android.graphics.Bitmap
 import android.media.Image
+import android.os.Build
 import com.google.ar.core.Camera
 import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.DenseFusion
+import io.github.sceneview.demo.demos.internal.DepthBackProjection
+import io.github.sceneview.demo.demos.internal.DepthFrame
+import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.KeyframeGate
 import io.github.sceneview.demo.demos.internal.MediaSpan
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
@@ -15,6 +20,7 @@ import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.ScanArchive
+import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
 import io.github.sceneview.demo.demos.internal.ScanProjection
 import io.github.sceneview.demo.demos.internal.YuvFrame
@@ -23,9 +29,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /*
@@ -42,12 +51,19 @@ import java.util.concurrent.atomic.AtomicInteger
  * [live] is the replay media as it grows, which the Record screen's 3D card draws; [finish]
  * builds the scan into the file the sessions list keeps and the replay opens.
  *
- * Main thread, like the recorder, except the photo encoding it launches in [scope].
+ * With [rawDepth] (ARCore's `RAW_DEPTH_ONLY` on this phone: Rerun v2 tier `depth`) each new
+ * raw-depth image is also back-projected and fused into a 2 cm surfel map ([DenseFusion]), which
+ * [finish] saves as the scan's dense cloud. Without it the scan is the sparse v1 one.
+ *
+ * Main thread, like the recorder, except the photo encoding and the depth fusion it launches in
+ * [scope].
  */
 internal class ScanCapture private constructor(
     private val intrinsics: ScanIntrinsics,
     private val lens: ReplayLens,
     private val scope: CoroutineScope,
+    /** Whether the session runs ARCore's raw depth: the scan's tier. */
+    val rawDepth: Boolean,
 ) {
     /** The scan's trace; its journal is what [finish] saves. */
     val trace = ArDebugTrace().apply {
@@ -64,6 +80,23 @@ internal class ScanCapture private constructor(
     private val poses = HashMap<String, DebugPose>()
     private val jobs = ArrayList<Job>()
     private val inFlight = AtomicInteger(0)
+
+    // The dense map: one fusion at a time on Dispatchers.Default; a depth image that arrives while
+    // one runs is skipped, never queued, so a slow phone thins the depth instead of lagging.
+    private val fusion = if (rawDepth) DenseFusion() else null
+    private val fusing = AtomicBoolean(false)
+    private var fuseJob: Job? = null
+    private var lastDepthNanos = Long.MIN_VALUE
+    // At most ten depth keyframes a second: ARCore's own raw-depth pace on a Pixel, and a bound
+    // on the camera-image reads the fusion adds to the main thread.
+    private val depthGate = IntervalGate(DEPTH_INTERVAL_NS)
+    private val denseTotal = AtomicInteger(0)
+    private val denseAdded = AtomicInteger(0)
+    private val denseKept = AtomicInteger(0)
+    private var recordedTotal = 0
+
+    /** Surfels in the dense map so far: the HUD's "N surfaces" count. `0` without raw depth. */
+    val denseCount: Int get() = denseTotal.get()
 
     /** The scan as it grows. Its thumbnails fill in as the photos are encoded. */
     val live = RerunReplayMedia(trace, manifest(emptyMap()), emptyMap(), thumbnails, ByteArray(0), growing = true)
@@ -116,11 +149,63 @@ internal class ScanCapture private constructor(
     }
 
     /**
+     * ARCore's raw depth of [frame] when it is new — its timestamp moved since the last one fused —
+     * and no fusion is running; `null` otherwise, or without [rawDepth]. Close it this frame.
+     */
+    fun acquireDepth(frame: Frame): ScanDepth? {
+        if (fusion == null || fusing.get() || !depthGate.isDue(frame.timestamp)) return null
+        val depth = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull() ?: return null
+        if (depth.timestamp == lastDepthNanos) {
+            depth.close()
+            return null
+        }
+        lastDepthNanos = depth.timestamp
+        depthGate.mark(frame.timestamp)
+        val confidence = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
+        return ScanDepth(depth, confidence, frame.camera.pose.toScanPose())
+    }
+
+    /**
+     * Fuses [depth] into the dense map, coloured from [image] (the same frame's camera image):
+     * the depth, its confidence and one colour per kept pixel are copied here, on the main thread,
+     * then back-projected and merged on [Dispatchers.Default].
+     */
+    fun fuseDepth(depth: ScanDepth, image: ScanImage) {
+        val fusion = fusion ?: return
+        val frame = depth.copy(intrinsics, image.yuv) ?: return
+        fusing.set(true)
+        fuseJob = scope.launch(Dispatchers.Default) {
+            try {
+                val stats = fusion.add(DepthBackProjection.project(frame))
+                denseAdded.addAndGet(stats.added)
+                denseKept.addAndGet(stats.kept)
+                denseTotal.set(stats.total)
+            } finally {
+                fusing.set(false)
+            }
+        }
+    }
+
+    /**
+     * Writes into [trace] how far the dense map has grown since the last call, stamped [nanos] —
+     * the frame that learns of it — so a replay reveals the cloud as it was found. Main thread.
+     */
+    fun recordDepthStats(nanos: Long) {
+        val total = denseTotal.get()
+        if (total == recordedTotal) return
+        recordedTotal = total
+        trace.addDepthStats(nanos, denseAdded.getAndSet(0), denseKept.getAndSet(0), total)
+    }
+
+    /**
      * Stops the scan, waits for the last photos, and builds it into the capture the sessions list
      * keeps — its planes painted from its photos. `null` for a scan that caught nothing. Call it
      * on the main thread, where the recorder writes: the journal is taken there, then let go.
      */
     suspend fun finish(): RerunCapturePack? {
+        // The fusion under way finishes first, and its last growth goes on the timeline.
+        fuseJob?.join()
+        trace.journal?.lastOrNull()?.let { recordDepthStats(it.nanos) }
         val events = trace.journal?.toList().orEmpty()
         trace.journal = null
         jobs.toList().joinAll()
@@ -130,7 +215,17 @@ internal class ScanCapture private constructor(
             val pose = poses[image.path] ?: return@mapNotNull null
             ScanPhoto(image.path, jpeg, pose)
         }
-        return RerunCaptureBuilder.build(events, lens, photos)
+        val started = System.nanoTime()
+        val dense = fusion?.takeIf { it.count > 0 }?.let { f -> withContext(Dispatchers.Default) { f.cloud() } }
+        val denseMs = (System.nanoTime() - started) / 1_000_000
+        // The tier the scan really reached: raw depth on but no surfel is a sparse scan, said so.
+        val device = ScanDevice(
+            platform = "android",
+            model = Build.MODEL.orEmpty(),
+            tier = if (dense != null) ScanDevice.TIER_DEPTH else ScanDevice.TIER_SPARSE,
+            depthSource = if (dense != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
+        )
+        return RerunCaptureBuilder.build(events, lens, photos, device, dense, DenseFusion.VOXEL_M, denseMs)
     }
 
     private fun manifest(spans: Map<String, MediaSpan>) = ReplayManifest(
@@ -147,7 +242,7 @@ internal class ScanCapture private constructor(
          * A scan for the camera of [frame], or `null` while ARCore does not know its lens yet.
          * The photos keep the frame's orientation, portrait or landscape, for the whole scan.
          */
-        fun start(frame: Frame, scope: CoroutineScope): ScanCapture? {
+        fun start(frame: Frame, scope: CoroutineScope, rawDepth: Boolean = false): ScanCapture? {
             val camera = frame.camera
             val intrinsics = camera.scanIntrinsics() ?: return null
             val lens = ScanProjection.displayLens(
@@ -155,8 +250,11 @@ internal class ScanCapture private constructor(
                 camera.pose.toScanPose(),
                 camera.displayOrientedPose.toScanPose(),
             )
-            return ScanCapture(intrinsics, lens, scope)
+            return ScanCapture(intrinsics, lens, scope, rawDepth)
         }
+
+        /** 100 ms between two fused depth keyframes. */
+        const val DEPTH_INTERVAL_NS = 100_000_000L
 
         /** 240×320, the bundled replay's own frame size: ~15 KB of JPEG each. */
         private const val PHOTO_LONG_SIDE = 320
@@ -188,6 +286,74 @@ internal class ScanImage(private val image: Image, val yuv: YuvFrame, val sensor
     }
 
     override fun close() = image.close()
+}
+
+/**
+ * ARCore's raw depth for one frame — DEPTH16 millimetres and, when ARCore gives one, its Y8
+ * confidence — with the pose of the camera that took it. Close it before the frame ends.
+ */
+internal class ScanDepth(private val depth: Image, private val confidence: Image?, val sensor: DebugPose) :
+    AutoCloseable {
+    /**
+     * The depth copied out of ARCore's buffers, each pixel coloured from [yuv] (the camera image,
+     * which the depth image is aligned with), the lens scaled from [intrinsics] (the camera
+     * image's) to the depth image. `null` for a depth image that cannot be read, or that comes
+     * without its confidence image.
+     */
+    @Suppress("ReturnCount", "LoopWithTooManyJumpStatements") // one skip per unusable pixel
+    fun copy(intrinsics: ScanIntrinsics, yuv: YuvFrame): DepthFrame? {
+        val w = depth.width
+        val h = depth.height
+        if (w <= 1 || h <= 1) return null
+        val plane = depth.planes.firstOrNull() ?: return null
+        val depthRow = plane.rowStride / 2
+        val shorts = plane.buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        val mm = ShortArray(w * h)
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val at = y * depthRow + x
+                mm[y * w + x] = if (at < shorts.limit()) shorts.get(at) else 0
+            }
+        }
+        val conf = confidence?.takeIf { it.width == w && it.height == h }?.planes?.firstOrNull()?.let { c ->
+            val bytes = c.buffer.duplicate()
+            val row = c.rowStride
+            val pixel = c.pixelStride.coerceAtLeast(1)
+            ByteArray(w * h) { i ->
+                val at = (i / w) * row + (i % w) * pixel
+                if (at < bytes.limit()) bytes.get(at) else 0
+            }
+        } ?: return null // unfiltered raw depth is too noisy to keep: skip the frame
+        // Colour only the pixels the back-projection can keep: the others cost a YUV read for nothing.
+        val sx = yuv.width.toFloat() / w
+        val sy = yuv.height.toFloat() / h
+        val colors = IntArray(w * h)
+        for (i in 0 until w * h) {
+            val d = mm[i].toInt() and 0xFFFF
+            if (d == 0) continue
+            if ((conf[i].toInt() and 0xFF) < DepthBackProjection.MIN_CONFIDENCE) continue
+            colors[i] = yuv.argb(((i % w) * sx + sx * 0.5f).toInt(), ((i / w) * sy + sy * 0.5f).toInt())
+        }
+        val kx = w.toFloat() / intrinsics.width
+        val ky = h.toFloat() / intrinsics.height
+        return DepthFrame(
+            width = w,
+            height = h,
+            depthMm = mm,
+            confidence = conf,
+            colors = colors,
+            fx = intrinsics.fx * kx,
+            fy = intrinsics.fy * ky,
+            cx = intrinsics.cx * kx,
+            cy = intrinsics.cy * ky,
+            pose = sensor,
+        )
+    }
+
+    override fun close() {
+        depth.close()
+        confidence?.close()
+    }
 }
 
 private fun Image.toYuvFrame(): YuvFrame {

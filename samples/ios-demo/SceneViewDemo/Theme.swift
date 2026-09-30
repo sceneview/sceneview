@@ -90,6 +90,12 @@ enum SceneViewTokens {
     enum Stage {
         static let background = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
 
+        /// Widest the HD poster draws, in points. Its render is 600 px wide:
+        /// on a phone the stage width (~350 pt) already stays under this, and
+        /// on an iPad it keeps the upscale near the phone's instead of
+        /// stretching the render across a 1,000-point stage (3.4x).
+        static let posterMaxWidth: CGFloat = 400
+
         /// Fills for primitives that must stay apart on the stage — Android's
         /// `SceneViewColors.Ramp4`: `primary` light #005BC1, `gradient-hero` end
         /// #6446CD, `primary` dark #A4C1FF, `tertiary` dark #D2A8FF. Fixed in both
@@ -105,12 +111,48 @@ enum SceneViewTokens {
         /// highlight" status colour. Warm and outside `shapeRamp`, so a pick
         /// reads at a glance against the blue and violet fills.
         static let shapePicked = UIColor(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255, alpha: 1)
+
+        /// Stage sky behind a physical set (Rolling Balls, #4083) — Android's
+        /// `themedStageSky()` (#4089), drawn as a gradient because the tray's
+        /// camera looks down: the top of the frame is the horizon
+        /// (`surface-container`, #FFFFFF / #232A39), the bottom the zenith ground
+        /// (#F1F3F5 / `stage-background` #0B0F16). Never a black void.
+        static let skyHorizon = Color(
+            light: .white,
+            dark: Color(red: 0x23 / 255, green: 0x2A / 255, blue: 0x39 / 255)
+        )
+        static let skyGround = Color(
+            light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
+            dark: Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+        )
+
+        /// The Rolling Balls tray floor — Android's `StageSky.floor`:
+        /// `surface-container-highest` light (#E9ECEF), `surface-dim` dark
+        /// (#161B22). RealityKit does not resolve dynamic colours, so the demo
+        /// picks one per colour scheme.
+        static func trayFloor(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x16 / 255, green: 0x1B / 255, blue: 0x22 / 255, alpha: 1)
+                 : UIColor(red: 0xE9 / 255, green: 0xEC / 255, blue: 0xEF / 255, alpha: 1)
+        }
+
+        /// The Rolling Balls tray rails — `accent-deep` (#5A32A3), Android's
+        /// `SceneViewColors.AccentDeep`.
+        static let trayRail = UIColor(red: 0x5A / 255, green: 0x32 / 255, blue: 0xA3 / 255, alpha: 1)
+
+        /// The Lighting stage floor — Android's `LightingStage.FLOOR_COLOR` (#2A3346): a
+        /// blue-grey slate dark enough for a contact shadow, light enough to catch the key.
+        /// Fixed in both themes, like the stage.
+        static let lightingFloor = UIColor(red: 0x2A / 255, green: 0x33 / 255, blue: 0x46 / 255, alpha: 1)
     }
 
     /// `DESIGN.md` — Spatial Gallery overlay colours.
     enum SpatialGalleryColor {
         static let stageScrimStart = Color.clear
         static let stageScrimEnd = Color.black.opacity(0.90)
+        /// `glass-surface`, dark value — the source pill on the Explore hero. It sits on the
+        /// media scrim, never on a page, so it keeps the dark value in both themes (Android's
+        /// `SpatialGalleryColor.glassSurfaceDark`).
+        static let glassSurfaceDark = Color.white.opacity(0.05)
     }
 
     /// `DESIGN.md` — Liquid Glass, the "button glass" row, as the demo chrome uses it.
@@ -158,12 +200,20 @@ enum SceneViewTokens {
     /// `type-title 22/600`, `type-card 17/600`, `type-body 15/400`,
     /// `type-caption 13/500`.
     enum TypeScale {
+        /// Default-size point sizes, for text that scales them with Dynamic
+        /// Type (`@ScaledMetric`) — the home card captions.
+        static let titleSize: CGFloat = 22
+        static let cardSize: CGFloat = 17
+        static let bodySize: CGFloat = 15
+        static let captionSize: CGFloat = 13
+        static let trackingTight: CGFloat = -0.02
+
         static let display = Font.system(size: 32, weight: .bold)
         static let displayTracking: CGFloat = -0.02 * 32
-        static let title = Font.system(size: 22, weight: .semibold)
-        static let titleTracking: CGFloat = -0.02 * 22
-        static let card = Font.system(size: 17, weight: .semibold)
-        static let body = Font.system(size: 15, weight: .regular)
+        static let title = Font.system(size: titleSize, weight: .semibold)
+        static let titleTracking: CGFloat = trackingTight * titleSize
+        static let card = Font.system(size: cardSize, weight: .semibold)
+        static let body = Font.system(size: bodySize, weight: .regular)
         static let bodyMedium = Font.system(size: 15, weight: .medium)
         static let bodySemibold = Font.system(size: 15, weight: .semibold)
         static let caption = Font.system(size: 13, weight: .medium)
@@ -190,6 +240,14 @@ enum SceneViewTokens {
         static let heroSubtitle = Color.white.opacity(0.80)
         static let heroPillBackground = Color.white
         static let heroPillText = Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x2E / 255)
+        /// `DESIGN.md` `hero-sky-*`: the dusk gradient painted behind the
+        /// transparent live flight on the home stage (#3948). One gradient in
+        /// both themes — the hero stays dark. The horizon stop is also the
+        /// flight's fog colour, so the far ridges dissolve into it.
+        static let heroSkyTop = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+        static let heroSkyDusk = Color(red: 0x3B / 255, green: 0x1D / 255, blue: 0x46 / 255)
+        static let heroSkyHorizon = Color(red: 0xE2 / 255, green: 0x73 / 255, blue: 0x4F / 255)
+        static let heroSkyGround = Color(red: 0x2A / 255, green: 0x12 / 255, blue: 0x20 / 255)
         /// Hero stage field — an **embedded** stage, so it follows the
         /// container scale in dark rather than the full-screen stage colour.
         ///
@@ -212,10 +270,15 @@ enum SceneViewTokens {
             light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
             dark: Color(red: 0x22 / 255, green: 0x28 / 255, blue: 0x31 / 255)
         )
-        /// `chip-text` = `on-surface-dim` — #3D4654 / #9CA3AF.
+        /// `chip-text` = `on-surface-dim` — #3D4654 / #A4ABB7.
+        ///
+        /// Dark was #9CA3AF, the value `DESIGN.md` retired with the surface-ramp
+        /// lift (Android's `onSurfaceVariant` moved with it). Over the dark
+        /// `card-glass` composited on a white picture it measured 4.16:1; #A4ABB7
+        /// holds 4.55:1 there.
         static let chipText = Color(
             light: Color(red: 0x3D / 255, green: 0x46 / 255, blue: 0x54 / 255),
-            dark: Color(red: 0x9C / 255, green: 0xA3 / 255, blue: 0xAF / 255)
+            dark: Color(red: 0xA4 / 255, green: 0xAB / 255, blue: 0xB7 / 255)
         )
         /// DESIGN.md `chip-selected-bg` in light; `primary` in dark.
         ///
@@ -276,6 +339,34 @@ enum SceneViewTokens {
             light: Color(red: 0x00 / 255, green: 0x5B / 255, blue: 0xC1 / 255),
             dark: Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
         )
+        /// `surface-container-high` — #F1F3F5 / #2C3546, "a container on a
+        /// container". Its dark luminance is the one a home row's ambient tint
+        /// is solved to (`HomeAmbient.luminanceDark`).
+        static let surfaceContainerHigh = Color(
+            light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
+            dark: Color(red: 0x2C / 255, green: 0x35 / 255, blue: 0x46 / 255)
+        )
+        /// Home-section accents, sampled evenly along `gradient-hero` —
+        /// `primary` (#005BC1 / #A4C1FF) to `tertiary` (#6446CD / #D2A8FF) —
+        /// verbatim from Android's `DemoCategoryAccent` (samples/common). They
+        /// tint the "New" / "Updated" chip of a home card, as on Android.
+        static let sectionAccentView3D = primary
+        static let sectionAccentCreate = Color(
+            light: Color(red: 0x19 / 255, green: 0x56 / 255, blue: 0xC4 / 255),
+            dark: Color(red: 0xB0 / 255, green: 0xBB / 255, blue: 0xFF / 255)
+        )
+        static let sectionAccentPlaceAR = Color(
+            light: Color(red: 0x32 / 255, green: 0x50 / 255, blue: 0xC7 / 255),
+            dark: Color(red: 0xBB / 255, green: 0xB4 / 255, blue: 0xFF / 255)
+        )
+        static let sectionAccentUnderstand = Color(
+            light: Color(red: 0x4B / 255, green: 0x4B / 255, blue: 0xCA / 255),
+            dark: Color(red: 0xC6 / 255, green: 0xAE / 255, blue: 0xFF / 255)
+        )
+        static let sectionAccentDevTools = Color(
+            light: Color(red: 0x64 / 255, green: 0x46 / 255, blue: 0xCD / 255),
+            dark: Color(red: 0xD2 / 255, green: 0xA8 / 255, blue: 0xFF / 255)
+        )
         /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
         static let onPrimary = chipSelectedText
         /// M3 `secondary-container` — #D9E3F8 / #3D4758, Android's
@@ -323,19 +414,19 @@ enum SceneViewTokens {
             light: .white,
             dark: Color(red: 0x0D / 255, green: 0x11 / 255, blue: 0x17 / 255)
         )
-        /// DESIGN.md Surfaces, `surface-container` — #FFFFFF / #22293E.
+        /// DESIGN.md Surfaces, `surface-container` — #FFFFFF / #232A39.
         /// A lighter fill supplies dark elevation without a black shadow.
         ///
         /// Dark was #161C2C: 1.11:1 on `surface`, so every card, tile and row
         /// dissolved into the page and the screen read as one flat sheet.
-        /// #22293E clears 1.25:1, the floor at which a container's background
-        /// is actually visible. (On a near-black page the flare term of the
-        /// WCAG ratio puts that floor at L* >= 15.1 — nothing darker can reach
-        /// it, whatever the page is set to.)
-        static let surfaceContainer = Color(
-            light: .white,
-            dark: Color(red: 0x22 / 255, green: 0x29 / 255, blue: 0x3E / 255)
-        )
+        /// #232A39 (1.32:1, the DESIGN.md and Android value; iOS briefly
+        /// carried #22293E, 1.31:1) clears 1.25:1, the floor at which a
+        /// container's background is actually visible. (On a near-black page
+        /// the flare term of the WCAG ratio puts that floor at L* >= 15.1 —
+        /// nothing darker can reach it, whatever the page is set to.)
+        static let surfaceContainer = Color(light: surfaceContainerLight, dark: surfaceContainerDark)
+        private static let surfaceContainerLight = Color.white
+        private static let surfaceContainerDark = Color(red: 0x23 / 255, green: 0x2A / 255, blue: 0x39 / 255)
         /// Derived from DESIGN.md dark `glass-surface`: 5 % white composited
         /// over `surface-container`, rounded to #2F3549. Kept opaque so artwork
         /// cannot bleed through floating status chips or the search field.
@@ -346,8 +437,35 @@ enum SceneViewTokens {
             light: .white,
             dark: Color(red: 0x2F / 255, green: 0x35 / 255, blue: 0x49 / 255)
         )
-        /// Legacy light appearance only; dark uses `header-overlay` at 100 %.
-        static let headerOverlayAlpha: Double = 0.94
+        /// DESIGN.md `header-overlay`: `surface` at 100 % in both modes. Light
+        /// was 0.94; under the full-bleed Featured cards the 6 % see-through
+        /// read as an overlap bug behind the wordmark and the status bar.
+        /// Since #4201 the header is glass once the list scrolls under it
+        /// (`header-glass`: Liquid Glass on iOS 26, the material below), and
+        /// this opaque fill only backs the open search field.
+        static let headerOverlayAlpha: Double = 1
+        /// DESIGN.md `header-glass`: `surface` at **72 %** in light and **78 %**
+        /// in dark over the blurred list, as on Android. Bare Liquid Glass let
+        /// the row titles under the wordmark stay readable (measured on the
+        /// iOS 26 simulator, #4201) — the overlap bug `header-overlay` exists
+        /// to avoid — so the glass carries the same surface veil.
+        static let headerGlassAlphaLight: Double = 0.72
+        static let headerGlassAlphaDark: Double = 0.78
+
+        /// `card-glass` — the frosted caption of a home card: `surface-container`
+        /// at **80 %** in light and **90 %** in dark (the `glass-sheet` value),
+        /// laid over a blurred copy of the card's own picture, so each caption is
+        /// tinted by what it shows. Android's `cardGlassAlphaLight/Dark` (#4144).
+        ///
+        /// The blur averages the picture, so the worst ground is a uniform one:
+        /// light over black holds `on-surface` 10.6:1 and `on-surface-dim`
+        /// 5.9:1; dark over white 9.5:1 and 4.55:1. At 72 % a dark picture turned
+        /// the light glass a muddy grey; at 85 % the Animation card's light-grey
+        /// stage took the dark caption under AA.
+        static let cardGlass = Color(
+            light: surfaceContainerLight.opacity(0.80),
+            dark: surfaceContainerDark.opacity(0.90)
+        )
     }
 
     /// Home screen geometry (`home-*` tokens).
@@ -357,8 +475,6 @@ enum SceneViewTokens {
         static let searchFieldHeight: CGFloat = 48
         static let contentPadding: CGFloat = 20
         static let gridGutter: CGFloat = 12
-        static let gridMinCell: CGFloat = 156
-        static let gridMinCellExpanded: CGFloat = 220
         static let heroHeight: CGFloat = 320
         static let heroHeightExpanded: CGFloat = 400
         static let heroPadding: CGFloat = 24
@@ -372,9 +488,10 @@ enum SceneViewTokens {
         static let chipPaddingHorizontal: CGFloat = 16
         static let gridTopGap: CGFloat = 20
         /// DESIGN.md `section-header-top-gap` / `section-header-bottom-gap`:
-        /// space above a catalogue section header, and from it to its first row.
-        static let sectionHeaderTopGap: CGFloat = 32
-        static let sectionHeaderBottomGap: CGFloat = 16
+        /// space above a catalogue section header (`space-sm` for the first one,
+        /// right under the chips), and from it to its group of rows.
+        static let sectionHeaderTopGap: CGFloat = 24
+        static let sectionHeaderBottomGap: CGFloat = 12
         static let gridBottomInset: CGFloat = 32
         static let cardRadius: CGFloat = 20
         static let cardTextPaddingTop: CGFloat = 12
@@ -383,6 +500,80 @@ enum SceneViewTokens {
         static let cardOutlineWidth: CGFloat = 1
         static let iconTileGlyph: CGFloat = 40
         static let heroScrimStart: CGFloat = 0.5
+        /// How far the home stage runs past the hero band before it has faded
+        /// into the page — Android's `heroStageBleed`.
+        static let heroStageBleed: CGFloat = 48
+        /// Where the horizon sits down the stage sky, as a fraction of its height.
+        static let heroSkyHorizon: CGFloat = 0.44
+        /// Where the sun sits across the stage, as a fraction of its width.
+        static let heroSunX: CGFloat = 0.31
+
+        /// `card-media-aspect` — a catalogue card's picture is square: the
+        /// caption no longer sits in a box of its own under it (#4144).
+        static let cardMediaAspect: CGFloat = 1
+        /// `card-glass-blur` — 28 pt, the blur of the picture copy under a card
+        /// caption. Compose passes it as a `RenderEffect` radius, which Skia turns
+        /// into a Gaussian sigma of `0.577 × radius + 0.5`; SwiftUI's `blur(radius:)`
+        /// takes the sigma itself, hence ``cardGlassBlurSigma``.
+        static let cardGlassBlur: CGFloat = 28
+        static let cardGlassBlurSigma: CGFloat = cardGlassBlur * 0.57735 + 0.5
+        /// `card-glass-melt` — the band over which the sharp picture dissolves
+        /// into the frosted caption (the fade spans twice this, centred on the
+        /// caption's top).
+        static let cardGlassMelt: CGFloat = 28
+        /// Explore's "Try a demo" card — Android's `SAMPLE_CARD_WIDTH`
+        /// (`hero-stage-height` 360 less `space-3xl` 64).
+        static let sampleCardWidth: CGFloat = 296
+        /// Fraction of the band's scroll travel the sky and the flight lag behind.
+        static let heroParallax: CGFloat = 0.35
+
+        // Home list (`home-row-*` / `home-banner-*` in DESIGN.md): under the 3D
+        // header every demo is a row whose picture runs to the row's edges and
+        // dissolves into the picture's own colour (`HomeAmbient`). Android's
+        // `SceneViewTokens.Home.row*` / `banner*`, same values.
+
+        /// `home-row-height` — minimum height of a `home-row`; it grows with
+        /// Dynamic Type, never truncates.
+        static let rowHeight: CGFloat = 116
+        /// `home-row-radius` — every row is its own rounded card (`radius-lg`).
+        static let rowRadius: CGFloat = 20
+        /// `home-row-gap` — page between two rows.
+        static let rowGap: CGFloat = 10
+        /// `home-row-media-fraction` — share of a `home-row`'s width the picture
+        /// covers, top to bottom.
+        static let rowMediaFraction: CGFloat = 0.5
+        /// `home-row-dissolve` — where, along the picture, the dissolve into the
+        /// row's tint starts.
+        static let rowDissolveStart: CGFloat = 0.42
+        /// `home-row-text-start` — where the text starts, as a share of the row:
+        /// over the last, nearly clear part of the dissolve.
+        static let rowTextStartFraction: CGFloat = 0.44
+        /// Text insets of a row: `space-md` at the trailing edge, 14 pt down.
+        static let rowTextPaddingEnd: CGFloat = 16
+        static let rowTextPaddingVertical: CGFloat = 14
+        /// Title-to-subtitle gap inside a row.
+        static let rowTextGap: CGFloat = 4
+        /// The glyph of a row with no capture ("Browse online models").
+        static let rowGlyph: CGFloat = 40
+        /// Opacity of the accent wash behind that glyph.
+        static let rowGlyphWashAlpha: Double = 0.18
+        /// `home-banner-aspect` — a `home-banner`'s picture is twice as wide as high.
+        static let bannerAspect: CGFloat = 2
+        /// `home-banner-dissolve` — where, down the picture, the dissolve starts.
+        static let bannerDissolveStart: CGFloat = 0.55
+        /// How far a banner's caption is pulled up into its dissolve.
+        static let bannerCaptionOverlap: CGFloat = 28
+        /// Side insets of a banner's caption.
+        static let bannerTextPaddingHorizontal: CGFloat = 16
+        /// `home-row-min-width` — from two of these across, the list goes
+        /// multi-column (an iPad).
+        static let rowMinWidth: CGFloat = 340
+        /// `home-group-gap` — between two groups with no section header between
+        /// them ("Featured" and "Browse online models").
+        static let groupGap: CGFloat = 16
+        /// Opacity of `on-surface` over a row while it is pressed — the M3
+        /// pressed state layer, Android's ripple. No scale: a row is a list item.
+        static let rowPressedAlpha: Double = 0.10
     }
 
     /// `DESIGN.md` — Demo App About (`about-*`), the iOS twin of Android's
@@ -392,6 +583,32 @@ enum SceneViewTokens {
         /// `radius-xl`. The same picture in light and dark: it is the
         /// product's identity, not a themed surface.
         static let markSize: CGFloat = 80
+        /// The band the SceneView mark floats in, in 3D. iOS is ahead here:
+        /// Android `main` still shows the flat icon, and its 3D stage
+        /// (`About.stageHeight`, with the `DESIGN.md` token) comes with the
+        /// Android PR from `wow/demo-shell-android`. The launcher icon
+        /// (`markSize`) stands at the band's centre until the stage has drawn.
+        static let stageHeight: CGFloat = 176
+        /// Width of the soft contact shadow under the floating mark.
+        static let stageShadowWidth: CGFloat = 132
+        /// Height of that shadow — a flat ellipse the mark hovers above.
+        static let stageShadowHeight: CGFloat = 18
+    }
+
+    /// The SceneView mark as a 3D object — Android's `SceneViewTokens.MarkColor`.
+    enum MarkColor {
+        /// The cube body — the mark's right face (`#3D7FD9`); the key light
+        /// shades the rest.
+        static let body = (r: 0x3D / 255.0, g: 0x7F / 255.0, b: 0xD9 / 255.0)
+        /// The lid inset on the top face — the mark's inner highlight (`#BDD3FF`).
+        static let lid = (r: 0xBD / 255.0, g: 0xD3 / 255.0, b: 0xFF / 255.0)
+        /// The two orbit rings and their satellites — the mark's top face (`#A4C1FF`).
+        static let orbit = (r: 0xA4 / 255.0, g: 0xC1 / 255.0, b: 0xFF / 255.0)
+        /// Contact shadow under the mark, at its core; transparent at the rim.
+        static let shadow = Color(
+            light: Color(red: 0x0B / 255, green: 0x1B / 255, blue: 0x3A / 255).opacity(0x2E / 255.0),
+            dark: Color.black.opacity(0x8C / 255.0)
+        )
     }
 
     /// `DESIGN.md` — Motion: the `ease-expressive` curve, the three durations,
@@ -453,6 +670,20 @@ enum SceneViewTokens {
         static let x2l: CGFloat = 48
     }
 
+    /// `DESIGN.md` — Shadows, light mode (dark draws a hairline instead).
+    /// Each is two CSS box-shadows; a CSS blur is twice a SwiftUI radius.
+    enum Shadow {
+        struct Layer {
+            let opacity: Double
+            let radius: CGFloat
+            let y: CGFloat
+        }
+        /// `shadow-sm` — 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06).
+        static let sm = [Layer(opacity: 0.08, radius: 1.5, y: 1), Layer(opacity: 0.06, radius: 1, y: 1)]
+        /// `shadow-md` — 0 4px 12px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06).
+        static let md = [Layer(opacity: 0.10, radius: 6, y: 4), Layer(opacity: 0.06, radius: 2, y: 2)]
+    }
+
     /// `DESIGN.md` — Corner radius scale (`radius-*`).
     enum Radius {
         static let xs: CGFloat = 8
@@ -477,6 +708,8 @@ enum SceneViewTokens {
         static let selectedOutlineWidth: CGFloat = 2
         /// `media-aspect` — 5:4 home card media.
         static let mediaAspect: CGFloat = 1.25
+        /// `hero-stage-height` — the Explore hero stage.
+        static let heroStageHeight: CGFloat = 360
         /// Width of the leading-edge strip that listens for the demo host's
         /// swipe-to-dismiss. Narrow on purpose: the rest of the screen belongs
         /// to the scene's own orbit / pan gestures.

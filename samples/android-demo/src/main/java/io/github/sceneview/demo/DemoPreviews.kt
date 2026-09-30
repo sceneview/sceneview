@@ -22,7 +22,10 @@ object DemoPreviews {
 
     /** `id` → light/dark drawable pair. Filled by the image pipeline. */
     private val previews: Map<String, PreviewPair> = mapOf(
+        // A real capture of the demo's galaxy, the same frame in both themes: space is black either way.
+        "cosmos" to PreviewPair(R.drawable.preview_cosmos_light, R.drawable.preview_cosmos_dark),
         "animation-physics" to PreviewPair(R.drawable.preview_animation_physics_light, R.drawable.preview_animation_physics_dark),
+        "rolling-balls" to PreviewPair(R.drawable.preview_rolling_balls_light, R.drawable.preview_rolling_balls_dark),
         "ar-body-tracker" to PreviewPair(R.drawable.preview_ar_body_tracker_light, R.drawable.preview_ar_body_tracker_dark),
         "ar-cloud-anchor" to PreviewPair(R.drawable.preview_ar_cloud_anchor_light, R.drawable.preview_ar_cloud_anchor_dark),
         "ar-collaborative" to PreviewPair(R.drawable.preview_ar_collaborative_light, R.drawable.preview_ar_collaborative_dark),

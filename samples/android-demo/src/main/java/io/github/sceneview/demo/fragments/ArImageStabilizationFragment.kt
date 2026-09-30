@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Texture
+import androidx.compose.material.icons.filled.VideoStable
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArImageStabilizationFragment : DemoFragment {
         titleRes = R.string.demo_ar_image_stabilization_title,
         subtitleRes = R.string.demo_ar_image_stabilization_subtitle,
         category = DemoCategory.UNDERSTAND,
-        icon = Icons.Filled.Texture,
-        order = 34,
+        icon = Icons.Filled.VideoStable,
+        order = 48,
         tags = setOf("ar", "camera", "stabilization", "eis"),
     )
 

@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        hand.pinch.fill
-// @order       7
+// @order       36
 import SwiftUI
 
 enum GestureEditingScene: DemoScene {

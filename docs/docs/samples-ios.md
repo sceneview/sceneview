@@ -11,7 +11,7 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **45 demos** covering every category.
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.47.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.50.0")
 ```
 
 All demo source files live in
@@ -65,12 +65,12 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Physics | [`PhysicsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/PhysicsDemo.swift) | Rigid-body simulation — tap to spawn bouncing balls |
+| Rolling Balls | [`RollingBallsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift) | Drop rubber, steel and foam balls on a tray, tilt it, knock the opening pyramid over |
 | Double Pendulum | [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift) | Chaotic double-pendulum physics |
 | Custom Mesh | [`CustomMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CustomMeshDemo.swift) | `MeshNode.fromVertices` — raw vertex data |
 | PBR Materials | [`MaterialsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift) | Full PBR material parameter explorer |
 | Spatial Audio | [`SpatialAudioDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/SpatialAudioDemo.swift) | `SpatialAudioNode` — positional audio tied to scene entities |
-| Reflection Probes | [`ReflectionProbesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ReflectionProbesDemo.swift) | Local cubemap reflection probes |
+| Lighting Lab | [`LightingLabDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightingLabDemo.swift) | Environment intensity, sky, sunset reflection probe with a camera zone |
 | Shape Extrude | [`ShapeExtrudeDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ShapeExtrudeDemo.swift) | `ShapeNode` — extrude a 2D path into a 3D solid |
 | Occlusion Material | [`OcclusionMaterialDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OcclusionMaterialDemo.swift) | Occluder plane that hides entities behind virtual geometry |
 | Debug Overlay | [`DebugOverlayDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DebugOverlayDemo.swift) | Live FPS counter + sphere stress test |

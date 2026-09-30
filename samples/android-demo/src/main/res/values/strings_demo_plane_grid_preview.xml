@@ -6,5 +6,6 @@
      emulator — no ARCore / physical AR device required (#2224). -->
 <resources>
     <string name="demo_plane_grid_preview_title">AR Plane Grid Preview</string>
+    <string name="plane_grid_preview_dots">Dots (Plane Renderer V2)</string>
     <string name="demo_plane_grid_preview_subtitle">The AR plane-detection grid material on a static surface — no camera needed</string>
 </resources>

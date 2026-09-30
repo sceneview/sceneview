@@ -6,8 +6,9 @@
 // @available   true
 // @icon        grid
 // @iosOnly     true
-// @order       45
+// @order       47
 // @tags        ar,geospatial,streetscape,mesh,terrain,building
+// @updatedIn   4.35.0
 import SwiftUI
 
 enum ArSceneMeshScene: DemoScene {

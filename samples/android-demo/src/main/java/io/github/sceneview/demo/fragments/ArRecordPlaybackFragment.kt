@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArRecordPlaybackFragment : DemoFragment {
         titleRes = R.string.demo_ar_record_playback_title,
         subtitleRes = R.string.demo_ar_record_playback_subtitle,
         category = DemoCategory.DEV_TOOLS,
-        icon = Icons.Filled.Replay,
-        order = 19,
+        icon = Icons.Filled.RadioButtonChecked,
+        order = 13,
         tags = setOf("ar", "recording", "playback", "session", "mp4", "replay"),
     )
 

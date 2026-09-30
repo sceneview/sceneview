@@ -7,6 +7,8 @@ import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import io.github.sceneview.demo.demoPackage
+import io.github.sceneview.demo.mainActivityComponent
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -51,7 +53,7 @@ class ARDemoPlaybackSmokeTest {
         // class, so any prior `pm grant` is wiped. Without these, the AR demo blocks at
         // the camera-permission prompt and we capture the system dialog instead of the
         // ARSceneView playback.
-        device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.CAMERA")
+        device.executeShellCommand("pm grant $demoPackage android.permission.CAMERA")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
     }
@@ -241,7 +243,7 @@ class ARDemoPlaybackSmokeTest {
     private fun launchDemo(demoSlug: String, playbackFile: String? = null) {
         val playbackArg = playbackFile?.let { " --es ar_playback_file $it" } ?: ""
         device.executeShellCommand(
-            "am start -n io.github.sceneview.demo/.MainActivity " +
+            "am start -n $mainActivityComponent " +
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK so onNewIntent fires for the second-and-onward fixture
                 "--es demo $demoSlug$playbackArg"
         )

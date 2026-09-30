@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        speaker.wave.3.fill
-// @order       37
+// @order       12
 // @tags        audio,sound,spatial,3d-audio,orbit
 import SwiftUI
 

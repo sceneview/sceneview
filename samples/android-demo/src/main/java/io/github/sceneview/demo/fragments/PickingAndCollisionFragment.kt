@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -20,8 +20,8 @@ object PickingAndCollisionFragment : DemoFragment {
         titleRes = R.string.demo_picking_collision_title,
         subtitleRes = R.string.demo_picking_collision_subtitle,
         category = DemoCategory.VIEW_3D,
-        icon = Icons.Filled.CenterFocusStrong,
-        order = 5,
+        icon = Icons.Filled.TouchApp,
+        order = 32,
         tags = setOf("picking", "hit-test", "collision", "ray", "viewnode", "overlay"),
     )
 

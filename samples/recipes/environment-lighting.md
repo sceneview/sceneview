@@ -100,7 +100,8 @@ These are the HDR files bundled with `android-demo` under
 | `studio_warm_2k.hdr` | Warm studio lighting | Product shots with a warmer tone |
 | `outdoor_cloudy_2k.hdr` | Overcast outdoor daylight | Architectural scenes |
 | `chinese_garden_2k.hdr` | Outdoor garden | Natural / scenic scenes |
-| `sunset_2k.hdr` | Warm golden hour | Atmospheric scenes |
+| `sunset_2k.hdr` | Bright cloudy sky over a calm sea (not a sunset, despite the name) | Outdoor daylight |
+| `sky_on_fire_2k.hdr` | Red and orange sunset sky | Warm, atmospheric scenes |
 | `rooftop_night_2k.hdr` | City rooftop at night | Dramatic urban lighting |
 | `night_sky_2k.hdr` | Dark night sky | Dramatic, low-key lighting |
 

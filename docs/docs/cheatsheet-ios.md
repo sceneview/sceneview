@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.47.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.50.0")
 ```
 
 ```swift
@@ -648,7 +648,7 @@ via deep-link as well as the Samples tab.
 | Depth Occlusion | `ar-depth-occlusion` | `ARDepthOcclusionDemo.swift` | Shared automatic placement of the bundled helmet; LiDAR mesh rendering toggle retains pose and scale |
 | People Occlusion | `ar-people-occlusion` | `ARPeopleOcclusionDemo.swift` | Same subject and placement flow; person-segmentation rendering toggle retains pose and scale |
 | AR Recording | `ar-record-playback` | `ARRecorderDemo.swift` | Shared automatic placement; explicit Record/Stop; screen video only, without deterministic AR-session playback |
-| Physics (streamed bodies) | `physics` | `PhysicsDemo.swift` | Ported (bundled cubes + 4 streamed crash-test meshes; capped at 20 active bodies for RealityKit) |
+| Rolling Balls | `rolling-balls` (`physics` aliases here) | `RollingBallsDemo.swift` | Ported (Swift port of the Android tray simulation: rubber, steel and foam balls, tilt, fixed 120 Hz step) |
 
 The pre-1194 placeholder shape — `model-viewer` / `multi-model` routing
 to `SceneGalleryDemo` — is gone. Both deep-links now land on dedicated
@@ -762,8 +762,8 @@ the design notes live in [`arsceneview/docs/JETPACK-XR-INTEGRATION.md`](https://
 
 | Feature | Mobile ARCore (Android phone) | Jetpack XR (Android XR headset) | ARKit phone (`SceneViewSwift`) | visionOS | WebXR |
 |---|---|---|---|---|---|
-| **Hand tracking** | Not available — ARCore phones have no hand perception | `XrHandNode` over `androidx.xr.arcore` `Hand` perception. Foundation (`XrFeatures` gate) shipped in #1738; node tracked in [#1902](https://github.com/sceneview/sceneview/issues/1902) (preview, `1.0.0-alpha14`) | Not available on iPhone/iPad — ARKit has no hand-tracking config; hand tracking is a visionOS-only `ARKit` provider | ARKit `HandTrackingProvider` + `ARKitSession` give per-joint skeletons in an `ImmersiveSpace`. **Not yet wrapped** by `SceneViewSwift` — tracked in [#1902](https://github.com/sceneview/sceneview/issues/1902); drop to raw `HandTrackingProvider` today | WebXR `hand-tracking` feature — tracked in [#1778](https://github.com/sceneview/sceneview/issues/1778) |
-| **Face tracking** | `AugmentedFaceNode` — front-camera, stable, includes the 468-point morphing face mesh | `XrFaceNode` over `androidx.xr.arcore` `Face` perception (headset, alpha). Tracked in [#1903](https://github.com/sceneview/sceneview/issues/1903) (preview, `1.0.0-alpha14`) | `AnchorNode.face()` — **shipped**. Wraps RealityKit `AnchorEntity(.face)` (`ARFaceTrackingConfiguration`); provides face *pose* only, **no mesh**. For the morphing-mesh overlay drop to a raw `ARFaceAnchor` + custom mesh entity | Same `AnchorNode.face()` path — `ARFaceTrackingConfiguration` runs on Vision Pro's front sensors | Not exposed by WebXR |
+| **Hand tracking** | Not available — ARCore phones have no hand perception | `XrHandNode` over `androidx.xr.arcore` `Hand` perception. Foundation (`XrFeatures` gate) shipped in #1738; node tracked in [#1902](https://github.com/sceneview/sceneview/issues/1902) (preview, `1.0.0-beta02`) | Not available on iPhone/iPad — ARKit has no hand-tracking config; hand tracking is a visionOS-only `ARKit` provider | ARKit `HandTrackingProvider` + `ARKitSession` give per-joint skeletons in an `ImmersiveSpace`. **Not yet wrapped** by `SceneViewSwift` — tracked in [#1902](https://github.com/sceneview/sceneview/issues/1902); drop to raw `HandTrackingProvider` today | WebXR `hand-tracking` feature — tracked in [#1778](https://github.com/sceneview/sceneview/issues/1778) |
+| **Face tracking** | `AugmentedFaceNode` — front-camera, stable, includes the 468-point morphing face mesh | `XrFaceNode` over `androidx.xr.arcore` `Face` perception (headset, beta). Tracked in [#1903](https://github.com/sceneview/sceneview/issues/1903) (preview, `1.0.0-beta02`) | `AnchorNode.face()` — **shipped**. Wraps RealityKit `AnchorEntity(.face)` (`ARFaceTrackingConfiguration`); provides face *pose* only, **no mesh**. For the morphing-mesh overlay drop to a raw `ARFaceAnchor` + custom mesh entity | Same `AnchorNode.face()` path — `ARFaceTrackingConfiguration` runs on Vision Pro's front sensors | Not exposed by WebXR |
 | **Body tracking** | Not available — ARCore has no body perception (ML Kit / MediaPipe would be needed) | Not available — `androidx.xr.arcore` exposes only `Hand` + `Face`, no body. Deferred-scope decision recorded in #1738 | `AnchorNode.body()` — **shipped**. Wraps RealityKit `AnchorEntity(.body)` (`ARBodyTrackingConfiguration`); anchors at the detected body's root joint. **ARKit-only** — no Android counterpart on either runtime | `ARBodyTrackingConfiguration` is unavailable on visionOS; no body-tracking path | Not exposed by WebXR |
 
 **iOS maturity summary.** Face and body anchoring are **shipped today** in

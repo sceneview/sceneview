@@ -124,13 +124,13 @@ You can navigate the space using mouse and keyboard.
 // build.gradle.kts (app module)
 dependencies {
     // SceneView 3D
-    implementation("io.github.sceneview:sceneview:4.47.0")
+    implementation("io.github.sceneview:sceneview:4.50.0")
 
     // Jetpack XR Compose (spatial panels, layouts)
-    implementation("androidx.xr.compose:compose:1.0.0-alpha12")
+    implementation("androidx.xr.compose:compose:1.0.0-beta01")
 
     // Jetpack XR SceneCore (session, entities — optional)
-    implementation("androidx.xr.scenecore:scenecore:1.0.0-alpha12")
+    implementation("androidx.xr.scenecore:scenecore:1.0.0-beta02")
 }
 ```
 
@@ -174,7 +174,6 @@ import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.width
 import io.github.sceneview.SceneView
 import io.github.sceneview.createEnvironment
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
@@ -225,10 +224,30 @@ class XRDemoActivity : ComponentActivity() {
 ### Multi-panel layout with controls
 
 ```kotlin
-import androidx.xr.compose.subspace.SpatialRow
-import androidx.xr.compose.subspace.SpatialPanel
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.xr.compose.spatial.Orbiter
-import androidx.compose.material3.*
+import androidx.xr.compose.spatial.OrbiterPosition
+import androidx.xr.compose.spatial.Subspace
+import androidx.xr.compose.subspace.SpatialPanel
+import androidx.xr.compose.subspace.SpatialRow
+import androidx.xr.compose.subspace.layout.SubspaceModifier
+import androidx.xr.compose.subspace.layout.height
+import androidx.xr.compose.subspace.layout.width
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
 
 @Composable
 fun XRShowcase() {
@@ -256,12 +275,8 @@ fun XRShowcase() {
                     }
                 }
 
-                // Orbiter: floating controls anchored to the panel
-                Orbiter(
-                    position = ContentEdge.Bottom,
-                    offset = 96.dp,
-                    alignment = Alignment.CenterHorizontally
-                ) {
+                // Orbiter: floating controls anchored below the panel
+                Orbiter(position = OrbiterPosition.BottomCenter()) {
                     Surface(shape = MaterialTheme.shapes.large) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { /* switch model */ }) {
@@ -319,8 +334,20 @@ procedural geometry, lighting) work unchanged inside the panel.
 Use `LocalSpatialCapabilities` to detect XR at runtime:
 
 ```kotlin
-import androidx.xr.compose.spatial.LocalSpatialCapabilities
-import androidx.xr.compose.spatial.LocalSpatialConfiguration
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.xr.compose.platform.LocalSpatialCapabilities
+import androidx.xr.compose.spatial.Subspace
+import androidx.xr.compose.subspace.SpatialPanel
+import androidx.xr.compose.subspace.layout.SubspaceModifier
+import androidx.xr.compose.subspace.layout.height
+import androidx.xr.compose.subspace.layout.width
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
 
 @Composable
 fun AdaptiveScene() {
@@ -372,7 +399,7 @@ fun SceneViewContent() {
 | Emulator won't boot | Ensure emulator >= 35.6.7: `$ANDROID_HOME/emulator/emulator -version` |
 | Black screen in XR | Enable GPU: set `hw.gpu.enabled=yes` and `hw.gpu.mode=host` in config.ini |
 | No XR device profile in Studio | Use Android Studio Canary, or create AVD via command line (Option B above) |
-| App crashes on launch | Ensure `compileSdk = 34` or higher and XR compose dependency is added |
+| Build fails: `minCompileSdk` 36 | The Jetpack XR AARs declare `minCompileSdk=36` (and AGP 8.9.1+) in their AAR metadata — set `compileSdk = 36` or higher |
 | Filament rendering issues | Increase RAM to 4096M in AVD config; XR rendering is GPU-intensive |
 | `SpatialPanel` not appearing | Wrap in `Subspace {}` and ensure Full Space mode is enabled in manifest |
 | Slow performance | Close other AVDs; XR emulator is resource-intensive on ARM translation |

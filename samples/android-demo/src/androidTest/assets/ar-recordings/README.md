@@ -27,7 +27,7 @@ See [`samples/android-demo/AR_TESTING.md`](../../../AR_TESTING.md) for the full
 record → export → commit workflow. Short version:
 
 ```bash
-adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-record-playback
+adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es demo ar-record-playback
 # … record on device, open Recordings, row menu > Save to Downloads …
 adb pull /sdcard/Download/SceneView/ar-session-<timestamp>.mp4
 mv ar-session-<timestamp>.mp4 samples/android-demo/src/androidTest/assets/ar-recordings/<scenario>.mp4

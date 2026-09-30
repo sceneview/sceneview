@@ -10,10 +10,18 @@ import java.nio.ByteOrder
  *
  * One `vertex` element per point: `float x, y, z` (world space, metres, Y up) and
  * `uchar red, green, blue` (the sRGB colour as recorded). No faces.
+ *
+ * A `.svscan` v2 capture with a dense cloud writes that cloud instead of the sparse one — it is
+ * the room, the sparse points only its landmarks — each vertex followed by its unit normal,
+ * `float nx, ny, nz` ([BYTES_PER_DENSE_POINT] bytes a vertex), the input MeshLab's and Open3D's
+ * surface reconstructions want.
  */
 object RerunPlyWriter {
     /** Bytes per vertex record: three `float`s and three `uchar`s. */
     const val BYTES_PER_POINT = 15
+
+    /** Bytes per dense vertex record: [BYTES_PER_POINT] plus three `float` normal components. */
+    const val BYTES_PER_DENSE_POINT = 27
 
     /** Foundation's `.newlines`: LF, VT, FF, CR, NEL, LINE SEPARATOR, PARAGRAPH SEPARATOR. */
     private val NEWLINES = charArrayOf(
@@ -22,6 +30,7 @@ object RerunPlyWriter {
 
     /** The `.ply` file for [scene]'s point cloud; a point without a colour is written white. */
     fun write(scene: RerunExportScene): ByteArray {
+        scene.dense?.takeIf { it.count > 0 }?.let { return writeDense(scene.title, it) }
         val count = scene.points.size
         val header = header(scene.title, count).toByteArray(Charsets.UTF_8)
         val out = ByteBuffer.allocate(header.size + count * BYTES_PER_POINT).order(ByteOrder.LITTLE_ENDIAN)
@@ -35,8 +44,32 @@ object RerunPlyWriter {
         return out.array()
     }
 
-    /** The ASCII header, `end_header` and its newline included. */
-    fun header(title: String, count: Int): String {
+    /** The dense cloud [cloud] with its normals (`0, 1, 0` for a cloud without any). */
+    private fun writeDense(title: String, cloud: DenseCloud): ByteArray {
+        val count = cloud.count
+        val header = header(title, count, normals = true).toByteArray(Charsets.UTF_8)
+        val out = ByteBuffer.allocate(header.size + count * BYTES_PER_DENSE_POINT).order(ByteOrder.LITTLE_ENDIAN)
+        out.put(header)
+        val normals = cloud.normals
+        for (i in 0 until count) {
+            out.putFloat(cloud.positions[i * 3])
+                .putFloat(cloud.positions[i * 3 + 1])
+                .putFloat(cloud.positions[i * 3 + 2])
+            val c = cloud.colors[i].takeIf { it != 0 } ?: WHITE
+            out.put((c shr 16).toByte()).put((c shr 8).toByte()).put(c.toByte())
+            if (normals != null) {
+                out.putFloat(normals[i * 3]).putFloat(normals[i * 3 + 1]).putFloat(normals[i * 3 + 2])
+            } else {
+                out.putFloat(0f).putFloat(1f).putFloat(0f)
+            }
+        }
+        return out.array()
+    }
+
+    private const val WHITE = 0xFFFFFFFF.toInt()
+
+    /** The ASCII header, `end_header` and its newline included; with [normals], `nx ny nz` last. */
+    fun header(title: String, count: Int, normals: Boolean = false): String {
         // A line break in the title would end the comment line and corrupt the header:
         // each newline character is a separator, as in Foundation's `.newlines`.
         val safeTitle = title.split(*NEWLINES).joinToString(" ")
@@ -50,6 +83,7 @@ object RerunPlyWriter {
             "property uchar red\n" +
             "property uchar green\n" +
             "property uchar blue\n" +
+            (if (normals) "property float nx\nproperty float ny\nproperty float nz\n" else "") +
             "end_header\n"
     }
 }

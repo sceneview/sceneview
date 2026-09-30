@@ -291,20 +291,18 @@ mcp-strategy-report.md
 # fully audit content before promoting to a tracked file.
 samples/android-demo/src/androidTest/assets/ar-recordings/*.mp4
 samples/screenshots/qa_log*.txt
+# qa_android_demos.py output
+samples/screenshots/android/
 
-# QA / device-test artifacts (transient screenshots)
-tools/qa-screenshots/*
-# but keep dated targeted-evidence folders (one per umbrella audit)
-!tools/qa-screenshots/2026-05-14-targeted
-# keep the v4.3.5 emulator QA sweep evidence (#1241)
-!tools/qa-screenshots/android
-tools/qa-screenshots/android/*
-!tools/qa-screenshots/android/v4.3.5-qa
-# keep the before/after overlap evidence for the legend-chip fix (#2957) — a
-# "fixed on the emulator" claim with no frame anyone opened is what #2931 shipped
-!tools/qa-screenshots/2957-legend-overlap
-# keep the light/dark "Scene ready" evidence for the Picking & Collision qa_mode fix (#3795)
-!tools/qa-screenshots/3795-picking-scene-ready
+# QA / device-test artifacts (transient screenshots and recordings).
+# Evidence for a fix belongs in the PR body, linked at a commit SHA or on a
+# qa-captures/* branch, not in every working tree. The evidence folders once
+# kept here (#1241, #2957, #3795) stay reachable in git history.
+tools/qa-screenshots/
+/qa-screenshots/
+docs/site-screenshots/
+docs/ux/captures/*
+!docs/ux/captures/placement-demos.md
 
 # Google Drive / iCloud Drive sync-conflict duplicates.
 # When the same file is touched concurrently in two checkouts of a synced
@@ -336,3 +334,15 @@ __pycache__/
 # fast path whenever this file exists, so every release was graded against one
 # 2026-07-12 run instead of dispatching its own.
 device-qa-report.json
+
+# ── Binary 3D assets (assets/manifest.json) ───────────────
+# Materialised by `bash tools/fetch-assets.sh` from the `assets-v1` GitHub Release;
+# never committed. A new file here goes through `tools/fetch-assets.sh --register`.
+/samples/android-demo/src/main/assets/models/*.glb
+/samples/android-demo/src/main/assets/environments/*.hdr
+/samples/android-demo/src/main/assets/splats/*.spz
+/samples/android-demo/src/main/assets/splats/*.ply
+/samples/android-tv-demo/src/main/assets/models/*.glb
+/samples/ios-demo/SceneViewDemo/Models/*.usdz
+/samples/ios-demo/SceneViewDemo/Environments/*.hdr
+/website-static/models/platforms/*.glb

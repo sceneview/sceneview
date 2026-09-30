@@ -212,6 +212,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
     // The scan's own files, for the export sheet; the sample's are read from the assets there.
     var scanPack by remember { mutableStateOf<RerunCapturePack?>(null) }
+    // The kept session the replay shows, when it was opened from the list: View in AR stands that one.
+    var scanId by remember { mutableStateOf<String?>(null) }
     var exporting by remember { mutableStateOf(qaReplay == RerunReplayQaState.ReplayExport) }
     var opening by remember { mutableStateOf<Job?>(null) }
     // Bumped on every open, so reopening the same replay frames and plays it afresh.
@@ -255,12 +257,20 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     } else {
         sessions?.let { kept -> RoomDollhouse.pickSession(kept.map { it.info }, dollhouseRequest) }
     }
+    // The kept session on the table, said by name and date. A recording handed over already read
+    // (just recorded, or from the replay) without its id is found by its title.
+    val dollhouseShown = when {
+        dollhouseRequest != null || dollhouseMedia == null -> dollhouseSession
+        else -> sessions?.firstOrNull { it.info.title == dollhouseTitle }?.info
+    }
     LaunchedEffect(screen, dollhouseSession?.id) {
         if (screen != RerunScreen.Dollhouse || dollhouseMedia != null || dollhouseFailed) return@LaunchedEffect
         val session = dollhouseSession ?: return@LaunchedEffect
         dollhouseTitle = session.title
         val capture = withContext(Dispatchers.IO) { store.capture(session.id) }
         val opened = capture?.let { runCatching { loadRerunSession(it) }.getOrNull() }
+        // Another recording picked meanwhile: this one no longer stands.
+        if (dollhouseRequest != null && dollhouseRequest != session.id) return@LaunchedEffect
         if (opened == null) dollhouseFailed = true else dollhouseMedia = opened
     }
     val openDollhouse = { id: String?, title: String, media: RerunReplayMedia? ->
@@ -302,6 +312,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         screen = RerunScreen.Replay
     }
     val openScan = { media: RerunReplayMedia, title: String, pack: RerunCapturePack ->
+        scanId = null
         scanMedia = media
         scanTitle = title
         scanPack = pack
@@ -327,6 +338,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 screen = RerunScreen.Landing
             } else {
                 openScan(opened, title, capture)
+                scanId = id
             }
         }
     }
@@ -430,7 +442,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             onExport = { exporting = true },
             // Your own room only: the sample is not a room of yours to stand on a table.
             onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
-                { openDollhouse(null, scanTitle, scan) }
+                { openDollhouse(scanId, scanTitle, scan) }
             },
             engine = engine,
             modelLoader = modelLoader,
@@ -440,6 +452,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             onBack = leaveDollhouse,
             title = dollhouseTitle,
             media = dollhouseMedia,
+            session = dollhouseShown,
+            sessions = sessions.takeUnless { qaState == QA_STATE_DOLLHOUSE_EMPTY },
+            onPickSession = { picked -> openDollhouse(picked.id, picked.title, null) },
             sessionsKnown = sessions != null || dollhouseMedia != null,
             hasSession = dollhouseMedia != null || dollhouseSession != null,
             openFailed = dollhouseFailed,
@@ -737,6 +752,9 @@ private fun RerunLiveScreen(
     // debug session's trace, so the 3D view and the scan are the same data.
     var scan by remember { mutableStateOf<ScanCapture?>(null) }
     var finishing by remember { mutableStateOf(false) }
+    // Rerun v2: whether this phone runs ARCore's raw depth, set when the session is configured.
+    // With it a scan also fuses a dense surfel map (tier "depth"); without it, the sparse v1 scan.
+    var rawDepth by remember { mutableStateOf(false) }
     // QA only (`--es qa_state record`): the Record screen mid-scan, fed by the sample room's
     // log and photos, since the emulator cannot track. Its Stop saves that take like a real
     // scan — the same builder, bake and file — and opens it.
@@ -831,7 +849,7 @@ private fun RerunLiveScreen(
     // Record starts on the frame on screen, whose camera gives the scan its lens.
     val onStartScan = start@{
         val frame = latestFrame ?: return@start
-        val capture = ScanCapture.start(frame, scope) ?: return@start
+        val capture = ScanCapture.start(frame, scope, rawDepth) ?: return@start
         debugFullScreen = false
         debugSession.trace = capture.trace
         debugSession.goLive()
@@ -898,7 +916,9 @@ private fun RerunLiveScreen(
                         points = stats.mapPoints,
                         surfaces = stats.planes,
                         photos = debugSession.trace.imageCount,
+                        dense = scan?.denseCount ?: 0,
                     ),
+                    depthScan = scan?.rawDepth == true,
                     seconds = stats.duration,
                     photoLimitReached = scan?.isPhotoLimitReached == true,
                 )
@@ -1005,9 +1025,16 @@ private fun RerunLiveScreen(
                 cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
-                sessionConfiguration = { _: Session, config: Config ->
+                sessionConfiguration = { session: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                    // Rerun v2 tier B: ARCore's raw depth where the phone has it, never where it
+                    // does not — that phone keeps the sparse v1 scan, and says so.
+                    val depth = runCatching {
+                        session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY)
+                    }.getOrDefault(false)
+                    if (depth) config.depthMode = Config.DepthMode.RAW_DEPTH_ONLY
+                    rawDepth = depth
                 },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     if (frame.timestamp > 0L) cameraReady = true

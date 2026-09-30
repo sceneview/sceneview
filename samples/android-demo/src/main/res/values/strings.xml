@@ -6,6 +6,9 @@
      `samples/android-demo/demo-fragments/README.md`. -->
 <resources>
     <string name="app_name">SceneView Demo</string>
+    <!-- GlassActionPill with a subject: "<subject> · <label>". The separator keeps its spaces. -->
+    <string name="glass_pill_subject_separator">" · "</string>
+    <string name="glass_pill_subject_label">%1$s · %2$s</string>
     <!-- Home-screen label (owner decision, 2026-09-27). "SceneView Demo" is cut
          to "SceneView …" in the Pixel launcher; "SceneView" fits in full. The
          viewer app is "3D AR Viewer" on the home screen, so the two no longer
@@ -29,7 +32,15 @@
     <string name="explore_search_placeholder">Search 3D models on %1$s</string>
     <string name="explore_filter_animated">Animated</string>
     <string name="explore_trending_in_3d">Trending in 3D</string>
-    <string name="explore_built_with_sceneview">Built with SceneView</string>
+    <!-- The app's own demos, one tap away from the online gallery (#3993). It was titled
+         "Built with SceneView", which reads as a showcase of third-party apps. -->
+    <string name="explore_try_a_demo">Try a demo</string>
+    <!-- Featured stage when a load ends with nothing to show (#3993). %1$s is the source name. -->
+    <string name="explore_feed_error_title">Couldn\'t reach %1$s</string>
+    <string name="explore_feed_error_body">Check your connection, then try again.</string>
+    <string name="explore_feed_empty_title">Nothing on %1$s right now</string>
+    <string name="explore_feed_empty_body">Try again, or pick another source below.</string>
+    <string name="explore_retry">Try again</string>
     <string name="explore_browse_by_source">Browse by source</string>
     <string name="explore_categories">Categories</string>
     <string name="explore_recent_searches">Recent searches</string>

@@ -97,51 +97,34 @@ class PlaneRendererV2Test {
         assertNotNull("placeholder", PlaneRendererV2::class.java)
     }
 
-    // ── PR #4 type-aware shading preset (issue #2203) ───────────────────────────────────────
+    // ── Per-type dot style (#3507) ──────────────────────────────────────────────────────────
 
     @Test
-    fun `HORIZONTAL_UPWARD_FACING maps to the floor preset`() {
-        // Floor: cool white, slight gloss. The "slight gloss" (roughness 0.35) is what
-        // makes ceiling lights visibly reflect off the floor under Filament's IBL — the
-        // headline effect of PR #3+#4 read by the user.
-        val preset = planeMaterialPresetFor(Plane.Type.HORIZONTAL_UPWARD_FACING)
-        assertEquals(0.0f, preset.metallic, 0f)
-        assertEquals(0.35f, preset.roughness, 0f)
-        assertEquals(0.85f, preset.gridR, 0f)
-        assertEquals(0.92f, preset.gridG, 0f)
-        assertEquals(1.0f, preset.gridB, 0f)
+    fun `the floor gets white dots, the strongest of the three`() {
+        val floor = planeMaterialPresetFor(Plane.Type.HORIZONTAL_UPWARD_FACING)
+        assertEquals(1.0f, floor.gridR, 0f)
+        assertEquals(1.0f, floor.gridG, 0f)
+        assertEquals(1.0f, floor.gridB, 0f)
+        val ceiling = planeMaterialPresetFor(Plane.Type.HORIZONTAL_DOWNWARD_FACING)
+        val wall = planeMaterialPresetFor(Plane.Type.VERTICAL)
+        // The floor is where things get placed: it must read first.
+        assertTrue(floor.dotAlpha > wall.dotAlpha && floor.dotAlpha > ceiling.dotAlpha)
     }
 
     @Test
-    fun `HORIZONTAL_DOWNWARD_FACING maps to the ceiling preset`() {
-        // Ceiling: warm white, mid roughness. Sits between floor and wall so under the
-        // same IBL it reads as visibly distinct from either.
-        val preset = planeMaterialPresetFor(Plane.Type.HORIZONTAL_DOWNWARD_FACING)
-        assertEquals(0.0f, preset.metallic, 0f)
-        assertEquals(0.65f, preset.roughness, 0f)
-        assertEquals(1.0f, preset.gridR, 0f)
-        assertEquals(0.96f, preset.gridG, 0f)
-        assertEquals(0.88f, preset.gridB, 0f)
+    fun `the ceiling is warm — more red than blue`() {
+        val ceiling = planeMaterialPresetFor(Plane.Type.HORIZONTAL_DOWNWARD_FACING)
+        assertTrue("ceiling must be warm: $ceiling", ceiling.gridR > ceiling.gridB)
     }
 
     @Test
-    fun `VERTICAL maps to the wall preset`() {
-        // Wall: neutral grey, high roughness. A matte wall should absorb the IBL almost
-        // fully so reflections of nearby surfaces do not bleed onto it.
-        val preset = planeMaterialPresetFor(Plane.Type.VERTICAL)
-        assertEquals(0.0f, preset.metallic, 0f)
-        assertEquals(0.80f, preset.roughness, 0f)
-        assertEquals(0.92f, preset.gridR, 0f)
-        assertEquals(0.92f, preset.gridG, 0f)
-        assertEquals(0.92f, preset.gridB, 0f)
+    fun `walls are a soft blue — more blue than red`() {
+        val wall = planeMaterialPresetFor(Plane.Type.VERTICAL)
+        assertTrue("wall must be blue: $wall", wall.gridB > wall.gridR)
     }
 
     @Test
     fun `all three known plane types are mapped without falling back to floor`() {
-        // Sanity test: each known Plane.Type produces a preset distinct from at least
-        // one other type's preset. Catches an accidental copy-paste that would make e.g.
-        // ceiling and wall identical (regression that would silently flatten PR #4's
-        // entire visible effect).
         val floor = planeMaterialPresetFor(Plane.Type.HORIZONTAL_UPWARD_FACING)
         val ceiling = planeMaterialPresetFor(Plane.Type.HORIZONTAL_DOWNWARD_FACING)
         val wall = planeMaterialPresetFor(Plane.Type.VERTICAL)
@@ -153,33 +136,12 @@ class PlaneRendererV2Test {
     }
 
     @Test
-    fun `roughness ordering invariant — floor smoother than ceiling smoother than wall`() {
-        // The "wow" of PR #4 is partly that each surface looks distinct under the same
-        // IBL. This asserts the math reflects the intent: floor (glossy enough to
-        // reflect light) < ceiling (mid) < wall (matte enough to read as paint).
-        // A swap here would make the floor visually merge with the wall and erase
-        // the per-type differentiation the PR exists to deliver.
-        val floor = planeMaterialPresetFor(Plane.Type.HORIZONTAL_UPWARD_FACING).roughness
-        val ceiling = planeMaterialPresetFor(Plane.Type.HORIZONTAL_DOWNWARD_FACING).roughness
-        val wall = planeMaterialPresetFor(Plane.Type.VERTICAL).roughness
-        assertTrue(
-            "Roughness order must be floor < ceiling < wall (got floor=$floor " +
-                "ceiling=$ceiling wall=$wall)",
-            floor < ceiling && ceiling < wall,
-        )
-    }
-
-    @Test
-    fun `metallic is always 0 — no brushed-metal floors in PR #4`() {
-        // Every detected plane is a dielectric surface in PR #4. A non-zero metallic
-        // here would let Filament's PBR pipeline render planes as conductors (mirror-
-        // like), which is wrong for every real-world detected plane (drywall, wood,
-        // concrete). Pin all three to 0.0 so a stray edit gets caught.
+    fun `every preset stays in the unit range`() {
         Plane.Type.values().forEach { type ->
-            assertEquals(
-                "metallic must be 0.0 for $type (every detected plane is dielectric)",
-                0.0f, planeMaterialPresetFor(type).metallic, 0f,
-            )
+            val preset = planeMaterialPresetFor(type)
+            listOf(preset.gridR, preset.gridG, preset.gridB, preset.dotAlpha).forEach {
+                assertTrue("$type: $it out of [0, 1]", it in 0f..1f)
+            }
         }
     }
 

@@ -182,7 +182,7 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// non-networked, non-AR demos so constructing the destination view has
     /// no side effects beyond a plain SwiftUI initializer.
     func testWellKnownWorkingDemosResolveToARealDestination() {
-        let mustBeReal = ["model-viewer", "geometry", "animation", "physics", "materials"]
+        let mustBeReal = ["model-viewer", "geometry", "animation", "rolling-balls", "materials"]
         for id in mustBeReal {
             XCTAssertNotNil(GeneratedScenes.destination(for: id),
                             "'\(id)' is expected to be a real, working demo but resolved to nil " +
@@ -276,7 +276,11 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// (`ar-rooftop-anchors`, `ar-terrain-anchors`) were dropped when their
     /// dead-end canonical targets were deleted — an alias may only point at a
     /// live Scene id, and both ids still reach `DeepLinkPlaceholder` through
-    /// the unregistered-id path. Each of the remaining 8 must keep resolving —
+    /// the unregistered-id path. `physics` joined as a retired-scene alias when
+    /// the RealityKit cubes were replaced by the Rolling Balls tray (#4083).
+    /// `lighting-lab` left the umbrella list when it got its own scene, and
+    /// `reflection-probes` joined as the retired id that scene replaced.
+    /// Each of the remaining 9 must keep resolving —
     /// through its canonical target — to exactly that target's current
     /// realness.
     func testLegacyAliasesArePinnedAndInheritTheirCanonicalTargetsRealness() {
@@ -289,7 +293,8 @@ final class DemoRegistryGuardTests: XCTestCase {
             "picking-collision": "collision",
             "animation-physics": "animation",
             "two-d-in-three-d": "text",
-            "lighting-lab": "dynamic-sky",
+            "physics": "rolling-balls",
+            "reflection-probes": "lighting-lab",
         ], "legacyAliases changed — update this pin (and re-verify the new/changed alias " +
            "resolves sanely through DemoDeepLinkRegistry.destination(for:))")
 
@@ -411,16 +416,20 @@ final class DemoRegistryGuardTests: XCTestCase {
         }
     }
 
-    /// The Rerun replay leads the shelf, as on Android (`FEATURED_SECTION_IDS`).
-    func testRerunLeadsTheFeaturedShelf() {
-        XCTAssertEqual(HomeCatalogue.featuredIds.first, "ar-rerun")
+    /// Cosmos leads the shelf and the Rerun replay follows it, as on Android
+    /// (`FEATURED_SECTION_IDS`).
+    func testCosmosThenRerunLeadTheFeaturedShelf() {
+        XCTAssertEqual(Array(HomeCatalogue.featuredIds.prefix(2)), ["cosmos", "ar-rerun"])
     }
 
     /// A hidden id must still resolve: hiding takes a demo off the home, never
-    /// out of the catalogue or the deep-link gate.
+    /// out of the catalogue or the deep-link gate. Covers both lists — always
+    /// hidden, and hidden on a build without a Sketchfab key.
     func testHiddenFromHomeIdsStayRegistered() {
         let ids = Set(GeneratedScenes.all().map(\.sceneId))
-        for id in HomeCatalogue.hiddenFromHome.keys {
+        let hidden = Set(HomeCatalogue.hiddenFromHome.keys)
+            .union(HomeCatalogue.hiddenWithoutSketchfabKey.keys)
+        for id in hidden {
             XCTAssertTrue(ids.contains(id), "Hidden id '\(id)' has no *Scene.swift file")
             XCTAssertTrue(GeneratedScenes.allowedIds.contains(id), "Hidden id '\(id)' lost its deep link")
         }

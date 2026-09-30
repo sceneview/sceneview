@@ -12,12 +12,11 @@ import com.google.ar.core.Session
  *
  *  * [PlaneRenderer] — the **default** renderer (V1) again as of v4.16.1. Draws each
  *    detected plane as a flat polygon textured with a procedural soft grid. Battle-tested.
- *  * [PlaneRendererV2] — **experimental opt-in**. v4.16.0 briefly shipped V2 as the default
- *    (depth-driven PBR mesh + HDR reflection + type-aware shading + scan-in) but on-device
- *    QA showed the visual output not matching the design intent, so the default was
- *    reverted in v4.16.1 while V2 is polished. The code remains in place so early adopters
- *    can opt in (`Version.V2`) and help shape the redesign — see
- *    [#2203](https://github.com/sceneview/sceneview/issues/2203).
+ *  * [PlaneRendererV2] — **opt-in** (`Version.V2`). Draws each detected surface as soft,
+ *    world-anchored dots that fade at the edges and with distance, reveals new and growing
+ *    planes with a sweeping front, highlights the floor under the centre of the screen, and
+ *    fades out when disabled — see [#3507](https://github.com/sceneview/sceneview/issues/3507).
+ *    Its first design (#2203, briefly the default in v4.16.0) was reverted in v4.16.1.
  *
  * @see PlaneRenderer
  * @see PlaneRendererV2

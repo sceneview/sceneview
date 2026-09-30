@@ -315,6 +315,20 @@ private fun FeaturedCard(
     }
 }
 
+/**
+ * Where a demo's picture is anchored when the 5:4 preview is cropped narrower — to a
+ * home row's square thumb ([DemoListRow]). Centred by default; a preview listed here
+ * carries something at one edge that must stay out of frame.
+ *
+ * `ar-rerun`: the preview is a capture of the demo, whose top-right corner holds the
+ * demo's own "Camera" picture-in-picture (source x ≥ 525 of 800). Centred, the crop keeps
+ * half of it and it reads as a second picture stuck on the first. Anchored left, the
+ * crop keeps the camera path and the rebuilt room, no inset.
+ */
+internal val FEATURED_MEDIA_ALIGNMENT: Map<String, Alignment> = mapOf(
+    "ar-rerun" to Alignment.CenterStart,
+)
+
 /** 28 dp — the What's new page's corner glyph, matched to `type-display`'s cap height. */
 private val featuredGlyphSize = 28.dp
 
