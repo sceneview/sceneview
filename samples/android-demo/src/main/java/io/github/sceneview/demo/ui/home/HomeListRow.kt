@@ -55,15 +55,6 @@ import io.github.sceneview.sample.ui.DemoCategoryAccent
 import kotlin.math.PI
 import kotlin.math.cos
 
-/** Which of the two Home row anatomies a demo is drawn with. */
-enum class HomeRowStyle {
-    /** `home-row`: picture on the leading half, dissolving sideways into the row. */
-    Fused,
-
-    /** `home-banner`: picture across the full width, dissolving down into its caption. */
-    Banner,
-}
-
 /**
  * One demo on the Home list (`home-row` / `home-banner` in `DESIGN.md`).
  *
