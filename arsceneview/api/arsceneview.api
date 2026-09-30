@@ -643,6 +643,7 @@ public final class io/github/sceneview/ar/AutoPlacementCandidate {
 	public static final field $stable I
 	public final fun createAnchor ()Lio/github/sceneview/ar/AutoPlacementResult;
 	public final fun getPlane ()Lcom/google/ar/core/Plane;
+	public final fun getPlaneOrNull ()Lcom/google/ar/core/Plane;
 	public final fun getPose ()Lcom/google/ar/core/Pose;
 }
 
@@ -650,6 +651,7 @@ public final class io/github/sceneview/ar/AutoPlacementResult {
 	public static final field $stable I
 	public final fun getAnchor ()Lcom/google/ar/core/Anchor;
 	public final fun getPlane ()Lcom/google/ar/core/Plane;
+	public final fun getPlaneOrNull ()Lcom/google/ar/core/Plane;
 	public final fun getPose ()Lcom/google/ar/core/Pose;
 }
 

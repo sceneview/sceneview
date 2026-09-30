@@ -37,37 +37,113 @@ import java.io.File
 /** Supported automatic-placement alignment. Surface accepts tables, never ceilings. */
 enum class PlacementSurface { SURFACE, WALL }
 
-/** A real plane-associated placement. The anchor and plane retain their ARCore identity. */
+private const val NO_PLANE_MESSAGE = "This wall was found through the depth API or inferred from " +
+    "the floor seam: ARCore has no plane for it yet. Read planeOrNull instead."
+
+/**
+ * A placement and the ARCore identity of what it stands on. For a floor, a table or a wall
+ * ARCore has grown a plane on, that is the [plane]. A plain painted wall often has no plane at
+ * all (#4070): the placement then rides a depth hit or the tracked floor it was inferred from,
+ * and [planeOrNull] is `null`.
+ */
 class AutoPlacementResult internal constructor(
     anchor: Anchor,
-    plane: Plane,
+    trackable: Trackable,
     pose: Pose,
+    kind: WallHitKind?,
 ) {
+    internal constructor(anchor: Anchor, plane: Plane, pose: Pose) :
+        this(anchor, plane, pose, plane.wallKindOrNull())
+
     var anchor: Anchor = anchor
-        internal set
-    var plane: Plane = plane
         internal set
     var pose: Pose = pose
         internal set
+
+    /** What the anchor is attached to: a [Plane], a [DepthPoint], or the floor under a seam wall. */
+    internal var trackable: Trackable = trackable
+
+    /** How the wall holds, `null` for a floor or table placement. */
+    internal var kind: WallHitKind? = kind
+
+    internal val isWall: Boolean get() = kind != null
+
+    /**
+     * The ARCore plane the object stands on.
+     *
+     * @throws IllegalStateException for a wall found through the depth API or inferred from the
+     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     */
+    val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
+
+    /**
+     * The ARCore plane the object stands on, or `null` for a wall found through the depth API
+     * or inferred from the floor↔wall seam (#4070).
+     */
+    val planeOrNull: Plane? get() = planeOf(trackable, kind)
 }
 
 /** A validated, oriented surface candidate. Creating its anchor can still fail. */
-class AutoPlacementCandidate internal constructor(val plane: Plane, val pose: Pose) {
+class AutoPlacementCandidate internal constructor(
+    internal val trackable: Trackable,
+    val pose: Pose,
+    internal val kind: WallHitKind?,
+) {
+    internal constructor(plane: Plane, pose: Pose) : this(plane, pose, plane.wallKindOrNull())
+
+    /**
+     * The ARCore plane the candidate lies on.
+     *
+     * @throws IllegalStateException for a wall found through the depth API or inferred from the
+     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     */
+    val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
+
+    /** The ARCore plane the candidate lies on, `null` for a wall without one (#4070). */
+    val planeOrNull: Plane? get() = planeOf(trackable, kind)
+
     fun createAnchor(): AutoPlacementResult? = runCatching {
-        if (plane.trackingState != TrackingState.TRACKING || plane.subsumedBy != null || !plane.isPoseInPolygon(pose)) {
-            return@runCatching null
-        }
-        val anchor = plane.createAnchor(pose)
+        if (!accepts(pose)) return@runCatching null
+        val anchor = trackable.createAnchor(pose)
         if (anchor.trackingState != TrackingState.TRACKING) {
             anchor.detach()
             null
-        } else AutoPlacementResult(anchor, plane, pose)
+        } else AutoPlacementResult(anchor, trackable, pose, kind)
     }.getOrNull()
+
+    /**
+     * Whether [target] is still a valid spot on this candidate's surface: inside the polygon for
+     * a floor, up to [UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M] outside it for a wall plane,
+     * anywhere on an inferred wall (which has no polygon).
+     */
+    internal fun accepts(target: Pose): Boolean {
+        if (trackable.trackingState != TrackingState.TRACKING) return false
+        val plane = trackable as? Plane
+        return when (kind) {
+            null -> plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target)
+            WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> plane != null && plane.subsumedBy == null &&
+                (plane.isPoseInPolygon(target) ||
+                    plane.outsidePolygonDistance(target) <= UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M)
+            WallHitKind.DEPTH_POINT, WallHitKind.FLOOR_SEAM -> true
+        }
+    }
+}
+
+private fun Plane.wallKindOrNull(): WallHitKind? = if (type == Plane.Type.VERTICAL) WallHitKind.PLANE else null
+
+private fun planeOf(trackable: Trackable, kind: WallHitKind?): Plane? = when (kind) {
+    null, WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> trackable as? Plane
+    WallHitKind.DEPTH_POINT, WallHitKind.FLOOR_SEAM -> null
 }
 
 /**
  * Shared center-first policy for automatic placement and app adapters. Fallback centers
  * are ordered by screen-center proximity, and must lie inside the detected polygon.
+ *
+ * A [PlacementSurface.WALL] search also takes what ARKit's `.existingPlaneInfinite` and
+ * `.estimatedPlane` would (#4070): a wall plane hit up to a metre outside its polygon, a depth
+ * hit on a vertical surface (with the depth API on), and last a wall inferred from where the
+ * tracked floor ends under the centre of the screen ([seamWallCandidate]).
  */
 fun findAutoPlacementSurface(
     frame: Frame,
@@ -82,50 +158,135 @@ fun findAutoPlacementSurface(
             PlacementSurface.SURFACE -> Plane.Type.HORIZONTAL_UPWARD_FACING
             PlacementSurface.WALL -> Plane.Type.VERTICAL
         }
-    val hit = runCatching { frame.hitTest(width / 2f, height / 2f) }.getOrDefault(emptyList())
-        .firstOrNull { hit ->
-            val plane = hit.trackable as? Plane
-            plane != null && plane.subsumedBy == null && UsableSurfacePolicy.accept(
-                surface, plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING,
-                plane.type == Plane.Type.VERTICAL, plane.trackingState == TrackingState.TRACKING,
-                plane.isPoseInPolygon(hit.hitPose), hit.distance,
-            )
+    val camera = frame.camera.pose
+    val hits = runCatching { frame.hitTest(width / 2f, height / 2f) }.getOrDefault(emptyList())
+    when (surface) {
+        PlacementSurface.WALL -> wallRayCandidate(hits, camera)?.let { return it }
+        PlacementSurface.SURFACE -> {
+            val hit = hits.firstOrNull { hit ->
+                val plane = hit.trackable as? Plane
+                plane != null && plane.subsumedBy == null && UsableSurfacePolicy.accept(
+                    surface, plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING,
+                    plane.type == Plane.Type.VERTICAL, plane.trackingState == TrackingState.TRACKING,
+                    plane.isPoseInPolygon(hit.hitPose), hit.distance,
+                )
+            }
+            if (hit != null) return AutoPlacementCandidate(hit.trackable as Plane, hit.hitPose)
         }
-    if (hit != null) {
-        val hitPlane = hit.trackable as Plane
-        return AutoPlacementCandidate(hitPlane, orientedPlacementPose(hit.hitPose, hitPlane, frame.camera.pose))
     }
     val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
     val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
     val viewProjection = ViewportProjection.multiply(projection, view)
-    val camera = frame.camera.pose
     val candidates = planes.filter { supported(it) && it.isPoseInPolygon(it.centerPose) }.map { plane ->
         val pose = plane.centerPose
         FallbackCandidate(
-            AutoPlacementCandidate(plane, orientedPlacementPose(pose, plane, camera)),
+            AutoPlacementCandidate(plane, orientedPlacementPose(pose, planeWallNormal(plane), camera)),
             ViewportProjection.distance(pose.tx(), pose.ty(), pose.tz(), camera.tx(), camera.ty(), camera.tz()),
             ViewportProjection.project(viewProjection, pose.tx(), pose.ty(), pose.tz()),
         )
     }
     return UsableSurfacePolicy.rankFallback(candidates).firstOrNull()
+        ?: if (surface == PlacementSurface.WALL) seamCandidate(hits, planes, camera) else null
+}
+
+/** The most trusted wall among the centre ray's hits ([WallHitKind] order), nearest first. */
+private fun wallRayCandidate(hits: List<HitResult>, camera: Pose): AutoPlacementCandidate? {
+    var best: HitResult? = null
+    var bestKind: WallHitKind? = null
+    for (hit in hits) {
+        val kind = wallHitKind(hit) ?: continue
+        if (bestKind == null || kind < bestKind) {
+            best = hit
+            bestKind = kind
+        }
+    }
+    val hit = best ?: return null
+    val pose = orientedPlacementPose(hit.hitPose, wallNormalOf(hit), camera)
+    return AutoPlacementCandidate(hit.trackable, pose, bestKind)
+}
+
+/** How far past the edge tolerance the "floor ends beyond" probe looks, metres. */
+private const val SEAM_PROBE_MARGIN_M = 0.1f
+
+/**
+ * A wall inferred from the floor seam: the centre ray meets the tracked floor near where its
+ * polygon ends ([seamWallCandidate]). The anchor rides the floor plane, which is tracked.
+ */
+private fun seamCandidate(hits: List<HitResult>, planes: Collection<Plane>, camera: Pose): AutoPlacementCandidate? {
+    val floors = planes.filter {
+        it.type == Plane.Type.HORIZONTAL_UPWARD_FACING && it.trackingState == TrackingState.TRACKING &&
+            it.subsumedBy == null
+    }
+    val floorY = floors.minOfOrNull { it.centerPose.ty() } ?: return null
+    val hit = hits.firstOrNull { hit ->
+        val plane = hit.trackable as? Plane
+        plane != null && plane in floors && plane.centerPose.ty() - floorY <= SEAM_FLOOR_TOLERANCE_M &&
+            plane.isPoseInPolygon(hit.hitPose) &&
+            hit.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+    } ?: return null
+    val floor = hit.trackable as Plane
+    val local = floor.localXZ(hit.hitPose)
+    val edge = nearestPolygonEdge(local[0], local[1], floor.polygonArray()) ?: return null
+    val edgeWorld = floor.centerPose.rotateVector(floatArrayOf(edge.dx, 0f, edge.dz))
+    // Probe past the aimed point, away from the camera: the floor must end there.
+    val awayX = hit.hitPose.tx() - camera.tx()
+    val awayZ = hit.hitPose.tz() - camera.tz()
+    val away = kotlin.math.sqrt(awayX * awayX + awayZ * awayZ)
+    val probeStep = (SEAM_EDGE_TOLERANCE_M + SEAM_PROBE_MARGIN_M) / away.coerceAtLeast(1e-3f)
+    val probe = Pose.makeTranslation(
+        hit.hitPose.tx() + awayX * probeStep, hit.hitPose.ty(), hit.hitPose.tz() + awayZ * probeStep,
+    )
+    val floorEndsBeyond = floor.outsidePolygonDistance(probe) > 0f
+    val depthNormal = hits.firstOrNull { it.trackable is DepthPoint }
+        ?.hitPose?.getTransformedAxis(1, 1f)?.let { Float3(it[0], it[1], it[2]) }
+    val wall = seamWallCandidate(
+        floorY = hit.hitPose.ty(),
+        rayHitOnFloor = Position(hit.hitPose.tx(), hit.hitPose.ty(), hit.hitPose.tz()),
+        cameraPosition = Position(camera.tx(), camera.ty(), camera.tz()),
+        floorEdgeDistance = edge.distance,
+        edgeDirection = Float3(edgeWorld[0], edgeWorld[1], edgeWorld[2]),
+        depthNormal = depthNormal,
+        floorEndsBeyond = floorEndsBeyond,
+    ) ?: return null
+    val point = Pose.makeTranslation(wall.point.x, wall.point.y, wall.point.z)
+    val normal = floatArrayOf(wall.normal.x, wall.normal.y, wall.normal.z)
+    return AutoPlacementCandidate(floor, orientedPlacementPose(point, normal, camera), WallHitKind.FLOOR_SEAM)
 }
 
 /**
- * The plane finding [AutoPlacementScene] asks ARCore for. Each flow looks only for the planes
- * it can place on: a wall flow that is not asked for vertical planes can never find a wall
- * (#4070), and a surface flow has no use for walls. Pure, so `AutoPlacementPlaneFindingTest`
- * pins the contract on the JVM.
+ * The plane finding [AutoPlacementScene] asks ARCore for. A surface flow looks only for the
+ * planes it can place on. A wall flow needs vertical planes (#4070) **and** the floor: a plain
+ * wall often never grows a plane, and the floor's edge is where it is inferred from
+ * ([seamWallCandidate]). Pure, so `AutoPlacementPlaneFindingTest` pins the contract on the JVM.
  */
 internal fun autoPlacementPlaneFindingMode(surface: PlacementSurface): Config.PlaneFindingMode =
     when (surface) {
         PlacementSurface.SURFACE -> Config.PlaneFindingMode.HORIZONTAL
-        PlacementSurface.WALL -> Config.PlaneFindingMode.VERTICAL
+        PlacementSurface.WALL -> Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
     }
 
-/** ARCore's +Y is the surface normal; -Z is gravity-up for upright wall content. */
-private fun orientedPlacementPose(pose: Pose, plane: Plane, camera: Pose): Pose {
-    if (plane.type != Plane.Type.VERTICAL) return pose
-    val axis = plane.centerPose.getTransformedAxis(1, 1f)
+/**
+ * The depth mode [AutoPlacementScene] asks ARCore for. A wall flow turns the depth API on: a
+ * depth hit is the only hit ARCore returns on a plain painted wall (#4070). The session
+ * downgrades it to `DISABLED` on a device without depth support. A surface flow keeps
+ * [ARSceneView]'s default (`DISABLED`), and so does every other scene.
+ */
+internal fun autoPlacementDepthMode(surface: PlacementSurface): Config.DepthMode =
+    when (surface) {
+        PlacementSurface.SURFACE -> Config.DepthMode.DISABLED
+        PlacementSurface.WALL -> Config.DepthMode.AUTOMATIC
+    }
+
+/** A vertical plane's normal (centre-pose +Y), `null` for a floor or table. */
+private fun planeWallNormal(plane: Plane): FloatArray? =
+    if (plane.type == Plane.Type.VERTICAL) plane.centerPose.getTransformedAxis(1, 1f) else null
+
+/**
+ * ARCore's +Y is the surface normal; -Z is gravity-up for upright wall content. A `null`
+ * [wallNormal] is a floor or table: the pose is kept as is.
+ */
+private fun orientedPlacementPose(pose: Pose, wallNormal: FloatArray?, camera: Pose): Pose {
+    val axis = wallNormal ?: return pose
     val wall = directWallPose(
         Position(pose.tx(), pose.ty(), pose.tz()), Float3(axis[0], axis[1], axis[2]),
         Float3(camera.tx() - pose.tx(), camera.ty() - pose.ty(), camera.tz() - pose.tz()),
@@ -203,6 +364,7 @@ fun AutoPlacementScene(
             playbackDataset = playbackDataset,
             planeRenderer = false,
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
+            depthMode = autoPlacementDepthMode(surface),
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
             onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
                 if (node == null) state.deselectPlacement() else state.selectPlacement()
@@ -314,7 +476,7 @@ fun ARSceneScope.AutoPlacementModel(
         visibleDuringFade = entrance.value > 0f) {
         val model = remember(modelInstance, scaleToUnits, assetRotation) {
             io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
-                quaternion = if (placement.plane.type == Plane.Type.VERTICAL) {
+                quaternion = if (placement.isWall) {
                     Rotation(x = -90f).toQuaternion() * assetRotation.toQuaternion()
                 } else assetRotation.toQuaternion()
                 // Transform all eight authored bounds corners after the axis correction.
@@ -325,7 +487,7 @@ fun ARSceneScope.AutoPlacementModel(
                         add(quaternion * (corner * scale))
                     }
                 }
-                position = automaticPlacementOffset(corners, placement.plane.type == Plane.Type.VERTICAL)
+                position = automaticPlacementOffset(corners, placement.isWall)
                 isEditable = true
                 isPositionEditable = false
                 isRotationEditable = false
@@ -366,7 +528,7 @@ fun ARSceneScope.AutoPlacementNode(
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
         visibleDuringFade = opacity.value > 0f || entrance.value > 0f) {
         Node(
-            rotation = if (placement.plane.type == Plane.Type.VERTICAL) Rotation(x = -90f) else Rotation(),
+            rotation = if (placement.isWall) Rotation(x = -90f) else Rotation(),
             scale = Scale(PlacementEntrance.scaleFraction(entrance.value)),
         ) {
             content(opacity.value)
@@ -584,14 +746,14 @@ private class AutomaticAnchorNode(
     fun moveBy(x: Float, y: Float): Boolean {
         val frame = frame ?: return false
         if (!isTracking(frame)) return false
-        val tangent = pose.rotateVector(floatArrayOf(x, 0f,
-            if (placement.plane.type == Plane.Type.VERTICAL) -y else y))
+        val tangent = pose.rotateVector(floatArrayOf(x, 0f, if (placement.isWall) -y else y))
         val target = translated(pose, tangent)
-        if (!placement.plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) {
+        val candidate = AutoPlacementCandidate(placement.trackable, target, placement.kind)
+        if (!candidate.accepts(target) || !visiblePlacementPoint(frame, target)) {
             invalidMove(true)
             return false
         }
-        pending = AutoPlacementCandidate(placement.plane, target)
+        pending = candidate
         val committed = commitMove()
         if (!committed) pending = null
         invalidMove(!committed)
@@ -611,32 +773,27 @@ private class AutomaticAnchorNode(
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         if (!state.isAdjusting) return false
         val frame = frame ?: return false
-        val hit = frame.hitTest(e).firstOrNull {
-            val plane = it.trackable as? Plane
-            plane != null && plane.type == placement.plane.type && plane.subsumedBy == null &&
-                plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
-                it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+        val hits = frame.hitTest(e)
+        val candidate = if (placement.isWall) {
+            // Nearest wall under the finger — plane, extended plane or depth hit — and, on a plain
+            // wall with none of those, the wall the object already stands on (#4070).
+            hits.firstNotNullOfOrNull { hit -> wallHitKind(hit)?.let { hit to it } }
+                ?.let { (hit, kind) -> hitCandidate(frame, hit, kind, wallNormalOf(hit)) }
+                ?: slideAlongWall(e)
+        } else {
+            hits.firstOrNull {
+                val plane = it.trackable as? Plane
+                plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
+                    plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
+                    it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+            }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
         }
-        if (hit == null) { invalidMove(true); return false }
-        val delta = offset ?: floatArrayOf(
-            pose.tx() - hit.hitPose.tx(),
-            pose.ty() - hit.hitPose.ty(),
-            pose.tz() - hit.hitPose.tz(),
-        ).also { offset = it }
-        val plane = hit.trackable as Plane
-        // Project grab offset into the new plane to prevent movement out of its surface.
-        val normal = plane.centerPose.getTransformedAxis(1, 1f)
-        val tangent = wallTangentOffset(
-            Position(delta[0], delta[1], delta[2]),
-            Float3(normal[0], normal[1], normal[2]),
-        )
-        val target = orientedPlacementPose(
-            translated(hit.hitPose, floatArrayOf(tangent.x, tangent.y, tangent.z)),
-            plane, frame.camera.pose,
-        )
-        if (!plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) { invalidMove(true); return false }
-        pending = AutoPlacementCandidate(plane, target)
-        pose = target
+        if (candidate == null || !candidate.accepts(candidate.pose) || !visiblePlacementPoint(frame, candidate.pose)) {
+            invalidMove(true)
+            return false
+        }
+        pending = candidate
+        pose = candidate.pose
         invalidMove(false)
         return true
     }
@@ -650,6 +807,55 @@ private class AutomaticAnchorNode(
         offset = null
         invalidMove(false)
         state.endAdjustment()
+    }
+
+    /**
+     * The drag target on [hit]'s surface: the grab offset projected into the surface (so the
+     * object never leaves it), oriented against the wall when [kind] is one.
+     */
+    private fun hitCandidate(
+        frame: Frame,
+        hit: HitResult,
+        kind: WallHitKind?,
+        normal: FloatArray,
+    ): AutoPlacementCandidate {
+        val delta = offset ?: floatArrayOf(
+            pose.tx() - hit.hitPose.tx(),
+            pose.ty() - hit.hitPose.ty(),
+            pose.tz() - hit.hitPose.tz(),
+        ).also { offset = it }
+        val tangent = wallTangentOffset(
+            Position(delta[0], delta[1], delta[2]),
+            Float3(normal[0], normal[1], normal[2]),
+        )
+        val target = orientedPlacementPose(
+            translated(hit.hitPose, floatArrayOf(tangent.x, tangent.y, tangent.z)),
+            if (kind != null) normal else null, frame.camera.pose,
+        )
+        return AutoPlacementCandidate(hit.trackable, target, kind)
+    }
+
+    /**
+     * The finger's ray against the wall the object stands on, treated as infinite — the only
+     * drag target on a plain wall that yields no plane and no depth hit under the finger.
+     */
+    private fun slideAlongWall(e: MotionEvent): AutoPlacementCandidate? {
+        val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return null
+        val axis = pose.getTransformedAxis(1, 1f)
+        val normal = Float3(axis[0], axis[1], axis[2])
+        val contact = Position(pose.tx(), pose.ty(), pose.tz())
+        // wallGrabOffset returns contact - rayHit: the ray's hit on the wall is contact - that.
+        val toRay = wallGrabOffset(contact, normal, ray.origin, ray.direction) ?: return null
+        // First drag frame: keep the finger's grab point under the finger, no jump.
+        val grab = offset?.let { Position(it[0], it[1], it[2]) }
+            ?: toRay.also { offset = floatArrayOf(it.x, it.y, it.z) }
+        val tangent = wallTangentOffset(grab, normal)
+        val target = contact - toRay + tangent
+        return AutoPlacementCandidate(
+            placement.trackable,
+            Pose(floatArrayOf(target.x, target.y, target.z), pose.rotationQuaternion),
+            placement.kind,
+        )
     }
 
     /** Where the finger grabbed the node against its own contact plane, null when unusable. */
@@ -683,7 +889,8 @@ private class AutomaticAnchorNode(
         val next = candidate.createAnchor() ?: return false
         anchor = next.anchor
         placement.anchor = next.anchor
-        placement.plane = next.plane
+        placement.trackable = next.trackable
+        placement.kind = next.kind
         placement.pose = next.pose
         pending = null
         return true

@@ -56,6 +56,74 @@ class UsableSurfacePolicyTest {
         assertEquals(3.0f, UsableSurfacePolicy.MAX_DISTANCE_M)
     }
 
+    // ── Wall hits (#4070) ─────────────────────────────────────────────────────────────
+
+    @Suppress("LongParameterList")
+    private fun wall(
+        vertical: Boolean = false,
+        depth: Boolean = false,
+        tracking: Boolean = true,
+        inPolygon: Boolean = false,
+        outside: Float = Float.POSITIVE_INFINITY,
+        normalY: Float = 0f,
+        distance: Float = 1.5f,
+    ) = UsableSurfacePolicy.wallHit(
+        isVerticalPlane = vertical,
+        isDepthPoint = depth,
+        isTrackableTracking = tracking,
+        isPoseInPolygon = inPolygon,
+        outsidePolygonMeters = outside,
+        normalY = normalY,
+        distanceMeters = distance,
+    )
+
+    @Test
+    fun `a vertical plane hit inside its polygon is a plane wall`() {
+        assertEquals(WallHitKind.PLANE, wall(vertical = true, inPolygon = true, outside = 0f))
+    }
+
+    @Test
+    fun `a vertical plane hit up to one metre outside its polygon still counts`() {
+        assertEquals(WallHitKind.EXTENDED_PLANE, wall(vertical = true, outside = 0.4f))
+        assertEquals(
+            WallHitKind.EXTENDED_PLANE,
+            wall(vertical = true, outside = UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M),
+        )
+        assertNull(wall(vertical = true, outside = UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M + 0.01f))
+        assertNull(wall(vertical = true, outside = Float.NaN))
+    }
+
+    @Test
+    fun `a depth point with a horizontal normal is a wall, a floor depth point is not`() {
+        assertEquals(WallHitKind.DEPTH_POINT, wall(depth = true, normalY = 0.1f))
+        assertEquals(WallHitKind.DEPTH_POINT, wall(depth = true, normalY = -0.24f))
+        assertNull("floor", wall(depth = true, normalY = 0.97f))
+        assertNull("ceiling", wall(depth = true, normalY = -0.97f))
+        assertNull(wall(depth = true, normalY = UsableSurfacePolicy.WALL_DEPTH_NORMAL_MAX_Y))
+        assertNull(wall(depth = true, normalY = Float.NaN))
+    }
+
+    @Test
+    fun `a horizontal plane or a feature point is never a wall`() {
+        assertNull(wall(inPolygon = true, outside = 0f))
+    }
+
+    @Test
+    fun `wall hits need tracking and the distance band`() {
+        assertNull(wall(vertical = true, inPolygon = true, tracking = false))
+        assertNull(wall(depth = true, tracking = false))
+        assertNull(wall(depth = true, distance = UsableSurfacePolicy.MAX_DISTANCE_M + 0.01f))
+        assertNull(wall(depth = true, distance = UsableSurfacePolicy.MIN_DISTANCE_M - 0.01f))
+        assertNull(wall(depth = true, distance = Float.NaN))
+    }
+
+    @Test
+    fun `wall hit kinds are ordered from the most trusted`() {
+        assertTrue(WallHitKind.PLANE < WallHitKind.EXTENDED_PLANE)
+        assertTrue(WallHitKind.EXTENDED_PLANE < WallHitKind.DEPTH_POINT)
+        assertTrue(WallHitKind.DEPTH_POINT < WallHitKind.FLOOR_SEAM)
+    }
+
     // ── Fallback ranking ──────────────────────────────────────────────────────────────
 
     @Test

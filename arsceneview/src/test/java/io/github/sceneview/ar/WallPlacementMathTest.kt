@@ -318,6 +318,168 @@ class WallPlacementMathTest {
         )
     }
 
+    @Test
+    fun `wall hit accepts a vertical plane just outside its polygon`() {
+        assertTrue(
+            isWallPlacementHit(
+                isVerticalPlane = true,
+                isPoseInPolygon = false,
+                trackableTracking = true,
+                distance = 1.5f,
+                outsidePolygonDistance = 0.8f,
+            )
+        )
+        assertFalse(
+            isWallPlacementHit(
+                isVerticalPlane = true,
+                isPoseInPolygon = false,
+                trackableTracking = true,
+                distance = 1.5f,
+                outsidePolygonDistance = 1.2f,
+            )
+        )
+    }
+
+    @Test
+    fun `wall hit accepts a depth point facing sideways, up to the tap range`() {
+        assertTrue(
+            isWallPlacementHit(
+                isVerticalPlane = false,
+                isPoseInPolygon = false,
+                trackableTracking = true,
+                distance = 3.5f, // past the auto-placement band, inside the tap range
+                isDepthPoint = true,
+                normalY = 0.05f,
+            )
+        )
+        assertFalse(
+            isWallPlacementHit(
+                isVerticalPlane = false,
+                isPoseInPolygon = false,
+                trackableTracking = true,
+                distance = 1.5f,
+                isDepthPoint = true,
+                normalY = 0.9f,
+            )
+        )
+    }
+
+    // ── Polygon geometry ──────────────────────────────────────────────────────────────────────
+
+    private val square = floatArrayOf(-1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f)
+
+    @Test
+    fun `point in polygon is even-odd`() {
+        assertTrue(isInsidePolygon(0f, 0f, square))
+        assertTrue(isInsidePolygon(0.9f, -0.9f, square))
+        assertFalse(isInsidePolygon(1.5f, 0f, square))
+        assertFalse("under three vertices", isInsidePolygon(0f, 0f, floatArrayOf(0f, 0f, 1f, 1f)))
+    }
+
+    @Test
+    fun `outside distance is zero inside and the edge distance outside`() {
+        assertEquals(0f, polygonOutsideDistance(0.2f, 0.3f, square), eps)
+        assertEquals(0.5f, polygonOutsideDistance(1.5f, 0f, square), eps)
+        assertEquals(sqrt(0.5f), polygonOutsideDistance(1.5f, 1.5f, square), eps) // corner
+        assertEquals(Float.POSITIVE_INFINITY, polygonOutsideDistance(0f, 0f, floatArrayOf()), 0f)
+    }
+
+    @Test
+    fun `nearest edge gives its distance and unit direction`() {
+        val edge = nearestPolygonEdge(0.2f, 0.9f, square)!!
+        assertEquals(0.1f, edge.distance, eps)
+        // Edge (1,1) -> (-1,1): along -X.
+        assertEquals(-1f, edge.dx, eps)
+        assertEquals(0f, edge.dz, eps)
+        assertNull(nearestPolygonEdge(0f, 0f, floatArrayOf(0f, 0f, 1f, 0f)))
+    }
+
+    // ── seamWallCandidate ─────────────────────────────────────────────────────────────────────
+
+    /** Camera 1.4 m above the floor, 1.8 m back from a wall base along +Z (wall at z = -2). */
+    private val camera = Position(0f, 1.4f, -0.2f)
+    private val floorHit = Position(0.1f, 0f, -1.95f)
+
+    @Test
+    fun `a floor point at the far edge infers a wall facing the camera, based on the floor`() {
+        val wall = seamWallCandidate(
+            floorY = 0f,
+            rayHitOnFloor = floorHit,
+            cameraPosition = camera,
+            floorEdgeDistance = 0.05f,
+            edgeDirection = Direction(1f, 0f, 0f),
+        )!!
+        assertVecEquals(Direction(0f, 0f, 1f), wall.normal)
+        assertEquals(0f, wall.point.y, eps)
+        assertEquals(floorHit.x, wall.point.x, eps)
+        assertEquals(floorHit.z, wall.point.z, eps)
+        assertEquals(0f, wall.seam.direction.y, eps)
+        assertEquals(0f, dot(wall.seam.direction, wall.normal), eps)
+    }
+
+    @Test
+    fun `seam wall works without depth or edge, facing straight back at the camera`() {
+        val wall = seamWallCandidate(
+            floorY = 0f,
+            rayHitOnFloor = Position(0f, 0f, -2f),
+            cameraPosition = Position(0f, 1.4f, 0f),
+            floorEdgeDistance = 0.1f,
+        )!!
+        assertVecEquals(Direction(0f, 0f, 1f), wall.normal)
+    }
+
+    @Test
+    fun `a sideways depth normal wins over the edge, flattened and turned to the room`() {
+        val wall = seamWallCandidate(
+            floorY = 0f,
+            rayHitOnFloor = floorHit,
+            cameraPosition = camera,
+            floorEdgeDistance = 0.05f,
+            edgeDirection = Direction(1f, 0f, 0f),
+            depthNormal = normalize(Direction(0.3f, 0.1f, -1f)), // into the wall: flipped
+        )!!
+        assertEquals(0f, wall.normal.y, eps)
+        assertTrue(wall.normal.z > 0.9f)
+        assertTrue(wall.normal.x < 0f)
+    }
+
+    @Test
+    fun `an edge running toward the camera is not a wall base`() {
+        // Edge along Z: its perpendicular is sideways, not facing the camera -> fall back.
+        val wall = seamWallCandidate(
+            floorY = 0f,
+            rayHitOnFloor = floorHit,
+            cameraPosition = camera,
+            floorEdgeDistance = 0.05f,
+            edgeDirection = Direction(0f, 0f, 1f),
+        )!!
+        val toward = normalize(Direction(camera.x - floorHit.x, 0f, camera.z - floorHit.z))
+        assertVecEquals(toward, wall.normal)
+    }
+
+    @Test
+    fun `seam is rejected far from the edge, at the feet, looking down, or on the near edge`() {
+        fun seam(
+            hit: Position = floorHit,
+            cam: Position = camera,
+            edge: Float = 0.05f,
+            endsBeyond: Boolean = true,
+        ) = seamWallCandidate(
+            floorY = 0f,
+            rayHitOnFloor = hit,
+            cameraPosition = cam,
+            floorEdgeDistance = edge,
+            floorEndsBeyond = endsBeyond,
+        )
+        assertTrue(seam() != null)
+        assertNull("mid-floor", seam(edge = SEAM_EDGE_TOLERANCE_M + 0.01f))
+        assertNull("no edge", seam(edge = Float.POSITIVE_INFINITY))
+        assertNull("at the feet", seam(hit = Position(0f, 0f, -0.5f)))
+        assertNull("steep look down", seam(cam = Position(0f, 3.5f, -0.2f)))
+        assertNull("camera under the floor", seam(cam = Position(0f, -0.2f, -0.2f)))
+        assertNull("near edge: the floor goes on beyond", seam(endsBeyond = false))
+    }
+
     // ── roomFacingNormal ──────────────────────────────────────────────────────────────────────
 
     @Test
