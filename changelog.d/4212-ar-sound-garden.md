@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Demo app: Sound Garden, a song you walk through in AR ([#4212](https://github.com/sceneview/sceneview/pull/4212)).** Four glowing orbs planted on the floor each play one part of the same loop. With headphones, the part you walk up to gets louder, the ones behind you sound muffled, and each orb pulses with its own part. Android only for now: a binaural mix keeps the four parts in sync.
