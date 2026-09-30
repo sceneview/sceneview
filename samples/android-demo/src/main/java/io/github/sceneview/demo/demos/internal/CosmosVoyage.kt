@@ -654,7 +654,16 @@ internal fun orbitPose(pose: FloatArray, yawDegrees: Float, pitchDegrees: Float,
  * [out] at [oo].
  */
 @Suppress("LongParameterList")
-private fun rotateAbout(x: Float, y: Float, z: Float, axis: FloatArray, ao: Int, angle: Float, out: FloatArray, oo: Int) {
+private fun rotateAbout(
+    x: Float,
+    y: Float,
+    z: Float,
+    axis: FloatArray,
+    ao: Int,
+    angle: Float,
+    out: FloatArray,
+    oo: Int,
+) {
     val ax = axis[ao]
     val ay = axis[ao + 1]
     val az = axis[ao + 2]

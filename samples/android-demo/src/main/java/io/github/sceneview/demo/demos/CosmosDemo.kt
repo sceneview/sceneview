@@ -416,6 +416,7 @@ fun CosmosDemo(onBack: () -> Unit) {
                 if (voyage.playing) {
                     val shot = CosmosVoyage.shotOf(current)
                     if (clock.sceneTime > shot.seconds) {
+                        Log.i(TAG, voyage.shotPacing(current))
                         voyage.arrivedByWarp = shot.exit == VoyageExit.Warp
                         scene = CosmosVoyage.next(current)
                     }
@@ -840,10 +841,21 @@ private class VoyageState(var playing: Boolean) {
 
     private var lastNanos = 0L
 
+    // Frame pacing over the shot on screen, logged when it ends: the voyage's smoothness figure.
+    private var shotFrames = 0
+    private var shotSlowFrames = 0
+    private var shotSeconds = 0f
+
     /** Advances the frame clock; returns this frame's step in seconds, a hitch clamped. */
     fun step(nanos: Long): Float {
-        val dt = if (lastNanos == 0L) 0f else ((nanos - lastNanos) / 1e9f).coerceIn(0f, MAX_STEP_SECONDS)
+        val raw = if (lastNanos == 0L) 0f else (nanos - lastNanos) / 1e9f
+        val dt = raw.coerceIn(0f, MAX_STEP_SECONDS)
         lastNanos = nanos
+        if (playing && raw > 0f) {
+            shotFrames++
+            shotSeconds += raw
+            if (raw > SLOW_FRAME_SECONDS) shotSlowFrames++
+        }
         idleSeconds = idleSeconds?.plus(dt)
         warpClock += dt
         return dt
@@ -903,9 +915,21 @@ private class VoyageState(var playing: Boolean) {
         if (streaks < STREAKS_OFF) streaks = 0f
     }
 
+    /** The frame pacing of the shot that just ended, then a fresh count for the next one. */
+    fun shotPacing(scene: CosmosScene): String {
+        val fps = if (shotSeconds > 0f) shotFrames / shotSeconds else 0f
+        val report = "voyage shot ${scene.name}: $shotFrames frames, ${"%.1f".format(fps)} fps, " +
+            "$shotSlowFrames over ${(SLOW_FRAME_SECONDS * 1000).toInt()} ms"
+        shotFrames = 0
+        shotSlowFrames = 0
+        shotSeconds = 0f
+        return report
+    }
+
     private companion object {
         const val MAX_STEP_SECONDS = 0.1f
         const val STREAKS_OFF = 0.01f
+        const val SLOW_FRAME_SECONDS = 0.025f
     }
 }
 
