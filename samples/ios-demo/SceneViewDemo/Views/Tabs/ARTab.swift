@@ -350,7 +350,7 @@ private struct ARLauncherScreen: View {
                 .levelledRow()
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, SceneViewTokens.Home.contentPadding)
     }
 }
 
