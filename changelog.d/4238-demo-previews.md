@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Demo apps: eight more demos get a preview image that shows the real demo.** Animation, Double Pendulum, Contact Shadow, Secondary Camera and Scene to MP4 on Android, and Animation, Double Pendulum, Billboard, Occlusion Material and Video Texture on iOS, now show the demo's own scene in the catalogue, in versions that read well in light and dark themes. They replace flat or near-empty captures that were hard to tell apart in the list.
