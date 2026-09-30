@@ -1688,7 +1688,8 @@
       "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
       "license": "CC-BY-4.0",
       "shippedAs": [
-        "Fox.glb"
+        "Fox.glb",
+        "khronos_fox_clips.usdz"
       ],
       "formats": {
         "glb": {
@@ -3022,6 +3023,9 @@
       "sourceUrl": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
       "author": "Tomás Laulhé (modified by Don McCurdy)",
       "license": "CC0-1.0",
+      "shippedAs": [
+        "threejs_soldier_clips.usdz"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/threejs_soldier.glb",

@@ -452,6 +452,15 @@
       "author": "PixelMannen (model), tomkranis (rigging & animation)"
     },
     {
+      "path": "samples/ios-demo/SceneViewDemo/Models/khronos_fox_clips.usdz",
+      "scope": "ios",
+      "sha256": "8d67fcb7e51ccf78f6293e8f63b9feda62d66c0953934013751b1d7a1c24bf41",
+      "size": 171923,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+      "license": "CC-BY-4.0",
+      "author": "PixelMannen (model), tomkranis (rigging & animation)"
+    },
+    {
       "path": "samples/ios-demo/SceneViewDemo/Models/khronos_lantern.usdz",
       "scope": "ios",
       "sha256": "7891ad9dc6aa241863d8c979562818c07b70b4686aee9ea77cd438566a1ea04d",
@@ -594,6 +603,15 @@
       "source": "https://sketchfab.com/3d-models/tesla-cybertruck-657e71b3e2ad468196668e9c9df708fb",
       "license": "CC-BY-4.0",
       "author": "hashikemu"
+    },
+    {
+      "path": "samples/ios-demo/SceneViewDemo/Models/threejs_soldier_clips.usdz",
+      "scope": "ios",
+      "sha256": "b7be661d2eff2f8a1b242925422041541e2b89f3b489aeae0201ff064c6185e6",
+      "size": 2851665,
+      "source": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
+      "license": "CC0-1.0",
+      "author": "Tom\u00e1s Laulh\u00e9 (modified by Don McCurdy)"
     },
     {
       "path": "samples/ios-demo/SceneViewDemo/Models/tree_scene.usdz",

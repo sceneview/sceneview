@@ -67,8 +67,12 @@ import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.demo.theme.StageChrome
+import io.github.sceneview.demo.theme.themedStageChrome
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
+import io.github.sceneview.math.colorOf
+import io.github.sceneview.math.toLinearSpace
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.model
 import io.github.sceneview.toAabb
@@ -323,6 +327,15 @@ private fun AnimationSection(onBack: () -> Unit) {
     // subject is lit, far below it reads as an unlit black silhouette (#1468). Re-runs whenever
     // the active environment OR the slider value change, so dragging it updates in real time.
     val renderInvalidator = rememberRenderInvalidator()
+    // The backdrop follows the theme: the neutral studio grey in light, the dark stage ground
+    // (`stage-background`) in dark. A fixed grey made the dark theme a pale slab behind dark
+    // chrome, and the dark Home card with it. Recoloured in place, never rebuilt: the demo
+    // activity handles `uiMode` itself and the scene is still drawing this skybox.
+    val darkStage = themedStageChrome() === StageChrome.Media
+    LaunchedEffect(stageSkybox, darkStage) {
+        stageSkybox.setStageColor(darkStage)
+        renderInvalidator.requestRender()
+    }
     LaunchedEffect(activeEnvironment, iblIntensity) {
         activeEnvironment.indirectLight?.intensity = iblIntensity
         // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it
@@ -1244,6 +1257,19 @@ private const val ANIMATION_START_YAW_DEGREES = 60f
  */
 internal fun neutralStageSkybox(engine: com.google.android.filament.Engine): Skybox =
     Skybox.Builder().color(0.40f, 0.40f, 0.42f, 1.0f).build(engine)
+
+/**
+ * The studio backdrop for the theme: [neutralStageSkybox]'s grey in light, `stage-background`
+ * (#0B0F16, the dark stage every other demo stands on) in dark.
+ */
+private fun Skybox.setStageColor(dark: Boolean) {
+    if (dark) {
+        val ground = colorOf(SceneViewTokens.Stage.background).toLinearSpace()
+        setColor(ground.r, ground.g, ground.b, 1.0f)
+    } else {
+        setColor(0.40f, 0.40f, 0.42f, 1.0f)
+    }
+}
 
 /** One full turntable revolution — slow enough that the animation, not the camera, leads. */
 private const val ANIMATION_TURN_MILLIS = 40_000

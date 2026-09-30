@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 46,
+  "total": 48,
   "sections": [
     {
       "title": "3D models",
@@ -147,6 +147,16 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
           "size": 139880,
+          "note": ""
+        },
+        {
+          "file": "Models/khronos_fox_clips.usdz",
+          "name": "Fox",
+          "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+          "size": 171923,
           "note": ""
         },
         {
@@ -307,6 +317,16 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/tesla-cybertruck-657e71b3e2ad468196668e9c9df708fb",
           "size": 4343008,
+          "note": ""
+        },
+        {
+          "file": "Models/threejs_soldier_clips.usdz",
+          "name": "Soldier",
+          "author": "Tomás Laulhé (modified by Don McCurdy)",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
+          "size": 2851665,
           "note": ""
         },
         {

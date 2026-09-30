@@ -126,6 +126,14 @@ enum SceneViewTokens {
             dark: Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
         )
 
+        /// Flat studio backdrop behind a character on a turntable (Animation) —
+        /// Android's themed studio skybox: the neutral grey it renders to in
+        /// light (#C2C2C4), `stage-background` (#0B0F16) in dark.
+        static let studioBackdrop = Color(
+            light: Color(red: 0xC2 / 255, green: 0xC2 / 255, blue: 0xC4 / 255),
+            dark: Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
+        )
+
         /// The Rolling Balls tray floor — Android's `StageSky.floor`:
         /// `surface-container-highest` light (#E9ECEF), `surface-dim` dark
         /// (#161B22). RealityKit does not resolve dynamic colours, so the demo

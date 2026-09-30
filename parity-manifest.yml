@@ -290,8 +290,10 @@ demos:
       Hero/Reveal/Vertigo/Tracking/Free
     parity: diverges
     evidence: >-
-      No Fox; 'Soldier' = cyberpunk_character (AnimationDemo.swift:64-72); on
-      screen 'camera shots…Android-only' (:288); D7 spinner unverified
+      Opens on the Fox with its Survey/Walk/Run clips, status card, play/pause,
+      scrub, speed, Loop/Once, themed studio backdrop (khronos_fox_clips.usdz,
+      trimmed AnimationViews); Soldier = three.js soldier Idle/Walk/Run; camera shots,
+      brightness and two-clip blend Android-only, said in the sheet
   - id: rolling-balls
     androidStatus: Working
     iosStatus: working
