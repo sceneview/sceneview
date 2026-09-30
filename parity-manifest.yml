@@ -1381,14 +1381,18 @@ shell:
       - samples/ios-demo/SceneViewDemo/Views/Components/ARPlacementExperience.swift
       - samples/ios-demo/SceneViewDemo/Views/Components/ARExperienceContainer.swift
     contract: >-
-      Launcher (status line, Start AR Camera, 6 featured + 'All AR demos (N)')
-      -> shared auto-placement; dock Models·Reset·Settings; 6-model picker
-      sheet; SDK coaching; unsupported card
+      Launcher opening on a 312dp dark 3D hero (detected-floor dots projected
+      through the stage camera, a ripple, a reticle, the fox / sheen chair /
+      shiba placed in turn; title, AR status line and the white Start AR
+      Camera pill over it), 6 featured + 'All AR demos (N)' -> shared
+      auto-placement; dock Models·Reset·Settings; 6-model picker sheet; SDK
+      coaching; unsupported card
     parity: diverges
     evidence: >-
       iOS picker = 2 models in a Menu inside Settings
       ARPlacementExperience.swift:112,339, no dock items :134; launcher 5
-      cards, no All-AR grid ARTab.swift:102; Android ArViewTab.kt:345,619,747
+      cards, no All-AR grid ARTab.swift:102, flat header, no 3D hero;
+      Android ArViewTab.kt ArHero + ui/stage/ArHeroStage.kt
   - surface: explore
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/explore/ExploreTabScreen.kt
@@ -1412,13 +1416,15 @@ shell:
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Tabs/AboutTab.swift
     contract: >-
-      Identity (mark, version, tagline), Support card (Open Collective, GitHub
-      Sponsors), groups Learn / App (Send feedback, Release notes) / Legal
-      (License, Credits), footer
+      Identity (the mark in 3D: glossy cube with two orbit rings on a 176dp
+      transparent stage, launcher icon until first frames; version, tagline),
+      Support card (Open Collective, GitHub Sponsors), groups Learn / App
+      (Send feedback, Release notes) / Legal (License, Credits), footer
     parity: diverges
     evidence: >-
       iOS: 5 flat cards, no groups, no Send feedback, no Release notes
-      AboutTab.swift:95-134; other tagline :78; Android RootScreen.kt:381-440;
+      AboutTab.swift:95-134; other tagline :78; flat 80pt mark, no 3D stage;
+      Android RootScreen.kt AboutIdentity + ui/stage/AboutMarkStage.kt;
       Support card matches :154-176
   - surface: demo-chrome
     category: SHELL

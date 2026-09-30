@@ -6,7 +6,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +55,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,10 +63,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -90,6 +89,7 @@ import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.stage.AboutMarkStage
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 import io.github.sceneview.demo.ui.home.HomeScreen
@@ -395,10 +395,19 @@ private fun AboutTabContent() {
         CreditsSheet(onDismiss = { showCreditsSheet = false })
     }
 
+    val scroll = rememberScrollState()
+    val stageBottomPx = with(LocalDensity.current) {
+        (SceneViewTokens.Space.lg + SceneViewTokens.About.stageHeight).roundToPx()
+    }
+    // The mark's stage only renders while some of it is on screen; scrolled away, it parks
+    // on its last frame and costs nothing.
+    val markOnScreen by remember(scroll, stageBottomPx) {
+        derivedStateOf { scroll.value < stageBottomPx }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(
                 start = SceneViewTokens.Space.md,
                 end = SceneViewTokens.Space.md,
@@ -409,7 +418,7 @@ private fun AboutTabContent() {
         // the label has to belong to the card under it, not float between two of them.
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xl),
     ) {
-        AboutIdentity()
+        AboutIdentity(markActive = markOnScreen)
         AboutSupportCard(openLink = openLink)
         AboutGroup(title = stringResource(R.string.about_group_learn)) {
             AboutActionRow(
@@ -491,21 +500,16 @@ private fun AboutTabContent() {
  * screen made; on the page background the block reads as a masthead instead.
  */
 @Composable
-private fun AboutIdentity() {
+private fun AboutIdentity(markActive: Boolean) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
     ) {
-        Image(
-            // The launcher icon itself (#3563), not a Material glyph on a gradient —
-            // and not `Icons.Filled.ViewInAr`, which is already the AR View tab's icon.
-            painter = painterResource(R.drawable.ic_sceneview_hero),
-            contentDescription = null,
-            modifier = Modifier
-                .size(SceneViewTokens.About.markSize)
-                .clip(RoundedCornerShape(SceneViewTokens.Radius.xl)),
-        )
+        // The launcher icon's cube as a real object (#3563's mark, in 3D): glossy, lit by
+        // the studio HDR, turning with two orbit rings. The icon itself holds the place
+        // until the stage has rendered, then the two crossfade.
+        AboutMarkStage(active = markActive)
         Text(
             text = stringResource(R.string.about_sceneview),
             style = SceneViewTokens.Type.title,

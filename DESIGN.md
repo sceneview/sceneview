@@ -203,6 +203,7 @@ so the eye lands on the one thing the screen is for.
 | Token | Value | Usage |
 |---|---|---|
 | `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero` on Android, the `about_mark` image set cut from `AppIcon` on iOS), never a Material glyph or an SF Symbol |
+| `about-stage` | 176dp full width, transparent | The mark **in 3D** (Android): the launcher icon's cube as a glossy object lit by the studio HDR, turning, with two tilted orbit rings and their satellites. The `about-mark` icon holds its place until the stage has rendered, then the two crossfade (`motion-stage-reveal`). A flat radial contact shadow sits under it. No card, no fill: it floats on `surface` |
 | `about-row-icon` | 20dp | Leading glyph of an action row |
 | `about-row-affordance` | 16dp open-in-new / 20dp chevron | Trailing glyph — leaves the app, or stays in it. Two sizes because the chevron is the thinner drawing: matched boxes read as two icon sets. |
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
@@ -215,8 +216,34 @@ so the eye lands on the one thing the screen is for.
 - **The mark is the launcher icon**, cut from `ic_launcher_foreground` and kept
   theme-independent — it is the product's identity, the same picture in light and dark,
   and its contrast is self-contained (light cube on `#0D2137`).
+- **The 3D mark is the same object.** Its colours are the icon's (`#3D7FD9` body, `#BDD3FF`
+  lid inset, `#A4C1FF` rings), theme-independent; the key light comes from the upper right
+  so the faces fall into the icon's light top / mid right / dark left. It only renders while
+  on screen, parks on its last frame when scrolled away, and holds a settled pose under
+  reduced motion.
 - **Support is stated once and never pushed.** One card, on the About tab, above the
   fold. No dialog, no launch prompt, no badge, no amounts, no tiers, no urgency copy.
+
+### Demo App AR Tab Hero (Android)
+
+The AR tab opens on what AR *does*, playing before the camera is ever opened: a dark stage
+(the Home hero's, the same in both themes) with a detected floor, a reticle and a bundled
+model being placed on it — the fox, the sheen chair, the shiba, one after the other. The
+title, the device's AR status and the one call to action are drawn over the stage.
+
+| Token | Value | Usage |
+|---|---|---|
+| `ar-hero-height` | 312dp, `radius-xl` | The hero card |
+| `ar-hero-stage` | `#0B0F16` → `#14284A` vertical | Stage gradient, top to floor |
+| `ar-hero-plane-dot` | `#A4C1FF` at 22%, ripple to 85%, 1.6dp | The detected floor: dots on the world's y = 0 plane, projected through the stage camera's own lens (28mm on Filament's 24mm sensor), so the models stand on them |
+| `ar-hero-bracket` | white 40%, 22dp × 2dp, 16dp inset | Viewfinder corners |
+| `ar-hero-copy-scrim` | transparent → `#0B0F16` at 80%, lower half | Keeps the status line and the pill legible whatever model stands behind them |
+
+- **Copy is the Home hero's:** white title, 80% white tagline and status, the white hero
+  pill for the call to action (`Glass.surface` / muted text while disabled).
+- **Only on screen.** The 3D and the ripple stop once the hero scrolls away; reduced motion
+  shows the fox landed and a still ripple.
+- **Bundled assets only** — no download, no APK growth.
 
 ### Text
 
@@ -413,7 +440,9 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 
 One spring and one fade for the chrome; one shared-axis spec for screen changes, one
 fly-in for a 3D subject's arrival, one short handover from the loading cover to the first
-rendered frame, and one breathing ellipsis for a step in flight. In AR,
+rendered frame, and one breathing ellipsis for a step in flight. The shell's 3D stages (the
+Home hero, the About mark, the AR tab hero) move on their own clocks, only while on screen,
+and hold a settled frame under reduced motion. In AR,
 the coaching glyph and a placed object's entrance (the `motion-coach-*` and
 `motion-placement-*` tokens below — shipped by the SDK, so every AR app gets them).
 Nothing else animates.
@@ -424,6 +453,9 @@ Nothing else animates.
 | `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus |
 | `motion-handover` | `tween(150ms, FastOutSlowIn)` | The loading cover giving way to the first rendered frame — the scene is already there, so the veil leaves fast |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
+| `motion-stage-reveal` | `tween(450ms, ease-expressive)` | A shell 3D stage (About mark, AR tab hero) fading in over its placeholder once it has presented three frames |
+| `motion-ar-hero-ripple` | 2400ms linear loop | The ripple crossing the AR hero's detected floor, from the reticle outward. Drawn in the draw phase only; stopped off screen and under reduced motion |
+| `motion-ar-hero-placement` | one model every 5.5s | The AR hero placing its next bundled model: `motion-placement-entrance` (scale 0.55 → 1 with a slight overshoot, a 0.32-unit drop), a 14°/s turntable, a reticle pulse on landing, a 300ms shrink out |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
 | `motion-coach-sweep` | 1600ms per sweep, sine, ±18dp travel and ±10° roll | The phone of the AR coaching glyph sweeping over the surface it is looking for. Half speed while tracking is limited |
 | `motion-coach-resolve` | `tween(450ms, ease-expressive)` | The "surface found" beat — the target fills with `primary` and a cube lands on it, held 150ms, then the glyph leaves |

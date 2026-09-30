@@ -472,6 +472,75 @@ object SceneViewTokens {
         val rowAffordance = 16.dp
         /** Inset of a row divider, so it starts under the label, not under the icon. */
         val dividerInset = 48.dp
+        /**
+         * `about-stage` — the band the SceneView mark floats in, in 3D. The launcher icon
+         * ([markSize]) sits at its centre until the stage has presented its first frames.
+         * 176 dp still keeps the support card on the first screenful of a 411 x 891 dp
+         * phone (#3565).
+         */
+        val stageHeight = 176.dp
+        /** Width of the soft contact shadow under the floating mark. */
+        val stageShadowWidth = 132.dp
+        /** Height of that shadow — a flat ellipse, the mark hovers above it. */
+        val stageShadowHeight = 18.dp
+    }
+
+    /**
+     * `DESIGN.md` — Shell stages: the small transparent 3D stages of the app shell (the
+     * About mark, the AR tab's hero). One engine each, only while on screen, the Home
+     * hero's gating rules.
+     */
+    object ShellStage {
+        /** Presented frames per second while the stage moves. */
+        const val maxFps = 60
+        /** `motion-stage-reveal` — the stage fading in over its placeholder. */
+        const val fadeInMillis = 450
+    }
+
+    /**
+     * The SceneView mark in 3D — `ic_sceneview_hero`'s palette, as material colours. Art
+     * direction, like [HomeColor]'s sky: the same in light and dark, the mark is a brand
+     * object, not a themed surface.
+     */
+    object MarkColor {
+        /** The cube body — the mark's right face (`#3D7FD9`); the key light shades the rest. */
+        val body = Color(0xFF3D7FD9)
+        /** The lid inset on the top face — the mark's inner highlight (`#BDD3FF`). */
+        val lid = Color(0xFFBDD3FF)
+        /** The two orbit rings and their satellites — the mark's top face (`#A4C1FF`). */
+        val orbit = Color(0xFFA4C1FF)
+        /** Contact shadow under the mark, at its core. Transparent at the rim. */
+        val shadowLight = Color(0x2E0B1B3A)
+        val shadowDark = Color(0x8C000000)
+    }
+
+    /**
+     * `DESIGN.md` — The AR tab's hero: a dark stage (the same in both themes, like the
+     * Home hero) with a detected floor, a reticle and a model being placed on it.
+     */
+    object ArHero {
+        val height = 312.dp
+        /** Stage gradient, top to floor. */
+        val stageTop = Color(0xFF0B0F16)
+        val stageBottom = Color(0xFF14284A)
+        /** Detected-plane dots and the ripple that runs through them. */
+        val planeDot = Color(0xFFA4C1FF)
+        const val planeDotAlpha = 0.22f
+        const val planeRippleAlpha = 0.85f
+        val planeDotRadius = 1.6.dp
+        /** Viewfinder corner brackets. */
+        val bracket = Color(0x66FFFFFF)
+        val bracketLength = 22.dp
+        val bracketStroke = 2.dp
+        val bracketInset = 16.dp
+        /** Contact shadow under the placed model. */
+        val contactShadow = Color(0x99000000)
+        /** Scrim behind the copy at the bottom of the stage. */
+        val copyScrim = Color(0xCC0B0F16)
+        /** `motion-ar-hero-ripple` — one ripple crossing the detected plane. */
+        const val rippleMillis = 2400
+        /** A model stays placed this long before the next one is placed. */
+        const val placementSeconds = 5.5
     }
 
     /** `DESIGN.md` — Spring motion: `spring(dampingRatio 0.85, stiffness 450)`, one spring for press, sheets, dock. */

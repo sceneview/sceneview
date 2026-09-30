@@ -40,7 +40,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -59,11 +58,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.derivedStateOf
+import io.github.sceneview.demo.ui.stage.ArHeroStage
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
@@ -430,6 +434,13 @@ private fun ArLauncherScreen(
     val showCta = availability != ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE
 
     val scroll = rememberScrollState()
+    val heroBottomPx = with(LocalDensity.current) {
+        (AR_HERO_TOP_GAP + SceneViewTokens.ArHero.height).roundToPx()
+    }
+    // The hero's 3D only runs while some of it is on screen.
+    val heroOnScreen by remember(scroll, heroBottomPx) {
+        derivedStateOf { scroll.value < heroBottomPx }
+    }
 
     Column(
         modifier = Modifier
@@ -438,136 +449,30 @@ private fun ArLauncherScreen(
             .padding(
                 start = 20.dp,
                 end = 20.dp,
-                top = 12.dp,
+                top = AR_HERO_TOP_GAP,
                 bottom = LIST_BOTTOM_GUTTER,
             ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // Compact hero — icon + title on one line, tagline below. Cards
-        // get the screen real estate, not chrome.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.70f),
-                            ),
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.ViewInAr,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.ar_experiences_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(R.string.ar_experiences_tagline),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 16.sp,
-                )
-            }
-        }
-
-        // Status line + CTA
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = if (arSupported || isChecking) {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            } else {
-                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+        // The hero (#wow): AR playing on its own before the camera is ever opened — a
+        // detected floor, a reticle, bundled models placed on it — with the title, the
+        // device's AR status and the one call to action drawn over the stage.
+        ArHero(
+            active = heroOnScreen,
+            statusMessage = statusMessage,
+            isChecking = isChecking,
+            arSupported = arSupported,
+            showCta = showCta,
+            ctaEnabled = ctaEnabled,
+            ctaLabel = ctaLabel,
+            onCta = {
+                if (!cameraGranted) {
+                    onRequestCamera()
+                } else {
+                    onStartArSession()
+                }
             },
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    if (isChecking) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(
-                            imageVector = if (arSupported) {
-                                Icons.Filled.CheckCircle
-                            } else {
-                                Icons.Filled.Close
-                            },
-                            contentDescription = null,
-                            tint = if (arSupported) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.error
-                            },
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    Text(
-                        text = statusMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-
-                if (showCta) {
-                    Button(
-                        onClick = {
-                            if (!cameraGranted) {
-                                onRequestCamera()
-                            } else {
-                                onStartArSession()
-                            }
-                        },
-                        enabled = ctaEnabled,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp),
-                        shape = RoundedCornerShape(percent = 50),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Icon(
-                            Icons.Filled.ViewInAr,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(ctaLabel, style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
-        }
+        )
 
         // Featured section title — kept under the existing `ar_try_an_ar_demo`
         // string (translated as "Featured" in en, "Mises en avant" in fr, …)
@@ -743,5 +648,158 @@ private fun ArPermissionPlaceholder(granted: Boolean) {
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
+    }
+}
+
+/** Gap above the AR hero — the launcher column's top padding. */
+private val AR_HERO_TOP_GAP = 12.dp
+
+/**
+ * The AR tab's hero card: [ArHeroStage] playing behind the title, the device's AR status
+ * and the one call to action. Dark in both themes, like the Home hero — the copy is white,
+ * the pill is the Home hero's white pill.
+ */
+@Composable
+private fun ArHero(
+    active: Boolean,
+    statusMessage: String,
+    isChecking: Boolean,
+    arSupported: Boolean,
+    showCta: Boolean,
+    ctaEnabled: Boolean,
+    ctaLabel: String,
+    onCta: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(SceneViewTokens.ArHero.height)
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.xl)),
+    ) {
+        ArHeroStage(active = active, modifier = Modifier.fillMaxSize())
+        ViewfinderBrackets(Modifier.fillMaxSize())
+        // Copy scrim at the foot of the stage: the status and the pill always read, whatever
+        // model is standing behind them.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(SceneViewTokens.ArHero.height / 2)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, SceneViewTokens.ArHero.copyScrim),
+                    ),
+                ),
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth(AR_HERO_COPY_WIDTH)
+                .padding(
+                    start = SceneViewTokens.Space.lg,
+                    top = SceneViewTokens.Space.lg,
+                ),
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+        ) {
+            Text(
+                text = stringResource(R.string.ar_experiences_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = SceneViewTokens.HomeColor.heroTitle,
+            )
+            Text(
+                text = stringResource(R.string.ar_experiences_tagline),
+                style = MaterialTheme.typography.bodyMedium,
+                color = SceneViewTokens.HomeColor.heroSubtitle,
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(SceneViewTokens.Space.md),
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs),
+        ) {
+            Row(
+                modifier = Modifier.padding(start = SceneViewTokens.Space.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            ) {
+                if (isChecking) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(AR_HERO_STATUS_ICON),
+                        strokeWidth = 2.dp,
+                        color = SceneViewTokens.ArOverlay.accentProgress,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (arSupported) Icons.Filled.CheckCircle else Icons.Filled.Close,
+                        contentDescription = null,
+                        tint = if (arSupported) {
+                            SceneViewTokens.ArOverlay.accentProgress
+                        } else {
+                            SceneViewTokens.ArOverlay.accentBlocked
+                        },
+                        modifier = Modifier.size(AR_HERO_STATUS_ICON),
+                    )
+                }
+                Text(
+                    text = statusMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SceneViewTokens.HomeColor.heroSubtitle,
+                )
+            }
+            if (showCta) {
+                Button(
+                    onClick = onCta,
+                    enabled = ctaEnabled,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(percent = 50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SceneViewTokens.HomeColor.heroPillBackground,
+                        contentColor = SceneViewTokens.HomeColor.heroPillText,
+                        disabledContainerColor = SceneViewTokens.Glass.surface,
+                        disabledContentColor = SceneViewTokens.Glass.onGlassMuted,
+                    ),
+                ) {
+                    Icon(
+                        Icons.Filled.ViewInAr,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(ctaLabel, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+    }
+}
+
+/** Share of the hero's width the title block may take: the models stand in the rest. */
+private const val AR_HERO_COPY_WIDTH = 0.6f
+private val AR_HERO_STATUS_ICON = 18.dp
+
+/** Four viewfinder corners: the stage is a camera view, before the camera is opened. */
+@Composable
+private fun ViewfinderBrackets(modifier: Modifier) {
+    val color = SceneViewTokens.ArHero.bracket
+    androidx.compose.foundation.Canvas(modifier) {
+        val inset = SceneViewTokens.ArHero.bracketInset.toPx()
+        val length = SceneViewTokens.ArHero.bracketLength.toPx()
+        val stroke = SceneViewTokens.ArHero.bracketStroke.toPx()
+        val left = inset
+        val top = inset
+        val right = size.width - inset
+        val bottom = size.height - inset
+        fun corner(x: Float, y: Float, dx: Float, dy: Float) {
+            drawLine(color, Offset(x, y), Offset(x + dx * length, y), stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(x, y), Offset(x, y + dy * length), stroke, cap = StrokeCap.Round)
+        }
+        corner(left, top, 1f, 1f)
+        corner(right, top, -1f, 1f)
+        corner(left, bottom, 1f, -1f)
+        corner(right, bottom, -1f, -1f)
     }
 }
