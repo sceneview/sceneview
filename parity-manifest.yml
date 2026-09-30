@@ -685,14 +685,21 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosMeshes.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosGlow.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosSystem.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosWorld.swift
     contract: >-
       Four procedural, real-time scenes in additive HDR light plus bloom: a
       four-arm spiral galaxy of 60 000 camera-facing star sprites with
       alpha-blended dust lanes, built in layers so it shows within a second, a plasma
       star (noise-shaded sphere, Fresnel limb, magnetic loops), a looping
       burst of ~460 charged-particle tracks, and a vortex flow field of
-      streamlines with travelling pulses. Dock picks a scene; an optional
-      tour cycles them; Bloom slider; no video, no texture.
+      streamlines with travelling pulses. The Star scene opens on a whole
+      system: a ringed world orbits the star, lit by it (terminator,
+      atmosphere rim, ring shadow on the planet, planet shadow on the rings,
+      fading orbit trail); tapping the planet or the star flies the camera
+      there on ease-expressive, round the star (#4192). Dock picks a scene;
+      an optional tour cycles them and flies to the planet once; Bloom
+      slider; no video, no texture.
     parity: diverges
     evidence: >-
       Same meshes, seeds, cameras, captions and dock. No custom shader on iOS
@@ -703,7 +710,12 @@ demos:
       phase groups with one material each, and the star surface churns by
       cross-fading 512x256 plasma frames baked in the background every 1.5 s
       of scene time (held in Low Power Mode or at a serious thermal state).
-      The Flow landscape quarter-turn is ported and rebuilt when the viewport
+      The ringed world (#4192) shares CosmosSystem's constants, poses, eased
+      flight and tap hit test with Android (unit-tested); its planet and
+      ring shaders are evaluated on the CPU into a 1024x512 planet map and a
+      256x1024 ring map, re-baked off the main thread at up to 8 Hz while
+      the orbit or the camera moves; the star's halo turns and its limb and
+      corona resize as the camera flies. The Flow landscape quarter-turn is ported and rebuilt when the viewport
       crosses square; captured in a macOS window, where only the brightest
       light shows (the dim light is lost on macOS in Galaxy and Flow; cause
       not yet traced). Remaining gaps: the flow nuclei do
