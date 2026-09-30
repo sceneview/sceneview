@@ -1,20 +1,25 @@
 # Play Store Data safety — SceneView demo
 
-Reference content for the **Data safety** form in Google Play Console
-(*App content → Data safety*). Transcribe these answers into the Play Console
-questionnaire — this file is the source of truth, not a file the CI uploads.
+Source of truth for the **Data safety** form of `io.github.sceneview.demo` in Google Play
+Console (*Policy and programs → App content → Data safety*). The importable version is
+[`data-safety.csv`](data-safety.csv) — Play Console *Import from CSV*, or the Play
+Developer API:
 
-> **Why this exists.** The demo app's only feature that touches user-provided
-> data is the optional **in-app bug reporter**. It runs **entirely on-device**:
-> no runtime permission, no screen recording, no microphone, no background
-> service, and no upload to any SceneView-operated server. The report (device
-> info, the app's own recent log, and an optional screenshot of the app window)
-> is handed to the user, who chooses whether to send it — through the Android
-> **system share sheet**, or as a **pre-filled GitHub issue they review and
-> submit themselves**. Because the app never transmits this data off the device
-> on its own — the only egress is a user-initiated share/submit — it is **not
-> "collected" or "shared" in Play's terms**. The flow is described in
-> [`.github/PRIVACY_POLICY.md`](../../../../.github/PRIVACY_POLICY.md).
+```bash
+# Body: {"safetyLabels": "<the whole CSV as one string>"}
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/io.github.sceneview.demo/dataSafety
+```
+
+The privacy policy these answers must match is <https://sceneview.github.io/privacy.html>
+(source: [`website-static/privacy.html`](../../../../website-static/privacy.html)).
+
+> **Why the answers changed.** Until 4.51 the form said "no data collected". The Firebase
+> release adds Google Analytics for Firebase, Crashlytics and Cloud Messaging. The same
+> review also caught what the old form missed: the app requests `ACCESS_FINE_LOCATION`,
+> and Google's [ARCore Data safety guidance](https://developers.google.com/ar/develop/play-safety-label)
+> says ARCore's cloud features (Cloud Anchors, Geospatial) send camera and precise
+> location data to Google, and that ARCore always collects its own identifiers and
+> diagnostics while AR runs.
 
 ---
 
@@ -22,88 +27,44 @@ questionnaire — this file is the source of truth, not a file the CI uploads.
 
 | Question | Answer |
 |---|---|
-| Does your app collect or share any of the required user data types? | **No** |
+| Does your app collect or share any of the required user data types? | **Yes** |
+| Is all of the user data collected by your app encrypted in transit? | **Yes** (Firebase and ARCore use HTTPS/TLS) |
+| Which account creation methods does your app support? | **None** — the app has no accounts |
+| Do you provide a way for users to request that their data is deleted? | **Yes** — by email, see [privacy.html#your-choices](https://sceneview.github.io/privacy.html#your-choices) |
 
-The app does not collect or share user data. Normal use (browsing the 3D/AR
-demos) transmits nothing off-device, and the in-app bug reporter only assembles
-a report locally and hands it to the user; any transfer is a **user-initiated**
-share-sheet action or a GitHub issue the user submits themselves. Under Play's
-Data safety definitions, data moved only by the user's own action through the
-Android share functionality (and content the user chooses to post to a public
-issue tracker) is **not** app "collection" or "sharing", so the remaining
-sections of the questionnaire do not apply.
+## Section 2 — Data types
 
----
+All **collected**, none **shared** (Google processes Firebase data as a service provider
+on the developer's behalf, which Play excludes from "sharing"), none processed
+ephemerally. "Optional" = the user can turn it off (the Settings switch for analytics
+and crash reports, the OS permission or the demo itself for the rest).
 
-## Section 2 — Data types collected
+| Category > Type | Required / optional | Purposes | Source |
+|---|---|---|---|
+| Location > Approximate location | Optional | Analytics, App functionality | GA4 derives it from the masked IP; ARCore |
+| Location > Precise location | Optional | App functionality | ARCore Geospatial demos, after the location permission |
+| Personal info > User IDs | Optional | Analytics | ARCore's own user ID while AR runs (the app has no accounts) |
+| Photos and videos > Videos | Optional | App functionality | Camera data ARCore sends to host/resolve Cloud Anchors and for Geospatial localization; marked for automatic deletion |
+| App activity > App interactions | Optional | Analytics | Firebase Analytics events |
+| App info and performance > Crash logs | Optional | Analytics, App functionality | Crashlytics |
+| App info and performance > Diagnostics | Optional | Analytics, App functionality | Crashlytics, ARCore |
+| Device or other IDs | Required | App functionality, Analytics, Developer communications | Firebase app instance ID, installation ID, FCM token |
 
-**None.** No data type in the Play catalogue is collected by the app:
+**Not collected:** name, email, phone, address, other personal info, financial info,
+health, messages, photos, audio, files, calendar, contacts, web browsing, installed apps,
+search history, other user-generated content. **No advertising ID**: the merged manifest
+must not carry `com.google.android.gms.permission.AD_ID` (firebase-analytics adds it;
+remove it with `tools:node="remove"`) and must set
+`google_analytics_adid_collection_enabled=false`, so the *Advertising ID* declaration in
+App content stays **No**. Check the merged release manifest before every upload.
 
-- **Not collected:** Location, Personal info (name, email, user IDs, address,
-  phone), Financial info, Health & fitness, Messages, Photos & videos, Audio,
-  Contacts, Calendar, Files & docs, App activity, Web browsing history,
-  Installed apps, Search history, App info & performance / Diagnostics, and
-  Device or other IDs.
+## Section 3 — Security practices
 
-The bug reporter reads only data the app already holds about *itself* (its own
-version/build, the current device model / OS / ABI / screen metrics, and the
-tail of the app's own logcat), plus an optional screenshot of the app's own
-window. This information is placed into a report and shown to the user; the app
-never sends it anywhere by itself, so there is nothing to declare as collected.
+- Encrypted in transit: **Yes**.
+- Deletion: on request by email; data also expires on its own (GA4 event data 14 months,
+  Crashlytics 90 days, FCM tokens when invalidated or unused for 270 days).
 
-> The screenshot is a capture of the app's **own** window (via `PixelCopy`),
-> not the user's photo library — the app never reads the gallery and holds no
-> media/storage permission.
+## In-app bug reporter
 
----
-
-## Section 3 — Data sharing
-
-**Not applicable.** The app does not share user data with third parties. When the
-user opens the share sheet or the pre-filled GitHub issue, *they* choose the
-recipient and initiate the transfer; Play excludes user-initiated share-sheet
-transfers from "sharing". The app itself sends nothing to any server, and no data
-is sold or shared for advertising or analytics.
-
----
-
-## Section 4 — Security practices
-
-- **Encryption in transit:** Not applicable — the app performs no data upload.
-  Anything the user chooses to send travels over the transport of the app they
-  picked in the share sheet (e.g. GitHub over HTTPS).
-- **At rest:** The optional screenshot is written to the app's private cache
-  (`FileProvider`, `cache/feedback/`) only long enough for the share sheet to
-  read it, and is swept on app start; nothing is stored on any server.
-
----
-
-## Section 5 — Data deletion
-
-Not applicable — the app stores no user data on a server, so there is nothing to
-delete server-side. A user who submitted a public GitHub issue can edit or ask
-maintainers to remove it at
-<https://github.com/sceneview/sceneview/issues>.
-
-When the Play Console asks for a **data deletion URL** (only if it insists), use:
-<https://github.com/sceneview/sceneview/issues/new>
-
----
-
-## Privacy policy URL
-
-Set the Data safety form's privacy-policy link to the published policy:
-
-<https://sceneview.github.io/privacy.html>
-
-(Source: [`docs/docs/privacy.md`](../../../../docs/docs/privacy.md) and
-[`.github/PRIVACY_POLICY.md`](../../../../.github/PRIVACY_POLICY.md).)
-
----
-
-## Content rating note
-
-The content-rating questionnaire's *user-data-collection* question is answered
-**No** — consistent with this Data safety declaration. (Earlier versions of the
-app shipped a screen-and-microphone recorder that uploaded to a SceneView
-feedback service and required a **Yes**; that capability has been retired.)
+Unchanged and still not "collection": it composes the report on-device and the user
+sends it through the Android share sheet or a GitHub issue they submit themselves.

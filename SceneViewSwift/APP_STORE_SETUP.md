@@ -42,8 +42,22 @@
 
 ### App Privacy
 
-- **Data Not Collected** — the demo app does not collect any user data
-- No tracking, no analytics, no third-party SDKs that collect data
+Since the Firebase release (Analytics, Crashlytics, Cloud Messaging), the answers are
+**Data collected**, every type **Not linked to the user** and **Not used for tracking**:
+
+| Data type | Purposes |
+|---|---|
+| Location > Coarse Location | Analytics |
+| Usage Data > Product Interaction | Analytics |
+| Usage Data > Other Usage Data | Analytics, App Functionality |
+| Diagnostics > Crash Data | App Functionality |
+| Diagnostics > Performance Data | App Functionality |
+| Diagnostics > Other Diagnostic Data | App Functionality |
+| Identifiers > Device ID | Analytics, App Functionality |
+
+The app's `PrivacyInfo.xcprivacy` must declare the same list. No IDFA (Firebase Analytics
+is linked without `GoogleAppMeasurementIdentitySupport`), hence no ATT prompt. Privacy
+policy: <https://sceneview.github.io/privacy.html>.
 
 ### Pricing & Availability
 

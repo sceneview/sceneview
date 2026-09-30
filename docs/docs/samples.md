@@ -54,7 +54,7 @@ and the `llms.txt` demo list from those fragments, so the catalog never drifts.
     permissions** (no recording, no foreground service) and never uploads
     anything itself: the user sends the report through the Android share
     sheet, or opens a pre-filled GitHub issue in the browser. See the
-    [Privacy Policy](privacy.md) for the full data flow.
+    [Privacy Policy](https://sceneview.github.io/privacy.html) for the full data flow.
 
 ### iOS Demo
 

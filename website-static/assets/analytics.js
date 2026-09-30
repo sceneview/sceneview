@@ -18,9 +18,9 @@
  * https://www.googletagmanager.com`, so both this 'self' file and the googletagmanager
  * library it injects are allowed. `connect-src` already lists google-analytics.com.
  *
- * This file instruments the WEBSITE only. The SceneView SDK itself ships no telemetry
- * and the demo apps' published privacy policy promises none — never import analytics
- * into a library module or a sample app.
+ * This file instruments the WEBSITE only. The SceneView SDK itself ships no telemetry —
+ * never import analytics into a library module. The demo apps measure through their own
+ * Firebase project, disclosed separately in privacy.html; nothing here is shared with it.
  */
 (function () {
   'use strict';

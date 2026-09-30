@@ -107,28 +107,24 @@ Optional extras still not in the repo:
 
 1. Go to **Policy → App content → Content rating**
 2. Start questionnaire → Category: **Utility / Productivity**
-3. No violence or mature content. Answer the **user-data-collection** question
-   **No** — the app collects no user data (the in-app bug reporter runs
-   entirely on-device and only the user, by their own action, sends a report;
-   see *Data safety* below).
+3. No violence or mature content. If the questionnaire asks whether the app
+   collects user data, the answer is **Yes** since the Firebase release
+   (analytics, crash reports, push token — see *Data safety* below).
 4. Apply rating
 
 ### Data safety
 
-The app collects no user data. The in-app bug reporter composes its report
-on-device and hands it to the user, who chooses whether to send it via the
-Android share sheet or a pre-filled GitHub issue they submit — a user-initiated
-transfer that Play does not count as app collection or sharing. The exact
-answers to transcribe into the questionnaire (all "No") are in
-[`distribution/play-store/DATA_SAFETY.md`](distribution/play-store/DATA_SAFETY.md).
+Since the Firebase release the app collects usage analytics, crash reports and a
+push token, and ARCore's cloud demos send camera and location data to Google. The
+exact answers are in
+[`distribution/play-store/DATA_SAFETY.md`](distribution/play-store/DATA_SAFETY.md),
+with the importable CSV next to it.
 
 ### Privacy Policy
 
-A privacy policy is still linked for transparency even though the app collects
-no user data. Use the published policy at
-<https://sceneview.github.io/privacy.html> (source:
-[`docs/docs/privacy.md`](../../docs/docs/privacy.md) and
-[`.github/PRIVACY_POLICY.md`](../../.github/PRIVACY_POLICY.md)).
+Use the published policy at <https://sceneview.github.io/privacy.html> (source:
+[`website-static/privacy.html`](../../website-static/privacy.html) — the only copy
+to edit).
 
 ---
 
