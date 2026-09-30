@@ -144,8 +144,8 @@ private fun ShellStageContent(
 ) {
     val context = LocalContext.current
     val cinematic = remember(context) {
-        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        !am.isLowRamDevice
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        activityManager.isLowRamDevice.not()
     }
     val motionEnabled = LocalMotionEnabled.current
     val moving = active && motionEnabled

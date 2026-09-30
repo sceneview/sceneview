@@ -20,7 +20,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -239,23 +238,10 @@ private fun DrawScope.drawPlaneDots(plane: ProjectedPlane, phase: Float, color: 
             alpha = alpha.coerceAtMost(1f),
         )
     }
-    // A faint horizon line where the plane meets the dark: the floor reads as a floor.
-    if (plane.horizonY > 0f) {
-        drawLine(
-            color = color,
-            start = Offset(0f, plane.horizonY),
-            end = Offset(size.width, plane.horizonY),
-            strokeWidth = radius * HORIZON_STROKE,
-            alpha = HORIZON_ALPHA,
-            cap = StrokeCap.Round,
-        )
-    }
 }
 
 private const val MIN_VISIBLE_ALPHA = 0.01f
 private const val RIPPLE_GROWTH = 0.6f
-private const val HORIZON_STROKE = 0.5f
-private const val HORIZON_ALPHA = 0.12f
 
 /** Screen-space floor, one entry per dot, projected once per canvas size. */
 private class ProjectedPlane(capacity: Int) {
@@ -270,7 +256,6 @@ private class ProjectedPlane(capacity: Int) {
     var originY = 0f
     var shadowRadiusX = 0f
     var shadowRadiusY = 0f
-    var horizonY = -1f
 }
 
 /**
@@ -346,7 +331,6 @@ private fun projectPlane(size: Size): ProjectedPlane {
         // Foreshortened by the camera's pitch.
         plane.shadowRadiusY = plane.shadowRadiusX * (-fy).coerceIn(MIN_FORESHORTEN, 1f)
     }
-    if (project(0f, 0f, -ArHeroScene.HORIZON_DISTANCE)) plane.horizonY = out[1]
     return plane
 }
 
@@ -363,13 +347,13 @@ private class HeroModel(val path: String, val units: Float, val animation: Strin
 /** Art direction of the AR hero — world units, degrees and seconds, not UI tokens. */
 private object ArHeroScene {
     /** Raised and to the left of the reticle, so the models stand on the right of the copy. */
-    val eye = Position(-0.55f, 0.78f, 1.85f)
-    val target = Position(-0.62f, 0.2f, 0f)
+    val eye = Position(-0.4f, 0.74f, 1.9f)
+    val target = Position(-0.46f, 0.1f, 0f)
 
     val MODELS = listOf(
-        HeroModel("models/khronos_fox.glb", units = 0.78f, animation = "Survey"),
-        HeroModel("models/khronos_sheen_chair.glb", units = 0.62f),
-        HeroModel("models/shiba.glb", units = 0.6f),
+        HeroModel("models/khronos_fox.glb", units = 0.64f, animation = "Survey"),
+        HeroModel("models/khronos_sheen_chair.glb", units = 0.5f),
+        HeroModel("models/shiba.glb", units = 0.5f),
     )
 
     /** Pose drawn under reduced motion: the fox, landed, three-quarter view. */
@@ -403,5 +387,4 @@ private object ArHeroScene {
     const val RIPPLE_REACH = 2.8f
     const val RIPPLE_WIDTH = 0.22f
     const val SHADOW_RADIUS = 0.34f
-    const val HORIZON_DISTANCE = 60f
 }
