@@ -29,6 +29,21 @@ API or the doc gets fixed.
 
 ---
 
+## Try it
+
+<p>
+  <a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo"><img src="website-static/assets/brand/stores/google-play-badge-trimmed.png" alt="Get it on Google Play" height="56"></a>&nbsp;
+  <a href="https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763"><img src="website-static/assets/brand/stores/app-store.svg" alt="Download on the App Store" height="56"></a>&nbsp;
+  <a href="https://sceneview.github.io/playground.html"><img src="website-static/assets/brand/stores/web-playground.svg" alt="Open the Web Playground" height="56"></a>
+</p>
+
+The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
+`https://sceneview.github.io/open?demo=<id>`. Start with
+[Cosmos](https://sceneview.github.io/open?demo=cosmos), the galaxy the catalogue opens on, or
+[Rerun AR Replay](https://sceneview.github.io/open?demo=ar-rerun), a real AR session rebuilt in 3D.
+
+---
+
 ## Quick start
 
 One minimal, working example per platform. The full reference for each is in
@@ -185,19 +200,6 @@ Then ask: *"Add a 3D model viewer to my Compose screen."* Every other client is 
 
 ---
 
-## Try it
-
-<p>
-  <a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo"><img src="website-static/assets/brand/stores/google-play-badge-trimmed.png" alt="Get it on Google Play" height="56"></a>&nbsp;
-  <a href="https://apps.apple.com/us/app/sceneview/id6761329763"><img src="website-static/assets/brand/stores/app-store.svg" alt="Download on the App Store" height="56"></a>&nbsp;
-  <a href="https://sceneview.github.io/playground.html"><img src="website-static/assets/brand/stores/web-playground.svg" alt="Open the Web Playground" height="56"></a>
-</p>
-
-The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
-`https://sceneview.github.io/open?demo=<id>` (for example `…/open?demo=ar-rerun`).
-
----
-
 ## Runs on
 
 Each row is a published package plus an app or page you can open today, backed by a real
@@ -206,7 +208,7 @@ capture of it.
 | Platform | Status | Install | Open it | Capture |
 |---|---|---|---|---|
 | **Android** | Shipped · Stable | [Maven Central](https://central.sonatype.com/artifact/io.github.sceneview/sceneview) | [Google Play](https://play.google.com/store/apps/details?id=io.github.sceneview.demo) | <img src="website-static/assets/demos/runs-on-android.jpg" alt="SceneView Android demo: Model Viewer rendering a helmet with Filament" height="160"> |
-| **iOS** | Shipped · Alpha | [Swift Package](SceneViewSwift/) | [App Store](https://apps.apple.com/us/app/sceneview/id6761329763) | <img src="website-static/assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" height="160"> |
+| **iOS** | Shipped · Alpha | [Swift Package](SceneViewSwift/) | [App Store](https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763) | <img src="website-static/assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" height="160"> |
 | **Web** | Shipped · Alpha | [npm `sceneview-web`](https://www.npmjs.com/package/sceneview-web) | [Live web demo](https://sceneview.github.io/web-demo/) | <img src="website-static/assets/demos/runs-on-web.jpg" alt="SceneView web demo: Damaged Helmet rendered by Filament.js in a browser" height="100"> |
 
 *Shipped* means released and publicly reachable; the second word is the API maturity.
