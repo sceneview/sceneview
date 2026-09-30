@@ -134,6 +134,9 @@ struct SceneViewDemoApp: App {
                 }
                 #endif
                 .task {
+                    #if os(iOS)
+                    TmpCapture.start() // TEMP — never committed
+                    #endif
                     // Prune stale HD files, re-attach to running transfers and
                     // prefetch the pack on an unmetered network.
                     HDPackStore.shared.bootstrap()
@@ -275,3 +278,54 @@ private extension View {
         #endif
     }
 }
+
+
+#if os(iOS)
+import RealityKit
+// TEMP device capture hook — never committed.
+@MainActor enum TmpCapture {
+    static func start() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-tmpcapture"), i + 1 < args.count else { return }
+        let marks = args[i + 1].split(separator: ",").compactMap { Double($0) }
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("tmpcap")
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        print("TMPCAP start \(marks)")
+        for m in marks {
+            DispatchQueue.main.asyncAfter(deadline: .now() + m) {
+                MainActor.assumeIsolated { capture(label: String(format: "%02ds", Int(m)), dir: dir) }
+            }
+        }
+    }
+
+    private static func findARView(_ v: UIView) -> ARView? {
+        if let a = v as? ARView { return a }
+        for s in v.subviews { if let a = findARView(s) { return a } }
+        return nil
+    }
+
+    static func capture(label: String, dir: URL) {
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+              let win = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first else {
+            print("TMPCAP no window"); return
+        }
+        let renderer = UIGraphicsImageRenderer(bounds: win.bounds)
+        let ui = renderer.image { _ in _ = win.drawHierarchy(in: win.bounds, afterScreenUpdates: false) }
+        try? ui.pngData()?.write(to: dir.appendingPathComponent("\(label)-window.png"))
+        guard let ar = findARView(win) else { print("TMPCAP \(label) no ARView"); return }
+        let frame = ar.convert(ar.bounds, to: win)
+        ar.snapshot(saveToHDR: false) { snap in
+            guard let snap else { print("TMPCAP \(label) snapshot nil"); return }
+            try? snap.pngData()?.write(to: dir.appendingPathComponent("\(label)-arview.png"))
+            let comp = renderer.image { _ in
+                snap.draw(in: frame)
+                ui.draw(in: win.bounds)
+            }
+            try? comp.pngData()?.write(to: dir.appendingPathComponent("\(label)-comp.png"))
+            print("TMPCAP \(label) saved")
+        }
+    }
+}
+#endif
