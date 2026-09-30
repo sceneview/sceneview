@@ -27,6 +27,11 @@ does not load (#3438).
 | `lines_paths_route.webp` | The Lines & Paths route | Offline render of `LinesPathsScene` — the eight control points, the Smooth route, the marker, the trail and the dashed ground track — under the demo's own camera. |
 | `raccoon_stump_scan.webp` | The raccoon-stump Gaussian splat `splat-preview` loads | The `splat-preview` card below at q90: a crop of the real CI render. It fed the generated `ar-splat-room` card until that demo became the dollhouse of #4075. |
 | `toy_car.webp` | The Toy Car AR Placement opens on (`BUNDLED_PLACEMENT_MODELS.first()`, 0.3 m) | A copy of `model_thumb_khronos_toy_car.webp`, a Filament render of the exact GLB (see "Model thumbnails"). It feeds the `ar-placement` card, which until 2026-09-30 was a generated fox, a model the demo has not placed since #3324. |
+| `fox_animation.webp` | The fox Animation opens on | The `animationphysics_default.png` render golden, centre 500, 1414, width 760, 5:4 — the crop the old card used. |
+| `double_pendulum_rig.webp` | The Double Pendulum rig and its trail | Emulator capture (Pixel_7a, 1080×2400, light, QA mode off so it swings), window y 950–1950. |
+| `contact_shadow_scene.webp` | The two Contact Shadow cubes and the TV | Emulator capture (Pixel_7a, light, `--ez qa_mode true`), window y 420–1640. |
+| `secondary_camera_pip.webp` | The Secondary Camera stage with its picture-in-picture | Emulator capture (Pixel_7a, dark, `--ez qa_mode true`), window y 345–1700. |
+| `billboard_labels.webp`, `occlusion_sphere.webp`, `video_screen.webp` | The iOS Billboard, Occlusion Material and Video Texture scenes | The previous iOS cards at q90 — the simulator captures of #3786 listed below. |
 
 The last two are rendered from the demos' own generator code rather than captured, so the
 card shows the exact curve the app computes rather than an invented knot or loop.
@@ -58,14 +63,14 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | `camera-gestures` | `cameragestures_default.png` | 575, 1065, 1000 — the whole stage |
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
-| `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
-| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083). The dark card is its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); since #4223 its stage is the dark stage (`SceneViewTokens.Stage.background`), so the dark card is the fox on that dark stage |
+| `secondary-camera` | — | Superseded 2026-09-30: generated from a real capture, see "Cards generated from real captures" below. Was `secondarycamera_default.png`, 540, 870, 1600, black-padded — the picture-in-picture inset |
+| `animation-physics` | — | Superseded 2026-09-30: generated from the golden crop, see "Cards generated from real captures" below. Was `animationphysics_default.png`, 500, 1414, 760 — the fox on its stage, flat side-on on a mid-grey stage, the dark card a night-mode capture on the dark stage (#4223) |
 | `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
 told apart from the frame.
 
-`video-recording` has no render golden, so its card is an emulator capture (Pixel_7a,
+`video-recording` (superseded 2026-09-30, see "Cards generated from real captures" below) had no render golden, so its card was an emulator capture (Pixel_7a,
 1080×2400) taken 3 s into a recording: the helmet in the recorded frame over the
 "Recording the moving scene to MP4…" banner. Window: y 817–1846, the full 1080 px width plus
 103 px on each side filled by stretching the screen's own edge column — pure black beside the
@@ -95,6 +100,31 @@ galaxy has rendered: the full-width 1080×864 band centred on the galaxy's brigh
 (window y 779–1643), resized to 800×640, WebP q80. Space is black
 in both themes, so light and dark are the same pixels. The iOS `preview_cosmos` imageset
 carries the same crop as JPEG q90.
+
+### Cards generated from real captures (2026-09-30)
+
+Eight cards were still weak after #4235: a flat side-on fox on a grey stage, a black frame
+with a tiny inset, an empty contact-shadow room, a pendulum that read as sticks. They are now
+`gen.py` image-to-image edits of the real capture in the References table — the same objects,
+colours and camera as the demo, relit and recomposed on the light (#EEF0F3) and dark (#0E1218)
+fields, so the home rows keep the Cosmos-card look in both themes. Model
+`gemini-3.1-flash-image`, `crop_save` to 800×640 (WebP q80 on Android, JPEG q90 on iOS). Every
+raw, kept or rejected, with its exact prompt, ref and reason is archived outside the repo
+(Drive `QA/demo-previews-gemini-2026-09-30/`, `manifest.json`).
+
+| Card | Platforms | Ref | Kept raws, and why |
+|---|---|---|---|
+| `animation-physics` | Android, iOS `preview_animation` | `fox_animation.webp` | Light and dark, first run. |
+| `double-pendulum` | Android, iOS `preview_double_pendulum` | `double_pendulum_rig.webp` | Dark from the committed prompt. Light from the first run, whose prompt lacked the sentence "There are exactly three balls in the image…": with it the light run still drew a second bob, without it the first light run did not. |
+| `contact-shadow-preview` | Android | `contact_shadow_scene.webp` | Fourth prompt, both themes. Earlier runs drew the contact shadow as a hole, a light room box inside the dark field or an inverted halo; the committed prompt edits the capture instead of describing a scene. |
+| `secondary-camera` | Android | `secondary_camera_pip.webp` | Light and dark, first run. |
+| `video-recording` | Android | `damaged_helmet.webp` | Light and dark, first run: the helmet mid-turn with a slight motion blur under the red recording dot. |
+| `billboard` | iOS, universal | `billboard_labels.webp` | The dark raw only: on the light field the golden "Treasure" label measured about 2.2:1 (< 3:1). |
+| `occlusion-material` | iOS, universal | `occlusion_sphere.webp` | The dark raw of the second run: both light runs lost the cut (a whole sphere, then a mushroom), and the demo's own stage is dark. |
+| `video` | iOS, light and dark (`preview_video_dark.jpg` is new) | `video_screen.webp` | Light and dark, first run. The screen shows the violet-to-blue gradient `sample.mp4` really plays. |
+
+Regenerating one of these from `prompts.json` gives a new sample, not these pixels: check the
+new pair on the home rows in both themes before committing it.
 
 ## iOS imagesets
 
@@ -152,16 +182,16 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_scene_gallery` | `scene-gallery`, "PBR Low-Poly Fox" chip (the bundled fox) | 660, 1500, 1100 |
 | `preview_environment` | `environment`, default HDR | 840, 1386, 850 |
 | `preview_movable_light` | `movable-light` | 662, 1505, 1000 |
-| `preview_billboard` | `billboard` | 652, 1449, 1240 |
+| `preview_billboard` | `billboard` — superseded 2026-09-30, generated from this capture (see "Cards generated from real captures") | 652, 1449, 1240 |
 | `preview_image` | `image` | 655, 1399, 1280 |
 | `preview_texture_streaming` | `texture-streaming`, Gold preset | 673, 1478, 1000 |
 | `preview_gesture_editing` | `gesture-editing` | 660, 1110, 1200 |
-| `preview_occlusion_material` | `occlusion-material` | 660, 1307, 960 |
+| `preview_occlusion_material` | `occlusion-material` — superseded 2026-09-30, generated from this capture | 660, 1307, 960 |
 | `preview_reflection_probes` | `reflection-probes` | 652, 1412, 1000 |
 | `preview_shape` | `shape`, Star | 639, 1400, 1100 |
 | `preview_multi_model` | `multi-model`, keyless stand-ins (what the App Store build shows) | 650, 1458, 1300 |
 | `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
-| `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
+| `preview_video` | Superseded 2026-09-30, generated from this capture, now a light and dark pair. Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
 
 ### Cards shared with Android (home rows, 2026-09-30)
 
@@ -174,7 +204,8 @@ card, re-encoded from its two WebPs as JPEG q90 (`preview_<id>.jpg` light,
 
 | Imageset | Android card | Replaced |
 |---|---|---|
-| `preview_animation` | `animation-physics` | a simulator capture of the bundled `cyberpunk_character` (Featured, #3907), light only |
+| `preview_animation` | `animation-physics` (the generated fox pair, 2026-09-30) | a simulator capture of the bundled `cyberpunk_character` (Featured, #3907), light only |
+| `preview_double_pendulum` | `double-pendulum` (the generated pair, 2026-09-30) | the previous generated pair; hidden from the iOS home until #3907 is fixed, the card shows in search and deep links |
 | `preview_ar_placement` | `ar-placement` (the generated Toy Car pair, 2026-09-30) | the Toy Car opened in `model-viewer` (no ARKit on the Simulator), light only |
 | `preview_ar_record_playback` | `ar-record-playback` | the Damaged Helmet opened in `model-viewer`, light only |
 | `preview_ar_rerun` | `ar-rerun` | a capture of the bundled replay 7 s in, light only |

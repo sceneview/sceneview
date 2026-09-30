@@ -3,6 +3,16 @@
     {
       "filename": "preview_video.jpg",
       "idiom": "universal"
+    },
+    {
+      "filename": "preview_video_dark.jpg",
+      "idiom": "universal",
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ]
     }
   ],
   "info": {
