@@ -802,18 +802,21 @@ demos:
     iosStatus: working
     category: CREATE
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/LightingLabDemo.kt
-    ios: [reflection-probes]
+    ios: [lighting-lab]
     iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/ReflectionProbesDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/LightingLabDemo.swift
     contract: >-
       A workbench on the lighting stage, one fixed key over a studio IBL,
       every knob live: exposure, IBL intensity and rotation, sky,
       reflection-probe zone, SSAO, fog, anti-aliasing.
-    parity: fake
+    parity: diverges
     evidence: >-
-      No lab screen; ReflectionProbesDemo.swift:33,45 probe HDR == global HDR
-      and :99,:119 every mesh sits in the probe, so the local override never
-      shows; lighting-lab aliases to dynamic-sky
+      LightingLabDemo.swift: same stage, 48/38 spot key, studio_warm bench,
+      live IBL intensity, sky toggle, sunset ReflectionProbeNode applied
+      while the camera is inside its zone. No IBL rotation (turning the IBL
+      entity renders pixel-identical at 0 and 174 deg on iOS 26.3), no
+      exposure, SSAO, fog, MSAA/FXAA or dithering: RealityView on iOS
+      exposes none, stated in the sheet
   - id: lines-paths
     androidStatus: Working
     iosStatus: working
