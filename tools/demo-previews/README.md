@@ -77,7 +77,8 @@ AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band 
 
 `rolling-balls` became its own demo in #4083 and has no render golden: its card is an
 emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
-tray, its rails and the first balls come to rest. Crop: x 40–1040, y 740–1540 (5:4), resized
+wooden board (maple field, walnut frame, since the redesign) and the rubber, glass and steel
+balls come to rest. Crop: x 40–1040, y 580–1380 (5:4, the whole frame of the board), resized
 to 800×640, WebP q85, one capture per theme: its stage is the themed stage sky, so the dark
 card is the dark stage.
 

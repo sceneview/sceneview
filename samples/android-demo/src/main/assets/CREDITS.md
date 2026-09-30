@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **37**.
+Assets bundled: **38**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -77,6 +77,8 @@ Assets bundled: **37**.
   Compiled from `samples/android-demo/src/main/materials/studio_glass.mat`
 - `materials/studio_pbr.filamat` — **[studio_pbr.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (676 KB)  
   Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`
+- `materials/tray_wood.filamat` — **[tray_wood.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (733 KB)  
+  Compiled from `samples/android-demo/src/main/materials/tray_wood.mat` (Rolling Balls board)
 - `mediapipe/pose_landmarker_lite.task` — **[MediaPipe Pose Landmarker (lite)](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)** by Google LLC — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (5.8 MB)  
   On-device pose model bundle used by `ARBodyTrackerDemo`
 - `rerun/sample-session.jsonl` — **[sample-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (176 KB)  
