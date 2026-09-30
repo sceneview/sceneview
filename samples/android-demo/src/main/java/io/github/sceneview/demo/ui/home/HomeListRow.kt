@@ -8,12 +8,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
@@ -22,226 +23,346 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoFreshness
+import io.github.sceneview.demo.DemoPreviews
 import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.previewPainter
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.sample.ui.DemoCategoryAccent
+import kotlin.math.PI
+import kotlin.math.cos
+
+/** Which of the two Home row anatomies a demo is drawn with. */
+enum class HomeRowStyle {
+    /** `home-row`: picture on the leading half, dissolving sideways into the row. */
+    Fused,
+
+    /** `home-banner`: picture across the full width, dissolving down into its caption. */
+    Banner,
+}
+
+/** TEMPORARY — which layout the variant captures render. Removed once one is chosen. */
+internal enum class HomeRowVariant { Fused, Banner, Hybrid }
+
+/** TEMPORARY — see [HomeRowVariant]. */
+internal var homeRowVariant: HomeRowVariant = HomeRowVariant.Hybrid
 
 /**
- * One demo on the home list (`home-row` in `DESIGN.md`) — the standard two-line list item
- * of a Material 3 app, not a showcase card.
+ * One demo on the Home list (`home-row` / `home-banner` in `DESIGN.md`).
  *
- * The 3D header above is the only showpiece on the screen; everything under it reads like
- * the settings or the library of any well-made app, which is the point the Home makes: the
- * scene drops into an ordinary app. Anatomy: a `home-row-media` picture of the demo's own
- * capture, 5:4 like the capture itself so the generated scene reads instead of a 56 dp crop
- * (the icon tile while none exists), title in `type-body` semibold, subtitle in
- * `type-caption` regular, the freshness / status chips on the title line so the subtitle
- * keeps the row's full width. The row sits on the `home-row-bg` tile and takes its corners
- * from its place in the group ([rowShape]), so a section reads as one grey block split by
- * `home-row-gap` hairlines of page.
+ * The picture is the row. It runs to the row's own edges — no inset, no frame, no radius
+ * of its own — and dissolves into the row's colour, which is the picture's colour
+ * ([HomeAmbient]): a night capture carries on as a deep navy under the text, the fox as a
+ * warm brown. Nothing reads as a thumbnail pasted on a grey tile.
+ *
+ * [HomeRowStyle.Fused] puts the picture on the leading half, full height, dissolving
+ * sideways under the start of the text: the catalogue stays a list you scan by title.
+ * [HomeRowStyle.Banner] gives the picture the full width and lets it dissolve down into
+ * its caption — the Featured group, where the pictures are the point.
  */
 @Composable
 fun DemoListRow(
     demo: DemoEntry,
     onClick: () -> Unit,
-    shape: Shape,
     modifier: Modifier = Modifier,
+    style: HomeRowStyle = HomeRowStyle.Fused,
     freshness: DemoFreshness = DemoFreshness.None,
 ) {
     val dark = isSystemInDarkTheme()
     val accent = DemoCategoryAccent[demo.category, dark]
-    val preview = demo.previewPainter()
-    val thumb: Modifier = Modifier.media()
-    ListRow(
-        title = stringResource(demo.titleRes),
-        subtitle = stringResource(demo.subtitleRes),
-        shape = shape,
-        onClick = onClick,
-        modifier = modifier.testTag(HomeTestTags.row(demo.id)),
-        leading = {
-            if (preview != null) {
-                Image(
-                    painter = preview,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    alignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center,
-                    modifier = thumb,
-                )
-            } else {
-                GlyphThumb(icon = demo.icon, tint = accent, modifier = thumb)
-            }
-        },
-        badges = {
-            if (freshness != DemoFreshness.None) FreshnessChip(freshness = freshness, accent = accent)
-            if (demo.status != DemoStatus.Working) StatusChip(status = demo.status)
-        },
-    )
+    val resources = LocalContext.current.resources
+    val res = DemoPreviews.resourceFor(demo.id, dark)
+    val tint = if (res != null) {
+        remember(res, dark) { HomeAmbient.tint(resources, res, dark) }
+    } else {
+        glyphTint(accent, dark)
+    }
+    val alignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center
+    val media: @Composable (Modifier) -> Unit = { mediaModifier ->
+        if (res != null) {
+            RowPicture(painterResource(res), alignment, mediaModifier)
+        } else {
+            GlyphPanel(icon = demo.icon, accent = accent, tint = tint, modifier = mediaModifier)
+        }
+    }
+    val badges: @Composable RowScope.() -> Unit = {
+        if (freshness != DemoFreshness.None) FreshnessChip(freshness = freshness, accent = accent)
+        if (demo.status != DemoStatus.Working) StatusChip(status = demo.status)
+    }
+    val rowModifier = modifier.testTag(HomeTestTags.row(demo.id))
+    when (style) {
+        HomeRowStyle.Fused -> FusedRow(
+            title = stringResource(demo.titleRes),
+            subtitle = stringResource(demo.subtitleRes),
+            tint = tint,
+            onClick = onClick,
+            media = media,
+            badges = badges,
+            modifier = rowModifier,
+        )
+        HomeRowStyle.Banner -> BannerRow(
+            title = stringResource(demo.titleRes),
+            subtitle = stringResource(demo.subtitleRes),
+            tint = tint,
+            onClick = onClick,
+            media = media,
+            badges = badges,
+            modifier = rowModifier,
+        )
+    }
 }
 
 /**
- * The row that opens the online model gallery (`ExploreTabScreen`), drawn as one more list
- * item — a globe on the thumb square — so it sits in the list's rhythm instead of being a
- * banner of its own.
+ * The row that opens the online model gallery (`ExploreTabScreen`), drawn as one more
+ * [HomeRowStyle.Fused] row — a globe on a `primary`-tinted panel — so it sits in the
+ * list's rhythm instead of being a banner of its own.
  */
 @Composable
 fun BrowseOnlineRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ListRow(
+    val accent = MaterialTheme.colorScheme.primary
+    val tint = glyphTint(accent, isSystemInDarkTheme())
+    FusedRow(
         title = stringResource(R.string.home_browse_title),
         subtitle = stringResource(R.string.home_browse_subtitle),
-        shape = RoundedCornerShape(SceneViewTokens.Home.rowRadiusOuter),
+        tint = tint,
         onClick = onClick,
+        media = { GlyphPanel(icon = Icons.Filled.Language, accent = accent, tint = tint, modifier = it) },
         modifier = modifier,
-        leading = { GlyphThumb(icon = Icons.Filled.Language, tint = MaterialTheme.colorScheme.primary) },
     )
 }
 
+/**
+ * `home-row`: the picture fills the leading [SceneViewTokens.Home.rowMediaFraction] of the
+ * row, top to bottom, and dissolves into [tint] from `home-row-dissolve` on; the text
+ * starts where the picture has all but gone.
+ */
 @Composable
-private fun ListRow(
+private fun FusedRow(
     title: String,
     subtitle: String,
-    shape: Shape,
+    tint: Color,
     onClick: () -> Unit,
-    leading: @Composable () -> Unit,
+    media: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
-    /** Chips drawn after the title, on its line. */
     badges: @Composable RowScope.() -> Unit = {},
 ) {
     val home = SceneViewTokens.Home
     Surface(
         onClick = onClick,
-        shape = shape,
-        color = homeRowBackground(),
+        shape = RoundedCornerShape(home.rowRadius),
+        color = tint,
         modifier = modifier
             .fillMaxWidth()
             // Title, subtitle and chips announce as one node.
             .semantics(mergeDescendants = true) {},
     ) {
-        Row(
-            modifier = Modifier
-                .heightIn(min = home.rowMinHeight)
-                .padding(horizontal = home.rowPaddingHorizontal, vertical = home.rowPaddingVertical),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(home.rowPaddingHorizontal),
-        ) {
-            leading()
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(home.rowTextGap),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                ) {
-                    Text(
-                        text = title,
-                        style = SceneViewTokens.Type.body,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    badges()
-                }
-                Text(
-                    text = subtitle,
-                    style = SceneViewTokens.Type.caption,
-                    fontWeight = FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(modifier = Modifier.fillMaxWidth().heightIn(min = home.rowHeight)) {
+            Box(modifier = Modifier.matchParentSize()) {
+                media(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(home.rowMediaFraction)
+                        .dissolve(DissolveEdge.End, home.rowDissolveStart),
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth().align(Alignment.CenterStart)) {
+                Spacer(Modifier.weight(home.rowTextStartFraction))
+                RowCaption(
+                    title = title,
+                    subtitle = subtitle,
+                    badges = badges,
+                    modifier = Modifier
+                        .weight(1f - home.rowTextStartFraction)
+                        .padding(end = home.rowTextPaddingEnd)
+                        .padding(vertical = home.rowTextPaddingVertical),
                 )
             }
         }
     }
 }
 
-/** The thumb square: `home-row-thumb`, `radius-sm`. */
-private fun Modifier.thumb(): Modifier =
-    size(SceneViewTokens.Home.rowThumb).clip(RoundedCornerShape(SceneViewTokens.Radius.sm))
-
-/** The leading picture of a demo row: `home-row-media`, 5:4 like the captures, `radius-sm`. */
-private fun Modifier.media(): Modifier = this
-    .width(SceneViewTokens.Home.rowMediaWidth)
-    .aspectRatio(SceneViewTokens.Home.rowMediaAspect)
-    .clip(RoundedCornerShape(SceneViewTokens.Radius.sm))
-
-/** A glyph on the thumb square, one step up the surface ramp from the row. */
+/**
+ * `home-banner`: the picture across the row at `home-banner-aspect`, dissolving from
+ * `home-banner-dissolve` down into [tint]; the caption is pulled up into the dissolve so
+ * the title sits where the picture ends, not under an edge.
+ */
 @Composable
-private fun GlyphThumb(icon: ImageVector, tint: Color, modifier: Modifier = Modifier.thumb()) {
-    Box(
+private fun BannerRow(
+    title: String,
+    subtitle: String,
+    tint: Color,
+    onClick: () -> Unit,
+    media: @Composable (Modifier) -> Unit,
+    modifier: Modifier = Modifier,
+    badges: @Composable RowScope.() -> Unit = {},
+) {
+    val home = SceneViewTokens.Home
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(home.rowRadius),
+        color = tint,
         modifier = modifier
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            media(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(home.bannerAspect)
+                    .dissolve(DissolveEdge.Bottom, home.bannerDissolveStart),
+            )
+            RowCaption(
+                title = title,
+                subtitle = subtitle,
+                badges = badges,
+                modifier = Modifier
+                    .pullUp(home.bannerCaptionOverlap)
+                    .padding(horizontal = home.bannerTextPaddingHorizontal)
+                    .padding(bottom = home.rowTextPaddingVertical),
+            )
+        }
+    }
+}
+
+/** Title in `type-card`, the chips on its line, the subtitle in `type-caption` regular. */
+@Composable
+private fun RowCaption(
+    title: String,
+    subtitle: String,
+    badges: @Composable RowScope.() -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Home.rowTextGap),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        ) {
+            Text(
+                text = title,
+                style = SceneViewTokens.Type.card,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            badges()
+        }
+        Text(
+            text = subtitle,
+            style = SceneViewTokens.Type.caption,
+            fontWeight = FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** A demo's capture, cropped to fill whatever box the row gives it. */
+@Composable
+private fun RowPicture(painter: Painter, alignment: Alignment, modifier: Modifier) {
+    Image(
+        painter = painter,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        alignment = alignment,
+        modifier = modifier,
+    )
+}
+
+/** A demo with no capture yet (or a utility row): its glyph on an [accent] wash. */
+@Composable
+private fun GlyphPanel(icon: ImageVector, accent: Color, tint: Color, modifier: Modifier) {
+    Box(
+        modifier = modifier.background(accent.copy(alpha = GLYPH_WASH_ALPHA).compositeOver(tint)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(SceneViewTokens.Home.rowThumbGlyph),
+            tint = accent,
+            modifier = Modifier.size(SceneViewTokens.Home.rowGlyph),
         )
     }
 }
 
-/** `home-row-bg`: `surface-container-high` — the neutral grey tile of a list row. */
-@Composable
-internal fun homeRowBackground(): Color = MaterialTheme.colorScheme.surfaceContainerHigh
+/** The row colour of a glyph row: the ambient tint of its accent, as if it were a picture. */
+private fun glyphTint(accent: Color, dark: Boolean): Color = ambientTint(accent, dark)
+
+/** Opacity of the accent wash behind a [GlyphPanel]'s glyph. */
+private const val GLYPH_WASH_ALPHA = 0.18f
+
+private enum class DissolveEdge { End, Bottom }
 
 /**
- * Which corners of a row are its group's outer corners, for the row at [index] of a group
- * of [count] rows laid out [columns] across. A group is one block: its four outer corners
- * take `home-row-radius-outer`, every corner shared with a neighbour takes
- * `home-row-radius-inner`. With a short last line the block ends in a step, and the corner
- * over the step is outer too.
+ * Fades the content out towards [edge], fully opaque up to [start] (a fraction of the
+ * size along that axis) and gone at the edge, on a cosine ease so the fade has no band
+ * where it starts or ends. Drawn in an offscreen layer and masked with `DstIn`, so what
+ * shows through is the row's own tint.
  */
-internal data class RowCorners(
-    val topStart: Boolean,
-    val topEnd: Boolean,
-    val bottomEnd: Boolean,
-    val bottomStart: Boolean,
-)
+private fun Modifier.dissolve(edge: DissolveEdge, start: Float): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val stops = dissolveStops(start)
+        val brush = when (edge) {
+            DissolveEdge.Bottom -> Brush.verticalGradient(*stops)
+            DissolveEdge.End -> if (layoutDirection == LayoutDirection.Rtl) {
+                Brush.horizontalGradient(*stops, startX = size.width, endX = 0f)
+            } else {
+                Brush.horizontalGradient(*stops)
+            }
+        }
+        drawRect(brush, blendMode = BlendMode.DstIn)
+    }
 
-internal fun rowCorners(index: Int, count: Int, columns: Int): RowCorners {
-    val cols = columns.coerceAtLeast(1)
-    val row = index / cols
-    val col = index % cols
-    val lastRow = (count - 1) / cols
-    val lastInLine = col == cols - 1 || index == count - 1
-    val nothingBelow = index + cols > count - 1
-    return RowCorners(
-        topStart = row == 0 && col == 0,
-        topEnd = row == 0 && lastInLine,
-        bottomEnd = nothingBelow && lastInLine,
-        bottomStart = row == lastRow && col == 0,
-    )
+/** Opaque to [start], then a cosine ease to transparent at 1. */
+private fun dissolveStops(start: Float): Array<Pair<Float, Color>> {
+    val steps = 8
+    return Array(steps + 2) { i ->
+        if (i == 0) {
+            0f to Color.Black
+        } else {
+            val u = (i - 1) / steps.toFloat()
+            val alpha = (0.5 * (1 + cos(PI * u))).toFloat()
+            (start + (1f - start) * u) to Color.Black.copy(alpha = alpha)
+        }
+    }
 }
 
-/** The shape [rowCorners] describes. */
-internal fun rowShape(index: Int, count: Int, columns: Int): Shape {
-    val home = SceneViewTokens.Home
-    val corners = rowCorners(index, count, columns)
-    fun radius(outer: Boolean): Dp = if (outer) home.rowRadiusOuter else home.rowRadiusInner
-    return RoundedCornerShape(
-        topStart = radius(corners.topStart),
-        topEnd = radius(corners.topEnd),
-        bottomEnd = radius(corners.bottomEnd),
-        bottomStart = radius(corners.bottomStart),
-    )
+/** Lays the content out [by] higher than it would sit, and takes that much off its height. */
+private fun Modifier.pullUp(by: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val shift = by.roundToPx()
+    layout(placeable.width, (placeable.height - shift).coerceAtLeast(0)) {
+        placeable.place(0, -shift)
+    }
 }
 
 /**

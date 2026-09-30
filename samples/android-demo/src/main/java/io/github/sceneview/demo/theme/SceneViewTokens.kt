@@ -409,34 +409,45 @@ object SceneViewTokens {
         val cardGlassMelt = 28.dp
 
 
-        // ── Home list (`home-row-*` in DESIGN.md) ─────────────────────────────
-        // Under the 3D header the Home is a standard Material 3 list: grouped two-line
-        // rows on neutral grey tiles, one vertical scroll, no carousel.
+        // ── Home list (`home-row-*`, `home-banner-*` in DESIGN.md) ────────────
+        // Under the 3D header the Home is a list of pictures: each row is its demo's
+        // capture, edge to edge, dissolving into the capture's own colour
+        // (`home-row-ambient`), one vertical scroll, no carousel.
 
-        /** `home-row-thumb` — the leading square of a row: the demo's capture or a glyph. */
-        val rowThumb = 56.dp
+        /** `home-row-height` — the least height of a row; it grows with its text. */
+        val rowHeight = 116.dp
 
-        /** Glyph inside a `home-row-thumb` that has no capture. */
-        val rowThumbGlyph = 28.dp
+        /** `home-row-radius` — every row's four corners (`card-radius`). */
+        val rowRadius = 20.dp
 
-        /** `home-row-min-height` — the M3 two-line list item with a 56 dp leading image. */
-        val rowMinHeight = 72.dp
+        /** `home-row-gap` — page between two rows. */
+        val rowGap = 10.dp
 
-        /** Row insets: `space-md` across (also the thumb-to-text gap), `space-sm` down. */
-        val rowPaddingHorizontal = 16.dp
-        val rowPaddingVertical = 8.dp
+        /** `home-row-media` — the share of the row's width its picture fills, top to bottom. */
+        const val rowMediaFraction = 0.5f
+
+        /**
+         * `home-row-dissolve` — where, across the picture, it starts dissolving into the
+         * row's tint; it is gone at its trailing edge.
+         */
+        const val rowDissolveStart = 0.42f
+
+        /**
+         * Where the text starts, as a share of the row's width: inside the dissolve, where
+         * the picture is down to about a tenth, so the two overlap without the picture
+         * reaching the letters.
+         */
+        const val rowTextStartFraction = 0.44f
+
+        /** Row text insets: `space-md` at the trailing edge, 14 dp above and below. */
+        val rowTextPaddingEnd = 16.dp
+        val rowTextPaddingVertical = 14.dp
 
         /** Title-to-subtitle gap inside a row. */
-        val rowTextGap = 2.dp
+        val rowTextGap = 4.dp
 
-        /** `home-row-gap` — the seam of page between two rows of one group. */
-        val rowGap = 2.dp
-
-        /** `home-row-radius-outer` — a group's four outer corners (`radius-md`). */
-        val rowRadiusOuter = 16.dp
-
-        /** `home-row-radius-inner` — every corner a row shares with a neighbour. */
-        val rowRadiusInner = 4.dp
+        /** Glyph of a row that has no picture (a demo without a capture, a utility row). */
+        val rowGlyph = 40.dp
 
         /** `home-row-min-width` — from two of these across, the list goes multi-column. */
         val rowMinWidth = 340.dp
@@ -444,12 +455,17 @@ object SceneViewTokens {
         /** Gap between two groups that have no section header between them. */
         val groupGap = 16.dp
 
-        /**
-         * `home-row-media` — a demo row's leading picture, 5:4 like the captures, so the
-         * generated scene reads (about 3.7x the area of the 56 dp `home-row-thumb`).
-         */
-        val rowMediaWidth = 120.dp
-        const val rowMediaAspect = 5f / 4f
+        /** `home-banner-aspect` — a Featured row's picture, across the row's width. */
+        const val bannerAspect = 2f
+
+        /** `home-banner-dissolve` — where, down the picture, it starts dissolving. */
+        const val bannerDissolveStart = 0.55f
+
+        /** How far a banner's caption is pulled up into its picture's dissolve. */
+        val bannerCaptionOverlap = 28.dp
+
+        /** A banner caption's side insets. */
+        val bannerTextPaddingHorizontal = 16.dp
 
         /** `header-glass-blur` — backdrop blur of the sticky header over the scrolled list. */
         val headerGlassBlur = 24.dp
