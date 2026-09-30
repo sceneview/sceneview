@@ -1367,12 +1367,15 @@ shell:
       Featured order, 5 section chips and section headers match since #3907
       (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); Featured skips
       ar-splat-room (#4075), which has no iOS screen. The grouped list
-      matches since ios-home-standard-rows (HomeListRow.swift: 72pt rows,
-      56pt thumbs, surface-container-high, 2pt seams, 16/4 corners, 340pt
-      iPad columns, Browse-online row under Featured). Still diverges:
-      single HomeHero instead of the pager, no What's new, 56pt thumbs
-      instead of the 120x96 media picture, no glass header, and six broken
-      demos are kept off the home (HomeCatalogue.hiddenFromHome)
+      matches since ios-home-standard-rows (HomeListRow.swift:
+      surface-container-high, 2pt seams, 16/4 corners, 340pt iPad columns,
+      Browse-online row under Featured). Rows lead with the 120x96pt 5:4
+      picture (home-row-media, Theme.swift rowMediaWidth/rowMediaAspect) and
+      the header turns to glass once scrolled (ShowcaseTab.swift
+      HeaderGround: iOS 26 Liquid Glass, ultraThinMaterial before) since the
+      #4201 iOS port. Still diverges: single HomeHero instead of the pager,
+      no What's new, and six broken demos are kept off the home
+      (HomeCatalogue.hiddenFromHome)
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt
