@@ -386,9 +386,18 @@ final class CosmosWorld {
     private let tables = CosmosWorldTables()
 
     private var baked: CosmosWorldLight?
-    /// The spin the map on the GPU was baked for.
+    /// The light, and the spin, the maps on the GPU were baked for.
+    private var shownLight: CosmosWorldLight?
     private var shownSpin: Float?
     private var baking = false
+    /// A light asked for ahead of the camera this frame (see `prelight`): the rate-limited
+    /// bakes for the pose on screen wait while the camera does.
+    private var prelit = false
+    /// Whether the last frame was held by the power state, whether the bake at the live spin
+    /// that ends a hold is still to start, and whether the surface keeps its turn until it lands.
+    private var wasHeld = false
+    private var releasePending = false
+    private var holdingTurn = false
     private var lastBake: Double = -.infinity
     private var reveal: Float = -1
     private var trailTint: Float = -1
@@ -479,18 +488,31 @@ final class CosmosWorld {
         // Low Power Mode or a hot device: the surface holds its turn, as the star's churn
         // does, and the light follows the orbit once a second instead of eight times.
         let held = CosmosPowerState.shared.constrained
-        var light = CosmosWorldLight(system: system, time: time, eye: eye)
-        if held, let shownSpin { light.spin = shownSpin }
+        // Out of a hold, the map still shows the spin it was held at: the next bake starts at
+        // once, and the surface keeps that turn until it lands, instead of jumping by the
+        // whole spin missed meanwhile.
+        if wasHeld && !held {
+            releasePending = true
+            holdingTurn = true
+        }
+        wasHeld = held
+        let light = bakeLight(system: system, time: time, eye: eye)
+        // A camera waiting on `prelight` this frame: its bake goes first.
+        let waiting = prelit
+        prelit = false
         let rate = held ? Self.heldBakeRate : Self.bakeRate
-        if !baking, now - lastBake >= 1 / rate, baked.map({ light.differs(from: $0) }) ?? true {
+        if !baking, !waiting,
+           releasePending || (now - lastBake >= 1 / rate && (baked.map({ light.differs(from: $0) }) ?? true)) {
+            let releases = releasePending
+            releasePending = false
             lastBake = now
-            Task { await self.bake(light) }
+            Task { await self.bake(light, releases: releases) }
         }
 
         // The bands turn every frame, as Android's shader turns them: the planet carries the
         // last bake round by the spin since, and its light with it — under 1.2° at 9°/s and
         // 8 bakes a second — while the rings, whose map holds the planet's shadow, stay put.
-        let turn = held ? 0 : light.spin - (shownSpin ?? light.spin)
+        let turn = held || holdingTurn ? 0 : light.spin - (shownSpin ?? light.spin)
         planet.orientation = system.tilt * simd_quatf(angle: turn, axis: SIMD3(0, 1, 0))
         ring.orientation = simd_quatf(angle: -turn, axis: SIMD3(0, 1, 0))
 
@@ -513,9 +535,31 @@ final class CosmosWorld {
         trail.isEnabled = tint > 1e-3
     }
 
+    /// Whether the maps on the GPU show `eye`'s light, as `update` would bake it; if not, starts
+    /// that bake, ahead of the camera. Reduced motion and QA captures land a flight at once: they
+    /// wait for this, so the view they land on is never lit for the one they left.
+    func prelight(system: CosmosSystem, time: Float, eye: SIMD3<Float>, now: Double) -> Bool {
+        let light = bakeLight(system: system, time: time, eye: eye)
+        if !baking, let shownLight, !light.differs(from: shownLight) { return true }
+        prelit = true
+        if !baking, baked.map({ light.differs(from: $0) }) ?? true {
+            lastBake = now
+            Task { await self.bake(light) }
+        }
+        return false
+    }
+
+    /// The light a bake for `eye` would use: under a hold, the surface keeps the spin on screen.
+    private func bakeLight(system: CosmosSystem, time: Float, eye: SIMD3<Float>) -> CosmosWorldLight {
+        var light = CosmosWorldLight(system: system, time: time, eye: eye)
+        if CosmosPowerState.shared.constrained, let shownSpin { light.spin = shownSpin }
+        return light
+    }
+
     /// Bakes both maps for `light` off the main thread, then uploads them in one command buffer.
     /// One bake at a time: the next starts once this one's upload has run on the GPU.
-    private func bake(_ light: CosmosWorldLight) async {
+    /// `releases`: the bake that ends a hold, after which the surface turns again.
+    private func bake(_ light: CosmosWorldLight, releases: Bool = false) async {
         baking = true
         let planetTexture = planetTexture
         let ringTexture = ringTexture
@@ -528,17 +572,18 @@ final class CosmosWorld {
             ringTexture.convert()
         }.value
         baked = light
-        guard let metal = GlowMetal.shared, let commandBuffer = metal.queue.makeCommandBuffer() else {
-            baking = false
-            return
+        if let metal = GlowMetal.shared, let commandBuffer = metal.queue.makeCommandBuffer() {
+            planetTexture.encodeUpload(commandBuffer)
+            ringTexture.encodeUpload(commandBuffer)
+            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                commandBuffer.addCompletedHandler { _ in done.resume() }
+                commandBuffer.commit()
+            }
         }
-        planetTexture.encodeUpload(commandBuffer)
-        ringTexture.encodeUpload(commandBuffer)
-        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-            commandBuffer.addCompletedHandler { _ in done.resume() }
-            commandBuffer.commit()
-        }
+        // Without Metal nothing uploads, and nothing better ever will: whoever waits moves on.
+        shownLight = light
         shownSpin = light.spin
+        if releases && !releasePending { holdingTurn = false }
         baking = false
     }
 
@@ -615,14 +660,14 @@ final class CosmosWorld {
                 floats[o + 9] = across.bottom
             }
         }
-        ribbon.mesh.replaceUnsafeMutableIndices { raw in Self.writeTrailIndices(raw) }
+        // The indices never change: `trailMesh` wrote them once.
         ribbon.laidEye = eye
         ribbon.laidFocal = focal
         ribbon.energy = energy
     }
 
     /// The scale of the ribbon off screen: a speck at the star's centre, hidden by the star.
-    private static let hiddenScale: Float = 1e-4
+    static let hiddenScale: Float = 1e-4
 
     /// Two triangles per span between arc points.
     private static func writeTrailIndices(_ raw: UnsafeMutableRawBufferPointer) {

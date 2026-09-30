@@ -363,8 +363,15 @@ final class CosmosEngine {
                 flight.start()
                 focus = .planet
             }
-            // QA captures and reduced motion show where a flight lands, not a frame of it.
-            pose = flight.advance(now: CACurrentMediaTime(), target: system.pose(focus, time: time), instant: frozen)
+            // QA captures and reduced motion show where a flight lands, not a frame of it — once
+            // the world is lit for it: until then the camera stays where it is, rather than
+            // show the planet with the light of the view it left.
+            var target = system.pose(focus, time: time)
+            if frozen, let held = flight.lastPose, target != held,
+               !entities.prelight(system: system, time: time, eye: target.eye, now: CACurrentMediaTime()) {
+                target = held
+            }
+            pose = flight.advance(now: CACurrentMediaTime(), target: target, instant: frozen)
         } else {
             let camera = camera(current, time: time)
             pose = CosmosPose(eye: camera.eye, target: .zero, up: camera.up)
@@ -595,6 +602,9 @@ final class CosmosSceneEntities {
     /// The last frame's clock and reveal, for a relaid set to take over without a flash.
     private var loopsTime: Float = 0
     private var loopsReveal: Float = 0
+    /// A relaid set in the scene but shrunk out of sight, and when it takes over (monotonic
+    /// clock): RealityKit draws a mesh uploaded in the last frames only some of the time.
+    private var pendingLoops: (glow: GlowEntity, eye: SIMD3<Float>, focal: Float, at: Double)?
 
     /// How far the eye may move from the loops' layout before they are laid again: a quarter
     /// nearer or farther, or 20° round the star (5 s of its turn).
@@ -662,6 +672,12 @@ final class CosmosSceneEntities {
         }
     }
 
+    /// Whether the Star scene's world is lit for a camera at `eye`, starting that bake if not
+    /// (see `CosmosWorld.prelight`). Scenes without a world are always ready.
+    func prelight(system: CosmosSystem, time: Float, eye: SIMD3<Float>, now: Double) -> Bool {
+        world?.prelight(system: system, time: time, eye: eye, now: now) ?? true
+    }
+
     /// - Parameters:
     ///   - eye: where the camera is, in this scene's coordinates.
     ///   - live: the clock runs (not a frozen QA or reduced-motion frame), so the star churns.
@@ -697,7 +713,7 @@ final class CosmosSceneEntities {
                 main.entity.orientation = simd_quatf(from: simd_normalize(restEye), to: simd_normalize(eye))
             }
             strokes?.setIntensity(reveal)
-            relayLoops(eye: eye, time: time, focal: focal, reveal: reveal)
+            relayLoops(eye: eye, time: time, focal: focal, reveal: reveal, now: now)
             main?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
             corona?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
             world?.update(system: system, time: time, eye: eye, reveal: reveal, now: now, focal: focal)
@@ -803,7 +819,24 @@ final class CosmosSceneEntities {
     /// far from the eye they were laid for (the overview is twice the close-up's distance), or
     /// the star has turned them well away from it, they are laid again off the main thread and
     /// swapped in whole, so they read as thin bright filaments from wherever they are seen.
-    private func relayLoops(eye: SIMD3<Float>, time: Float, focal: Float, reveal: Float) {
+    /// The new set waits in the scene, shrunk out of sight, for `CosmosWorld.trailSettleSeconds`
+    /// before it takes over, as the orbit trail's ribbons do.
+    private func relayLoops(eye: SIMD3<Float>, time: Float, focal: Float, reveal: Float, now: Double) {
+        loopsTime = time
+        loopsReveal = reveal
+        if let pending = pendingLoops {
+            pending.glow.scrollDashes(time: time)
+            pending.glow.setIntensity(reveal)
+            guard now >= pending.at else { return }
+            pending.glow.entity.scale = .one
+            strokes?.entity.removeFromParent()
+            strokes = pending.glow
+            loopsEye = pending.eye
+            loopsFocal = pending.focal
+            pendingLoops = nil
+            NSLog("[Cosmos] loops swapped in")
+            return
+        }
         guard loopsTask == nil, let loopProgram, focal > 0 else { return }
         // The loops turn with the star: compare eyes as the turned star sees them.
         let seen = CosmosSceneLayers.starOrientation(time).inverse.act(eye)
@@ -829,14 +862,10 @@ final class CosmosSceneEntities {
                   !Task.isCancelled else { return }
             fresh.scrollDashes(time: self.loopsTime)
             fresh.setIntensity(self.loopsReveal)
+            fresh.entity.scale = SIMD3(repeating: CosmosWorld.hiddenScale)
             self.spin.addChild(fresh.entity)
-            self.strokes?.entity.removeFromParent()
-            self.strokes = fresh
-            self.loopsEye = seen
-            self.loopsFocal = focal
+            self.pendingLoops = (fresh, seen, focal, CACurrentMediaTime() + CosmosWorld.trailSettleSeconds)
         }
-        loopsTime = time
-        loopsReveal = reveal
     }
 
     /// Drops the surface bake in flight. The detached plasma loop cannot be interrupted, so
@@ -844,6 +873,8 @@ final class CosmosSceneEntities {
     func cancelChurn() {
         churnTask?.cancel()
         loopsTask?.cancel()
+        pendingLoops?.glow.entity.removeFromParent()
+        pendingLoops = nil
     }
 
     /// The star's silhouette radius on the plane of its limb disc (`GlowBuilder.limb`) seen
