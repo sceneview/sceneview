@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS: `VideoNode` shows its video again, and the demo's Video Texture plays ([#4198](https://github.com/sceneview/sceneview/pull/4198)).** The node used a `VideoPlayerComponent`, which RealityKit skips when the player has not loaded its video track yet, and a newly created `AVPlayer(url:)` never has. The quad was never drawn while the player ran. `VideoNode` is now a plane textured with a `VideoMaterial`, sized by the same `size(width:height:)` / `scale` as before.
