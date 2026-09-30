@@ -15,9 +15,10 @@ import SceneViewSwift
 /// Where the platforms differ is who renders the ear. Android mixes the four parts itself
 /// (pan, interaural delay, rear low-pass) into one stereo track; here every orb carries a
 /// ``SpatialAudioNode`` and RealityKit renders its direction binaurally (HRTF) from the orb's
-/// pose relative to the camera. The distance law is the SDK's, pushed per frame with the real
-/// camera distance through ``SpatialAudioNode/updateGain(forDistance:)`` (#4202) —
-/// `AudioFalloff.inverse(0.5, 8, 1.3)` on both platforms.
+/// pose relative to the camera, with Android's 3 dB rear gain on top. The distance law is the
+/// SDK's, pushed per frame with the real camera distance through
+/// ``SpatialAudioNode/updateGain(forDistance:)`` (#4202) — `AudioFalloff.inverse(0.5, 8, 1.3)`
+/// on both platforms.
 ///
 /// Every orb pulses with the loudness of its own part and every note it plays sends a shell
 /// out of it — the eye finds the sound the ear hears. Both come from an RMS envelope of the
@@ -207,6 +208,10 @@ final class SoundGardenController: NSObject, ObservableObject {
     static let falloff = AudioFalloff.inverse(refDistance: 0.5, maxDistance: 8, rolloffFactor: 1.3)
 
     static let plantDistance: Float = 1.6
+    /// Android's `SpatialVoiceMath.REAR_GAIN`: a part straight behind the listener is 3 dB down.
+    /// RealityKit's HRTF already darkens what is behind; this adds the level half of Android's
+    /// rear cue, so "turn your back" sounds duller *and* a bit quieter on both platforms.
+    nonisolated static let rearGainBehind: Float = 0.708
     private static let bloomStagger: Float = 0.6
     private static let bloomDuration: Float = 0.7
     private static let muteFade: Float = 0.12
@@ -365,7 +370,11 @@ final class SoundGardenController: NSObject, ObservableObject {
         if anchor == nil, stemsReady || stemsFailed {
             plant(frame: frame, camera: camera, in: arView)
         }
-        if anchor != nil { tick(listener: cameraPosition) }
+        if anchor != nil {
+            let facing = Self.facing(forward: -SIMD3(camera.columns.2.x, camera.columns.2.y, camera.columns.2.z),
+                                     up: SIMD3(camera.columns.1.x, camera.columns.1.y, camera.columns.1.z))
+            tick(listener: cameraPosition, facing: facing)
+        }
     }
 
     func replant() {
@@ -434,6 +443,13 @@ final class SoundGardenController: NSObject, ObservableObject {
         return length < 1e-4 ? SIMD2(0, -1) : flat / length
     }
 
+    /// Android's `SpatialVoiceMath.rearGain`: 1 for a source anywhere in front, sliding down to
+    /// ``rearGainBehind`` straight behind. `frontness` is −1 (behind) … +1 (ahead).
+    nonisolated static func rearGain(frontness: Float) -> Float {
+        let behind = min(max(-frontness, 0), 1)
+        return 1 - (1 - rearGainBehind) * behind
+    }
+
     private func buildOrb(_ orb: SoundGardenOrb, audio: SpatialAudioNode?, under parent: Entity) -> OrbRig {
         let base = SIMD3<Float>(orb.local.x, 0, orb.local.z)
         // The stalk and the ring on the floor tie each orb to the ground it was planted in —
@@ -486,7 +502,8 @@ final class SoundGardenController: NSObject, ObservableObject {
     }
 
     /// One frame: bloom, mute fades, distance gain from the real camera, pulse and shells.
-    private func tick(listener: SIMD3<Float>) {
+    /// `facing` is the levelled direction the user faces, (x, z) on the floor plane.
+    private func tick(listener: SIMD3<Float>, facing: SIMD2<Float>) {
         let now = CACurrentMediaTime()
         let dt = lastTick == 0 ? 0 : Float(min(max(now - lastTick, 0), 0.1))
         lastTick = now
@@ -505,11 +522,15 @@ final class SoundGardenController: NSObject, ObservableObject {
             let level = bloom * muteLevel[index]
 
             if let audio = rig.audio {
-                let distance = simd_distance(rig.root.position(relativeTo: nil), listener)
+                let offset = rig.root.position(relativeTo: nil) - listener
+                let distance = simd_length(offset)
                 audio.updateGain(forDistance: distance)
-                if abs(level - appliedLevel[index]) > 0.002 {
-                    Self.setLevel(level, on: audio)
-                    appliedLevel[index] = level
+                // Android's `SpatialVoiceMath.voice`: frontness against the levelled facing.
+                let frontness = distance < 1e-3 ? 1 : (offset.x * facing.x + offset.z * facing.y) / distance
+                let heard = level * Self.rearGain(frontness: frontness)
+                if abs(heard - appliedLevel[index]) > 0.002 {
+                    Self.setLevel(heard, on: audio)
+                    appliedLevel[index] = heard
                 }
             }
 

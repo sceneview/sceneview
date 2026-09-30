@@ -955,8 +955,9 @@ demos:
       and onset tables (SoundGardenStems.swift mirrors the Kotlin, same
       tests). Platform-forced gap: Android mixes the binaural cues itself,
       iOS gives each orb a SpatialAudioNode (RealityKit HRTF) with the
-      distance pushed per frame via updateGain(forDistance:); not yet heard
-      on an iPhone
+      distance pushed per frame via updateGain(forDistance:) and Android's
+      3 dB rear gain on top (no explicit rear low-pass: HRTF darkens the
+      rear); not yet heard on an iPhone
 
   # ─── stub (0) — an id in iOS's registry that falls to the placeholder ────
   # Deliberately empty, and meant to stay that way. A `stub` row means the

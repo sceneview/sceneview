@@ -126,4 +126,15 @@ final class SoundGardenStemsTests: XCTestCase {
         let degenerate = SoundGardenController.facing(forward: [0, -1, 0], up: [0, 1, 0])
         XCTAssertEqual(simd_length(degenerate), 1, accuracy: 1e-5)
     }
+
+    /// Android's `SpatialVoiceMathTest` rear cases: open in front and to the side, 3 dB down
+    /// straight behind, halfway in between.
+    func testAPartBehindTheListenerIs3dBDownAndOneInFrontIsUntouched() {
+        XCTAssertEqual(SoundGardenController.rearGain(frontness: 1), 1, accuracy: 1e-6)
+        XCTAssertEqual(SoundGardenController.rearGain(frontness: 0), 1, accuracy: 1e-6)
+        XCTAssertEqual(SoundGardenController.rearGain(frontness: -1), 0.708, accuracy: 1e-6)
+        XCTAssertEqual(20 * log10(SoundGardenController.rearGain(frontness: -1)), -3, accuracy: 0.01)
+        XCTAssertEqual(SoundGardenController.rearGain(frontness: -0.5), 1 - 0.292 / 2, accuracy: 1e-6)
+        XCTAssertEqual(SoundGardenController.rearGain(frontness: -3), 0.708, accuracy: 1e-6)
+    }
 }
