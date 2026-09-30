@@ -60,16 +60,32 @@ class CosmosVoyageTest {
                     // The up vector is a unit vector square to the view axis.
                     val up = sqrt(pose[6] * pose[6] + pose[7] * pose[7] + pose[8] * pose[8])
                     assertEquals(1f, up, 1e-3f)
-                    if (!first) {
-                        // A warp throws the camera fast, but never teleports it between frames.
-                        val jump = dist(pose, 0, previous, 0)
-                        assertTrue("${shot.scene} at $t jumped $jump", jump < 1f)
-                    }
+                    if (!first) assertSmoothStep(shot, t, aspect, warpIn, pose, previous)
                     pose.copyInto(previous)
                     first = false
                 }
             }
         }
+    }
+
+    /**
+     * A warp throws the camera fast, but never teleports it between frames; out of a warp it glides.
+     * A jump's push is a share of the eye-to-target distance: its fastest frame, at the start of an
+     * arrival, moves 1/8 of it at most.
+     */
+    private fun assertSmoothStep(
+        shot: VoyageShot,
+        t: Float,
+        aspect: Float,
+        warpIn: Boolean,
+        pose: FloatArray,
+        previous: FloatArray,
+    ) {
+        val jump = dist(pose, 0, previous, 0)
+        val warping = (warpIn && t < CosmosVoyageCamera.WARP_IN_SECONDS) ||
+            (shot.exit == VoyageExit.Warp && t > shot.seconds - CosmosVoyageCamera.WARP_OUT_SECONDS)
+        val limit = if (warping) MAX_WARP_SHARE * dist(previous, 0, previous, 3) else MAX_GLIDE_STEP
+        assertTrue("${shot.scene} at $t jumped $jump ($aspect)", jump < limit)
     }
 
     @Test
@@ -131,13 +147,55 @@ class CosmosVoyageTest {
     }
 
     @Test
-    fun `captions follow the keys`() {
+    fun `the galaxy opens and pulls back outside the core's glow`() {
+        // Inside the widest core sprite (1.45 across the radius) the additive halo covers the
+        // screen: the frame burns white and the frame rate halves.
+        val camera = CosmosVoyageCamera()
+        val shot = CosmosVoyage.shotOf(CosmosScene.Galaxy)
+        for (aspect in aspects) {
+            for (t in frames(shot).takeWhile { it <= GALAXY_SKIM_SECONDS }) {
+                camera.evaluate(shot, t, t, aspect, arrivedByWarp = false)
+                val r = dist(camera.pose, 0, floatArrayOf(0f, 0f, 0f), 0)
+                assertTrue("eye at $t ($aspect): $r from the core", r > CORE_GLOW_RADIUS)
+            }
+        }
+    }
+
+    @Test
+    fun `the planet stays in frame from the approach to the pull-back`() {
+        val camera = CosmosVoyageCamera()
+        val rig = CosmosRig()
+        val shot = CosmosVoyage.shotOf(CosmosScene.Star)
+        for (aspect in aspects) {
+            for (t in frames(shot).filter { it in PLANET_FROM..PLANET_TO }) {
+                camera.evaluate(shot, t, t, aspect, arrivedByWarp = true)
+                val planet = rig.planetPosition(t, aspect)
+                val ndc = CosmosSystem.project(camera.pose, aspect, planet)
+                assertTrue("planet behind the camera at $t ($aspect)", ndc != null)
+                // project() assumes the default lens: a longer one magnifies in proportion.
+                val zoom = camera.focal / CosmosVoyageCamera.DEFAULT_FOCAL
+                val x = ndc!![0] * zoom
+                val y = ndc[1] * zoom
+                assertTrue("planet at x=$x, t=$t ($aspect)", abs(x) <= IN_FRAME)
+                assertTrue("planet at y=$y, t=$t ($aspect)", abs(y) <= IN_FRAME)
+            }
+        }
+    }
+
+    @Test
+    fun `captions lead their key and the next shot's opens on the switch`() {
         val camera = CosmosVoyageCamera()
         val shot = CosmosVoyage.shotOf(CosmosScene.Star)
-        camera.evaluate(shot, 0f, 0f, 0.45f, arrivedByWarp = false)
-        assertEquals(shot.keys.first().caption, camera.caption)
-        camera.evaluate(shot, shot.seconds, shot.seconds, 0.45f, arrivedByWarp = false)
-        assertEquals(shot.keys.last { it.caption != null }.caption, camera.caption)
+        val key = shot.keys.first { it.at > 0f && it.caption != null }
+        camera.evaluate(shot, key.at - CosmosVoyageCamera.CAPTION_LEAD_SECONDS - 0.05f, 0f, 0.45f, false)
+        assertFalse(key.caption == camera.caption)
+        camera.evaluate(shot, key.at - CosmosVoyageCamera.CAPTION_LEAD_SECONDS + 0.05f, 0f, 0.45f, false)
+        assertEquals(key.caption, camera.caption)
+        for (next in CosmosVoyage.SHOTS) {
+            camera.evaluate(next, 0f, 0f, 0.45f, CosmosVoyage.arrivesByWarp(next.scene))
+            assertEquals(camera.caption, CosmosVoyage.openingCaption(next.scene))
+            assertTrue(camera.caption.isNotEmpty())
+        }
     }
 
     @Test
@@ -164,5 +222,21 @@ class CosmosVoyageTest {
             )
         }
         assertTrue(result.isFailure)
+    }
+
+    private companion object {
+        /** Largest eye move between two 60 fps frames in a glide (12 units/s: the star pull-back, ~8 away). */
+        const val MAX_GLIDE_STEP = 0.2f
+
+        /** Largest eye move between two 60 fps frames in a jump, as a share of the aim distance. */
+        const val MAX_WARP_SHARE = 0.125f
+
+        const val CORE_GLOW_RADIUS = 1.45f
+        const val GALAXY_SKIM_SECONDS = 12.5f
+
+        /** The Star shot, from its first key at the planet to the system framing. */
+        const val PLANET_FROM = 11.5f
+        const val PLANET_TO = 25f
+        const val IN_FRAME = 0.9f
     }
 }

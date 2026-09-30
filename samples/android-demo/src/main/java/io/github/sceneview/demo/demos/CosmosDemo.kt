@@ -63,6 +63,7 @@ import io.github.sceneview.demo.demos.internal.CosmosVoyageCamera
 import io.github.sceneview.demo.demos.internal.GlowMesh
 import io.github.sceneview.demo.demos.internal.RIBBON_STRIDE
 import io.github.sceneview.demo.demos.internal.VoyageExit
+import io.github.sceneview.demo.demos.internal.VoyageState
 import io.github.sceneview.demo.demos.internal.orbitPose
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -146,8 +147,9 @@ private const val ONE_FRAME_SECONDS = 1f / 60f
  * written as a table of keyframes — eye, target, focal length, roll, look-ahead — and joined by
  * jumps (light streaks, a surging wide lens) or fades. [CosmosVoyageCamera] turns the table into
  * a pose each frame with a Catmull-Rom spline, a look-ahead aim and a little handheld sway. Any
- * touch hands the camera back, eased; after [IDLE_RESUME_SECONDS] untouched the voyage jumps on
- * to the next scene. The dock's accent starts or stops it.
+ * touch in the scene hands the camera back, eased; after [VoyageState.IDLE_RESUME_SECONDS]
+ * untouched the voyage jumps on to the next scene. Picking a scene in the dock stops it, like the
+ * dock's accent; the accent or the Voyage toggle starts it again.
  */
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
@@ -318,14 +320,17 @@ fun CosmosDemo(onBack: () -> Unit) {
         },
         dock = CosmosScene.entries.map { target ->
             sceneDockItem(target, scene) {
-                voyage.takeOver(flight)
+                // Picking a scene stops the voyage, as the old tour did: Start brings it back.
+                voyageOn = false
+                voyage.stop(flight)
+                voyage.resetDrag()
                 scene = it
             }
         },
         dockAccent = if (voyageOn && voyageCaption != null) {
             DockItem(Icons.Filled.Pause, "Stop the voyage", {
                 voyageOn = false
-                voyage.takeOver(flight)
+                voyage.stop(flight)
             })
         } else {
             DockItem(Icons.Filled.RocketLaunch, "Start the voyage", {
@@ -345,7 +350,7 @@ fun CosmosDemo(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             ToggleRow("Voyage", voyageOn) { on ->
                 voyageOn = on
-                if (on) voyage.resumeNow() else voyage.takeOver(flight)
+                if (on) voyage.resumeNow() else voyage.stop(flight)
             }
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             ToggleRow("Animate", animating) { animating = it }
@@ -406,18 +411,21 @@ fun CosmosDemo(onBack: () -> Unit) {
                 }
                 val viewport = view.viewport
                 val aspect = if (viewport.height > 0) viewport.width.toFloat() / viewport.height else 0.5f
-                val step = voyage.step(nanos)
-                // The voyage runs on the scene's clock, so it stops with Animate and reduced motion.
+                val step = voyage.step(nanos, counted = firstFrame.rendered.value)
+                // The voyage runs on the scene's clock, so it pauses with Animate and reduced motion
+                // and counts its calm again from when they are back.
                 if (!voyageOn || !animating || frozen) {
-                    voyage.takeOver(flight, waitForIdle = false)
+                    voyage.hold(flight)
                 } else if (voyage.dueToResume()) {
                     voyage.resumeNow()
                 }
                 val pose: FloatArray
                 val focal: Float
+                val caption: String?
                 if (voyage.playing) {
                     val shot = CosmosVoyage.shotOf(current)
-                    if (clock.sceneTime > shot.seconds) {
+                    val ending = clock.sceneTime > shot.seconds
+                    if (ending) {
                         Log.i(TAG, voyage.shotPacing(current))
                         voyage.arrivedByWarp = shot.exit == VoyageExit.Warp
                         scene = CosmosVoyage.next(current)
@@ -426,7 +434,12 @@ fun CosmosDemo(onBack: () -> Unit) {
                     pose = voyageCamera.pose
                     focal = voyageCamera.focal
                     voyage.show(voyageCamera.fade, voyageCamera.streaks)
-                    if (voyageCaption != voyageCamera.caption) voyageCaption = voyageCamera.caption
+                    // The caption changes with the scene, not a frame after it.
+                    caption = if (ending) {
+                        CosmosVoyage.openingCaption(CosmosVoyage.next(current))
+                    } else {
+                        voyageCamera.caption
+                    }
                 } else {
                     val framing = if (current == CosmosScene.Star) {
                         rig.pose(focus, time, aspect)
@@ -434,7 +447,8 @@ fun CosmosDemo(onBack: () -> Unit) {
                         CosmosFraming.pose(current, time, aspect)
                     }
                     framing.copyInto(freePose)
-                    orbitPose(freePose, voyage.yaw, voyage.pitch, orbitScratch)
+                    // The flow field has an edge: it is never turned, whatever drag is left over.
+                    if (current != CosmosScene.Flow) orbitPose(freePose, voyage.yaw, voyage.pitch, orbitScratch)
                     // QA captures after a tap must show where the flight lands, not a frame of it.
                     val instant = !motionEnabled || DemoSettings.qaMode
                     val free = flight.advance(nanos, freePose, instant)
@@ -455,8 +469,9 @@ fun CosmosDemo(onBack: () -> Unit) {
                         focal = freeFocal
                         voyage.settle(step)
                     }
-                    if (voyageCaption != null) voyageCaption = null
+                    caption = if (voyage.playing) CosmosVoyage.openingCaption(CosmosVoyage.next(current)) else null
                 }
+                if (voyageCaption != caption) voyageCaption = caption
                 val reveal = sceneReveal * voyage.fade
                 flight.record(pose, time, focal)
                 cameraNode.lookAt(
@@ -690,17 +705,8 @@ private fun MeshNodeImpl.configureGlow() {
 /** Frozen per-scene times for QA captures and reduced motion: each at its most telling moment. */
 private val QA_TIME = floatArrayOf(6f, 3f, 1.9f, 4f)
 
-/** Seconds without a touch before the voyage jumps on to the next scene. */
-private const val IDLE_RESUME_SECONDS = 12f
-
 /** How far a drag turns the free camera, in degrees per dp. */
 private const val DRAG_DEGREES_PER_DP = 0.3f
-
-/** How far the free camera may be dragged above or below its framing, in degrees. */
-private const val MAX_PITCH_DEGREES = 60f
-
-/** How long the scene takes to come back up when the user cuts a fade or a jump short, in seconds. */
-private const val FADE_BACK_SECONDS = 0.35f
 
 private const val ORBIT_SCRATCH_FLOATS = 15
 
@@ -806,132 +812,6 @@ private class CosmosClock {
             sceneTime += ((nanos - lastNanos) / 1e9f).coerceIn(0f, 0.1f)
         }
         lastNanos = nanos
-    }
-}
-
-/**
- * Where the voyage is, for the render loop and the gestures (both on the main thread): whether it
- * drives the camera, how far a jump away from the free camera has gone, how long since the user
- * last touched, their drag, and the fade and streaks on screen.
- */
-private class VoyageState(var playing: Boolean) {
-    /** Whether the shot on screen was reached through a jump: its first seconds finish it. */
-    var arrivedByWarp = false
-
-    /** Progress of a jump away from the free camera, 0 → 1; negative when none is under way. */
-    var leaving = -1f
-
-    /** Seconds since the user last touched, or null when there is nothing to wait out. */
-    private var idleSeconds: Float? = null
-
-    var yaw = 0f
-        private set
-    var pitch = 0f
-        private set
-
-    var fade = 1f
-        private set
-    var streaks = 0f
-        private set
-
-    /** Drives the streaks' pulses: runs through a jump whatever the scene clock does. */
-    var warpClock = 0f
-        private set
-
-    /** The focal length last written to the camera, so an unchanged one is not written again. */
-    var appliedFocal = CosmosVoyageCamera.DEFAULT_FOCAL
-
-    private var lastNanos = 0L
-
-    // Frame pacing over the shot on screen, logged when it ends: the voyage's smoothness figure.
-    private var shotFrames = 0
-    private var shotSlowFrames = 0
-    private var shotSeconds = 0f
-
-    /** Advances the frame clock; returns this frame's step in seconds, a hitch clamped. */
-    fun step(nanos: Long): Float {
-        val raw = if (lastNanos == 0L) 0f else (nanos - lastNanos) / 1e9f
-        val dt = raw.coerceIn(0f, MAX_STEP_SECONDS)
-        lastNanos = nanos
-        if (playing && raw > 0f) {
-            shotFrames++
-            shotSeconds += raw
-            if (raw > SLOW_FRAME_SECONDS) shotSlowFrames++
-        }
-        idleSeconds = idleSeconds?.plus(dt)
-        warpClock += dt
-        return dt
-    }
-
-    /**
-     * The user took the camera: it is handed back from where it is, eased, and the voyage waits
-     * for [IDLE_RESUME_SECONDS] of calm — unless [waitForIdle] is false (the voyage was switched
-     * off, or Animate was), when it waits to be started again.
-     */
-    fun takeOver(flight: CosmosFlight, waitForIdle: Boolean = true) {
-        if (playing || leaving >= 0f) flight.start()
-        playing = false
-        leaving = -1f
-        idleSeconds = if (waitForIdle) 0f else null
-    }
-
-    /** Jumps on to the next scene now: the accent, the toggle, or the end of the idle wait. */
-    fun resumeNow() {
-        if (playing || leaving >= 0f) return
-        idleSeconds = null
-        leaving = 0f
-    }
-
-    fun dueToResume(): Boolean = !playing && leaving < 0f && (idleSeconds ?: 0f) > IDLE_RESUME_SECONDS
-
-    /** The jump away has landed: the voyage has the camera, in the next scene. */
-    fun arrive() {
-        playing = true
-        leaving = -1f
-        arrivedByWarp = true
-        resetDrag()
-    }
-
-    fun drag(scene: CosmosScene, dYaw: Float, dPitch: Float) {
-        // The flow field has an edge a turned camera would show: it stays on its framing.
-        if (scene == CosmosScene.Flow) return
-        yaw += dYaw
-        pitch = (pitch + dPitch).coerceIn(-MAX_PITCH_DEGREES, MAX_PITCH_DEGREES)
-    }
-
-    fun resetDrag() {
-        yaw = 0f
-        pitch = 0f
-    }
-
-    fun show(fade: Float, streaks: Float) {
-        this.fade = fade
-        this.streaks = streaks
-    }
-
-    /** The free camera: a fade or a jump the user cut short comes back up, the streaks go out. */
-    fun settle(dt: Float) {
-        val k = (dt / FADE_BACK_SECONDS).coerceIn(0f, 1f)
-        fade += (1f - fade) * k
-        streaks -= streaks * k
-        if (streaks < STREAKS_OFF) streaks = 0f
-    }
-
-    /** The frame pacing of the shot that just ended, then a fresh count for the next one. */
-    fun shotPacing(scene: CosmosScene): String {
-        val fps = if (shotSeconds > 0f) shotFrames / shotSeconds else 0f
-        val report = "voyage shot ${scene.name}: $shotFrames frames, ${"%.1f".format(fps)} fps, " +
-            "$shotSlowFrames over ${(SLOW_FRAME_SECONDS * 1000).toInt()} ms"
-        shotFrames = 0
-        shotSlowFrames = 0
-        shotSeconds = 0f
-        return report
-    }
-
-    private companion object {
-        const val MAX_STEP_SECONDS = 0.1f
-        const val STREAKS_OFF = 0.01f
-        const val SLOW_FRAME_SECONDS = 0.025f
     }
 }
 

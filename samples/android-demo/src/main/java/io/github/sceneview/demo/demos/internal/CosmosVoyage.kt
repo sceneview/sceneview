@@ -74,7 +74,8 @@ internal enum class VoyageExit {
  * @param roll degrees the camera turns about its view axis, clockwise as seen by the viewer.
  * @param ahead 0 looks at [target], 1 looks along the camera's own path: a travelling shot
  *   that anticipates where it is going. In between blends the two.
- * @param caption shown under the scene from this key on; null keeps the previous one.
+ * @param caption shown under the scene from [CosmosVoyageCamera.CAPTION_LEAD_SECONDS] before this
+ *   key on, so it is read as the move it names begins; null keeps the previous one.
  */
 @Suppress("LongParameterList")
 internal class VoyageKey(
@@ -124,15 +125,17 @@ private val ORIGIN = v(0f, 0f, 0f)
 internal object CosmosVoyage {
 
     val SHOTS: List<VoyageShot> = listOf(
-        // From inside the disc, the camera pulls back and rises until the whole spiral turns
-        // below it, then swoops down to skim the arms and dives at the core.
+        // Low over the outer arms, looking in at the bar, the camera pulls back and rises until
+        // the whole spiral turns below it, then swoops down to skim the arms and dives at the core.
+        // It opens outside the core's glow (its widest sprite is 1.45 across the radius): inside
+        // it, the additive halo covers the whole screen, burns to white and halves the frame rate.
         VoyageShot(
             scene = CosmosScene.Galaxy,
             shake = 0.35f,
             exit = VoyageExit.Warp,
             keys = listOf(
-                VoyageKey(0f, VoyageAnchor.World, v(0.18f, 0.2f, 0.62f), ORIGIN, focal = 20f,
-                    caption = "Inside a spiral galaxy of 60,000 stars"),
+                VoyageKey(0f, VoyageAnchor.World, v(0.6f, 0.72f, 1.35f), ORIGIN, focal = 22f,
+                    caption = "A spiral galaxy of 60,000 stars"),
                 VoyageKey(4f, VoyageAnchor.World, v(0.5f, 2.4f, 1.9f), ORIGIN, focal = 24f,
                     caption = "Pulling back to see it whole"),
                 VoyageKey(8.5f, VoyageAnchor.World, v(-0.9f, 5.3f, 1.4f), ORIGIN, focal = 26f, roll = -8f),
@@ -185,19 +188,25 @@ internal object CosmosVoyage {
                 VoyageKey(0f, VoyageAnchor.Orbit, v(0.8f, 0.7f, 6.6f), ORIGIN, focal = 24f,
                     caption = "A hot blue star and its magnetic loops"),
                 VoyageKey(4f, VoyageAnchor.Orbit, v(3.4f, 1.1f, 4.0f), ORIGIN, focal = 26f, roll = 6f),
-                VoyageKey(8f, VoyageAnchor.Orbit, v(4.6f, 1.6f, 0.2f), ORIGIN, focal = 30f),
-                VoyageKey(11.5f, VoyageAnchor.Planet, v(2.3f, 0.7f, 1.7f), ORIGIN, focal = 30f,
+                // From here the camera heads for the planet: the caption names it as it turns.
+                VoyageKey(8f, VoyageAnchor.Orbit, v(4.6f, 1.6f, 0.2f), ORIGIN, focal = 30f,
                     caption = "A ringed world in blue starlight"),
+                VoyageKey(11.5f, VoyageAnchor.Planet, v(2.3f, 0.7f, 1.7f), ORIGIN, focal = 30f),
                 VoyageKey(15f, VoyageAnchor.Planet, v(1.05f, 0.16f, 0.62f), v(-0.1f, 0f, -0.15f), focal = 26f,
                     roll = -5f, caption = "Skimming its rings"),
                 VoyageKey(18.5f, VoyageAnchor.Planet, v(0.28f, 0.14f, 1.12f), v(-0.3f, 0.02f, -0.1f), focal = 24f),
-                VoyageKey(21.5f, VoyageAnchor.Planet, v(-0.2f, 1.5f, 3.4f), v(-1.2f, 0f, -0.4f), focal = 26f,
+                // Backing away with the planet still in frame: aimed just past it toward the star,
+                // not at the star itself, which would push the planet off the side.
+                VoyageKey(21.5f, VoyageAnchor.Planet, v(-0.2f, 1.5f, 4.6f), v(-0.4f, 0f, -0.15f), focal = 24f,
                     caption = "Pulling back to the whole system"),
                 VoyageKey(25f, VoyageAnchor.Framing, ORIGIN, ORIGIN, focal = 28f),
                 VoyageKey(28f, VoyageAnchor.Framing, v(0f, 0.8f, 7f), ORIGIN, focal = 24f),
             ),
         ),
     )
+
+    /** The caption a shot opens on: shown from the frame the voyage switches to [scene]. */
+    fun openingCaption(scene: CosmosScene): String = shotOf(scene).keys.first().caption.orEmpty()
 
     /** The shot of [scene]: the voyage visits every scene once. */
     fun shotOf(scene: CosmosScene): VoyageShot = SHOTS.first { it.scene == scene }
@@ -299,7 +308,7 @@ internal class CosmosVoyageCamera(private val rig: CosmosRig = CosmosRig()) {
     var streaks = 0f
         private set
 
-    /** The caption of the last key passed, or of the first one. */
+    /** The caption of the last key passed (by [CAPTION_LEAD_SECONDS]), or of the first one. */
     var caption: String = ""
         private set
 
@@ -308,6 +317,7 @@ internal class CosmosVoyageCamera(private val rig: CosmosRig = CosmosRig()) {
     private val times = FloatArray(4)
     private val sample = FloatArray(SLOT)
     private val later = FloatArray(SLOT)
+    private val earlier = FloatArray(SLOT)
 
     // Scratch.
     private val va = FloatArray(3)
@@ -331,15 +341,24 @@ internal class CosmosVoyageCamera(private val rig: CosmosRig = CosmosRig()) {
         val ahead = sample[AHEAD]
         if (ahead > 0f) {
             val dt = LOOK_AHEAD_SECONDS
-            sampleAt(shot, (t + dt).coerceAtMost(shot.seconds + dt), sceneTime + dt, aspect, later)
-            val dx = later[0] - sample[0]
-            val dy = later[1] - sample[1]
-            val dz = later[2] - sample[2]
+            // The path's heading over the next moment; in the shot's last moment, its final
+            // heading — past the end the path stops, and the heading of a vanishing step is noise.
+            val from = minOf(t, shot.seconds - dt).coerceAtLeast(0f)
+            val origin = if (from < t) {
+                sampleAt(shot, from, sceneTime + (from - t), aspect, earlier)
+                earlier
+            } else {
+                sample
+            }
+            sampleAt(shot, from + dt, sceneTime + (from + dt - t), aspect, later)
+            val dx = later[0] - origin[0]
+            val dy = later[1] - origin[1]
+            val dz = later[2] - origin[2]
             val travel = sqrt(dx * dx + dy * dy + dz * dz)
             if (travel > MIN_TRAVEL) {
                 val reach = distance(sample, 0, sample, 3)
                 for (i in 0..2) {
-                    val along = sample[i] + (later[i] - sample[i]) / travel * reach
+                    val along = sample[i] + (later[i] - origin[i]) / travel * reach
                     sample[3 + i] += (along - sample[3 + i]) * ahead
                 }
             }
@@ -460,7 +479,7 @@ internal class CosmosVoyageCamera(private val rig: CosmosRig = CosmosRig()) {
     private fun captionAt(shot: VoyageShot, t: Float): String {
         var text = shot.keys[0].caption.orEmpty()
         for (key in shot.keys) {
-            if (key.at > t) break
+            if (key.at - CAPTION_LEAD_SECONDS > t) break
             key.caption?.let { text = it }
         }
         return text
@@ -584,6 +603,9 @@ internal class CosmosVoyageCamera(private val rig: CosmosRig = CosmosRig()) {
         private const val WARP_BLACK_FROM = 0.55f
 
         const val LOOK_AHEAD_SECONDS = 0.6f
+
+        /** How long before its key a caption comes up: it names the move as the move starts. */
+        const val CAPTION_LEAD_SECONDS = 1f
         private const val MIN_TRAVEL = 1e-4f
 
         private const val SLOT = 11
