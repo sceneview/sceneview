@@ -94,6 +94,7 @@ import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
+import io.github.sceneview.demo.demos.internal.ScanPlanes
 import io.github.sceneview.demo.theme.DebugPalette
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -187,7 +188,7 @@ internal class ArDebugRecorder {
                 recordPoints(trace, nanos, frame, capture, image)
             }
             if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
-            if (capture != null && depth != null && image != null) capture.fuseDepth(depth, image)
+            if (capture != null && depth != null) capture.fuseDepth(depth, image)
         } finally {
             image?.close()
             depth?.close()
@@ -231,7 +232,9 @@ internal class ArDebugRecorder {
     @Suppress("LoopWithTooManyJumpStatements") // guard clauses read better than nested ifs here
     private fun recordPlanes(trace: ArDebugTrace, nanos: Long, session: Session) {
         val seen = HashSet<Plane>()
+        val merged = HashSet<Plane>()
         for (plane in session.getAllTrackables(Plane::class.java)) {
+            if (plane.subsumedBy != null) merged += plane
             if (plane.trackingState != TrackingState.TRACKING || plane.subsumedBy != null) continue
             val local = plane.polygon
             val count = local.remaining() / 2
@@ -252,8 +255,9 @@ internal class ArDebugRecorder {
             trace.addPlane(nanos, id, plane.type.toDebugKind(), world)
             seen += plane
         }
-        // A plane merged into another, or dropped by ARCore, leaves the view with it.
-        for (gone in livePlanes - seen) {
+        // A plane merged into another, or dropped by ARCore, leaves the view with it — but not
+        // every plane at once: that is a tracking reset, and the room keeps its surfaces.
+        for (gone in ScanPlanes.removed(livePlanes, seen, merged)) {
             planeIds[gone]?.let { trace.addPlane(nanos, it, gone.type.toDebugKind(), FloatArray(0)) }
         }
         livePlanes.clear()

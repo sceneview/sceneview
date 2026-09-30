@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import android.graphics.Bitmap
 import android.media.Image
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Frame
@@ -15,6 +16,8 @@ import io.github.sceneview.demo.demos.internal.DepthAlignment
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.DepthFreshness
+import io.github.sceneview.demo.demos.internal.DepthIntake
+import io.github.sceneview.demo.demos.internal.DepthIntake.Outcome
 import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.KeyframeGate
 import io.github.sceneview.demo.demos.internal.MediaSpan
@@ -109,6 +112,12 @@ internal class ScanCapture private constructor(
     private val denseKept = AtomicInteger(0)
     private var recordedTotal = 0
 
+    // Why depth frames did or did not grow the map, logged every two seconds for a device run.
+    private val intake = DepthIntake()
+
+    /** When Record started, on the monotonic clock: the HUD's clock runs from it (see [elapsedSeconds]). */
+    private val startedNanos = SystemClock.elapsedRealtimeNanos()
+
     /** Surfels in the dense map so far: the HUD's "N surfaces" count. `0` without raw depth. */
     val denseCount: Int get() = denseTotal.get()
 
@@ -120,6 +129,14 @@ internal class ScanCapture private constructor(
     @Volatile
     private var liveDense: ReplayDenseLayer? = null
     private var liveDenseAtNanos = Long.MIN_VALUE
+
+    /**
+     * Seconds since Record at [nowNanos] (`SystemClock.elapsedRealtimeNanos`). The HUD's clock:
+     * the trace records nothing while tracking is lost, and a clock read off it froze for 2.4 s at
+     * "Not enough detail" on a Pixel 9.
+     */
+    fun elapsedSeconds(nowNanos: Long = SystemClock.elapsedRealtimeNanos()): Float =
+        ((nowNanos - startedNanos).coerceAtLeast(0L) / NANOS_PER_SECOND).toFloat()
 
     /** The scan as it grows. Its thumbnails fill in as the photos are encoded. */
     val live = RerunReplayMedia(
@@ -180,15 +197,24 @@ internal class ScanCapture private constructor(
      * and no fusion is running; `null` otherwise, or without [rawDepth]. Close it this frame.
      */
     fun acquireDepth(frame: Frame): ScanDepth? {
-        if (fusion == null || fusing.get() || !depthGate.isDue(frame.timestamp)) return null
+        if (fusion == null || !depthGate.isDue(frame.timestamp)) return null
+        if (fusing.get()) {
+            intake.count(Outcome.Busy)
+            return null
+        }
         val depth = runCatching { frame.acquireRawDepthImage16Bits() }
             .onFailure { logUnavailable(frame.timestamp, it) }
-            .getOrNull() ?: return null
+            .getOrNull()
+        if (depth == null) {
+            intake.count(Outcome.NoDepth)
+            return null
+        }
         // Before the gate, so a device log says what the scan sees even when it fuses nothing.
         logSizesOnce(depth, frame.timestamp)
         val verdict = DepthFreshness.judge(frame.timestamp, depth.timestamp, lastDepthNanos)
         logVerdict(verdict, frame.timestamp, depth.timestamp)
         if (verdict != DepthFreshness.Verdict.FRESH) {
+            intake.count(Outcome.Stale)
             depth.close()
             return null
         }
@@ -245,16 +271,33 @@ internal class ScanCapture private constructor(
     /**
      * Fuses [depth] into the dense map, coloured from [image] (the same frame's camera image):
      * the depth, its confidence and one colour per kept pixel are copied here, on the main thread,
-     * then back-projected and merged on [Dispatchers.Default].
+     * then back-projected and merged on [Dispatchers.Default]. Without an [image] this frame, the
+     * depth is let go, and counted as such.
      */
-    fun fuseDepth(depth: ScanDepth, image: ScanImage) {
+    fun fuseDepth(depth: ScanDepth, image: ScanImage?) {
         val fusion = fusion ?: return
-        val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv) ?: return
+        if (image == null) {
+            intake.count(Outcome.NoImage)
+            return
+        }
+        val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv)
+        if (frame == null) {
+            intake.count(Outcome.Unreadable)
+            return
+        }
         model?.offer(frame, scope)
         fusing.set(true)
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
-                val stats = fusion.add(DepthBackProjection.project(frame))
+                val samples = DepthBackProjection.project(frame)
+                val stats = fusion.add(samples)
+                intake.count(
+                    when {
+                        samples.count == 0 -> Outcome.NoSamples
+                        stats.added > 0 -> Outcome.Grew
+                        else -> Outcome.NothingNew
+                    },
+                )
                 denseAdded.addAndGet(stats.added)
                 denseKept.addAndGet(stats.kept)
                 denseTotal.set(stats.total)
@@ -281,6 +324,7 @@ internal class ScanCapture private constructor(
      */
     fun recordDepthStats(nanos: Long) {
         val total = denseTotal.get()
+        intake.lineIfDue(nanos, total)?.let { Log.i(LOG_TAG, it) }
         if (total == recordedTotal) return
         recordedTotal = total
         trace.addDepthStats(nanos, denseAdded.getAndSet(0), denseKept.getAndSet(0), total)
@@ -349,11 +393,13 @@ internal class ScanCapture private constructor(
         /** 100 ms between two fused depth keyframes. */
         const val DEPTH_INTERVAL_NS = 100_000_000L
 
+        /** `adb logcat -s RerunScan`: the depth verdicts every second, the intake every two. */
         private const val LOG_TAG = "RerunScan"
 
         /** One depth-verdict line a second of frame time at most. */
         private const val LOG_INTERVAL_NS = 1_000_000_000L
         private const val NANOS_PER_MS = 1_000_000L
+        private const val NANOS_PER_SECOND = 1e9
 
         /** A second between two snapshots of the dense map for the live 3D card. */
         const val LIVE_DENSE_INTERVAL_NS = 1_000_000_000L

@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -942,6 +943,14 @@ private fun RerunLiveScreen(
         topOverlay = {
             if (recording && scanMedia != null) {
                 val stats = debugSession.stats
+                // The HUD runs on its own clock: the trace records nothing while tracking is
+                // lost ("Not enough detail"), and a HUD read off it froze there for seconds.
+                val now by produceState(SystemClock.elapsedRealtimeNanos(), scan) {
+                    while (true) {
+                        delay(HUD_TICK_MS)
+                        value = SystemClock.elapsedRealtimeNanos()
+                    }
+                }
                 ScanHud(
                     figures = ScanFigures(
                         points = stats.mapPoints,
@@ -950,7 +959,7 @@ private fun RerunLiveScreen(
                         dense = scan?.denseCount ?: 0,
                     ),
                     depthScan = scan?.rawDepth == true,
-                    seconds = stats.duration,
+                    seconds = scan?.elapsedSeconds(now) ?: stats.duration,
                     photoLimitReached = scan?.isPhotoLimitReached == true,
                 )
                 ScanStage(
@@ -1407,6 +1416,9 @@ private const val QA_RECORD_NEVER_LOOP_S = 3_600f
 
 /** How often the live screen checks whether ARCore has found the room, to start recording. */
 private const val AUTO_START_POLL_MS = 100L
+
+/** The scan HUD's clock ticks ten times a second, tracking or not. */
+private const val HUD_TICK_MS = 100L
 
 /**
  * QA only: the take the Record screen played from the sample, built into a session like a real
