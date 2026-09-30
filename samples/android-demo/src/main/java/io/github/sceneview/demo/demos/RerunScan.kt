@@ -216,7 +216,9 @@ internal class ScanCapture private constructor(
             ScanPhoto(image.path, jpeg, pose)
         }
         val started = System.nanoTime()
-        val dense = fusion?.takeIf { it.count > 0 }?.let { f -> withContext(Dispatchers.Default) { f.cloud() } }
+        val dense = fusion?.takeIf { it.count > 0 }
+            ?.let { f -> withContext(Dispatchers.Default) { f.cloud(minViews = DenseFusion.MIN_VIEWS) } }
+            ?.takeIf { it.count > 0 }
         val denseMs = (System.nanoTime() - started) / 1_000_000
         // The tier the scan really reached: raw depth on but no surfel is a sparse scan, said so.
         val device = ScanDevice(
