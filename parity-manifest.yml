@@ -290,10 +290,10 @@ demos:
       Hero/Reveal/Vertigo/Tracking/Free
     parity: diverges
     evidence: >-
-      Opens on the Fox with its Survey/Walk/Run clips, status card, play/pause,
-      scrub, speed, Loop/Once, themed studio backdrop (khronos_fox_clips.usdz,
-      trimmed AnimationViews); Soldier = three.js soldier Idle/Walk/Run; camera shots,
-      brightness and two-clip blend Android-only, said in the sheet
+      iOS (#4236) is the Fox only, offline, on a lit studio stage: Survey/Walk/Run
+      clips with a 0.35 s crossfade, play/pause, speed 0.25-2x, Loop/Once
+      (khronos_fox_clips.usdz, trimmed AnimationViews). Android-only: the Soldier
+      and streamed subjects, scrub, camera shots, brightness and two-clip blend
   - id: rolling-balls
     androidStatus: Working
     iosStatus: working

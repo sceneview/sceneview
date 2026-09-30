@@ -605,15 +605,6 @@
       "author": "hashikemu"
     },
     {
-      "path": "samples/ios-demo/SceneViewDemo/Models/threejs_soldier_clips.usdz",
-      "scope": "ios",
-      "sha256": "b7be661d2eff2f8a1b242925422041541e2b89f3b489aeae0201ff064c6185e6",
-      "size": 2851665,
-      "source": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
-      "license": "CC0-1.0",
-      "author": "Tom\u00e1s Laulh\u00e9 (modified by Don McCurdy)"
-    },
-    {
       "path": "samples/ios-demo/SceneViewDemo/Models/tree_scene.usdz",
       "scope": "ios",
       "sha256": "cab455e7970e81f2f32cbf2a9eaeab5a89312704eada7e5b91c080d70af3e412",

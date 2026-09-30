@@ -98,7 +98,8 @@ struct AnimationDemo: View {
                        in: 0.25...2, step: 0.25)
                     .accessibilityLabel("Playback speed")
                     .accessibilityIdentifier("animation-speed")
-                Text(String(format: "%.2g×", player.speed))
+                Text(player.speed.formatted(.number.precision(.fractionLength(0...2))
+                        .locale(Locale(identifier: "en_US"))) + "×")
                     .font(SceneViewTokens.TypeScale.chromeLabel.monospacedDigit())
                     .frame(minWidth: SceneViewTokens.Layout.touchTarget)
             }
@@ -147,6 +148,9 @@ private final class FoxAnimationPlayer {
     var ready = false
     private var resources: [AnimationResource] = []
     private var controller: AnimationPlaybackController?
+    /// `controller.time` when the current clip started, so Once measures the clip's own
+    /// elapsed time whether RealityKit counts a trimmed view from 0 or from its trim start.
+    private var clipStart: TimeInterval = 0
     private var updates: (any Cancellable)?
     private var attachment: Task<Void, Never>?
     private var active = true
@@ -225,7 +229,8 @@ private final class FoxAnimationPlayer {
     private var reachedEnd: Bool {
         guard let controller else { return false }
         let range = Self.ranges[selectedClip]
-        return controller.isComplete || (!loop && controller.time >= range.end - range.start - 0.001)
+        return controller.isComplete
+            || (!loop && controller.time - clipStart >= range.end - range.start - 0.001)
     }
 
     func select(_ index: Int) {
@@ -243,6 +248,7 @@ private final class FoxAnimationPlayer {
                                                 transitionDuration: 0.35,
                                                 startsPaused: !isPlaying || !active)
         controller?.speed = Float(speed)
+        clipStart = controller?.time ?? 0
     }
 
     func setLoop(_ value: Bool) {
@@ -278,6 +284,9 @@ private final class FoxAnimationPlayer {
         controller?.stop()
         controller = nil
         ready = false
+        // Drop the model too: when the view comes back, `.task` reloads it and the new
+        // content ID reinstalls the stage and its update subscription.
+        model = nil
     }
 
     private enum AnimationError: LocalizedError {
