@@ -3,13 +3,15 @@ package io.github.sceneview.demo.demos
 import android.graphics.Bitmap
 import android.media.Image
 import android.os.Build
-import com.google.ar.core.Camera
+import android.util.Log
+import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseFusion
+import io.github.sceneview.demo.demos.internal.DepthAlignment
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.IntervalGate
@@ -59,7 +61,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * [scope].
  */
 internal class ScanCapture private constructor(
+    /** The CPU camera image's lens: the photos' and the sparse points' colours. */
     private val intrinsics: ScanIntrinsics,
+    /** The GPU camera texture's lens, which ARCore aligns the raw depth with. */
+    private val textureIntrinsics: ScanIntrinsics?,
     private val lens: ReplayLens,
     private val scope: CoroutineScope,
     /** Whether the session runs ARCore's raw depth: the scan's tier. */
@@ -87,6 +92,7 @@ internal class ScanCapture private constructor(
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
     private var lastDepthNanos = Long.MIN_VALUE
+    private var loggedSizes = false
     // At most ten depth keyframes a second: ARCore's own raw-depth pace on a Pixel, and a bound
     // on the camera-image reads the fusion adds to the main thread.
     private val depthGate = IntervalGate(DEPTH_INTERVAL_NS)
@@ -149,20 +155,36 @@ internal class ScanCapture private constructor(
     }
 
     /**
-     * ARCore's raw depth of [frame] when it is new — its timestamp moved since the last one fused —
-     * and no fusion is running; `null` otherwise, or without [rawDepth]. Close it this frame.
+     * ARCore's raw depth of [frame] when it was measured for this very frame — not reprojected
+     * from an older one, and not fused already — and no fusion is running; `null` otherwise, or
+     * without [rawDepth]. Close it this frame.
      */
     fun acquireDepth(frame: Frame): ScanDepth? {
         if (fusion == null || fusing.get() || !depthGate.isDue(frame.timestamp)) return null
         val depth = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull() ?: return null
-        if (depth.timestamp == lastDepthNanos) {
+        // A depth stamped with an older frame is that frame's measurement reprojected to this
+        // pose: its disocclusions are holes and its edges smear. Only fresh depth is fused.
+        if (depth.timestamp != frame.timestamp || depth.timestamp == lastDepthNanos) {
             depth.close()
             return null
         }
+        logSizesOnce(depth)
         lastDepthNanos = depth.timestamp
         depthGate.mark(frame.timestamp)
         val confidence = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
         return ScanDepth(depth, confidence, frame.camera.pose.toScanPose())
+    }
+
+    /** Which lens the depth is read with, once a scan: the proof on a device's log. */
+    private fun logSizesOnce(depth: Image) {
+        if (loggedSizes) return
+        loggedSizes = true
+        val chosen = DepthAlignment.depthLens(textureIntrinsics, intrinsics, depth.width, depth.height)
+        Log.i(
+            LOG_TAG,
+            "depth ${depth.width}x${depth.height}, cpu image ${intrinsics.width}x${intrinsics.height}, " +
+                "texture ${textureIntrinsics?.width}x${textureIntrinsics?.height}, depth fy ${chosen?.fy}",
+        )
     }
 
     /**
@@ -172,7 +194,7 @@ internal class ScanCapture private constructor(
      */
     fun fuseDepth(depth: ScanDepth, image: ScanImage) {
         val fusion = fusion ?: return
-        val frame = depth.copy(intrinsics, image.yuv) ?: return
+        val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv) ?: return
         fusing.set(true)
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
@@ -244,17 +266,19 @@ internal class ScanCapture private constructor(
          */
         fun start(frame: Frame, scope: CoroutineScope, rawDepth: Boolean = false): ScanCapture? {
             val camera = frame.camera
-            val intrinsics = camera.scanIntrinsics() ?: return null
+            val intrinsics = camera.imageIntrinsics.toScan() ?: return null
             val lens = ScanProjection.displayLens(
                 intrinsics,
                 camera.pose.toScanPose(),
                 camera.displayOrientedPose.toScanPose(),
             )
-            return ScanCapture(intrinsics, lens, scope, rawDepth)
+            return ScanCapture(intrinsics, camera.textureIntrinsics.toScan(), lens, scope, rawDepth)
         }
 
         /** 100 ms between two fused depth keyframes. */
         const val DEPTH_INTERVAL_NS = 100_000_000L
+
+        private const val LOG_TAG = "RerunScan"
 
         /** 240×320, the bundled replay's own frame size: ~15 KB of JPEG each. */
         private const val PHOTO_LONG_SIDE = 320
@@ -295,16 +319,24 @@ internal class ScanImage(private val image: Image, val yuv: YuvFrame, val sensor
 internal class ScanDepth(private val depth: Image, private val confidence: Image?, val sensor: DebugPose) :
     AutoCloseable {
     /**
-     * The depth copied out of ARCore's buffers, each pixel coloured from [yuv] (the camera image,
-     * which the depth image is aligned with), the lens scaled from [intrinsics] (the camera
-     * image's) to the depth image. `null` for a depth image that cannot be read, or that comes
-     * without its confidence image.
+     * The depth copied out of ARCore's buffers, its lens the one of the image it is aligned with
+     * ([DepthAlignment.depthLens]: the GPU [texture]'s, scaled to it), each pixel coloured from
+     * [yuv] (the CPU camera image, lens [image]) along the same ray. `null` for a depth image that
+     * cannot be read, that no lens frames, or that comes without its confidence image.
      */
     @Suppress("ReturnCount", "LoopWithTooManyJumpStatements") // one skip per unusable pixel
-    fun copy(intrinsics: ScanIntrinsics, yuv: YuvFrame): DepthFrame? {
+    fun copy(texture: ScanIntrinsics?, image: ScanIntrinsics, yuv: YuvFrame): DepthFrame? {
         val w = depth.width
         val h = depth.height
         if (w <= 1 || h <= 1) return null
+        val lens = DepthAlignment.depthLens(texture, image, w, h) ?: return null
+        // The CPU image's lens scaled to the pixels actually read, then depth pixel -> image pixel.
+        val read = ScanIntrinsics(
+            image.fx * yuv.width / image.width, image.fy * yuv.height / image.height,
+            image.cx * yuv.width / image.width, image.cy * yuv.height / image.height,
+            yuv.width, yuv.height,
+        )
+        val map = DepthAlignment.toImage(lens, read)
         val plane = depth.planes.firstOrNull() ?: return null
         val depthRow = plane.rowStride / 2
         val shorts = plane.buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
@@ -325,27 +357,25 @@ internal class ScanDepth(private val depth: Image, private val confidence: Image
             }
         } ?: return null // unfiltered raw depth is too noisy to keep: skip the frame
         // Colour only the pixels the back-projection can keep: the others cost a YUV read for nothing.
-        val sx = yuv.width.toFloat() / w
-        val sy = yuv.height.toFloat() / h
         val colors = IntArray(w * h)
         for (i in 0 until w * h) {
             val d = mm[i].toInt() and 0xFFFF
             if (d == 0) continue
             if ((conf[i].toInt() and 0xFF) < DepthBackProjection.MIN_CONFIDENCE) continue
-            colors[i] = yuv.argb(((i % w) * sx + sx * 0.5f).toInt(), ((i / w) * sy + sy * 0.5f).toInt())
+            val u = map[0] * (i % w) + map[1]
+            val v = map[2] * (i / w) + map[3]
+            colors[i] = yuv.argb((u + 0.5f).toInt(), (v + 0.5f).toInt())
         }
-        val kx = w.toFloat() / intrinsics.width
-        val ky = h.toFloat() / intrinsics.height
         return DepthFrame(
             width = w,
             height = h,
             depthMm = mm,
             confidence = conf,
             colors = colors,
-            fx = intrinsics.fx * kx,
-            fy = intrinsics.fy * ky,
-            cx = intrinsics.cx * kx,
-            cy = intrinsics.cy * ky,
+            fx = lens.fx,
+            fy = lens.fy,
+            cx = lens.cx,
+            cy = lens.cy,
             pose = sensor,
         )
     }
@@ -377,11 +407,10 @@ private fun ByteBuffer.copyOut(): ByteBuffer {
     return ByteBuffer.wrap(bytes)
 }
 
-private fun Camera.scanIntrinsics(): ScanIntrinsics? {
-    val camera = imageIntrinsics
-    val focal = camera.focalLength
-    val centre = camera.principalPoint
-    val size = camera.imageDimensions
+private fun CameraIntrinsics.toScan(): ScanIntrinsics? {
+    val focal = focalLength
+    val centre = principalPoint
+    val size = imageDimensions
     return ScanIntrinsics(focal[0], focal[1], centre[0], centre[1], size[0], size[1]).takeIf { it.isUsable }
 }
 
