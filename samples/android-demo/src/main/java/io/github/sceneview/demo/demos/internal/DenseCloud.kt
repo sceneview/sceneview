@@ -421,13 +421,21 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
 
     /**
      * The map's first [limit] voxels as a cloud — averaged positions, colours, unit normals —
-     * leaving out those fewer than [minViews] depth frames saw ([MIN_VIEWS] for a saved scan).
+     * leaving out those fewer than [minViews] depth frames saw ([MIN_VIEWS] for a saved scan),
+     * and [maxPoints] at most: past it, every n-th voxel, so a capped cloud still covers the whole
+     * room — thinner — rather than the corner scanned first.
      */
-    fun cloud(limit: Int = count, minViews: Int = 1): DenseCloud {
+    fun cloud(limit: Int = count, minViews: Int = 1, maxPoints: Int = Int.MAX_VALUE): DenseCloud {
         val first = limit.coerceIn(0, count)
-        val kept = IntArray(first)
+        val cap = minOf(first, maxPoints.coerceAtLeast(0))
+        val stride = if (cap == 0) 1 else (first + cap - 1) / cap
+        val kept = IntArray(cap)
         var n = 0
-        for (i in 0 until first) if (views[i] >= minViews) kept[n++] = i
+        var i = 0
+        while (i < first && n < cap) {
+            if (views[i] >= minViews) kept[n++] = i
+            i += stride
+        }
         val positions = FloatArray(n * 3)
         val normals = FloatArray(n * 3)
         val colors = IntArray(n)

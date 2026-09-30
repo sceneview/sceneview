@@ -110,8 +110,20 @@ internal class ScanCapture private constructor(
     /** Surfels in the dense map so far: the HUD's "N surfaces" count. `0` without raw depth. */
     val denseCount: Int get() = denseTotal.get()
 
+    /**
+     * The dense map as the live 3D card draws it: a snapshot taken after a fusion at most every
+     * [LIVE_DENSE_INTERVAL_NS], its first [LIVE_DENSE_MAX_SURFELS] surfels at least two depth
+     * frames saw, meshed and coloured off the main thread. `null` until the first one.
+     */
+    @Volatile
+    private var liveDense: ReplayDenseLayer? = null
+    private var liveDenseAtNanos = Long.MIN_VALUE
+
     /** The scan as it grows. Its thumbnails fill in as the photos are encoded. */
-    val live = RerunReplayMedia(trace, manifest(emptyMap()), emptyMap(), thumbnails, ByteArray(0), growing = true)
+    val live = RerunReplayMedia(
+        trace, manifest(emptyMap()), emptyMap(), thumbnails, ByteArray(0), growing = true,
+        liveDense = if (rawDepth) ({ liveDense }) else null,
+    )
 
     /** No more photos: the path, the points and the planes keep recording. */
     val isPhotoLimitReached: Boolean get() = gate.isFull
@@ -243,10 +255,21 @@ internal class ScanCapture private constructor(
                 denseAdded.addAndGet(stats.added)
                 denseKept.addAndGet(stats.kept)
                 denseTotal.set(stats.total)
+                snapshotLiveDense(fusion)
             } finally {
                 fusing.set(false)
             }
         }
+    }
+
+    /** Takes [liveDense] when it is due. On the fusion's thread, while it holds [fusing]. */
+    private fun snapshotLiveDense(fusion: DenseFusion) {
+        val now = System.nanoTime()
+        if (liveDenseAtNanos != Long.MIN_VALUE && now - liveDenseAtNanos < LIVE_DENSE_INTERVAL_NS) return
+        liveDenseAtNanos = now
+        val cloud = fusion.cloud(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_DENSE_MAX_SURFELS)
+        if (cloud.count == 0) return
+        liveDense = ReplayDenseLayer.of(cloud, fusion.voxelM)
     }
 
     /**
@@ -326,6 +349,15 @@ internal class ScanCapture private constructor(
         /** One depth-verdict line a second of frame time at most. */
         private const val LOG_INTERVAL_NS = 1_000_000_000L
         private const val NANOS_PER_MS = 1_000_000L
+
+        /** A second between two snapshots of the dense map for the live 3D card. */
+        const val LIVE_DENSE_INTERVAL_NS = 1_000_000_000L
+
+        /**
+         * Surfels the live card draws at most: 600 k vertices, a seventh of what the replay may
+         * draw, so the card keeps its frame rate while the camera and the fusion run.
+         */
+        const val LIVE_DENSE_MAX_SURFELS = 150_000
 
         /** 240×320, the bundled replay's own frame size: ~15 KB of JPEG each. */
         private const val PHOTO_LONG_SIDE = 320
