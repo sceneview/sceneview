@@ -145,7 +145,7 @@ A viewer by design — load, orbit, light, tap; no AR. Scope and the one-time iO
 ### Flutter
 
 ```dart
-// pubspec.yaml → flutter_sceneview: ^4.39.0
+// pubspec.yaml → flutter_sceneview: ^4.49.0
 final controller = SceneViewController();
 
 SceneView(

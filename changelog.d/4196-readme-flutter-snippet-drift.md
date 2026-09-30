@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- **README.md's Flutter usage snippet no longer names a 10-release-old SDK version ([#4196](https://github.com/sceneview/sceneview/issues/4196)).** The isolated `// pubspec.yaml → flutter_sceneview: ^X.Y.Z` comment above the Flutter usage example had drifted to `^4.39.0` while the rest of the file (the `## Install` table, every Android/Compose coordinate) read 4.49.0 — nothing scanned it, since `sync-versions.sh`'s sweep only matches Maven coordinates. `sync-versions.sh` now has a dedicated check and `--fix` handler for this line.
