@@ -28,6 +28,10 @@ enum CosmosWorldLook {
     static let bandDark = SIMD3<Float>(0.52, 0.32, 0.18)
     static let atmosphere = SIMD3<Float>(0.22, 0.5, 1.0)
     static let ringColor = SIMD3<Float>(0.8, 0.66, 0.48)
+    /// Android's rings reach the screen through Filament's HDR tone map and bloom; here they
+    /// are rolled off on the CPU and tone-mapped again, which greys them. They are lifted to
+    /// the same on-screen brightness, as the flow's strokes are (`CosmosSceneLayers.flowGain`).
+    static let ringGain: Float = 1.45
     /// The orbit trail at its brightest, just behind the planet.
     static let trailColor = SIMD3<Float>(0.3, 0.55, 1.1)
 }
@@ -199,7 +203,7 @@ enum CosmosWorldBake {
         let radius = CosmosSystem.planetRadius
         let inner = CosmosSystem.ringInner
         let span = CosmosSystem.ringOuter - CosmosSystem.ringInner
-        let lit = CosmosWorldLook.ringColor * CosmosWorldLook.sunColor
+        let lit = CosmosWorldLook.ringColor * CosmosWorldLook.sunColor * CosmosWorldLook.ringGain
         let rows = RowPointer(out)
         DispatchQueue.concurrentPerform(iterations: height) { y in
             let angle = (Float(y) + 0.5) / Float(height) * 2 * .pi
