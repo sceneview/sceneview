@@ -23,10 +23,10 @@ import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugMesh
-import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseSurfels
+import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayManifest
@@ -358,14 +358,21 @@ internal class ReplayLayers(
         syncPhotos(frame, show.trail)
     }
 
+    /**
+     * Each photo at its own depth ([PlaneLayering]): a floor patch laid flat under the grid, a
+     * table top at its own height, overlapping patches a step apart — they z-fought, and the
+     * photos shimmered as the camera orbited.
+     */
     private fun syncPlanes(frame: ArDebugFrame, floorY: Float, shown: Boolean) {
+        val layering = if (shown) PlaneLayering.of(frame, floorY) else null
         for ((id, node) in planeNodes) {
             val plane = frame.planes.firstOrNull { it.id == id }?.takeIf { shown }
             node.isVisible = plane != null
-            if (plane == null || !changed(node, listOf(System.identityHashCode(plane), floorY))) continue
+            if (plane == null || layering == null) continue
+            val placed = layering.fill(plane)
+            if (!changed(node, listOf(System.identityHashCode(plane), placed.contentHashCode()))) continue
             mesh.clear()
-            val flatten = if (plane.kind == DebugPlaneKind.Floor) floorY - ReplayGeometry.FLOOR_UNDER_GRID_M else null
-            ReplayGeometry.addTexturedPlane(mesh, plane.polygon, media.manifest.textureFor(id)!!, flatten)
+            ReplayGeometry.addTexturedPlane(mesh, plane.polygon, media.manifest.textureFor(id)!!, placed)
             node.upload(mesh)
         }
     }

@@ -32,6 +32,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DollhouseRoom
+import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.theme.DebugPalette
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -141,7 +142,11 @@ internal class DollhouseLayers(
             ReplayVisibility(planes = true, points = false, anchors = false, trail = false),
         )
         val meshes = flat.keys.associateWith { DebugMesh() }
-        ArDebugGeometry.buildPlanes(frame.planes, style, { meshes.getValue(it) }) { replay.isTextured(it) }
+        // The flat fills are opaque, like the photos: each at its own depth, or they z-fight.
+        ArDebugGeometry.buildPlanes(
+            frame.planes, style, { meshes.getValue(it) },
+            layering = PlaneLayering.of(frame, room.fit.floorY),
+        ) { replay.isTextured(it) }
         flat.forEach { (layer, node) -> node.upload(meshes.getValue(layer)) }
         points.upload(DebugMesh().also { ArDebugGeometry.buildMapPoints(frame.mapPoints, style, it) })
         // Every step of the replay's gradient into one mesh, in one colour: at this size a

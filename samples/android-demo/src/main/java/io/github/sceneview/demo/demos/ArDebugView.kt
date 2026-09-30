@@ -87,6 +87,7 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
+import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
 import io.github.sceneview.demo.theme.DebugPalette
@@ -517,7 +518,11 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
             part.layers.forEach { meshes.getValue(it).clear() }
             when (part) {
                 Part.Stage -> ArDebugGeometry.buildStage(stageBounds, floorY, style, out)
-                Part.Planes -> ArDebugGeometry.buildPlanes(frame.planes, style, out) { replay?.isTextured(it) == true }
+                // Beside the replay's photos, at their depths: see [PlaneLayering].
+                Part.Planes -> ArDebugGeometry.buildPlanes(
+                    frame.planes, style, out,
+                    layering = replay?.let { PlaneLayering.of(frame, floorY) },
+                ) { replay?.isTextured(it) == true }
                 Part.Map -> ArDebugGeometry.buildMapPoints(frame.mapPoints, style, out(DebugLayer.MapPoints))
                 Part.Live -> ArDebugGeometry.buildLivePoints(frame.livePoints, style, out(DebugLayer.LivePoints))
                 Part.Trail -> ArDebugGeometry.buildTrail(frame.trail, style, out)
@@ -550,7 +555,7 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
     ): Any =
         when (part) {
             Part.Stage -> listOf(stageBounds.toList(), floorY, style)
-            Part.Planes -> listOf(frame.planes.map { System.identityHashCode(it) }, style)
+            Part.Planes -> listOf(frame.planes.map { System.identityHashCode(it) }, style, floorY)
             Part.Map -> listOf(frame.mapPointCount, style)
             Part.Live -> listOf(frame.liveKey, frame.livePoints.size, style)
             Part.Trail -> listOf(frame.trailLength, style)

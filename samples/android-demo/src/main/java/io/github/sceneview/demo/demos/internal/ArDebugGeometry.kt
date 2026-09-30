@@ -553,16 +553,21 @@ object ArDebugGeometry {
         else -> DebugLayer.OutlineOther
     }
 
-    /** Fills and outlines; a plane [textured] elsewhere (the replay's photo) keeps its outline only. */
+    /**
+     * Fills and outlines; a plane [textured] elsewhere (the replay's photo) keeps its outline only.
+     * With a [layering], each is drawn at its own depth — the one its photo is drawn at — so an
+     * outline never z-fights its photo, nor a fill its neighbour.
+     */
     fun buildPlanes(
         planes: List<DebugPlane>,
         style: ArDebugStyle,
         out: (DebugLayer) -> DebugMesh,
+        layering: PlaneLayering? = null,
         textured: (Int) -> Boolean = { false },
     ) {
         for (plane in planes) {
-            if (!textured(plane.id)) addFan(out(fillLayerOf(plane.kind)), plane.polygon)
-            addOutline(out(outlineLayerOf(plane.kind)), plane.polygon, style.outlineHalfWidth)
+            if (!textured(plane.id)) addFan(out(fillLayerOf(plane.kind)), layering?.fill(plane) ?: plane.polygon)
+            addOutline(out(outlineLayerOf(plane.kind)), layering?.outline(plane) ?: plane.polygon, style.outlineHalfWidth)
         }
     }
 
