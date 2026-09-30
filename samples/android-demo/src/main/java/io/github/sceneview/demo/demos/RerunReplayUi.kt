@@ -18,14 +18,17 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded._3dRotation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -72,6 +75,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.DebugView
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.demo.ui.overMediaEdge
 
 /*
@@ -440,4 +444,36 @@ internal const val RERUN_REPLAY_HUD_TAG = "rerun_replay_hud"
 internal const val RERUN_CAMERA_CARD_TAG = "rerun_camera_card"
 internal const val RERUN_CAMERA_VIEW_TAG = "rerun_camera_view"
 internal const val RERUN_FILMSTRIP_TAG = "rerun_filmstrip"
+internal const val RERUN_STEP_INSIDE_TAG = "rerun_step_inside"
 internal const val RERUN_FILMSTRIP_STRIP_TAG = "rerun_filmstrip_strip"
+
+/**
+ * The memory palace's door: "Step inside" flies the 3D view into the pose the phone held at the
+ * current moment, where its photo lines up with the scan and fills the screen; "Step out" flies
+ * back to the orbit. A glass pill over the scene, themed by the stage chrome (light and dark).
+ */
+@Composable
+internal fun RerunStepInsidePill(
+    inside: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = if (inside) "Step out" else "Step inside"
+    val description = if (inside) "Step out of the photo" else "Step inside the photo"
+    GlassPill(
+        modifier = modifier
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.full))
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(RERUN_STEP_INSIDE_TAG)
+            .semantics { contentDescription = description },
+    ) {
+        Icon(
+            imageVector = if (inside) Icons.Rounded._3dRotation else Icons.Rounded.CenterFocusStrong,
+            contentDescription = null,
+            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+        )
+        Spacer(Modifier.size(Space.sm))
+        Text(label, style = SceneViewTokens.Type.caption.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+    }
+}

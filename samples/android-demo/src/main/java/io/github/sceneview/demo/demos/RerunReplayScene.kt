@@ -30,6 +30,7 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.MeasureDrawing
+import io.github.sceneview.demo.demos.internal.MemoryPalace
 import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
@@ -356,9 +357,19 @@ internal class ReplayLayers(
     private var measureLabels: Pair<String, String>? = null
     private var measureLabelWidths = FloatArray(2)
 
+    /**
+     * The memory palace's window ([MemoryPalace]): the moment's photo at the depth of what it saw,
+     * drawn over the model, so it reads as a window into it and fills the screen from its pose.
+     */
+    private val windowSlot: PhotoSlot = run {
+        val material = material(planeTextures.values.firstOrNull() ?: atlas, solid = false)
+        material.setDepthCulling(false)
+        PhotoSlot(DebugLayerNode(engine, material, WINDOW_PRIORITY, textured = true), material)
+    }
+
     val nodes: List<DebugLayerNode> =
         planeNodes.values + pointsNode + listOfNotNull(denseNode) + shadowNode + photoSlots.map { it.node } +
-            measureNode
+            measureNode + windowSlot.node
 
     private val mesh = DebugMesh()
     private val keys = HashMap<Any, Any?>()
@@ -379,6 +390,7 @@ internal class ReplayLayers(
         floorY: Float,
         show: ReplayVisibility,
         eye: Vec3? = null,
+        window: ReplayWindow? = null,
     ) {
         syncPlanes(frame, floorY, show.planes)
         syncMeasure(frame, pointStyle, floorY, show.measure && show.planes, eye)
@@ -386,7 +398,26 @@ internal class ReplayLayers(
         syncPoints(frame, pointStyle, show.points && denseNode == null)
         syncDense(frame, show.points)
         syncShadows(frame, show.anchors)
-        syncPhotos(frame, show.trail)
+        // The window stands in for the live frustum's small photo: the same picture, grown to
+        // where its surfaces are.
+        syncPhotos(frame, show.trail, live = window == null)
+        syncWindow(window)
+    }
+
+    private fun syncWindow(window: ReplayWindow?) {
+        val slot = windowSlot
+        val texture = window?.let { frameTexture(it.image) }
+        slot.node.isVisible = texture != null
+        if (window == null || texture == null) return
+        if (slot.texture !== texture) {
+            slot.material.setTexture(texture, clamp)
+            slot.texture = texture
+        }
+        if (changed(slot, listOf(window.pose, window.depth))) {
+            mesh.clear()
+            ReplayGeometry.addImageQuad(mesh, window.pose, window.depth, media.manifest.lens)
+            slot.node.upload(mesh)
+        }
     }
 
     /**
@@ -520,13 +551,13 @@ internal class ReplayLayers(
         shadowNode.upload(mesh)
     }
 
-    private fun syncPhotos(frame: ArDebugFrame, shown: Boolean) {
+    private fun syncPhotos(frame: ArDebugFrame, shown: Boolean, live: Boolean = true) {
         val lens = media.manifest.lens
         val shots = ArrayList<Triple<DebugPose, String?, Float>>()
         frame.keyframes.forEachIndexed { i, pose ->
             shots += Triple(pose, frame.keyframeImages.getOrNull(i), ReplayGeometry.KEYFRAME_DEPTH)
         }
-        frame.camera?.let { shots += Triple(it, frame.image, ReplayGeometry.FRUSTUM_DEPTH) }
+        if (live) frame.camera?.let { shots += Triple(it, frame.image, ReplayGeometry.FRUSTUM_DEPTH) }
         photoSlots.forEachIndexed { i, slot ->
             val shot = shots.getOrNull(i)
             val path = shot?.second
@@ -562,7 +593,7 @@ internal class ReplayLayers(
      */
     private fun evictFrames() {
         if (frameTextures.size <= FRAME_TEXTURE_CACHE) return
-        val bound = photoSlots.mapNotNullTo(HashSet()) { it.texture }
+        val bound = (photoSlots + windowSlot).mapNotNullTo(HashSet()) { it.texture }
         val iterator = frameTextures.values.iterator()
         while (iterator.hasNext() && frameTextures.size > FRAME_TEXTURE_CACHE) {
             val texture = iterator.next()
@@ -598,6 +629,9 @@ internal class ReplayLayers(
         const val SHADOW_PRIORITY = 2
         const val POINTS_PRIORITY = 3
         const val PHOTO_FRUSTUM_PRIORITY = 5
+
+        /** Last of all, over everything: the window is looked through, not into. */
+        const val WINDOW_PRIORITY = 7
 
         /** Over the grid and the outlines, under the frustums' photos. */
         const val MEASURE_PRIORITY = 4
@@ -658,6 +692,12 @@ internal class ReplayLayers(
         }
     }
 }
+
+/**
+ * The memory palace's window: the photo [image] the camera took from [pose], hung [depth] metres
+ * down its lens axis — where [MemoryPalace.windowDepth] measured its surfaces.
+ */
+internal data class ReplayWindow(val pose: DebugPose, val image: String, val depth: Float)
 
 /** Which of the replay's textured layers the legend has on. */
 internal data class ReplayVisibility(

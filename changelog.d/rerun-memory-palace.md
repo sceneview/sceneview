@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Android demo: the Rerun replay can step inside a recorded moment.** Paused on a moment, the photo the phone took then hangs in the reconstructed room at the depth of what it saw (the median of the feature points in its view, or the plane its centre ray meets). "Step inside" flies the 3D view into the phone's recorded pose, where the photo lines up with the scan and fills the screen; scrubbing then walks the recorded path from the phone's own eyes, and a drag or "Step out" flies back to the orbit.

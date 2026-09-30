@@ -239,8 +239,15 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var revealed by remember(media, openCount) { mutableStateOf(false) }
     LaunchedEffect(revealed, media) {
         if (revealed && !showingScan && qaReplay?.pauseAt == null) replaySession.playFromStart()
+        if (revealed && qaReplay == RerunReplayQaState.ReplayInside) {
+            replaySession.trace.frameAt(replaySession.time).camera?.let(replayOrbit::stepInside)
+        }
     }
-    LaunchedEffect(mode, replayOrbit) { replayOrbit.overhead = mode == RerunMode.Map }
+    LaunchedEffect(mode, replayOrbit) {
+        replayOrbit.overhead = mode == RerunMode.Map
+        // The map and the camera frames are views of their own: a step inside ends there.
+        if (mode != RerunMode.Scene) replayOrbit.stepOut()
+    }
 
     // The dollhouse (#4075): one of your sessions, stood on a table in AR. [dollhouseRequest] is
     // the session asked for (null: the newest), [dollhouseMedia] the one read, and Back returns to
@@ -588,17 +595,39 @@ private fun RerunReplayScreen(
                         modifier = corner,
                         replay = media,
                     )
-                    RerunMode.Scene -> RerunCameraCard(
-                        media = media,
-                        thumbnails = thumbnails,
-                        session = session,
-                        onOpen = { onMode(RerunMode.Camera) },
-                        modifier = corner,
-                    )
+                    // Inside a photo, the photo is the whole screen: the card would repeat it.
+                    RerunMode.Scene -> if (!orbit.inside) {
+                        RerunCameraCard(
+                            media = media,
+                            thumbnails = thumbnails,
+                            session = session,
+                            onOpen = { onMode(RerunMode.Camera) },
+                            modifier = corner,
+                        )
+                    }
                 }
             }
         },
         bottomOverlay = {
+            if (media != null && mode == RerunMode.Scene) {
+                RerunStepInsidePill(
+                    inside = orbit.inside,
+                    onClick = {
+                        if (orbit.inside) {
+                            orbit.stepOut()
+                        } else {
+                            session.trace.frameAt(session.time).camera?.let { pose ->
+                                if (session.playing) session.togglePlay()
+                                orbit.stepInside(pose)
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(end = Space.md)
+                        .reveal(filmstripIn, rise = Space.lg),
+                )
+            }
             if (media != null) {
                 RerunFilmstripCard(
                     media = media,
@@ -609,7 +638,7 @@ private fun RerunReplayScreen(
                     caption = when (mode) {
                         RerunMode.Map -> "Top-down map of the room"
                         RerunMode.Camera -> "What the camera saw"
-                        else -> "Drag to orbit · double-tap to recenter"
+                        else -> if (orbit.inside) INSIDE_CAPTION else ORBIT_CAPTION
                     },
                 )
             }
@@ -1360,6 +1389,12 @@ private val StatusDotSize = Space.sm + Space.xs / 2 // 10 dp, same as the record
 private const val MAX_PLACEMENT_DISTANCE_METERS = 5f
 private const val QA_SEED = "ar-rerun"
 
+/** The caption in the orbit around the model. */
+private const val ORBIT_CAPTION = "Drag to orbit · double-tap to recenter"
+
+/** The caption stepped inside a moment's photo (the memory palace). */
+private const val INSIDE_CAPTION = "Scrub to walk the path · drag to step out"
+
 /** Where the replay stage draws the room: 7 % of the height above centre, clear of the filmstrip. */
 private const val REPLAY_STAGE_LIFT = 0.07f
 
@@ -1440,6 +1475,8 @@ private enum class RerunReplayQaState(val key: String, val mode: RerunMode, val 
     ReplayPlay("replay-play", RerunMode.Scene, null),
     ReplayMap("replay-map", RerunMode.Map, QA_REPLAY_FRACTION),
     ReplayCamera("replay-camera", RerunMode.Camera, QA_REPLAY_FRACTION),
+    /** The 3D view stepped inside the paused moment's photo (the memory palace). */
+    ReplayInside("replay-inside", RerunMode.Scene, QA_REPLAY_FRACTION),
     /** The sample's replay with its export sheet open. */
     ReplayExport("replay-export", RerunMode.Scene, QA_REPLAY_FRACTION),
     ;

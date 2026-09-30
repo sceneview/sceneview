@@ -88,6 +88,7 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
+import io.github.sceneview.demo.demos.internal.MemoryPalace
 import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.RoomMeasure
@@ -721,6 +722,22 @@ internal fun ArDebugSceneView(
                 // The picture-in-picture packs the room into a few hundred pixels: full-size points
                 // would read as noise there, so they shrink while lines keep their weight.
                 val pointStyle = if (compact) ArDebugStyle(style.metresPerPixel * PIP_POINT_SCALE) else style
+                // The memory palace: paused on a moment, its photo hangs where its surfaces are;
+                // stepped inside, scrubbing walks the recorded path from the phone's own eyes.
+                val camera = frame.camera
+                if (orbit.inside && camera != null && camera != orbit.visit) orbit.stepInside(camera)
+                val image = frame.image
+                val hangs = !compact && (!session.playing || orbit.visit != null)
+                val lens = replayLayers?.lens?.takeIf { hangs }
+                val window = if (lens != null && camera != null && image != null) {
+                    if (camera != clock.windowPose) {
+                        clock.windowPose = camera
+                        clock.windowDepth = MemoryPalace.windowDepth(camera, lens, whole.mapPoints, whole.planes)
+                    }
+                    clock.windowDepth?.let { ReplayWindow(camera, image, it) }
+                } else {
+                    null
+                }
                 layers.sync(frame, style, pointStyle, stageBoundsOf(whole), floorY, session::isVisible, replayLayers)
                 replayLayers?.sync(
                     frame, pointStyle, floorY,
@@ -732,6 +749,7 @@ internal fun ArDebugSceneView(
                         measure = !compact,
                     ),
                     eye = CameraRig.eye(orbit.pose).let { Vec3(it.x, it.y, it.z) },
+                    window = window,
                 )
 
                 if (frame.anchors != anchors) anchors = frame.anchors
@@ -796,6 +814,10 @@ private class FrameClock {
     var wholeFor: ArDebugTrace? = null
     var contentFrames = 0
     var shown = false
+
+    /** The memory palace's last window depth, and the pose it was measured for. */
+    var windowPose: DebugPose? = null
+    var windowDepth: Float? = null
 
     fun tick(nanos: Long): Float {
         val dt = if (lastNanos == 0L) 0f else ((nanos - lastNanos) / 1e9f)

@@ -1,6 +1,11 @@
 package io.github.sceneview.demo.demos.internal
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Float4
+import dev.romainguy.kotlin.math.Mat4
 import dev.romainguy.kotlin.math.cross
 import dev.romainguy.kotlin.math.lookAt
 import dev.romainguy.kotlin.math.normalize
@@ -103,6 +108,35 @@ class ArDebugOrbitCamera(
             recenter()
         }
 
+    /**
+     * The recorded camera pose the view steps into ([stepInside]), `null` in the orbit. The flight
+     * blends the orbit's view into it over [MemoryPalace.FLIGHT_S]: there, the photo the phone
+     * took from that pose lines up with the scan and fills the screen.
+     */
+    var visit: DebugPose? = null
+        private set
+
+    /** `true` from [stepInside] to [stepOut]: the chrome's "Step out". Compose state. */
+    var inside: Boolean by mutableStateOf(false)
+        private set
+
+    /** 0 in the orbit, 1 at [visit]'s pose; eased by [getTransform]. */
+    var visitAmount: Float = 0f
+        private set
+
+    /** Flies into [pose], or, already inside, moves there — scrubbing walks the recorded path. */
+    fun stepInside(pose: DebugPose) {
+        visit = pose
+        inside = true
+        azimuthVelocity = 0f
+        elevationVelocity = 0f
+    }
+
+    /** Flies back out to the orbit, which kept its place. */
+    fun stepOut() {
+        inside = false
+    }
+
     /** The elevation the view frames [home] at: the three-quarter view, or the map's. */
     val homeElevation: Float
         get() = if (overhead) ArDebugFraming.MAP_ELEVATION else ArDebugFraming.HOME_ELEVATION
@@ -157,10 +191,25 @@ class ArDebugOrbitCamera(
             val up = cross(normalize(cross(forward, Float3(0f, 1f, 0f))), forward)
             up * (lift * viewportHeight * metresPerPixel)
         }
-        return Transform(lookAt(eye = eye - drop, target = pose.target - drop, up = Float3(0f, 1f, 0f)))
+        val visiting = visit
+        if (visiting == null || visitAmount <= 0f) {
+            return Transform(lookAt(eye = eye - drop, target = pose.target - drop, up = Float3(0f, 1f, 0f)))
+        }
+        val from = eye - drop
+        val to = pose.target - drop
+        val orbitPose = MemoryPalace.lookPose(Vec3(from.x, from.y, from.z), Vec3(to.x, to.y, to.z))
+        val m = MemoryPalace.matrix(MemoryPalace.blend(orbitPose, visiting, MemoryPalace.ease(visitAmount)))
+        return Mat4(
+            Float4(m[0], m[1], m[2], m[3]),
+            Float4(m[4], m[5], m[6], m[7]),
+            Float4(m[8], m[9], m[10], m[11]),
+            Float4(m[12], m[13], m[14], m[15]),
+        )
     }
 
     override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
+        // A finger inside a photo steps back out to the model, where it can turn it.
+        stepOut()
         takeOver()
         grabbing = true
         panning = strafe
@@ -216,6 +265,16 @@ class ArDebugOrbitCamera(
 
     override fun update(deltaTime: Float) {
         val dt = deltaTime.takeIf { it.isFinite() && it > 0f && it < 0.25f } ?: return
+        if (visit != null) {
+            val goal = if (inside) 1f else 0f
+            val step = dt / MemoryPalace.FLIGHT_S
+            visitAmount = if (goal > visitAmount) {
+                minOf(goal, visitAmount + step)
+            } else {
+                maxOf(goal, visitAmount - step)
+            }
+            if (visitAmount <= 0f && !inside) visit = null
+        }
         if (grabbing && !panning) {
             azimuthVelocity = (dragAzimuth / dt).coerceIn(-MAX_SPIN, MAX_SPIN)
             elevationVelocity = (dragElevation / dt).coerceIn(-MAX_SPIN, MAX_SPIN)
