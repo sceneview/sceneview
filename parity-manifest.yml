@@ -1419,7 +1419,8 @@ shell:
     evidence: >-
       iOS: 5 flat cards, no groups, no Send feedback, no Release notes
       AboutTab.swift:95-134; other tagline :78; Android RootScreen.kt:381-440;
-      Support card matches :154-176
+      no Support card on iOS by design: App Review rejected 4.48.0 under
+      guideline 3.1.1 (donation links outside In-App Purchase), #4197
   - surface: demo-chrome
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/DemoScaffold.kt

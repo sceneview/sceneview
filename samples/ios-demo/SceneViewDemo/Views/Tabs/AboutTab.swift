@@ -21,7 +21,6 @@ struct AboutTab: View {
             ScrollView {
                 LazyVStack(spacing: 20) {
                     identity
-                    supportCard
                     if !HDPackStore.shared.manifest.assets.isEmpty {
                         HDPackSettingsRow()
                     }
@@ -141,57 +140,9 @@ struct AboutTab: View {
 
     // MARK: - Support
 
-    /// The one emphasised surface of the screen (`DESIGN.md` "Demo App About"):
-    /// `secondary-container` at `radius-lg`, above the fold, Open Collective as
-    /// the primary action and GitHub Sponsors as the secondary one — never a
-    /// third link, no amounts, no tiers. The iOS twin of Android's
-    /// `AboutSupportCard` (#3676). It replaces the primary-filled "Star on
-    /// GitHub" capsule, which was a second emphasised surface and duplicated
-    /// the GitHub row below.
-    private var supportCard: some View {
-        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
-            HStack(spacing: SceneViewTokens.Space.sm) {
-                Image(systemName: "heart")
-                    .font(.body.weight(.semibold))
-                    .accessibilityHidden(true)
-                Text("Support SceneView")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            Text("An independent open-source project. Your support pays for the time that keeps it maintained.")
-                .font(.subheadline)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: SceneViewTokens.Space.sm) {
-                Link(destination: URL(string: "https://opencollective.com/sceneview")!) {
-                    Text("Donate on Open Collective")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
-                        .padding(.horizontal, SceneViewTokens.Space.sm)
-                        .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
-                        .background(SceneViewTokens.HomeColor.primary,
-                                    in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md,
-                                                         style: .continuous))
-                }
-                .accessibilityLabel("Donate on Open Collective. Opens opencollective.com")
-                Link(destination: URL(string: "https://github.com/sponsors/sceneview")!) {
-                    Text("GitHub Sponsors")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .foregroundStyle(SceneViewTokens.HomeColor.onSecondaryContainer)
-                        .padding(.horizontal, SceneViewTokens.Space.sm)
-                        .frame(minHeight: SceneViewTokens.Layout.touchTarget)
-                }
-                .accessibilityLabel("GitHub Sponsors. Opens github.com")
-            }
-        }
-        .foregroundStyle(SceneViewTokens.HomeColor.onSecondaryContainer)
-        .padding(SceneViewTokens.Space.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SceneViewTokens.HomeColor.secondaryContainer,
-                    in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
-    }
+    // No donation links on iOS: App Review rejected 4.48.0 under guideline
+    // 3.1.1 (donations must use In-App Purchase outside the US storefront).
+    // Android keeps `AboutSupportCard`; the GitHub row below stays.
 
     // MARK: - Footer
 
