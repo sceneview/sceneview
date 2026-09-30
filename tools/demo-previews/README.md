@@ -59,7 +59,7 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
-| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083). The dark card is its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); its stage is the same grey |
+| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083). The dark card is its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); since #4223 its stage is the dark stage (`SceneViewTokens.Stage.background`), so the dark card is the fox on that dark stage |
 | `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
