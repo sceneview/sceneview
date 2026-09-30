@@ -599,10 +599,11 @@ internal class ReplayLayers(
 
         /** A millimetre over the grid: the dimensions are drawn on the floor, not in it. */
         const val MEASURE_LIFT_M = 0.003f
-        const val MEASURE_TEXT_PX = 15f
+        /** The label's box, in pixels: its figures' capitals are ~40 % of it. */
+        const val MEASURE_TEXT_PX = 34f
         const val MEASURE_TEXT_MIN_M = 0.04f
-        const val MEASURE_TEXT_MAX_M = 0.6f
-        const val MEASURE_OFFSET_PX = 22f
+        const val MEASURE_TEXT_MAX_M = 0.9f
+        const val MEASURE_OFFSET_PX = 24f
         const val MEASURE_OFFSET_MIN_M = 0.06f
         const val MEASURE_OFFSET_MAX_M = 0.9f
 
