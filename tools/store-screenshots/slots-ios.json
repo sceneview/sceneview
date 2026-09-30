@@ -85,6 +85,12 @@
   ],
   "slots": [
     {
+      "caption": "A galaxy in real time",
+      "src": "tools/store-screenshots/raw/ios/iphone-cosmos.png",
+      "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/00-cosmos.png",
+      "size": "1320x2868"
+    },
+    {
       "caption": "Open any 3D file",
       "src": "tools/store-screenshots/raw/ios/iphone-open-file.png",
       "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/00-open-file.png",
