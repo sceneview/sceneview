@@ -3023,9 +3023,6 @@
       "sourceUrl": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
       "author": "Tomás Laulhé (modified by Don McCurdy)",
       "license": "CC0-1.0",
-      "shippedAs": [
-        "threejs_soldier_clips.usdz"
-      ],
       "formats": {
         "glb": {
           "file": "models/glb/threejs_soldier.glb",
