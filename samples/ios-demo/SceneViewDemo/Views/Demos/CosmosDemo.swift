@@ -42,7 +42,7 @@ struct CosmosDemo: View {
                 .cameraGesturesEnabled(false)
                 .cameraPose(CosmosEngine.fixedCamera)
                 .bloom(BloomOptions(strength: engine.bloom, levels: 7, resolution: 512, threshold: true))
-                .gesture(SpatialTapGesture().onEnded { tap in
+                .simultaneousGesture(SpatialTapGesture().onEnded { tap in
                     engine.tap(tap.location, in: geometry.size, minRadius: Float(SceneViewTokens.Space.xl))
                 })
                 if !engine.ready {
