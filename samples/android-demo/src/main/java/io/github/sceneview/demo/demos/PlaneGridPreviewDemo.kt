@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -143,7 +144,7 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
     }
     // Floor dots are white; past the shader's wall threshold they take the wall tint.
     val isWall = surfaceTilt > WALL_TILT_DEGREES
-    remember(dotsMaterialInstance, isWall) {
+    SideEffect {
         dotsMaterialInstance.setParameter(
             PlaneRendererV2.MATERIAL_GRID_TINT,
             if (isWall) WALL_DOT_TINT else FLOOR_DOT_TINT,
