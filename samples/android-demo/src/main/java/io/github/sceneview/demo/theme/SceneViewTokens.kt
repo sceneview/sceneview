@@ -320,6 +320,12 @@ object SceneViewTokens {
 
         const val headerOverlayAlpha = 1f
 
+        /** `header-glass`, light: `surface` over a blurred copy of the list under the header. */
+        const val headerGlassAlphaLight = 0.72f
+
+        /** `header-glass`, dark. */
+        const val headerGlassAlphaDark = 0.78f
+
         /**
          * `card-glass`, light — the frosted caption of a home card: `surface-container`
          * (white) at 80 % over a blurred copy of the card's own image, so the caption is
@@ -437,6 +443,16 @@ object SceneViewTokens {
 
         /** Gap between two groups that have no section header between them. */
         val groupGap = 16.dp
+
+        /**
+         * `home-row-media` — a demo row's leading picture, 5:4 like the captures, so the
+         * generated scene reads (about 3.7x the area of the 56 dp `home-row-thumb`).
+         */
+        val rowMediaWidth = 120.dp
+        const val rowMediaAspect = 5f / 4f
+
+        /** `header-glass-blur` — backdrop blur of the sticky header over the scrolled list. */
+        val headerGlassBlur = 24.dp
     }
 
     /**
