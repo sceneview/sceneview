@@ -85,6 +85,13 @@
   ],
   "slots": [
     {
+      "caption": "Fly through a galaxy",
+      "src": "tools/store-screenshots/raw/cosmos.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-0.png",
+      "size": "1080x2304",
+      "crop_top": 250
+    },
+    {
       "caption": "Open any 3D file",
       "src": "tools/store-screenshots/raw/open-3mf.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-1.png",
@@ -120,7 +127,7 @@
       ]
     },
     {
-      "caption": "50 demos, source included",
+      "caption": "Nearly 50 demos, with source",
       "src": "tools/store-screenshots/raw/home-demos.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-3.png",
       "size": "1080x2304",
