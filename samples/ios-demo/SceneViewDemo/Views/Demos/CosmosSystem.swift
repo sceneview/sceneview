@@ -23,6 +23,50 @@ enum CosmosFocus: CaseIterable, Sendable {
         case .planet: "A ringed world in blue starlight"
         }
     }
+
+    /// Where the autopilot flies from here: the ringed world, then the star, then back out to
+    /// the whole system.
+    var autopilotNext: CosmosFocus {
+        switch self {
+        case .system: .planet
+        case .planet: .star
+        case .star: .system
+        }
+    }
+}
+
+/// The Star scene's camera on its own: `hold` seconds after it lands, with no touch meanwhile,
+/// it flies on to the next look (`CosmosFocus.autopilotNext`), round and round. A touch hands
+/// the camera to the user, and the autopilot takes it back after `resume` idle seconds.
+struct CosmosAutopilot: Sendable {
+    static let hold: Float = 4
+    static let resume: Float = 8
+
+    private(set) var idle: Float = 0
+    private(set) var wait: Float = hold
+
+    mutating func touched() {
+        idle = 0
+        wait = Self.resume
+    }
+
+    mutating func reset() {
+        idle = 0
+        wait = Self.hold
+    }
+
+    /// Advances the idle clock by `dt` seconds; returns where to fly once due. A flight under
+    /// way keeps the clock at zero, so the hold counts from the landing.
+    mutating func advance(_ dt: Float, flying: Bool, focus: CosmosFocus) -> CosmosFocus? {
+        if flying {
+            idle = 0
+            return nil
+        }
+        idle += max(dt, 0)
+        guard idle >= wait else { return nil }
+        reset()
+        return focus.autopilotNext
+    }
 }
 
 /// A camera pose: where it is, what it looks at, and which way is up.
@@ -325,8 +369,6 @@ struct CosmosFlight: Sendable {
     /// The last pose drawn and the scene time it was drawn at: what a tap is tested against.
     private(set) var lastPose: CosmosPose?
     private(set) var lastTime: Float = 0
-    /// Whether the user took the camera: the tour then leaves it alone.
-    var userSteered = false
 
     private var from: CosmosPose?
     private var progress: Float = 1
@@ -350,7 +392,6 @@ struct CosmosFlight: Sendable {
         from = nil
         progress = 1
         lastStamp = nil
-        userSteered = false
     }
 
     mutating func record(_ pose: CosmosPose, time: Float) {

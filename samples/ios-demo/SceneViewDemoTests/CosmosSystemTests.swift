@@ -147,6 +147,33 @@ final class CosmosSystemTests: XCTestCase {
             last = blue
         }
     }
+
+    /// Left alone, the camera tours every look and comes back, holding each for `hold`
+    /// seconds from its landing; a touch holds it for `resume` instead.
+    func testTheAutopilotToursEveryLookAndYieldsToATouch() {
+        var pilot = CosmosAutopilot()
+        var focus = CosmosFocus.system
+        var seen: [CosmosFocus] = []
+        for _ in 0..<3 {
+            XCTAssertNil(pilot.advance(1, flying: true, focus: focus), "flies on mid-flight")
+            var waited: Float = 0
+            while true {
+                waited += 0.1
+                if let next = pilot.advance(0.1, flying: false, focus: focus) {
+                    focus = next
+                    break
+                }
+            }
+            XCTAssertEqual(waited, CosmosAutopilot.hold, accuracy: 0.11)
+            seen.append(focus)
+        }
+        XCTAssertEqual(seen, [.planet, .star, .system])
+
+        pilot.touched()
+        XCTAssertNil(pilot.advance(CosmosAutopilot.hold + 0.5, flying: false, focus: focus))
+        XCTAssertEqual(pilot.advance(CosmosAutopilot.resume - CosmosAutopilot.hold, flying: false, focus: focus),
+                       .planet)
+    }
 }
 
 #endif

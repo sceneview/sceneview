@@ -122,8 +122,6 @@ final class CosmosEngine {
     static let revealSeconds: Float = 0.9
     /// Frozen per-scene times for QA captures and reduced motion: each at its most telling moment.
     static let qaTime: [Float] = [6, 3, 1.9, 4]
-    /// When the tour flies the Star scene's camera out to the ringed world, in seconds.
-    static let tourPlanetSeconds: Float = 5.5
 
     /// SceneView's own camera is parked here; the tick moves the whole world instead, so
     /// the Android camera path (`CosmosFraming.pose`) is reproduced exactly.
@@ -143,6 +141,7 @@ final class CosmosEngine {
     /// The ringed world's orbit for the current viewport aspect, and the Star camera's flight.
     @ObservationIgnored private var system = CosmosSystem(aspect: 1206 / 2622)
     @ObservationIgnored private var flight = CosmosFlight()
+    @ObservationIgnored private var autopilot = CosmosAutopilot()
     @ObservationIgnored private let world = Entity()
     @ObservationIgnored private var programs: CosmosPrograms?
     @ObservationIgnored private var starField: GlowEntity?
@@ -170,9 +169,11 @@ final class CosmosEngine {
 
     /// A tap at `location` on a `size` viewport, both in points. In the Star scene it flies the
     /// camera to what it lands on — the ringed world first, then the star; a second tap on what
-    /// is already in focus, or a tap on empty space, pulls back to the whole system.
+    /// is already in focus, or a tap on empty space, pulls back to the whole system. Any tap
+    /// hands the camera to the user until the autopilot's `resume` delay has passed idle.
     func tap(_ location: CGPoint, in size: CGSize, minRadius: Float) {
         guard scene == .star, let pose = flight.lastPose else { return }
+        autopilot.touched()
         let hit = system.hit(pose: pose, time: flight.lastTime,
                              width: Float(size.width), height: Float(size.height),
                              x: Float(location.x), y: Float(location.y), minRadius: minRadius)
@@ -181,7 +182,6 @@ final class CosmosEngine {
             flight.start()
             focus = next
         }
-        flight.userSteered = true
     }
 
     /// Ticks once per display refresh — up to 120 Hz on ProMotion — and resumes loading
@@ -315,6 +315,7 @@ final class CosmosEngine {
             sceneTime = 0
             focus = .system
             flight.reset()
+            autopilot.reset()
         } else if animating && !frozen {
             // Clamp a long hitch (backgrounding) so the scene does not jump ahead.
             sceneTime += min(max(dt, 0), 0.1)
@@ -357,11 +358,12 @@ final class CosmosEngine {
         if abs(system.aspect - aspect) > 1e-4 { system = CosmosSystem(aspect: aspect) }
         let pose: CosmosPose
         if current == .star {
-            // The tour flies out to the ringed world once, partway through the scene.
-            if touring && !frozen && sceneTime > Self.tourPlanetSeconds && !flight.userSteered && focus == .system {
-                flight.userSteered = true
+            // Left alone, the camera flies on by itself — ringed world, star, whole system — on
+            // the scene's clock, so it pauses with Animate; frozen frames keep their look.
+            if animating && !frozen,
+               let next = autopilot.advance(min(max(dt, 0), 0.1), flying: flight.flying, focus: focus) {
                 flight.start()
-                focus = .planet
+                focus = next
             }
             // QA captures and reduced motion show where a flight lands, not a frame of it — once
             // the world is lit for it: until then the camera stays where it is, rather than
