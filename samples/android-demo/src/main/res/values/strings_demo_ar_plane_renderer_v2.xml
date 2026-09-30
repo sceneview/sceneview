@@ -6,5 +6,9 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_plane_renderer_v2_title">Plane Renderer V2</string>
-    <string name="demo_ar_plane_renderer_v2_subtitle">See floors, walls and ceilings as they are found</string>
+    <string name="demo_ar_plane_renderer_v2_subtitle">Soft dots show each surface your phone finds</string>
+    <string name="ar_plane_v2_status_scanning">Move your phone slowly: dots appear on each surface it finds.</string>
+    <string name="ar_plane_v2_status_found">The bright spot is the floor you face. Tap a surface to place the car.</string>
+    <string name="ar_plane_v2_status_placed">The dots fade once the car is placed. Tap to pick it up.</string>
+    <string name="ar_plane_v2_status_move">Move your phone slowly so it can see the room.</string>
 </resources>

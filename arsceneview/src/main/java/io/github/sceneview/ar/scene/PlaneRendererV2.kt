@@ -4,7 +4,6 @@ import android.util.Size
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Scene
-import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
@@ -23,60 +22,29 @@ import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 
 /**
- * Control rendering of ARCore planes — V2 implementation.
+ * Control rendering of ARCore planes — V2 implementation: a field of soft dots
+ * ([#3507](https://github.com/sceneview/sceneview/issues/3507)).
  *
- * **V2 is an experimental opt-in — it is not the default.** The default is
- * [PlaneRendererBase.Version.V1], rendered by [PlaneRenderer]. v4.16.0 briefly shipped V2 as
- * the default, but on-device QA showed the V2 visual output not matching the design intent,
- * so v4.16.1 reverted the default to V1 while V2 is polished. V1 was never deprecated and
- * remains fully supported. Opt into V2 with
- * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` — see
- * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella and the
- * research notes.
+ * **V2 is an opt-in.** The default is [PlaneRendererBase.Version.V1], rendered by
+ * [PlaneRenderer]. Opt into V2 with
+ * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)`.
  *
- * **PR #4 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): a floor,
- * a ceiling and a wall visible at once now read as three distinct surfaces.
- * [io.github.sceneview.ar.PlaneVisualizerV2] applies a per-instance material preset
- * keyed off `com.google.ar.core.Plane.Type` — same single `Material`, one
- * `MaterialInstance` per plane, three different `(metallic, roughness, gridTint)` triples:
+ * Every detected surface is drawn as small round dots lying on it, anchored to the world, that
+ * fade out at the edges and with distance. A new surface is revealed by a bright front sweeping
+ * out from its centre, and each extension ARCore makes is revealed the same way. The floor
+ * under the centre of the screen is highlighted: brighter dots, a pool of light, a thin ring and
+ * slow ripples where the camera points — the surface itself is the reticle. Floors, ceilings and
+ * walls read apart without a legend: floors are white, ceilings warm and quieter, walls a soft
+ * blue with a smaller staggered lattice ([planeMaterialPresetFor]).
  *
- * | `plane.type`                 | role    | metallic | roughness | gridTint     |
- * |------------------------------|---------|----------|-----------|--------------|
- * | `HORIZONTAL_UPWARD_FACING`   | floor   | `0.00`   | `0.35`    | cool white   |
- * | `HORIZONTAL_DOWNWARD_FACING` | ceiling | `0.00`   | `0.65`    | warm white   |
- * | `VERTICAL`                   | wall    | `0.00`   | `0.80`    | neutral grey |
+ * Setting [isEnabled] or [isVisible] to `false` fades the planes out instead of cutting them —
+ * `ARSceneView(planeRenderer = false)` right after placing an object is the intended tidy exit.
  *
- * Unknown future ARCore plane types fall back to the floor preset rather than crashing.
- * Type re-classifications mid-tracking (ARCore can re-merge a plane into a different
- * normal direction) trigger a 3-`setParameter`-call re-apply on the next `updatePlane()`.
- *
- * **PR #3 carried over** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the
- * V2 plane is a real PBR surface lit by the real room. The material is `shadingModel: lit`,
- * declares `metallic` / `roughness` / `reflectance` slots, and samples Filament's IBL —
- * which `LightEstimator` continuously feeds from ARCore's `acquireEnvironmentalHdrCubeMap()`.
- * A glossy floor visibly reflects the ceiling lights and window glow; a matt wall picks
- * up the actual ambient irradiance. The depth-driven mesh ships smooth per-vertex
- * `TANGENTS` so PBR specular highlights wrap correctly across bumps and slopes. The first
- * time a plane is detected, an 800 ms scan-in ring expands outward from the polygon
- * centroid and a 1 s reflection fade-in ramps `metallic` + `reflectance` from 0 to their
- * configured values, masking ARCore's HDR cubemap stabilisation window.
- *
- * Without depth — device unsupported, first frames after resume, raw frame not yet ready —
- * V2 falls back transparently to the V1 flat-polygon mesh (with smooth `(0, 1, 0)` normals
- * so the lit shader still reads as a level surface). Never crashes, never blanks.
- *
- * **#2203 sprint — 5 PRs landed, #5 since reverted**:
- *
- * | PR  | Effect                                                                       |
- * |-----|------------------------------------------------------------------------------|
- * | #2  | Depth-driven tessellation + polygon clip + slope-aware unlit grid. **DONE.** |
- * | #3  | PBR + HDR reflections + scan-in ring + reflection fade-in. **DONE.**         |
- * | #4  | Type-aware shading: floor / ceiling / wall get distinct identities. **DONE.** |
- * | #5  | V2 made the default in v4.16.0. **REVERTED in v4.16.1** — see below.        |
- *
- * PR #5 did not survive on-device QA. v4.16.1 restored V1 as the default and removed the
- * `@Deprecated` that PR #5 had put on V1. Pass
- * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` to opt into V2.
+ * V2's first design (#2203: depth-driven PBR mesh, HDR reflections, a grid; v4.16.0) was
+ * reverted as the default in v4.16.1 after on-device QA; #3507 replaced it with this one. The
+ * PBR material parameters ([MATERIAL_METALLIC], [MATERIAL_ROUGHNESS], [MATERIAL_REFLECTANCE],
+ * [MATERIAL_REFLECTION_FADE_IN], [MATERIAL_TEXTURE]) stay declared for compatibility but no
+ * longer change the look.
  *
  * @see PlaneRendererBase
  * @see PlaneRenderer
@@ -92,6 +60,10 @@ class PlaneRendererV2(
 
     private val visualizers = mutableMapOf<Plane, PlaneVisualizerV2>()
 
+    // Same visualizers as [visualizers], as a list the per-frame animation tick walks by index
+    // (no iterator allocated per frame).
+    private val visualizerList = ArrayList<PlaneVisualizerV2>()
+
     val planeTexture = ImageTexture.Builder()
         .bitmap(materialLoader.assets, "textures/plane_renderer.png")
         .build(engine)
@@ -105,36 +77,24 @@ class PlaneRendererV2(
         defaultInstance.apply {
             setTexture(MATERIAL_TEXTURE, planeTexture)
 
-            val widthToHeightRatio =
-                planeTexture.getWidth(0).toFloat() / planeTexture.getHeight(0).toFloat()
-            val scaleX = BASE_UV_SCALE
-            val scaleY = scaleX * widthToHeightRatio
-            setParameter(MATERIAL_UV_SCALE, scaleX, scaleY)
-
-            // Legacy `color` tint stays neutral white — `gridTint` is the new colour knob
-            // PR #4 will vary per `plane.type`. Keep `color` at 1.0 so the multiplicative
-            // chain `gridTint * color * slopeShade` reduces to `gridTint * slopeShade`
-            // unless a custom MaterialInstance overrides it.
+            // Dots per metre along both surface axes: 10 → a dot every 10 cm.
+            setParameter(MATERIAL_UV_SCALE, DOTS_PER_METRE, DOTS_PER_METRE)
+            // Legacy tint, multiplied into `gridTint`; neutral unless an app overrides it.
             setParameter(MATERIAL_COLOR, Color(1.0f, 1.0f, 1.0f))
-
-            // ── PR #3 PBR + animation defaults ──────────────────────────────────────
-            // These match the brief in `.claude/plans/plane-renderer-v2.md` (PR #3 row).
-            // `metallic = 0` so the surface is a dielectric floor; `roughness = 0.35`
-            // gives a slight gloss so the IBL reflection reads; `reflectance = 0.5`
-            // is the canonical dielectric value (matches kMaterialDefaultReflectance
-            // in MaterialInstance.kt).
-            setParameter(MATERIAL_METALLIC, DEFAULT_METALLIC)
-            setParameter(MATERIAL_ROUGHNESS, DEFAULT_ROUGHNESS)
-            setParameter(MATERIAL_REFLECTANCE, DEFAULT_REFLECTANCE)
-            setParameter(MATERIAL_GRID_TINT, DEFAULT_GRID_TINT)
-            setParameter(MATERIAL_GRID_ALPHA, DEFAULT_GRID_ALPHA)
-            setParameter(MATERIAL_SURFACE_ALPHA, DEFAULT_SURFACE_ALPHA)
-            // Steady-state defaults — `reflectionFadeIn = 1.0` and `scanProgress = 1.0`
-            // mean "no animation in progress". The per-visualizer overrides land via
-            // `pushAnimationUniforms` on its own per-instance MaterialInstance.
+            // Unused since the surface is unlit (#3507), set so the parameters hold defined values.
+            setParameter(MATERIAL_METALLIC, 0.0f)
+            setParameter(MATERIAL_ROUGHNESS, 1.0f)
+            setParameter(MATERIAL_REFLECTANCE, 0.5f)
             setParameter(MATERIAL_REFLECTION_FADE_IN, 1.0f)
+            setParameter(MATERIAL_GRID_TINT, DEFAULT_DOT_TINT)
+            setParameter(MATERIAL_GRID_ALPHA, DEFAULT_DOT_ALPHA)
+            setParameter(MATERIAL_SURFACE_ALPHA, DEFAULT_SURFACE_ALPHA)
+            // "Fully revealed, fully visible, not focused" — each plane animates its own
+            // instance from there.
             setParameter(MATERIAL_SCAN_PROGRESS, 1.0f)
             setParameter(MATERIAL_SCAN_PLANE_RADIUS, 1.0f)
+            setParameter("opacity", 1.0f)
+            setParameter("focus", 0.0f)
         }
     }
 
@@ -145,30 +105,22 @@ class PlaneRendererV2(
     )
 
     /**
-     * Determines how tracked planes should be visualized on the screen. Two options are available,
-     * `RENDER_ALL` and `RENDER_TOP_MOST`.
-     * To see all tracked planes which are visible to the camera set the PlaneRendererMode to
-     * `RENDER_ALL`. This mode eats up quite a few resources and should only be set
-     * with care. To optimize the rendering set the mode to `RENDER_TOP_MOST`.
-     * In that case only the top most plane visible to a camera is rendered on the screen.
-     * Especially on weaker smartphone models this improves the overall performance.
+     * Which tracked planes are drawn.
      *
-     * The default mode is `RENDER_TOP_MOST`
+     * - `RENDER_ALL` (the default): every tracked surface, the one under the centre of the
+     *   screen highlighted.
+     * - `RENDER_CENTER`: only the floor under the centre of the screen; the others fade out.
      */
-    // PlaneRendererMode is nested inside the V1 PlaneRenderer class; the enum is reused as-is
-    // by V2 (no V2-specific replacement was introduced). The suppression dates from the
-    // v4.16.0 window, when V1 was briefly @Deprecated. v4.16.1 restored V1 as the default and
-    // removed that deprecation, so this @Suppress is inert today — it only becomes
-    // load-bearing again if V1 is ever deprecated for real.
+    // PlaneRendererMode is nested inside the V1 PlaneRenderer class and reused as-is by V2.
     @Suppress("DEPRECATION")
-    var planeRendererMode = PlaneRenderer.PlaneRendererMode.RENDER_CENTER
+    var planeRendererMode = PlaneRenderer.PlaneRendererMode.RENDER_ALL
 
     /**
      * Maximum number of plane-renderer updates per second.
      *
-     * The whole [update] pass is gated to this rate: polling ARCore's updated planes, picking
-     * the centre plane in [PlaneRenderer.PlaneRendererMode.RENDER_CENTER], and pushing plane
-     * geometry to Filament. Decrease if you don't need a very precise position update and
+     * Polling ARCore's updated planes, picking the plane under the centre of the screen and
+     * pushing plane geometry to Filament are gated to this rate. The fade, focus and reveal
+     * animations are not: they advance every frame. Decrease if you don't need a very precise position update and
      * want to reduce frame consumption; increase for a more accurate positioning update.
      *
      * The name comes from the `Frame.hitTest` this gate used to throttle. That hit test is
@@ -179,6 +131,8 @@ class PlaneRendererV2(
 
     /**
      * ### Enable/disable the plane renderer.
+     *
+     * Disabling fades the planes out; enabling fades them back in.
      */
     override var isEnabled = true
         set(value) {
@@ -198,7 +152,9 @@ class PlaneRendererV2(
         set(value) {
             if (field != value) {
                 field = value
-                visualizers.values.forEach { it.setVisible(value) }
+                // Hiding is immediate for every plane; showing waits for the next update, which
+                // knows the centre plane (RENDER_CENTER shows only that one).
+                if (!value) visualizers.values.forEach { it.setVisible(false) }
             }
         }
 
@@ -224,76 +180,37 @@ class PlaneRendererV2(
         }
 
     private var frame: Frame? = null
-    private var depthMode: Config.DepthMode? = null
 
     override fun update(session: Session, frame: Frame) {
-        if (isEnabled) {
-            if (frame.fps(this.frame) < maxHitTestPerSecond) {
-                this.frame = frame
-
-                isCameraTracking = frame.camera.isTracking
-
-                try {
-                    val updatedPlanes = frame.getUpdatedPlanes()
-                    val camera = frame.camera
-                    // The effective mode, read back from the session: `ArSession.configure`
-                    // downgrades an unsupported request to DISABLED, and a DISABLED session
-                    // must never be asked for a depth image (#4104 review).
-                    depthMode = session.config.depthMode
-                    @Suppress("DEPRECATION")
-                    if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL) {
-                        updatedPlanes.forEach { renderPlane(it, frame = frame, camera = camera) }
-                    } else if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_CENTER) {
-                        // AR10 (#2504): `updatedPlanes` is ARCore's JNI-backed list, so the
-                        // per-visualizer `plane !in updatedPlanes` below was an O(M) linear scan —
-                        // O(N×M) across all visualizers every frame. Hoist a `HashSet` once so the
-                        // membership test is O(1). ARCore hands out a FRESH `Plane` wrapper per
-                        // frame, so this works on `Plane`'s native-handle value equality (see
-                        // `io.github.sceneview.ar.arcore.diffPlanes`), never on identity — set
-                        // membership matches the list `contains` exactly and the visibility
-                        // outcome is unchanged.
-                        val updatedPlaneSet = updatedPlanes.toHashSet()
-                        // Find the top most plane Trackable at the centre of the screen; only that
-                        // one is rendered.
-                        //
-                        // #3339: this used to be a real `frame.hitTest(centreX, centreY)`. ARCore
-                        // attempts a depth sub-test inside every `hitTest`, and on devices whose
-                        // motion-stereo depth pipeline is unavailable that sub-test fails and its
-                        // NATIVE logger spams `depth_hit_test.cc` / `AR_ERROR_ILLEGAL_STATE`
-                        // warnings — here at the `maxHitTestPerSecond` rate, forever, on every AR
-                        // screen. Nothing on the Kotlin side can filter a native log, and no
-                        // `hitTest` overload accepts a trackable-type filter, so the only fix is
-                        // not to make the call. [CenterPlaneFinder] answers the same question
-                        // analytically, applying the same acceptance rules the discarded
-                        // `firstByTypeOrNull(HORIZONTAL_UPWARD_FACING)` filter applied.
-                        val centerPlane = if (isVisible) {
-                            // Don't look for the center plane if we don't need to know it
-                            CenterPlaneFinder.find(
-                                frame = frame,
-                                // Planes that did not change this frame are still tracked and
-                                // still drawn, so they stay eligible: union the updated planes
-                                // with the ones we currently visualize.
-                                candidates = HashSet(updatedPlaneSet).apply {
-                                    addAll(visualizers.keys)
-                                }
-                            )
-                        } else null
-                        updatedPlanes.forEach {
-                            renderPlane(it, frame = frame, camera = camera, visible = it == centerPlane)
-                        }
-                        visualizers.forEach { (plane, visualizer) ->
-                            if (plane !in updatedPlaneSet) {
-                                visualizer.setVisible(isVisible && plane == centerPlane)
-                            }
-                        }
-                    }
-
-                    // Check for not tracking Plane-Trackables and remove them.
-                    cleanupOldPlaneVisualizer()
-                } catch (e: Exception) {
-                    android.util.Log.e("SceneView", "PlaneRendererV2 update error", e)
-                }
+        if (isEnabled && frame.fps(this.frame) < maxHitTestPerSecond) {
+            this.frame = frame
+            isCameraTracking = frame.camera.isTracking
+            try {
+                frame.getUpdatedPlanes().forEach { renderPlane(it) }
+                refreshFocusAndVisibility(frame)
+                cleanupOldPlaneVisualizer()
+            } catch (e: Exception) {
+                android.util.Log.e("SceneView", "PlaneRendererV2 update error", e)
             }
+        }
+        // Every frame, enabled or not: planes keep fading out after `isEnabled = false`.
+        val now = System.nanoTime()
+        for (i in visualizerList.indices) visualizerList[i].tick(now)
+    }
+
+    /**
+     * Highlights the floor under the centre of the screen and, in `RENDER_CENTER`, hides the
+     * others. #3339: the centre plane is found analytically by [CenterPlaneFinder] — a
+     * `frame.hitTest` here made ARCore's native depth sub-test spam the log on every AR screen.
+     */
+    private fun refreshFocusAndVisibility(frame: Frame) {
+        val centerPlane = if (isVisible) CenterPlaneFinder.find(frame, visualizers.keys) else null
+        @Suppress("DEPRECATION")
+        val renderAll = planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL
+        visualizers.forEach { (plane, visualizer) ->
+            val isCenter = plane == centerPlane
+            visualizer.setFocus(if (isCenter) 1f else 0f)
+            visualizer.setVisible(isVisible && (renderAll || isCenter))
         }
     }
 
@@ -306,18 +223,8 @@ class PlaneRendererV2(
         engine.safeDestroyTexture(planeTexture)
     }
 
-    /**
-     * Refreshes (or lazily creates) the [PlaneVisualizerV2] for [plane] and forwards the
-     * current [frame] + [camera] so the depth path has everything it needs.
-     */
-    private fun renderPlane(
-        plane: Plane,
-        frame: Frame?,
-        camera: com.google.ar.core.Camera?,
-        visible: Boolean = true,
-    ) {
-        // Find the plane visualizer if it already exists.
-        // If not, create a new plane visualizer for this plane.
+    /** Refreshes (or lazily creates) the [PlaneVisualizerV2] for [plane]. */
+    private fun renderPlane(plane: Plane) {
         if (plane.trackingState == TrackingState.TRACKING || plane.subsumedBy == null) {
             val planeVisualizer = visualizers[plane]
                 ?: PlaneVisualizerV2(engine, scene, plane).apply {
@@ -328,16 +235,13 @@ class PlaneRendererV2(
                         materialInstances += it
                     })
                     setShadowReceiver(isShadowReceiver)
-                    setVisible(isVisible && visible)
+                    // Shown by refreshFocusAndVisibility once the centre plane is known.
+                    setVisible(false)
                     setEnabled(isEnabled && isCameraTracking)
                 }.also {
                     visualizers[plane] = it
+                    visualizerList += it
                 }
-            // Hand the depth + camera context to the visualizer BEFORE updatePlane runs,
-            // so the depth-driven rebuild can pull from this frame's depth image. Either
-            // argument may be null — the visualizer falls back to the flat polygon then.
-            planeVisualizer.setFrame(frame, camera)
-            planeVisualizer.depthMode = depthMode
             planeVisualizer.updatePlane()
         }
     }
@@ -353,6 +257,7 @@ class PlaneRendererV2(
             // remove it.
             if (plane.subsumedBy != null || plane.trackingState == TrackingState.STOPPED) {
                 planeVisualizer.destroy()
+                visualizerList.remove(planeVisualizer)
                 true
             } else {
                 false
@@ -362,135 +267,97 @@ class PlaneRendererV2(
 
     companion object {
         /**
-         * Material parameter that controls what texture is being used when rendering the planes.
+         * Sampler kept for compatibility: the V2 dots are procedural, the texture is not sampled.
          */
         const val MATERIAL_TEXTURE = "texture"
 
-        /**
-         * Float2 material parameter to control the X/Y scaling of the texture's UV coordinates. Can be
-         * used to adjust for the texture's aspect ratio and control the frequency of tiling.
-         */
+        /** Float2 — dots per metre along the two surface axes (default 10 × 10). */
         const val MATERIAL_UV_SCALE = "uvScale"
 
         /**
-         * Float3 material parameter — legacy RGB tint kept for binary/API compatibility. PR #3
-         * adds [MATERIAL_GRID_TINT] as the canonical colour knob; the shader multiplies both.
+         * Float3 material parameter — legacy RGB tint kept for binary/API compatibility,
+         * multiplied into [MATERIAL_GRID_TINT].
          */
         const val MATERIAL_COLOR = "color"
 
-        /**
-         * Float PBR metallic, default `0.0` (dielectric floor). PR #4 varies per
-         * `plane.type` via [planeMaterialPresetFor].
-         */
+        /** Float, kept for compatibility. Unused since the V2 surface is unlit (#3507). */
         const val MATERIAL_METALLIC = "metallic"
 
-        /**
-         * Float PBR roughness, default `0.35` (slight gloss). PR #4 varies per
-         * `plane.type` via [planeMaterialPresetFor] (floor `0.35` < ceiling `0.65` <
-         * wall `0.80`).
-         */
+        /** Float, kept for compatibility. Unused since the V2 surface is unlit (#3507). */
         const val MATERIAL_ROUGHNESS = "roughness"
 
-        /** Float dielectric Fresnel reflectance, default `0.5`. */
+        /** Float, kept for compatibility. Unused since the V2 surface is unlit (#3507). */
         const val MATERIAL_REFLECTANCE = "reflectance"
 
-        /** Float3 cool-white tint used by the procedural grid + scan ring (PR #3). */
+        /** Float3 dot colour. Set per plane type by [planeMaterialPresetFor]. */
         const val MATERIAL_GRID_TINT = "gridTint"
 
-        /** Float peak per-pixel opacity of the grid lines (PR #3). */
+        /** Float peak opacity of a dot. Set per plane type by [planeMaterialPresetFor]. */
         const val MATERIAL_GRID_ALPHA = "gridAlpha"
 
-        /** Float base opacity of the lit surface between grid lines (PR #3). */
+        /** Float opacity of the faint film between the dots. */
         const val MATERIAL_SURFACE_ALPHA = "surfaceAlpha"
 
-        /**
-         * Float in `[0, 1]` modulating the IBL contribution so the reflection fades in over
-         * the first second of the plane's life (PR #3). `PlaneVisualizerV2` overrides this
-         * per-instance from elapsed-since-detection.
-         */
+        /** Float, kept for compatibility. Unused since the V2 surface is unlit (#3507). */
         const val MATERIAL_REFLECTION_FADE_IN = "reflectionFadeIn"
 
         /**
-         * Float in `[0, 1]` driving the scan-in ring expansion (PR #3). `1.0` means the
-         * animation has completed and the ring is no longer drawn.
+         * Float in `[0, 1]`: `1` = the plane is fully revealed; below `1` the reveal front is
+         * drawn at [MATERIAL_SCAN_PLANE_RADIUS], `1 - scanProgress` bright. Animated per plane
+         * by `PlaneVisualizerV2`.
          */
         const val MATERIAL_SCAN_PROGRESS = "scanProgress"
 
         /**
-         * Float — max scan-ring radius in plane-local metres (≈ furthest polygon vertex
-         * from the centroid). Set per-instance by `PlaneVisualizerV2` (PR #3).
+         * Float — plane-local radius, in metres, the reveal front has reached. Animated per
+         * plane by `PlaneVisualizerV2`.
          */
         const val MATERIAL_SCAN_PLANE_RADIUS = "scanPlaneRadius"
 
-        /**
-         * Used to control the UV Scale for the default texture.
-         */
-        private const val BASE_UV_SCALE = 8.0f
+        /** One dot every 10 cm — reads as a surface from a metre away, not as noise. */
+        private const val DOTS_PER_METRE = 10.0f
 
-        // ── PR #3 PBR + grid defaults ───────────────────────────────────────────────
-        // Inline constants live here rather than in PlaneVisualizerV2 because the
-        // material defaults are a renderer-level concern (the visualizer overrides
-        // only the animation uniforms per-instance).
-        private const val DEFAULT_METALLIC = 0.0f
-        private const val DEFAULT_ROUGHNESS = 0.35f
-        private const val DEFAULT_REFLECTANCE = 0.5f
-        private val DEFAULT_GRID_TINT = Float3(0.9f, 0.95f, 1.0f)
-        private const val DEFAULT_GRID_ALPHA = 0.85f
-        private const val DEFAULT_SURFACE_ALPHA = 0.10f
+        private val DEFAULT_DOT_TINT = Float3(1.0f, 1.0f, 1.0f)
+        private const val DEFAULT_DOT_ALPHA = 0.85f
+        private const val DEFAULT_SURFACE_ALPHA = 0.03f
     }
 }
 
 /**
- * Per-`plane.type` material preset applied by [io.github.sceneview.ar.PlaneVisualizerV2]
- * on top of `PlaneRendererV2.planeMaterial`'s shared defaults (PR #4 of
- * [#2203](https://github.com/sceneview/sceneview/issues/2203)).
+ * Per-`plane.type` dot style applied by [io.github.sceneview.ar.PlaneVisualizerV2] on top of
+ * `PlaneRendererV2.planeMaterial`'s shared defaults: same single `Material`, one
+ * [com.google.android.filament.MaterialInstance] per plane.
  *
- * Same single `Material`, one [com.google.android.filament.MaterialInstance] per plane,
- * three different `(metallic, roughness, gridTint)` triples — see
- * [planeMaterialPresetFor] for the type → preset mapping and
- * [PlaneRendererV2]'s class KDoc for the rationale.
+ * `internal` so [io.github.sceneview.ar.scene.PlaneRendererV2Test] can exercise the mapping
+ * without an Engine.
  *
- * `internal` so [io.github.sceneview.ar.scene.PlaneRendererV2Test] can exercise the
- * mapping without spinning up an Engine.
- *
- * @param metallic PBR metallic in `[0, 1]`. Always `0.0` in PR #4 — every detected plane
- *                 is a dielectric surface (no real-world brushed-metal floors).
- * @param roughness PBR roughness in `[0, 1]`. Invariant `floor < ceiling < wall` so the
- *                  three roles look visibly distinct under the same IBL.
- * @param gridR Float `[0, 1]` red component of `gridTint`.
- * @param gridG Float `[0, 1]` green component of `gridTint`.
- * @param gridB Float `[0, 1]` blue component of `gridTint`.
+ * @param gridR Red component of the dot colour, `[0, 1]`.
+ * @param gridG Green component of the dot colour, `[0, 1]`.
+ * @param gridB Blue component of the dot colour, `[0, 1]`.
+ * @param dotAlpha Peak opacity of a dot, `[0, 1]`.
  */
 internal data class PlaneMaterialPreset(
-    val metallic: Float,
-    val roughness: Float,
     val gridR: Float,
     val gridG: Float,
     val gridB: Float,
+    val dotAlpha: Float,
 )
 
 /**
- * Maps a [com.google.ar.core.Plane.Type] to its [PlaneMaterialPreset] (PR #4 of
- * [#2203](https://github.com/sceneview/sceneview/issues/2203)).
+ * Maps a [com.google.ar.core.Plane.Type] to its [PlaneMaterialPreset] (#3507).
  *
- * | `plane.type`                 | role    | metallic | roughness | gridTint     |
- * |------------------------------|---------|----------|-----------|--------------|
- * | `HORIZONTAL_UPWARD_FACING`   | floor   | `0.00`   | `0.35`    | cool white   |
- * | `HORIZONTAL_DOWNWARD_FACING` | ceiling | `0.00`   | `0.65`    | warm white   |
- * | `VERTICAL`                   | wall    | `0.00`   | `0.80`    | neutral grey |
+ * | `plane.type`                 | role    | dots                     |
+ * |------------------------------|---------|--------------------------|
+ * | `HORIZONTAL_UPWARD_FACING`   | floor   | white, the strongest     |
+ * | `HORIZONTAL_DOWNWARD_FACING` | ceiling | warm white, quieter      |
+ * | `VERTICAL`                   | wall    | soft blue (and, in the shader, a smaller staggered lattice) |
  *
- * Unknown future ARCore plane types fall back to the floor preset rather than crashing —
- * the renderer must never blank because ARCore added a fourth enum entry.
- *
- * Pure function. `internal` so tests can exercise the mapping without a Filament Engine
- * or a real `Plane` instance.
+ * The floor is the surface people place things on, so it reads first; the other two stay
+ * recognisable without competing with it. Unknown future ARCore plane types fall back to the
+ * floor style rather than crashing.
  */
-// `Plane.Type` is exhaustive at this ARCore version (HORIZONTAL_UPWARD_FACING,
-// HORIZONTAL_DOWNWARD_FACING, VERTICAL). The `else` arm is deliberately kept as
-// future-proofing for a hypothetical fourth value ARCore may add — a render-thread
-// crash on an unknown enum value is strictly worse than a slightly-wrong shading.
-// Same defensive stance as `PlaneVisualizerV2.rebuildDepthMesh()`'s flat-fallback
-// on Throwable.
+// `Plane.Type` is exhaustive at this ARCore version; the `else` arm is future-proofing — a
+// render-thread crash on an unknown enum value is strictly worse than a slightly-wrong colour.
 @Suppress("REDUNDANT_ELSE_IN_WHEN")
 internal fun planeMaterialPresetFor(type: com.google.ar.core.Plane.Type): PlaneMaterialPreset =
     when (type) {
@@ -500,29 +367,6 @@ internal fun planeMaterialPresetFor(type: com.google.ar.core.Plane.Type): PlaneM
         else -> FLOOR_PRESET
     }
 
-// Cool white — a freshly-mopped floor reading slightly cool under the typical room IBL.
-// `metallic = 0.0` + `roughness = 0.35` gives a gentle gloss so reflections of ceiling
-// lights register without turning the floor into a mirror.
-private val FLOOR_PRESET = PlaneMaterialPreset(
-    metallic = 0.0f,
-    roughness = 0.35f,
-    gridR = 0.85f, gridG = 0.92f, gridB = 1.0f,
-)
-
-// Warm white — drywall ceilings read warm under most indoor lighting (incandescent
-// bounce dominates). `roughness = 0.65` keeps the ceiling matt-ish; you should see the
-// IBL but not your own reflection in it.
-private val CEILING_PRESET = PlaneMaterialPreset(
-    metallic = 0.0f,
-    roughness = 0.65f,
-    gridR = 1.0f, gridG = 0.96f, gridB = 0.88f,
-)
-
-// Neutral grey — walls without a known finish (paint / wallpaper / panel) sit in the
-// middle. `roughness = 0.80` so the wall absorbs the IBL almost fully — matches how a
-// real matte wall looks in the camera passthrough.
-private val WALL_PRESET = PlaneMaterialPreset(
-    metallic = 0.0f,
-    roughness = 0.80f,
-    gridR = 0.92f, gridG = 0.92f, gridB = 0.92f,
-)
+private val FLOOR_PRESET = PlaneMaterialPreset(gridR = 1.0f, gridG = 1.0f, gridB = 1.0f, dotAlpha = 0.85f)
+private val CEILING_PRESET = PlaneMaterialPreset(gridR = 1.0f, gridG = 0.90f, gridB = 0.74f, dotAlpha = 0.55f)
+private val WALL_PRESET = PlaneMaterialPreset(gridR = 0.66f, gridG = 0.82f, gridB = 1.0f, dotAlpha = 0.70f)

@@ -1,213 +1,192 @@
-// plane_renderer_v2.mat — PR #3: PBR lit + IBL reflection + scan-in animation (#2203).
+// plane_renderer_v2.mat — soft dot field for detected ARCore planes (#3507, rebuild of #2203).
 // See CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant".
 //
-// Purpose:    PR #3 of #2203 — the V2 plane becomes a real PBR surface lit by the real room.
-//             Switches `shadingModel: lit` so Filament's IBL pipeline samples the
-//             environmental HDR cubemap that LightEstimator continuously feeds into
-//             `scene.indirectLight`. A glossy floor visibly reflects the actual ceiling
-//             lights / window glow; a matt wall picks up the actual ambient irradiance.
-//             The depth-driven vertex stream (PR #2) now carries TANGENTS (Filament's
-//             quaternion encoding of the smooth per-vertex normal), so PBR specular
-//             highlights wrap correctly across bumps and slopes instead of looking
-//             faceted.
-//
-//             Animation: the first time a plane appears, an 800 ms scan-in pulses a thin
-//             bright ring outward from the polygon centroid, and a separate 1 s
-//             `reflectionFadeIn` ramps PBR `metallic` + `reflectance` from 0 to their
-//             configured values, masking ARCore's HDR cubemap stabilisation window so
-//             the reflection brightens up smoothly rather than snapping from flat to
-//             fully PBR.
-//
-// Used by:    PlaneVisualizerV2 — depth-driven OR flat-fallback path. The flat fallback
-//             feeds smooth `(0, 1, 0)` normals so the lit shader still reads as a level
-//             surface.
+// Purpose:    The look every good AR app converged on (Google Scene Viewer, ARKit Quick Look,
+//             IKEA Place): a field of small soft dots lying on the surface, not a shaded slab.
+//             - The dots are anchored to the WORLD, not to the plane polygon: ARCore moves a
+//               plane's centre pose every time the plane grows, and a pattern laid out in
+//               plane-local space would slide under the user's eyes each time it did.
+//             - Floors and ceilings get a square lattice; walls a staggered, smaller one — the
+//               two read as different surfaces without a colour legend.
+//             - The dots fade out towards the polygon edge (per-vertex ramp carried in local
+//               Y, the V1 convention), with distance from the camera, and into an even tone
+//               where they get smaller than a pixel (no moiré at grazing angles).
+//             - A plane is revealed by a soft bright front expanding from its centre, the first
+//               time it appears and again each time ARCore extends it (`scanProgress`,
+//               `scanPlaneRadius`, animated by PlaneVisualizerV2).
+//             - The focused plane (`focus`, the floor under the centre of the screen) gets a
+//               pool of light, a thin ring and slow ripples where the camera's optical axis
+//               meets it — the reticle is drawn by the surface itself, in perspective, from
+//               the camera matrices alone: no per-frame CPU work, no extra node.
+//             - `opacity` fades the whole plane in and out (placement, hide, disable).
+// Used by:    PlaneRendererV2 / PlaneVisualizerV2.
 //
 // Parameters:
-//   texture           — sampler2d, kept for binary/API compatibility; not sampled here.
-//   color             — float3, legacy tint, multiplied into gridTint at the fragment stage.
-//   uvScale           — float2, tiling factor mapping plane-local X/Z to grid-cell coords.
-//   metallic          — float, PBR metalness; default 0.0 (dielectric floor).
-//   roughness         — float, PBR roughness; default 0.35 (slight gloss — PR #4 varies per
-//                       plane.type).
-//   reflectance       — float, dielectric Fresnel reflectance at normal incidence; 0.5 = 4%.
-//   gridTint          — float3, cool-white tint for the procedural grid + scan ring.
-//   gridAlpha         — float, peak per-pixel opacity of the grid lines; 0.85 default.
-//   surfaceAlpha      — float, base opacity of the lit surface between grid lines; 0.10
-//                       default ("etched into a real surface" effect).
-//   reflectionFadeIn  — float, 0..1 — modulates `metallic` + `reflectance` so the IBL
-//                       contribution fades in over ~1 s; the visualizer ramps this from 0
-//                       to 1 on the first second of the plane's life.
-//   scanProgress      — float, 0..1 — drives the scan-in ring expansion; 1.0 means the
-//                       scan animation is over and the ring is no longer drawn.
-//   scanPlaneRadius   — float, max radius the scan ring will reach, in plane-local metres
-//                       (≈ furthest polygon vertex from the centroid). Set per plane.
+//   texture           — sampler2d, kept for binary/API compatibility; not sampled.
+//   color             — float3, legacy tint multiplied into gridTint.
+//   uvScale           — float2, dots per metre along the two surface axes.
+//   metallic          — float, kept for API compatibility (PlaneRendererV2.MATERIAL_METALLIC);
+//                       unused since the surface is unlit.
+//   roughness         — float, kept for API compatibility; unused.
+//   reflectance       — float, kept for API compatibility; unused.
+//   gridTint          — float3, dot colour (per plane type, see planeMaterialPresetFor).
+//   gridAlpha         — float, peak opacity of a dot.
+//   surfaceAlpha      — float, opacity of the faint film between dots.
+//   reflectionFadeIn  — float, kept for API compatibility; unused.
+//   scanProgress      — float 0..1; 1 = fully revealed (no front), below 1 = the reveal front
+//                       is on screen with brightness (1 - scanProgress).
+//   scanPlaneRadius   — float, plane-local radius in metres the reveal front has reached.
+//   opacity           — float 0..1, whole-plane fade.
+//   focus             — float 0..1, emphasis of the plane under the centre of the screen.
 //
-// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan"). Lit shaders
-// are significantly larger than unlit — expect ~80–100 KB for the .filamat blob (was
-// ~41 KB at PR #2 unlit). The size growth is the PBR pipeline (IBL evaluation, GGX BRDF,
-// energy-conserving Fresnel) and is the whole point of PR #3.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "AR Core Plane Material V2",
 
     "parameters": [
-        {
-            "type": "sampler2d",
-            "name": "texture"
-        },
-        {
-            "type": "float3",
-            "name": "color"
-        },
-        {
-            "type": "float2",
-            "name": "uvScale"
-        },
-        {
-            "type": "float",
-            "name": "metallic"
-        },
-        {
-            "type": "float",
-            "name": "roughness"
-        },
-        {
-            "type": "float",
-            "name": "reflectance"
-        },
-        {
-            "type": "float3",
-            "name": "gridTint"
-        },
-        {
-            "type": "float",
-            "name": "gridAlpha"
-        },
-        {
-            "type": "float",
-            "name": "surfaceAlpha"
-        },
-        {
-            "type": "float",
-            "name": "reflectionFadeIn"
-        },
-        {
-            "type": "float",
-            "name": "scanProgress"
-        },
-        {
-            "type": "float",
-            "name": "scanPlaneRadius"
-        }
+        { "type": "sampler2d", "name": "texture" },
+        { "type": "float3", "name": "color" },
+        { "type": "float2", "name": "uvScale" },
+        { "type": "float", "name": "metallic" },
+        { "type": "float", "name": "roughness" },
+        { "type": "float", "name": "reflectance" },
+        { "type": "float3", "name": "gridTint" },
+        { "type": "float", "name": "gridAlpha" },
+        { "type": "float", "name": "surfaceAlpha" },
+        { "type": "float", "name": "reflectionFadeIn" },
+        { "type": "float", "name": "scanProgress" },
+        { "type": "float", "name": "scanPlaneRadius" },
+        { "type": "float", "name": "opacity" },
+        { "type": "float", "name": "focus" }
     ],
     "variables" : [
-        "texCoords",
-        "modelPos"
+        // xy = world-anchored pattern coordinates (in dots), z = edge ramp, w = 1 on walls.
+        "patternUv",
+        // xyz = plane-local position (reveal front is measured from the plane centre).
+        "modelPos",
+        // xyz = world point where the camera's optical axis meets this plane, w = 1 if it
+        // does in front of the camera. Constant over the plane: computed once per vertex.
+        "spotHit"
     ],
-    // `requires` lists shader inputs the fragment stage reads via Filament's `getXyz()`
-    // helpers. The TANGENTS vertex attribute is consumed automatically by the lit
-    // shading model whenever it's present on the bound VertexBuffer — no `requires`
-    // entry needed (same pattern as `sceneview/.../transparent_colored.mat`).
     "requires" : [
         "position"
     ],
-    shadingModel : lit,
-    "blending": "transparent"
+    shadingModel : unlit,
+    // Premultiplied-alpha compositing (ONE, ONE_MINUS_SRC_ALPHA): the fragment premultiplies,
+    // see #2224 in plane_renderer.mat for why an unpremultiplied unlit colour reads as a blob.
+    "blending": "transparent",
+    // A ceiling is seen from below and a wall from either side.
+    "culling": "none",
+    "depthWrite": false
 }
 
 vertex {
     void materialVertex(inout MaterialVertexInputs material) {
-        // The vertex POSITION is in plane-local (a.k.a. model) space — X-Z is the plane
-        // surface, +Y is the displacement along the plane normal (depth-driven from PR #2;
-        // 0 on the flat fallback). Hand the position to Filament in world space so the
-        // PBR pipeline can light it.
         float3 pos = getPosition().xyz;
+
+        // Local Y carries the edge ramp (0 on the polygon, 1 inside the feather), not a height.
+        float edge = pos.y;
+        pos.y = 0.0;
+
         material.worldPosition = mulMat4x4Float3(getWorldFromModelMatrix(), pos);
 
-        // Pass the plane-local position to the fragment stage. The grid lookup and the
-        // radial scan ring both operate in plane-local space so the grid stays glued to
-        // the surface regardless of how much the depth pipeline has pushed it up or down.
-        // (Material variables are float4 — store xyz, leave w = 0.)
-        material.modelPos = vec4(pos, 0.0);
+        // Pattern coordinates in USER world space (ARCore's world), so the dots stay where
+        // they are on the floor while ARCore re-centres and grows the plane.
+        highp float3 userWorld =
+            mulMat4x4Float3(getUserWorldFromWorldMatrix(), material.worldPosition.xyz).xyz;
+        float3 normal = normalize(getWorldFromModelMatrix()[1].xyz);
+        float wall = abs(normal.y) < 0.7 ? 1.0 : 0.0;
+        highp float2 surface;
+        if (wall > 0.5) {
+            // Along the wall horizontally, and up.
+            float3 across = normalize(cross(float3(0.0, 1.0, 0.0), normal));
+            surface = float2(dot(userWorld, across), userWorld.y);
+        } else {
+            surface = userWorld.xz;
+        }
 
-        // Grid UVs are derived from the plane-local X-Z so the grid stays consistent
-        // across depth-driven bumps.
-        material.texCoords.x = pos.x * materialParams.uvScale.x;
-        material.texCoords.y = pos.z * materialParams.uvScale.y;
+        material.patternUv = float4(surface * materialParams.uvScale, edge, wall);
+        material.modelPos = float4(pos, 0.0);
+
+        // Where the optical axis (screen centre) hits the plane's infinite support.
+        float3 cameraPos = getWorldCameraPosition();
+        float3 forward = -normalize(getWorldFromViewMatrix()[2].xyz);
+        float3 planePoint = getWorldFromModelMatrix()[3].xyz;
+        float facing = dot(normal, forward);
+        float along = abs(facing) > 1e-3 ? dot(normal, planePoint - cameraPos) / facing : -1.0;
+        material.spotHit = float4(cameraPos + forward * max(along, 0.0), along > 0.0 ? 1.0 : 0.0);
     }
 }
 
 fragment {
-    // Anti-aliased distance-to-nearest-grid-line, in grid-cell units. Same screen-space
-    // derivative trick as V1: the line stays ~1px wide at any distance/angle.
-    float gridLine(float2 uv) {
-        float2 grid = abs(fract(uv - 0.5) - 0.5);
-        float2 fw = fwidth(uv);
-        float2 d = grid / max(fw, vec2(1e-5));
-        float line = 1.0 - min(min(d.x, d.y) * 0.65, 1.0);
-        return clamp(line, 0.0, 1.0);
-    }
-
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
 
-        float2 uv = variable_texCoords.xy;
+        highp float2 uv = variable_patternUv.xy;
+        float edgeRamp = variable_patternUv.z;
+        float wall = variable_patternUv.w;
 
-        // Procedural soft grid — thin anti-aliased lines + cell fill so the plane reads
-        // as a surface rather than a wireframe (same "feathered overlay" look as V1/V2 PR #2).
-        float line = gridLine(uv);
-        float2 cell = abs(fract(uv) - 0.5) * 2.0;
-        float fill = (1.0 - max(cell.x, cell.y)) * 0.10;
+        // ── Where the camera looks at this plane ─────────────────────────────────────────
+        highp float3 worldPos = getWorldPosition();
+        highp float3 cameraPos = getWorldCameraPosition();
+        float spotDistance = variable_spotHit.w > 0.5
+            ? distance(worldPos, variable_spotHit.xyz) : 1e3;
+        float focus = clamp(materialParams.focus, 0.0, 1.0);
+        float spot = (1.0 - smoothstep(0.0, 0.55, spotDistance)) * focus;
 
-        // Slope-aware darkening preserved from PR #2 so micro-relief reads even under
-        // PBR. In plane-local space the unrotated up axis is (0,1,0); deriving the
-        // geometric normal from screen-space derivatives of the plane-local position
-        // makes `localGeoN.y` the cosine of the surface tilt. Up to 30% darken on the
-        // steepest slopes (gentler than PR #2's 40% because the lit pipeline now also
-        // shades the surface — stacking the two would crush detail).
-        float3 dPosDx = dFdx(variable_modelPos.xyz);
-        float3 dPosDy = dFdy(variable_modelPos.xyz);
-        float3 localGeoN = normalize(cross(dPosDx, dPosDy));
-        float slope = 1.0 - abs(localGeoN.y);
-        float slopeShade = 1.0 - slope * 0.3;
+        // ── Dot lattice ──────────────────────────────────────────────────────────────────
+        // Walls: every other row shifted by half a dot, a quieter staggered pattern.
+        uv.x += wall * 0.5 * mod(floor(uv.y), 2.0);
+        float2 cell = fract(uv) - 0.5;
+        float d = length(cell);
+        float footprint = length(fwidth(uv));
+        float radius = mix(0.13, 0.10, wall);
 
-        // ── Scan-in ring ─────────────────────────────────────────────────────────────
-        // Bright ring expanding outward from the polygon centroid (plane-local origin)
-        // for the first 800 ms of the plane's life. Skip entirely once the visualizer
-        // signals scanProgress >= 1.0 — saves a couple of ALU ops per fragment for the
-        // entire steady-state lifetime of the plane.
-        float ringPulse = 0.0;
-        if (materialParams.scanProgress < 1.0) {
-            float dist = length(variable_modelPos.xz);
-            float ringRadius = materialParams.scanProgress * materialParams.scanPlaneRadius;
-            // Thin (~4 cm wide) anti-aliased ring at `ringRadius`.
-            float inner = smoothstep(ringRadius - 0.04, ringRadius - 0.02, dist);
-            float outer = 1.0 - smoothstep(ringRadius, ringRadius + 0.02, dist);
-            ringPulse = inner * outer;
+        // Slow ripples running outward from the reticle, on the focused plane only.
+        float time = getUserTime().x;
+        float ripple = 0.5 + 0.5 * sin(spotDistance * 9.0 - time * 2.4);
+        radius *= 1.0 + spot * (0.35 + 0.25 * ripple);
+
+        // ── Reveal front ─────────────────────────────────────────────────────────────────
+        float reveal = 1.0;
+        float front = 0.0;
+        float progress = clamp(materialParams.scanProgress, 0.0, 1.0);
+        if (progress < 1.0) {
+            // The CPU eases the front out to the plane edge and back over each extension.
+            float frontRadius = materialParams.scanPlaneRadius;
+            float fromCentre = length(variable_modelPos.xz);
+            reveal = 1.0 - smoothstep(frontRadius - 0.30, frontRadius, fromCentre);
+            float band = (fromCentre - frontRadius + 0.12) / 0.12;
+            front = exp(-band * band) * (1.0 - progress);
+            radius *= 1.0 + front * 0.6;
         }
 
-        // ── PBR slots ────────────────────────────────────────────────────────────────
-        // Reflection fade-in: scale `metallic` + `reflectance` by `reflectionFadeIn` so
-        // during the first ~1 s the surface goes from diffuse-only to fully PBR. Reads
-        // as "the reflection brightens up" instead of snapping in when ARCore's HDR
-        // cubemap estimate first stabilises.
-        float fade = clamp(materialParams.reflectionFadeIn, 0.0, 1.0);
-        material.metallic = materialParams.metallic * fade;
-        material.roughness = materialParams.roughness;
-        material.reflectance = materialParams.reflectance * fade;
+        float aa = max(footprint * 0.7, 0.02);
+        float dotMask = 1.0 - smoothstep(radius - aa, radius + aa, d);
+        // Dots smaller than a pixel become their average coverage instead of shimmering.
+        float coverage = 3.14159 * radius * radius;
+        dotMask = mix(dotMask, coverage, smoothstep(0.30, 0.70, footprint));
 
-        // Grid tint × legacy `color` × slope shade gives the base albedo. Overdrive the
-        // scan ring (×2.0) into the base color so it reads as a bright sweep across the
-        // surface, independent of any IBL contribution.
-        float3 albedo = materialParams.gridTint * materialParams.color * slopeShade;
-        material.baseColor.rgb = albedo + ringPulse * materialParams.gridTint * 2.0;
+        // ── Reticle ring, 12 cm around the hit point ─────────────────────────────────────
+        float ringWidth = max(fwidth(spotDistance) * 1.2, 0.004);
+        float ring = (1.0 - smoothstep(0.0, ringWidth, abs(spotDistance - 0.12))) * focus;
 
-        // Final alpha: grid + fill + ring + base surface opacity, clamped. The
-        // `surfaceAlpha` floor is what lets the PBR contribution show through between
-        // grid lines (V1 was 0 here, so it had no body — pure wireframe).
-        float alpha = clamp(
-            line * materialParams.gridAlpha + fill + ringPulse + materialParams.surfaceAlpha,
-            0.0, 1.0
-        );
-        material.baseColor.a = alpha;
+        // ── Fades ────────────────────────────────────────────────────────────────────────
+        float edgeFade = smoothstep(0.0, 1.0, edgeRamp);
+        float cameraDistance = distance(worldPos, cameraPos);
+        float distanceFade = 1.0 - smoothstep(3.0, 6.5, cameraDistance);
+        float emphasis = mix(0.6, 1.0, focus);
+
+        float alpha = dotMask * materialParams.gridAlpha * emphasis * (1.0 + front)
+            + materialParams.surfaceAlpha * emphasis
+            + spot * 0.12;
+        alpha *= edgeFade * distanceFade * reveal;
+        alpha += ring * 0.85 * edgeFade * reveal;
+        alpha = clamp(alpha * clamp(materialParams.opacity, 0.0, 1.0), 0.0, 1.0);
+
+        float3 tint = materialParams.gridTint * materialParams.color;
+        float3 rgb = mix(tint, float3(1.0), clamp(spot * 0.6 + front + ring, 0.0, 1.0));
+
+        material.baseColor = float4(rgb * alpha, alpha);
     }
 }

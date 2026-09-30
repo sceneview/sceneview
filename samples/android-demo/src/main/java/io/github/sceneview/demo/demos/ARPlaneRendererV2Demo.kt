@@ -1,83 +1,54 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import android.view.MotionEvent
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
+import com.google.ar.core.Config
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
+import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 
 /**
- * AR showcase demo — **Plane Renderer V2** ([#2203](https://github.com/sceneview/sceneview/issues/2203)).
+ * AR showcase demo — **Plane Renderer V2** (#3507).
  *
- * Single-screen AR scene that opts `ARSceneView` into V2 — **this demo starts on V2; the SDK
- * default is still [PlaneRendererBase.Version.V1]** — and gives the user a top-end [Switch] to
- * flip V1 ↔ V2 on the fly so the difference reads instantly:
+ * Opts `ARSceneView` into [PlaneRendererBase.Version.V2] and lets the renderer speak for
+ * itself: soft dots grow over each surface as ARCore finds it, the floor you are facing gets a
+ * bright spot, and the dots step aside once something is placed. The one sentence in the
+ * status banner says what is on screen right now:
  *
- * | Toggle state | Renderer       | What you see                                                     |
- * |--------------|----------------|------------------------------------------------------------------|
- * | **V2 (on)**  | [PlaneRendererBase.Version.V2] | Depth-driven mesh + PBR + HDR cubemap reflection + type-aware floor / ceiling / wall + 800 ms scan-in ring. |
- * | **V1 (off)** | [PlaneRendererBase.Version.V1] | Flat polygon textured with a procedural unlit grid — the legacy renderer. |
+ * 1. **Scanning** — dots appear on each surface the phone finds.
+ * 2. **Found** — tap to place the toy car (the bright spot marks the floor you face).
+ * 3. **Placed** — the planes fade out (`planeRenderer = false`); tap to pick the car up and
+ *    they fade back in.
  *
- * Flipping the switch triggers a renderer rebuild (the new value flows into
- * `ARSceneView(planeRendererVersion = …)` which is wired into the surrounding
- * `remember(...)` keys); the toggle is wrapped in `key(v2Enabled)` so the engine swaps
- * cleanly with no leftover state.
- *
- * A small legend card anchored bottom-start names the colour codes V2 ships per
- * `Plane.Type`, so the user can recognise what is on screen:
- *
- *  - **Floor** (`HORIZONTAL_UPWARD_FACING`) — cool-white grid, `metallic 0.00`, `roughness 0.35`.
- *  - **Ceiling** (`HORIZONTAL_DOWNWARD_FACING`) — warm-white grid, `roughness 0.65`.
- *  - **Wall** (`VERTICAL`) — neutral-grey grid, `roughness 0.80`.
- *
- * Same RGB values as `planeMaterialPresetFor` so the swatches and the on-screen grid match
- * pixel-for-pixel — see the type-aware shading table in
- * [io.github.sceneview.ar.scene.PlaneRendererV2]'s KDoc.
- *
- * The `v2Enabled` toggle survives process death via [rememberSaveable]. No content nodes
- * are spawned — the demo is about the *plane visualisation itself*; pair it with
- * `ARPlaneNodeDemo` to drop a marker cube on detected planes and compare reflections.
- *
- * Closes [#2203](https://github.com/sceneview/sceneview/issues/2203).
+ * Floors, walls (`HORIZONTAL_AND_VERTICAL` plane finding) and ceilings each get their own dot
+ * style from the SDK — no legend needed, the difference is on the surfaces.
  */
 @Composable
 fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
@@ -89,12 +60,11 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    // Live V1 ↔ V2 toggle — process-death survival via rememberSaveable so a user
-    // who configurationChange-rotates the device mid-comparison keeps their state.
-    var v2Enabled by rememberSaveable { mutableStateOf(true) }
-
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var planeDetected by remember { mutableStateOf(false) }
+    var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
+    // Read by the tap handler only: a plain holder, so a new frame never recomposes.
+    val latestFrame = remember { FrameHolder() }
 
     // #3341: non-null once ARCore has ruled this device out. The flag the scanning
     // banner waits on never flips then, so that banner has to read the verdict or
@@ -106,198 +76,87 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
         arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_plane_renderer_v2_title),
         onBack = onBack,
-        topOverlay = {
-            // End-aligned V1 ↔ V2 live toggle. `ColumnScope.align` is horizontal only, so
-            // the card keeps its corner without leaving the shared top frame.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(end = 8.dp),
-                color = Color.Black.copy(alpha = 0.72f),
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Column {
-                        Text(
-                            text = if (v2Enabled) {
-                                "Shaded surfaces"
-                            } else {
-                                "Simple grid"
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(
-                            text = "Compare surface styles",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                        )
-                    }
-                    Switch(
-                        checked = v2Enabled,
-                        onCheckedChange = { v2Enabled = it },
-                    )
-                }
-            }
-        },
-        // Both bottom tenants live in the scaffold slot (#2779). They used to be
-        // hand-anchored `BottomStart` (legend) and `BottomCenter` (scanning pill), and
-        // both are visible the instant the demo opens — the toggle starts on V2 and no
-        // plane is tracked yet — so they shared the same band. The slot is a bottom-aligned
-        // Column: siblings stack and cannot overlap.
         bottomOverlay = {
-            // Legend card — names the colour codes V2 ships per plane type so the user
-            // can connect the on-screen grid colour to its `Plane.Type`. RGB values come
-            // straight from `planeMaterialPresetFor` (PR #4) — the swatches and the
-            // rendered grid match.
-            //
-            // Hidden when V1 is active (V1's procedural grid is type-agnostic, single
-            // white) so we never lie about what's on screen.
-            AnimatedVisibility(
-                visible = v2Enabled,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                // `ColumnScope.align` — horizontal only, so it keeps the card at the
-                // start edge without being able to re-enter anyone else's pixels.
-                modifier = Modifier
-                    .align(Alignment.Start)
-                    .padding(start = 8.dp),
-            ) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.72f),
-                    contentColor = Color.White,
-                    tonalElevation = 4.dp,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            text = "Detected surfaces",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        LegendRow(
-                            // Cool-white floor — matches FLOOR_PRESET.gridR/G/B (0.85, 0.92, 1.0).
-                            swatch = Color(red = 0.85f, green = 0.92f, blue = 1.0f),
-                            label = "Floor",
-                        )
-                        LegendRow(
-                            // Warm-white ceiling — matches CEILING_PRESET (1.0, 0.96, 0.88).
-                            swatch = Color(red = 1.0f, green = 0.96f, blue = 0.88f),
-                            label = "Ceiling",
-                        )
-                        LegendRow(
-                            // Neutral-grey wall — matches WALL_PRESET (0.92, 0.92, 0.92).
-                            swatch = Color(red = 0.92f, green = 0.92f, blue = 0.92f),
-                            label = "Wall",
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = if (planeDetected) {
-                                "A surface has been found. Keep moving to reveal more."
-                            } else {
-                                "Move slowly to find floors, walls and ceilings."
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                        )
-                    }
-                }
-            }
-
-            // Scanning / tracking-failure status — never leave the user staring at a
-            // black screen (#1617). Visible until at least one plane is tracked.
-            AnimatedVisibility(
-                // #3341: on a device ARCore has ruled out, the flag this banner waits on
-                // never flips, so the banner would promise a scan under the SDK's "AR
-                // unavailable" card. Drop it and let the card carry reason and retry.
-                visible = !planeDetected && arCoreAvailability == null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                // A reported tracking failure means the session needs the user to move
-                // the device — guidance. Plain scanning is a normal transient state.
-                val trackingLost = trackingFailureReason != null
-                DemoStatusBanner(
-                    text = if (trackingLost) {
-                        "Move the device slowly to scan a surface…"
-                    } else {
-                        stringResource(R.string.ar_status_scanning)
-                    },
-                    tone = if (trackingLost) {
-                        DemoStatusTone.Guidance
-                    } else {
-                        DemoStatusTone.Progress
-                    },
-                )
-            }
+            val trackingLost = trackingFailureReason != null && placedAnchor == null
+            DemoStatusBanner(
+                // #3341: on a device ARCore has ruled out, the SDK card carries the reason.
+                text = when {
+                    arCoreAvailability != null -> null
+                    trackingLost -> stringResource(R.string.ar_plane_v2_status_move)
+                    placedAnchor != null -> stringResource(R.string.ar_plane_v2_status_placed)
+                    planeDetected -> stringResource(R.string.ar_plane_v2_status_found)
+                    else -> stringResource(R.string.ar_plane_v2_status_scanning)
+                },
+                tone = if (trackingLost) DemoStatusTone.Guidance else DemoStatusTone.Progress,
+            )
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Re-key the ARSceneView on the toggle so the renderer rebuilds cleanly — the
-            // `planeRendererVersion` parameter is already wired into ARScene's internal
-            // `remember(...)` keys, but wrapping the whole composable in `key(...)` is the
-            // boring-and-correct path that mirrors `ARDepthOcclusionDemo`'s engine swap on
-            // its own toggle. Cost: one engine restart per tap, paid only on user
-            // interaction.
-            key(v2Enabled) {
-                ARSceneView(
+            ARSceneView(
                 onSessionFailure = { arSessionFailed = true },
-                    modifier = Modifier.fillMaxSize(),
-                    engine = engine,
-                    modelLoader = modelLoader,
-                    materialLoader = materialLoader,
-                    playbackDataset = arPlaybackDataset,
-                    planeRenderer = true,
-                    planeRendererVersion = if (v2Enabled) {
-                        PlaneRendererBase.Version.V2
-                    } else {
-                        PlaneRendererBase.Version.V1
-                    },
-                    onARCoreAvailability = { arCoreAvailability = it },
-                    onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
-                    onSessionUpdated = { _, frame ->
-                        if (!planeDetected) {
-                            // Flip the scan-in / legend visibility once at least one plane
-                            // is tracking. `getUpdatedTrackables` is cheap and avoids
-                            // walking the whole trackable set every frame.
-                            val updated = frame.getUpdatedTrackables(
-                                com.google.ar.core.Plane::class.java
-                            )
-                            if (updated.any { it.trackingState == com.google.ar.core.TrackingState.TRACKING }) {
-                                planeDetected = true
-                            }
+                modifier = Modifier.fillMaxSize(),
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                playbackDataset = arPlaybackDataset,
+                // Placing the car fades the surfaces out; picking it up fades them back in.
+                planeRenderer = placedAnchor == null,
+                planeRendererVersion = PlaneRendererBase.Version.V2,
+                sessionConfiguration = { _: Session, config: Config ->
+                    config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                },
+                onARCoreAvailability = { arCoreAvailability = it },
+                onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
+                onSessionUpdated = { _, frame ->
+                    latestFrame.frame = frame
+                    if (!planeDetected) {
+                        planeDetected = frame.getUpdatedTrackables(Plane::class.java)
+                            .any { it.trackingState == TrackingState.TRACKING }
+                    }
+                },
+                onGestureListener = rememberOnGestureListener(
+                    onSingleTapConfirmed = { event: MotionEvent, _ ->
+                        val placed = placedAnchor
+                        if (placed != null) {
+                            // Pick the car up: the surfaces fade back in.
+                            placed.detach()
+                            placedAnchor = null
+                        } else {
+                            placedAnchor = latestFrame.frame?.placeOnPlane(event)
                         }
-                    },
-                )
+                    }
+                ),
+            ) {
+                placedAnchor?.let { anchor ->
+                    key(anchor) {
+                        val car = rememberModelInstance(modelLoader, TOY_CAR_ASSET)
+                        AnchorNode(anchor = anchor) {
+                            car?.let { ModelNode(modelInstance = it, scaleToUnits = TOY_CAR_SIZE_METERS) }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-/** One row of the V2 legend — a coloured circle swatch + label. */
-@Composable
-private fun LegendRow(swatch: Color, label: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(14.dp)
-                .clip(CircleShape)
-                .background(swatch),
-        )
-        Spacer(Modifier.width(0.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-        )
-    }
+/** Latest AR frame, for the tap handler. Not Compose state: it changes every frame. */
+private class FrameHolder {
+    var frame: Frame? = null
 }
+
+/** An anchor where [event] hits a tracked plane inside its polygon, or `null`. */
+private fun Frame.placeOnPlane(event: MotionEvent): Anchor? {
+    if (camera.trackingState != TrackingState.TRACKING) return null
+    return hitTest(event).firstOrNull { result ->
+        val plane = result.trackable
+        plane is Plane &&
+            plane.trackingState == TrackingState.TRACKING &&
+            plane.isPoseInPolygon(result.hitPose) &&
+            result.distance <= MAX_PLACE_DISTANCE_METERS
+    }?.createAnchor()
+}
+
+private const val TOY_CAR_ASSET = "models/khronos_toy_car.glb"
+private const val TOY_CAR_SIZE_METERS = 0.25f
+private const val MAX_PLACE_DISTANCE_METERS = 5.0f
