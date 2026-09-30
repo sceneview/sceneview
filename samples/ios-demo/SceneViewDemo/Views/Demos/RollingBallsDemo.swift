@@ -414,11 +414,12 @@ struct RollingBallsDemo: View {
     // MARK: Framing
 
     /// The camera pose that fits the tray between the chrome's top and bottom scrims, seen from
-    /// 32° above the near edge: the level tray plus the balls' bounce room at 92 % of the band,
-    /// and the tray tipped to ±35° on both axes (it hangs 0.5 m under its pivot, so it swings)
-    /// within the full band.
+    /// 40° above the near edge (Android's `PHYSICS_CAMERA_PITCH_DEGREES`; at 32° a tray tipped
+    /// 35° away showed its edge only): the level tray plus the balls' bounce room at 92 % of the
+    /// band, and the tray tipped to ±35° on both axes (it hangs 0.5 m under its pivot, so it
+    /// swings) within the full band.
     static func framingPose(for size: CGSize) -> SceneCameraPose {
-        let elevation: Float = 32 * .pi / 180
+        let elevation: Float = 40 * .pi / 180
         let extent = SIMD3<Float>(1.7, 0.75, 1.7)
         let target = SIMD3<Float>(0, -0.15, 0)
         var points: [(point: SIMD3<Float>, fill: Float)] = []
