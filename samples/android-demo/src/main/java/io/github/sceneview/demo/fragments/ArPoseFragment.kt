@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArPoseFragment : DemoFragment {
         titleRes = R.string.demo_ar_pose_title,
         subtitleRes = R.string.demo_ar_pose_subtitle,
         category = DemoCategory.PLACE_AR,
-        icon = Icons.Filled.MyLocation,
-        order = 13,
+        icon = Icons.Filled.OpenWith,
+        order = 22,
         tags = setOf("ar", "pose", "transform", "gesture", "anchor"),
     )
 

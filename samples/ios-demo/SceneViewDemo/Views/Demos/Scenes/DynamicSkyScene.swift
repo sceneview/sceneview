@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        sun.horizon.fill
-// @order       25
+// @order       3
 // @tags        light,hdr,ibl,skybox,environment,reflection,bloom,post-fx
 import SwiftUI
 

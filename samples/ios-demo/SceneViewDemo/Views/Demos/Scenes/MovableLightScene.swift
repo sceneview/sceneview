@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        sun.dust.fill
-// @order       27
+// @order       17
 import SwiftUI
 
 enum MovableLightScene: DemoScene {

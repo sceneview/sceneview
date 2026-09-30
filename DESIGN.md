@@ -77,10 +77,13 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-background` | #0B0F16 | #0B0F16 | **Full-screen** 3D stage clear colour — the 3D fills the screen with no page around it, so the value is identical in both themes |
 | `stage-background-embedded` | #0B0F16 | #22293E | A 3D stage **embedded in a card** (home hero, card thumbnails). In dark it takes the elevated container value so the card keeps a visible background against the page; #0B0F16 there sits at 1.01:1 on `surface` and the card disappears |
 | `stage-lighting-floor` | #2A3346 | #2A3346 | Floor of the Lighting demo stage (Android `LightingStage.FLOOR_COLOR`, iOS `Stage.lightingFloor`): a blue-grey slate dark enough for a contact shadow, light enough to catch the key light. Fixed in both themes, like the stage |
-| `stage-tray-felt` | #1E6B52 | #1E6B52 | Felt bed of the Rolling Balls table (Android `TrayStage.FELT_COLOR`): a deep billiard green, the one ground the blue rubber, chrome steel and lilac foam balls all read on. Fixed in both themes — the table is an object on the stage |
-| `stage-tray-rim` | #2E1B12 | #2E1B12 | Lacquered walnut rim and body of the Rolling Balls table (Android `TrayStage.RIM_COLOR`). Fixed in both themes |
-| `stage-tray-inlay` | #C9A45C | #C9A45C | Brass inlay along the top of the Rolling Balls rim (Android `TrayStage.INLAY_COLOR`, metallic): the table's edge against the dark stage. Fixed in both themes |
-| `stage-tray-steel` | #D7DCE3 | #D7DCE3 | Chrome steel ball of the Rolling Balls demo (Android `TrayStage.STEEL_COLOR`, metallic): near-neutral so it mirrors the studio. Fixed in both themes |
+| `stage-tray-maple-early` | #E6CDA3 | #E6CDA3 | Pale earlywood of the Rolling Balls playing field (Android `TrayStage.MAPLE_EARLY`, procedural `tray_wood` grain): the lit ground every ball reads on. Fixed in both themes — the board is an object on the stage |
+| `stage-tray-maple-late` | #C39A63 | #C39A63 | Growth rings of the maple field (Android `TrayStage.MAPLE_LATE`). Fixed in both themes |
+| `stage-tray-walnut-early` | #6E452B | #6E452B | Walnut frame of the Rolling Balls board, between its rings (Android `TrayStage.WALNUT_EARLY`). Fixed in both themes |
+| `stage-tray-walnut-late` | #2E1B12 | #2E1B12 | Rings of the walnut frame and body (Android `TrayStage.WALNUT_LATE`): the dark edge that frames the pale field. Fixed in both themes |
+| `stage-tray-steel` | #D7DCE3 | #D7DCE3 | Chrome ball of the Rolling Balls demo (Android `TrayStage.STEEL_COLOR`, metallic, roughness 0.06): near-neutral so it mirrors the studio. Fixed in both themes |
+| `stage-tray-glass` | #BFE6EA | #BFE6EA | Glass marble of the Rolling Balls demo (Android `TrayStage.GLASS_COLOR`, full transmission, IOR 1.5): the aqua tint the light picks up through it, and its chip swatch. Fixed in both themes |
+| `stage-tray-rubber-1`…`-5` | #F2654B · #2E86F0 · #F5B029 · #2FBF8F · #9B5DE5 | same | Rubber balls of the Rolling Balls demo, in turn (Android `TrayStage.RUBBER_COLORS`, clear-coated): coral, azure, amber, mint, orchid — each holds on the maple and on the walnut. Fixed in both themes |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
 

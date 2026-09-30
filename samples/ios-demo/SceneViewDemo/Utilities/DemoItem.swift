@@ -211,10 +211,10 @@ enum DemoCategory: String, CaseIterable, Comparable {
 /// is the on-screen order; `title` is the section header, `chipLabel` the
 /// shorter filter-chip text — both verbatim from Android's `strings.xml`.
 enum DemoSection: String, CaseIterable {
-    case view3d
-    case placeAR
-    case devTools
     case create
+    case devTools
+    case placeAR
+    case view3d
     case understand
 
     var title: String {

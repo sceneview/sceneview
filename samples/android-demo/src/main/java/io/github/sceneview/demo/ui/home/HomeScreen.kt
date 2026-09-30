@@ -716,19 +716,19 @@ const val HERO_DEMO_ID = "model-viewer"
 private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "lighting")
 
 /**
- * The "Featured" group right under the hero: the samples we push, in priority
- * order — the flagship replay, then the newest and most recently reworked demos.
- * [HERO_DEMO_ID] is not repeated here; it is the hero itself. Older samples built
- * on earlier models stay in their sections, which are themselves in priority order
+ * The "Featured" group right under the hero: the samples we push, most striking
+ * first — the galaxy, the room rebuilt from a scan, then AR and the scan viewer.
+ * [HERO_DEMO_ID] is not repeated here; it is the hero itself. The rest stay in their
+ * sections, which are themselves ordered the same way
  * (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
  */
 internal val FEATURED_SECTION_IDS = listOf(
-    "ar-rerun", // Rerun AR replay — the flagship, reworked in 4.46
+    "cosmos", // a glowing galaxy, then a flight through it — the app's most striking scene
+    "ar-rerun", // Rerun AR replay — the scanned room rebuilt in 3D, the flagship
     // Record your room there, then stand it on your table here.
     "ar-splat-room", // "Your room, as a dollhouse" — your own Rerun recording in AR, 4.46
-    "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
-    "animation-physics", // reworked so every control shows its effect, 4.41
     "ar-placement", // tap-to-place, picker shows each model's own thumbnail, 4.39
+    "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
     "ar-record-playback", // records and replays in place (#3914)
 )
 
@@ -967,10 +967,10 @@ private fun SearchRow(
  */
 private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
     null to R.string.category_short_all,
-    DemoCategory.VIEW_3D to R.string.category_short_view_3d,
-    DemoCategory.PLACE_AR to R.string.category_short_place_ar,
-    DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
     DemoCategory.CREATE to R.string.category_short_create,
+    DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
+    DemoCategory.PLACE_AR to R.string.category_short_place_ar,
+    DemoCategory.VIEW_3D to R.string.category_short_view_3d,
     DemoCategory.UNDERSTAND to R.string.category_short_understand,
 )
 

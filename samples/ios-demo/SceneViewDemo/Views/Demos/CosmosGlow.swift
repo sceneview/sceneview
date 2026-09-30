@@ -725,7 +725,8 @@ enum Plasma {
         return v - floor(v)
     }
 
-    private static func noise(_ x: SIMD3<Float>) -> Float {
+    /// Value noise in 0...1 — also the ringed world's bands (`CosmosWorldBake`).
+    static func noise(_ x: SIMD3<Float>) -> Float {
         let i = floor(x)
         var f = x - i
         f = f * f * (3 - 2 * f)
@@ -965,10 +966,10 @@ final class GlowEntity {
 
     enum GlowError: Error { case noMetal }
 
-    fileprivate static let linear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+    private static let linear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
 
     /// A grey in linear extended sRGB. `NSColor(cgColor:)` is failable where `UIColor`'s is not.
-    fileprivate static func linearTint(_ v: CGFloat) -> UIColor {
+    static func linearTint(_ v: CGFloat) -> UIColor {
         let cg = CGColor(colorSpace: linear, components: [v, v, v, 1])!
         #if canImport(UIKit)
         return UIColor(cgColor: cg)

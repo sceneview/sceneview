@@ -229,7 +229,7 @@ struct ARImageTrackingDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        ARUnavailableStage(icon: "qrcode.viewfinder", message: "ARKit image tracking requires a real camera feed.\nRun on iPhone or iPad to track the QR code target.")
+        ARUnavailableStage(icon: "photo.artframe", message: "ARKit image tracking requires a real camera feed.\nRun on iPhone or iPad to track the QR code target.")
     }
 }
 

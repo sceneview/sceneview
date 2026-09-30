@@ -4,9 +4,9 @@
 // @category    ar
 // @section     understand
 // @available   true
-// @icon        figure.walk.motion
+// @icon        figure.arms.open
 // @iosOnly     true
-// @order       41
+// @order       43
 // @tags        ar,body,pose,anchor,skeleton
 import SwiftUI
 

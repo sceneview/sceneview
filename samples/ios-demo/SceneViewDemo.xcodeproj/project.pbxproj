@@ -129,6 +129,9 @@
 		C0500000000000000000C051 /* CosmosDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C061 /* CosmosDemo.swift */; };
 		C0500000000000000000C052 /* CosmosMeshes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C062 /* CosmosMeshes.swift */; };
 		C0500000000000000000C053 /* CosmosGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C063 /* CosmosGlow.swift */; };
+		C0500000000000000000C055 /* CosmosSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C065 /* CosmosSystem.swift */; };
+		C0500000000000000000C056 /* CosmosWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C066 /* CosmosWorld.swift */; };
+		C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C067 /* CosmosSystemTests.swift */; };
 		C0500000000000000000C054 /* CosmosScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C064 /* CosmosScene.swift */; };
 		C10000000000000000000018 /* CameraControlsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000018 /* CameraControlsDemo.swift */; };
 		C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000C1 /* CollisionHitTestDemo.swift */; };
@@ -230,6 +233,7 @@
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
 		F00000000000000000000077 /* LabeledSliderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000076 /* LabeledSliderTests.swift */; };
 		A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000003158 /* LightingLabDemoTests.swift */; };
+		A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004210 /* RollingBallsSimulationTests.swift */; };
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
@@ -334,6 +338,7 @@
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000076 /* LabeledSliderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSliderTests.swift; path = SceneViewDemoTests/LabeledSliderTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000003158 /* LightingLabDemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightingLabDemoTests.swift; path = SceneViewDemoTests/LightingLabDemoTests.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000004210 /* RollingBallsSimulationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RollingBallsSimulationTests.swift; path = SceneViewDemoTests/RollingBallsSimulationTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
@@ -359,6 +364,9 @@
 		C0600000000000000000C061 /* CosmosDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosDemo.swift; sourceTree = "<group>"; };
 		C0600000000000000000C062 /* CosmosMeshes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosMeshes.swift; sourceTree = "<group>"; };
 		C0600000000000000000C063 /* CosmosGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosGlow.swift; sourceTree = "<group>"; };
+		C0600000000000000000C065 /* CosmosSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosSystem.swift; sourceTree = "<group>"; };
+		C0600000000000000000C066 /* CosmosWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosWorld.swift; sourceTree = "<group>"; };
+		C0600000000000000000C067 /* CosmosSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosSystemTests.swift; path = SceneViewDemoTests/CosmosSystemTests.swift; sourceTree = SOURCE_ROOT; };
 		C0600000000000000000C064 /* CosmosScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosScene.swift; path = SceneViewDemo/Views/Demos/Scenes/CosmosScene.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000018 /* CameraControlsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControlsDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000C1 /* CollisionHitTestDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollisionHitTestDemo.swift; sourceTree = "<group>"; };
@@ -624,11 +632,13 @@
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
+				C0600000000000000000C067 /* CosmosSystemTests.swift */,
 				5A1A71000000000000000004 /* SplatScanTests.swift */,
 				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
 				B10000000000000000003584 /* ViewerAssetTests.swift */,
 				C4E5A0000000000000000005 /* ViewerEntranceTests.swift */,
 				A20000000000000000003158 /* LightingLabDemoTests.swift */,
+				A20000000000000000004210 /* RollingBallsSimulationTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
@@ -740,6 +750,8 @@
 				C0600000000000000000C061 /* CosmosDemo.swift */,
 				C0600000000000000000C062 /* CosmosMeshes.swift */,
 				C0600000000000000000C063 /* CosmosGlow.swift */,
+				C0600000000000000000C065 /* CosmosSystem.swift */,
+				C0600000000000000000C066 /* CosmosWorld.swift */,
 				C20000000000000000000018 /* CameraControlsDemo.swift */,
 				C200000000000000000000C1 /* CollisionHitTestDemo.swift */,
 				C200000000000000000000CE /* GestureEditingDemo.swift */,
@@ -1161,6 +1173,8 @@
 				C0500000000000000000C051 /* CosmosDemo.swift in Sources */,
 				C0500000000000000000C052 /* CosmosMeshes.swift in Sources */,
 				C0500000000000000000C053 /* CosmosGlow.swift in Sources */,
+				C0500000000000000000C055 /* CosmosSystem.swift in Sources */,
+				C0500000000000000000C056 /* CosmosWorld.swift in Sources */,
 				C10000000000000000000018 /* CameraControlsDemo.swift in Sources */,
 				C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */,
 				C100000000000000000000CE /* GestureEditingDemo.swift in Sources */,
@@ -1282,6 +1296,7 @@
 				B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */,
 				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
+				C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */,
 				5A1A70000000000000000004 /* SplatScanTests.swift in Sources */,
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,
@@ -1289,6 +1304,7 @@
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
 				A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */,
+				A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */,
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,

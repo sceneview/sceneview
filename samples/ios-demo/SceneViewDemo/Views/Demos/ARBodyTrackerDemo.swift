@@ -83,7 +83,7 @@ struct ARBodyTrackerDemo: View {
     }
 
     private var simulatorPlaceholder: some View {
-        ARUnavailableStage(icon: "figure.walk.motion", message: "Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
+        ARUnavailableStage(icon: "figure.arms.open", message: "Body tracking requires a real camera feed and A12+ chip.\nPoint at a person — skeleton joints are tracked at up to 60 fps.")
     }
 }
 

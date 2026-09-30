@@ -201,7 +201,7 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
-    fun `the featured shelf lists registered demos, once each, Rerun near the top`() {
+    fun `the featured shelf lists registered demos, once each, Cosmos then Rerun on top`() {
         // The shelf under the hero is the home's priority list. A renamed id would
         // drop a card silently (the shelf skips what it cannot resolve), a repeat
         // would collide on its grid key, and the hero repeated here wastes a slot.
@@ -214,9 +214,10 @@ class DemoRegistryIntegrityTest {
             FEATURED_SECTION_IDS.toSet().size,
         )
         assertFalse("The hero demo must not repeat in the shelf", HERO_DEMO_ID in FEATURED_SECTION_IDS)
-        assertTrue(
-            "ar-rerun must be first or second on the Featured shelf",
-            FEATURED_SECTION_IDS.indexOf("ar-rerun") in 0..1,
+        assertEquals(
+            "Cosmos then ar-rerun lead the Featured shelf, as on iOS",
+            listOf("cosmos", "ar-rerun"),
+            FEATURED_SECTION_IDS.take(2),
         )
     }
 

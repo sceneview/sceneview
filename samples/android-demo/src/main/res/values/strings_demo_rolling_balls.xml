@@ -3,21 +3,21 @@
      Formerly the Physics tab of `animation-physics` (#4083). -->
 <resources>
     <string name="demo_rolling_balls_title">Rolling Balls</string>
-    <string name="demo_rolling_balls_subtitle">Drop, tilt and knock over a tray of balls</string>
+    <string name="demo_rolling_balls_subtitle">Tilt a wooden board and send the balls rolling</string>
     <string name="demo_rolling_balls_counts">Bodies: %1$d · impacts: %2$d</string>
     <string name="demo_rolling_balls_reset">Reset</string>
     <string name="demo_rolling_balls_drop">Drop</string>
     <string name="demo_rolling_balls_drop_ten">Drop 10</string>
     <string name="demo_rolling_balls_ball_rubber">Rubber</string>
     <string name="demo_rolling_balls_ball_steel">Steel</string>
-    <string name="demo_rolling_balls_ball_foam">Foam</string>
-    <string name="demo_rolling_balls_explainer">PhysicsBody.step supplies gravity and the floor bounce; this sample adds mass-weighted sphere impulses at a fixed 120 Hz step. Rubber bounces, steel is heavy and barely bounces, foam is light and soaks up the hit. Drag a ball to carry it across the felt; let go mid-swipe to throw it — the held ball shoves the others aside. Reset replays the same opening shot.</string>
-    <string name="demo_rolling_balls_tilt_label">Tilt the tray</string>
+    <string name="demo_rolling_balls_ball_glass">Glass</string>
+    <string name="demo_rolling_balls_explainer">PhysicsBody.step supplies gravity and the floor bounce; this sample adds mass-weighted sphere impulses at a fixed 120 Hz step. Balls roll as solid spheres do: 5/7 of the slope\'s pull, minus a little rolling resistance. Rubber bounces, steel is heavy and barely bounces, glass sits in between. Tap the board to drop a ball there; drag a ball to carry it, let go mid-swipe to throw it — the held ball shoves the others aside. Reset replays the same opening shot.</string>
+    <string name="demo_rolling_balls_tilt_label">Tilt the board</string>
     <string name="demo_rolling_balls_tilt_drag">Tilt</string>
     <string name="demo_rolling_balls_tilt_level">Level</string>
     <string name="demo_rolling_balls_tilt_pitch">Pitch · toward you</string>
     <string name="demo_rolling_balls_tilt_roll">Roll · left and right</string>
-    <string name="demo_rolling_balls_tilt_hint">Drag a ball to throw it · drag the table to tip it</string>
-    <string name="demo_rolling_balls_orbit_hint">Drag a ball to throw it · drag the table to turn around it</string>
-    <string name="demo_rolling_balls_tilt_explainer">The tray hangs off one pivot node and the gravity vector is rotated into its frame, so the floor plane and rails stay flat in the simulation while the balls accelerate down the slope.</string>
+    <string name="demo_rolling_balls_tilt_hint">Drag the board to tip it · tap to drop a ball</string>
+    <string name="demo_rolling_balls_orbit_hint">Drag to turn around the board · tap to drop a ball</string>
+    <string name="demo_rolling_balls_tilt_explainer">The board hangs off one pivot node, up to 35° either way. Each frame it eases towards the drag and the gravity vector is rotated into the tilt that frame shows, so the floor plane and rails stay flat in the simulation while the balls roll down the slope on screen.</string>
 </resources>

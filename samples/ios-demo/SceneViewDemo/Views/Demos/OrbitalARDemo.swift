@@ -294,7 +294,7 @@ struct OrbitalARDemo: View {
     // MARK: - Simulator placeholder
 
     private var simulatorPlaceholder: some View {
-        ARUnavailableStage(icon: "circle.dotted", message: "Run on iPhone or iPad to see 8 models orbit around you.")
+        ARUnavailableStage(icon: "globe.europe.africa.fill", message: "Run on iPhone or iPad to see 8 models orbit around you.")
     }
 
     // MARK: - Status pill

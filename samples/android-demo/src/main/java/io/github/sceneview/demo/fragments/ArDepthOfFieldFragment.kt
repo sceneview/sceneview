@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lens
+import androidx.compose.material.icons.filled.Camera
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArDepthOfFieldFragment : DemoFragment {
         titleRes = R.string.demo_ar_depth_of_field_title,
         subtitleRes = R.string.demo_ar_depth_of_field_subtitle,
         category = DemoCategory.UNDERSTAND,
-        icon = Icons.Filled.Lens,
-        order = 41,
+        icon = Icons.Filled.Camera,
+        order = 44,
         tags = setOf("ar", "depth", "bokeh", "focus", "post-fx"),
     )
 
