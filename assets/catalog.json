@@ -1688,7 +1688,8 @@
       "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
       "license": "CC-BY-4.0",
       "shippedAs": [
-        "Fox.glb"
+        "Fox.glb",
+        "khronos_fox_clips.usdz"
       ],
       "formats": {
         "glb": {

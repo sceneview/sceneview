@@ -128,7 +128,7 @@ struct FeaturedARDemo: Identifiable {
             id: "ar-orbital",
             title: "Orbital AR",
             subtitle: "Models orbit around you in a personal solar system",
-            icon: "circle.dotted",
+            icon: "globe.europe.africa.fill",
             destination: AnyView(OrbitalARDemo())
         ),
         FeaturedARDemo(

@@ -4,9 +4,9 @@
 // @category    ar
 // @section     placeAR
 // @available   true
-// @icon        circle.dotted
+// @icon        globe.europe.africa.fill
 // @iosOnly     true
-// @order       14
+// @order       23
 // @tags        ar,orbit,animation,model,anchor
 import SwiftUI
 

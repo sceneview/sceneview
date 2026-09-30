@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -19,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.android.filament.RenderableManager
@@ -29,9 +29,11 @@ import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.ar.scene.PlaneRenderer
+import io.github.sceneview.ar.scene.PlaneRendererV2
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.material.setParameter
@@ -77,6 +79,15 @@ import kotlin.math.sqrt
  *   texture, `uvScale = 4.0` ([PlaneRenderer]'s private `BASE_UV_SCALE`, #2224), and the
  *   cool-white `color = (0.85, 0.90, 1.0)` tint.
  *
+ * ### V2 dots (#3507)
+ *
+ * **Dots (Plane Renderer V2)** swaps in `plane_renderer_v2.filamat` with the parameters
+ * [PlaneRendererV2] and its per-plane visualizer set on a focused floor: world-anchored dots,
+ * the bright spot where the camera looks, the ring, and the edge and distance fades. Past a
+ * 45° tilt the shader switches to the wall lattice, tinted like a wall. The reveal
+ * animation and the fade on placement are driven per frame by the AR renderer and are not
+ * reproduced here.
+ *
  * ### Controls
  *
  * - **Bright background** — toggles the skybox between a dark scene and a light
@@ -90,6 +101,7 @@ import kotlin.math.sqrt
 fun PlaneGridPreviewDemo(onBack: () -> Unit) {
     var brightBackground by remember { mutableStateOf(false) }
     var surfaceTilt by remember { mutableFloatStateOf(DEFAULT_TILT) }
+    var dotsStyle by remember { mutableStateOf(true) }
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
@@ -112,6 +124,35 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
                 // #2224 cool-white tint — see PlaneRenderer.planeMaterial.
                 setParameter(PlaneRenderer.MATERIAL_COLOR, Float3(0.85f, 0.90f, 1.0f))
             }
+    }
+
+    // Plane Renderer V2 (#3507): the dots material with PlaneRendererV2's defaults, focused.
+    val dotsMaterialInstance = remember(engine) {
+        materialLoader.createMaterial("materials/plane_renderer_v2.filamat")
+            .createInstance()
+            .apply {
+                setTexture(PlaneRendererV2.MATERIAL_TEXTURE, planeTexture)
+                setParameter(PlaneRendererV2.MATERIAL_UV_SCALE, Float2(DOTS_PER_METRE, DOTS_PER_METRE))
+                setParameter(PlaneRendererV2.MATERIAL_COLOR, Float3(1f, 1f, 1f))
+                setParameter(PlaneRendererV2.MATERIAL_GRID_ALPHA, FLOOR_DOT_ALPHA)
+                setParameter(PlaneRendererV2.MATERIAL_SURFACE_ALPHA, SURFACE_ALPHA)
+                setParameter(PlaneRendererV2.MATERIAL_SCAN_PROGRESS, 1f)
+                setParameter(PlaneRendererV2.MATERIAL_SCAN_PLANE_RADIUS, PLANE_RADIUS)
+                setParameter(V2_OPACITY, 1f)
+                setParameter(V2_FOCUS, 1f)
+            }
+    }
+    // Floor dots are white; past the shader's wall threshold they take the wall tint.
+    val isWall = surfaceTilt > WALL_TILT_DEGREES
+    SideEffect {
+        dotsMaterialInstance.setParameter(
+            PlaneRendererV2.MATERIAL_GRID_TINT,
+            if (isWall) WALL_DOT_TINT else FLOOR_DOT_TINT,
+        )
+        dotsMaterialInstance.setParameter(
+            PlaneRendererV2.MATERIAL_GRID_ALPHA,
+            if (isWall) WALL_DOT_ALPHA else FLOOR_DOT_ALPHA,
+        )
     }
 
     val planeGeometry = remember(engine) { buildPlaneGeometry(engine) }
@@ -143,6 +184,23 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .toggleable(
+                        value = dotsStyle,
+                        onValueChange = { dotsStyle = it },
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.plane_grid_preview_dots),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Switch(checked = dotsStyle, onCheckedChange = null)
+            }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
                         value = brightBackground,
                         onValueChange = { brightBackground = it },
                     ),
@@ -155,7 +213,7 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
                 )
                 Switch(checked = brightBackground, onCheckedChange = null)
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             LabeledSlider(
                 label = "Surface tilt",
                 value = surfaceTilt,
@@ -194,7 +252,7 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
                     // Local AABB of the vertex buffer (x/z span the octagon, y is the 0..1 alpha
                     // ramp). Required: Filament rejects an empty AABB on a shadow caster/receiver.
                     boundingBox = Box(0f, 0.5f, 0f, PLANE_RADIUS + 0.1f, 0.6f, PLANE_RADIUS + 0.1f),
-                    materialInstance = planeMaterialInstance,
+                    materialInstance = if (dotsStyle) dotsMaterialInstance else planeMaterialInstance,
                 )
             }
         }
@@ -206,6 +264,20 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
 private const val PLANE_UV_SCALE = 4.0f
 
 private const val PLANE_RADIUS = 1.2f
+
+// PlaneRendererV2 defaults and per-type presets (internal to arsceneview), mirrored for the
+// V2 preview (#3507).
+private const val DOTS_PER_METRE = 10.0f
+private const val SURFACE_ALPHA = 0.015f
+private const val FLOOR_DOT_ALPHA = 0.85f
+private const val WALL_DOT_ALPHA = 0.70f
+private val FLOOR_DOT_TINT = Float3(1.0f, 1.0f, 1.0f)
+private val WALL_DOT_TINT = Float3(0.66f, 0.82f, 1.0f)
+private const val V2_OPACITY = "opacity"
+private const val V2_FOCUS = "focus"
+
+// plane_renderer_v2.mat treats a surface as a wall when |normal.y| < 0.7, i.e. past ~45.6°.
+private const val WALL_TILT_DEGREES = 45.6f
 private const val PLANE_SIDES = 8
 // Edge feather — mirrors PlaneVisualizer's FEATHER_LENGTH / FEATHER_SCALE.
 private const val FEATHER_LENGTH = 0.2f

@@ -452,6 +452,15 @@
       "author": "PixelMannen (model), tomkranis (rigging & animation)"
     },
     {
+      "path": "samples/ios-demo/SceneViewDemo/Models/khronos_fox_clips.usdz",
+      "scope": "ios",
+      "sha256": "8d67fcb7e51ccf78f6293e8f63b9feda62d66c0953934013751b1d7a1c24bf41",
+      "size": 171923,
+      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+      "license": "CC-BY-4.0",
+      "author": "PixelMannen (model), tomkranis (rigging & animation)"
+    },
+    {
       "path": "samples/ios-demo/SceneViewDemo/Models/khronos_lantern.usdz",
       "scope": "ios",
       "sha256": "7891ad9dc6aa241863d8c979562818c07b70b4686aee9ea77cd438566a1ea04d",

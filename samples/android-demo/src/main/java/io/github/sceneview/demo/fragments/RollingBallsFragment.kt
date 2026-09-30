@@ -22,7 +22,7 @@ object RollingBallsFragment : DemoFragment {
         subtitleRes = R.string.demo_rolling_balls_subtitle,
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.Workspaces,
-        order = 4,
+        order = 30,
         sinceVersion = "4.48.0",
         tags = setOf("physics", "rigid-body", "collision", "simulation", "tilt", "balls"),
     )

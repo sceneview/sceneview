@@ -1,371 +1,296 @@
 import SwiftUI
+import Combine
 import RealityKit
 import SceneViewSwift
 
-/// Animation showcase — carousel of 5 animated 3D models with playback controls.
-///
-/// Mirrors the Android `AnimationDemo` (`samples/android-demo/.../AnimationDemo.kt`)
-/// scope — same five subjects (Soldier + four streamed entries from the `animation`
-/// category of ``SampleAssets``), same play/pause + speed + loop chips. The Android
-/// version layers four "cinematic" camera shots (Hero / Reveal / Vertigo / Tracking)
-/// on top — those would require imperative camera control which is not yet exposed
-/// on `SceneView` iOS (#1034 first-person + pan modes shipped but not the full
-/// keyframed camera scripting). The iOS port honours the strict-subset rule from
-/// `feedback_ios_mirror_android.md`: ship the controls that map cleanly to RealityKit
-/// APIs available today (orbit camera + `auto-rotate`), surface the rest as
-/// "Coming soon" inside the controls sheet so the user can see the roadmap.
-///
-/// ### Streaming pipeline (Stage 2, issue #1152)
-///
-/// Slot 0 ships the bundled `cyberpunk_character.usdz` as the historical hero — the
-/// same role the threejs soldier plays on Android. Slots 1–4 stream the four
-/// `animation` slugs from ``SampleAssets`` via ``SketchfabAssetResolver``. Empty
-/// API key (App Store builds) → the resolver returns the registered bundled
-/// fallback so the carousel always renders five subjects, no broken slots.
-///
-/// ### Honest-subset notes
-///
-/// - **Cinematic shots** (Hero / Reveal / Vertigo / Tracking) — not ported. The
-///   Android version drives spherical camera coordinates from Compose
-///   `Animatable` values; iOS would need a separate `RealityViewCameraControls`
-///   surface (#1034 only ships the user-gesture modes). Tracked separately.
-/// - **IBL slider** — not ported. iOS `SceneView` does not expose the IBL
-///   intensity dial yet (RealityKit `EnvironmentResource` is a singleton input).
-///   Auto-rotate is on so the lighting reads the same way on every frame.
+/// A character animation workbench: the same bundled fox and clips as Android.
 struct AnimationDemo: View {
-    /// Mirror of Android's `AnimationModel` private data class — exactly one of
-    /// `bundledAsset` / `streamedSlug` is non-nil, with a scale hint chosen so all
-    /// five carousel subjects read at similar on-screen size.
-    private struct AnimationSubject {
-        let displayName: String
-        let streamedSlug: SketchfabSlug?
-        let bundledAsset: String?
-        let scale: Float
-
-        init(
-            displayName: String,
-            streamedSlug: SketchfabSlug? = nil,
-            bundledAsset: String? = nil,
-            scale: Float
-        ) {
-            precondition(
-                (streamedSlug == nil) != (bundledAsset == nil),
-                "AnimationSubject must define exactly one of streamedSlug or bundledAsset."
-            )
-            self.displayName = displayName
-            self.streamedSlug = streamedSlug
-            self.bundledAsset = bundledAsset
-            self.scale = scale
-        }
-    }
-
-    private static let subjects: [AnimationSubject] = {
-        let slugs = SampleAssets.byCategory["animation"] ?? []
-        var items: [AnimationSubject] = [
-            // Slot 0 — bundled cyberpunk_character.usdz (iOS analogue of the Android
-            // `threejs_soldier.glb`). Keeps the carousel deterministic for store
-            // screenshots with no Sketchfab key.
-            AnimationSubject(
-                displayName: "Soldier",
-                bundledAsset: "cyberpunk_character",
-                scale: 1.0
-            ),
-        ]
-        for slug in slugs {
-            items.append(
-                AnimationSubject(
-                    displayName: slug.displayName,
-                    streamedSlug: slug,
-                    scale: slug.scaleToUnits
-                )
-            )
-        }
-        return items
-    }()
-
-    @State private var selectedIndex: Int = 0
-    @State private var isPlaying: Bool = true
-    @State private var loop: Bool = true
-    @State private var speed: Float = 1.0
-    @State private var loadedNode: ModelNode?
-    @State private var loadError: String?
-    /// What the resolver handed back for a *streamed* subject (#2960).
-    @State private var resolvedURL: URL?
-
-    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
-
-    private var selectedSubject: AnimationSubject {
-        Self.subjects[selectedIndex]
-    }
-
-    /// `nil` for slot 0: "Soldier" is loaded straight from the app bundle and
-    /// labelled as itself, so it has no origin question to answer — showing a
-    /// pill there would invent a substitution that never happened.
-    private var assetSource: AssetSourceState? {
-        guard selectedSubject.streamedSlug != nil else { return nil }
-        return AssetSourceProbe.of(
-            resolvedURL: resolvedURL,
-            hasAPIKey: hasSketchfabKey,
-            loaded: loadedNode != nil
-        )
-    }
+    @State private var player = FoxAnimationPlayer()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        sceneContent
-            .demoChrome(status: {
-                AssetSourceStatus(state: assetSource,
-                                  isPlaceholder: selectedSubject.streamedSlug?.fallbackRole == .placeholder)
-            }) {
-                controlsSheet
-            }
-            .task {
-                _ = await SketchfabAssetResolver.shared.prefetchAll(category: "animation")
-            }
-            .task(id: selectedIndex) {
-                await loadSelectedSubject()
-            }
-            .task(id: PlaybackKey(isPlaying: isPlaying, loop: loop, speed: speed, index: selectedIndex)) {
-                applyPlaybackState()
-            }
-    }
+        GeometryReader { geometry in
+            ZStack {
+                SceneViewTokens.Stage.background
+                SceneView { root in
+                    player.install(in: root)
+                }
+                .contentID(player.model != nil)
+                .environment(Self.studio)
+                .autoCenterContent(false)
+                .cameraControls(.orbit)
+                .cameraPose(Self.framing(geometry.size))
+                .accessibilityIdentifier("animation-stage")
 
-    @ViewBuilder
-    private var sceneContent: some View {
-        ZStack {
-            // The scene stays mounted for the whole demo — it is never wrapped
-            // in `if let loadedNode` and never re-keyed with SwiftUI's `.id(_:)`.
-            // Both of those discard the `RealityView` and build a new one, and a
-            // re-created `RealityView` on iOS 26 Simulator intermittently comes
-            // back rendering nothing at all — no model, and no skybox either —
-            // permanently (#3008). `.contentID(_:)` swaps the model inside the
-            // scene that is already rendering instead.
-            //
-            // The key is an `Optional` on purpose: it must also change when the
-            // model finishes loading, not only when the subject chip changes.
-            // Keyed on the subject alone it would already sit at its final value
-            // while `loadedNode` is still `nil`, and the scene would stay empty.
-            SceneView { root in
-                guard let loadedNode else { return }
-                loadedNode.entity.position = .init(x: 0, y: 0, z: -2)
-                root.addChild(loadedNode.entity)
-                // The model only joins the scene here, when `.contentID` swaps
-                // it in — after `loadSelectedSubject` and the playback task
-                // have already run. RealityKit ignores `playAnimation` on an
-                // entity that is not in a scene, so the character stood in its
-                // rest pose on first open until a control was touched (#3907).
-                // Start playback once it is attached.
-                Task { @MainActor in await startPlaybackWhenAttached(loadedNode) }
-            }
-            .cameraControls(.orbit)
-            .autoRotate(speed: 0.3)
-            // Every subject here is a curated PBR model — the bundled
-            // cyberpunk_character.usdz or a streamed Sketchfab character —
-            // and a PBR surface is defined by what it reflects. With no
-            // IBL there is nothing to reflect and the carousel undersells
-            // its own subjects. Same `.studio` preset as ModelViewerDemo
-            // (#2114).
-            .environment(.studio)
-            .contentID(loadedContentKey)
-            .ignoresSafeArea()
-
-            if loadedNode == nil {
-                VStack(spacing: 12) {
-                    ProgressView()
-                        .tint(.white)
-                    if let loadError {
-                        Text(loadError)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    } else {
-                        Text("Loading \(selectedSubject.displayName)…")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
+                if let error = player.error {
+                    ContentUnavailableView {
+                        Label("Fox could not load", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(error)
+                    } actions: {
+                        Button("Try again") { Task { await player.load() } }
                     }
+                    .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                } else if player.model == nil {
+                    ProgressView("Preparing the fox…")
+                        .tint(SceneViewTokens.Glass.onGlass)
+                        .foregroundStyle(SceneViewTokens.Glass.onGlass)
                 }
             }
         }
-        .background(Color.black)
+        .demoChrome(
+            title: "Animation",
+            dock: [DockItem(icon: "repeat", label: "Loop", selected: player.loop) {
+                player.setLoop(!player.loop)
+            }],
+            accent: DockItem(icon: player.isPlaying ? "pause.fill" : "play.fill",
+                             label: player.isPlaying ? "Pause" : "Play",
+                             enabled: player.ready) { player.togglePlayback() },
+            accessory: { playbackPanel },
+            controls: { details }
+        )
+        .task { await player.load() }
+        .onChange(of: scenePhase) { _, phase in player.setActive(phase == .active) }
+        .onDisappear { player.stop() }
     }
 
-    /// What the scene's content closure currently builds: `nil` while the
-    /// subject is loading, the subject's identifier once its model is in hand.
-    /// Feeds ``SceneView/contentID(_:)`` — see the comment in `sceneContent`.
-    private var loadedContentKey: String? {
-        guard loadedNode != nil else { return nil }
-        return selectedSubject.streamedSlug?.uid ?? selectedSubject.bundledAsset ?? "none"
+    private static var studio: SceneEnvironment {
+        var environment = SceneEnvironment.studio
+        environment.showSkybox = false
+        environment.intensity = 0.8
+        return environment
     }
 
-    @ViewBuilder
-    private var controlsSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Subject carousel — chips matching Android's "Subject" row.
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Subject")
-                    .font(.subheadline.weight(.semibold))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(Self.subjects.enumerated()), id: \.offset) { index, subject in
-                            Button {
-                                selectedIndex = index
-                                #if os(iOS)
-                                SceneViewHaptic.shared.selection()
-                                #endif
-                            } label: {
-                                Text(subject.displayName)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(index == selectedIndex ? Color.black : Color.primary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        Capsule()
-                                            .fill(index == selectedIndex ? AnyShapeStyle(.white) : AnyShapeStyle(.gray.opacity(0.18)))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+    /// Fit the fox, leaving space below it for the transport. The floor is deliberately
+    /// excluded from framing; otherwise its bounds shrink the character to a speck.
+    private static func framing(_ size: CGSize) -> SceneCameraPose {
+        let aspect = Float(max(size.width, 1) / max(size.height, 1))
+        return SceneCameraPose(azimuth: .pi / 3, elevation: 0.23,
+                               distance: max(2.5, 1.65 / aspect),
+                               target: [0, -0.08, 0])
+    }
+
+    private var playbackPanel: some View {
+        VStack(spacing: SceneViewTokens.Space.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                    Text("Fox")
+                        .font(SceneViewTokens.TypeScale.chromeLabel)
+                    Text("Drag to orbit · Pinch to zoom")
+                        .font(SceneViewTokens.TypeScale.chromeCaption)
+                        .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
                 }
+                Spacer()
+                Text(player.error != nil ? "Unavailable" : !player.ready ? "Loading"
+                     : player.isPlaying ? "Playing" : "Paused")
+                    .font(SceneViewTokens.TypeScale.chromeCaption)
+                    .accessibilityIdentifier("animation-status")
             }
+            DemoOptionStrip(Array(FoxAnimationPlayer.ranges.indices), selection: Binding(
+                get: { player.selectedClip }, set: { player.select($0) }
+            )) { FoxAnimationPlayer.ranges[$0].name }
+            .disabled(!player.ready)
 
-            // Playback row — pause / play icon + speed + loop chips.
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Playback")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Button {
-                        isPlaying.toggle()
-                        #if os(iOS)
-                        SceneViewHaptic.shared.light()
-                        #endif
-                    } label: {
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title3)
-                            .padding(10)
-                            .background(.gray.opacity(0.15), in: Circle())
-                    }
-                    .accessibilityLabel(isPlaying ? "Pause" : "Play")
-                    .buttonStyle(.plain)
-                }
-
-                LabeledSlider(
-                    label: "Speed",
-                    value: $speed,
-                    range: 0.25...3.0,
-                    valueText: String(format: "%.1fx", speed)
-                )
-
-                HStack(spacing: 8) {
-                    Button {
-                        loop = true
-                        #if os(iOS)
-                        SceneViewHaptic.shared.selection()
-                        #endif
-                    } label: {
-                        Text("Loop")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(loop ? AnyShapeStyle(.blue) : AnyShapeStyle(.gray.opacity(0.15)), in: Capsule())
-                            .foregroundStyle(loop ? .white : .primary)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        loop = false
-                        #if os(iOS)
-                        SceneViewHaptic.shared.selection()
-                        #endif
-                    } label: {
-                        Text("Once")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(!loop ? AnyShapeStyle(.blue) : AnyShapeStyle(.gray.opacity(0.15)), in: Capsule())
-                            .foregroundStyle(!loop ? .white : .primary)
-                    }
-                    .buttonStyle(.plain)
-                }
+            HStack(spacing: SceneViewTokens.Space.md) {
+                Image(systemName: "speedometer")
+                    .accessibilityHidden(true)
+                Slider(value: Binding(get: { player.speed }, set: { player.setSpeed($0) }),
+                       in: 0.25...2, step: 0.25)
+                    .accessibilityLabel("Playback speed")
+                    .accessibilityIdentifier("animation-speed")
+                Text(player.speed.formatted(.number.precision(.fractionLength(0...2))
+                        .locale(Locale(identifier: "en_US"))) + "×")
+                    .font(SceneViewTokens.TypeScale.chromeLabel.monospacedDigit())
+                    .frame(minWidth: SceneViewTokens.Layout.touchTarget)
             }
+            .disabled(!player.ready)
+        }
+        .foregroundStyle(SceneViewTokens.Glass.onGlass)
+        .padding(SceneViewTokens.Space.md)
+        .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg), id: "transport")
+    }
 
-            // Honest "Coming soon" surface — keep the iOS sheet honest about the
-            // Hero / Reveal / Vertigo / Tracking shots that haven't been ported.
-            Text("Cinematic camera shots (Hero / Reveal / Vertigo / Tracking) and the IBL intensity slider are Android-only in this release — coming to iOS in a future version.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            if let slug = selectedSubject.streamedSlug {
-                // Credits the model actually on screen — streamed author or the
-                // bundled fallback's own author and licence (#2966).
-                AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
-            }
+    private var details: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
+            Text("A little character, three ways to move.")
+                .font(.headline)
+            Text("Survey looks around, Walk takes an easy stride, and Run breaks into a gallop. Tap a clip to play it; transitions blend smoothly between poses.")
+            Text("Loop repeats the selected clip. Turn it off to play once. Pause holds the pose while you explore it from any angle.")
+            Text("Fox by PixelMannen · rigging and animation by tomkranis. Khronos glTF Sample Assets · CC BY 4.0.")
+                .font(SceneViewTokens.TypeScale.captionRegular)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
         }
     }
+}
 
-    // MARK: - Load + playback state
-
-    /// Key bundling everything that should cause the playback effect to re-run.
-    /// Hashable so `.task(id:)` can use it.
-    private struct PlaybackKey: Hashable {
-        let isPlaying: Bool
-        let loop: Bool
-        let speed: Float
-        let index: Int
+/// Owns entities and playback across SwiftUI updates. Playback starts from the scene's
+/// update event, which proves attachment, rather than racing a timed attachment poll.
+@MainActor @Observable
+private final class FoxAnimationPlayer {
+    struct ClipRange {
+        let name: String
+        let start: Double
+        let end: Double
     }
 
-    @MainActor
-    private func loadSelectedSubject() async {
-        let subject = selectedSubject
-        loadedNode = nil
-        loadError = nil
-        resolvedURL = nil
+    // USDZ concatenates the glTF clips at 24 fps, starting at frame 1.
+    static let ranges = [
+        ClipRange(name: "Survey", start: 0, end: 82.0 / 24),
+        ClipRange(name: "Walk", start: 83.0 / 24, end: 100.0 / 24),
+        ClipRange(name: "Run", start: 101.0 / 24, end: 128.0 / 24),
+    ]
+    var model: ModelNode?
+    var error: String?
+    var selectedClip = 0
+    var isPlaying = true
+    var speed = 1.0
+    var loop = true
+    var ready = false
+    private var resources: [AnimationResource] = []
+    private var controller: AnimationPlaybackController?
+    /// `controller.time` when the current clip started, so Once measures the clip's own
+    /// elapsed time whether RealityKit counts a trimmed view from 0 or from its trim start.
+    private var clipStart: TimeInterval = 0
+    private var updates: (any Cancellable)?
+    private var attachment: Task<Void, Never>?
+    private var active = true
+
+    func load() async {
+        guard model == nil else { return }
+        error = nil
         do {
-            let node: ModelNode
-            if let slug = subject.streamedSlug {
-                let url = try await SketchfabAssetResolver.shared.resolve(slug)
-                resolvedURL = url
-                node = try await ModelNode.load(contentsOf: url)
-            } else if let bundled = subject.bundledAsset {
-                node = try await ModelNode.load(bundled)
-            } else {
-                return
+            let fox = try await ModelNode.load("khronos_fox_clips")
+            fox.scaleToUnits(1.6).centerOrigin(normalized: [0, -1, 0])
+            guard let source = fox.entity.availableAnimations.first else {
+                throw AnimationError.missingClips
             }
-            _ = node.scaleToUnits(subject.scale)
-            _ = node.centerOrigin()
-            // Playback starts from the scene's content closure, once the
-            // entity is attached (see `startPlaybackWhenAttached`).
-            loadedNode = node
-        } catch {
-            loadError = error.localizedDescription
-        }
-    }
-
-    /// Starts playback on `node` as soon as it is part of a RealityKit scene.
-    /// The content closure attaches it to a root that may itself join the
-    /// scene a frame later, so this waits a few frames rather than assuming.
-    @MainActor
-    private func startPlaybackWhenAttached(_ node: ModelNode) async {
-        for _ in 0..<30 where node.entity.scene == nil {
-            try? await Task.sleep(for: .milliseconds(16))
+            let clips = try Self.ranges.map { range in
+                try AnimationResource.generate(with: AnimationView(
+                    source: source.definition, name: range.name, fillMode: .forwards,
+                    trimStart: range.start, trimEnd: range.end
+                ))
+            }
             guard !Task.isCancelled else { return }
+            resources = clips
+            model = fox
+        } catch {
+            self.error = error.localizedDescription
         }
-        // A newer subject may have replaced this one while we waited.
-        guard node.entity === loadedNode?.entity else { return }
-        applyPlaybackState()
     }
 
-    @MainActor
-    private func applyPlaybackState() {
-        // Not in a scene yet: `startPlaybackWhenAttached` will call back.
-        guard let loadedNode, loadedNode.entity.scene != nil else { return }
-        // Stop everything first so the new (loop, speed) combo wins. The
-        // `playAllAnimations` API drops every previously-tracked controller
-        // implicitly via `entity.playAnimation`, but `stopAllAnimations` is
-        // the safer reset.
-        loadedNode.stopAllAnimations()
-        guard isPlaying && loadedNode.animationCount > 0 else { return }
-        loadedNode.playAllAnimations(loop: loop, speed: speed)
+    func install(in root: Entity) {
+        guard let model else { return }
+        root.addChild(model.entity)
+
+        var material = PhysicallyBasedMaterial()
+        material.baseColor = .init(tint: SceneViewTokens.Stage.trayFloor(dark: true))
+        material.roughness = 0.8
+        let floor = ModelEntity(mesh: .generateCylinder(height: 0.06, radius: 1.15),
+                                materials: [material])
+        floor.position.y = -0.035
+        root.addChild(floor)
+        let key = LightNode.directional(color: .warm, intensity: 2800, castsShadow: true)
+            .position([2, 4, 3]).lookAt([0, 0, 0])
+        root.addChild(key.entity)
+        let rim = LightNode.spot(color: .white, intensity: 1600,
+                                 innerAngle: .pi / 5, outerAngle: .pi / 3,
+                                 attenuationRadius: 8)
+            .position([-2, 2, -2]).lookAt([0, 0.3, 0])
+        root.addChild(rim.entity)
+
+        updates?.cancel()
+        // The builder may run before the root enters a scene. Entity subscriptions can
+        // only be installed once attached; the cancellable task owns that short wait.
+        attachment?.cancel()
+        attachment = Task { @MainActor [weak self, weak root] in
+            while let root, root.scene == nil {
+                guard !Task.isCancelled, self?.model != nil else { return }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            guard !Task.isCancelled, let self, let scene = root?.scene else { return }
+            self.updates = scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updatePlayback() }
+            }
+        }
+    }
+
+    private func updatePlayback() {
+        if !ready {
+            ready = true
+            play()
+        } else if !loop, isPlaying, reachedEnd {
+            controller?.pause()
+            isPlaying = false
+        }
+    }
+
+    /// A forwards-filled AnimationView keeps its controller alive after the last pose;
+    /// `isComplete` alone therefore never changes the transport to Play on this asset.
+    private var reachedEnd: Bool {
+        guard let controller else { return false }
+        let range = Self.ranges[selectedClip]
+        return controller.isComplete
+            || (!loop && controller.time - clipStart >= range.end - range.start - 0.001)
+    }
+
+    func select(_ index: Int) {
+        guard ready, resources.indices.contains(index) else { return }
+        selectedClip = index
+        isPlaying = true
+        play()
+    }
+
+    private func play() {
+        guard ready, let model, resources.indices.contains(selectedClip) else { return }
+        let resource = resources[selectedClip]
+        // Keep the outgoing controller alive: RealityKit blends from it on the same layer.
+        controller = model.entity.playAnimation(loop ? resource.repeat() : resource,
+                                                transitionDuration: 0.35,
+                                                startsPaused: !isPlaying || !active)
+        controller?.speed = Float(speed)
+        clipStart = controller?.time ?? 0
+    }
+
+    func setLoop(_ value: Bool) {
+        loop = value
+        play()
+    }
+
+    func setSpeed(_ value: Double) {
+        speed = value
+        controller?.speed = Float(value)
+    }
+
+    func togglePlayback() {
+        guard ready else { return }
+        isPlaying.toggle()
+        if isPlaying {
+            if reachedEnd { play() } else { controller?.resume() }
+        } else {
+            controller?.pause()
+        }
+    }
+
+    func setActive(_ value: Bool) {
+        active = value
+        if value && isPlaying { controller?.resume() } else { controller?.pause() }
+    }
+
+    func stop() {
+        attachment?.cancel()
+        attachment = nil
+        updates?.cancel()
+        updates = nil
+        controller?.stop()
+        controller = nil
+        ready = false
+        // Drop the model too: when the view comes back, `.task` reloads it and the new
+        // content ID reinstalls the stage and its update subscription.
+        model = nil
+    }
+
+    private enum AnimationError: LocalizedError {
+        case missingClips
+        var errorDescription: String? { "The bundled fox has no animation clips." }
     }
 }

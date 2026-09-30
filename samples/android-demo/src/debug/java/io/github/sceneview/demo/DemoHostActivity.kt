@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import io.github.sceneview.demo.demos.PlaneGridPreviewDemo
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 
@@ -57,6 +58,9 @@ class DemoHostActivity : ComponentActivity() {
     companion object {
         const val EXTRA_DEMO_ID = "demo_id"
 
+        /** The non-catalog `plane-grid-preview` shader QA tool (#2224). */
+        const val PLANE_GRID_PREVIEW_ID = "plane-grid-preview"
+
         /**
          * Resolves a raw demo [id] to the live, routable id this host will render, or `null`
          * if no demo (and no retired-id alias) matches.
@@ -101,6 +105,12 @@ class DemoHostActivity : ComponentActivity() {
     @Composable
     private fun DemoById(id: String) {
         val back: () -> Unit = { finish() }
+        // Debug-only shader QA tool, deliberately outside the catalog (#2224, #3507): renders
+        // the AR plane materials on a static surface, so they can be captured on an emulator.
+        if (id == PLANE_GRID_PREVIEW_ID) {
+            PlaneGridPreviewDemo(back)
+            return
+        }
         // Resolve retired ids to their live consolidated demo, then delegate to the
         // collator-generated router that covers every ALL_DEMOS id by construction. This
         // eliminates the hand-written-when() drift class (#2319 / #2320): there is no longer a

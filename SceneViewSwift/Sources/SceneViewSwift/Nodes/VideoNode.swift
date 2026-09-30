@@ -6,7 +6,7 @@ import AVFoundation
 /// Displays a video on a 3D plane in the scene.
 ///
 /// Mirrors SceneView Android's `VideoNode` — renders video content on a flat
-/// quad using AVFoundation and RealityKit's `VideoPlayerComponent`.
+/// quad using AVFoundation and RealityKit's `VideoMaterial`.
 ///
 /// ```swift
 /// @State private var videoNode: VideoNode?
@@ -226,14 +226,24 @@ public struct VideoNode: @unchecked Sendable {
         height: Float = 0.9,
         loop: Bool = false
     ) -> VideoNode {
-        let videoEntity = Entity()
+        // A unit quad textured with a `VideoMaterial`, the way Android's
+        // `VideoNode` samples its `MediaPlayer` into a plane's material.
+        //
+        // Not `VideoPlayerComponent`: RealityKit only accepts one whose player
+        // item already exposes its video track when the entity joins the scene.
+        // An `AVPlayer(url:)` never has that yet, so on iOS 26 RealityKit logs
+        // "skipping newly added VPC … b/c it has no video asset", never looks at
+        // it again, and the quad is simply absent while the player runs.
+        // `VideoMaterial` binds to the player itself and shows frames as soon
+        // as they decode.
+        let videoEntity = ModelEntity(
+            mesh: .generatePlane(width: 1, height: 1),
+            materials: [VideoMaterial(avPlayer: player)]
+        )
         videoEntity.name = "VideoNode"
 
-        // Add VideoPlayerComponent for RealityKit rendering.
-        let videoComponent = VideoPlayerComponent(avPlayer: player)
-        videoEntity.components.set(videoComponent)
-
-        // Set scale to approximate the desired display size
+        // The quad is 1 × 1 m: the scale is the display size, which keeps
+        // `size(width:height:)` and `scale` meaning what they always did.
         videoEntity.scale = SIMD3<Float>(width, height, 1.0)
 
         // Set up looping if requested, storing the observer token to avoid leaks

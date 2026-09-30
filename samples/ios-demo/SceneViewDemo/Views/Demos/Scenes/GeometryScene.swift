@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        cube.fill
-// @order       29
+// @order       18
 // @tags        geometry,cube,sphere,cylinder,plane,primitive
 import SwiftUI
 

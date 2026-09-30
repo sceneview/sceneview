@@ -4,10 +4,10 @@
 // @category    ar
 // @section     understand
 // @available   true
-// @icon        circle.grid.cross.fill
+// @icon        basketball.fill
 // @iosOnly     true
 // @status      knownIssue
-// @order       44
+// @order       45
 // @tags        ar,depth,physics,collision,rigid-body
 import SwiftUI
 

@@ -13,10 +13,13 @@ internal class CosmosFlight(private val rig: CosmosRig) {
     var lastTime = 0f
         private set
 
-    /** Whether the user took the camera: the tour then leaves it alone. */
-    var userSteered = false
+    /** The focal length the last pose was drawn with, in mm. */
+    var lastFocal = CosmosVoyageCamera.DEFAULT_FOCAL
+        private set
 
     private val from = FloatArray(CosmosSystem.POSE_FLOATS)
+    private var fromFocal = CosmosVoyageCamera.DEFAULT_FOCAL
+    private var eased = 1f
     private var hasFrom = false
     private var drawn = false
     private var progress = 1f
@@ -27,6 +30,8 @@ internal class CosmosFlight(private val rig: CosmosRig) {
         // Nothing drawn yet: there is no pose to leave from, so the first frame lands.
         hasFrom = drawn
         if (drawn) lastPose.copyInto(from)
+        fromFocal = lastFocal
+        eased = 0f
         progress = 0f
         lastNanos = 0L
     }
@@ -35,14 +40,21 @@ internal class CosmosFlight(private val rig: CosmosRig) {
         hasFrom = false
         progress = 1f
         lastNanos = 0L
-        userSteered = false
     }
 
-    fun record(pose: FloatArray, time: Float) {
+    fun record(pose: FloatArray, time: Float, focal: Float = CosmosVoyageCamera.DEFAULT_FOCAL) {
         pose.copyInto(lastPose)
         lastTime = time
+        lastFocal = focal
         drawn = true
     }
+
+    /**
+     * The focal length for this frame, eased from the take-off lens toward [target] in step with
+     * the pose: call after [advance]. A voyage shot hands back a long or wide lens, and the free
+     * camera's is the default.
+     */
+    fun focal(target: Float): Float = if (hasFrom) fromFocal + (target - fromFocal) * eased else target
 
     /**
      * The pose for this frame: eased from the take-off pose toward [target], or [target] once
@@ -62,7 +74,8 @@ internal class CosmosFlight(private val rig: CosmosRig) {
             hasFrom = false
             return target
         }
-        return rig.blend(from, target, CosmosSystem.easeExpressive(progress))
+        eased = CosmosSystem.easeExpressive(progress)
+        return rig.blend(from, target, eased)
     }
 
     private companion object {

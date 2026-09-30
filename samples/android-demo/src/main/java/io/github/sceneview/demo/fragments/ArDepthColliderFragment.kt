@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ScatterPlot
+import androidx.compose.material.icons.filled.SportsBasketball
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ArDepthColliderFragment : DemoFragment {
         titleRes = R.string.demo_ar_depth_collider_title,
         subtitleRes = R.string.demo_ar_depth_collider_subtitle,
         category = DemoCategory.UNDERSTAND,
-        icon = Icons.Filled.ScatterPlot,
-        order = 40,
+        icon = Icons.Filled.SportsBasketball,
+        order = 42,
         tags = setOf("ar", "depth", "physics", "collision", "rigid-body"),
         status = io.github.sceneview.demo.DemoStatus.KnownIssue,
     )

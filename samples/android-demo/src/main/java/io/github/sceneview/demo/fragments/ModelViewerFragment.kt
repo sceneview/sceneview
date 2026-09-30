@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.filled._3dRotation
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object ModelViewerFragment : DemoFragment {
         titleRes = R.string.demo_model_viewer,
         subtitleRes = R.string.demo_model_viewer_subtitle,
         category = DemoCategory.VIEW_3D,
-        icon = Icons.Filled.ViewInAr,
-        order = 1,
+        icon = Icons.Filled._3dRotation,
+        order = 29,
         tags = setOf("gltf", "glb", "hdr", "ibl", "orbit", "ar", "viewer"),
         // #3543 frames an opened model at any scale; #3482 opens .3mf.
         updatedIn = "4.35.0",

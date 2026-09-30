@@ -6,7 +6,7 @@
 // @available   true
 // @icon        rectangle.3.group
 // @iosOnly     true
-// @order       12
+// @order       28
 // @tags        ar,plane,planenode,lifecycle,callback
 import SwiftUI
 

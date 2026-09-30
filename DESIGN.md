@@ -77,10 +77,13 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-background` | #0B0F16 | #0B0F16 | **Full-screen** 3D stage clear colour — the 3D fills the screen with no page around it, so the value is identical in both themes |
 | `stage-background-embedded` | #0B0F16 | #22293E | A 3D stage **embedded in a card** (home hero, card thumbnails). In dark it takes the elevated container value so the card keeps a visible background against the page; #0B0F16 there sits at 1.01:1 on `surface` and the card disappears |
 | `stage-lighting-floor` | #2A3346 | #2A3346 | Floor of the Lighting demo stage (Android `LightingStage.FLOOR_COLOR`, iOS `Stage.lightingFloor`): a blue-grey slate dark enough for a contact shadow, light enough to catch the key light. Fixed in both themes, like the stage |
-| `stage-tray-felt` | #1E6B52 | #1E6B52 | Felt bed of the Rolling Balls table (Android `TrayStage.FELT_COLOR`): a deep billiard green, the one ground the blue rubber, chrome steel and lilac foam balls all read on. Fixed in both themes — the table is an object on the stage |
-| `stage-tray-rim` | #2E1B12 | #2E1B12 | Lacquered walnut rim and body of the Rolling Balls table (Android `TrayStage.RIM_COLOR`). Fixed in both themes |
-| `stage-tray-inlay` | #C9A45C | #C9A45C | Brass inlay along the top of the Rolling Balls rim (Android `TrayStage.INLAY_COLOR`, metallic): the table's edge against the dark stage. Fixed in both themes |
-| `stage-tray-steel` | #D7DCE3 | #D7DCE3 | Chrome steel ball of the Rolling Balls demo (Android `TrayStage.STEEL_COLOR`, metallic): near-neutral so it mirrors the studio. Fixed in both themes |
+| `stage-tray-maple-early` | #E6CDA3 | #E6CDA3 | Pale earlywood of the Rolling Balls playing field (Android `TrayStage.MAPLE_EARLY`, procedural `tray_wood` grain): the lit ground every ball reads on. Fixed in both themes — the board is an object on the stage |
+| `stage-tray-maple-late` | #C39A63 | #C39A63 | Growth rings of the maple field (Android `TrayStage.MAPLE_LATE`). Fixed in both themes |
+| `stage-tray-walnut-early` | #6E452B | #6E452B | Walnut frame of the Rolling Balls board, between its rings (Android `TrayStage.WALNUT_EARLY`). Fixed in both themes |
+| `stage-tray-walnut-late` | #2E1B12 | #2E1B12 | Rings of the walnut frame and body (Android `TrayStage.WALNUT_LATE`): the dark edge that frames the pale field. Fixed in both themes |
+| `stage-tray-steel` | #D7DCE3 | #D7DCE3 | Chrome ball of the Rolling Balls demo (Android `TrayStage.STEEL_COLOR`, metallic, roughness 0.06): near-neutral so it mirrors the studio. Fixed in both themes |
+| `stage-tray-glass` | #BFE6EA | #BFE6EA | Glass marble of the Rolling Balls demo (Android `TrayStage.GLASS_COLOR`, full transmission, IOR 1.5): the aqua tint the light picks up through it, and its chip swatch. Fixed in both themes |
+| `stage-tray-rubber-1`…`-5` | #F2654B · #2E86F0 · #F5B029 · #2FBF8F · #9B5DE5 | same | Rubber balls of the Rolling Balls demo, in turn (Android `TrayStage.RUBBER_COLORS`, clear-coated): coral, azure, amber, mint, orchid — each holds on the maple and on the walnut. Fixed in both themes |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
 
@@ -122,41 +125,57 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-subtitle` | rgba(255,255,255,0.80) | rgba(255,255,255,0.80) | Hero subtitle, max width 260dp |
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
-| `header-glass` | `surface` at 72 % over the list under it blurred `header-glass-blur` (24dp) | `surface` at 78 %, same blur | Sticky home header once the list scrolls under it (API 31+). The blurred copy is drawn over a `surface` ground, so no sharp title shows through: the rows read as colour moving behind frosted glass, never as an overlap. `on-surface` holds 8.7:1 (light) / 8.2:1 (dark) against the worst ground, `on-surface-variant` 4.9:1 / 4.2:1 (icons, 3:1 bar). The stage is a `TextureView`, so its frame is in the recorded copy too |
+| `header-glass` | `surface` at 72 % over the list under it blurred `header-glass-blur` (24dp) | `surface` at 78 %, same blur | Sticky home header once the list scrolls under it (API 31+). The blurred copy is drawn over a `surface` ground, so no sharp title shows through: the rows read as colour moving behind frosted glass, never as an overlap. `on-surface` holds 8.7:1 (light) / 8.2:1 (dark) against the worst ground, `on-surface-variant` 4.9:1 / 4.2:1 (icons, 3:1 bar). The stage is a `TextureView`, so its frame is in the recorded copy too. iOS: the same `surface` veil over native Liquid Glass (`glassEffect(.regular)`) on iOS 26+, over `.ultraThinMaterial` below — bare glass let the row titles read through |
 | `header-overlay` | `surface` at 100 % | `surface` at 100 % | The same header below API 31 (no `RenderEffect`). Tried at the `glass-sheet` opacity: without a backdrop blur the card titles scrolling under the wordmark stay legible and read as an overlap bug, so without blur it stays opaque |
 | `card-glass` | `surface-container` (#ffffff) at 80 % over the card's own picture blurred 28dp — at 72 % a dark picture turned it a muddy grey | `surface-container` at 90 % (the `glass-sheet` value), same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
 | `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
-**Under the 3D header, the Home is a standard app list.** The live header is the one
-showpiece; everything below it is the grouped two-line list of any well-made Material 3
-app (Play Store, Google Photos settings), which is what the Home sets out to prove — the
-3D header drops into an ordinary app, light and fast. One vertical scroll, no carousel:
-the "Featured" group, the "Browse online models" row, the category chips, then one group
-per category.
+**Under the 3D header, the Home is a list of pictures.** The live header is the one
+showpiece; below it every demo is a card led by its own capture, and the capture is the
+card: no frame, no inset, no radius of its own. One vertical scroll, no carousel: the
+"Featured" banners, the "Browse online models" row, the category chips, then one group per
+category.
 
-A **row** is a `home-row-media` picture of the demo's own capture, 5:4 like the capture so
-the generated scene reads rather than a 56dp crop of it (`radius-sm`; the demo's glyph on
-`surface-container-highest` while no capture exists), the title in `type-body`
-semibold, the subtitle in `type-caption` regular (`on-surface-variant`), and the "New" /
-"Updated" / status chips on the title line so the subtitle keeps the row's full width. Rows
-sit on `home-row-bg` and a group is one grey block: rows `home-row-gap` apart, the block's
-four outer corners at `home-row-radius-outer`, every shared corner at
-`home-row-radius-inner`. No shadow, no outline, in either theme — the tone carries it. The
-press is the platform ripple, no scale. Titles and subtitles are never truncated; the row
-grows.
+A card's ground is **ambient**: the colour of its own picture, taken down to a fixed
+luminance (`home-row-ambient`), so in dark every card is a deep version of its scene and
+in light a pale one, and the picture dissolves into it with no line between image and text.
+Two shapes, one recipe:
+
+- A **Featured banner** is the picture full width at `home-banner-aspect`, dissolving
+  downward from `home-banner-dissolve`, the caption pulled up `home-banner-caption-overlap`
+  into the fade.
+- A **catalogue row** is the picture over the leading `home-row-media-fraction` of the card,
+  full height, dissolving sideways from `home-row-dissolve`; the text starts at
+  `home-row-text-start`, where the picture is down to a tenth of its opacity.
+
+The title is `type-card` (17, semibold, `on-surface`), the subtitle `type-caption` regular
+(`on-surface-variant`), the "New" / "Updated" / status chips on the title line. Each card is
+its own `home-row-radius` tile, `home-row-gap` from the next. No shadow, no outline, in
+either theme — the ambient tone carries it. A demo without a capture shows its glyph at
+`home-row-glyph` in the category accent, over the accent's own ambient tint washed with
+the accent at 18 %. The press is the platform ripple, no scale. Titles and subtitles are
+never truncated; the card grows.
 
 | Token | Value | Usage |
 |---|---|---|
-| `home-row-bg` | `surface-container-high` (#f1f3f5 / #2C3546) | A list row's tile — the same grey as a chip |
-| `home-row-media` | 120dp wide, 5:4 (96dp high), `radius-sm` | Leading picture of a demo row — about 3.7x the area of the thumb. Compared against a Featured carousel (the other 40 demos kept 56dp thumbs) and two-across tiles (titles wrapped to three lines, rows of uneven height) |
-| `home-row-thumb` | 56dp, `radius-sm` | Leading glyph square of a utility row ("Browse online models"); the glyph draws at 28dp |
-| `home-row-min-height` | 72dp | The M3 two-line list item with a 56dp leading image |
-| `home-row-padding` | 16dp across (`space-md`, also thumb-to-text), 8dp down (`space-sm`) | Row insets |
-| `home-row-gap` | 2dp | Seam of page between two rows of one group |
-| `home-row-radius-outer` | 16dp (`radius-md`) | A group's outer corners, and a lone row's |
-| `home-row-radius-inner` | 4dp | Corners a row shares with a neighbour |
+| `home-row-ambient` | Chroma-weighted mean of the picture (weight 0.1 + chroma, 1/16 downsample), saturation x1.2 capped at 0.5, then lightness solved to relative luminance 0.035 (dark) / 0.84 (light) | A card's ground. On it: `on-surface` 11.2:1 / 14.5:1, `on-surface-variant` 5.3:1 / 8.1:1, whatever the picture (unit-tested on both platforms) |
+| `home-row-height` | 116dp minimum | A catalogue row; it grows with the text |
+| `home-row-media-fraction` | 0.5 | Width of the picture in a catalogue row, full height, edge to edge |
+| `home-row-dissolve` | 0.42 | Where the picture starts dissolving towards the text, as a fraction of its width; cosine ease to 0 at its edge |
+| `home-row-text-start` | 0.44 of the card | Leading edge of a row's text column; 16dp to the trailing edge, 14dp above and below, 4dp title to subtitle |
+| `home-banner-aspect` | 2 : 1 | A Featured banner's picture, full card width |
+| `home-banner-dissolve` | 0.55 | Where a banner's picture starts dissolving towards its caption, as a fraction of its height |
+| `home-banner-caption-overlap` | 28dp | How far the caption is pulled up into the banner's fade; 16dp across |
+| `home-row-radius` | 20dp | Every card's corners; the picture follows them, it has none of its own |
+| `home-row-gap` | 10dp | Between two cards |
+| `home-row-glyph` | 40dp | Glyph of a demo without a capture, and of "Browse online models" |
 | `home-row-min-width` | 340dp | From two of these across the content width, the list lays out in columns (a tablet) |
 | `home-group-gap` | 16dp (`space-md`) | Between two groups with no header between them ("Featured" and "Browse online") |
+
+Tried and dropped (2026-09-30): the 2dp-seam grey block with a 120x96 inset picture — a
+cropped window in a grey slab, the picture framed rather than shown; every card a banner —
+the catalogue became a two-screen scroll per category; every card a sideways row — the
+Featured demos lost the width their scenes are composed for.
 
 Catalogue **section headers** (the full-span label above each group of rows) use
 `on-surface` at `titleMedium` / `weight-semibold` — no colour of their own, because a
@@ -188,10 +207,11 @@ is at 90 % and not lower because light pictures do reach dark mode: at 85 % the 
 card's light-grey stage took its caption to 4.4:1.
 
 iOS draws the same list in SwiftUI (`HomeListRow.swift`, `ShowcaseTab.swift`, `home-row-*`
-tokens in `Theme.swift`): the same groups in the same order, the same corners
-(`HomeRowCorners`, unit-tested with Android's cases), one column on an iPhone and 340 pt
-columns on an iPad. The press is `on-surface` at 10 % over the row, a list cell's
-highlight, no scale. Row text follows Dynamic Type up to `accessibility2`. The Explore tab's
+tokens in `Theme.swift`): the same groups in the same order, the same cards from the same
+captures (the twelve shared imagesets, `tools/demo-previews/README.md`), the same ambient
+arithmetic (`HomeAmbient`, unit-tested with Android's cases), one column on an iPhone and
+340 pt columns on an iPad. The press is `on-surface` at 10 % over the card, a list cell's
+highlight, no scale. Card text follows Dynamic Type up to `accessibility2`. The Explore tab's
 "Try a demo" row keeps the picture card (`DemoMediaCard.swift`).
 
 ### Demo App About (Android)

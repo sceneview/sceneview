@@ -143,17 +143,21 @@ object DemoCategory {
 /**
  * Ordered list of category keys — controls the home filter-chip and section order.
  *
- * Ordered by priority, not by subsystem: the sections whose lead demos are the
- * flagship and most recently reworked samples come first, so a scrolling thumb
- * meets them before the older catalogue. Developer Tools sits third because it
- * leads with `ar-rerun` and `ar-record-playback`; Understand the World, mostly
- * demos from before 4.35 plus the coming-soon ones, closes the grid.
+ * Ordered by how striking each section's lead demo is, not by subsystem: a
+ * scrolling thumb meets the most spectacular sample of the app first. Create &
+ * Record opens with `cosmos` (the galaxy and the flight through it), Developer
+ * Tools with `ar-rerun` (a scanned room rebuilt in 3D), Place in AR with the
+ * dollhouse of your own room, View 3D with the Gaussian-splat scan.
+ * Understand the World, mostly demos from before 4.35 plus the coming-soon
+ * ones, closes the grid. Inside a section the same rule holds: basic and
+ * purely technical demos sit at its end. iOS mirrors this order in
+ * `DemoSection` and the `@order` of each Scene file.
  */
 val DEMO_CATEGORIES = listOf(
-    DemoCategory.VIEW_3D,
-    DemoCategory.PLACE_AR,
-    DemoCategory.DEV_TOOLS,
     DemoCategory.CREATE,
+    DemoCategory.DEV_TOOLS,
+    DemoCategory.PLACE_AR,
+    DemoCategory.VIEW_3D,
     DemoCategory.UNDERSTAND,
 )
 

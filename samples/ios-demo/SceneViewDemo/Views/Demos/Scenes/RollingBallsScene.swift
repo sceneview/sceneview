@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        circle.hexagongrid.fill
-// @order       5
+// @order       35
 // @tags        physics,rigid-body,collision,simulation,tilt,balls
 // @sinceVersion 4.48.0
 import SwiftUI

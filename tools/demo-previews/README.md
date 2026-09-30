@@ -26,9 +26,16 @@ does not load (#3438).
 | `torus_knot.webp` | The Custom Geometry ribbon knot | Offline render of `TorusKnot.vertices()` at its default parameters (168 segments, 2.5 turns, 0.3 ripple) under the demo's own camera and tilt. |
 | `lines_paths_route.webp` | The Lines & Paths route | Offline render of `LinesPathsScene` — the eight control points, the Smooth route, the marker, the trail and the dashed ground track — under the demo's own camera. |
 | `raccoon_stump_scan.webp` | The raccoon-stump Gaussian splat `splat-preview` loads | The `splat-preview` card below at q90: a crop of the real CI render. It fed the generated `ar-splat-room` card until that demo became the dollhouse of #4075. |
+| `toy_car.webp` | The Toy Car AR Placement opens on (`BUNDLED_PLACEMENT_MODELS.first()`, 0.3 m) | A copy of `model_thumb_khronos_toy_car.webp`, a Filament render of the exact GLB (see "Model thumbnails"). It feeds the `ar-placement` card, which until 2026-09-30 was a generated fox, a model the demo has not placed since #3324. |
 
 The last two are rendered from the demos' own generator code rather than captured, so the
 card shows the exact curve the app computes rather than an invented knot or loop.
+
+`ar-placement` is an `"ar": true` item: the Toy Car on its draped cloth stand, on a real
+living-room floor at its true size, with no placement ring or plane grid, since the demo
+places the model automatically with neither (`TapToPlaceExperience`). One generation per theme, the dark one
+an evening room. `backdrops.py` still crops QA backdrop 3 from the old fox card, read from
+git history (`b1dc1dc59`), so the backdrop does not change.
 
 `damaged_helmet.webp` is the reference for the helmet cards that are still generated:
 `model-viewer`, `two-d-in-three-d` and `fog` (iOS-only since #3464, see below). The original stylised `hero.webp` render — a helmet the GLB does not look like — fed
@@ -47,12 +54,12 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | Card | Golden | Crop (centre x, centre y, width, in golden pixels) |
 |---|---|---|
 | `materials` | `materials_default.png` | 540, 1102, 1080 — the nine-sphere grid |
-| `debug-overlay` | `debugoverlay_default.png` | 540, 800, 1400, black-padded — the stats HUD over its sphere |
+| `debug-overlay` | — | Superseded 2026-09-30: the card is now the iOS pair, see "Cards shared with Android" below. Was 540, 800, 1400, black-padded — the stats HUD over its sphere |
 | `camera-gestures` | `cameragestures_default.png` | 575, 1065, 1000 — the whole stage |
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | `secondarycamera_default.png` | 540, 870, 1600, black-padded — the picture-in-picture inset |
-| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083). The dark card is its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); its stage is the same grey |
+| `animation-physics` | `animationphysics_default.png` | 500, 1414, 760 — the fox on its stage; replaced the generated soldier-and-balls card when the balls left for `rolling-balls` (#4083). The dark card is its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); since #4223 its stage is the dark stage (`SceneViewTokens.Stage.background`), so the dark card is the fox on that dark stage |
 | `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
@@ -77,9 +84,17 @@ AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band 
 
 `rolling-balls` became its own demo in #4083 and has no render golden: its card is an
 emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
-tray, its rails and the first balls come to rest. Crop: x 40–1040, y 740–1540 (5:4), resized
+wooden board (maple field, walnut frame, since the redesign) and the rubber, glass and steel
+balls come to rest. Crop: x 40–1040, y 580–1380 (5:4, the whole frame of the board), resized
 to 800×640, WebP q85, one capture per theme: its stage is the themed stage sky, so the dark
 card is the dark stage.
+
+`cosmos` had no card and fell back to its icon, although it leads the Featured shelf. Its
+card is an emulator capture (Pixel_7a, 1080×2400) of `--es demo cosmos` once the spiral
+galaxy has rendered: the full-width 1080×864 band centred on the galaxy's bright pixels
+(window y 779–1643), resized to 800×640, WebP q80. Space is black
+in both themes, so light and dark are the same pixels. The iOS `preview_cosmos` imageset
+carries the same crop as JPEG q90.
 
 ## iOS imagesets
 
@@ -117,7 +132,8 @@ cp /tmp/ios/jpg/preview_fog_dark.jpg            $X/preview_fog.imageset/preview_
 cp /tmp/ios/jpg/preview_hero_model_viewer.jpg   $X/preview_hero_model_viewer.imageset/
 ```
 
-The other iOS imagesets (`preview_lighting`, `preview_camera_controls`, the AR cards, …) were
+The iOS cards of demos Android also lists are copies of the Android cards (see "Cards shared
+with Android" below). The other iOS imagesets were
 not produced by this pipeline and are not in the table; regenerate one only once its prompt is
 recorded here, so the recorded prompt is always the one that produced the committed image
 (#3474).
@@ -147,27 +163,36 @@ universal JPEG and no dark variant. Crop = centre x, centre y, width, in capture
 | `preview_ar_lighting` | Not an AR capture: the Simulator has no ARKit. The same `phoenix_bird.usdz` the demo lights, opened in the app's own file viewer | 759, 1353, 880 |
 | `preview_video` | Not a video capture: RealityKit has no video texture allocator on the Simulator, so the quad stays empty. Captured with the clip's own frame (2 s into `sample.mp4`) bound as an unlit `ImageNode` on the demo's 2.4 × 1.35 m quad at the video node's position, a local patch that was not committed | 660, 1470, 1000 |
 
-`preview_rolling_balls` (#4083) is the same kind of capture on an iPhone 17 Pro simulator
-(iOS 26, 1206×2622), launched with `-demo rolling-balls`: the opening shot at rest, the
-same seven balls as the Android card. Crop: 603, 1377, 1121. One capture per appearance
-(`preview_rolling_balls_dark.jpg` for dark): the stage is the themed stage sky, as on Android.
+### Cards shared with Android (home rows, 2026-09-30)
 
-`preview_splat_preview` is the same kind of capture of `splat-preview`, launched with
-`-demo splat-preview`: the opening shot of the whole scan. It is not the Android card on
-purpose — iOS draws the capture as solid dots, not gaussian splats, so the card shows what the
-iOS screen shows. Crop: 603, 1042, 1206. One capture per appearance
-(`preview_splat_preview_dark.jpg` for dark): the stage is the themed stage sky.
+A demo both apps list shows **the same picture on both**: same source, same 5:4 crop, same
+light and dark pair. The home rows now dissolve the picture into a tint taken from it
+(`home-row-ambient`, `DESIGN.md`), so a different picture on each platform is a different
+row colour, not only a different thumbnail. Twelve iOS imagesets therefore carry the Android
+card, re-encoded from its two WebPs as JPEG q90 (`preview_<id>.jpg` light,
+`preview_<id>_dark.jpg` dark):
 
-The four cards of the home's Featured shelf (#3907) replaced generated look-alikes with the
-same kind of capture, on an iPhone 17 Pro simulator instead (iOS 26, 1206×2622), so their
-crops are in that capture's pixels. Same 5:4 crop, 800×640 JPEG q85, one universal JPEG.
-
-| Imageset | Capture | Crop |
+| Imageset | Android card | Replaced |
 |---|---|---|
-| `preview_ar_rerun` | `ar-rerun`, "Watch a sample session", 7 s into the bundled replay | 603, 1125, 1206 |
-| `preview_animation` | `animation`, bundled `cyberpunk_character` mid-clip | 603, 1420, 1206 |
-| `preview_ar_placement` | Not an AR capture: the Simulator has no ARKit. The Toy Car the demo places by default, opened in `model-viewer` | 603, 1330, 1206 |
-| `preview_ar_record_playback` | Not an AR capture, same reason. The Damaged Helmet the recorder places, opened in `model-viewer` | 603, 1300, 1206 |
+| `preview_animation` | `animation-physics` | a simulator capture of the bundled `cyberpunk_character` (Featured, #3907), light only |
+| `preview_ar_placement` | `ar-placement` (the generated Toy Car pair, 2026-09-30) | the Toy Car opened in `model-viewer` (no ARKit on the Simulator), light only |
+| `preview_ar_record_playback` | `ar-record-playback` | the Damaged Helmet opened in `model-viewer`, light only |
+| `preview_ar_rerun` | `ar-rerun` | a capture of the bundled replay 7 s in, light only |
+| `preview_camera_controls` | `camera-gestures` | a helmet-only render |
+| `preview_custom_mesh` | `custom-geometry` | a sphere-and-axes render |
+| `preview_lighting` | `lighting` | a spot-lit helmet render |
+| `preview_lines_paths` | `lines-paths` | a wireframe arch render |
+| `preview_materials` | `materials` | a helmet render (the `gen.py` row above is superseded) |
+| `preview_model_viewer` | `model-viewer` | the same helmet, a different crop |
+| `preview_rolling_balls` | `rolling-balls` | its own simulator capture (#4083) |
+| `preview_splat_preview` | `splat-preview` | its own simulator capture of the dot rendering (#4073) |
+
+The other way round, Android's `debug-overlay` card is the iOS pair (the `gen.py`
+`debug-overlay` prompt of #3308): the golden crop in the table above was a black frame with
+one small sphere, which the dissolving row turned into a black smear. WebP q85.
+
+The replaced files are in git history; bring one back only with a capture of the home next
+to it.
 
 ## Home hero banner
 

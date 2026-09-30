@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        textformat
-// @order       33
+// @order       15
 // @tags        2d,text,image,video,billboard,quad,viewnode
 import SwiftUI
 

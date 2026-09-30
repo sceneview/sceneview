@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        tree.fill
-// @order       2
+// @order       33
 import SwiftUI
 
 enum MultiModelScene: DemoScene {

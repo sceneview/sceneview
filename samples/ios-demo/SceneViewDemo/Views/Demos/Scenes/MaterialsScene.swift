@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        paintpalette.fill
-// @order       21
+// @order       4
 // @tags        pbr,material,metallic,roughness,clearcoat,sheen,emissive
 // @updatedIn   4.35.0
 import SwiftUI

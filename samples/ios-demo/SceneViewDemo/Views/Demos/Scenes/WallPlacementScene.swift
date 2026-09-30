@@ -7,7 +7,7 @@
 // @icon        tv.fill
 // @iosOnly     true
 // @status      inReview
-// @order       11
+// @order       27
 // @tags        ar,wall,vertical-plane,placement,tv
 import SwiftUI
 

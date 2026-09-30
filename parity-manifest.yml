@@ -290,8 +290,10 @@ demos:
       Hero/Reveal/Vertigo/Tracking/Free
     parity: diverges
     evidence: >-
-      No Fox; 'Soldier' = cyberpunk_character (AnimationDemo.swift:64-72); on
-      screen 'camera shots…Android-only' (:288); D7 spinner unverified
+      iOS (#4236) is the Fox only, offline, on a lit studio stage: Survey/Walk/Run
+      clips with a 0.35 s crossfade, play/pause, speed 0.25-2x, Loop/Once
+      (khronos_fox_clips.usdz, trimmed AnimationViews). Android-only: the Soldier
+      and streamed subjects, scrub, camera shots, brightness and two-clip blend
   - id: rolling-balls
     androidStatus: Working
     iosStatus: working
@@ -668,7 +670,10 @@ demos:
     evidence: >-
       Orange cube + grid, Orbit/Pan/Look pickers, hint rows
       (CameraControlsDemo.swift:33-47,90-114); Ferrari on opaque plane in a
-      2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only
+      2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only. Since
+      #4218 the Ferrari is bottom-aligned under a pivot on the floor
+      (Android's centerOrigin = Position(y = -1f)), so it stands on its
+      shadow at any pinch; the 3-subject stage is still Android-only
   - id: cosmos
     androidStatus: Working
     iosStatus: working
@@ -682,14 +687,21 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosMeshes.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosGlow.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosSystem.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosWorld.swift
     contract: >-
       Four procedural, real-time scenes in additive HDR light plus bloom: a
       four-arm spiral galaxy of 60 000 camera-facing star sprites with
       alpha-blended dust lanes, built in layers so it shows within a second, a plasma
       star (noise-shaded sphere, Fresnel limb, magnetic loops), a looping
       burst of ~460 charged-particle tracks, and a vortex flow field of
-      streamlines with travelling pulses. Dock picks a scene; an optional
-      tour cycles them; Bloom slider; no video, no texture.
+      streamlines with travelling pulses. The Star scene opens on a whole
+      system: a ringed world orbits the star, lit by it (terminator,
+      atmosphere rim, ring shadow on the planet, planet shadow on the rings,
+      fading orbit trail); tapping the planet or the star flies the camera
+      there on ease-expressive, round the star (#4192). Dock picks a scene;
+      an optional tour cycles them and flies to the planet once; Bloom
+      slider; no video, no texture.
     parity: diverges
     evidence: >-
       Same meshes, seeds, cameras, captions and dock. No custom shader on iOS
@@ -700,7 +712,12 @@ demos:
       phase groups with one material each, and the star surface churns by
       cross-fading 512x256 plasma frames baked in the background every 1.5 s
       of scene time (held in Low Power Mode or at a serious thermal state).
-      The Flow landscape quarter-turn is ported and rebuilt when the viewport
+      The ringed world (#4192) shares CosmosSystem's constants, poses, eased
+      flight and tap hit test with Android (unit-tested); its planet and
+      ring shaders are evaluated on the CPU into a 1024x512 planet map and a
+      256x1024 ring map, re-baked off the main thread at up to 8 Hz while
+      the orbit or the camera moves; the star's halo turns and its limb and
+      corona resize as the camera flies. The Flow landscape quarter-turn is ported and rebuilt when the viewport
       crosses square; captured in a macOS window, where only the brightest
       light shows (the dim light is lost on macOS in Galaxy and Flow; cause
       not yet traced). Remaining gaps: the flow nuclei do
@@ -1360,23 +1377,28 @@ shell:
       Header (search + What's new) that turns to frosted glass once the
       list scrolls under it (surface 72 % / 78 % over a 24dp blur, API 31+),
       3-page featured pager (Models live, Materials, Lighting, + What's-new
-      page), then a standard grouped list on surface-container-high:
-      "Featured" section (FEATURED_SECTION_IDS, Rerun first), Browse-online
-      row, 5 chips, section headers, one two-line row per demo led by a
-      120x96dp 5:4 picture of its capture (New/Updated chip on the title
-      line), 2dp seams, outer corners 16dp / inner 4dp, one column on a
-      phone
+      page), then a list of picture cards: "Featured" as 2:1 banners
+      dissolving downward (FEATURED_SECTION_IDS, Cosmos then Rerun first), Browse-online
+      row, 5 chips, section headers, one card per demo with its capture
+      over the leading half dissolving sideways into an ambient ground
+      taken from the picture (HomeAmbient, luminance 0.035 dark / 0.84
+      light), 20dp corners, 10dp apart, New/Updated chip on the title line,
+      one column on a phone
     parity: diverges
     evidence: >-
       Featured order, 5 section chips and section headers match since #3907
       (ShowcaseTab.swift, HomeCatalogue in HomeFilter.swift); Featured skips
       ar-splat-room (#4075), which has no iOS screen. The grouped list
-      matches since ios-home-standard-rows (HomeListRow.swift: 72pt rows,
-      56pt thumbs, surface-container-high, 2pt seams, 16/4 corners, 340pt
-      iPad columns, Browse-online row under Featured). Still diverges:
-      single HomeHero instead of the pager, no What's new, 56pt thumbs
-      instead of the 120x96 media picture, no glass header, and six broken
-      demos are kept off the home (HomeCatalogue.hiddenFromHome)
+      matches since home-rows-fused-ambient (HomeListRow.swift: fused rows
+      and Featured banners, HomeAmbient with Android's arithmetic and test
+      cases, Theme.swift row tokens equal to SceneViewTokens.Home, 340pt
+      iPad columns, Browse-online row under Featured), from the same
+      captures (12 imagesets shared with Android, tools/demo-previews/README.md).
+      The header turns to glass once scrolled (ShowcaseTab.swift
+      HeaderGround: iOS 26 Liquid Glass, ultraThinMaterial before) since
+      #4208. Still diverges: single HomeHero instead of the pager, no What's
+      new, and six broken demos are kept off the home
+      (HomeCatalogue.hiddenFromHome)
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt
@@ -1424,7 +1446,14 @@ shell:
       iOS: 5 flat cards, no groups, no Send feedback, no Release notes
       AboutTab.swift:95-134; other tagline :78; Android RootScreen.kt:381-440;
       no Support card on iOS by design: App Review rejected 4.48.0 under
-      guideline 3.1.1 (donation links outside In-App Purchase), #4197
+      guideline 3.1.1 (donation links outside In-App Purchase), #4197.
+      The identity mark is a 3D stage since #4215 (AboutTab.swift
+      AboutMarkStage: cube, two orbit rings, satellites, icon placeholder
+      crossfade once the lighting has landed; key light 6 000 lux over the
+      studio IBL at exponent 0.5, tuned against Android's capture). iOS is
+      ahead here: Android main still shows the flat icon, and its 3D stage
+      (MarkScene constants, from wow/demo-shell-android) comes with the
+      Android PR
   - surface: demo-chrome
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/DemoScaffold.kt

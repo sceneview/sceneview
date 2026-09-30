@@ -416,9 +416,10 @@ final class DemoRegistryGuardTests: XCTestCase {
         }
     }
 
-    /// The Rerun replay leads the shelf, as on Android (`FEATURED_SECTION_IDS`).
-    func testRerunLeadsTheFeaturedShelf() {
-        XCTAssertEqual(HomeCatalogue.featuredIds.first, "ar-rerun")
+    /// Cosmos leads the shelf and the Rerun replay follows it, as on Android
+    /// (`FEATURED_SECTION_IDS`).
+    func testCosmosThenRerunLeadTheFeaturedShelf() {
+        XCTAssertEqual(Array(HomeCatalogue.featuredIds.prefix(2)), ["cosmos", "ar-rerun"])
     }
 
     /// A hidden id must still resolve: hiding takes a demo off the home, never

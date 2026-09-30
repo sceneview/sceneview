@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 46,
+  "total": 47,
   "sections": [
     {
       "title": "3D models",
@@ -147,6 +147,16 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
           "size": 139880,
+          "note": ""
+        },
+        {
+          "file": "Models/khronos_fox_clips.usdz",
+          "name": "Fox",
+          "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+          "size": 171923,
           "note": ""
         },
         {

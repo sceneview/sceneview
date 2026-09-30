@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -15,8 +15,8 @@ object DoublePendulumFragment : DemoFragment {
         titleRes = R.string.demo_double_pendulum_title,
         subtitleRes = R.string.demo_double_pendulum_subtitle,
         category = DemoCategory.VIEW_3D,
-        icon = Icons.Filled.Vibration,
-        order = 7,
+        icon = Icons.Filled.Gesture,
+        order = 31,
         tags = setOf("physics", "pendulum", "chaos", "simulation", "kmp"),
     )
 

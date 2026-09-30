@@ -74,13 +74,13 @@ enum HomeCatalogue {
     /// an iOS screen. Android features `ar-splat-room` too; it does not exist on
     /// iOS yet (#4075), so the group skips it rather than showing a placeholder.
     /// `splat-preview` opens the same capture drawn as a point cloud (no splat
-    /// renderer on iOS yet, #2646). `animation` is the iOS half of Android's
-    /// `animation-physics`.
+    /// renderer on iOS yet, #2646). Most striking first: the galaxy, then the
+    /// scanned room rebuilt in 3D.
     static let featuredIds: [String] = [
+        "cosmos",
         "ar-rerun",
-        "splat-preview",
-        "animation",
         "ar-placement",
+        "splat-preview",
         "ar-record-playback",
     ]
 
