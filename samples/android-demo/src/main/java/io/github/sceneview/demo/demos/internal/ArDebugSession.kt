@@ -144,6 +144,8 @@ data class ArDebugStats(
     val planes: Int,
     val anchors: Int,
     val tracking: Boolean,
+    /** The room found so far, as a floor plan names it (`3.4 × 4.1 m · 14 m²`); `null` before one. */
+    val room: String? = null,
 ) {
     companion object {
         val Empty = ArDebugStats(0f, 0f, 0f, 0, 0, 0, tracking = false)

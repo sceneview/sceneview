@@ -129,6 +129,19 @@ internal fun RerunReplayHud(session: ArDebugSession, modifier: Modifier = Modifi
             HudFigure("Points", points, chrome.debug.mapPoint, session, DebugGroup.Points, figure)
             HudFigure("Anchors", anchors, chrome.debug.anchor, session, DebugGroup.Anchors, figure)
         }
+        // The room the planes outline, measured as a floor plan: drawn on the floor with them.
+        stats.room?.takeIf { session.isVisible(DebugGroup.Planes) }?.let { room ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(Space.xs + Space.xs / 2).background(chrome.debug.floorOutline, CircleShape))
+                Spacer(Modifier.width(Space.xs))
+                Text(
+                    text = "Room $room",
+                    style = HudCaption.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1,
+                    modifier = Modifier.semantics { contentDescription = "Room $room" },
+                )
+            }
+        }
     }
 }
 

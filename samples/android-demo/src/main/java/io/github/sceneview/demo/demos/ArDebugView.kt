@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -87,7 +88,10 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
+import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.PlaneLayering
+import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
 import io.github.sceneview.demo.theme.DebugPalette
@@ -631,8 +635,14 @@ internal fun ArDebugSceneView(
 
     val layers = remember(engine, materials) { ArDebugLayers(engine, materials) }
     // The replay's textured layers: created before the SceneView, released after its nodes.
-    val replayLayers = remember(engine, materialLoader, replay) {
-        replay?.let { ReplayLayers(engine, materialLoader, it) }
+    val replayLayers = remember(engine, materialLoader, replay, palette, chrome.ground) {
+        replay?.let {
+            ReplayLayers(
+                engine, materialLoader, it,
+                measureInk = palette.floorOutline.toArgb(),
+                measureHalo = chrome.ground.toArgb(),
+            )
+        }
     }
     DisposableEffect(replayLayers) { onDispose { replayLayers?.destroy() } }
     var anchors by remember { mutableStateOf(emptyList<DebugAnchor>()) }
@@ -719,7 +729,9 @@ internal fun ArDebugSceneView(
                         points = session.isVisible(DebugGroup.Points),
                         anchors = session.isVisible(DebugGroup.Anchors),
                         trail = session.isVisible(DebugGroup.Trail),
+                        measure = !compact,
                     ),
+                    eye = CameraRig.eye(orbit.pose).let { Vec3(it.x, it.y, it.z) },
                 )
 
                 if (frame.anchors != anchors) anchors = frame.anchors
@@ -727,7 +739,10 @@ internal fun ArDebugSceneView(
                     clock.statsAtNanos = frameTimeNanos
                     // A replay with a dense cloud counts its surfels, as the sessions list does.
                     val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
-                    session.stats = ArDebugStats.of(frame, trace.duration, points)
+                    session.stats = ArDebugStats.of(frame, trace.duration, points).let { stats ->
+                        // A replay names the room it found, as a floor plan would.
+                        if (replay == null) stats else stats.copy(room = RoomMeasure.of(frame.planes, floorY)?.summary)
+                    }
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.
