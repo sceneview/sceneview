@@ -6,7 +6,7 @@
 // @available   true
 // @icon        sun.max.fill
 // @order       25
-// @tags        light,hdr,ibl,skybox,environment,reflection,rotation
+// @tags        light,hdr,ibl,skybox,environment,reflection
 // @updatedIn   4.35.0
 import SwiftUI
 

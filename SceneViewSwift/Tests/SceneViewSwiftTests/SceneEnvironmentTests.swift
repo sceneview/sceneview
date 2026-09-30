@@ -9,35 +9,6 @@ import CoreGraphics
 @MainActor
 final class SceneEnvironmentTests: XCTestCase {
 
-    // MARK: - Rotation
-
-    func testRotationDefaultsToZeroOnEveryPreset() {
-        for preset in SceneEnvironment.allPresets {
-            XCTAssertEqual(preset.rotation, 0, "\(preset.name) must light as authored")
-        }
-    }
-
-    func testZeroRotationIsIdentityOrientation() {
-        let q = SceneEnvironment.iblOrientation(forRotationDegrees: 0)
-        XCTAssertEqual(q.angle, 0, accuracy: 1e-6)
-    }
-
-    func testRotationTurnsAboutWorldUp() {
-        let q = SceneEnvironment.iblOrientation(forRotationDegrees: 90)
-        // +Z turned 90° counter-clockwise about +Y lands on +X.
-        let turned = q.act(SIMD3<Float>(0, 0, 1))
-        XCTAssertEqual(turned.x, 1, accuracy: 1e-5)
-        XCTAssertEqual(turned.y, 0, accuracy: 1e-5)
-        XCTAssertEqual(turned.z, 0, accuracy: 1e-5)
-    }
-
-    func testNonFiniteRotationFallsBackToIdentity() {
-        for bad: Float in [.nan, .infinity, -.infinity] {
-            let q = SceneEnvironment.iblOrientation(forRotationDegrees: bad)
-            XCTAssertEqual(q.angle, 0, accuracy: 1e-6)
-        }
-    }
-
     // MARK: - Presets
 
     func testAllPresetsCount() {

@@ -17,9 +17,6 @@ import SceneViewSwift
 ///
 /// - **Environment intensity** — ``SceneEnvironment/intensity``, applied live to the
 ///   `ImageBasedLightComponent` exponent.
-/// - **Environment rotation** — ``SceneEnvironment/rotation``: turns the IBL entity, so the
-///   lighting and the reflections turn. RealityKit's skybox has no orientation — the same limit
-///   Android documents for Filament — so, like Android, the slider is off while the sky is drawn.
 /// - **Draw the sky** — ``SceneEnvironment/showSkybox``.
 /// - **Local reflections** / **Reflection area** — a ``ReflectionProbeNode`` sphere at the stage
 ///   centre carrying the *sunset* HDR. While the camera is inside its radius, every stage mesh
@@ -29,8 +26,10 @@ import SceneViewSwift
 ///
 /// ## What iOS cannot do, and does not pretend to
 ///
-/// Android's Camera section (exposure) and Frame section (contact shading, fog, edge smoothing,
-/// dithering) are Filament `View` options. RealityKit's `RealityView` on iOS exposes none of them
+/// Android's environment rotation, Camera section (exposure) and Frame section (contact
+/// shading, fog, edge smoothing, dithering) are Filament options. Turning the entity that
+/// carries the `ImageBasedLightComponent` was measured on the iOS 26.3 simulator: 0° and 174°
+/// render pixel-identical, so RealityKit gives no way to rotate the environment light either. RealityKit's `RealityView` on iOS exposes none of them
 /// — no exposure, no SSAO toggle, no fog, no MSAA / FXAA / dithering switch — so those controls
 /// are absent here rather than simulated, and the sheet says so. The manifest row carries the
 /// same reason.
@@ -41,7 +40,6 @@ struct LightingLabDemo: View {
     /// Linear multiplier on the bench HDR. Android's 500–60 000 lux around a 10 000 lux default is
     /// the same ×0.05–×6 span; iOS IBL has no absolute unit, so the slider shows the ratio.
     @State private var iblIntensity: Double = 1
-    @State private var iblRotation: Double = 0
     @State private var showSky = false
     @State private var probeEnabled = false
     @State private var probeZone: Double = Self.probeZoneDefault
@@ -104,8 +102,6 @@ struct LightingLabDemo: View {
         var bench = SceneEnvironment.warm
         bench.intensity = SceneEnvironment.warm.intensity * Float(iblIntensity)
         bench.showSkybox = showSky
-        // Turning the IBL under a painted sky slides the reflections off the picture.
-        bench.rotation = showSky ? 0 : Float(iblRotation)
         return bench
     }
 
@@ -113,8 +109,8 @@ struct LightingLabDemo: View {
         probeEnabled && probeEnvironment != nil && cameraInsideZone
     }
 
-    /// Rebuild key for `.contentID(_:)`: only what the content closure reads. Intensity,
-    /// rotation and the sky are applied live by `SceneView` and the probe handle.
+    /// Rebuild key for `.contentID(_:)`: only what the content closure reads. Intensity
+    /// and the sky are applied live by `SceneView` and the probe handle.
     private var contentKey: String {
         "\(heroNode == nil ? "bare" : "hero")-\(probeActive ? "probe" : "studio")"
     }
@@ -199,7 +195,6 @@ struct LightingLabDemo: View {
 
     private func reset() {
         iblIntensity = 1
-        iblRotation = 0
         showSky = false
         probeEnabled = false
         probeZone = Self.probeZoneDefault
@@ -213,7 +208,7 @@ struct LightingLabDemo: View {
     @ViewBuilder
     private var controls: some View {
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
-            Text("Compare how the environment light, its direction and local reflections change the same model. Toggle one effect to see the difference.")
+            Text("Compare how the environment light and local reflections change the same model. Toggle one effect to see the difference.")
                 .font(SceneViewTokens.TypeScale.body)
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -225,15 +220,6 @@ struct LightingLabDemo: View {
                 .fixedSize(horizontal: false, vertical: true)
             LabeledSlider(label: "Environment intensity", value: $iblIntensity,
                           range: Self.intensityRange, decimals: 2, unit: "×")
-            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
-                LabeledSlider(label: "Environment rotation", value: $iblRotation,
-                              range: 0...360, step: 1, decimals: 0, unit: "°")
-                    .disabled(showSky)
-                Text("RealityKit turns the lighting, not the painted sky — hide the sky to rotate.")
-                    .font(SceneViewTokens.TypeScale.caption)
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
             Toggle("Draw the sky", isOn: $showSky)
             Toggle("Local reflections", isOn: $probeEnabled)
             VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
@@ -248,7 +234,7 @@ struct LightingLabDemo: View {
                     .accessibilityIdentifier("lighting-lab-probe-readout")
             }
 
-            Text("Exposure, contact shading, fog and edge smoothing are Android-only: the iOS RealityKit view has no setting for them.")
+            Text("Environment rotation, exposure, contact shading, fog and edge smoothing are Android-only: the iOS RealityKit view has no setting for them.")
                 .font(SceneViewTokens.TypeScale.caption)
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                 .fixedSize(horizontal: false, vertical: true)

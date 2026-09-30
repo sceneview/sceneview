@@ -812,10 +812,11 @@ demos:
     parity: diverges
     evidence: >-
       LightingLabDemo.swift: same stage, 48/38 spot key, studio_warm bench,
-      live IBL intensity + SceneEnvironment.rotation (off under the sky),
-      sunset ReflectionProbeNode applied while the camera is inside its
-      zone. No exposure, SSAO, fog, MSAA/FXAA or dithering controls:
-      RealityView on iOS exposes none, stated in the sheet
+      live IBL intensity, sky toggle, sunset ReflectionProbeNode applied
+      while the camera is inside its zone. No IBL rotation (turning the IBL
+      entity renders pixel-identical at 0 and 174 deg on iOS 26.3), no
+      exposure, SSAO, fog, MSAA/FXAA or dithering: RealityView on iOS
+      exposes none, stated in the sheet
   - id: lines-paths
     androidStatus: Working
     iosStatus: working

@@ -1334,13 +1334,6 @@ private struct SceneViewRepresentation: View {
                 )
                 entities.ibl.components.set(ibl)
             }
-            .onChange(of: sceneEnvironment?.rotation) { _, newRotation in
-                // Same reasoning as the intensity hook above: a live rotation
-                // slider must turn the IBL already installed, not reload the HDR.
-                entities.ibl.orientation = SceneEnvironment.iblOrientation(
-                    forRotationDegrees: newRotation ?? 0
-                )
-            }
     }
 
     // MARK: - Camera interaction layer (#1049)
@@ -2176,11 +2169,6 @@ private struct SceneViewRepresentation: View {
                         forMultiplier: env.intensity
                     )
                 )
-            )
-            // `rotation` turns the IBL entity, which turns the lighting and
-            // reflections it casts; the `.skybox(_:)` background is unaffected.
-            entities.ibl.orientation = SceneEnvironment.iblOrientation(
-                forRotationDegrees: env.rotation
             )
             // Make root entity receive IBL
             entities.root.components.set(

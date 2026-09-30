@@ -40,38 +40,16 @@ public struct SceneEnvironment: Sendable {
     /// Whether to render the environment as a skybox background.
     public var showSkybox: Bool
 
-    /// Turn of the image-based lighting about the world up axis, in **degrees**
-    /// (counter-clockwise seen from above). `0` leaves the HDR as authored.
-    ///
-    /// Applied to the entity that carries the `ImageBasedLightComponent`, so it turns
-    /// the *lighting and reflections*, not the painted skybox: RealityKit's
-    /// `.skybox(_:)` background has no orientation. Android behaves the same way —
-    /// Filament's `IndirectLight.setRotation` leaves its `Skybox` where it is — so a
-    /// rotation control is best disabled while ``showSkybox`` is on, or the
-    /// reflections slide off the picture. A rotation-only change is applied live,
-    /// without reloading the HDR.
-    public var rotation: Float
-
     public init(
         name: String,
         hdrResource: String? = nil,
         intensity: Float = 1.0,
-        showSkybox: Bool = true,
-        rotation: Float = 0
+        showSkybox: Bool = true
     ) {
         self.name = name
         self.hdrResource = hdrResource
         self.intensity = intensity
         self.showSkybox = showSkybox
-        self.rotation = rotation
-    }
-
-    /// The orientation ``rotation`` maps to: a turn about +Y. Lives here, like
-    /// ``intensityExponent(forMultiplier:)``, so the conversion is unit-testable
-    /// without a live RealityKit scene. Non-finite input is treated as `0`.
-    public static func iblOrientation(forRotationDegrees degrees: Float) -> simd_quatf {
-        let radians = degrees.isFinite ? degrees * .pi / 180 : 0
-        return simd_quatf(angle: radians, axis: SIMD3<Float>(0, 1, 0))
     }
 
     /// Converts an authored linear ``intensity`` multiplier into the power-of-two
