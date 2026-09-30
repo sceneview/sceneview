@@ -356,14 +356,19 @@ final class CosmosWorld {
     private let tables = CosmosWorldTables()
 
     private var baked: CosmosWorldLight?
+    /// The spin the map on the GPU was baked for.
+    private var shownSpin: Float?
     private var baking = false
     private var lastBake: Double = -.infinity
     private var reveal: Float = -1
     private var trailTint: Float = -1
 
-    /// Bakes a second at most, while something moves: the orbit turns 6°/s, so light and
+    /// Bakes per second at most, while something moves: the orbit turns 6°/s, so light and
     /// shadow step by under a degree.
     static let bakeRate: Double = 8
+    /// The rate under Low Power Mode or a serious thermal state: the orbit moves the light 6°
+    /// between two bakes, well inside the terminator's 40° softness.
+    static let heldBakeRate: Double = 1
     /// Points along the trail's arc.
     static let trailPoints = 96
     /// The trail's half width in world units, and the least it may be on screen, in pixels.
@@ -411,6 +416,8 @@ final class CosmosWorld {
         self.trailMaterial = trailMaterial
         let trail = ModelEntity(mesh: try await MeshResource(from: trailMesh), materials: [trailMaterial])
         trail.name = "cosmos-trail"
+        // Hidden until `update` lays its first frame.
+        trail.isEnabled = false
         self.trail = trail
 
         await bake(light)
@@ -422,13 +429,24 @@ final class CosmosWorld {
     ///   - focal: pixels per world unit at distance 1, for the trail's least width.
     func update(system: CosmosSystem, time: Float, eye: SIMD3<Float>, reveal: Float, now: Double, focal: Float) {
         planet.position = system.planetPosition(time)
-        planet.orientation = system.tilt
 
-        let light = CosmosWorldLight(system: system, time: time, eye: eye)
-        if !baking, now - lastBake >= 1 / Self.bakeRate, baked.map({ light.differs(from: $0) }) ?? true {
+        // Low Power Mode or a hot device: the surface holds its turn, as the star's churn
+        // does, and the light follows the orbit once a second instead of eight times.
+        let held = CosmosPowerState.shared.constrained
+        var light = CosmosWorldLight(system: system, time: time, eye: eye)
+        if held, let shownSpin { light.spin = shownSpin }
+        let rate = held ? Self.heldBakeRate : Self.bakeRate
+        if !baking, now - lastBake >= 1 / rate, baked.map({ light.differs(from: $0) }) ?? true {
             lastBake = now
             Task { await self.bake(light) }
         }
+
+        // The bands turn every frame, as Android's shader turns them: the planet carries the
+        // last bake round by the spin since, and its light with it — under 1.2° at 9°/s and
+        // 8 bakes a second — while the rings, whose map holds the planet's shadow, stay put.
+        let turn = held ? 0 : light.spin - (shownSpin ?? light.spin)
+        planet.orientation = system.tilt * simd_quatf(angle: turn, axis: SIMD3(0, 1, 0))
+        ring.orientation = simd_quatf(angle: -turn, axis: SIMD3(0, 1, 0))
 
         if abs(reveal - self.reveal) > 1e-4 {
             self.reveal = reveal
@@ -473,6 +491,7 @@ final class CosmosWorld {
             commandBuffer.addCompletedHandler { _ in done.resume() }
             commandBuffer.commit()
         }
+        shownSpin = light.spin
         baking = false
     }
 
@@ -512,9 +531,24 @@ final class CosmosWorld {
                 floats[o + 5] = right.x
                 floats[o + 6] = right.y
                 floats[o + 7] = right.z
+                // RealityKit hands out one of several vertex buffers per write, each holding
+                // whatever it last got: every float of every vertex is written every time,
+                // or the ribbon reads a stale UV in some frames and vanishes.
+                let across = Self.trailAcross(i)
+                floats[o + 3] = across.u
+                floats[o + 4] = across.top
+                floats[o + 8] = across.u
+                floats[o + 9] = across.bottom
             }
         }
         return energy
+    }
+
+    /// The trail's texture coordinates at arc point `i`: `u` along the arc, and `v` on the
+    /// ribbon's two edges, inset half a texel so the fade row never bleeds in.
+    private static func trailAcross(_ i: Int) -> (u: Float, top: Float, bottom: Float) {
+        let rows = Float(trailRows)
+        return ((Float(i) + 0.5) / Float(trailPoints), 1 - 0.5 / rows, 0.5 / rows)
     }
 
     // MARK: Meshes
@@ -581,8 +615,8 @@ final class CosmosWorld {
         return try MeshResource.generate(from: [descriptor])
     }
 
-    /// The trail's ribbon: two vertices per arc point (positions written every frame by
-    /// `layTrail`), `u` along the arc, `v` across it, as `GlowBuilder.ribbons` lays its rows.
+    /// The trail's ribbon: two vertices per arc point, written whole every frame by `layTrail`
+    /// (`u` along the arc, `v` across it, as `GlowBuilder.ribbons` lays its rows).
     private static func trailMesh() throws -> LowLevelMesh {
         let count = trailPoints
         let descriptor = LowLevelMesh.Descriptor(
@@ -596,18 +630,6 @@ final class CosmosWorld {
             indexType: .uint32
         )
         let mesh = try LowLevelMesh(descriptor: descriptor)
-        let rows = Float(trailRows)
-        mesh.withUnsafeMutableBytes(bufferIndex: 0) { raw in
-            let floats = raw.bindMemory(to: Float.self)
-            for i in 0..<count {
-                let u = (Float(i) + 0.5) / Float(count)
-                let o = i * 2 * 5
-                floats[o + 3] = u
-                floats[o + 4] = 1 - 0.5 / rows
-                floats[o + 8] = u
-                floats[o + 9] = 0.5 / rows
-            }
-        }
         mesh.withUnsafeMutableIndices { raw in
             let indices = raw.bindMemory(to: UInt32.self)
             for i in 0..<(count - 1) {

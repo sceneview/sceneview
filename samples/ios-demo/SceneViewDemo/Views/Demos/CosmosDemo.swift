@@ -274,7 +274,7 @@ final class CosmosEngine {
         }.value
         do {
             let entities = try await CosmosSceneEntities(kind: kind, layers: layers, programs: programs, time: time,
-                                                         restEye: view.eye, system: system)
+                                                         restEye: view.eye, focal: view.focal, system: system)
             NSLog("[Cosmos] %@ built in %.2f s", kind.label, Date().timeIntervalSince(started))
             return (entities, landscape)
         } catch {
@@ -457,11 +457,12 @@ struct CosmosSceneLayers: Sendable {
 
     /// The star's wide blue glow at `r` silhouette radii, fitted to the Android capture's
     /// rings at 1.1, 1.3, 1.6 and 2 radii (minus what the halo sprites already give), and
-    /// baked at the halo's pulse peak.
+    /// baked at the halo's pulse peak. Past 2 radii it tapers to nothing by 4.8, as the
+    /// Android overview's glow does (measured out to 4.5 radii), well inside the quad.
     static func starCorona(_ r: Float) -> SIMD3<Float> {
         guard r > 0.9 else { return .zero }
         let out = max(r - 1, 0)
-        let blue = 0.5 * exp(-pow(out / 0.9, 1.3))
+        let blue = 0.5 * exp(-pow(out / 0.9, 1.3)) * (1 - CosmosSystem.smoothstep(2, 4.8, r))
         let near = exp(-out / 0.2)
         let color = simd_mix(SIMD3<Float>(0.05, 0.25, 1), SIMD3<Float>(0.45, 0.85, 1), SIMD3(repeating: near))
         return color * (blue * haloPulse)
@@ -506,8 +507,8 @@ struct CosmosSceneLayers: Sendable {
                 plasma: surface.image,
                 spheres: [CosmosSphere(center: .zero, radius: 1,
                                        limb: GlowBuilder.limb(limb, distance: simd_length(view.eye), resolution: 256))],
-                corona: GlowBuilder.corona(radius: 1, distance: simd_length(view.eye), extent: 3,
-                                           resolution: 256, falloff: starCorona)
+                corona: GlowBuilder.corona(radius: 1, distance: simd_length(view.eye), extent: 5,
+                                           resolution: 384, falloff: starCorona)
             )
         case .burst:
             return CosmosSceneLayers(
@@ -580,16 +581,33 @@ final class CosmosSceneEntities {
     private let restEye: SIMD3<Float>
     /// The Star scene's ringed world, its rings and its orbit trail.
     private var world: CosmosWorld?
+    /// The eye, as the turned star sees it, and the lens the loops were last laid for; see
+    /// `relayLoops`.
+    private var loopsEye: SIMD3<Float>
+    private var loopsFocal: Float
+    private var loopProgram: UnlitMaterial.Program?
+    private var loopsTask: Task<Void, Never>?
+    /// The last frame's clock and reveal, for a relaid set to take over without a flash.
+    private var loopsTime: Float = 0
+    private var loopsReveal: Float = 0
+
+    /// How far the eye may move from the loops' layout before they are laid again: a quarter
+    /// nearer or farther, or 20° round the star (5 s of its turn).
+    static let loopsRelayRatio: Float = 1.25
+    static let loopsRelayTurn: Float = 20 * .pi / 180
 
     /// Seconds between two baked frames of the star's surface; the ball cross-fades between them.
     static let churnStep: Float = 1.5
 
     init(kind: CosmosSceneKind, layers: CosmosSceneLayers, programs: CosmosPrograms, time: Float,
-         restEye: SIMD3<Float>, system: CosmosSystem) async throws {
+         restEye: SIMD3<Float>, focal: Float, system: CosmosSystem) async throws {
         self.kind = kind
         churnTime = time
         self.restEye = restEye
+        loopsEye = CosmosSceneLayers.starOrientation(time).inverse.act(restEye)
+        loopsFocal = focal
         let program = programs.additive
+        if kind == .star { loopProgram = program }
         if let layer = layers.strokes { strokes = try await GlowEntity(layer, program: program) }
         if let layer = layers.main { main = try await GlowEntity(layer, program: program) }
         if let layer = layers.halo { halo = try await GlowEntity(layer, program: program) }
@@ -674,6 +692,7 @@ final class CosmosSceneEntities {
                 main.entity.orientation = simd_quatf(from: simd_normalize(restEye), to: simd_normalize(eye))
             }
             strokes?.setIntensity(reveal)
+            relayLoops(eye: eye, time: time, focal: focal, reveal: reveal)
             main?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
             corona?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
             world?.update(system: system, time: time, eye: eye, reveal: reveal, now: now, focal: focal)
@@ -774,10 +793,52 @@ final class CosmosSceneEntities {
         }
     }
 
+    /// The loops are ribbons laid across the line of sight, at least a pixel wide, for one eye —
+    /// Android's shader lays them for the live camera every frame. When the camera has flown
+    /// far from the eye they were laid for (the overview is twice the close-up's distance), or
+    /// the star has turned them well away from it, they are laid again off the main thread and
+    /// swapped in whole, so they read as thin bright filaments from wherever they are seen.
+    private func relayLoops(eye: SIMD3<Float>, time: Float, focal: Float, reveal: Float) {
+        guard loopsTask == nil, let loopProgram, focal > 0 else { return }
+        // The loops turn with the star: compare eyes as the turned star sees them.
+        let seen = CosmosSceneLayers.starOrientation(time).inverse.act(eye)
+        let laid = loopsEye
+        let ratio = simd_length(seen) / max(simd_length(laid), 1e-3)
+        let turn = acos(min(max(simd_dot(simd_normalize(seen), simd_normalize(laid)), -1), 1))
+        // Low Power Mode or a hot device: only a flight lays them again, not the star's turn.
+        let turned = turn > Self.loopsRelayTurn && !CosmosPowerState.shared.constrained
+        let far = abs(log(ratio)) > log(Self.loopsRelayRatio) || turned
+        let lens = abs(focal - loopsFocal) > 0.05 * loopsFocal
+        guard far || lens else { return }
+        loopsTask = Task { @MainActor [weak self] in
+            let view = GlowView(eye: seen, focal: focal)
+            let started = Date()
+            let layer = await Task.detached(priority: .userInitiated) {
+                GlowBuilder.dashedRibbons(CosmosMeshes.prominences(), view: view, minPixels: 1.0,
+                                          dash: CosmosSceneLayers.prominenceDash, tailTaper: 0.2)
+            }.value
+            NSLog("[Cosmos] loops laid again in %.3f s", Date().timeIntervalSince(started))
+            guard let self else { return }
+            defer { self.loopsTask = nil }
+            guard !Task.isCancelled, let fresh = try? await GlowEntity(layer, program: loopProgram),
+                  !Task.isCancelled else { return }
+            fresh.scrollDashes(time: self.loopsTime)
+            fresh.setIntensity(self.loopsReveal)
+            self.spin.addChild(fresh.entity)
+            self.strokes?.entity.removeFromParent()
+            self.strokes = fresh
+            self.loopsEye = seen
+            self.loopsFocal = focal
+        }
+        loopsTime = time
+        loopsReveal = reveal
+    }
+
     /// Drops the surface bake in flight. The detached plasma loop cannot be interrupted, so
     /// `churnBaking` stays set until it returns; the next `update` after that bakes again.
     func cancelChurn() {
         churnTask?.cancel()
+        loopsTask?.cancel()
     }
 
     /// The star's silhouette radius on the plane of its limb disc (`GlowBuilder.limb`) seen

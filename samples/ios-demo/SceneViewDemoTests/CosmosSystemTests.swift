@@ -133,6 +133,20 @@ final class CosmosSystemTests: XCTestCase {
         let body = stride(from: Float(0.35), through: 0.55, by: 0.01).map(CosmosSystem.ringDensity).max()!
         XCTAssertGreaterThan(body, 0.6)
     }
+
+    /// The overview shows the star's glow whole: it must die out before its quad's edge
+    /// fade starts (0.8 of a 5-radius extent), or the quad shows as a hard-edged disc.
+    func testTheStarGlowFadesOutInsideItsQuad() {
+        XCTAssertGreaterThan(CosmosSceneLayers.starCorona(1.5).z, 0.1)
+        XCTAssertLessThan(CosmosSceneLayers.starCorona(4).z, 0.002)
+        XCTAssertEqual(CosmosSceneLayers.starCorona(4.8).z, 0)
+        var last = CosmosSceneLayers.starCorona(1).z
+        for r in stride(from: Float(1.05), through: 5, by: 0.05) {
+            let blue = CosmosSceneLayers.starCorona(r).z
+            XCTAssertLessThanOrEqual(blue, last + 1e-6, "brightens again at \(r)")
+            last = blue
+        }
+    }
 }
 
 #endif
