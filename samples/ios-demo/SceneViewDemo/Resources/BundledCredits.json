@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 46,
+  "total": 50,
   "sections": [
     {
       "title": "3D models",
@@ -428,6 +428,46 @@
           "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "size": 26538,
           "note": "Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`"
+        },
+        {
+          "file": "Audio/garden_bass.caf",
+          "name": "garden_bass.caf",
+          "author": "SceneView project",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "size": 93749,
+          "note": "Synthesized bass loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`"
+        },
+        {
+          "file": "Audio/garden_beat.caf",
+          "name": "garden_beat.caf",
+          "author": "SceneView project",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "size": 132342,
+          "note": "Synthesized drum loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`"
+        },
+        {
+          "file": "Audio/garden_bells.caf",
+          "name": "garden_bells.caf",
+          "author": "SceneView project",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "size": 97295,
+          "note": "Synthesized bell melody loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`"
+        },
+        {
+          "file": "Audio/garden_pad.caf",
+          "name": "garden_pad.caf",
+          "author": "SceneView project",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "size": 84911,
+          "note": "Synthesized pad loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`"
         },
         {
           "file": "Resources/qrcode.png",

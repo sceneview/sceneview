@@ -61,4 +61,56 @@ class SoundGardenStemsTest {
         val oneLoopLater = SoundGardenStems.LOOP_FRAMES.toLong() + 3L * SoundGardenStems.ENVELOPE_WINDOW
         assertEquals(3f, SoundGardenStems.envelopeAt(envelope, oneLoopLater), 0f)
     }
+
+    @Test
+    fun `a jump in the envelope is a note and the next windows point back to it`() {
+        val envelope = FloatArray(40) { 0.05f }
+        envelope[10] = 1f
+        envelope[11] = 0.87f // the release after the hit is not a new note
+        envelope[30] = 0.6f
+        val last = SoundGardenStems.lastOnsets(envelope)
+        assertEquals(10, last[10])
+        assertEquals(10, last[11])
+        assertEquals(10, last[29])
+        assertEquals(30, last[30])
+        // Before the first note of the loop, the latest note is the last one of the previous pass.
+        assertEquals(30, last[3])
+    }
+
+    @Test
+    fun `quiet rises and notes closer than a sixteenth do not fire`() {
+        val envelope = FloatArray(40) { 0.05f }
+        envelope[5] = 0.3f // under the floor
+        envelope[12] = 1f
+        envelope[14] = 1f // 2 windows after the previous note
+        val last = SoundGardenStems.lastOnsets(envelope)
+        assertEquals(12, last[12])
+        assertEquals(12, last[14])
+        assertEquals(12, last[20])
+        // The only note of the loop is window 12, so window 5 looks back to it across the loop.
+        assertEquals(12, last[5])
+    }
+
+    @Test
+    fun `a part without notes has no onset`() {
+        val flat = SoundGardenStems.lastOnsets(FloatArray(20) { 0.5f })
+        assertTrue(flat.all { it == -1 })
+        assertEquals(null, SoundGardenStems.secondsSinceOnset(flat, 1234L))
+        assertEquals(0, SoundGardenStems.lastOnsets(FloatArray(0)).size)
+    }
+
+    @Test
+    fun `time since the last note wraps across the loop point`() {
+        val window = SoundGardenStems.ENVELOPE_WINDOW
+        val envelope = FloatArray(500) { 0.05f }
+        envelope[100] = 1f
+        envelope[490] = 1f
+        val last = SoundGardenStems.lastOnsets(envelope)
+        val rate = SoundGardenStems.SAMPLE_RATE.toFloat()
+        // 1 000 frames after the note at window 100.
+        assertEquals(1_000f / rate, SoundGardenStems.secondsSinceOnset(last, 100L * window + 1_000)!!, 1e-6f)
+        // Window 2 of the next pass: the note at window 490 is 12 windows old.
+        val loop = 500L * window
+        assertEquals(12f * window / rate, SoundGardenStems.secondsSinceOnset(last, loop + 2L * window)!!, 1e-6f)
+    }
 }

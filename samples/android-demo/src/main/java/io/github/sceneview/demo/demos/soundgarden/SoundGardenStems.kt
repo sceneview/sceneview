@@ -69,4 +69,60 @@ object SoundGardenStems {
         val loopFrame = Math.floorMod(frame, LOOP_FRAMES.toLong())
         return envelope[(loopFrame / window).toInt().coerceAtMost(envelope.size - 1)]
     }
+
+    /**
+     * Rise of the [envelope] within one window that counts as a new note — the moment a
+     * sound shell leaves the orb. Tuned on the four stems: every bell, bass note and drum hit,
+     * and the pad's few swells.
+     */
+    const val ONSET_RISE = 0.18f
+
+    /** Level a rise has to reach to count: quiet hats and pad shimmer do not fire a shell. */
+    const val ONSET_FLOOR = 0.35f
+
+    /** Closest two onsets can be: 8 windows = 171 ms, a sixteenth note at 90 BPM. */
+    const val ONSET_MIN_GAP = 8
+
+    /**
+     * For every window of [envelope], the window of the latest note that started at or before
+     * it — a jump of at least [ONSET_RISE] up to at least [ONSET_FLOOR] — looking back across
+     * the loop point like the audio does. All `-1` when the part has no note at all.
+     */
+    fun lastOnsets(envelope: FloatArray): IntArray {
+        val count = envelope.size
+        val result = IntArray(count) { -1 }
+        if (count == 0) return result
+        val onset = BooleanArray(count)
+        var last = Int.MIN_VALUE / 2
+        for (w in 0 until count) {
+            val rise = envelope[w] - envelope[(w - 1 + count) % count]
+            if (rise >= ONSET_RISE && envelope[w] >= ONSET_FLOOR && w - last >= ONSET_MIN_GAP) {
+                onset[w] = true
+                last = w
+            }
+        }
+        // Before the loop's first note, the latest one is the last note of the previous pass.
+        var current = onset.lastIndexOf(true)
+        if (current < 0) return result
+        for (w in 0 until count) {
+            if (onset[w]) current = w
+            result[w] = current
+        }
+        return result
+    }
+
+    /**
+     * Seconds since the latest note heard at loop position [frame], from [lastOnsets]'s table;
+     * `null` when the part has no note. Wraps: just after the loop point, the last note of the
+     * previous pass is a few hundred milliseconds old, not ten seconds in the future.
+     */
+    fun secondsSinceOnset(lastOnsets: IntArray, frame: Long, window: Int = ENVELOPE_WINDOW): Float? {
+        if (lastOnsets.isEmpty()) return null
+        val loopFrames = lastOnsets.size.toLong() * window
+        val loopFrame = Math.floorMod(frame, loopFrames)
+        val onset = lastOnsets[(loopFrame / window).toInt()]
+        if (onset < 0) return null
+        val delta = Math.floorMod(loopFrame - onset.toLong() * window, loopFrames)
+        return delta.toFloat() / SAMPLE_RATE
+    }
 }

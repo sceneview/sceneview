@@ -96,7 +96,8 @@ import kotlin.math.sin
  * cue is unit-tested.
  *
  * Every orb pulses with the loudness of its own part (a precomputed RMS envelope indexed by
- * what the device has actually played), so the eye finds the sound the ear hears.
+ * what the device has actually played), and every note it plays sends a shell out of it — the
+ * eye finds the sound the ear hears.
  *
  * The garden plants itself on the lowest tracked floor plane, 1.6 m ahead, facing the user —
  * no tap to learn. Tapping an orb (or its legend chip) mutes its part.
@@ -127,6 +128,7 @@ fun ARSoundGardenDemo(onBack: () -> Unit) {
             }
     }
     val envelopes = remember(stems) { stems?.map { SoundGardenStems.envelope(it) } }
+    val lastOnsets = remember(envelopes) { envelopes?.map { SoundGardenStems.lastOnsets(it) } }
     val mix = remember(stems) { stems?.let { SpatialMixCore(SoundGardenStems.SAMPLE_RATE, it) } }
     val audio = remember(mix) { mix?.let { SoundGardenAudio(it) } }
     DisposableEffect(audio) {
@@ -200,6 +202,7 @@ fun ARSoundGardenDemo(onBack: () -> Unit) {
                     motion = motion,
                     mix = mix,
                     envelopes = envelopes,
+                    lastOnsets = lastOnsets,
                     playedFrames = audio?.playedFrames ?: 0L,
                 )
             }
@@ -300,6 +303,9 @@ fun ARSoundGardenDemo(onBack: () -> Unit) {
                         rememberUnlitMaterialInstance(materialLoader, orb.color.copy(alpha = HALO_ALPHA_MIN))
                     }
                 }
+                val shellMaterials = ORBS.map { orb ->
+                    key(orb.asset) { rememberUnlitMaterialInstance(materialLoader, orb.color.copy(alpha = 0f)) }
+                }
                 val stalkMaterials = ORBS.map { orb ->
                     key(orb.asset) {
                         rememberUnlitMaterialInstance(materialLoader, orb.color.copy(alpha = STALK_ALPHA))
@@ -312,6 +318,7 @@ fun ARSoundGardenDemo(onBack: () -> Unit) {
                         haloMaterials[i].setColor(
                             orb.color.copy(alpha = HALO_ALPHA_MIN + (HALO_ALPHA_MAX - HALO_ALPHA_MIN) * pulse),
                         )
+                        shellMaterials[i].setColor(orb.color.copy(alpha = drawn.shellAlpha[i]))
                         coreMaterials[i].setColor(
                             if (muted[i]) orb.color.copy(alpha = MUTED_CORE_ALPHA) else orb.color,
                         )
@@ -335,6 +342,15 @@ fun ARSoundGardenDemo(onBack: () -> Unit) {
                                 PathNode(
                                     points = remember(i) { listOf(base, orb.local) },
                                     materialInstance = stalkMaterials[i],
+                                )
+                                // The sound leaving the orb: a shell per note, born at the core
+                                // and fading as it grows — the eye sees each note the ear hears.
+                                SphereNode(
+                                    radius = CORE_RADIUS,
+                                    materialInstance = shellMaterials[i],
+                                    position = orb.local,
+                                    scale = Scale((grow * drawn.shellScale[i]).coerceAtLeast(MIN_SCALE)),
+                                    apply = { name = orbNodeName(i) },
                                 )
                                 SphereNode(
                                     radius = CORE_RADIUS,
@@ -376,9 +392,14 @@ private val ORBS = listOf(
 )
 
 /** Per-frame values the scene draws, replaced as a whole each AR frame. */
-private class GardenVisual(val bloom: FloatArray, val pulse: FloatArray) {
+private class GardenVisual(
+    val bloom: FloatArray,
+    val pulse: FloatArray,
+    val shellScale: FloatArray,
+    val shellAlpha: FloatArray,
+) {
     companion object {
-        val EMPTY = GardenVisual(FloatArray(ORBS.size), FloatArray(ORBS.size))
+        val EMPTY = GardenVisual(FloatArray(ORBS.size), FloatArray(ORBS.size), FloatArray(ORBS.size), FloatArray(ORBS.size))
     }
 }
 
@@ -425,6 +446,7 @@ private fun updateGarden(
     motion: GardenMotion,
     mix: SpatialMixCore?,
     envelopes: List<FloatArray>?,
+    lastOnsets: List<IntArray>?,
     playedFrames: Long,
 ): GardenVisual {
     val now = System.nanoTime()
@@ -434,6 +456,8 @@ private fun updateGarden(
     val pose = garden.pose
     val bloom = FloatArray(ORBS.size)
     val pulse = FloatArray(ORBS.size)
+    val shellScale = FloatArray(ORBS.size)
+    val shellAlpha = FloatArray(ORBS.size)
     ORBS.forEachIndexed { i, orb ->
         // The song builds up: one orb, then the next, BLOOM_STAGGER_S apart.
         bloom[i] = ((sincePlant - i * BLOOM_STAGGER_S) / BLOOM_S).coerceIn(0f, 1f)
@@ -444,8 +468,14 @@ private fun updateGarden(
         mix?.setTarget(i, SpatialVoiceMath.voice(listener, Float3(world[0], world[1], world[2]), FALLOFF, level))
         val envelope = envelopes?.get(i)
         pulse[i] = if (envelope == null) 0f else SoundGardenStems.envelopeAt(envelope, playedFrames) * level
+        val age = lastOnsets?.get(i)?.let { SoundGardenStems.secondsSinceOnset(it, playedFrames) }
+        val t = if (age == null) 1f else (age / SHELL_LIFE_S).coerceIn(0f, 1f)
+        val fade = (1f - t) * (1f - t)
+        // A spent shell shrinks to nothing: an invisible 0.4 m sphere would still catch taps.
+        shellScale[i] = if (fade <= 0f) 0f else SHELL_SCALE_MIN + (SHELL_SCALE_MAX - SHELL_SCALE_MIN) * (1f - fade)
+        shellAlpha[i] = SHELL_ALPHA_MAX * fade * level
     }
-    return GardenVisual(bloom, pulse)
+    return GardenVisual(bloom, pulse, shellScale, shellAlpha)
 }
 
 /** The four parts as toggles: who is who, and which ones are muted. Glass over the feed. */
@@ -558,6 +588,12 @@ private const val HALO_SCALE_PULSE = 1.5f
 private const val HALO_ALPHA_MIN = 0.16f
 private const val HALO_ALPHA_MAX = 0.5f
 private const val STALK_ALPHA = 0.55f
+
+/** A note's shell grows from the core to ≈ 0.4 m radius and is gone in under a second. */
+private const val SHELL_LIFE_S = 0.9f
+private const val SHELL_SCALE_MIN = 1.2f
+private const val SHELL_SCALE_MAX = 7f
+private const val SHELL_ALPHA_MAX = 0.32f
 private const val RING_RADIUS = 0.14f
 private const val MUTED_CORE_ALPHA = 0.3f
 private const val MIN_SCALE = 0.001f

@@ -7,6 +7,19 @@ attribution friction.
 | File | Source | License | Description |
 |---|---|---|---|
 | `bell.wav` | Generated locally with `ffmpeg` (sine 880 Hz, 0.6 s, fade-in 10 ms / fade-out 550 ms, 22 050 Hz mono PCM 16-bit) | [CC0 / public domain](https://creativecommons.org/publicdomain/zero/1.0/) | Soft bell tone, suitable for the bouncing-sphere `SpatialAudioDemo` on every platform |
+| `garden_beat`, `garden_bass`, `garden_pad`, `garden_bells` (`.ogg` on Android, `.caf` on iOS) | Synthesized from code by `tools/generate-sound-garden-stems.py` (sine and noise synthesis, fixed seed — no samples, no recordings; 48 kHz mono, 512 000 frames each) | [CC0 / public domain](https://creativecommons.org/publicdomain/zero/1.0/) | The four parts of one 4-bar loop (A minor, 90 BPM) played by the AR Sound Garden demo, one part per orb |
+
+## Regenerating the Sound Garden stems
+
+```bash
+python3 -m venv /tmp/sg && /tmp/sg/bin/pip install numpy soundfile
+/tmp/sg/bin/python tools/generate-sound-garden-stems.py \
+    samples/android-demo/src/main/assets/audio \
+    samples/ios-demo/SceneViewDemo/Audio
+```
+
+The `.caf` files are AAC encoded by Apple's `afconvert` (macOS only); their packet table
+records the encoder priming, so every part decodes to exactly one loop.
 
 ## Regenerating `bell.wav`
 

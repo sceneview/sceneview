@@ -273,6 +273,35 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "note": "Synthesized bell melody loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
     },
+    # The same four parts for iOS, AAC in CAF (iOS decodes no Vorbis) — same generator.
+    "garden_beat.caf": {
+        "name": "garden_beat.caf",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized drum loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
+    "garden_bass.caf": {
+        "name": "garden_bass.caf",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized bass loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
+    "garden_pad.caf": {
+        "name": "garden_pad.caf",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized pad loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
+    "garden_bells.caf": {
+        "name": "garden_bells.caf",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized bell melody loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
     "qrcode.png": {
         "name": "qrcode.png",
         "author": "SceneView project",

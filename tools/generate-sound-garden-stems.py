@@ -20,15 +20,22 @@ native Vorbis encoder is stereo-only, hence soundfile:
 
     python3 -m venv /tmp/sg && /tmp/sg/bin/pip install numpy soundfile
     /tmp/sg/bin/python tools/generate-sound-garden-stems.py \\
-        samples/android-demo/src/main/assets/audio
+        samples/android-demo/src/main/assets/audio \\
+        samples/ios-demo/SceneViewDemo/Audio
 
 Writes `garden_beat.ogg`, `garden_bass.ogg`, `garden_pad.ogg`, `garden_bells.ogg`
-(mono Ogg Vorbis, 48 kHz). The Kotlin side pins the same loop length in
-`SoundGardenStems.LOOP_FRAMES` — change BPM or bar count in both places.
+(mono Ogg Vorbis, 48 kHz) into the first directory. With a second directory (macOS only),
+also writes the same four parts as `.caf` for iOS: AAC encoded by Apple's `afconvert`,
+whose CAF packet table records the encoder priming and remainder, so Core Audio decodes
+exactly 512 000 frames and the loop stays gapless (iOS has no Vorbis decoder). The Kotlin
+side pins the same loop length in `SoundGardenStems.LOOP_FRAMES` and the Swift side in
+`SoundGardenStems.loopFrames` — change BPM or bar count in all three places.
 """
 import math
 import os
+import subprocess
 import sys
+import tempfile
 
 import numpy as np
 import soundfile as sf
@@ -238,7 +245,10 @@ def normalize(x: np.ndarray, rms_dbfs: float = -20.0, peak_dbfs: float = -1.0) -
 
 def main() -> None:
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    ios_dir = sys.argv[2] if len(sys.argv) > 2 else None
     os.makedirs(out_dir, exist_ok=True)
+    if ios_dir:
+        os.makedirs(ios_dir, exist_ok=True)
     # (signal, RMS target). Noise is dense where the ear is most sensitive, so the rhythm
     # sits a few dB under the tonal parts to sound as loud as them; the bass a little over.
     stems = {
@@ -256,6 +266,15 @@ def main() -> None:
         peak = 20 * math.log10(float(np.max(np.abs(data))) + 1e-12)
         print(f"{path}: {len(data)} frames, rms {rms:.1f} dBFS, peak {peak:.1f} dBFS, "
               f"{os.path.getsize(path) // 1024} KB")
+        if ios_dir:
+            caf = os.path.join(ios_dir, f"{name}.caf")
+            with tempfile.TemporaryDirectory() as tmp:
+                pcm = os.path.join(tmp, f"{name}.caf")
+                sf.write(pcm, data, SR, format="CAF", subtype="PCM_16")
+                # 96 kb/s target; afconvert settles near 60-100 kb/s for these mono parts.
+                subprocess.run(["afconvert", "-f", "caff", "-d", "aac", "-b", "96000", pcm, caf],
+                               check=True)
+            print(f"{caf}: {os.path.getsize(caf) // 1024} KB")
 
 
 if __name__ == "__main__":
