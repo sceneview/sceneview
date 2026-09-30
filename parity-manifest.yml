@@ -1387,8 +1387,13 @@ shell:
     parity: diverges
     evidence: >-
       iOS picker = 2 models in a Menu inside Settings
-      ARPlacementExperience.swift:112,339, no dock items :134; launcher 5
-      cards, no All-AR grid ARTab.swift:102; Android ArViewTab.kt:345,619,747
+      ARPlacementExperience.swift:112,339, no dock items :134. The launcher
+      matches since the #4200 iOS port: Android's 6 featured picks then 'All
+      AR demos (N)', each the Home's DemoMediaCard (picture + frosted
+      caption, status and freshness chips) opened through DemoCover like a
+      Home row (ARTab.swift ARLauncherCatalogue); Scene Geometry keeps the
+      iOS LiDAR subtitle (no Geospatial on ARKit). Android
+      ArViewTab.kt:345,619,747
   - surface: explore
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/explore/ExploreTabScreen.kt

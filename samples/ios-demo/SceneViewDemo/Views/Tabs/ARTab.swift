@@ -7,7 +7,8 @@ import SceneViewSwift
 /// The tab launches the same placement experience as the catalogue and viewers.
 struct ARTab: View {
     @State private var sessionStarted = false
-    @State private var presentedDemo: FeaturedARDemo?
+    @State private var presentedDemo: DemoItem?
+    @State private var comingSoonDemo: DemoItem?
 
     private var arSupported: Bool {
         #if targetEnvironment(simulator)
@@ -27,7 +28,13 @@ struct ARTab: View {
             ARLauncherScreen(
                 arSupported: arSupported,
                 onStartArSession: { sessionStarted = true },
-                onDemoTap: { presentedDemo = $0 }
+                onDemoTap: { demo in
+                    if demo.status.isAvailable {
+                        presentedDemo = demo
+                    } else {
+                        comingSoonDemo = demo
+                    }
+                }
             )
             .navigationTitle("AR Experiences")
         }
@@ -38,20 +45,23 @@ struct ARTab: View {
                 }
             }
         }
+        // The same host as a Home row: `DemoCover` over the catalogue entry,
+        // whose destination already enters through `ARExperienceContainer`
+        // with the scene's own requirement (collate-ios-demos.sh).
         .fullScreenCover(item: $presentedDemo) { demo in
-            NavigationStack {
-                ARExperienceContainer(
-                    requirement: .forScene(id: demo.id),
-                    onBack: { presentedDemo = nil }
-                ) { demo.destination }
-                .navigationTitle(demo.title)
-                .navigationBarTitleInline()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") { presentedDemo = nil }
-                    }
-                }
-            }
+            DemoCover(scene: demo) { presentedDemo = nil }
+        }
+        .sheet(item: $comingSoonDemo) { demo in
+            ComingSoonScreen(
+                title: demo.title,
+                subtitle: demo.subtitle,
+                icon: demo.icon,
+                androidOnlyReason: demo.androidOnlyReason
+            )
+            .presentationDetents([.medium, .large])
+            .partialSheetBackground(.regularMaterial)
+            .presentationCornerRadius(SceneViewTokens.Radius.xl)
+            .presentationDragIndicator(.visible)
         }
     }
 }
@@ -72,86 +82,64 @@ private enum ARLauncherState {
     case cameraDenied
 }
 
-/// One headline AR demo surfaced on the launcher's discovery grid. Each
-/// entry carries the SwiftUI destination so a card tap can present the demo
-/// full-screen — mirroring Android's `FEATURED_AR_DEMOS` list on
-/// `ArViewTab.kt`, where every card routes to a real demo screen.
-///
-/// Only AR demos with a *working* iOS port are listed — the launcher is a
-/// discovery surface, not a "coming soon" teaser wall (the Samples tab
-/// already shows the full catalogue including not-yet-ported demos).
-///
-/// `@MainActor`-isolated: the erased `AnyView` destination is built from
-/// SwiftUI views, which are themselves main-actor-isolated, so the type and
-/// its static `all` catalogue live on the main actor (it's UI-only data).
+/// The launcher's AR demos: the curator's pick on top, then every other AR
+/// demo — Android's `FEATURED_AR_DEMOS` and "All AR demos" on `ArViewTab.kt`.
+/// Each is the catalogue's own `DemoItem` (its picture, status and freshness),
+/// so a card here opens exactly what the Home row opens.
 @MainActor
-struct FeaturedARDemo: Identifiable {
-    /// `nonisolated` so it satisfies `Identifiable`'s non-isolated `id`
-    /// requirement even though the enclosing type is `@MainActor`.
-    nonisolated let id: String
-    let title: String
-    let subtitle: String
-    let icon: String
-    /// Builds the demo view to present. `@ViewBuilder`-erased so heterogeneous
-    /// demo types share one collection.
-    let destination: AnyView
-
-    /// The headline AR demos shown on the launcher grid. Picked to mirror
-    /// Android's launcher card set as closely as the iOS port allows — all of
-    /// these have a real, shipping iOS destination.
-    static let all: [FeaturedARDemo] = [
-        FeaturedARDemo(
-            id: "ar-placement",
-            title: "AR Placement",
-            subtitle: "One object on the first usable surface",
-            icon: "arkit",
-            destination: AnyView(ARPlacementDemo())
-        ),
-        FeaturedARDemo(
-            id: "ar-lighting",
-            title: "AR Lighting",
-            subtitle: "Key and fill light presets on one model",
-            icon: "lightbulb.max.fill",
-            destination: AnyView(ARLightingDemo())
-        ),
-        FeaturedARDemo(
-            // Canonicalized to match Android's DemoRegistry id (#2799); the
-            // deep-link registry still accepts the old "ar-recording" id as
-            // a legacy alias (see `DemoDeepLinkRegistry.allowedIds`).
-            id: "ar-record-playback",
-            title: "AR Recording",
-            subtitle: "Capture the AR session as a screen video",
-            icon: "record.circle",
-            destination: AnyView(ARRecorderDemo())
-        ),
-        FeaturedARDemo(
-            id: "ar-orbital",
-            title: "Orbital AR",
-            subtitle: "Models orbit around you in a personal solar system",
-            icon: "circle.dotted",
-            destination: AnyView(OrbitalARDemo())
-        ),
-        FeaturedARDemo(
-            id: "ar-rerun",
-            title: "Rerun AR Replay",
-            subtitle: "Record your room, replay it in 3D, export it",
-            icon: "point.3.connected.trianglepath.dotted",
-            destination: AnyView(RerunShowcaseDemo())
-        ),
+enum ARLauncherCatalogue {
+    /// The featured tiles, in Android's order, each under its curated title
+    /// and subtitle (Android `featured_ar_*` strings). An id with no iOS
+    /// registry entry is dropped rather than drawn with no demo behind it.
+    /// Scene Geometry keeps the iOS registry's subtitle: Android's promises
+    /// Geospatial building meshes, which ARKit has no equivalent of — the iOS
+    /// demo is the LiDAR room mesh.
+    static let featuredPicks: [(id: String, title: String, subtitle: String?)] = [
+        ("ar-placement", "Place in AR", "Point at the floor and the model appears"),
+        ("ar-face", "Augmented Faces", "Face mesh tracking and overlays"),
+        ("ar-cloud-anchor", "Cloud Anchors", "Persistent multi-user anchors"),
+        ("ar-scene-mesh", "Scene Geometry", nil),
+        ("ar-depth-occlusion", "Depth Occlusion", "Real-world depth masks virtual objects"),
+        ("ar-pose", "Pose Placement", "Free pose positioning"),
     ]
+
+    static let featured: [DemoItem] = {
+        let byId = registry
+        return featuredPicks.compactMap { pick in
+            guard var demo = byId[pick.id] else { return nil }
+            demo.title = pick.title
+            if let subtitle = pick.subtitle { demo.subtitle = subtitle }
+            return demo
+        }
+    }()
+
+    /// Every other AR demo the Home lists, in editorial order.
+    static let others: [DemoItem] = {
+        let featuredIds = Set(featured.map(\.sceneId))
+        return GeneratedScenes.all()
+            .filter { $0.category == .ar && !featuredIds.contains($0.sceneId) }
+            .filter { HomeCatalogue.isOnHome($0.sceneId) }
+            .sorted { $0.order < $1.order }
+    }()
+
+    private static var registry: [String: DemoItem] {
+        Dictionary(GeneratedScenes.all().filter { HomeCatalogue.isOnHome($0.sceneId) }
+                       .map { ($0.sceneId, $0) },
+                   uniquingKeysWith: { first, _ in first })
+    }
 }
 
 /// Static launcher shown when the AR tab is opened, before the user explicitly
 /// starts the camera session. Mirrors Android's `ArLauncherScreen` on
 /// `ArViewTab.kt` (#1211 item 3): hero icon + tagline + "Start AR Camera" CTA,
-/// followed by a 2×3 grid of headline AR demo cards so the launcher doubles
-/// as a discovery surface (issue #1253 item 1) — every card routes to a real
-/// demo screen presented full-screen above the AR tab.
+/// followed by the AR demos as the Home's picture cards (`DemoMediaCard`,
+/// #4200): "Featured", then "All AR demos". Every card routes to a real demo
+/// screen presented full-screen above the AR tab.
 private struct ARLauncherScreen: View {
     let arSupported: Bool
     let onStartArSession: () -> Void
-    /// Invoked when one of the discovery-grid cards is tapped.
-    let onDemoTap: (FeaturedARDemo) -> Void
+    /// Invoked when one of the demo cards is tapped.
+    let onDemoTap: (DemoItem) -> Void
 
     /// Re-read on scene-foreground so a user who tapped "Open Settings",
     /// flipped the camera switch and returned sees the CTA recover to
@@ -306,12 +294,17 @@ private struct ARLauncherScreen: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
 
-                // Discovery grid — mirrors Android's `FEATURED_AR_DEMOS` 2×3
-                // card grid on `ArLauncherScreen`. Gives the user something
-                // to explore even before (or instead of) starting the live
-                // camera session. Each card opens a real AR demo full-screen.
-                demoGrid
-                    .padding(.top, 8)
+                // The AR demos as the Home's picture cards — Android's
+                // Featured grid then "All AR demos (N)" (#4200).
+                demoSection(title: "Featured", demos: ARLauncherCatalogue.featured)
+                    .padding(.top, SceneViewTokens.Space.sm)
+                if !ARLauncherCatalogue.others.isEmpty {
+                    demoSection(
+                        title: "All AR demos (\(ARLauncherCatalogue.featured.count + ARLauncherCatalogue.others.count))",
+                        demos: ARLauncherCatalogue.others
+                    )
+                    .padding(.top, SceneViewTokens.Space.sm)
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 24)
@@ -326,34 +319,38 @@ private struct ARLauncherScreen: View {
         }
     }
 
-    // MARK: - Discovery grid
+    // MARK: - Demo cards
 
-    private var demoGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Try an AR demo")
+    /// A section title, then two `DemoMediaCard`s a row, `home-grid-gutter`
+    /// apart. A row's two cards end level (`levelledRow()`, Android's
+    /// `rowPeers`); a last card alone keeps half the width.
+    private func demoSection(title: String, demos: [DemoItem]) -> some View {
+        let gutter = SceneViewTokens.Home.gridGutter
+        let rows = stride(from: 0, to: demos.count, by: 2).map { Array(demos[$0..<min($0 + 2, demos.count)]) }
+        return VStack(alignment: .leading, spacing: gutter) {
+            Text(title)
                 .font(.headline)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                 .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, 24)
-
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12),
-                ],
-                spacing: 12
-            ) {
-                ForEach(FeaturedARDemo.all) { demo in
-                    Button {
-                        onDemoTap(demo)
-                    } label: {
-                        ARDemoCard(demo: demo)
+                .padding(.leading, SceneViewTokens.Space.xs)
+            ForEach(rows, id: \.first!.sceneId) { row in
+                HStack(alignment: .top, spacing: gutter) {
+                    ForEach(row, id: \.sceneId) { demo in
+                        DemoMediaCard(demo: demo) {
+                            SceneViewHaptic.shared.light()
+                            onDemoTap(demo)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("ar-card-\(demo.sceneId)")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(demo.title): \(demo.subtitle)")
+                    if row.count == 1 {
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
                 }
+                .levelledRow()
             }
-            .padding(.horizontal, 24)
         }
+        .padding(.horizontal, 20)
     }
 }
 
@@ -367,58 +364,6 @@ private struct StatusLabelStyle: LabelStyle {
                 .foregroundStyle(SceneViewTokens.HomeColor.danger)
             configuration.title
         }
-    }
-}
-
-/// A single discovery-grid card on the AR launcher. Visually mirrors the
-/// Samples-tab card idiom (gradient icon header + title + subtitle) so the
-/// two surfaces feel like one app, matching Android's `ArDemoCard`.
-private struct ARDemoCard: View {
-    let demo: FeaturedARDemo
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack {
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.green.opacity(0.32),
-                                Color.green.opacity(0.14),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                Image(systemName: demo.icon)
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.green)
-                    .accessibilityHidden(true)
-            }
-            .frame(height: 56)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(demo.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(demo.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: 150, alignment: .top)
-        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

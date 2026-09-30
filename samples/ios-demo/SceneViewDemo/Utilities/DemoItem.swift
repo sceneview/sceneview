@@ -86,9 +86,11 @@ struct DemoItem: Identifiable {
     /// Version of the demo's last notable rework (`// @updatedIn`) — mirrors
     /// Android's `DemoEntry.updatedIn`. Drives the "Updated" chip.
     let updatedIn: String?
-    let title: String
+    /// `var` (with `subtitle`) so a curated surface can retitle an entry —
+    /// the AR tab's featured tiles, Android's `FeaturedArDemo` over `DemoEntry`.
+    var title: String
     let icon: String
-    let subtitle: String
+    var subtitle: String
     let category: DemoCategory
     /// Home section (`// @section`, #3907) — the user-intent grouping that
     /// mirrors Android's `DemoEntry.category` / `DEMO_CATEGORIES`. `category`
