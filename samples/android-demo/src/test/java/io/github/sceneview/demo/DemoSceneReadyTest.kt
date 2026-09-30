@@ -121,30 +121,29 @@ class DemoSceneReadyTest {
     }
 
     @Test
-    fun `frames presented before the HDR lands do not make the scene ready`() {
-        // #4174: the HDR decodes off the main thread and lands after the geometry. The frames
-        // before it are real pixels — neutral-lit, on a black backdrop — but not the demo's
-        // picture, and the render goldens captured exactly those.
+    fun `frames presented before the HDR lands lift the cover but do not make the scene ready`() {
+        // #4174: the HDR decodes off the main thread and can land after the geometry. The cover
+        // keeps its frame (holding it cost 0.4 to 1.4 s on a Pixel 4a), but the frames before
+        // the HDR are neutral-lit, not the demo's picture: "Scene ready", which the render
+        // goldens capture on, waits for it.
         val rendered = mutableStateOf(false)
         val state = FirstFrameState(rendered)
         state.holdUntil(landed = false)
 
         state.onFrame(base)
         state.onFrame(base + 16 * millis)
-        state.onFrame(base + 32 * millis)
 
-        assertFalse("frames without the HDR are not the scene", rendered.value)
+        assertTrue("the cover lifts on the same frame as without an HDR", rendered.value)
+        assertFalse("frames without the HDR are not the scene", state.sceneReady.value)
         assertTrue("the bounded wait starts at the first frame without it", state.waitingOnContent.value)
 
         state.holdUntil(landed = true)
         state.onFrame(base + 900 * millis)
-        assertTrue("the first frame that carries the HDR lifts the cover", rendered.value)
+        assertTrue("the first frame that carries the HDR makes the scene ready", state.sceneReady.value)
     }
 
     @Test
-    fun `an HDR that lands before the second frame costs no frame`() {
-        // #4174: the cover must lift on the same frame as without a hold. Frames presented
-        // before the HDR lands still count, so an HDR that is in by the second frame is free.
+    fun `an HDR that lands before the second frame is ready with the cover`() {
         val rendered = mutableStateOf(false)
         val state = FirstFrameState(rendered)
         state.holdUntil(landed = false)
@@ -154,31 +153,34 @@ class DemoSceneReadyTest {
         state.holdUntil(landed = true)
         state.onFrame(base + 1_400 * millis)
 
-        assertTrue("same frame as a scene that never held", rendered.value)
+        assertTrue(rendered.value)
+        assertTrue("same frame as a scene that never held", state.sceneReady.value)
     }
 
     @Test
-    fun `a content load that never lands releases the cover once the wait expires`() {
+    fun `a content load that never lands releases Scene ready once the wait expires`() {
         // A failed HDR load never lands. The scene has presented its fallback-lit frames and
-        // parked, so no later frame will come to count: the expiry has to latch by itself.
+        // parked, so no later frame will come to count: the expiry has to mark it by itself.
         val rendered = mutableStateOf(false)
         val state = FirstFrameState(rendered)
         state.holdUntil(landed = false)
         state.onFrame(base)
         state.onFrame(base + 16 * millis)
+        assertFalse(state.sceneReady.value)
 
         state.contentWaitExpired()
 
-        assertTrue("a failed load costs a flat scene, never a cover that stays up", rendered.value)
+        assertTrue("a failed load costs a flat scene, never a hang", state.sceneReady.value)
     }
 
     @Test
-    fun `a scene that is not holding never starts the content wait`() {
+    fun `a scene that is not holding is ready with the cover and never starts the content wait`() {
         val rendered = mutableStateOf(false)
         val state = FirstFrameState(rendered)
         state.onFrame(base)
         state.onFrame(base + 16 * millis)
         assertTrue(rendered.value)
+        assertTrue(state.sceneReady.value)
         assertFalse(state.waitingOnContent.value)
     }
 
@@ -194,5 +196,6 @@ class DemoSceneReadyTest {
         state.onFrame(base + 5_000 * millis)
 
         assertTrue("an environment swap is not a cold start", rendered.value)
+        assertTrue(state.sceneReady.value)
     }
 }

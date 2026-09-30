@@ -671,7 +671,7 @@ private fun StudioSection(
     }
     val firstFrame = rememberFirstFrameState(engine)
     // The studio backdrop and its IBL are the demo's picture, not a later refinement of it:
-    // the cover stays up until both have landed (#4174).
+    // "Scene ready" waits until both have landed (#4174).
     firstFrame.holdUntil(landed = studioEnvironment != null)
 
     // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
@@ -700,6 +700,7 @@ private fun StudioSection(
         },
         onBack = { if (inspecting) changeMode(MaterialsMode.Gallery) else onBack() },
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = if (inspecting) {
             stringResource(selected.nameRes)
@@ -1290,6 +1291,7 @@ private fun OcclusionSection(
         title = stringResource(R.string.demo_materials_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = stringResource(
             if (occluderVisible) {

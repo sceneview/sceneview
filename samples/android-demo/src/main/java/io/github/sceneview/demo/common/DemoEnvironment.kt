@@ -42,9 +42,9 @@ import io.github.sceneview.rememberEnvironment
  *
  * The HDR decodes asynchronously; until it is ready this falls back to the
  * default neutral environment so the first frames never flash black either.
- * Pass the demo's [firstFrame] and its loading cover stays up until the HDR has
- * landed (bounded — see [FirstFrameState.holdUntil]), so neither the user nor a
- * render golden sees the fallback-lit frames.
+ * Pass the demo's [firstFrame] and its "Scene ready" signal waits until the HDR has
+ * landed (bounded — see [FirstFrameState.holdUntil]), so a render golden never
+ * captures the fallback-lit frames. The loading cover does not wait for it.
  *
  * Demos whose *subject* is the environment ([io.github.sceneview.demo.demos.LightingLabDemo]'s
  * Sky / Environment / Reflections tabs) manage their own environment and must
@@ -130,7 +130,7 @@ const val MATERIALS_SHOWCASE_HDR: String = "environments/studio_warm_2k.hdr"
  * launched with `--ez qa_mode true`, which pins it.
  *
  * Falls back to the neutral default while the HDR decodes, so the first frames
- * never flash black; pass [firstFrame] to keep the demo's cover up until it lands.
+ * never flash black; pass [firstFrame] so "Scene ready" waits until it lands.
  */
 @Composable
 fun rememberMaterialsShowcaseEnvironment(

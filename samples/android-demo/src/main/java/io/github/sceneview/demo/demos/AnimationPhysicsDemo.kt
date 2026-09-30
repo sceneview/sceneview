@@ -750,7 +750,7 @@ private fun AnimationSection(onBack: () -> Unit) {
     )
 
     val firstFrame = rememberFirstFrameState(engine)
-    // The cover waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
+    // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
     firstFrame.holdUntil(landed = hdrEnvironment != null)
 
     // ── Who keeps this screen awake (#3718) ──────────────────────────────────────────────
@@ -798,6 +798,7 @@ private fun AnimationSection(onBack: () -> Unit) {
         title = stringResource(R.string.demo_animation_physics_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         topOverlay = {
             Column(
                 // `surface-container`, DESIGN.md's card role — not `surface`: in dark, `surface`

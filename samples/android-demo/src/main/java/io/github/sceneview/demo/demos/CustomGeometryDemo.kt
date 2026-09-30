@@ -179,6 +179,7 @@ fun CustomGeometryDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_custom_geometry_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
         // The live proof that the mesh is generated, not loaded: the counts move with the
         // Segments slider, under the user's thumb.
         peekHeader = meshCountsLabel(parameters.segments),
