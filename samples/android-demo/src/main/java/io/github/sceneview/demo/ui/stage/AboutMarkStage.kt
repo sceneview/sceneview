@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Size
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.Node
@@ -78,6 +79,8 @@ internal fun AboutMarkStage(active: Boolean, modifier: Modifier = Modifier) {
             eye = MarkScene.eye,
             target = MarkScene.target,
             restSeconds = MarkScene.REST_SECONDS,
+            keyLight = MarkScene.keyLight,
+            keyLightLux = MarkScene.KEY_LIGHT_LUX,
             modifier = Modifier.fillMaxSize(),
             placeholder = {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -226,12 +229,18 @@ private object MarkScene {
     /** Pose drawn under reduced motion: both satellites in front of the cube. */
     const val REST_SECONDS = 1.4
 
+    /** From the right, a little above: one side face lit, the other in shade — the icon's two blues. */
+    val keyLight = Direction(-0.86f, -0.48f, -0.18f)
+
+    /** Softer than the shared key: on a white page a brighter cube washes to one pale blue. */
+    const val KEY_LIGHT_LUX = 42_000f
+
     const val CUBE_UNITS = 1f
     const val LID_UNITS = 0.64f
     const val LID_THICKNESS = 0.03f
-    const val BODY_ROUGHNESS = 0.2f
+    const val BODY_ROUGHNESS = 0.28f
     const val LID_ROUGHNESS = 0.35f
-    const val BODY_REFLECTANCE = 0.6f
+    const val BODY_REFLECTANCE = 0.4f
 
     const val BOB_UNITS = 0.06f
     const val BOB_PERIOD = 4.8f

@@ -503,8 +503,11 @@ object SceneViewTokens {
      * object, not a themed surface.
      */
     object MarkColor {
-        /** The cube body — the mark's right face (`#3D7FD9`); the key light shades the rest. */
-        val body = Color(0xFF3D7FD9)
+        /**
+         * The cube body, a shade under the mark's right face (`#3D7FD9`): the studio light
+         * lifts every lit face, so the albedo sits lower for the faces to read like the icon.
+         */
+        val body = Color(0xFF2458BE)
         /** The lid inset on the top face — the mark's inner highlight (`#BDD3FF`). */
         val lid = Color(0xFFBDD3FF)
         /** The two orbit rings and their satellites — the mark's top face (`#A4C1FF`). */

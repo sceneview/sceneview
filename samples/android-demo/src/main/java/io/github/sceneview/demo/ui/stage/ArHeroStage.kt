@@ -144,19 +144,19 @@ private fun driveArHero(
         .coerceIn(0f, 1f)
     for (i in slots.indices) {
         val node = slots[i] ?: continue
-        if (i != current) {
+        if (i == current) {
+            val drop = 1f - easeOutCubic(enter)
+            val grow = easeOutBack(enter) * (1f - easeInCubic(exit))
+            pivot.write(
+                node,
+                y = ArHeroScene.DROP_UNITS * drop,
+                yawDegrees = ArHeroScene.YAW_START + t * ArHeroScene.YAW_DEGREES_PER_SECOND,
+                scale = (ArHeroScene.ENTER_SCALE + (1f - ArHeroScene.ENTER_SCALE) * grow)
+                    .coerceAtLeast(ArHeroScene.HIDDEN_SCALE),
+            )
+        } else {
             pivot.write(node, scale = ArHeroScene.HIDDEN_SCALE)
-            continue
         }
-        val drop = 1f - easeOutCubic(enter)
-        val grow = easeOutBack(enter) * (1f - easeInCubic(exit))
-        pivot.write(
-            node,
-            y = ArHeroScene.DROP_UNITS * drop,
-            yawDegrees = ArHeroScene.YAW_START + t * ArHeroScene.YAW_DEGREES_PER_SECOND,
-            scale = (ArHeroScene.ENTER_SCALE + (1f - ArHeroScene.ENTER_SCALE) * grow)
-                .coerceAtLeast(ArHeroScene.HIDDEN_SCALE),
-        )
     }
     reticle[0]?.let { node ->
         // The reticle breathes, and answers each landing with one pulse.
@@ -308,9 +308,10 @@ private fun projectPlane(size: Size): ProjectedPlane {
         for (j in 0 until steps) {
             val wx = -span + i * step
             val wz = -span + j * step + ArHeroScene.GRID_OFFSET_Z
-            if (!project(wx, 0f, wz)) continue
-            if (out[0] < -size.width * EDGE_SLACK || out[0] > size.width * (1f + EDGE_SLACK)) continue
-            if (out[1] < 0f || out[1] > size.height) continue
+            val onScreen = project(wx, 0f, wz) &&
+                out[0] >= -size.width * EDGE_SLACK && out[0] <= size.width * (1f + EDGE_SLACK) &&
+                out[1] >= 0f && out[1] <= size.height
+            if (!onScreen) continue
             val n = plane.count
             plane.x[n] = out[0]
             plane.y[n] = out[1]

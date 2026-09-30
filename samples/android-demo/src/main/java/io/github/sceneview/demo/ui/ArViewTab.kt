@@ -12,6 +12,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -674,7 +675,13 @@ private fun ArHero(
         modifier = Modifier
             .fillMaxWidth()
             .height(SceneViewTokens.ArHero.height)
-            .clip(RoundedCornerShape(SceneViewTokens.Radius.xl)),
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
+            // In dark the night stage sits one step off the page: the hairline is its edge.
+            .border(
+                width = SceneViewTokens.Layout.hairlineWidth,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(SceneViewTokens.Radius.xl),
+            ),
     ) {
         ArHeroStage(active = active, modifier = Modifier.fillMaxSize())
         ViewfinderBrackets(Modifier.fillMaxSize())
