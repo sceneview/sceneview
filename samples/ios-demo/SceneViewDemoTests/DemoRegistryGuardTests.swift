@@ -278,6 +278,8 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// live Scene id, and both ids still reach `DeepLinkPlaceholder` through
     /// the unregistered-id path. `physics` joined as a retired-scene alias when
     /// the RealityKit cubes were replaced by the Rolling Balls tray (#4083).
+    /// `lighting-lab` left the umbrella list when it got its own scene, and
+    /// `reflection-probes` joined as the retired id that scene replaced.
     /// Each of the remaining 9 must keep resolving —
     /// through its canonical target — to exactly that target's current
     /// realness.
@@ -291,8 +293,8 @@ final class DemoRegistryGuardTests: XCTestCase {
             "picking-collision": "collision",
             "animation-physics": "animation",
             "two-d-in-three-d": "text",
-            "lighting-lab": "dynamic-sky",
             "physics": "rolling-balls",
+            "reflection-probes": "lighting-lab",
         ], "legacyAliases changed — update this pin (and re-verify the new/changed alias " +
            "resolves sanely through DemoDeepLinkRegistry.destination(for:))")
 

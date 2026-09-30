@@ -38,9 +38,9 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/demo-settings.yaml
     env:
-      DEMO_ID: reflection-probes
-      DEMO_NAME: Reflection Probes
-      ASSERT_TEXT: "Probe Environment"
+      DEMO_ID: lighting-lab
+      DEMO_NAME: Lighting Lab
+      ASSERT_TEXT: "Local reflections"
 - runFlow:
     file: flows/demo-noassert.yaml
     env:
