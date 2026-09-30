@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **37**.
+Assets bundled: **41**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -57,6 +57,14 @@ Assets bundled: **37**.
 
 - `audio/bell.wav` — **[bell.wav](https://creativecommons.org/publicdomain/zero/1.0/)** by SceneView project — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (27 KB)  
   Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`
+- `audio/garden_bass.ogg` — **[garden_bass.ogg](https://creativecommons.org/publicdomain/zero/1.0/)** by SceneView project — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (41 KB)  
+  Synthesized bass loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`
+- `audio/garden_beat.ogg` — **[garden_beat.ogg](https://creativecommons.org/publicdomain/zero/1.0/)** by SceneView project — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (94 KB)  
+  Synthesized drum loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`
+- `audio/garden_bells.ogg` — **[garden_bells.ogg](https://creativecommons.org/publicdomain/zero/1.0/)** by SceneView project — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (54 KB)  
+  Synthesized bell melody loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`
+- `audio/garden_pad.ogg` — **[garden_pad.ogg](https://creativecommons.org/publicdomain/zero/1.0/)** by SceneView project — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (32 KB)  
+  Synthesized pad loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`
 - `augmented_images/qrcode.png` — **[qrcode.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (2 KB)  
   QR-like reference pattern drawn for `ARImageDemo`
 - `materials/cosmos_dust.filamat` — **[cosmos_dust.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (40 KB)  

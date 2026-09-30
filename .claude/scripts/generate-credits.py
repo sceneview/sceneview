@@ -243,6 +243,36 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "note": "Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`",
     },
+    # `ARSoundGardenDemo`'s four parts of one loop, synthesized from code (no samples, no
+    # recordings) by `tools/generate-sound-garden-stems.py`, which rewrites all four.
+    "garden_beat.ogg": {
+        "name": "garden_beat.ogg",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized drum loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
+    "garden_bass.ogg": {
+        "name": "garden_bass.ogg",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized bass loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
+    "garden_pad.ogg": {
+        "name": "garden_pad.ogg",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized pad loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
+    "garden_bells.ogg": {
+        "name": "garden_bells.ogg",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized bell melody loop — `tools/generate-sound-garden-stems.py`, `ARSoundGardenDemo`",
+    },
     "qrcode.png": {
         "name": "qrcode.png",
         "author": "SceneView project",

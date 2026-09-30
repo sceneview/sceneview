@@ -63,10 +63,11 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-29): 51 rows, 32 working / 0 stub / 19 android-only.
+# Current slice-5 ledger (2026-09-30): 52 rows, 32 working / 0 stub / 20 android-only.
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
+# (+1 android-only: `ar-sound-garden` — a binaural AR song garden; iOS port planned.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -275,7 +276,7 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (31) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (32) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -943,7 +944,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1314,6 +1315,28 @@ demos:
     evidence: >-
       The iOS Rerun demo records and replays sessions but has no View in AR
       action; an iOS port reuses its replay layers under an anchor
+  - id: ar-sound-garden
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen yet. Android renders its own binaural mix (one shared
+      playhead for four stems); the planned iOS port drives the same stems
+      through AVAudioEnvironmentNode's HRTF, which needs its own device check.
+    category: PLACE_AR
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/soundgarden/ARSoundGardenDemo.kt
+    ios: []
+    iosFiles: []
+    contract: >-
+      Four glowing orbs, each one part of one looping song (bells, beat, pad,
+      bass), planted by themselves on the first floor plane 1.6 m ahead; each
+      orb pulses with its part's loudness. With headphones, walking up to an
+      orb makes its part louder, turning your back muffles it, left and right
+      follow the head. Tap an orb or its legend chip to mute it; Replant.
+    parity: missing
+    evidence: >-
+      Android only (sound is proven by JVM tests on the mix, and on device
+      with headphones); iOS SpatialAudioDemo already plays a looped bell
+      through SceneViewSwift's spatial audio, a base for the port
 
 # ─── iOS-only scenes, no Android row: 2 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as
