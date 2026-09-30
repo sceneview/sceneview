@@ -6,7 +6,6 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +56,7 @@ import io.github.sceneview.demo.demos.internal.RerunGlbWriter
 import io.github.sceneview.demo.demos.internal.RerunPlyWriter
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RerunRrdWriter
+import io.github.sceneview.demo.demos.internal.formatFileSize
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.theme.SceneViewTokens.Type
@@ -166,7 +166,6 @@ internal fun RerunExportSheet(source: RerunExportSource, onDismiss: () -> Unit) 
 /** One format: what it is, where it opens and its size, then Share once it is written. */
 @Composable
 private fun ExportRow(format: RerunExportFormat, file: File?, failed: Boolean, onShare: (File) -> Unit) {
-    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -193,7 +192,9 @@ private fun ExportRow(format: RerunExportFormat, file: File?, failed: Boolean, o
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            val size = file?.let { Formatter.formatShortFileSize(context, it.length()).replace(' ', NO_BREAK) }
+            // "4.7 MB" in English like the rest of the sheet: the system formatter wrote "4,7 Mo" on a
+            // French phone.
+            val size = file?.let { formatFileSize(it.length()).replace(' ', NO_BREAK) }
             Text(
                 text = if (size != null) "${format.detail} ·$NO_BREAK$size" else format.detail,
                 style = Type.caption,

@@ -4,8 +4,8 @@
 // @category    advanced
 // @section     devTools
 // @available   true
-// @icon        chart.line.uptrend.xyaxis
-// @order       20
+// @icon        gauge.with.needle.fill
+// @order       21
 // @tags        debug,fps,stats,performance,overlay
 import SwiftUI
 

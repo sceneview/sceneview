@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cached
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
@@ -340,7 +341,7 @@ fun ArViewTabContent(
         // scaffold appends Settings itself.
         dock = listOf(
             DockItem(
-                icon = Icons.Filled.ViewInAr,
+                icon = Icons.Filled.Category,
                 label = stringResource(R.string.ar_dock_models_label),
                 caption = stringResource(R.string.ar_dock_models_caption),
                 onClick = picker::openSheet,

@@ -1,0 +1,104 @@
+// tray_wood.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The varnished wood of the `rolling-balls` board: a pale maple playing field
+//             inside a walnut rim, each piece with its own grain under a clear lacquer.
+//             Procedural, so the board needs no texture asset and no UVs worth the name —
+//             SceneView's procedural cubes, cylinders and spheres all carry a position, and
+//             the grain is grown from it in the piece's own (model) space, so it stays glued
+//             to the wood while the board tilts.
+// Used by:    samples/android-demo RollingBallsDemo — nothing in the SDK.
+// Parameters:
+//   earlyColor         — float3, linear RGB of the pale earlywood between rings.
+//   lateColor          — float3, linear RGB of the dark latewood rings and pores.
+//   grainAxis          — float3, unit vector in model space: the direction the fibres run.
+//   grainOffset        — float3, model-space shift of the virtual log, so two pieces cut
+//                        from the "same" wood do not show the same figure.
+//   ringDensity        — float, growth rings per metre across the grain.
+//   roughness          — float [0,1], roughness of the wood under the lacquer.
+//   clearCoat          — float [0,1], strength of the lacquer lobe.
+//   clearCoatRoughness — float [0,1], gloss of the lacquer itself.
+// matc profile: mobile-only, OpenGL + Vulkan — demo APK asset, not an AAR asset.
+//
+// The figure is the classic flat-sawn one: distance from a log axis that runs along
+// `grainAxis`, bent by a low-frequency noise that is stretched along the fibres, cut into
+// rings, then broken up by fine pores that are themselves long and thin. The pore term is
+// kept weak, because it is the part that can shimmer when a tilted board is seen far away.
+material {
+    "name" : "Tray Wood",
+    "parameters" : [
+        { "type" : "float3", "name" : "earlyColor" },
+        { "type" : "float3", "name" : "lateColor" },
+        { "type" : "float3", "name" : "grainAxis" },
+        { "type" : "float3", "name" : "grainOffset" },
+        { "type" : "float",  "name" : "ringDensity" },
+        { "type" : "float",  "name" : "roughness" },
+        { "type" : "float",  "name" : "clearCoat" },
+        { "type" : "float",  "name" : "clearCoatRoughness" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "objectPosition" ],
+    "shadingModel" : "lit",
+    "blending" : "opaque",
+    "doubleSided" : false
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.objectPosition = float4(getPosition().xyz, 0.0);
+    }
+}
+fragment {
+    highp float woodHash(highp float3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+
+    highp float woodNoise(highp float3 x) {
+        highp float3 i = floor(x);
+        highp float3 f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(
+            mix(mix(woodHash(i + float3(0.0, 0.0, 0.0)), woodHash(i + float3(1.0, 0.0, 0.0)), f.x),
+                mix(woodHash(i + float3(0.0, 1.0, 0.0)), woodHash(i + float3(1.0, 1.0, 0.0)), f.x), f.y),
+            mix(mix(woodHash(i + float3(0.0, 0.0, 1.0)), woodHash(i + float3(1.0, 0.0, 1.0)), f.x),
+                mix(woodHash(i + float3(0.0, 1.0, 1.0)), woodHash(i + float3(1.0, 1.0, 1.0)), f.x), f.y),
+            f.z);
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        highp float3 axis = normalize(materialParams.grainAxis);
+        highp float3 p = variable_objectPosition.xyz + materialParams.grainOffset;
+        highp float along = dot(p, axis);
+        highp float3 across = p - along * axis;
+
+        // The log: rings are distance from its axis, bent by a slow noise that runs along the
+        // fibres (long wavelength along, short across) so the figure flows instead of looping.
+        highp float3 bendCoord = across * 6.0 + axis * (along * 0.9);
+        highp float bend = woodNoise(bendCoord) * 0.9 + woodNoise(bendCoord * 2.3) * 0.35;
+        highp float rings = length(across) * materialParams.ringDensity + bend * 2.0;
+        highp float ring = fract(rings);
+        // Latewood is a thin dark band at the end of each year, earlywood the wide pale rest.
+        highp float late = smoothstep(0.62, 0.9, ring) * (1.0 - smoothstep(0.93, 1.0, ring));
+
+        // Pores: fine streaks, long along the fibres.
+        highp float3 poreCoord = across * 140.0 + axis * (along * 6.0);
+        highp float pore = woodNoise(poreCoord);
+        highp float streak = smoothstep(0.55, 0.95, pore) * 0.35;
+
+        // A slow tone drift, so a long board is not one flat colour between its rings.
+        highp float drift = woodNoise(p * 2.5) * 0.25;
+
+        highp float t = clamp(late * 0.85 + streak + drift * 0.5, 0.0, 1.0);
+        highp float3 color = mix(materialParams.earlyColor, materialParams.lateColor, t);
+
+        material.baseColor = float4(color, 1.0);
+        material.metallic = 0.0;
+        // Latewood is denser and a touch glossier than the open earlywood.
+        material.roughness = clamp(materialParams.roughness - late * 0.08 + streak * 0.1, 0.05, 1.0);
+        material.reflectance = 0.4;
+        material.clearCoat = materialParams.clearCoat;
+        material.clearCoatRoughness = materialParams.clearCoatRoughness;
+    }
+}

@@ -5,7 +5,7 @@
 // @section     create
 // @available   true
 // @icon        scribble.variable
-// @order       31
+// @order       16
 import SwiftUI
 
 enum ShapeExtrudeScene: DemoScene {

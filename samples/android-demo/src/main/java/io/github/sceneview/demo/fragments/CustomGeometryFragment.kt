@@ -24,7 +24,7 @@ object CustomGeometryFragment : DemoFragment {
         subtitleRes = R.string.demo_custom_geometry_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Hexagon,
-        order = 28,
+        order = 5,
         tags = setOf("geometry", "mesh", "procedural", "vertices", "wireframe", "knot"),
     )
 

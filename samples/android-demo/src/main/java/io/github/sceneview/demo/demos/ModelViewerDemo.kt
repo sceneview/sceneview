@@ -28,9 +28,9 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.BottomSheetDefaults
@@ -1159,10 +1159,11 @@ private fun SingleModelSection(
         // is what made the row unreadable; `Category` (three solids) says "pick a model"
         // and leaves the cube to mean AR. `CenterFocusStrong`'s reticle read as a zoom or
         // a camera-focus control, so Recenter is `RestartAlt` — an action, not a viewfinder.
+        // Animate is `PlayCircle`, iOS's `play.circle`: the same action wears the same glyph.
         dock = listOf(
             DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true }),
             DockItem(Icons.Outlined.WbSunny, "Lighting", { environmentSheetOpen = true }),
-        ) + (if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.Animation, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList()) +
+        ) + (if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.PlayCircle, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList()) +
             listOf(DockItem(Icons.Outlined.RestartAlt, "Recenter", {
                 // Capture the pose actually on screen — post-orbit, pre-reset — before anything
                 // moves, so the flight below starts from there instead of snapping to the

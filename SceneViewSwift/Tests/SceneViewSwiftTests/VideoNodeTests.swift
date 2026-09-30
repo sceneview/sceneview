@@ -211,13 +211,17 @@ final class VideoNodeTests: XCTestCase {
 
     // MARK: - Video player component
 
-    func testEntityHasVideoPlayerComponent() {
-        if #available(macOS 15.0, iOS 18.0, visionOS 1.0, *) {
-            let player = AVPlayer()
-            let node = VideoNode.create(player: player)
-            let component = node.entity.components[VideoPlayerComponent.self]
-            XCTAssertNotNil(component)
-        }
+    /// The quad is textured by a `VideoMaterial`, not a `VideoPlayerComponent`:
+    /// RealityKit skips a component whose player has no loaded video track yet,
+    /// which left the Video Texture demo without its screen on iOS 26.
+    func testEntityIsAQuadTexturedByAVideoMaterial() {
+        let node = VideoNode.create(player: AVPlayer())
+        let model = node.entity.components[ModelComponent.self]
+        XCTAssertNotNil(model, "the video quad has no mesh")
+        XCTAssertEqual(model?.materials.count, 1)
+        XCTAssertTrue(model?.materials.first is VideoMaterial,
+                      "the video quad is not textured by a VideoMaterial")
+        XCTAssertNil(node.entity.components[VideoPlayerComponent.self])
     }
 }
 #endif

@@ -312,9 +312,12 @@ struct ModelViewerDemo: View {
     /// lit (Lighting), play it (Animate, only with clips), then put the
     /// camera back (Recenter). The scaffold appends Settings and the AR
     /// accent. The dock is this demo's own array — no other demo shares it.
+    /// Glyphs match Android's dock item for item: Models is `square.on.circle`
+    /// (Material `Category`) so the cube stays the AR accent's alone, and
+    /// Recenter is a return arrow (`RestartAlt`), not a reticle that reads as zoom.
     private var dock: [DockItem] {
         var items = [
-            DockItem(icon: "cube.transparent", label: "Models") { sheet = .models },
+            DockItem(icon: "square.on.circle", label: "Models") { sheet = .models },
             DockItem(icon: "sun.max", label: "Environment", caption: "Lighting") { sheet = .environment },
         ]
         if !animationNames.isEmpty {
@@ -322,7 +325,7 @@ struct ModelViewerDemo: View {
                 withAnimation(SceneViewTokens.Spring.animation) { animationBarOpen.toggle() }
             })
         }
-        items.append(DockItem(icon: "scope", label: "Recenter") { recenter() })
+        items.append(DockItem(icon: "arrow.counterclockwise.circle", label: "Recenter") { recenter() })
         return items
     }
 

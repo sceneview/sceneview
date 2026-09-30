@@ -84,9 +84,17 @@ AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band 
 
 `rolling-balls` became its own demo in #4083 and has no render golden: its card is an
 emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
-tray, its rails and the first balls come to rest. Crop: x 40–1040, y 740–1540 (5:4), resized
+wooden board (maple field, walnut frame, since the redesign) and the rubber, glass and steel
+balls come to rest. Crop: x 40–1040, y 580–1380 (5:4, the whole frame of the board), resized
 to 800×640, WebP q85, one capture per theme: its stage is the themed stage sky, so the dark
 card is the dark stage.
+
+`cosmos` had no card and fell back to its icon, although it leads the Featured shelf. Its
+card is an emulator capture (Pixel_7a, 1080×2400) of `--es demo cosmos` once the spiral
+galaxy has rendered: the full-width 1080×864 band centred on the galaxy's bright pixels
+(window y 779–1643), resized to 800×640, WebP q80. Space is black
+in both themes, so light and dark are the same pixels. The iOS `preview_cosmos` imageset
+carries the same crop as JPEG q90.
 
 ## iOS imagesets
 

@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -21,8 +21,8 @@ object AnimationPhysicsFragment : DemoFragment {
         titleRes = R.string.demo_animation_physics_title,
         subtitleRes = R.string.demo_animation_physics_subtitle,
         category = DemoCategory.VIEW_3D,
-        icon = Icons.Filled.RotateRight,
-        order = 3,
+        icon = Icons.AutoMirrored.Filled.DirectionsRun,
+        order = 28,
         // 4.48.0: the Physics tab left for its own `rolling-balls` demo (#4083).
         updatedIn = "4.48.0",
         tags = setOf("animation", "skeletal", "camera", "gltf"),

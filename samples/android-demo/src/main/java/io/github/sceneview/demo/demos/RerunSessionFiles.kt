@@ -176,14 +176,17 @@ internal suspend fun RerunSessionStore.landingSessions(): List<LandingSession> =
     }
 }
 
-/** "Room · Sep 28, 2:32 PM", in the phone's locale. */
-internal fun recordingTitle(nowMillis: Long, locale: Locale = Locale.getDefault()): String {
+/**
+ * "Room · Sep 28, 2:32 PM": in English like the rest of the demo, whatever the phone's language —
+ * a French phone wrote "Room · 30 sept., 13:56" into an English screen.
+ */
+internal fun recordingTitle(nowMillis: Long, locale: Locale = Locale.US): String {
     val pattern = DateFormat.getBestDateTimePattern(locale, "MMMd jmm")
     return RerunStoredSession.recordingTitle(SimpleDateFormat(pattern, locale).format(Date(nowMillis)))
 }
 
-/** "Sep 28, 2:32 PM · Recorded". */
-internal fun sessionOrigin(session: RerunStoredSession, locale: Locale = Locale.getDefault()): String {
+/** "Sep 28, 2:32 PM · Recorded", in English like [recordingTitle]. */
+internal fun sessionOrigin(session: RerunStoredSession, locale: Locale = Locale.US): String {
     val pattern = DateFormat.getBestDateTimePattern(locale, "MMMd jmm")
     val date = SimpleDateFormat(pattern, locale).format(Date(session.createdAt * MILLIS))
     return "$date · ${session.source.label}"
