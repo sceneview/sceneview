@@ -35,8 +35,10 @@ import Combine
 /// content.add(node.entity)
 /// ```
 ///
-/// Falloff curves are applied by clamping the `gain` parameter of the playback controller
-/// from the `AudioFalloff.gain(for:distance:)` helper each time the listener moves.
+/// Falloff curves are applied by setting the `gain` of the playback controller from the
+/// `AudioFalloff.gain(for:distance:)` helper each time the listener moves — call
+/// ``updateGain(forDistance:)`` per frame; from its first call the falloff replaces
+/// RealityKit's built-in rolloff instead of stacking on it.
 /// Phase 2 will replace the manual gain push with a PHASE engine pipeline that supports
 /// occlusion and reverb zones.
 @MainActor
@@ -227,14 +229,39 @@ public struct SpatialAudioNode {
     }
 
     /// Recomputes and pushes a new gain to the active playback controller given the
-    /// current source-listener distance. Call this from a per-frame hook if you want
-    /// software-controlled gain on top of RealityKit's built-in distance attenuation
-    /// (which already applies, but on a fixed curve that is not user-controllable).
-    public func updateGain(forDistance distance: Float) {
+    /// current source-listener distance. Call this from a per-frame hook with the
+    /// distance from the source to the listener (the active camera) so the picked
+    /// ``AudioFalloff`` is what the ears hear.
+    ///
+    /// The first call hands the distance law to the falloff: RealityKit's own
+    /// `SpatialAudioComponent` rolloff is switched off (`.rolloff(factor: 0)`) so the
+    /// two curves do not multiply. Without that, `.linear` never reached silence at its
+    /// `maxDistance` and `.inverse` fell faster than its formula, because RealityKit
+    /// kept applying its fixed built-in attenuation underneath. Direction (the pan
+    /// between the ears) is still rendered by RealityKit from the entity's world
+    /// transform relative to the listener.
+    ///
+    /// - Returns: The linear gain pushed, in `[0, 1]` — the same value
+    ///   ``AudioFalloff/gain(for:distance:)`` gives, times the node's base volume.
+    @discardableResult
+    public func updateGain(forDistance distance: Float) -> Float {
+        if !storage.falloffOwnsDistance, var spatial = entity.spatialAudio {
+            spatial.distanceAttenuation = .rolloff(factor: 0)
+            entity.spatialAudio = spatial
+            storage.falloffOwnsDistance = true
+        }
         let linear = Float(storage.baseVolume) *
             AudioFalloff.gain(for: storage.falloff, distance: distance)
+        storage.lastLinearGain = linear
         storage.controller?.gain = AudioPlaybackController.gainFromLinear(linear)
+        return linear
     }
+
+    /// The gain the live playback controller carries, in decibels — read back from
+    /// RealityKit's `AudioPlaybackController.gain`, so a meter or a log line shows
+    /// what the audio engine was actually handed. `nil` before the first ``play()``
+    /// and after ``stop()``.
+    public var playbackGainDecibels: Double? { storage.controller?.gain }
 
     /// Binds an external ``AudioController`` so SwiftUI state updates can drive playback
     /// from outside the view tree.
@@ -295,6 +322,13 @@ final class AudioStorage {
     var controller: AudioPlaybackController?
     weak var boundController: AudioController?
     var isPlaying: Bool = false
+    /// Set by the first ``SpatialAudioNode/updateGain(forDistance:)``: RealityKit's own
+    /// rolloff is off and the falloff curve is the only distance law.
+    var falloffOwnsDistance = false
+    /// Last gain pushed by ``SpatialAudioNode/updateGain(forDistance:)`` — reused when a
+    /// new controller starts, so a resume after ``SpatialAudioNode/stop()`` does not
+    /// blast the unattenuated base volume for a frame.
+    var lastLinearGain: Float?
 
     init(source: AudioResource, falloff: AudioFalloff, loop: Bool, baseVolume: Float, pitch: Float) {
         self.source = source
@@ -305,10 +339,11 @@ final class AudioStorage {
     }
 
     func currentLinearGain() -> Float {
-        // Without a fresh distance reading we report the unattenuated base volume — the
-        // engine then applies its own distance attenuation. Callers can override via
-        // ``SpatialAudioNode/updateGain(forDistance:)`` for explicit control.
-        return baseVolume
+        // Without a distance reading yet we report the unattenuated base volume — the
+        // engine then applies its own distance attenuation. Once the caller drives the
+        // gain via ``SpatialAudioNode/updateGain(forDistance:)`` the last value it
+        // pushed is the right starting point for a fresh controller.
+        return lastLinearGain ?? baseVolume
     }
 }
 
