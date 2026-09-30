@@ -89,6 +89,7 @@ struct HomeHeroStage: View {
     let live: Bool
     let scroll: HomeHeroScroll
     let flight: HomeHeroFlightHost
+    var hold: Bool = false
 
     /// How long the 3D view stays mounted after `live` drops. Opening the
     /// hero's demo zooms it out of the hero copy while the home — this stage
@@ -110,7 +111,7 @@ struct HomeHeroStage: View {
             ZStack {
                 HomeHeroSky()
                 #if os(iOS)
-                if mounted && scroll.onScreen {
+                if mounted && scroll.onScreen && !hold {
                     HomeHeroScene(renderer: flight.renderer, moving: live && !reduceMotion, motion: !reduceMotion)
                 }
                 #endif
@@ -147,7 +148,7 @@ struct HomeHeroStage: View {
             guard live else {
                 try? await Task.sleep(for: Self.teardownGrace)
                 guard !Task.isCancelled else { return }
-                mounted = false
+                if ProcessInfo.processInfo.environment["ABF_E1"] == nil && !CommandLine.arguments.contains("-abf_keep") { mounted = false }
                 return
             }
             mounted = true
@@ -315,6 +316,9 @@ final class HomeHeroRenderer {
         content.add(root)
         content.add(camera)
         attachments += 1
+        #if DEBUG
+        ABFHarness.log("HERO install attachments=\(attachments)")
+        #endif
         stopUpdates?()
         let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated { self?.update(event.deltaTime) }
@@ -327,10 +331,18 @@ final class HomeHeroRenderer {
     /// The `RealityView` is gone: no frame work until the next `install`.
     func detach() {
         attachments = max(attachments - 1, 0)
+        #if DEBUG
+        ABFHarness.log("HERO detach attachments=\(attachments)")
+        #endif
         guard attachments == 0 else { return }
         stopUpdates?()
         stopUpdates = nil
         set(moving: false, motion: motion)
+        if CommandLine.arguments.contains("-abf_unparent") {
+            root.removeFromParent()
+            camera.removeFromParent()
+            ABFHarness.log("HERO unparented")
+        }
     }
 
     func set(moving: Bool, motion: Bool) {

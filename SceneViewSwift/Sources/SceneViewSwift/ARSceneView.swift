@@ -464,8 +464,11 @@ public struct ARSceneView: UIViewRepresentable {
     /// been reported to leave a later camera view drawing over black
     /// (#3912); nothing here is left to a default. `internal` for the tests.
     static func makeARView() -> ARView {
-        let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+        let fix = ABFExperiment.fix
+        let frame: CGRect = (fix & 4 != 0) ? UIScreen.main.bounds : .zero
+        let arView = ABFExperimentARView(frame: frame, cameraMode: .ar, automaticallyConfigureSession: false)
         arView.environment.background = .cameraFeed()
+        ABFExperiment.log("SDK makeARView fix=\(fix) frame=\(frame.size)")
         return arView
     }
 

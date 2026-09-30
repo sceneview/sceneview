@@ -38,6 +38,8 @@ struct ShowcaseTab: View {
     @State private var searchOpen = false
     @State private var scrolled = false
     @State private var fullScreenScene: DemoItem?
+    @State private var abfHold = false
+    @State private var abfCoverUp = false
     @State private var comingSoonScene: DemoItem?
     @State private var showExplore = false
     /// The `matchedTransitionSource` id of whatever opened the current demo. A
@@ -83,6 +85,7 @@ struct ShowcaseTab: View {
         isActive
             && scenePhase == .active
             && fullScreenScene == nil
+            && !(CommandLine.arguments.contains("-abf_post") && abfCoverUp)
             && comingSoonScene == nil
             && !showExplore
     }
@@ -155,7 +158,7 @@ struct ShowcaseTab: View {
                         if !searching {
                             HomeHeroStage(height: heroStageHeight, topInset: topInset,
                                           restTop: heroRestTop, live: heroLive, scroll: heroScroll,
-                                          flight: heroFlight)
+                                          flight: heroFlight, hold: abfHold)
                                 .padding(.horizontal, -SceneViewTokens.Home.contentPadding)
                         }
                     }
@@ -253,6 +256,15 @@ struct ShowcaseTab: View {
             .onAppear {
                 if scenes.isEmpty { scenes = GeneratedScenes.all() }
             }
+            #if DEBUG && os(iOS)
+            .onReceive(NotificationCenter.default.publisher(for: .abfHome)) { note in
+                open(sceneId: (note.object as? String) ?? "")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .abfClose)) { _ in fullScreenScene = nil }
+            .onChange(of: fullScreenScene == nil) { _, isNil in
+                if isNil, !CommandLine.arguments.contains("-abf_post") { abfHold = false }
+            }
+            #endif
             .task {
                 // One frame late, so the first layout paints the pre-reveal
                 // state and the cascade has something to animate from.
@@ -276,7 +288,7 @@ struct ShowcaseTab: View {
                 #endif
             }
             #if os(iOS)
-            .fullScreenCover(item: $fullScreenScene) { scene in
+            .fullScreenCover(item: $fullScreenScene, onDismiss: { abfCoverUp = false; abfHold = false; ABFHarness.log("COVER dismissed") }) { scene in
                 DemoCover(scene: scene) { fullScreenScene = nil }
                     // The row that was tapped expands into the demo, and
                     // collapses back into it on close. Before this, a demo
@@ -404,7 +416,18 @@ struct ShowcaseTab: View {
         SceneViewHaptic.shared.light()
         #endif
         if scene.status.isAvailable {
-            fullScreenScene = scene
+            if CommandLine.arguments.contains("-abf_pre") {
+                abfHold = true
+                abfCoverUp = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(100))
+                    ABFHarness.log("PRESENT after hold")
+                    fullScreenScene = scene
+                }
+            } else {
+                abfCoverUp = true
+                fullScreenScene = scene
+            }
         } else {
             comingSoonScene = scene
         }
