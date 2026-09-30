@@ -1,6 +1,11 @@
 See what the SceneView SDK can do, on your own phone, before you write a line of code.
 
-SceneView is an open-source 3D and augmented reality SDK for Jetpack Compose, SwiftUI, and the web. This app is its demo: 48 screens, each one a working sample of a feature you can put in your own app. Every screen links to the source code that draws it, and most of them are only a few lines long.
+SceneView is an open-source 3D and augmented reality SDK for Jetpack Compose, SwiftUI, and the web. This app is its demo: nearly 50 screens, each one a working sample of a feature you can put in your own app. Every screen links to the source code that draws it, and most of them are only a few lines long.
+
+START HERE
+
+- Cosmos — a galaxy, a particle collision, a flow field and a ringed star system, joined by a camera tour that flies you through them. Touch the screen to take the camera back.
+- Rerun AR Replay — watch a real AR session rebuild itself in 3D.
 
 WHAT THE SAMPLES SHOW
 

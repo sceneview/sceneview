@@ -1,5 +1,7 @@
-Explore now searches the online model gallery as you type. Results narrow after two characters, and the screen always tells you which state it is in — searching, nothing found, or offline with a Retry that actually retries.
+Cosmos gains a ringed world: a planet with translucent rings orbits the blue star, lit by it. Tap the planet or the star and the camera flies there.
 
-Every bundled model in the viewer list now shows its thumbnail, Cyberpunk Hovercar included.
+Home shows every demo's picture edge to edge, and opens on its most striking demos: Cosmos first, then Rerun AR Replay.
 
-Plus the usual round of rendering and stability fixes across the 3D and AR screens.
+Controls over the 3D scene use Liquid Glass, so the model shows through. The About tab shows the SceneView mark in 3D.
+
+Animation opens on a fox on a studio stage, Lighting Lab has a real stage, Video Texture plays again, and Spatial Audio fades with distance.
