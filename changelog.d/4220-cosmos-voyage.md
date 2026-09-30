@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Cosmos demo: the Voyage ([#4220](https://github.com/sceneview/sceneview/pull/4220)).** The Cosmos demo now opens on a cinematic camera tour that loops through the galaxy, the particle collision, the flow field and the ringed star system, joined by hyperspace jumps. It starts on its own: a touch hands the camera back and a drag orbits it, and after 8 s idle the voyage jumps on; a scene picked in the dock plays its own shot after 4 s. The choreography is a portable keyframe table.
