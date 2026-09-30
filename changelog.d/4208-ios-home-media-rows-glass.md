@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **The iOS demo Home shows each demo's picture too, and its header turns to Liquid Glass ([#4208](https://github.com/sceneview/sceneview/pull/4208)).** Every row now leads with a 5:4 picture of the demo, like Android. Once the list scrolls under the header, the header becomes frosted glass (Liquid Glass on iOS 26), in light and dark, and the titles underneath never show through the wordmark.
