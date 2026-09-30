@@ -505,7 +505,72 @@ SUPERSEDE_POLLS = 12
 SUPERSEDE_POLL_S = 15
 SUPERSEDE = (os.environ.get("ASC_SUPERSEDE") or "").strip().lower() == "true"
 
+def identified_slot_holder():
+    """find_slot_holder(), minus records that do not name both a version and a state."""
+    slot = find_slot_holder()
+    if slot and "?" in slot:
+        return None  # a record without a name or a state identifies nothing
+    return slot
+
+
+def defer_or_supersede(slot, apple_409=None):
+    """An identified version holds the one non-live slot: supersede it or defer.
+
+    Returns the claimed version id when ASC_SUPERSEDE withdrew an OLDER version
+    from review; otherwise exits EXIT_DEFERRED with a notice. `apple_409` is
+    the body of the POST that 409'd, or None when the slot was seen before
+    any POST was attempted (the normal path since the look-before-create).
+
+    STOP HERE unless ASC_SUPERSEDE says otherwise. Step 5a below cancels every
+    open reviewSubmission, and its OPEN_STATES includes IN_REVIEW: carrying on
+    would pull the PREVIOUS release out of App Review to make room for this
+    one. Deferring costs a wait (app-store-catch-up.yml submits the latest
+    release once the slot frees); continuing costs a release, so it is a
+    human's call, made through the `supersede` input.
+    """
+    holder_vs, holder_state = slot
+    if (SUPERSEDE and holder_state in ("WAITING_FOR_REVIEW", "IN_REVIEW")
+            and _vtuple(holder_vs) and _vtuple(holder_vs) < _vtuple(version_string)):
+        return supersede(holder_vs, holder_state)
+    if holder_vs == version_string:
+        why = (f"{version_string} is already {holder_state} — this release is with "
+               "Apple, there is nothing left to submit")
+    else:
+        why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
+               f"version at a time. Build {build_version} is on TestFlight; "
+               f"app-store-catch-up.yml submits {version_string} automatically once "
+               f"{holder_vs} is live")
+        if SUPERSEDE:
+            why += " (supersede was requested but only applies to an OLDER version "\
+                   "that is WAITING_FOR_REVIEW or IN_REVIEW)"
+    print(f"::notice::iOS submission for {version_string} DEFERRED: {why}. Nothing was "
+          "cancelled and no review was touched.")
+    if apple_409 is not None:
+        print(f"POST /v1/appStoreVersions → 409: {apple_409[:400]}")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as f:
+            f.write(f"### App Store: {version_string} deferred\n\n{why}.\n")
+    # Deferred by Apple's state machine, not broken. Both callers grade
+    # EXIT_DEFERRED as a green step with this notice, because the catch-up
+    # workflow owns the retry — a red badge that only asks a human to
+    # press "re-run" later is what kept iOS days behind (2026-09-28).
+    raise SystemExit(EXIT_DEFERRED)
+
+
 version_id = claim_editable_version()
+if not version_id:
+    # Look before creating. claim_editable_version() only sees editable
+    # records, so a predecessor in WAITING_FOR_REVIEW / IN_REVIEW is invisible
+    # to it, and the POST below used to be how this program found out: Apple
+    # 409'd (#3143; 4.30.0 on 2026-08-12, then every tag from 4.41.0 to 4.49.0
+    # while 4.40.0, 4.42.0 and 4.48.0 took turns in review). Asking first means
+    # a release that has to wait never sends a request Apple must refuse. The
+    # 409 handler below stays for the race where the slot fills between the
+    # probe and the POST.
+    slot = identified_slot_holder()
+    if slot:
+        version_id = defer_or_supersede(slot)
 if not version_id:
     payload = {
         "data": {
@@ -516,57 +581,18 @@ if not version_id:
     }
     r = requests.post(f"{BASE}/appStoreVersions", headers=headers, json=payload)
     if r.status_code == 409:
-        # App Store Connect allows exactly ONE non-live version at a time, and
-        # the GET above cannot see the one holding the slot: its filter admits
-        # only the editable states, so a predecessor sitting in IN_REVIEW /
-        # WAITING_FOR_REVIEW is invisible. We reach this
-        # POST believing nothing exists, and Apple 409s (#3143). Measured:
-        # 4.30.0's release run died here at 16:48 on 2026-08-12 while 4.29.0
-        # was still in review — it went live at 20:39 the same day.
-        #
-        # STOP HERE unless ASC_SUPERSEDE says otherwise. Step 5a below cancels
-        # every open reviewSubmission, and its OPEN_STATES includes IN_REVIEW:
-        # carrying on would pull the PREVIOUS release out of App Review to make
-        # room for this one. Deferring costs a wait — app-store-catch-up.yml
-        # submits the latest release once the slot frees; continuing costs a
-        # release, so it is a human's call, made through the `supersede` input.
-        #
-        # Not every state can hold the slot, so name the one that does rather
-        # than guess. A probe failure degrades to "could not determine" — the
-        # 409 is the finding, the identification is the courtesy.
-        slot = find_slot_holder()
-        if slot and "?" in slot:
-            slot = None  # a record without a name or a state identifies nothing
-        holder_vs, holder_state = slot if slot else ("?", "?")
-        if (SUPERSEDE and holder_state in ("WAITING_FOR_REVIEW", "IN_REVIEW")
-                and _vtuple(holder_vs) and _vtuple(holder_vs) < _vtuple(version_string)):
-            version_id = supersede(holder_vs, holder_state)
-        else:
-            if slot and holder_vs == version_string:
-                why = (f"{version_string} is already {holder_state} — this release is with "
-                       "Apple, there is nothing left to submit")
-            elif slot:
-                why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
-                       f"version at a time. app-store-catch-up.yml submits {version_string} "
-                       "automatically once that version is live")
-                if SUPERSEDE:
-                    why += " (supersede was requested but only applies to an OLDER version "\
-                           "that is WAITING_FOR_REVIEW or IN_REVIEW)"
-            else:
-                # No holder named: the 409 may be anything (a duplicate
-                # versionString, a bad payload), so it is not provably a wait.
-                print(f"::error::POST /v1/appStoreVersions → 409 for {version_string} and no "
-                      "version holding the non-live slot could be identified. Not graded as "
-                      f"deferred. Nothing was cancelled. {r.text[:400]}")
-                raise SystemExit(1)
-            print(f"::notice::iOS submission for {version_string} DEFERRED: {why}. Nothing was "
-                  "cancelled and no review was touched.")
-            print(f"POST /v1/appStoreVersions → 409: {r.text[:400]}")
-            # Deferred by Apple's state machine, not broken. Both callers grade
-            # EXIT_DEFERRED as a green step with this notice, because the catch-up
-            # workflow owns the retry — a red badge that only asks a human to
-            # press "re-run" later is what kept iOS days behind (2026-09-28).
-            raise SystemExit(EXIT_DEFERRED)
+        # The slot was free a moment ago, or the probe failed. Name the holder
+        # rather than guess: a probe failure degrades to "could not determine",
+        # the 409 is the finding, the identification is the courtesy.
+        slot = identified_slot_holder()
+        if not slot:
+            # No holder named: the 409 may be anything (a duplicate
+            # versionString, a bad payload), so it is not provably a wait.
+            print(f"::error::POST /v1/appStoreVersions → 409 for {version_string} and no "
+                  "version holding the non-live slot could be identified. Not graded as "
+                  f"deferred. Nothing was cancelled. {r.text[:400]}")
+            raise SystemExit(1)
+        version_id = defer_or_supersede(slot, r.text)
     else:
         r.raise_for_status()
         version_id = r.json()["data"]["id"]

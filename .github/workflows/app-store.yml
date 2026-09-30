@@ -350,7 +350,12 @@ jobs:
           #
           # Exit 75 = DEFERRED: an identified version holds App Store Connect's
           # single non-live slot. (Not 2: python exits 2 when it cannot open the
-          # script, and that must stay red.) A deferral is not a broken release —
+          # script, and that must stay red.) The program looks for that holder
+          # BEFORE creating a version record, so a release that has to wait
+          # sends Apple no request it must refuse (no 409); its build is already
+          # on TestFlight from the step above, and an editable record (draft,
+          # withdrawn, rejected) is reused with this build attached rather than
+          # waited behind. The run summary names the holder. A deferral is not a broken release —
           # app-store-catch-up.yml submits the latest release once the slot
           # frees — so it is graded green with a notice. It used to be red, and a red run whose only
           # remedy was "re-run later" is what left iOS days behind Android.
