@@ -62,7 +62,7 @@ internal const val AMBIENT_LUMINANCE_DARK = 0.035f
 
 /**
  * Relative luminance of the ambient tint in light: a pale wash one step off the white
- * page. `on-surface` 14:1, `on-surface-variant` 8.2:1.
+ * page. `on-surface` 14.5:1, `on-surface-variant` 8.1:1.
  */
 internal const val AMBIENT_LUMINANCE_LIGHT = 0.84f
 

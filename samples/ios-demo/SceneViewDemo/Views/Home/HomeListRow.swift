@@ -299,7 +299,7 @@ enum HomeAmbient {
     /// there: `on-surface` 11.2:1, `on-surface-dim` 5.3:1.
     static let luminanceDark: Double = 0.035
     /// Relative luminance of the tint in light: a pale wash one step off the
-    /// white page. `on-surface` 14:1, `on-surface-dim` 8.2:1.
+    /// white page. `on-surface` 14.5:1, `on-surface-dim` 8.1:1.
     static let luminanceLight: Double = 0.84
     /// The tint never goes past this HSL saturation: a colour, never a poster.
     static let maxSaturation: Double = 0.5
