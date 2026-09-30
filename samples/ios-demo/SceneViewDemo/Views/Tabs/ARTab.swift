@@ -244,7 +244,7 @@ private struct ARLauncherScreen: View {
                 // the one call to action drawn over the stage (Android's
                 // `ArHero`). The title stays the navigation title (#3791).
                 hero
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, SceneViewTokens.Home.contentPadding)
                     .padding(.top, SceneViewTokens.Space.sm)
 
                 Text(caption)
