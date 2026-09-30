@@ -408,20 +408,31 @@ private fun io.github.sceneview.NodeScope.SelectionRingNode(
             minorSegments = SelectionRing.MINOR_SEGMENTS,
             materialInstance = material,
         ).apply {
+            // Hidden until the fade below has run once: no one-frame flash when unselected.
+            isVisible = false
             isTouchable = false
             isShadowCaster = false
             isShadowReceiver = false
         }
     }
     val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
-    val opacity by animateFloatAsState(
+    val opacity = animateFloatAsState(
         targetValue = if (state.showsSelectionRing && state.isSelected && placed) 1f else 0f,
         animationSpec = tween(SelectionRing.FADE_MS),
         label = "selectionRing",
     )
-    SideEffect {
-        ring.isVisible = opacity > 0f
-        material.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * opacity))
+    // Every animation frame goes straight to the material, without recomposing: a read of
+    // `opacity` inside a `SideEffect` is not tracked, so the fade would stop at its first frame
+    // and a deselected ring would stay drawn.
+    LaunchedEffect(ring, material) {
+        snapshotFlow { opacity.value }.collect { value ->
+            ring.isVisible = value > 0f
+            material.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * value))
+            // A material parameter is invisible to the frame gate: ask for the frame that shows
+            // the fade, or a scene with no new camera frame (a finished playback, a paused
+            // session) keeps drawing the old ring.
+            ring.requestRender()
+        }
     }
     NodeLifecycle(ring, null)
 }
