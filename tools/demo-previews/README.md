@@ -64,7 +64,7 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 | `lighting` | `lighting_default.png` | 540, 1080, 1080 — helmet and probes under the photo environment |
 | `lighting-lab` | `lightinglab_default.png` | 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | — | Superseded 2026-09-30: generated from a real capture, see "Cards generated from real captures" below. Was `secondarycamera_default.png`, 540, 870, 1600, black-padded — the picture-in-picture inset |
-| `animation-physics` | — | Superseded 2026-09-30: generated from the golden crop, see "Cards generated from real captures" below. Was `animationphysics_default.png`, 500, 1414, 760 — the fox on its stage, flat side-on on a mid-grey stage, the dark card a night-mode capture on the dark stage (#4223) |
+| `animation-physics` | `animationphysics_default.png` | Light card superseded 2026-09-30: generated from this golden crop (500, 1414, 760), see "Cards generated from real captures" below. The dark card is still its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); since #4223 its stage is the dark stage (`SceneViewTokens.Stage.background`), so the dark card is the fox on that dark stage |
 | `splat-preview` | `splatpreview_default.png` | 540, 1010, 1500, black-padded, then an elliptical vignette to black (radii 600 × 900 px, fade from 0.62) so the splat's soft fringe does not end on a hard crop edge (#4073) |
 
 Black padding is used only where the stage background is pure black, so the fill cannot be
@@ -114,7 +114,7 @@ raw, kept or rejected, with its exact prompt, ref and reason is archived outside
 
 | Card | Platforms | Ref | Kept raws, and why |
 |---|---|---|---|
-| `animation-physics` | Android, iOS `preview_animation` | `fox_animation.webp` | Light and dark, first run. |
+| `animation-physics` | Android, iOS `preview_animation` (light only) | `fox_animation.webp` | The light raw, first run. The dark card stays the real night-mode capture of #4223 (table above); the dark raw is archived but not shipped. |
 | `double-pendulum` | Android, iOS `preview_double_pendulum` | `double_pendulum_rig.webp` | Dark from the committed prompt. Light from the first run, whose prompt lacked the sentence "There are exactly three balls in the image…": with it the light run still drew a second bob, without it the first light run did not. |
 | `contact-shadow-preview` | Android | `contact_shadow_scene.webp` | Fourth prompt, both themes. Earlier runs drew the contact shadow as a hole, a light room box inside the dark field or an inverted halo; the committed prompt edits the capture instead of describing a scene. |
 | `secondary-camera` | Android | `secondary_camera_pip.webp` | Light and dark, first run. |
@@ -204,7 +204,7 @@ card, re-encoded from its two WebPs as JPEG q90 (`preview_<id>.jpg` light,
 
 | Imageset | Android card | Replaced |
 |---|---|---|
-| `preview_animation` | `animation-physics` (the generated fox pair, 2026-09-30) | a simulator capture of the bundled `cyberpunk_character` (Featured, #3907), light only |
+| `preview_animation` | `animation-physics` (light: the generated fox, 2026-09-30; dark: the #4223 night capture) | a simulator capture of the bundled `cyberpunk_character` (Featured, #3907), light only |
 | `preview_double_pendulum` | `double-pendulum` (the generated pair, 2026-09-30) | the previous generated pair; hidden from the iOS home until #3907 is fixed, the card shows in search and deep links |
 | `preview_ar_placement` | `ar-placement` (the generated Toy Car pair, 2026-09-30) | the Toy Car opened in `model-viewer` (no ARKit on the Simulator), light only |
 | `preview_ar_record_playback` | `ar-record-playback` | the Damaged Helmet opened in `model-viewer`, light only |
