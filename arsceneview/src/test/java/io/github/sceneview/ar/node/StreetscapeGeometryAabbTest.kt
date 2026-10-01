@@ -7,7 +7,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -20,9 +19,9 @@ import java.nio.FloatBuffer
  * `RenderableManager.Builder.build` aborts for an empty AABB on a shadow receiver — so every
  * Streetscape geometry ARCore delivered killed the app.
  *
- * `StreetscapeGeometry` and Filament renderables are JNI-only, so the box math and the
- * empty-mesh decision live in pure helpers pinned here, plus source contracts on the node and
- * on `MeshNode`'s no-box branch.
+ * The box math and the empty-mesh decision are pure helpers pinned here. The renderable build,
+ * rebuild and drop on real Filament are covered by the instrumented
+ * `StreetscapeMeshRenderableTest` (arsceneview) and `MeshNodeBoundingBoxTest` (sceneview).
  */
 class StreetscapeGeometryAabbTest {
 
@@ -76,7 +75,8 @@ class StreetscapeGeometryAabbTest {
 
     @Test
     fun `flat terrain patch keeps a non-empty box on its flat axis`() {
-        // A terrain tile: every vertex on y = -1.5. A zero half-extent is an empty box to Filament.
+        // A terrain tile: every vertex on y = -1.5. Not empty to Filament (length2(halfExtent) > 0),
+        // but the floor keeps a non-zero thickness on the flat axis.
         val box = computeStreetscapeAabb(
             positions(
                 0f, -1.5f, 0f,
@@ -126,43 +126,6 @@ class StreetscapeGeometryAabbTest {
         buffer.position(3)
         computeStreetscapeAabb(buffer, vertexCount = 2)
         assertEquals(3, buffer.position())
-    }
-
-    // ── Source contracts ──────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `StreetscapeGeometryNode passes the computed box and skips empty meshes`() {
-        val source = File("src/main/java/io/github/sceneview/ar/node/StreetscapeGeometryNode.kt")
-            .readText()
-        assertTrue(
-            "the node must compute the box from the mesh vertices",
-            source.contains("computeStreetscapeAabb(mesh.vertexList, vertexCount)")
-        )
-        assertTrue(
-            "the node must hand the box to MeshNode",
-            source.contains("boundingBox = boundingBox")
-        )
-        assertTrue(
-            "the node must build no renderable for an empty mesh",
-            source.contains("if (!isStreetscapeMeshRenderable(vertexCount, indexCount)) return null")
-        )
-        assertTrue(
-            "a geometry update must rebuild (or drop) the renderable",
-            source.contains("rebuildMeshIfChanged()")
-        )
-    }
-
-    @Test
-    fun `MeshNode without a box disables culling and both shadow flags`() {
-        // JVM tests run with the module directory as CWD; MeshNode lives in :sceneview.
-        val source = File("../sceneview/src/main/java/io/github/sceneview/node/MeshNode.kt")
-            .readText()
-        val elseIdx = source.indexOf("} else {", source.indexOf("if (box != null)"))
-        assertTrue("MeshNode must branch on the bounding box", elseIdx >= 0)
-        val noBoxBranch = source.substring(elseIdx, source.indexOf("}", elseIdx + 8))
-        listOf("culling(false)", "castShadows(false)", "receiveShadows(false)").forEach {
-            assertTrue("MeshNode's no-box branch must call $it", noBoxBranch.contains(it))
-        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────────────────────

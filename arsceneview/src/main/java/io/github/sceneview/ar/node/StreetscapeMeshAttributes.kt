@@ -121,8 +121,12 @@ private fun vertexAt(positions: FloatBuffer, index: Int): Float3 = Float3(
 )
 
 /**
- * Smallest half-extent (metres) of a Streetscape mesh's bounding box. A flat terrain patch has a
- * zero extent on its up axis, and Filament treats a box with a zero half-extent as empty.
+ * Smallest half-extent (metres) of a Streetscape mesh's bounding box.
+ *
+ * Filament's `Box::isEmpty()` is `length2(halfExtent) == 0`, so only a box that is zero on
+ * every axis (all vertices on one point) is empty; a flat terrain tile is not. The floor keeps
+ * that degenerate case non-empty, and also gives a flat tile some thickness on its up axis so
+ * culling and shadow bounds never work with a zero-height box.
  */
 internal const val STREETSCAPE_MIN_AABB_HALF_EXTENT_M: Float = 1e-3f
 
@@ -141,8 +145,8 @@ internal fun isStreetscapeMeshRenderable(vertexCount: Int, indexCount: Int): Boo
  * a renderable receives shadows by default. [StreetscapeGeometryNode] used to build its mesh
  * without a box, so the first geometry ARCore delivered aborted the app.
  *
- * Every half-extent is clamped to at least [STREETSCAPE_MIN_AABB_HALF_EXTENT_M] so a flat or
- * single-point mesh still yields a non-empty box. Non-finite coordinates are ignored.
+ * Every half-extent is clamped to at least [STREETSCAPE_MIN_AABB_HALF_EXTENT_M] so a
+ * single-point mesh still yields a non-empty box and a flat one a non-zero thickness. Non-finite coordinates are ignored.
  *
  * @param positions `xyz` floats, read from index 0; the buffer's position is left unchanged.
  * @param vertexCount number of vertices to read, clamped to what [positions] holds.

@@ -32,7 +32,7 @@ class StreetscapeMeshAttributesTest {
     // ── 1. Contract ───────────────────────────────────────────────────────────────────────────
 
     private val nodeSource =
-        File("src/main/java/io/github/sceneview/ar/node/StreetscapeGeometryNode.kt")
+        File("src/main/java/io/github/sceneview/ar/node/StreetscapeMeshRenderable.kt")
 
     /** The blobs `MaterialLoader.createColorInstance` resolves to, by alpha. They live in `:sceneview`. */
     private val coloredMaterials = listOf("opaque_colored", "transparent_colored")
@@ -59,7 +59,7 @@ class StreetscapeMeshAttributesTest {
             val missing = required and declared.inv()
             assertEquals(
                 "$material.filamat requires 0x${required.toString(16)} but " +
-                    "StreetscapeGeometryNode.kt declares only 0x${declared.toString(16)} — " +
+                    "StreetscapeMeshRenderable.kt declares only 0x${declared.toString(16)} — " +
                     "missing 0x${missing.toString(16)}. Filament logs `missing required " +
                     "attributes` and shades with a fallback normal instead of failing (#3215).",
                 0,
@@ -74,7 +74,7 @@ class StreetscapeMeshAttributesTest {
         val attributeCount = Regex("""\.attribute\(""").findAll(source).count()
         val bufferCount = Regex("""const\s+val\s+BUFFER_COUNT\s*=\s*(\d+)""")
             .find(source)?.groupValues?.get(1)?.toInt()
-        assertNotNull("BUFFER_COUNT const not found in StreetscapeGeometryNode.kt", bufferCount)
+        assertNotNull("BUFFER_COUNT const not found in StreetscapeMeshRenderable.kt", bufferCount)
         assertEquals("one attribute, one buffer", attributeCount, bufferCount)
         // A declared attribute whose buffer is never uploaded is the other half of the failure.
         val uploads = Regex("""setBufferAt\(\s*engine,\s*BUFFER_INDEX_""").findAll(source).count()
