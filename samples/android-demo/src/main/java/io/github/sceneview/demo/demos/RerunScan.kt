@@ -14,6 +14,7 @@ import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthAlignment
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.DepthFrame
+import io.github.sceneview.demo.demos.internal.DepthFreshness
 import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.KeyframeGate
 import io.github.sceneview.demo.demos.internal.MediaSpan
@@ -91,8 +92,13 @@ internal class ScanCapture private constructor(
     private val fusion = if (rawDepth) DenseFusion() else null
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
-    private var lastDepthNanos = Long.MIN_VALUE
+    private var lastDepthNanos: Long? = null
     private var loggedSizes = false
+    private val logGate = IntervalGate(LOG_INTERVAL_NS)
+    private val verdictCounts = IntArray(DepthFreshness.Verdict.entries.size)
+    private val verdictLagMs = LongArray(DepthFreshness.Verdict.entries.size)
+    private var unavailableCount = 0
+    private var unavailableReason: String? = null
     // At most ten depth keyframes a second: ARCore's own raw-depth pace on a Pixel, and a bound
     // on the camera-image reads the fusion adds to the main thread.
     private val depthGate = IntervalGate(DEPTH_INTERVAL_NS)
@@ -155,20 +161,23 @@ internal class ScanCapture private constructor(
     }
 
     /**
-     * ARCore's raw depth of [frame] when it was measured for this very frame — not reprojected
-     * from an older one, and not fused already — and no fusion is running; `null` otherwise, or
-     * without [rawDepth]. Close it this frame.
+     * ARCore's raw depth of [frame] when it holds a new estimate, at most
+     * [DepthFreshness.MAX_AGE_NANOS] behind the frame and not fused already ([DepthFreshness]),
+     * and no fusion is running; `null` otherwise, or without [rawDepth]. Close it this frame.
      */
     fun acquireDepth(frame: Frame): ScanDepth? {
         if (fusion == null || fusing.get() || !depthGate.isDue(frame.timestamp)) return null
-        val depth = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull() ?: return null
-        // A depth stamped with an older frame is that frame's measurement reprojected to this
-        // pose: its disocclusions are holes and its edges smear. Only fresh depth is fused.
-        if (depth.timestamp != frame.timestamp || depth.timestamp == lastDepthNanos) {
+        val depth = runCatching { frame.acquireRawDepthImage16Bits() }
+            .onFailure { logUnavailable(frame.timestamp, it) }
+            .getOrNull() ?: return null
+        // Before the gate, so a device log says what the scan sees even when it fuses nothing.
+        logSizesOnce(depth, frame.timestamp)
+        val verdict = DepthFreshness.judge(frame.timestamp, depth.timestamp, lastDepthNanos)
+        logVerdict(verdict, frame.timestamp, depth.timestamp)
+        if (verdict != DepthFreshness.Verdict.FRESH) {
             depth.close()
             return null
         }
-        logSizesOnce(depth)
         lastDepthNanos = depth.timestamp
         depthGate.mark(frame.timestamp)
         val confidence = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
@@ -176,15 +185,47 @@ internal class ScanCapture private constructor(
     }
 
     /** Which lens the depth is read with, once a scan: the proof on a device's log. */
-    private fun logSizesOnce(depth: Image) {
+    private fun logSizesOnce(depth: Image, frameNanos: Long) {
         if (loggedSizes) return
         loggedSizes = true
         val chosen = DepthAlignment.depthLens(textureIntrinsics, intrinsics, depth.width, depth.height)
         Log.i(
             LOG_TAG,
             "depth ${depth.width}x${depth.height}, cpu image ${intrinsics.width}x${intrinsics.height}, " +
-                "texture ${textureIntrinsics?.width}x${textureIntrinsics?.height}, depth fy ${chosen?.fy}",
+                "texture ${textureIntrinsics?.width}x${textureIntrinsics?.height}, depth fy ${chosen?.fy}, " +
+                "depth lag ${(frameNanos - depth.timestamp) / NANOS_PER_MS} ms",
         )
+    }
+
+    /**
+     * Counts each depth verdict and, at most once a second of frame time, logs the counts since
+     * the last line with the latest lag (frame minus depth timestamp) of each: why the dense map
+     * grows, or does not, on a device's log.
+     */
+    private fun logVerdict(verdict: DepthFreshness.Verdict, frameNanos: Long, depthNanos: Long) {
+        verdictCounts[verdict.ordinal]++
+        verdictLagMs[verdict.ordinal] = (frameNanos - depthNanos) / NANOS_PER_MS
+        flushVerdicts(frameNanos)
+    }
+
+    /** Counts a frame whose raw depth ARCore could not give, [error] saying why. */
+    private fun logUnavailable(frameNanos: Long, error: Throwable) {
+        unavailableCount++
+        unavailableReason = error.javaClass.simpleName
+        flushVerdicts(frameNanos)
+    }
+
+    private fun flushVerdicts(frameNanos: Long) {
+        if (!logGate.isDue(frameNanos)) return
+        logGate.mark(frameNanos)
+        val counts = DepthFreshness.Verdict.entries.filter { verdictCounts[it.ordinal] > 0 }.map { v ->
+            "${v.name.lowercase()} ${verdictCounts[v.ordinal]} (lag ${verdictLagMs[v.ordinal]} ms)"
+        } + listOfNotNull(
+            unavailableReason?.takeIf { unavailableCount > 0 }?.let { "unavailable $unavailableCount ($it)" },
+        )
+        Log.i(LOG_TAG, "depth verdicts: ${counts.joinToString()}; surfels ${denseTotal.get()}")
+        verdictCounts.fill(0)
+        unavailableCount = 0
     }
 
     /**
@@ -279,6 +320,10 @@ internal class ScanCapture private constructor(
         const val DEPTH_INTERVAL_NS = 100_000_000L
 
         private const val LOG_TAG = "RerunScan"
+
+        /** One depth-verdict line a second of frame time at most. */
+        private const val LOG_INTERVAL_NS = 1_000_000_000L
+        private const val NANOS_PER_MS = 1_000_000L
 
         /** 240×320, the bundled replay's own frame size: ~15 KB of JPEG each. */
         private const val PHOTO_LONG_SIDE = 320
