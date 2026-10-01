@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal
 import io.github.sceneview.demo.demos.internal.RerunRrdReader.Failure
 import io.github.sceneview.demo.demos.internal.RerunRrdReader.PoseRow
 import java.io.ByteArrayOutputStream
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -329,7 +330,7 @@ internal class RerunRrdContents(chunks: List<RrdChunk>) {
                 log.append(sightings[k++].second).append('\n')
             } else {
                 val shot = shots[j++]
-                val path = "frames/" + "%03d".format(photoMedia.size) + "." + fileExtension(shot.mediaType)
+                val path = "frames/" + "%03d".format(Locale.ROOT, photoMedia.size) + "." + fileExtension(shot.mediaType)
                 photoMedia += path to shot.data
                 log.append("{\"t\":${shot.time},\"type\":\"image\",\"entity\":\"world/camera/image\"")
                 log.append(",\"path\":${Json.string(path)}}\n")

@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
+import java.util.Locale
+
 /**
  * Where the voyage is, for the render loop and the gestures (both on the main thread): whether it
  * drives the camera, how far a jump away from the free camera has gone, how long since the user
@@ -161,10 +163,13 @@ internal class VoyageState(var playing: Boolean) {
         if (streaks < STREAKS_OFF) streaks = 0f
     }
 
-    /** The frame pacing of the shot that just ended, then a fresh count for the next one. */
+    /**
+     * The frame pacing of the shot that just ended, then a fresh count for the next one. A log line,
+     * not UI copy: formatted with [Locale.ROOT] so it reads `10.0 fps` whatever the device locale.
+     */
     fun shotPacing(scene: CosmosScene): String {
         val fps = if (shotSeconds > 0f) shotFrames / shotSeconds else 0f
-        val report = "voyage shot ${scene.name}: $shotFrames frames, ${"%.1f".format(fps)} fps, " +
+        val report = "voyage shot ${scene.name}: $shotFrames frames, ${"%.1f".format(Locale.ROOT, fps)} fps, " +
             "$shotSlowFrames over ${(SLOW_FRAME_SECONDS * MILLIS).toInt()} ms"
         shotFrames = 0
         shotSlowFrames = 0
