@@ -16,12 +16,17 @@ const val AR_VIEW_SAMPLE_ID = "ar_view"
  * - `ar_first_placement` logs once.
  * - `ar_tracking_lost` logs every time ARCore reports a new failure reason (ARSceneView
  *   already de-duplicates).
+ * - `ar_session_failed` logs once per failure reason. ARCore retries a session it could not
+ *   create on every resume (`create()` at ON_CREATE, then `resume()` finds no session and
+ *   creates again), so one visit to an AR screen on a device that cannot run AR reports the
+ *   same failure twice, then once more per return from the background.
  */
 class ArFunnelLog(private val analytics: () -> DemoAnalytics = { Telemetry.analytics }) {
     var sampleId: String = AR_VIEW_SAMPLE_ID
 
     private var tracked = false
     private var placedOnce = false
+    private val failuresLogged = mutableSetOf<String>()
 
     fun sessionCreated() = analytics().log(AnalyticsEvent.ArSessionCreated(sampleId))
 
@@ -43,8 +48,11 @@ class ArFunnelLog(private val analytics: () -> DemoAnalytics = { Telemetry.analy
         analytics().log(AnalyticsEvent.ArFirstPlacement(sampleId))
     }
 
-    fun sessionFailed(failure: ARSessionFailure) =
-        analytics().log(AnalyticsEvent.ArSessionFailed(sampleId, failureReason(failure)))
+    fun sessionFailed(failure: ARSessionFailure) {
+        val reason = failureReason(failure)
+        if (!failuresLogged.add(reason)) return
+        analytics().log(AnalyticsEvent.ArSessionFailed(sampleId, reason))
+    }
 
     companion object {
         /**

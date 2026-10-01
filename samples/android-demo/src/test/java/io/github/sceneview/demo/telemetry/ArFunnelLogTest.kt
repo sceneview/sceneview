@@ -73,6 +73,22 @@ class ArFunnelLogTest {
     }
 
     @Test
+    fun `a failure ARCore retries on resume logs once per reason`() {
+        // create() fails at ON_CREATE, then resume() finds no session and fails again: one
+        // attempt, one event. A different reason on a later retry is new information.
+        repeat(3) { funnel.sessionFailed(ARSessionFailure.from(IllegalStateException("fatal"))) }
+        funnel.sessionFailed(ARSessionFailure.from(CameraNotAvailableException()))
+        funnel.sessionFailed(ARSessionFailure.from(CameraNotAvailableException()))
+        assertEquals(
+            listOf(
+                AnalyticsEvent.ArSessionFailed("ar-placement", "unknown"),
+                AnalyticsEvent.ArSessionFailed("ar-placement", "camera_not_available"),
+            ),
+            events,
+        )
+    }
+
+    @Test
     fun `every code fits GA4 - snake_case and at most 100 characters`() {
         val codes = listOf(
             ARSessionFailure.from(UnavailableDeviceNotCompatibleException()),
