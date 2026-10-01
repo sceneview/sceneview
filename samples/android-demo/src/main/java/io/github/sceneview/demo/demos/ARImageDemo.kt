@@ -67,6 +67,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -344,12 +345,17 @@ fun ARImageDemo(onBack: () -> Unit) {
                         captureRequested = false
                         // Acquire now, on the current frame (cheap), then convert off the main
                         // thread — JPEG round-trip + YUV->ARGB would jank the renderer. The
-                        // acquired image outlives the frame until `use` closes it. `null`
-                        // (warm-up, image pool full) lands on the "try again" message.
+                        // acquired image outlives the frame until `use` closes it. ATOMIC: the
+                        // coroutine body always starts, so `use` closes the image even when the
+                        // screen is left before it runs (cancellation then surfaces inside
+                        // withContext). `null` (warm-up, image pool full) lands on the "try
+                        // again" message.
                         val image = frame.cameraImage()
-                        scope.launch {
-                            val photo = withContext(Dispatchers.Default) {
-                                image?.use { it.toArgbBitmap(rotationDegrees = 0) }
+                        scope.launch(start = CoroutineStart.ATOMIC) {
+                            val photo = image?.use { img ->
+                                withContext(Dispatchers.Default) {
+                                    img.toArgbBitmap(rotationDegrees = 0)
+                                }
                             }
                             val (message, tone) = if (photo == null) {
                                 "Camera image not ready yet — try again" to

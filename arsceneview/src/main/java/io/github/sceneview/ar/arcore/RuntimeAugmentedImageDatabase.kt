@@ -36,9 +36,11 @@ import kotlinx.coroutines.withContext
  *         if (captureRequested) {
  *             captureRequested = false
  *             val image = frame.cameraImage() ?: return@ARSceneView
- *             scope.launch {
- *                 val photo = withContext(Dispatchers.Default) {
- *                     image.use { it.toArgbBitmap() }
+ *             // ATOMIC: the body always runs, so `use` closes the image even if the scope is
+ *             // cancelled before the coroutine starts.
+ *             scope.launch(start = CoroutineStart.ATOMIC) {
+ *                 val photo = image.use { img ->
+ *                     withContext(Dispatchers.Default) { img.toArgbBitmap() }
  *                 } ?: return@launch
  *                 when (val result = runtimeDb.addImage("snapshot-1", photo)) {
  *                     is AddImageResult.Added       -> { /* now tracked */ }

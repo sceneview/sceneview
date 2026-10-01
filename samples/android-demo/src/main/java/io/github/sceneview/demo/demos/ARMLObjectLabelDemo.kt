@@ -132,9 +132,6 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
         onDispose { detector?.let { runCatching { it.close() } } }
     }
 
-    // Latest frame snapshot — recorded by onSessionUpdated and consumed by the detector
-    // dispatch below. Kept as a plain `var` (not Compose state) because the detector
-    // dispatch is fire-and-forget and we only need the most recent reference.
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
 
@@ -307,8 +304,9 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
 
                     // Pull the CPU camera image. `null` is normal during session warm-up, and
                     // `cameraImage()` also maps a stale frame or a full image pool to `null`.
-                    // Never re-throw from here: this is the render callback, and an exception
-                    // escaping it kills the app. Anything else ARCore raises (a dead session)
+                    // Never re-throw from here: ARSceneView only logs what escapes the render
+                    // callback, and the frame's detection is lost either way. Anything else
+                    // ARCore raises (a dead session)
                     // resurfaces from the next `session.update()` through the normal error
                     // path. Every exit must clear the in-flight flag, or the demo stops
                     // detecting for the rest of the session.

@@ -1,6 +1,7 @@
 package io.github.sceneview.ar.arcore
 
 import android.media.Image
+import android.util.Log
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.AugmentedImage
 import com.google.ar.core.Config
@@ -163,9 +164,15 @@ internal inline fun <T : Any> acquireCpuImageOrNull(acquire: () -> T): T? = try 
     null
 } catch (_: DeadlineExceededException) {
     null
-} catch (_: ResourceExhaustedException) {
+} catch (e: ResourceExhaustedException) {
+    // Unlike the two cases above, a full pool usually means the caller leaks images (every
+    // acquired Image must be closed). Returning null keeps the render thread alive; the warning
+    // keeps the leak visible.
+    Log.w(CPU_IMAGE_LOG_TAG, "CPU image pool exhausted: close every acquired Image", e)
     null
 }
+
+internal const val CPU_IMAGE_LOG_TAG = "SceneView.CpuImage"
 
 /**
  * Acquires the smoothed full-resolution **depth** image (16-bit per pixel, ARGB_8888-packed

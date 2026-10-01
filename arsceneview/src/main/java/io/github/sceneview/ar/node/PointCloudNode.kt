@@ -239,6 +239,9 @@ open class PointCloudNode(
     }
 
     override fun destroy() {
+        // Once only (#4259): a second call would free handles, material instances and an
+        // entity id that may already belong to another node.
+        if (isDestroyed) return
         // Destroy the renderable BEFORE the buffers so Filament's bookkeeping does not yelp about
         // a renderable still referencing a freed VertexBuffer (DepthMeshNode #1123 pattern).
         super.destroy()

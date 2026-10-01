@@ -88,6 +88,9 @@ open class MeshNode(
     }
 
     override fun destroy() {
+        // Once only (#4259): a second call would free handles, material instances and an
+        // entity id that may already belong to another node.
+        if (isDestroyed) return
         // RenderableNode.destroy() tears down the renderable component first, then the
         // entity. Free the raw geometry buffers after that, only when this node owns them.
         super.destroy()

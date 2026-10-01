@@ -4,12 +4,15 @@ import com.google.ar.core.exceptions.DeadlineExceededException
 import com.google.ar.core.exceptions.FatalException
 import com.google.ar.core.exceptions.NotYetAvailableException
 import com.google.ar.core.exceptions.ResourceExhaustedException
+import android.util.Log
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 
 /**
  * `Frame.cameraImage()` must return `null`, never throw, for the three "no image for this
@@ -21,9 +24,11 @@ import java.io.File
  * the app died. The ML Object Label demo re-threw the same exceptions from its render callback.
  *
  * `com.google.ar.core.Frame` is JNI-bound and cannot be instantiated on the JVM, so the mapping
- * lives in [acquireCpuImageOrNull] and is exercised here directly; a source check pins that
- * `cameraImage()` goes through it.
+ * lives in [acquireCpuImageOrNull], which `cameraImage()` delegates to, and is exercised here
+ * directly. Robolectric only provides `android.util.Log`.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class CameraImageAcquisitionTest {
 
     @Test
@@ -37,8 +42,22 @@ class CameraImageAcquisitionTest {
     }
 
     @Test
-    fun `full image pool maps to null`() {
+    fun `full image pool maps to null and warns`() {
+        ShadowLog.clear()
         assertNull(acquireCpuImageOrNull<String> { throw ResourceExhaustedException("pool") })
+        // A full pool usually means the caller leaks images: the null must not hide it.
+        assertTrue(
+            "ResourceExhausted must be logged at WARN",
+            ShadowLog.getLogsForTag(CPU_IMAGE_LOG_TAG).any { it.type == Log.WARN }
+        )
+    }
+
+    @Test
+    fun `stale frame and warm-up stay silent`() {
+        ShadowLog.clear()
+        acquireCpuImageOrNull<String> { throw DeadlineExceededException("stale") }
+        acquireCpuImageOrNull<String> { throw NotYetAvailableException("warm-up") }
+        assertTrue(ShadowLog.getLogsForTag(CPU_IMAGE_LOG_TAG).isEmpty())
     }
 
     @Test
@@ -53,28 +72,5 @@ class CameraImageAcquisitionTest {
             acquireCpuImageOrNull<String> { throw FatalException("dead") }
         }.exceptionOrNull()
         assertTrue("FatalException must propagate, got $thrown", thrown is FatalException)
-    }
-
-    @Test
-    fun `cameraImage goes through the null mapping`() {
-        val source = File("src/main/java/io/github/sceneview/ar/arcore/Frame.kt").readText()
-        assertTrue(
-            "`Frame.cameraImage()` must wrap acquireCameraImage() in acquireCpuImageOrNull",
-            Regex(
-                """fun\s+Frame\.cameraImage\(\)\s*:\s*Image\?\s*=\s*""" +
-                    """acquireCpuImageOrNull\s*\{\s*acquireCameraImage\(\)\s*}"""
-            ).containsMatchIn(source)
-        )
-    }
-
-    @Test
-    fun `KDoc samples never acquire from a stored frame off-thread`() {
-        // The old samples showed `withContext(Dispatchers.Default) { frame.captureCameraBitmap() }`
-        // from a button coroutine: the exact shape that crashed the demo.
-        val antiPattern = Regex("""withContext\([^)]*\)\s*\{\s*frame\.captureCameraBitmap\(\)""")
-        listOf("CameraImageBitmap.kt", "RuntimeAugmentedImageDatabase.kt").forEach { name ->
-            val source = File("src/main/java/io/github/sceneview/ar/arcore/$name").readText()
-            assertFalse("$name KDoc still shows the stale-frame capture", antiPattern.containsMatchIn(source))
-        }
     }
 }

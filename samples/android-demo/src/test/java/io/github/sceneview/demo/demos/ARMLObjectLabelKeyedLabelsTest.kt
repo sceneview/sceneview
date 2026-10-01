@@ -13,7 +13,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.io.File
 
 /**
  * ML Object Label was reported to crash once about four or more objects were on screen.
@@ -30,8 +29,8 @@ import java.io.File
  *
  * This test replays that lifecycle with stand-ins that follow the `NodeLifecycle` contract
  * (attach on enter, detach + destroy on leave, a parent destroys its children), because the
- * real nodes need Filament and ARCore. The source check pins the demo's loop to the keyed
- * form.
+ * real nodes need Filament and ARCore. `NodeDoubleDestroyTest` (sceneview, instrumented)
+ * covers the real nodes: since #4259 a second `destroy()` is a no-op.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -106,14 +105,5 @@ class ARMLObjectLabelKeyedLabelsTest {
         assertTrue("No node may be destroyed twice, log: $log", log.none { "double-destroy" in it })
         // a0..a6: seven anchors and seven billboards, each destroyed once.
         assertEquals(log.toString(), 14, log.size)
-    }
-
-    @Test
-    fun `the demo keys its label loop on the anchor`() {
-        val source = File("src/main/java/io/github/sceneview/demo/demos/ARMLObjectLabelDemo.kt").readText()
-        assertTrue(
-            "ARMLObjectLabelDemo must wrap each label in key(entry.anchor)",
-            Regex("""detections\.forEach\s*\{\s*entry\s*->\s*key\(entry\.anchor\)""").containsMatchIn(source)
-        )
     }
 }

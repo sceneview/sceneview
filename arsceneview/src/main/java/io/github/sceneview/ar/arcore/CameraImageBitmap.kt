@@ -85,9 +85,11 @@ fun Image.toArgbBitmap(rotationDegrees: Int = 0, jpegQuality: Int = DEFAULT_JPEG
  *     if (captureRequested) {
  *         captureRequested = false
  *         val image = frame.cameraImage() // current frame, render thread
- *         scope.launch {
- *             val photo = withContext(Dispatchers.Default) {
- *                 image?.use { it.toArgbBitmap() }
+ *         // ATOMIC: the body always runs, so `use` closes the image even if the scope is
+ *         // cancelled before the coroutine starts.
+ *         scope.launch(start = CoroutineStart.ATOMIC) {
+ *             val photo = image?.use { img ->
+ *                 withContext(Dispatchers.Default) { img.toArgbBitmap() }
  *             }
  *             // photo is ready for AugmentedImageDatabase.addImage(name, photo)
  *         }
