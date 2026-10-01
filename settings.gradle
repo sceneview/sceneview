@@ -12,6 +12,16 @@ pluginManagement {
     }
 }
 
+plugins {
+    // `sceneview-compose` and `samples:desktop-demo` pin `jvmToolchain(22)`:
+    // filament-kmp's desktop binding is FFM and its jar is class-file 66.
+    // Gradle detects an installed JDK 22 first (CI installs one through
+    // .github/actions/setup-gradle, so nothing is downloaded there) and only
+    // falls back to this resolver when none is found, provisioning it into
+    // ~/.gradle/jdks — so a machine with JDK 21 alone still configures.
+    id "org.gradle.toolchains.foojay-resolver-convention" version "1.0.0"
+}
+
 dependencyResolutionManagement {
     // PREFER_PROJECT allows Kotlin/JS plugin to add Node.js and Yarn repositories
     repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
