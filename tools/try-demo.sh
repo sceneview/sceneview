@@ -96,17 +96,20 @@ check_device() {
 download_and_install() {
   echo -e "${CYAN}Downloading latest demo APK from GitHub Releases...${RESET}"
 
+  # The asset name build-apks.yml attaches to every GitHub Release
+  # (`dist/sceneview-${sample}.apk`).
+  local asset="sceneview-android-demo.apk"
   local url
   if command -v gh &>/dev/null; then
     url=$(gh release view --repo "$GITHUB_REPO" --json assets \
-      --jq '.assets[] | select(.name == "sceneview-demo.apk") | .url' 2>/dev/null || true)
+      --jq ".assets[] | select(.name == \"$asset\") | .url" 2>/dev/null || true)
   fi
 
   if [[ -z "${url:-}" ]]; then
-    url="https://github.com/$GITHUB_REPO/releases/latest/download/sceneview-demo.apk"
+    url="https://github.com/$GITHUB_REPO/releases/latest/download/$asset"
   fi
 
-  local tmp_apk="${TMPDIR:-/tmp}/sceneview-demo.apk"
+  local tmp_apk="${TMPDIR:-/tmp}/$asset"
   curl -fSL --progress-bar -o "$tmp_apk" "$url"
   echo -e "${GREEN}✓${RESET} Downloaded"
 
@@ -114,20 +117,48 @@ download_and_install() {
   # The helper installs and launches, and PROVES the install landed rather than
   # trusting an exit code (#2990 — `android run` printed success and installed
   # nothing three times in this repo). It returns non-zero when it cannot prove
-  # it; `set -euo pipefail` at the top of this script is what stops the
-  # "✓ Installed" below from printing in that case. Do not remove that, and do
-  # not wrap this call in `|| true`.
+  # it, and the explicit `exit "$rc"` below is what stops the "✓ Installed" line
+  # from printing in that case. Do not turn `|| rc=$?` into `|| true`.
   # NOT gated on the android CLI being present: the helper checks that itself
   # and its adb fallback carries the lastUpdateTime proof. Gating here sent a
   # developer with only `adb` down an UNPROVEN install path, contradicting this
   # file's own header. Only the lib's availability is checked — try-demo.sh can
   # be copied out of the repo, and then there is no helper to call.
+  # The install output is also kept in a log, so a signer clash can be named.
+  local install_log rc=0
+  install_log="$(mktemp "${TMPDIR:-/tmp}/sceneview-install.XXXXXX")"
   if type android_cli_install_and_launch >/dev/null 2>&1; then
-    android_cli_install_and_launch "$tmp_apk" "${DEMO_PKG}/${DEMO_ACTIVITY}"
-  else
-    adb install -r "$tmp_apk"
+    android_cli_install_and_launch "$tmp_apk" "${DEMO_PKG}/${DEMO_ACTIVITY}" 2>&1 \
+      | tee "$install_log" || rc=$?
+  elif adb install -r "$tmp_apk" 2>&1 | tee "$install_log"; then
     launch_app "$DEMO_PKG" "$DEMO_ACTIVITY"
+  else
+    rc=$?
   fi
+
+  if [[ "$rc" -ne 0 ]]; then
+    # The package is already on the device under another signing key: the Play
+    # Store version, or an APK from a GitHub Release older than #4255. Android
+    # never updates an app across signers. Print the command, never run it:
+    # uninstalling deletes the user's app data.
+    if grep -q 'INSTALL_FAILED_UPDATE_INCOMPATIBLE' "$install_log"; then
+      local adb_cmd="adb"
+      if [[ -n "${ANDROID_SERIAL:-}" ]]; then
+        adb_cmd="adb -s $ANDROID_SERIAL"
+      fi
+      echo ""
+      echo -e "${RED}${DEMO_PKG} is already installed, signed with a different key${RESET}"
+      echo "  (the Play Store version, or an APK from an earlier GitHub Release)."
+      echo "  Android cannot update an app across signing keys. Uninstall it first,"
+      echo "  which also deletes its app data, then run this script again:"
+      echo ""
+      echo -e "    ${BOLD}${adb_cmd} uninstall ${DEMO_PKG}${RESET}"
+      echo ""
+    fi
+    rm -f "$install_log"
+    exit "$rc"
+  fi
+  rm -f "$install_log"
   echo -e "${GREEN}✓${RESET} Installed"
 }
 
