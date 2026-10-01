@@ -165,6 +165,68 @@ final class CosmosSpacetimeTests: XCTestCase {
         XCTAssertEqual(S.horizonDistances.last!, 6, accuracy: 1e-9)
         XCTAssertEqual(S.gridRadii.last!, 12, accuracy: 1e-4)
         XCTAssertLessThan(S.vertexCount, Int(UInt16.max) + 1, "indices fit in 16 bits")
+        // The horizon overlay repeats the rings out to the map's corners, and still fits.
+        XCTAssertGreaterThanOrEqual(Double(S.gridRadii[CosmosSpacetimeFill.overlayRings - 1]), 4 * 2.0.squareRoot())
+        XCTAssertLessThan(Double(S.gridRadii[CosmosSpacetimeFill.overlayRings - 2]), 4 * 2.0.squareRoot())
+        XCTAssertLessThan(S.vertexCount + CosmosSpacetimeFill.overlayCount, Int(UInt16.max) + 1)
+    }
+
+    // MARK: Horizon map
+
+    /// Android's map: 512² over ±4, texel centres at ±(4 − 4/512).
+    func testHorizonMapLayout() {
+        XCTAssertEqual(S.horizonMapSize, 512)
+        XCTAssertEqual(S.horizonMapExtent, 4)
+        XCTAssertEqual(S.horizonTexel(0), -4 + 4.0 / 512, accuracy: 1e-6)
+        XCTAssertEqual(S.horizonTexel(511), 4 - 4.0 / 512, accuracy: 1e-6)
+    }
+
+    /// The baked march (floats, the star's tabulated well, coarse steps then fine round the
+    /// peak, early exits) is the plain every-step march on the exact well, within 1/255.
+    func testHorizonBakeMatchesDenseMarch() {
+        var worst: Double = 0
+        var shadowed = 0
+        for j in stride(from: 3, to: S.horizonMapSize, by: 11) {
+            for i in stride(from: 5, to: S.horizonMapSize, by: 11) {
+                let x = S.horizonTexel(i), z = S.horizonTexel(j)
+                let baked = Double(S.horizonVisibility(x, z))
+                let exact = S.horizon(Double(x), Double(z), star: S.starField)
+                worst = max(worst, abs(baked - exact))
+                if exact < 0.5 { shadowed += 1 }
+            }
+        }
+        XCTAssertLessThan(worst, 1.0 / 255)
+        XCTAssertGreaterThan(shadowed, 50, "the samples cross the lobe")
+    }
+
+    /// The lobe lies inside the map: its border texels are lit.
+    func testHorizonMapBorderIsLit() {
+        let n = S.horizonMapSize
+        for k in stride(from: 0, to: n, by: 4) {
+            for (i, j) in [(k, 0), (k, n - 1), (0, k), (n - 1, k)] {
+                XCTAssertEqual(S.horizonVisibility(S.horizonTexel(i), S.horizonTexel(j)), 1, accuracy: 1e-6)
+            }
+        }
+    }
+
+    /// The overlay's blend, sheet b with visibility v over ambient-only b₀ — b v + b₀ (1 − v) —
+    /// is Android's per-pixel shade wherever the ceiling does not bind.
+    func testOverlayBlendIsAndroidShade() {
+        let sheet = S.Sheet(time: qa, weight: 1)
+        var checked = 0
+        for x in stride(from: -3.9, through: 3.9, by: 0.37) {
+            for z in stride(from: -3.9, through: 3.9, by: 0.41) {
+                let d = (x * x + z * z).squareRoot()
+                let v = Double(S.horizonVisibility(Float(x), Float(z)))
+                let open = S.shade(x, z, sheet: sheet, visibility: 1)
+                guard S.gain * open / S.flatShade < S.ceiling else { continue }
+                let b = S.brightness(shade: open, distance: d)
+                let android = S.brightness(shade: S.shade(x, z, sheet: sheet, visibility: v), distance: d)
+                XCTAssertEqual(b * v + S.hiddenBrightness(distance: d) * (1 - v), android, accuracy: 1e-9)
+                checked += 1
+            }
+        }
+        XCTAssertGreaterThan(checked, 300)
     }
 
     func testLight() {
@@ -264,7 +326,7 @@ final class CosmosSpacetimeTests: XCTestCase {
 
     // MARK: Fill
 
-    /// The sheet's float fill reproduces the double model.
+    /// The sheet's float fill reproduces the double model, the horizon left to the overlay.
     func testFillMatchesModel() {
         let fill = CosmosSpacetimeFill()
         let weight = 1.0
@@ -278,7 +340,7 @@ final class CosmosSpacetimeTests: XCTestCase {
                 let x = Double(fill.x[i]), z = Double(fill.z[i])
                 worstHeight = max(worstHeight, abs(Double(fill.height[i]) - sheet.height(x, z)))
                 let d = (x * x + z * z).squareRoot()
-                let k = S.brightness(shade: S.shade(x, z, sheet: sheet), distance: d)
+                let k = S.brightness(shade: S.shade(x, z, sheet: sheet, visibility: 1), distance: d)
                 worstShade = max(worstShade, abs(Double(fill.brightness[i]) - k))
             }
         }

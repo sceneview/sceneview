@@ -333,6 +333,102 @@ enum CosmosSpacetime {
     /// The star's field alone, at full weight: what the horizon is baked from.
     static let starField = Field(wells: [SIMD4(0, 0, Body.star.spec.depth, Body.star.spec.width)])
 
+    // MARK: Horizon map
+
+    /// The horizon visibility, baked once into a `horizonMapSize`² map over the square
+    /// ±`horizonMapExtent` round the star (the hollow's shadow spans x −1.2…3.0, z −2.7…1.3) and
+    /// read per fragment with bilinear filtering: Android's `CosmosSpacetime.horizonMap`, texel for
+    /// texel. Outside the square the light is clear.
+    static let horizonMapSize = 512
+    static let horizonMapExtent: Float = 4
+    /// The bake walks every `horizonCoarse`th step, then the steps round the steepest of those:
+    /// the chord slope along the march has a single peak, so that finds the dense march's answer.
+    static let horizonCoarse = 4
+    /// The star's well alone, tabulated over the squared distance 0…R².
+    static let starProfileSize = 16384
+    private static let profilePerD2 = Float(starProfileSize - 1) / Float(rim * rim)
+    private static let starProfile: [Float] = (0..<starProfileSize).map { k in
+        let d2 = Double(k) / Double(profilePerD2)
+        let star = Body.star.spec
+        let e2 = star.width * star.width
+        let well = -star.depth * star.width * (1 / (d2 + e2).squareRoot() - 1 / (rim * rim + e2).squareRoot())
+        return Float(well * window(d2.squareRoot()))
+    }
+
+    /// The star's well alone at (x, z), read from `starProfile` (0 past the rim).
+    static func starOnly(_ x: Float, _ z: Float) -> Float {
+        let f = (x * x + z * z) * profilePerD2
+        guard f < Float(starProfileSize - 1) else { return 0 }
+        let k = Int(f)
+        return starProfile[k] + (starProfile[k + 1] - starProfile[k]) * (f - Float(k))
+    }
+
+    /// `horizon(_:_:star:)` as the map bakes it, in floats over `starProfile`, with two exits
+    /// that leave the answer unchanged: the sheet never rises above 0, so no step past
+    /// −h0 / (tan e − softness) can reach the penumbra; and a slope past it is full shadow already.
+    static func horizonVisibility(_ x: Float, _ z: Float) -> Float {
+        let ground = simd_normalize(SIMD2<Float>(Float(light.x), Float(light.z)))
+        let h0 = starOnly(x, z)
+        let te = Float(tan(lightElevationDegrees * .pi / 180))
+        let low = te - Float(horizonSoftness), high = te + Float(horizonSoftness)
+        let step = Float(horizonStep)
+        let last = Int(min(Float(horizonReach), -h0 / low) / step)
+        var steepest = -Float.greatestFiniteMagnitude
+        var peak = 0
+        var k = horizonCoarse
+        while k <= last, steepest < high {
+            let s = Float(k) * step
+            let slope = (starOnly(x + s * ground.x, z + s * ground.y) - h0) / s
+            if slope > steepest {
+                steepest = slope
+                peak = k
+            }
+            k += horizonCoarse
+        }
+        // The steps either side of the steepest coarse one (all of the first few when none rose).
+        let from = max(1, peak - horizonCoarse + 1)
+        let to = min(last, max(peak, 1) + horizonCoarse - 1)
+        if from <= to {
+            for fine in from...to where fine % horizonCoarse != 0 {
+                let s = Float(fine) * step
+                steepest = max(steepest, (starOnly(x + s * ground.x, z + s * ground.y) - h0) / s)
+            }
+        }
+        let t = min(max((steepest - low) / (high - low), 0), 1)
+        return 1 - t * t * (3 - 2 * t)
+    }
+
+    /// Centre of horizon-map texel `i` along x (or z), in world units.
+    static func horizonTexel(_ i: Int) -> Float {
+        horizonMapExtent * (2 * (Float(i) + 0.5) / Float(horizonMapSize) - 1)
+    }
+
+    /// `horizonVisibility` over the map's square, one byte per texel (0 shadow, 255 lit), row by
+    /// row along z, each row along x — Android's R8 map. Rows bake in parallel bands.
+    static func horizonMap() -> [UInt8] {
+        let n = horizonMapSize
+        var map = [UInt8](repeating: 255, count: n * n)
+        let bands = max(1, min(8, ProcessInfo.processInfo.activeProcessorCount))
+        map.withUnsafeMutableBufferPointer { buffer in
+            nonisolated(unsafe) let out = buffer.baseAddress!
+            DispatchQueue.concurrentPerform(iterations: bands) { band in
+                for j in (band * n / bands)..<((band + 1) * n / bands) {
+                    let z = horizonTexel(j)
+                    for i in 0..<n {
+                        out[j * n + i] = UInt8(horizonVisibility(horizonTexel(i), z) * 255 + 0.5)
+                    }
+                }
+            }
+        }
+        return map
+    }
+
+    /// The sheet's brightness where the key light is hidden (`brightness` of the ambient term
+    /// alone): what the horizon overlay mixes towards.
+    static func hiddenBrightness(distance: Double) -> Double {
+        brightness(shade: ambient * ambientOcclusion(distance), distance: distance)
+    }
+
     static func ambientOcclusion(_ distance: Double) -> Double {
         1 - aoDepth * (1 - smoothstep(0, aoReach, distance))
     }
@@ -351,11 +447,14 @@ enum CosmosSpacetime {
     }
 
     /// The sheet's shade at (x, z) without shadows: wrapped key light, horizon, occlusion.
-    static func shade(_ x: Double, _ z: Double, sheet: Sheet, shadow: Double = 1) -> Double {
+    /// `visibility` overrides the horizon (1: the shade the per-vertex fill writes, before the
+    /// horizon overlay hides the light per fragment).
+    static func shade(_ x: Double, _ z: Double, sheet: Sheet, shadow: Double = 1, visibility: Double? = nil) -> Double {
         let n = sheet.normal(x, z)
         let lambert = max(0, (simd_dot(n, light) + wrap) / (1 + wrap))
         let d = (x * x + z * z).squareRoot()
-        return (ambient + (1 - ambient) * lambert * horizon(x, z, star: starField) * shadow) * ambientOcclusion(d)
+        let vis = visibility ?? horizon(x, z, star: starField)
+        return (ambient + (1 - ambient) * lambert * vis * shadow) * ambientOcclusion(d)
     }
 
     /// The colour factor the sheet's base colour is scaled by: min(0.6 S/S_flat, 1.25)·spot.

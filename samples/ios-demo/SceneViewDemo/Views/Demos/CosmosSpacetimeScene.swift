@@ -14,6 +14,13 @@ import SwiftUI
 // shade travels in its texture coordinate: `u` indexes a 1024-texel linear ramp from black to
 // 1.25 × the base colour. The material skips the post-process tone map, so a ramp texel is
 // what reaches the screen — the hollow round the star is black, not tone-mapped grey.
+//
+// The star's shadow is the one term that needs a pixel's resolution: its penumbra is narrower
+// than the grid. As on Android, it is read per fragment from the horizon map baked once
+// (`CosmosSpacetime.horizonMap`, 512², ±4): a second part of the same mesh, the inner rings
+// again a hair above the sheet, draws the map with premultiplied alpha. Where the map says the
+// light is hidden (visibility v) it covers the sheet's shade b with the ambient-only shade b₀:
+// b·v + b₀·(1 − v) is Android's per-pixel shade exactly, below the 1.25 ceiling.
 
 /// A sphere over the sheet that shades it: the ray from a vertex towards the light passing
 /// within `2 radius` of `center` dims it, fully within `0.4 radius`.
@@ -36,6 +43,15 @@ struct CosmosSpacetimeRing: Sendable, Equatable {
 /// lift and the shadows.
 final class CosmosSpacetimeFill: @unchecked Sendable {
     let count: Int
+    /// The horizon overlay's vertices: the first `overlayRings` rings again, after the sheet's.
+    static let overlayRings: Int = {
+        // The ring that clears the map's corners, ±4 on both axes.
+        let corner = CosmosSpacetime.horizonMapExtent * Float(2).squareRoot()
+        return CosmosSpacetime.gridRadii.firstIndex { $0 >= corner }! + 1
+    }()
+    static var overlayCount: Int { overlayRings * CosmosSpacetime.gridSectors }
+    /// How far the overlay sits above the sheet, so the depth test never ties.
+    static let overlayLift: Float = 0.002
     let x: UnsafeMutablePointer<Float>
     let z: UnsafeMutablePointer<Float>
     /// The last fill's heights and brightness (`CosmosSpacetime.brightness`).
@@ -48,8 +64,7 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
     private let starRaw: UnsafeMutablePointer<Float>
     private let starGx: UnsafeMutablePointer<Float>
     private let starGz: UnsafeMutablePointer<Float>
-    /// The star's horizon × ambient occlusion, and the spot.
-    private let horizon: UnsafeMutablePointer<Float>
+    /// Ambient occlusion and the spot. The star's horizon is the overlay's, per fragment.
     private let occlusion: UnsafeMutablePointer<Float>
     private let spot: UnsafeMutablePointer<Float>
     private let raw: UnsafeMutablePointer<Float>
@@ -78,10 +93,10 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
         x = make(); z = make(); height = make(); brightness = make()
         window = make(); windowX = make(); windowZ = make()
         starRaw = make(); starGx = make(); starGz = make()
-        horizon = make(); occlusion = make(); spot = make()
+        occlusion = make(); spot = make()
         raw = make(); gx = make(); gz = make()
         buffers = [x, z, height, brightness, window, windowX, windowZ, starRaw, starGx, starGz,
-                   horizon, occlusion, spot, raw, gx, gz]
+                   occlusion, spot, raw, gx, gz]
         scratch = (0..<Self.workers).map { _ in
             let p = UnsafeMutablePointer<Float>.allocate(capacity: Self.chunk * 5)
             p.initialize(repeating: 0, count: Self.chunk * 5)
@@ -111,7 +126,6 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                 starRaw[k] = Float(unitRaw)
                 starGx[k] = Float(slope * px)
                 starGz[k] = Float(slope * pz)
-                horizon[k] = Float(S.horizon(px, pz, star: S.starField))
                 occlusion[k] = Float(S.ambientOcclusion(rd))
                 spot[k] = Float(S.spot(rd))
             }
@@ -124,7 +138,8 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
     }
 
     /// Fills the sheet for `time`, `weight` and `lift`, shaded by `casters` and `ring`, and
-    /// writes the interleaved vertices (x, y, z, u, v) into `out` when given.
+    /// writes the interleaved vertices (x, y, z, u, v) into `out` when given: the sheet's
+    /// `count`, then the overlay's `overlayCount`, whose `u, v` address the horizon map.
     func fill(time: Double, weight: Double, lift: Double, casters: [CosmosSpacetimeCaster],
               ring: CosmosSpacetimeRing?, into out: UnsafeMutablePointer<Float>?) {
         let field = CosmosSpacetime.Field(time: time, weight: weight)
@@ -199,6 +214,7 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
         let gain = Float(S.gain / S.flatShade), ceiling = Float(S.ceiling)
         let inner = CosmosSystem.ringInner, across = CosmosSystem.ringOuter - CosmosSystem.ringInner
         let table = Self.ringTable
+        let mapExtent = S.horizonMapExtent
         let ringDot = ring.map { simd_dot($0.normal, light) } ?? 0
         let ringLit = ring != nil && abs(ringDot) > 1e-4
         for k in 0..<n {
@@ -228,7 +244,7 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                     }
                 }
             }
-            let shade = (ambient + (1 - ambient) * lambert * horizon[i] * shadow) * occlusion[i]
+            let shade = (ambient + (1 - ambient) * lambert * shadow) * occlusion[i]
             let b = min(gain * shade, ceiling) * spot[i]
             brightness[i] = b
             if let out {
@@ -238,6 +254,16 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                 o[2] = z[i]
                 o[3] = (0.5 + b / ceiling * 1023) / 1024
                 o[4] = 0.5
+                if i < Self.overlayCount {
+                    // The map's texel (i, j) is at x, z = texel(i), texel(j); RealityKit's v runs
+                    // up from the last row.
+                    let q = out + 5 * (count + i)
+                    q[0] = x[i]
+                    q[1] = h[k] + Self.overlayLift
+                    q[2] = z[i]
+                    q[3] = 0.5 + x[i] / (2 * mapExtent)
+                    q[4] = 0.5 - z[i] / (2 * mapExtent)
+                }
             }
         }
     }
@@ -247,20 +273,28 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
         return t * t * (3 - 2 * t)
     }
 
-    /// The sheet's triangles, ring-major: (a, b, c) and (b, d, c) face up.
+    static var sheetIndexCount: Int { CosmosSpacetime.triangleCount * 3 }
+    static var overlayIndexCount: Int { 6 * (overlayRings - 1) * CosmosSpacetime.gridSectors }
+
+    /// The sheet's triangles, ring-major: (a, b, c) and (b, d, c) face up; then the overlay's,
+    /// over its own copy of the inner rings.
     static func writeIndices(_ raw: UnsafeMutableRawBufferPointer) {
         let indices = raw.bindMemory(to: UInt16.self)
         let sectors = CosmosSpacetime.gridSectors
+        let base = CosmosSpacetime.vertexCount
         var o = 0
-        for i in 0..<(CosmosSpacetime.gridRadii.count - 1) {
-            for j in 0..<sectors {
-                let a = i * sectors + j
-                let b = i * sectors + (j + 1) % sectors
-                let c = a + sectors
-                let d = b + sectors
-                indices[o] = UInt16(a); indices[o + 1] = UInt16(b); indices[o + 2] = UInt16(c)
-                indices[o + 3] = UInt16(b); indices[o + 4] = UInt16(d); indices[o + 5] = UInt16(c)
-                o += 6
+        let runs = [(rings: CosmosSpacetime.gridRadii.count, first: 0), (rings: overlayRings, first: base)]
+        for run in runs {
+            for i in 0..<(run.rings - 1) {
+                for j in 0..<sectors {
+                    let a = run.first + i * sectors + j
+                    let b = run.first + i * sectors + (j + 1) % sectors
+                    let c = a + sectors
+                    let d = b + sectors
+                    indices[o] = UInt16(a); indices[o + 1] = UInt16(b); indices[o + 2] = UInt16(c)
+                    indices[o + 3] = UInt16(b); indices[o + 4] = UInt16(d); indices[o + 5] = UInt16(c)
+                    o += 6
+                }
             }
         }
     }
@@ -274,6 +308,10 @@ final class CosmosSpacetimeScene {
     private let mesh: LowLevelMesh
     private var sheetMaterial: UnlitMaterial
     private var sheetOpacity: Float = -1
+    /// The horizon overlay's material, and how far it hides the light: the sheet's opacity times
+    /// the well's depth, Android's `mix(1, horizon, well)`.
+    private var overlayMaterial: UnlitMaterial
+    private var overlayOpacity: Float = -1
     private let fill: CosmosSpacetimeFill
     /// Two staging buffers: one is filled while the other's copy to the mesh is in flight.
     private let staging: [MTLBuffer]
@@ -315,29 +353,41 @@ final class CosmosSpacetimeScene {
     static func make() async throws -> CosmosSpacetimeScene {
         let fill = await Task.detached(priority: .userInitiated) { CosmosSpacetimeFill() }.value
         let ramp = try await GlowEntity.texture(Self.ramp())
+        let started = CACurrentMediaTime()
+        let horizon = await Task.detached(priority: .userInitiated) { Self.horizonImage() }.value
+        NSLog("[Cosmos] spacetime horizon map baked in %.0f ms", 1000 * (CACurrentMediaTime() - started))
+        let overlay = try await GlowEntity.texture(horizon)
+        var descriptor = UnlitMaterial.Program.Descriptor()
+        descriptor.blendMode = .alpha
+        descriptor.applyPostProcessToneMap = false
+        let program = await UnlitMaterial.Program(descriptor: descriptor)
         var textures: [CosmosSpacetime.Body: TextureResource] = [:]
         for body in smallBodies {
             let image = await Task.detached(priority: .userInitiated) { CosmosSpacetimeLook.bake(body) }.value
             textures[body] = try await GlowEntity.texture(image)
         }
-        return try await CosmosSpacetimeScene(fill: fill, ramp: ramp, textures: textures)
+        return try await CosmosSpacetimeScene(fill: fill, ramp: ramp, overlay: overlay, program: program,
+                                              textures: textures)
     }
 
-    private init(fill: CosmosSpacetimeFill, ramp: TextureResource,
+    private init(fill: CosmosSpacetimeFill, ramp: TextureResource, overlay: TextureResource,
+                 program: UnlitMaterial.Program,
                  textures: [CosmosSpacetime.Body: TextureResource]) async throws {
         guard let metal = GlowMetal.shared else { throw GlowEntity.GlowError.noMetal }
         self.fill = fill
         let stride = 5 * MemoryLayout<Float>.stride
-        let length = fill.count * stride
+        let vertexCount = fill.count + CosmosSpacetimeFill.overlayCount
+        let length = vertexCount * stride
         staging = try (0..<2).map { _ in
             guard let buffer = metal.device.makeBuffer(length: length, options: .storageModeShared) else {
                 throw GlowEntity.GlowError.noMetal
             }
             return buffer
         }
-        let indexCount = CosmosSpacetime.triangleCount * 3
+        let sheetIndices = CosmosSpacetimeFill.sheetIndexCount
+        let indexCount = sheetIndices + CosmosSpacetimeFill.overlayIndexCount
         let descriptor = LowLevelMesh.Descriptor(
-            vertexCapacity: fill.count,
+            vertexCapacity: vertexCount,
             vertexAttributes: [
                 .init(semantic: .position, format: .float3, offset: 0),
                 .init(semantic: .uv0, format: .float2, offset: 12),
@@ -349,9 +399,12 @@ final class CosmosSpacetimeScene {
         let mesh = try LowLevelMesh(descriptor: descriptor)
         mesh.withUnsafeMutableIndices { CosmosSpacetimeFill.writeIndices($0) }
         let rim = Float(CosmosSpacetime.rim)
+        let bounds = BoundingBox(min: SIMD3(-rim, -4, -rim), max: SIMD3(rim, 4, rim))
         mesh.parts.replaceAll([
-            LowLevelMesh.Part(indexCount: indexCount, topology: .triangle,
-                              bounds: BoundingBox(min: SIMD3(-rim, -4, -rim), max: SIMD3(rim, 4, rim))),
+            LowLevelMesh.Part(indexCount: sheetIndices, topology: .triangle, materialIndex: 0, bounds: bounds),
+            LowLevelMesh.Part(indexOffset: sheetIndices * MemoryLayout<UInt16>.stride,
+                              indexCount: CosmosSpacetimeFill.overlayIndexCount, topology: .triangle,
+                              materialIndex: 1, bounds: bounds),
         ])
         self.mesh = mesh
 
@@ -360,7 +413,14 @@ final class CosmosSpacetimeScene {
         material.color = .init(tint: .white, texture: .init(ramp, sampler: Self.sampler))
         material.faceCulling = .none
         sheetMaterial = material
-        let sheet = ModelEntity(mesh: try await MeshResource(from: mesh), materials: [material])
+        // Premultiplied, past the tone map, drawn after the sheet and writing no depth.
+        var overlayMaterial = UnlitMaterial(program: program)
+        overlayMaterial.color = .init(tint: .white, texture: .init(overlay, sampler: Self.sampler))
+        overlayMaterial.blending = .transparent(opacity: .init(floatLiteral: 1))
+        overlayMaterial.writesDepth = false
+        overlayMaterial.faceCulling = .none
+        self.overlayMaterial = overlayMaterial
+        let sheet = ModelEntity(mesh: try await MeshResource(from: mesh), materials: [material, overlayMaterial])
         sheet.name = "cosmos-spacetime-sheet"
         // Nothing to show until the first fill has landed.
         sheet.isEnabled = false
@@ -407,7 +467,7 @@ final class CosmosSpacetimeScene {
             }
         }
         let opacity = Float(T.sheetIntensity(progress))
-        setSheetOpacity(opacity)
+        setSheetOpacity(opacity, well: Float(layout.weight))
 
         let key = FillKey(time: time, weight: Float(layout.weight), lift: Float(layout.lift), casters: casters,
                           ring: CosmosSpacetimeRing(center: ringed.center, normal: ringed.normal, alpha: 1))
@@ -423,7 +483,7 @@ final class CosmosSpacetimeScene {
         let target = staging[index]
         let fill = fill
         // The staging buffer is not drawn from while it is filled: `uploading[index]` is clear.
-        nonisolated(unsafe) let out = target.contents().bindMemory(to: Float.self, capacity: fill.count * 5)
+        nonisolated(unsafe) let out = target.contents().bindMemory(to: Float.self, capacity: (fill.count + CosmosSpacetimeFill.overlayCount) * 5)
         Task { @MainActor [weak self] in
             let seconds = await Task.detached(priority: .userInitiated) { () -> Double in
                 let id = OSSignpostID(log: Self.signposts)
@@ -476,14 +536,18 @@ final class CosmosSpacetimeScene {
         }
     }
 
-    private func setSheetOpacity(_ opacity: Float) {
+    private func setSheetOpacity(_ opacity: Float, well: Float) {
         // 1/128 steps: a new material every frame of the fade would be wasted.
         let stepped = opacity >= 1 ? 1 : (opacity * 128).rounded() / 128
-        guard stepped != sheetOpacity else { return }
+        let hide = min(max(stepped * well, 0), 1)
+        let hidden = hide >= 1 ? 1 : (hide * 128).rounded() / 128
+        guard stepped != sheetOpacity || hidden != overlayOpacity else { return }
         sheetOpacity = stepped
+        overlayOpacity = hidden
         sheet.isEnabled = uploaded && stepped > 0
         sheetMaterial.blending = stepped >= 1 ? .opaque : .transparent(opacity: .init(floatLiteral: stepped))
-        sheet.model?.materials = [sheetMaterial]
+        overlayMaterial.blending = .transparent(opacity: .init(floatLiteral: hidden))
+        sheet.model?.materials = [sheetMaterial, overlayMaterial]
     }
 
     private func setAlpha(_ alpha: Float, planet index: Int) {
@@ -493,6 +557,27 @@ final class CosmosSpacetimeScene {
         planets[index].entity.isEnabled = stepped > 0
         planets[index].material.blending = stepped >= 1 ? .opaque : .transparent(opacity: .init(floatLiteral: stepped))
         planets[index].entity.model?.materials = [planets[index].material]
+    }
+
+    /// The horizon overlay, premultiplied: opacity 1 − v where the map's visibility is v, colour
+    /// the ambient-only shade b₀ (`hiddenBrightness`) × the base colour × that opacity. Row j is
+    /// z = texel(j), column i is x = texel(i), as `CosmosSpacetime.horizonMap` lays them out.
+    nonisolated static func horizonImage() -> GlowImage {
+        typealias S = CosmosSpacetime
+        let n = S.horizonMapSize
+        let map = S.horizonMap()
+        let base = SIMD3<Float>(S.linear(S.baseColor))
+        var image = GlowImage(width: n, height: n, cell: 1)
+        for j in 0..<n {
+            let z = Double(S.horizonTexel(j))
+            for i in 0..<n {
+                let x = Double(S.horizonTexel(i))
+                let cover = 1 - Float(map[j * n + i]) / 255
+                let hidden = Float(S.hiddenBrightness(distance: (x * x + z * z).squareRoot()))
+                image.set(i, j, base * hidden * cover, alpha: cover)
+            }
+        }
+        return image
     }
 
     /// Black to 1.25 × the sheet's base colour, linear.
