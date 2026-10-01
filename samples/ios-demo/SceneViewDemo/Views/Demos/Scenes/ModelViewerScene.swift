@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        rotate.3d
-// @order       33
+// @order       34
 // @tags        gltf,glb,hdr,ibl,orbit,ar,viewer
 // @addedIn     4.4.0
 // @updatedIn   4.49.0

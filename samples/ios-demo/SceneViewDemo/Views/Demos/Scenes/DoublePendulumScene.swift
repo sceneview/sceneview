@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        waveform.path
-// @order       38
+// @order       39
 // @tags        physics,pendulum,chaos,simulation,kmp
 // @addedIn     4.4.0
 // @updatedIn   4.10.0

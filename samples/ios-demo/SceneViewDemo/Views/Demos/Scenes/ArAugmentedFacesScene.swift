@@ -6,7 +6,7 @@
 // @available   true
 // @icon        face.smiling.inverse
 // @iosOnly     true
-// @order       41
+// @order       42
 // @tags        ar,face,anchor,tracking,accessories
 // @addedIn     4.15.2
 // @updatedIn   4.45.0

@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        camera.fill
-// @order       40
+// @order       41
 // @tags        camera,orbit,gesture,pan,zoom,manipulator,edit
 // @addedIn     4.0.0
 // @updatedIn   4.31.0

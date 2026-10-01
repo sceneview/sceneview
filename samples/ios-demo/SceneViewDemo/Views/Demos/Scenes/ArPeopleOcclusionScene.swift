@@ -6,7 +6,7 @@
 // @available   true
 // @icon        person.fill.viewfinder
 // @iosOnly     true
-// @order       42
+// @order       43
 // @tags        ar,occlusion,people,segmentation,depth
 // @addedIn     4.15.2
 // @updatedIn   4.40.0

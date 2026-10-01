@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        hand.pinch.fill
-// @order       37
+// @order       38
 // @addedIn     4.15.2
 // @updatedIn   4.51.0
 import SwiftUI

@@ -7,7 +7,7 @@
 // @icon        basketball.fill
 // @iosOnly     true
 // @status      knownIssue
-// @order       46
+// @order       47
 // @tags        ar,depth,physics,collision,rigid-body
 // @addedIn     4.15.2
 // @updatedIn   4.46.0

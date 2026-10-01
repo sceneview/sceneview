@@ -5,7 +5,7 @@
 // @section     devTools
 // @available   true
 // @icon        pip
-// @order       20
+// @order       22
 // @tags        camera,pip,multi-view,render-target
 import SwiftUI
 

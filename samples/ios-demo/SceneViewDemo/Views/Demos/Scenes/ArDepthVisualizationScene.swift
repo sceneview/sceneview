@@ -7,7 +7,7 @@
 // @icon        square.3.layers.3d
 // @iosOnly     true
 // @status      knownIssue
-// @order       40
+// @order       41
 // @tags        ar,depth,visualization,false-color,depth-map,ml,lidar
 // @addedIn     4.51.0
 import SwiftUI
