@@ -7,7 +7,7 @@
 // @icon        scope
 // @iosOnly     true
 // @status      working
-// @order       29
+// @order       30
 // @tags        ar,reticle,placement,shadow,preview,no-camera
 import SwiftUI
 import RealityKit

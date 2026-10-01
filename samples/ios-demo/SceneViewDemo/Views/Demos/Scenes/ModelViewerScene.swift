@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        rotate.3d
-// @order       32
+// @order       33
 // @tags        gltf,glb,hdr,ibl,orbit,ar,viewer
 // @updatedIn   4.35.0
 import SwiftUI

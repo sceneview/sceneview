@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        camera.fill
-// @order       39
+// @order       40
 // @tags        camera,orbit,gesture,pan,zoom,manipulator,edit
 // @updatedIn   4.35.0
 import SwiftUI

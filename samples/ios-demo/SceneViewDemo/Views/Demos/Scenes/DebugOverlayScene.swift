@@ -5,7 +5,7 @@
 // @section     devTools
 // @available   true
 // @icon        gauge.with.needle.fill
-// @order       21
+// @order       22
 // @tags        debug,fps,stats,performance,overlay
 import SwiftUI
 

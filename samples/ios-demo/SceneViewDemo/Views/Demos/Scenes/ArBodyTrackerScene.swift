@@ -6,7 +6,7 @@
 // @available   true
 // @icon        figure.arms.open
 // @iosOnly     true
-// @order       43
+// @order       44
 // @tags        ar,body,pose,anchor,skeleton
 import SwiftUI
 

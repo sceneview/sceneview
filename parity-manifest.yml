@@ -63,10 +63,11 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-09-29): 51 rows, 32 working / 0 stub / 19 android-only.
+# Current slice-5 ledger (2026-10-01): 51 rows, 33 working / 0 stub / 18 android-only.
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
+# (android-only -> working: `contact-shadow-preview` — procedural contact-shadow quads.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -275,7 +276,7 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (31) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (33) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -949,6 +950,30 @@ demos:
       Four separate iOS cards (text/image/video/billboard), no live UI;
       SceneViewSwift Nodes/ViewNode.swift is a white-plane placeholder
       (#1035); Android TwoDInThreeDDemo.kt:4-53 (#3424)
+  - id: contact-shadow-preview
+    androidStatus: InReview
+    iosStatus: working
+    category: CREATE
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ContactShadowPreviewDemo.kt
+    ios: [contact-shadow-preview]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/ContactShadowPreviewDemo.swift
+    contract: >-
+      Two boxes side by side: the left bounces over a contact-shadow pool that
+      tightens as it lands, the right hovers with no shadow, for comparison.
+      A wall TV sits on its own pool, with a Floor / Wall / Table preset picker
+      and a one-line verdict on the stage; Shadows in the dock; contact
+      shadows, bounce motion and intensity (0-1.5x) in the sheet.
+    parity: diverges
+    evidence: >-
+      Same room, boxes, TV, camera eye, presets, labels, strings, dock and
+      reset. The pool is a procedural quad (opacity mask baked from
+      contact_shadow.mat's falloff), not GroundingShadowComponent, which has
+      no intensity and cannot fall on a wall. Labels fade smoothly instead of
+      Android's show/hide; text is 3D geometry on a dark scrim. The camera
+      aims lower (target y 0.4, Android 0.75) so the grounded box's pool
+      clears the bottom option strip in portrait; the key light is 3 000 lux
+      so the floor is not blown out under RealityKit's tone mapping.
 
   # ─── stub (0) — an id in iOS's registry that falls to the placeholder ────
   # Deliberately empty, and meant to stay that way. A `stub` row means the
@@ -960,7 +985,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (19) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (18) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1236,24 +1261,6 @@ demos:
     evidence: >-
       ArXrFaceFragment.kt:26 ComingSoon. No public Apple API tracks the
       wearer's face on a headset; the iPhone selfie face is the ar-face row
-  - id: contact-shadow-preview
-    androidStatus: InReview
-    iosStatus: android-only
-    reason: >-
-      No iOS screen — added to Android after iOS stopped tracking the catalog
-      (#2817, contact-shadow sub-task C of #2740; Android itself is InReview).
-      Its coming-soon Scene stub was deleted in #3231.
-    category: CREATE
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ContactShadowPreviewDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      Two boxes side by side: the left bounces over a contact-shadow pool that
-      tightens as it lands, the right hovers with no shadow, for comparison.
-    parity: missing
-    evidence: >-
-      No iOS scene; Android ContactShadowPreviewDemo.kt:1-40 (InReview).
-      RealityKit GroundingShadowComponent covers it (#3653)
   - id: point-and-ask
     androidStatus: Working
     iosStatus: android-only

@@ -6,7 +6,7 @@
 // @available   true
 // @icon        record.circle
 // @iosOnly     true
-// @order       20
+// @order       21
 // @tags        ar,recording,playback,session,mp4,replay
 import SwiftUI
 

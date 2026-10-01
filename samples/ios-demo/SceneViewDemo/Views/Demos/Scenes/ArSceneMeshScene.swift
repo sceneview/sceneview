@@ -6,7 +6,7 @@
 // @available   true
 // @icon        grid
 // @iosOnly     true
-// @order       47
+// @order       48
 // @tags        ar,geospatial,streetscape,mesh,terrain,building
 // @updatedIn   4.35.0
 import SwiftUI

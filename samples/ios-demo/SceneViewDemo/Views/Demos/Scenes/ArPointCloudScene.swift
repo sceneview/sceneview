@@ -6,7 +6,7 @@
 // @available   true
 // @icon        aqi.medium
 // @iosOnly     true
-// @order       46
+// @order       47
 // @tags        ar,point-cloud,feature-points,tracking
 import SwiftUI
 

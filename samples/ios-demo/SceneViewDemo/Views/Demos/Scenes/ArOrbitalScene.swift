@@ -6,7 +6,7 @@
 // @available   true
 // @icon        globe.europe.africa.fill
 // @iosOnly     true
-// @order       23
+// @order       24
 // @tags        ar,orbit,animation,model,anchor
 import SwiftUI
 

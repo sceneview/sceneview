@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        waveform.path
-// @order       37
+// @order       38
 // @tags        physics,pendulum,chaos,simulation,kmp
 import SwiftUI
 
