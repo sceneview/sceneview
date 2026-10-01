@@ -204,6 +204,8 @@ struct ContentView: View {
         var source: SampleOpenSource = .deeplink
     }
     @State private var presentedDemo: DemoLink?
+    /// Home has a demo, a sheet or the online gallery over it (`ShowcaseTab`).
+    @State private var homePresenting = false
 
     @Environment(\.colorScheme) private var colorScheme
     #if os(iOS)
@@ -226,7 +228,8 @@ struct ContentView: View {
             Tab("Showcase", systemImage: "square.grid.2x2.fill", value: 0) {
                 // `isActive` gates the home hero's live 3D stage: only the visible
                 // tab, with no demo presented over it, may run a scene.
-                ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil)
+                ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil,
+                            onPresentingChange: { homePresenting = $0 })
                     .accessibilityLabel("Showcase")
                     .updateToast()
             }
@@ -291,10 +294,11 @@ struct ContentView: View {
         .task {
             DemoAnalytics.shared.setUserProperty(Self.arSupported ? "true" : "false", for: .arSupported)
         }
-        // Home first, then the consent — or once a demo opened at launch has closed.
-        .task(id: presentedDemo == nil) {
-            guard presentedDemo == nil else { return }
-            await consent.presentIfNeeded { presentedDemo == nil }
+        // Home first, then the consent — or once a demo (deep-linked, or opened from
+        // Home) has closed.
+        .task(id: presentedDemo == nil && !homePresenting) {
+            guard presentedDemo == nil, !homePresenting else { return }
+            await consent.presentIfNeeded { presentedDemo == nil && !homePresenting }
         }
         .sheet(isPresented: $consent.sheetPresented, onDismiss: { consent.sheetDismissed() }) {
             ConsentSheet(

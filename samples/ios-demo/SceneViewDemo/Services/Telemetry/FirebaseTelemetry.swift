@@ -62,7 +62,7 @@ enum FirebaseTelemetry {
         let zone = TimeZone.current.identifier
         log.notice("consent zone \(consent.requiresConsent, privacy: .public) (region \(region, privacy: .public), time zone \(zone, privacy: .public)), consent \(consent.state.rawValue, privacy: .public)")
         guard consent.shouldStartFirebaseAtLaunch else {
-            log.notice("Firebase not configured at launch: consent \(consent.state.rawValue, privacy: .public), consent zone")
+            log.notice("Firebase not configured at launch: consent \(consent.state.rawValue, privacy: .public), consent zone, push \(consent.pushNeedsFirebase, privacy: .public), stored collection may be on \(consent.collectionMayBeOn, privacy: .public)")
             return
         }
         start()
@@ -117,6 +117,8 @@ struct FirebaseAnalyticsBackend: AnalyticsBackend {
         #if canImport(FirebaseCrashlytics)
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(enabled)
         #endif
+        // Both SDKs persisted `enabled`: the next launch knows what their storage says.
+        ConsentStore.shared.collectionMayBeOn = enabled
     }
 
     func resetAnalyticsData() {

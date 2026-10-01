@@ -66,6 +66,34 @@ final class ConsentRegionTests: XCTestCase {
         }
     }
 
+    func testCyprusAndTerritoriesAsk() {
+        for zone in ["Asia/Nicosia", "Asia/Famagusta", "America/Marigot", "Arctic/Longyearbyen",
+                     "America/Guadeloupe", "Indian/Mayotte"] {
+            XCTAssertTrue(asks("US", zone), zone)
+        }
+        for region in ["SJ", "EL", "MF", "AX", "GI", "IM", "JE", "GG", "YT", "MQ", "CY"] {
+            XCTAssertTrue(asks(region, "America/New_York"), region)
+        }
+    }
+
+    func testLegacyTimeZoneAliasesAsk() {
+        for zone in ["CET", "WET", "MET", "EET", "Eire", "GB", "GB-Eire", "Iceland", "Poland", "Portugal"] {
+            XCTAssertTrue(asks("US", zone), zone)
+        }
+    }
+
+    func testPlacelessTimeZonesAreNoSignal() {
+        for zone in ["UTC", "UCT", "GMT", "GMT0", "GMT+0", "GMT-0", "Greenwich", "Universal", "Zulu", "Etc/UTC"] {
+            XCTAssertFalse(asks("US", zone), zone)
+            XCTAssertTrue(asks(nil, zone), zone)
+        }
+    }
+
+    func testOtherAsianZonesDoNotAsk() {
+        XCTAssertFalse(asks("US", "Asia/Istanbul"))
+        XCTAssertFalse(asks("US", "Asia/Tbilisi"))
+    }
+
     func testRegionCaseDoesNotMatter() {
         XCTAssertTrue(asks("fr", "America/New_York"))
     }
@@ -172,12 +200,74 @@ final class ConsentStoreTests: XCTestCase {
         XCTAssertTrue(store.needsPrompt)
     }
 
-    func testLegacyPushSubscriberKeepsFirebaseAtLaunch() {
+    /// An upgrade from a build without the consent: Firebase's storage still says
+    /// collection ON (Crashlytics' own store beats the Info.plist NO), so configuring
+    /// before the answer would upload cached crashes and log `app_update` /
+    /// `session_start`. The push exception waits for the answer.
+    func testLegacyPushSubscriberWaitsForTheAnswerWhileCollectionMayBeOn() {
         defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
         let store = makeStore()
         XCTAssertTrue(store.pushNeedsFirebase)
-        XCTAssertTrue(store.shouldStartFirebaseAtLaunch)
+        XCTAssertTrue(store.collectionMayBeOn)
+        XCTAssertTrue(store.configureWouldLeak)
+        XCTAssertFalse(store.shouldStartFirebaseAtLaunch)
         XCTAssertTrue(store.needsPrompt, "still asked for the usage statistics")
+    }
+
+    func testLegacyPushSubscriberStartsFirebaseOnceCollectionIsOff() {
+        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
+        let store = makeStore()
+        // The backend applied OFF (Firebase was configured by a "Share" then a withdrawal).
+        store.collectionMayBeOn = false
+        store.record(.denied)
+        XCTAssertFalse(store.configureWouldLeak)
+        XCTAssertTrue(store.shouldStartFirebaseAtLaunch, "push keeps Firebase at launch")
+    }
+
+    func testAShareLiftsTheUpgradeGate() {
+        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
+        let store = makeStore()
+        store.record(.granted)
+        XCTAssertFalse(store.configureWouldLeak)
+        XCTAssertTrue(store.shouldStartFirebaseAtLaunch)
+    }
+
+    func testARefusalKeepsTheUpgradeGate() {
+        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
+        let store = makeStore()
+        store.record(.denied)
+        XCTAssertTrue(store.configureWouldLeak, "Firebase was never configured to switch it off")
+        XCTAssertFalse(store.shouldStartFirebaseAtLaunch)
+    }
+
+    func testAnyLegacyRunKeyMeansCollectionMayBeOn() {
+        for key in ConsentStore.legacyRunKeys {
+            defaults.removePersistentDomain(forName: suiteName)
+            defaults.set(1, forKey: key)
+            XCTAssertTrue(makeStore().collectionMayBeOn, key)
+        }
+    }
+
+    func testLegacyExplicitOffDoesNotMarkCollectionOn() {
+        defaults.set(false, forKey: ConsentStore.legacyUsageStatsKey)
+        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
+        let store = makeStore()
+        XCTAssertFalse(store.collectionMayBeOn, "that build persisted OFF")
+        XCTAssertEqual(store.state, .denied)
+        XCTAssertTrue(store.shouldStartFirebaseAtLaunch, "push keeps Firebase at launch")
+    }
+
+    func testFreshInstallDoesNotMarkCollectionOn() {
+        let store = makeStore()
+        XCTAssertFalse(store.collectionMayBeOn)
+        XCTAssertFalse(store.configureWouldLeak)
+    }
+
+    func testOutsideTheZoneNothingWaits() {
+        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
+        let store = makeStore(requiresConsent: false)
+        XCTAssertFalse(store.configureWouldLeak)
+        XCTAssertTrue(store.shouldStartFirebaseAtLaunch)
     }
 
     func testMigrationRunsOnlyBeforeTheFirstAnswer() {
@@ -206,5 +296,12 @@ final class ConsentStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .unknown)
         XCTAssertNil(store.consentedAt)
         XCTAssertTrue(store.needsPrompt)
+    }
+
+    func testAskForcesTheZone() {
+        XCTAssertTrue(ConsentStore.requiresConsent(override: .ask, inRegion: false))
+        XCTAssertFalse(ConsentStore.requiresConsent(override: .denied, inRegion: false))
+        XCTAssertFalse(ConsentStore.requiresConsent(override: nil, inRegion: false))
+        XCTAssertTrue(ConsentStore.requiresConsent(override: .granted, inRegion: true))
     }
 }
