@@ -214,8 +214,18 @@ enum DemoDeepLinkRegistry {
     /// no chrome of its own — with no dismissal affordance at all when it was
     /// reached from a QR code instead of the catalogue.
     @MainActor
-    static func cover(for id: String, onClose: @escaping () -> Void) -> DemoCover {
-        DemoCover(title: title(for: id), destination: destination(for: id), onClose: onClose)
+    static func cover(for id: String, source: SampleOpenSource = .deeplink,
+                      onClose: @escaping () -> Void) -> DemoCover {
+        let canonical = GeneratedScenes.allowedIds.contains(id) ? id : legacyAliases[id]
+        let section = canonical.flatMap { c in GeneratedScenes.all().first { $0.sceneId == c }?.section }
+        return DemoCover(title: title(for: id), destination: destination(for: id),
+                         sampleId: canonical, category: DemoAnalytics.category(for: section),
+                         source: source, onClose: onClose)
+    }
+
+    /// Whether `id` opens a real screen (a live id or a legacy alias of one).
+    static func resolves(_ id: String) -> Bool {
+        GeneratedScenes.allowedIds.contains(id) || legacyAliases[id] != nil
     }
 }
 

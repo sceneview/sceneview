@@ -29,6 +29,9 @@ struct AboutTab: View {
                         HDPackSettingsRow()
                     }
                     aboutCards
+                    if FirebaseTelemetry.isConfigured {
+                        PrivacySettingsSection()
+                    }
                     footer
                 }
                 // One gutter and one bottom inset for the three tabs: the same

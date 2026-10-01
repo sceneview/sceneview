@@ -236,6 +236,7 @@ struct ModelViewerDemo: View {
     @State private var selectedModel: BundledViewerModel = ModelViewerDemo.bundledModels[0]
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
     @State private var loadCount = 0
     @State private var recenterGeneration = 0
     /// Android's entrance: the camera flies in to each model that opens, and
@@ -317,15 +318,18 @@ struct ModelViewerDemo: View {
     /// Recenter is a return arrow (`RestartAlt`), not a reticle that reads as zoom.
     private var dock: [DockItem] {
         var items = [
-            DockItem(icon: "square.on.circle", label: "Models") { sheet = .models },
-            DockItem(icon: "sun.max", label: "Environment", caption: "Lighting") { sheet = .environment },
+            DockItem(icon: "square.on.circle", label: "Models", control: "models") { sheet = .models },
+            DockItem(icon: "sun.max", label: "Environment", caption: "Lighting",
+                     control: "lighting") { sheet = .environment },
         ]
         if !animationNames.isEmpty {
-            items.append(DockItem(icon: "play.circle", label: "Animate", selected: animationBarOpen) {
+            items.append(DockItem(icon: "play.circle", label: "Animate", control: "animate",
+                                  selected: animationBarOpen) {
                 withAnimation(SceneViewTokens.Spring.animation) { animationBarOpen.toggle() }
             })
         }
-        items.append(DockItem(icon: "arrow.counterclockwise.circle", label: "Recenter") { recenter() })
+        items.append(DockItem(icon: "arrow.counterclockwise.circle", label: "Recenter",
+                              control: "recenter") { recenter() })
         return items
     }
 
@@ -379,6 +383,9 @@ struct ModelViewerDemo: View {
                 // Shown in both themes: the viewer chrome is glass over live 3D and
                 // is theme-independent by design.
                 Button {
+                    if let analyticsSampleId {
+                        DemoAnalytics.shared.interaction(analyticsSampleId, "surprise")
+                    }
                     Task { @MainActor in
                         guard !surpriseInFlight else { return }
                         await rollSurpriseModel()
@@ -429,7 +436,7 @@ struct ModelViewerDemo: View {
         .demoChrome(
             title: "Model Viewer",
             dock: dock,
-            accent: DockItem(icon: "arkit", label: "View in AR",
+            accent: DockItem(icon: "arkit", label: "View in AR", control: "view_in_ar",
                              enabled: arSupported && selectedModel.arResourceName != nil) { showAR = true },
             onReset: resetAll,
             accessory: { floatingBand },
@@ -694,6 +701,8 @@ struct ModelViewerDemo: View {
             // The poster would hide the message; the spinner overlay shows it.
             posterModel = nil
             loadError = "Could not load \(model.displayName): \(error.localizedDescription)"
+            DemoAnalytics.shared.log(.modelLoadFailed(sampleId: analyticsSampleId ?? "model-viewer",
+                                                      reason: DemoAnalytics.modelLoadReason(for: error)))
         }
     }
 

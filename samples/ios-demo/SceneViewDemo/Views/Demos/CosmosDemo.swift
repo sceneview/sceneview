@@ -68,7 +68,8 @@ struct CosmosDemo: View {
         .onChange(of: reduceMotion) { _, reduce in engine.frozen = qaMode || reduce }
         .demoChrome(
             dock: CosmosSceneKind.allCases.map { kind in
-                DockItem(icon: kind.icon, label: kind.label, selected: engine.scene == kind) {
+                DockItem(icon: kind.icon, label: kind.label, control: kind.analyticsControl,
+                         selected: engine.scene == kind) {
                     engine.select(kind)
                 }
             },

@@ -777,6 +777,16 @@ enum CosmosSceneKind: Int, CaseIterable, Sendable {
         }
     }
 
+    /// `sample_interaction.control` for this scene's dock button (same ids on Android).
+    var analyticsControl: String {
+        switch self {
+        case .galaxy: "galaxy"
+        case .star: "star"
+        case .burst: "burst"
+        case .flow: "flow"
+        }
+    }
+
     /// The plain one-line caption shown under the scene — Android's `CosmosScene.caption`.
     var caption: String {
         switch self {

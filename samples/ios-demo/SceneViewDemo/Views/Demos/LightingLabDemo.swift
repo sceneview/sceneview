@@ -59,6 +59,7 @@ struct LightingLabDemo: View {
     /// The hero, loaded once. `nil` until it lands (or if it fails — the probes still stand).
     @State private var heroNode: ModelNode?
     @State private var heroLoadFailed = false
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
     /// Android's idle orbit: on until the viewer takes the camera.
     @State private var orbiting = true
     @State private var orbitStart = Date()
@@ -341,6 +342,8 @@ struct LightingLabDemo: View {
             heroNode = node
         } catch {
             heroLoadFailed = true
+            DemoAnalytics.shared.log(.modelLoadFailed(sampleId: analyticsSampleId ?? "lighting-lab",
+                                                      reason: DemoAnalytics.modelLoadReason(for: error)))
         }
     }
 

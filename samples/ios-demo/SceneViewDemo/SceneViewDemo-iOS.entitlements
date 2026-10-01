@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		iOS entitlements: `SceneViewDemo.entitlements` (the macOS / shared file) plus
+		push. Selected by `CODE_SIGN_ENTITLEMENTS[sdk=iphone*]` so the Mac App Store
+		build keeps its entitlements unchanged.
+
+		aps-environment: `development` in Debug, `production` in Release
+		(`APS_ENVIRONMENT` in the target's build settings). The provisioning profile
+		must carry the Push Notifications capability.
+	-->
+	<key>aps-environment</key>
+	<string>$(APS_ENVIRONMENT)</string>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:sceneview.github.io</string>
+	</array>
+</dict>
+</plist>

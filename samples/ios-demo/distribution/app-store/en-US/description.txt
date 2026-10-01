@@ -24,7 +24,7 @@ github.com/sceneview/sceneview
 
 PRIVACY
 
-No account, no analytics, no tracking, no ads. Your models and the camera feed stay on your device — the camera is used only for AR, and nothing it sees is stored or uploaded. The one feature that reaches the network is the online model gallery, and only while you are searching it.
+No account, no ads, no cross-app tracking. Your models and the camera feed stay on your device — the camera is used only for AR, and nothing it sees is stored or uploaded. The app sends usage statistics and crash reports (Firebase), never linked to your identity, to decide what to improve next — you can turn them off in Settings. Beyond that, the one feature that reaches the network is the online model gallery, and only while you are searching it.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview

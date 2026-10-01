@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import ARKit
+#endif
 
 #if canImport(AppKit)
 import AppKit
@@ -98,9 +101,17 @@ struct SceneViewDemoApp: App {
     @StateObject private var updater = AppStoreUpdater(forcedVersion: AppStoreUpdater.launchArgForcedVersion)
 
     #if os(iOS)
-    /// Receives iOS's wake-up for finished HD pack transfers.
-    @UIApplicationDelegateAdaptor(HDPackAppDelegate.self) private var hdPackDelegate
+    /// Receives iOS's wake-up for finished HD pack transfers, starts Firebase and
+    /// receives the APNs token (`DemoAppDelegate`).
+    @UIApplicationDelegateAdaptor(DemoAppDelegate.self) private var appDelegate
     #endif
+
+    init() {
+        #if os(macOS)
+        // iOS starts Firebase from `DemoAppDelegate`; macOS has no delegate here.
+        FirebaseTelemetry.start()
+        #endif
+    }
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -185,8 +196,15 @@ struct ContentView: View {
     /// Wraps a demo id so SwiftUI's `.fullScreenCover(item:)` accepts it.
     private struct DemoLink: Identifiable {
         let id: String
+        /// `sample_open.source`.
+        var source: SampleOpenSource = .deeplink
     }
     @State private var presentedDemo: DemoLink?
+
+    @Environment(\.colorScheme) private var colorScheme
+    #if os(iOS)
+    @ObservedObject private var push = PushCenter.shared
+    #endif
 
     /// Guards the one-shot launch-argument presentation so a view refresh
     /// doesn't re-present the demo.
@@ -231,7 +249,7 @@ struct ContentView: View {
             guard !didConsumeLaunchArg, let id = launchArgDemo else { return }
             didConsumeLaunchArg = true
             selectedTab = 0
-            presentedDemo = DemoLink(id: id)
+            presentedDemo = DemoLink(id: id, source: .other)
         }
         .onChange(of: pendingDeepLinkDemo) { _, newId in
             guard let id = newId else { return }
@@ -247,14 +265,53 @@ struct ContentView: View {
         // dismissal — see `DemoDeepLinkRegistry.cover(for:onClose:)`.
         #if os(iOS)
         .fullScreenCover(item: $presentedDemo) { link in
-            DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
+            DemoDeepLinkRegistry.cover(for: link.id, source: link.source) { presentedDemo = nil }
         }
         #elseif os(macOS)
         .sheet(item: $presentedDemo) { link in
-            DemoDeepLinkRegistry.cover(for: link.id) { presentedDemo = nil }
+            DemoDeepLinkRegistry.cover(for: link.id, source: link.source) { presentedDemo = nil }
                 // Same floor as `ShowcaseTab`: a macOS sheet has no size of its own.
                 .frame(minWidth: 960, minHeight: 640)
         }
+        #endif
+        .trackOutboundLinks()
+        .onChange(of: selectedTab, initial: true) { _, tab in
+            let name = tab == 0 ? "home" : tab == 1 ? "ar_view" : "about"
+            DemoAnalytics.shared.log(.screenView(name: name, screenClass: "Tab"))
+        }
+        .onChange(of: colorScheme, initial: true) { _, scheme in
+            DemoAnalytics.shared.setUserProperty(scheme == .dark ? "dark" : "light", for: .appTheme)
+        }
+        .task {
+            DemoAnalytics.shared.setUserProperty(Self.arSupported ? "true" : "false", for: .arSupported)
+        }
+        #if os(iOS)
+        // A tapped "What's new" push: its sample, or Home for an id this build lacks.
+        .onChange(of: push.pendingTap, initial: true) { _, tap in
+            guard let tap else { return }
+            push.pendingTap = nil
+            selectedTab = 0
+            if let id = tap.sampleId, DemoDeepLinkRegistry.resolves(id) {
+                presentedDemo = DemoLink(id: id, source: .push)
+            } else {
+                presentedDemo = nil
+            }
+        }
+        .sheet(isPresented: $push.prePromptPresented, onDismiss: { push.prePromptDismissed() }) {
+            PushPrePromptSheet(
+                onNotify: { push.prePromptAccepted() },
+                onLater: { push.prePromptDismissed() }
+            )
+        }
+        #endif
+    }
+
+    /// `ar_supported`: whether this device runs ARKit world tracking.
+    private static var arSupported: Bool {
+        #if os(iOS) && canImport(ARKit)
+        return ARWorldTrackingConfiguration.isSupported
+        #else
+        return false
         #endif
     }
 }

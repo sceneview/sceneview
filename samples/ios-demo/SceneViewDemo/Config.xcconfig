@@ -30,4 +30,25 @@
 // exactly as before — the Explore/Sketchfab path is simply disabled until a key
 // is supplied. See `SketchfabConfig.swift` and the "Keyed QA" section of
 // `.maestro/README.md`.
+// FIREBASE CONFIG (analytics, Crashlytics, push — demo app only)
+// ------------------------------------------------------------------
+// `GoogleService-Info.plist` is NEVER committed (public repo; `.gitignore` has
+// `**/GoogleService-Info.plist`). The "Embed Firebase config" build phase copies it
+// into the app bundle from, in this order:
+//
+//   1. `SV_GOOGLE_SERVICE_INFO_PLIST` — an absolute path, as a build setting
+//      (`xcodebuild ... SV_GOOGLE_SERVICE_INFO_PLIST=/path/GoogleService-Info.plist`;
+//      `app-store.yml` decodes the `DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64` secret
+//      there) or set in the gitignored `Secrets.xcconfig`;
+//   2. `SceneViewDemo/GoogleService-Info.plist` next to this file (gitignored).
+//
+// With neither, the app is built without Firebase: `FirebaseTelemetry.start()` finds
+// no plist, never calls `FirebaseApp.configure()`, analytics stays a no-op and the
+// push pre-prompt and the Privacy switches are hidden. Such a build cannot crash on
+// Firebase. An App Store archive (`ACTION=install`, Release) fails instead — a store
+// build without analytics is usually a mistake — unless `SV_ALLOW_MISSING_FIREBASE=1`
+// (what `app-store.yml` passes, with a warning, when the secret is empty) or
+// `SV_ALLOW_MISSING_SECRETS=1` (forks, local Release builds).
+SV_GOOGLE_SERVICE_INFO_PLIST =
+
 #include? "Secrets.xcconfig"
