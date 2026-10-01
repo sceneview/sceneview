@@ -176,7 +176,11 @@ struct ARDepthColliderDemo: View {
 
             isLiDARSupported = SceneReconstructionNode.isSupported
             if isLiDARSupported {
-                if #available(iOS 17.0, *) {
+                // `.physics` collides against the reconstruction mesh, which
+                // ARSceneView no longer turns on by default: amend the
+                // running session with it (no tracking reset, no overlay).
+                if #available(iOS 17.0, *),
+                   SceneReconstructionNode.enableReconstruction(in: arView) {
                     SceneReconstructionNode.enablePhysics(in: arView)
                     isDepthPhysicsActive = true
                 }

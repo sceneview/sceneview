@@ -45,25 +45,22 @@ struct ARSceneMeshDemo: View {
     #if !targetEnvironment(simulator)
     private var arSceneView: some View {
         ARSceneView(
-            planeDetection: .horizontal,
+            planeDetection: .both,
             showCoachingOverlay: true
         )
         .onSessionStarted { arView in
             capturedARView = arView
-            isLiDARSupported = ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification)
+            isLiDARSupported = SceneReconstructionNode.isClassificationSupported
             guard isLiDARSupported else { return }
 
-            // Restart session with mesh reconstruction enabled.
-            let config = ARWorldTrackingConfiguration()
-            config.sceneReconstruction = .meshWithClassification
-            config.planeDetection = [.horizontal, .vertical]
-            arView.session.run(config, options: [])
-
-            // Enable debug wireframe to visualise the mesh.
+            // Amends the running session (no tracking reset, options kept).
+            // The wireframe is this demo's explicit, user-toggled choice.
+            SceneReconstructionNode.enableReconstruction(
+                in: arView,
+                classification: true,
+                showDebugMeshOverlay: showMeshDebug
+            )
             arView.environment.sceneUnderstanding.options.insert([.physics, .occlusion])
-            if showMeshDebug {
-                arView.debugOptions.insert(.showSceneUnderstanding)
-            }
         }
     }
 
