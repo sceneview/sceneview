@@ -17,7 +17,32 @@ android {
         versionName "1.0.0"
     }
 
+    signingConfigs {
+        // The debug APK attached to GitHub Releases (build-apks.yml) is signed
+        // with one stable key, registered for Android developer verification,
+        // instead of the runner's throwaway debug key. Only that workflow sets
+        // SCENEVIEW_GITHUB_KEYSTORE_FILE: local and PR builds keep the debug key.
+        githubApk {
+            def keystoreFile = System.getenv("SCENEVIEW_GITHUB_KEYSTORE_FILE")
+            def keystorePass = System.getenv("SCENEVIEW_GITHUB_KEYSTORE_PASSWORD")
+            def ksAlias = System.getenv("SCENEVIEW_GITHUB_KEY_ALIAS")
+            def keyPass = System.getenv("SCENEVIEW_GITHUB_KEY_PASSWORD")
+
+            if (keystoreFile != null) {
+                storeFile file(keystoreFile)
+                storePassword keystorePass
+                keyAlias ksAlias
+                keyPassword keyPass
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (System.getenv("SCENEVIEW_GITHUB_KEYSTORE_FILE") != null) {
+                signingConfig signingConfigs.githubApk
+            }
+        }
         release {
         }
     }
