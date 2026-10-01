@@ -26,6 +26,9 @@ import AppKit
 /// transform for the camera path, an index count for the burst's growing tracks.
 struct CosmosDemo: View {
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
+    /// A `?tab=` deep link waiting for its demo (`DeepLinkRouter.setTab`), watched so a link that
+    /// lands while Cosmos is already on screen is taken too, not only one read in `onAppear`.
+    @AppStorage(DeepLinkRouter.tabDefaultsKey) private var requestedTab: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
@@ -63,12 +66,18 @@ struct CosmosDemo: View {
             engine.frozen = qaMode || reduceMotion
             if engine.frozen { engine.touring = false }
             // `?tab=starlight|spacetime` (or `0|1`, as Android): open on the Star scene's view, once.
-            if let tab = DeepLinkRouter.consumeTab(for: "cosmos"),
-               let spacetime = ["starlight": false, "0": false, "spacetime": true, "1": true][tab] {
+            if let spacetime = Self.consumeRequestedSpacetime() {
                 engine.scene = .star
                 engine.setSpacetime(spacetime)
             }
             engine.start()
+        }
+        .onChange(of: requestedTab) { _, tab in
+            // The same link while Cosmos is already showing: go to the Star scene's view from
+            // where the camera is, as a dock pick and the pill would.
+            guard tab != nil, let spacetime = Self.consumeRequestedSpacetime() else { return }
+            engine.select(.star)
+            engine.setSpacetime(spacetime)
         }
         .onDisappear { engine.stop() }
         .onChange(of: qaMode) { _, qa in engine.frozen = qa || reduceMotion }
@@ -104,6 +113,14 @@ struct CosmosDemo: View {
             }
             .tint(SceneViewTheme.primary)
         }
+    }
+
+    /// `?tab=` values: Android's names, or its tab indices.
+    static let tabs: [String: Bool] = ["starlight": false, "0": false, "spacetime": true, "1": true]
+
+    /// The Star scene's view a `?tab=` link asks for — `true` for Spacetime — taken once.
+    static func consumeRequestedSpacetime() -> Bool? {
+        DeepLinkRouter.consumeTab(for: "cosmos").flatMap { tabs[$0] }
     }
 
     private func viewport(_ size: CGSize) -> CGSize {
@@ -906,6 +923,10 @@ final class CosmosSceneEntities {
                 scene = try await CosmosSpacetimeScene.make()
             } catch {
                 NSLog("[Cosmos] spacetime build failed: %@", String(describing: error))
+                // Free the slot a second later, so a frame that wants the sheet tries again —
+                // without a build per frame while it keeps failing.
+                try? await Task.sleep(for: .seconds(1))
+                self?.spacetimeTask = nil
                 return
             }
             guard let self else { return }

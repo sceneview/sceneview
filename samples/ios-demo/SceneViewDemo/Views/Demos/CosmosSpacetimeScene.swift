@@ -52,6 +52,14 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
     static var overlayCount: Int { overlayRings * CosmosSpacetime.gridSectors }
     /// How far the overlay sits above the sheet, so the depth test never ties.
     static let overlayLift: Float = 0.002
+    /// The horizon map's `u, v` at (x, z). Texel (i, j) is at x, z = `horizonTexel` i, j, and
+    /// RealityKit's `v` runs up from the image's last row: (i, j)'s centre is at
+    /// u = (i + ½) / n, v = 1 − (j + ½) / n.
+    @inline(__always)
+    static func horizonUV(_ x: Float, _ z: Float) -> SIMD2<Float> {
+        let extent = CosmosSpacetime.horizonMapExtent
+        return SIMD2(0.5 + x / (2 * extent), 0.5 - z / (2 * extent))
+    }
     let x: UnsafeMutablePointer<Float>
     let z: UnsafeMutablePointer<Float>
     /// The last fill's heights and brightness (`CosmosSpacetime.brightness`).
@@ -214,7 +222,6 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
         let gain = Float(S.gain / S.flatShade), ceiling = Float(S.ceiling)
         let inner = CosmosSystem.ringInner, across = CosmosSystem.ringOuter - CosmosSystem.ringInner
         let table = Self.ringTable
-        let mapExtent = S.horizonMapExtent
         let ringDot = ring.map { simd_dot($0.normal, light) } ?? 0
         let ringLit = ring != nil && abs(ringDot) > 1e-4
         for k in 0..<n {
@@ -255,14 +262,13 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                 o[3] = (0.5 + b / ceiling * 1023) / 1024
                 o[4] = 0.5
                 if i < Self.overlayCount {
-                    // The map's texel (i, j) is at x, z = texel(i), texel(j); RealityKit's v runs
-                    // up from the last row.
                     let q = out + 5 * (count + i)
+                    let uv = Self.horizonUV(x[i], z[i])
                     q[0] = x[i]
                     q[1] = h[k] + Self.overlayLift
                     q[2] = z[i]
-                    q[3] = 0.5 + x[i] / (2 * mapExtent)
-                    q[4] = 0.5 - z[i] / (2 * mapExtent)
+                    q[3] = uv.x
+                    q[4] = uv.y
                 }
             }
         }
@@ -647,43 +653,49 @@ enum CosmosSpacetimeLook {
     }
 }
 
-/// The Star scene's mode picker: Starlight or Spacetime, above the dock. Its palette is fixed —
-/// an opaque dark capsule over any stage, in light and dark mode alike.
+/// The Star scene's mode picker: Starlight or Spacetime, above the dock. `DESIGN.md`
+/// `mode-pill-*` (`SceneViewTokens.ModePill`): an opaque dark capsule over any stage, in
+/// light and dark mode alike — Android's `SpacetimePill`.
 struct SpacetimeModePicker: View {
     @Binding var spacetime: Bool
     @Environment(\.analyticsSampleId) private var analyticsSampleId
 
-    private static func color(_ c: SIMD3<Double>) -> Color { Color(red: c.x, green: c.y, blue: c.z) }
+    private typealias Pill = SceneViewTokens.ModePill
 
     var body: some View {
         HStack(spacing: 0) {
-            segment("Starlight", selected: !spacetime) { spacetime = false }
-            segment("Spacetime", selected: spacetime) { spacetime = true }
+            segment("Starlight", selected: !spacetime, event: nil) { spacetime = false }
+            segment("Spacetime", selected: spacetime, event: "spacetime") { spacetime = true }
         }
-        .padding(3)
-        .frame(height: 40)
-        .background(Capsule().fill(Self.color(CosmosSpacetime.pillContainer)))
-        .overlay(Capsule().strokeBorder(Self.color(CosmosSpacetime.pillOutline), lineWidth: 1))
-        .fixedSize(horizontal: true, vertical: false)
-        // Two 40 pt segments inside 44 pt targets.
-        .padding(.vertical, 2)
+        .padding(.horizontal, SceneViewTokens.Space.xs)
+        .background(Capsule().fill(Pill.container))
+        .overlay(Capsule().strokeBorder(Pill.outline, lineWidth: Pill.outlineWidth))
+        .fixedSize()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Star view")
     }
 
-    private func segment(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    /// One segment: a `Pill.segmentHeight` capsule centred in a `Layout.touchTarget` high hit
+    /// area, so the whole height of the pill answers the tap.
+    ///
+    /// `event` is the interaction logged when the segment switches the mode — Android's names:
+    /// `spacetime` on the way in; the way back to Starlight logs nothing there either.
+    private func segment(
+        _ title: String, selected: Bool, event: String?, action: @escaping () -> Void
+    ) -> some View {
         Button {
             guard !selected else { return }
-            if let analyticsSampleId { DemoAnalytics.shared.interaction(analyticsSampleId, "spacetime") }
+            if let analyticsSampleId, let event { DemoAnalytics.shared.interaction(analyticsSampleId, event) }
             action()
         } label: {
             Text(title)
                 .font(SceneViewTokens.TypeScale.chromeCaption.weight(.semibold))
-                .foregroundStyle(selected ? Self.color(CosmosSpacetime.pillSelectedText) : .white)
-                .padding(.horizontal, 16)
-                .frame(maxHeight: .infinity)
-                .background(Capsule().fill(selected ? Self.color(CosmosSpacetime.pillSelected) : .clear))
-                .contentShape(Rectangle().inset(by: -4))
+                .foregroundStyle(selected ? Pill.onSelected : Pill.onContainer)
+                .padding(.horizontal, SceneViewTokens.Space.md)
+                .frame(height: Pill.segmentHeight)
+                .background(Capsule().fill(selected ? Pill.selectedContainer : .clear))
+                .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

@@ -797,6 +797,44 @@ enum SceneViewTokens {
         static let meterTrack = Color.white.opacity(0x14 / 255)
     }
 
+    /// `DESIGN.md` — the over-media **mode pill** (`mode-pill-*`): Cosmos's "Starlight |
+    /// Spacetime" switch above the dock. Android's `SceneViewTokens.ModePill`.
+    ///
+    /// Opaque and theme-independent: it sits on a scene that goes from a black sky to a lit
+    /// grey sheet, so no glass fill reads on every ground. The container clears 3:1 against any
+    /// ground of luminance ≥ 0.14, the outline against any ground ≤ 0.18; white labels on the
+    /// container 16.5:1, the selected label 19.2:1. Stored as `0xRRGGBB` so the contrast tests
+    /// read the same values as the view.
+    enum ModePill {
+        static let containerRGB: UInt32 = 0x1A1F28
+        static let outlineRGB: UInt32 = 0xD1D2D4
+        static let onContainerRGB: UInt32 = 0xFFFFFF
+        static let selectedContainerRGB: UInt32 = 0xFFFFFF
+        static let onSelectedRGB: UInt32 = 0x0B0F16
+
+        static let container = color(containerRGB)
+        static let outline = color(outlineRGB)
+        static let onContainer = color(onContainerRGB)
+        static let selectedContainer = color(selectedContainerRGB)
+        static let onSelected = color(onSelectedRGB)
+
+        /// The outline's width: one hairline, opaque.
+        static let outlineWidth: CGFloat = 1
+        /// A segment's height. With `Space.xs` round it the capsule is `Layout.touchTarget`
+        /// high — 48, as Android's toggle row — and each segment's hit area fills it.
+        static let segmentHeight: CGFloat = 40
+
+        /// The sRGB components, 0…1.
+        static func rgb(_ value: UInt32) -> SIMD3<Double> {
+            SIMD3(Double((value >> 16) & 0xFF), Double((value >> 8) & 0xFF), Double(value & 0xFF)) / 255
+        }
+
+        private static func color(_ value: UInt32) -> Color {
+            let c = rgb(value)
+            return Color(.sRGB, red: c.x, green: c.y, blue: c.z, opacity: 1)
+        }
+    }
+
     /// `DESIGN.md` "AR Debug View" — the Rerun replay's palette, the values of
     /// Android's `SceneViewTokens.DebugView` so both apps draw the same room.
     /// Fixed in both themes: the ground is always `Stage.background`.

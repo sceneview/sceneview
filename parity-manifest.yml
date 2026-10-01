@@ -740,7 +740,10 @@ demos:
       reads it per fragment through a premultiplied overlay part of the sheet
       mesh (UnlitMaterial, no tone map), so the hollow's shadow edge matches
       Android's; the sphere and ring shadows, the ambient occlusion and the
-      spot stay per vertex, and iOS has no drag to orbit the Spacetime camera
+      spot stay per vertex, and iOS has no drag to orbit the Spacetime camera.
+      Known gap: the star reads paler in Spacetime on iOS, a flat disc with
+      no bloom halo round it, where Android's star keeps its glow over the
+      sheet.
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working

@@ -186,8 +186,8 @@ final class CosmosSpacetimeTests: XCTestCase {
     func testHorizonBakeMatchesDenseMarch() {
         var worst: Double = 0
         var shadowed = 0
-        for j in stride(from: 3, to: S.horizonMapSize, by: 11) {
-            for i in stride(from: 5, to: S.horizonMapSize, by: 11) {
+        for j in stride(from: 0, to: S.horizonMapSize, by: 3) {
+            for i in stride(from: 0, to: S.horizonMapSize, by: 3) {
                 let x = S.horizonTexel(i), z = S.horizonTexel(j)
                 let baked = Double(S.horizonVisibility(x, z))
                 let exact = S.horizon(Double(x), Double(z), star: S.starField)
@@ -196,7 +196,7 @@ final class CosmosSpacetimeTests: XCTestCase {
             }
         }
         XCTAssertLessThan(worst, 1.0 / 255)
-        XCTAssertGreaterThan(shadowed, 50, "the samples cross the lobe")
+        XCTAssertGreaterThan(shadowed, 500, "the samples cross the lobe")
     }
 
     /// The lobe lies inside the map: its border texels are lit.
@@ -209,24 +209,76 @@ final class CosmosSpacetimeTests: XCTestCase {
         }
     }
 
-    /// The overlay's blend, sheet b with visibility v over ambient-only b₀ — b v + b₀ (1 − v) —
-    /// is Android's per-pixel shade wherever the ceiling does not bind.
-    func testOverlayBlendIsAndroidShade() {
-        let sheet = S.Sheet(time: qa, weight: 1)
-        var checked = 0
-        for x in stride(from: -3.9, through: 3.9, by: 0.37) {
-            for z in stride(from: -3.9, through: 3.9, by: 0.41) {
-                let d = (x * x + z * z).squareRoot()
-                let v = Double(S.horizonVisibility(Float(x), Float(z)))
-                let open = S.shade(x, z, sheet: sheet, visibility: 1)
-                guard S.gain * open / S.flatShade < S.ceiling else { continue }
-                let b = S.brightness(shade: open, distance: d)
-                let android = S.brightness(shade: S.shade(x, z, sheet: sheet, visibility: v), distance: d)
-                XCTAssertEqual(b * v + S.hiddenBrightness(distance: d) * (1 - v), android, accuracy: 1e-9)
-                checked += 1
+    /// `horizonMap()` itself — the concurrent bands and the byte packing — is the march, texel
+    /// for texel, and clear on its border: Android's test, on the same texels.
+    func testHorizonMapIsTheMarchTexelForTexel() {
+        let n = S.horizonMapSize
+        let map = S.horizonMap()
+        XCTAssertEqual(map.count, n * n)
+        func texel(_ i: Int, _ j: Int) -> Float { Float(map[j * n + i]) / 255 }
+        for (i, j) in [(0, 0), (300, 220), (330, 200), (260, 270), (511, 400), (150, 256)] {
+            let expected = S.horizonVisibility(S.horizonTexel(i), S.horizonTexel(j))
+            XCTAssertEqual(texel(i, j), expected, accuracy: 1 / 255, "texel (\(i), \(j))")
+        }
+        // Clamp-to-edge repeats the border past the map: it must be fully lit.
+        for k in 0..<n {
+            for (i, j) in [(k, 0), (k, n - 1), (0, k), (n - 1, k)] {
+                XCTAssertEqual(texel(i, j), 1, accuracy: 1e-6)
             }
         }
-        XCTAssertGreaterThan(checked, 300)
+        // Row j is z = texel(j), column i is x = texel(i): the hollow on the light's side
+        // (+x, −z) is dark, the wall facing the light (−x, +z) is lit.
+        let ground = simd_normalize(SIMD2(Float(S.light.x), Float(S.light.z)))
+        func at(_ p: SIMD2<Float>) -> Float {
+            let i = Int((p.x / S.horizonMapExtent + 1) * Float(n) / 2)
+            let j = Int((p.y / S.horizonMapExtent + 1) * Float(n) / 2)
+            return texel(i, j)
+        }
+        XCTAssertLessThan(at(1.2 * ground), 0.01)
+        XCTAssertGreaterThan(at(-1.2 * ground), 0.99)
+    }
+
+    /// The overlay's `u, v` land on the texel baked for that (x, z), and the overlay image
+    /// covers the dark side and leaves the lit side clear: a flipped or mirrored axis fails.
+    func testOverlayUVAddressesTheBakedTexel() {
+        let n = S.horizonMapSize
+        // RealityKit samples image row (1 − v) n: v runs up from the last row.
+        func texel(_ uv: SIMD2<Float>) -> (i: Int, j: Int) {
+            (Int((uv.x * Float(n)).rounded(.down)), Int(((1 - uv.y) * Float(n)).rounded(.down)))
+        }
+        for (i, j) in [(0, 0), (300, 220), (330, 200), (511, 400), (17, 498)] {
+            let uv = CosmosSpacetimeFill.horizonUV(S.horizonTexel(i), S.horizonTexel(j))
+            XCTAssertEqual(uv.x, (Float(i) + 0.5) / Float(n), accuracy: 1e-6)
+            XCTAssertEqual(uv.y, 1 - (Float(j) + 0.5) / Float(n), accuracy: 1e-6)
+            let hit = texel(uv)
+            XCTAssertEqual(hit.i, i)
+            XCTAssertEqual(hit.j, j)
+        }
+        let image = CosmosSpacetimeScene.horizonImage()
+        XCTAssertEqual(image.width, n)
+        XCTAssertEqual(image.height, n)
+        func alpha(_ x: Float, _ z: Float) -> Float {
+            let t = texel(CosmosSpacetimeFill.horizonUV(x, z))
+            return image.pixels[(t.j * n + t.i) * 4 + 3]
+        }
+        let ground = simd_normalize(SIMD2(Float(S.light.x), Float(S.light.z)))
+        // In the hollow's shadow the overlay is opaque; on the lit wall it is clear.
+        XCTAssertGreaterThan(alpha(1.2 * ground.x, 1.2 * ground.y), 0.99)
+        XCTAssertLessThan(alpha(-1.2 * ground.x, -1.2 * ground.y), 0.01)
+        // Premultiplied: colour = base × b₀ × (1 − v), alpha = 1 − v, on every sampled texel.
+        let base = SIMD3<Float>(S.linear(S.baseColor))
+        let map = S.horizonMap()
+        for j in stride(from: 0, to: n, by: 37) {
+            for i in stride(from: 0, to: n, by: 29) {
+                let x = Double(S.horizonTexel(i)), z = Double(S.horizonTexel(j))
+                let cover = 1 - Float(map[j * n + i]) / 255
+                let k = (j * n + i) * 4
+                XCTAssertEqual(image.pixels[k + 3], cover, accuracy: 1e-6)
+                let b0 = Float(S.hiddenBrightness(distance: (x * x + z * z).squareRoot()))
+                XCTAssertEqual(image.pixels[k], base.x * b0 * cover, accuracy: 1e-5)
+                XCTAssertEqual(image.pixels[k + 2], base.z * b0 * cover, accuracy: 1e-5)
+            }
+        }
     }
 
     func testLight() {
@@ -318,10 +370,17 @@ final class CosmosSpacetimeTests: XCTestCase {
     /// The mode picker's palette is fixed: the container stands out from both themes' chrome
     /// and every label reads at ≥ 4.5:1, the outline at ≥ 3:1.
     func testPickerContrast() {
-        XCTAssertGreaterThanOrEqual(S.contrast(S.pillSelected, S.pillSelectedText), 4.5)
-        XCTAssertGreaterThanOrEqual(S.contrast(S.pillContainer, SIMD3(1, 1, 1)), 4.5)
-        XCTAssertGreaterThanOrEqual(S.contrast(S.pillOutline, S.pillContainer), 3)
-        XCTAssertGreaterThanOrEqual(S.contrast(S.pillSelected, S.pillContainer), 3)
+        typealias Pill = SceneViewTokens.ModePill
+        XCTAssertGreaterThanOrEqual(S.contrast(Pill.rgb(Pill.selectedContainerRGB), Pill.rgb(Pill.onSelectedRGB)), 4.5)
+        XCTAssertGreaterThanOrEqual(S.contrast(Pill.rgb(Pill.containerRGB), Pill.rgb(Pill.onContainerRGB)), 4.5)
+        XCTAssertGreaterThanOrEqual(S.contrast(Pill.rgb(Pill.outlineRGB), Pill.rgb(Pill.containerRGB)), 3)
+        XCTAssertGreaterThanOrEqual(S.contrast(Pill.rgb(Pill.selectedContainerRGB), Pill.rgb(Pill.containerRGB)), 3)
+        // Android's `SceneViewTokens.ModePill`, value for value.
+        XCTAssertEqual(Pill.containerRGB, 0x1A1F28)
+        XCTAssertEqual(Pill.outlineRGB, 0xD1D2D4)
+        XCTAssertEqual(Pill.onSelectedRGB, 0x0B0F16)
+        // Segment plus inset = the 48 pt touch target, so the whole pill height is tappable.
+        XCTAssertEqual(Pill.segmentHeight + 2 * SceneViewTokens.Space.xs, SceneViewTokens.Layout.touchTarget)
     }
 
     // MARK: Fill
@@ -346,6 +405,39 @@ final class CosmosSpacetimeTests: XCTestCase {
         }
         XCTAssertLessThan(worstHeight, 2e-3)
         XCTAssertLessThan(worstShade, 1e-2)
+    }
+
+    // MARK: Deep link
+
+    /// `?tab=` goes through the router to Cosmos once, in Android's names or indices, and a tab
+    /// meant for another demo is left for that demo — Cosmos watches the key while on screen.
+    @MainActor
+    func testTabDeepLink() throws {
+        let key = DeepLinkRouter.tabDefaultsKey
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        let url = try XCTUnwrap(URL(string: "sceneview://demo/cosmos?tab=Spacetime"))
+        XCTAssertEqual(DeepLinkRouter.parse(url, allowedDemos: ["cosmos"]), "cosmos")
+        XCTAssertEqual(UserDefaults.standard.string(forKey: key), "cosmos:Spacetime")
+        XCTAssertEqual(CosmosDemo.consumeRequestedSpacetime(), true)
+        XCTAssertNil(UserDefaults.standard.string(forKey: key), "taken once")
+        XCTAssertNil(CosmosDemo.consumeRequestedSpacetime())
+
+        for (tab, spacetime) in [("starlight", false), ("0", false), ("1", true), ("SPACETIME", true)] {
+            DeepLinkRouter.setTab(tab, for: "cosmos")
+            XCTAssertEqual(CosmosDemo.consumeRequestedSpacetime(), spacetime, tab)
+        }
+        DeepLinkRouter.setTab("orbit", for: "cosmos")
+        XCTAssertNil(CosmosDemo.consumeRequestedSpacetime(), "an unknown tab opens the default view")
+
+        // A link without `tab` clears one left over.
+        DeepLinkRouter.setTab("spacetime", for: "cosmos")
+        XCTAssertEqual(DeepLinkRouter.parse(URL(string: "sceneview://demo/cosmos"), allowedDemos: ["cosmos"]), "cosmos")
+        XCTAssertNil(DeepLinkRouter.consumeTab(for: "cosmos"))
+
+        // Another demo's tab survives Cosmos's read.
+        DeepLinkRouter.setTab("depth", for: "ar-debug")
+        XCTAssertNil(DeepLinkRouter.consumeTab(for: "cosmos"))
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "ar-debug"), "depth")
     }
 }
 #endif

@@ -104,12 +104,6 @@ enum CosmosSpacetime {
     /// through SceneView's 60° lens (`CosmosFraming.tanHalfVerticalFov`).
     static let contractTanHalfVertical: Double = 12.0 / 28.0
 
-    // The mode picker's fixed palette: the same in light and dark.
-    static let pillContainer = SIMD3<Double>(0x1A, 0x1F, 0x28) / 255
-    static let pillOutline = SIMD3<Double>(0xD1, 0xD2, 0xD4) / 255
-    static let pillSelected = SIMD3<Double>(1, 1, 1)
-    static let pillSelectedText = SIMD3<Double>(0x0B, 0x0F, 0x16) / 255
-
     // MARK: Orbits
 
     /// A planet's orbit angle at `time`, in degrees: Kepler's 3/2 law from the ringed world's

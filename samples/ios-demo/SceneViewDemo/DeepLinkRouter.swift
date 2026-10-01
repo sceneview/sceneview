@@ -80,12 +80,14 @@ enum DeepLinkRouter {
         }
     }
 
-    /// The view `demo` was asked to open on, lower-cased, if any — read once.
+    /// The view `demo` was asked to open on, lower-cased, if any — read once. A tab meant for
+    /// another demo is left for it: a demo on screen watches the key (`@AppStorage`) and must
+    /// not swallow a link that opens a different one.
     static func consumeTab(for demo: String) -> String? {
-        guard let stored = UserDefaults.standard.string(forKey: tabDefaultsKey) else { return nil }
-        UserDefaults.standard.removeObject(forKey: tabDefaultsKey)
         let prefix = demo + ":"
-        guard stored.hasPrefix(prefix) else { return nil }
+        guard let stored = UserDefaults.standard.string(forKey: tabDefaultsKey),
+              stored.hasPrefix(prefix) else { return nil }
+        UserDefaults.standard.removeObject(forKey: tabDefaultsKey)
         return String(stored.dropFirst(prefix.count)).lowercased()
     }
 
