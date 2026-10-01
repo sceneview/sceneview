@@ -90,6 +90,10 @@ import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.telemetry.LocalSampleId
+import io.github.sceneview.demo.telemetry.ModelLoadFailure
+import io.github.sceneview.demo.telemetry.logModelLoadFailed
+import io.github.sceneview.demo.telemetry.logSampleInteraction
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.hdpack.HdPack
 import io.github.sceneview.demo.hdpack.HdPackDownloadDialog
@@ -1104,6 +1108,10 @@ private fun SingleModelSection(
         }
     }
 
+    // `sample_interaction.control` for the dock and the Surprise pill.
+    val telemetrySampleId = LocalSampleId.current
+    val logControl: (String) -> Unit = { logSampleInteraction(telemetrySampleId, it) }
+
     DemoScaffold(
         // An opened file is titled with its own name: the user came here from their file
         // manager or a share sheet, and "Model Viewer" would not tell them it worked.
@@ -1161,10 +1169,11 @@ private fun SingleModelSection(
         // a camera-focus control, so Recenter is `RestartAlt` — an action, not a viewfinder.
         // Animate is `PlayCircle`, iOS's `play.circle`: the same action wears the same glyph.
         dock = listOf(
-            DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true }),
-            DockItem(Icons.Outlined.WbSunny, "Lighting", { environmentSheetOpen = true }),
-        ) + (if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.PlayCircle, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList()) +
+            DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true; logControl("models") }),
+            DockItem(Icons.Outlined.WbSunny, "Lighting", { environmentSheetOpen = true; logControl("lighting") }),
+        ) + (if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.PlayCircle, "Animate", { animationBarOpen = !animationBarOpen; logControl("animate") }, selected = animationBarOpen)) else emptyList()) +
             listOf(DockItem(Icons.Outlined.RestartAlt, "Recenter", {
+                logControl("recenter")
                 // Capture the pose actually on screen — post-orbit, pre-reset — before anything
                 // moves, so the flight below starts from there instead of snapping to the
                 // cold-open's synthetic swung-off-axis pose (#3622).
@@ -1261,7 +1270,7 @@ private fun SingleModelSection(
                     icon = Icons.Filled.Shuffle,
                     label = surpriseStage?.let { surpriseStageText(it) }
                         ?: stringResource(R.string.demo_model_viewer_surprise),
-                    onClick = rollSurprise,
+                    onClick = { logControl("surprise"); rollSurprise() },
                     loading = surpriseInFlight,
                     progress = (surpriseStage as? SurpriseStage.Fetching)?.fraction,
                     contentDescription = stringResource(R.string.demo_model_viewer_surprise_hint),
@@ -1287,6 +1296,7 @@ private fun SingleModelSection(
             }
         }} else null,
         dockAccent = DockItem(Icons.Filled.ViewInAr, "View in AR", {
+            logControl("view_in_ar")
             // An opened file goes to AR as itself, at the size it actually is. That measurement
             // is the point for a 3MF: the format carries true manufacturing size, so a 60 mm
             // print must arrive in the room as 60 mm, not as the catalogue's default 30 cm.
@@ -1629,6 +1639,7 @@ private fun rememberStreamedModelInstance(
     onRejected: (location: String) -> Unit = {},
 ): StreamedModel? {
     val rejected = androidx.compose.runtime.rememberUpdatedState(onRejected)
+    val telemetrySampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
     // Only a key while there is no URL: flipping it must never re-read a file being shown.
     val holding = streamedFileUrl == null && holdPrevious
     // One `produceState` in a stable slot, whatever the URL (#1464). It keeps its last value
@@ -1672,6 +1683,8 @@ private fun rememberStreamedModelInstance(
                 value = StreamedModel(location, loaded)
                 loaded = null
             } else {
+                val reason = if (loaded == null) ModelLoadFailure.DecodeFailed else ModelLoadFailure.NoBounds
+                logModelLoadFailed(telemetrySampleId, reason)
                 rejected.value(location)
             }
         } finally {
@@ -1709,6 +1722,7 @@ private fun rememberBundledModel(
     wakeRenderLoop: () -> Unit,
 ): BundledModel? {
     val context = LocalContext.current
+    val telemetrySampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
     val loaded = produceState<BundledModel?>(null, modelLoader, assetPath) {
         val path = assetPath ?: run {
             value = null
@@ -1733,6 +1747,10 @@ private fun rememberBundledModel(
                 }
                 wakeRenderLoop()
                 withFrameNanos { }
+            }
+            if (created == null) {
+                val reason = if (buffer == null) ModelLoadFailure.AssetMissing else ModelLoadFailure.DecodeFailed
+                logModelLoadFailed(telemetrySampleId, reason)
             }
             value = BundledModel(path, created)
             created = null

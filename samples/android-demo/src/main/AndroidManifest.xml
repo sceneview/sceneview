@@ -20,6 +20,24 @@
          button can vibrate (#1901 phase 1). When absent, every haptic call
          becomes a silent no-op + one Log.d. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- "What's new" push notifications (API 33+ runtime permission). Never requested at
+         launch: a pre-prompt sheet asks first, on the second return to the Showcase after a
+         demo was opened, and the About tab's Notifications switch can ask later
+         (telemetry/PushPrompt.kt). Below API 33 it is granted at install. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- firebase-analytics (via play-services-measurement) merges AD_ID and the Privacy Sandbox
+         ad-services permissions (advertising id + attribution). The demo shows no ads and never
+         reads an advertising id — the Play Data safety form says so — so all three are stripped
+         from the merged manifest. See the analytics meta-data below. -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_ADSERVICES_AD_ID"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION"
+        tools:node="remove" />
     <!-- The HD pack downloads with WorkManager (hdpack/HdPack.kt), whose library manifest merges
          FOREGROUND_SERVICE for its SystemForegroundService. The pack never runs as a foreground
          service (no setForeground), so neither the permission nor the service ships. WAKE_LOCK
@@ -89,6 +107,57 @@
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             tools:node="remove" />
+
+        <!-- Firebase (this app only — the SDK ships no telemetry). Everything below is inert
+             in a build without google-services.json: FirebaseApp never initialises.
+
+             No advertising identifier and no ad signals, ever: the demo shows no ads and
+             Analytics is only used to see which demos people open. Consent mode defaults
+             match (ad_storage / ad_user_data / ad_personalization denied, analytics_storage
+             granted) and are re-applied at runtime by FirebaseDemoAnalytics. -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_personalization_signals"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_storage"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_user_data"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_analytics_storage"
+            android:value="true" />
+        <!-- screen_view is logged by hand with the route / demo id: one Activity hosts every
+             screen, so the automatic Activity-based report would only ever say MainActivity. -->
+        <meta-data
+            android:name="google_analytics_automatic_screen_reporting_enabled"
+            android:value="false" />
+        <!-- A push the system displays itself (app in background, `notification` payload). -->
+        <!-- Push is opt-in: no FCM registration token until the user says yes
+             (Telemetry.syncPush turns auto-init on then, and back off on opt-out). -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="whats_new" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/md_theme_primary" />
+
+        <service
+            android:name=".telemetry.DemoMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <!-- ARCore metadata — optional -->
         <meta-data

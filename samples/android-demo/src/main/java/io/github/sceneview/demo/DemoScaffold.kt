@@ -76,6 +76,8 @@ import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import io.github.sceneview.demo.telemetry.LocalSampleId
+import io.github.sceneview.demo.telemetry.logSampleInteraction
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -345,6 +347,11 @@ fun DemoScaffold(
     RequestLightStatusBarIcons(active = chromeVisible && chrome.lightStatusIcons)
 
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
+    // `sample_interaction` / `settings`: every sample's settings sheet, logged in one place.
+    val telemetrySampleId = LocalSampleId.current
+    LaunchedEffect(settingsExpanded) {
+        if (settingsExpanded) logSampleInteraction(telemetrySampleId, "settings")
+    }
 
     // Reset + its snackbar confirmation, hoisted out of the chrome: the sheet is the
     // only caller since the overflow menu was folded into it.

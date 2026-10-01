@@ -2,6 +2,7 @@
 
 package io.github.sceneview.demo.ui
 
+import io.github.sceneview.demo.telemetry.logOutboundLink
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -72,6 +73,7 @@ fun CreditsSheet(onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val context = LocalContext.current
     val openUrl: (String) -> Unit = { url ->
+        logOutboundLink(url)
         // Devices without a browser (Android Go, stripped AOSP, user uninstalled
         // Chrome) throw ActivityNotFoundException → app crashes. runCatching +
         // toast keeps the app alive and tells the user why nothing happened. #1208

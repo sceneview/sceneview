@@ -263,6 +263,20 @@
     <string name="about_group_learn">Learn</string>
     <string name="about_group_app">App</string>
     <string name="about_group_legal">Legal</string>
+    <!-- Usage statistics + push (telemetry/). -->
+    <string name="about_group_privacy">Privacy &amp; notifications</string>
+    <string name="settings_usage_statistics_title">Share usage statistics</string>
+    <string name="settings_usage_statistics_supporting">Which samples are opened, and crash reports. No ads, no advertising ID. Turning it off also resets the ID.</string>
+    <string name="settings_notifications_title">Notifications</string>
+    <string name="settings_notifications_supporting">New samples and releases, a few times a month at most.</string>
+    <string name="push_prompt_title">Get notified when new samples land</string>
+    <string name="push_prompt_body">A short note when a new sample or a release ships, a few times a month at most. You can turn it off in About › Privacy &amp; notifications at any time.</string>
+    <string name="push_prompt_notify_me">Notify me</string>
+    <string name="push_prompt_not_now">Not now</string>
+    <string name="notification_channel_whats_new">What\'s new</string>
+    <string name="notification_channel_whats_new_description">New samples and releases of SceneView Demo.</string>
+    <string name="push_default_title">New in SceneView Demo</string>
+    <string name="push_default_body">A new sample just landed. Tap to try it.</string>
     <string name="about_source_title">Source on GitHub</string>
     <string name="about_release_notes">Release notes</string>
     <string name="about_license_title">License: Apache-2.0</string>

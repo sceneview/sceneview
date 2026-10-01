@@ -24,7 +24,7 @@ github.com/sceneview/sceneview
 
 PRIVACY
 
-No account, no analytics, no tracking, no ads. Your models and the camera feed are processed on your device — the camera is used only for AR, and nothing it sees is stored or uploaded. Two things reach the network, and only when you ask for them: searching the online model galleries, and the handful of samples that host an anchor with Google's ARCore cloud service.
+No account, no ads, no cross-app tracking. Your models and the camera feed are processed on your device — the camera is used only for AR, and nothing it sees is stored or uploaded. The app sends usage statistics and crash reports (Firebase), never linked to your identity, to decide what to improve next — you can turn them off in About › Privacy & notifications. Beyond that, two things reach the network, and only when you ask for them: searching the online model galleries, and the handful of samples that host an anchor with Google's ARCore cloud service.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview
