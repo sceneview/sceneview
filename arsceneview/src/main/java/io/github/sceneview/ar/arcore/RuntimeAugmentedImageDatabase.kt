@@ -18,11 +18,14 @@ import kotlinx.coroutines.withContext
  * `arcoreimg` database or a trip to a desktop tool (#1553, follow-up of #1437).
  *
  * The whole point of this helper is to make the "capture a photo → start tracking it" flow a
- * couple of lines. Pair it with [Frame.captureCameraBitmap] to grab the live AR camera frame
- * and with the `ARSceneView` `onSessionUpdated` callback to surface detected images:
+ * couple of lines. Pair it with [cameraImage] + [toArgbBitmap] to
+ * grab the live AR camera frame and with the `ARSceneView` `onSessionUpdated` callback to
+ * surface detected images. The capture button only raises a flag: the image is acquired on the
+ * next frame, because a frame kept from an earlier callback is stale and ARCore refuses it.
  *
  * ```kotlin
  * val runtimeDb = rememberRuntimeAugmentedImageDatabase()
+ * var captureRequested by remember { mutableStateOf(false) }
  *
  * ARSceneView(
  *     // Apply whatever the runtime DB currently holds on every (re)configure.
@@ -30,18 +33,25 @@ import kotlinx.coroutines.withContext
  *     onSessionCreated = { session -> runtimeDb.bind(session) },
  *     onSessionUpdated = { _, frame ->
  *         frame.getUpdatedAugmentedImages().forEach { /* place AugmentedImageNode */ }
+ *         if (captureRequested) {
+ *             captureRequested = false
+ *             val image = frame.cameraImage() ?: return@ARSceneView
+ *             scope.launch {
+ *                 val photo = withContext(Dispatchers.Default) {
+ *                     image.use { it.toArgbBitmap() }
+ *                 } ?: return@launch
+ *                 when (val result = runtimeDb.addImage("snapshot-1", photo)) {
+ *                     is AddImageResult.Added       -> { /* now tracked */ }
+ *                     is AddImageResult.LowQuality  -> showRetryHint()
+ *                     is AddImageResult.Error       -> showError(result.cause)
+ *                 }
+ *             }
+ *         }
  *     }
  * ) { /* ... */ }
  *
- * // Later, from a "Capture" button:
- * scope.launch {
- *     val photo = withContext(Dispatchers.Default) { frame.captureCameraBitmap() }
- *     when (val result = runtimeDb.addImage("snapshot-1", photo!!)) {
- *         is AddImageResult.Added       -> { /* now tracked */ }
- *         is AddImageResult.LowQuality  -> showRetryHint()
- *         is AddImageResult.Error       -> showError(result.cause)
- *     }
- * }
+ * // "Capture" button:
+ * Button(onClick = { captureRequested = true }) { Text("Capture") }
  * ```
  *
  * ### Threading

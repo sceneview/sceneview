@@ -71,21 +71,31 @@ fun Image.toArgbBitmap(rotationDegrees: Int = 0, jpegQuality: Int = DEFAULT_JPEG
  *
  * Combines [cameraImage] (CPU image acquisition) with [Image.toArgbBitmap] (YUV → ARGB
  * conversion) in one call, and always closes the acquired native [Image] so the caller cannot
- * leak it. Returns `null` when the camera image is not yet available (first frames after
- * resume) or when the format is unexpectedly not `YUV_420_888`.
+ * leak it. Returns `null` whenever [cameraImage] does (warm-up, stale frame, full image pool)
+ * or when the format is unexpectedly not `YUV_420_888`.
  *
- * Like [Image.toArgbBitmap] this performs a JPEG round-trip and **must be run off the main
- * thread**. The returned bitmap is owned by the caller and should be `recycle()`d when no
- * longer needed.
+ * Only call it with the frame `onSessionUpdated` just handed you: by the time a stored frame
+ * is read from a button tap or a coroutine it is no longer ARCore's current frame, and the
+ * acquisition returns `null`. Since the conversion is a JPEG round-trip that should not run on
+ * the render thread, the usual shape is to acquire there and convert off-thread with
+ * [Image.toArgbBitmap]:
  *
  * ```kotlin
  * onSessionUpdated = { _, frame ->
- *     if (shouldCapture) {
- *         val photo = withContext(Dispatchers.Default) { frame.captureCameraBitmap() }
- *         // photo is ready for AugmentedImageDatabase.addImage(name, photo)
+ *     if (captureRequested) {
+ *         captureRequested = false
+ *         val image = frame.cameraImage() // current frame, render thread
+ *         scope.launch {
+ *             val photo = withContext(Dispatchers.Default) {
+ *                 image?.use { it.toArgbBitmap() }
+ *             }
+ *             // photo is ready for AugmentedImageDatabase.addImage(name, photo)
+ *         }
  *     }
  * }
  * ```
+ *
+ * The returned bitmap is owned by the caller and should be `recycle()`d when no longer needed.
  *
  * @param jpegQuality Forwarded to [Image.toArgbBitmap].
  * @see RuntimeAugmentedImageDatabase

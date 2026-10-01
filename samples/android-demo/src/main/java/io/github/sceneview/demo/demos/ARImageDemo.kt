@@ -50,8 +50,9 @@ import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.ar.arcore.AddImageResult
-import io.github.sceneview.ar.arcore.captureCameraBitmap
+import io.github.sceneview.ar.arcore.cameraImage
 import io.github.sceneview.ar.arcore.rememberRuntimeAugmentedImageDatabase
+import io.github.sceneview.ar.arcore.toArgbBitmap
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -78,8 +79,10 @@ import kotlinx.coroutines.withContext
  *  1. **Pre-bundled** — a reference image loaded from assets is added to the
  *     [io.github.sceneview.ar.arcore.RuntimeAugmentedImageDatabase] at session creation, and an
  *     in-app "what to scan" card shows the actual target so the user knows where to point.
- *  2. **Runtime capture** — the "Capture this view" button grabs the live AR camera frame as an
- *     `ARGB_8888` bitmap ([Frame.captureCameraBitmap]) and feeds it straight into the same
+ *  2. **Runtime capture** — the "Capture this view" button asks for the next AR camera frame;
+ *     `onSessionUpdated` acquires it ([io.github.sceneview.ar.arcore.cameraImage]) while it is
+ *     still ARCore's current frame, converts it off the main thread to an `ARGB_8888` bitmap
+ *     ([io.github.sceneview.ar.arcore.toArgbBitmap]) and feeds it straight into the same
  *     runtime database. ARCore starts tracking the just-captured scene without any pre-bundled
  *     `arcoreimg` database — fully on-device, no PC needed.
  *
@@ -121,7 +124,11 @@ fun ARImageDemo(onBack: () -> Unit) {
     val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var imageCount by remember { mutableStateOf(0) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // Raised by the capture button, consumed by the next `onSessionUpdated`. The camera image
+    // has to be acquired from the frame ARCore just handed over: a frame stored for later is
+    // stale by the time a tap reads it, and `acquireCameraImage` then throws
+    // `DeadlineExceededException` (Play vitals, 4.47.0).
+    var captureRequested by remember { mutableStateOf(false) }
     // Status of the last on-device capture attempt — surfaced as a transient banner so the
     // user gets specific feedback (added / low-quality / error) rather than a silent button.
     var captureStatus by remember { mutableStateOf<String?>(null) }
@@ -283,44 +290,12 @@ fun ARImageDemo(onBack: () -> Unit) {
             // `SceneAction` is label-only, so mapping it would silently drop the icon.
             Button(
                 onClick = {
-                    val frame = latestFrame ?: return@Button
                     isCapturing = true
                     captureStatus = "Processing capture…"
                     captureTone = DemoStatusTone.Progress
-                    scope.launch {
-                        // Grab + convert the camera frame off the main thread — JPEG
-                        // round-trip + YUV->ARGB conversion would jank the renderer.
-                        val photo = withContext(Dispatchers.Default) {
-                            frame.captureCameraBitmap()
-                        }
-                        val (message, tone) = if (photo == null) {
-                            "Camera image not ready yet — try again" to
-                                DemoStatusTone.Guidance
-                        } else {
-                            // addImage runs feature extraction off-thread and re-applies
-                            // the session config on the main thread itself (#1553).
-                            when (val result = runtimeDatabase.addImage(
-                                name = "capture-${runtimeDatabase.size}",
-                                bitmap = photo
-                            )) {
-                                is AddImageResult.Added ->
-                                    "Image added — point the camera back at this scene" to
-                                        DemoStatusTone.Guidance
-                                is AddImageResult.LowQuality ->
-                                    ("Too few features — aim at a textured, " +
-                                        "high-contrast scene and retry") to
-                                        DemoStatusTone.Guidance
-                                is AddImageResult.Error ->
-                                    "Capture failed: ${result.cause.message}" to
-                                        DemoStatusTone.Blocked
-                            }
-                        }
-                        captureStatus = message
-                        captureTone = tone
-                        isCapturing = false
-                    }
+                    captureRequested = true
                 },
-                enabled = !isCapturing && latestFrame != null
+                enabled = !isCapturing && cameraReady
             ) {
                 Icon(
                     imageVector = Icons.Filled.CameraAlt,
@@ -365,7 +340,44 @@ fun ARImageDemo(onBack: () -> Unit) {
                 onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { _: Session, frame: Frame ->
                     cameraReady = true
-                    latestFrame = frame
+                    if (captureRequested) {
+                        captureRequested = false
+                        // Acquire now, on the current frame (cheap), then convert off the main
+                        // thread — JPEG round-trip + YUV->ARGB would jank the renderer. The
+                        // acquired image outlives the frame until `use` closes it. `null`
+                        // (warm-up, image pool full) lands on the "try again" message.
+                        val image = frame.cameraImage()
+                        scope.launch {
+                            val photo = withContext(Dispatchers.Default) {
+                                image?.use { it.toArgbBitmap(rotationDegrees = 0) }
+                            }
+                            val (message, tone) = if (photo == null) {
+                                "Camera image not ready yet — try again" to
+                                    DemoStatusTone.Guidance
+                            } else {
+                                // addImage runs feature extraction off-thread and re-applies
+                                // the session config on the main thread itself (#1553).
+                                when (val result = runtimeDatabase.addImage(
+                                    name = "capture-${runtimeDatabase.size}",
+                                    bitmap = photo
+                                )) {
+                                    is AddImageResult.Added ->
+                                        "Image added — point the camera back at this scene" to
+                                            DemoStatusTone.Guidance
+                                    is AddImageResult.LowQuality ->
+                                        ("Too few features — aim at a textured, " +
+                                            "high-contrast scene and retry") to
+                                            DemoStatusTone.Guidance
+                                    is AddImageResult.Error ->
+                                        "Capture failed: ${result.cause.message}" to
+                                            DemoStatusTone.Blocked
+                                }
+                            }
+                            captureStatus = message
+                            captureTone = tone
+                            isCapturing = false
+                        }
+                    }
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     frame.getUpdatedTrackables(AugmentedImage::class.java).forEach { image ->
                         if (image.trackingState == TrackingState.TRACKING &&
