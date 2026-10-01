@@ -611,7 +611,7 @@ private final class HDPackDownloadDelegate: NSObject, URLSessionDownloadDelegate
 #if os(iOS)
 /// Receives the completion handler iOS passes when it relaunches the app for
 /// finished background transfers of the HD pack.
-final class HDPackAppDelegate: NSObject, UIApplicationDelegate {
+class HDPackAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {

@@ -214,6 +214,7 @@ docs/docs/contributing.md
 **/*.keystore
 **/*.jks
 **/google-services.json
+**/GoogleService-Info.plist
 # iOS demo Sketchfab key — the REAL key lives here (gitignored). The committed
 # `Secrets.xcconfig.template` (placeholder) is intentionally NOT matched — do
 # NOT widen this to `**/Secrets.xcconfig*` or the template stops being

@@ -24,6 +24,7 @@ struct SceneGalleryDemo: View {
     @State private var selectedIndex: Int = 0
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
     /// What the resolver actually handed back for the selected slug — the only
     /// honest input to the asset-source pill (#2960). `nil` while resolving.
     @State private var resolvedURL: URL?
@@ -133,6 +134,8 @@ struct SceneGalleryDemo: View {
             loadedNode = node
         } catch {
             loadError = error.localizedDescription
+            DemoAnalytics.shared.log(.modelLoadFailed(sampleId: analyticsSampleId ?? "scene-gallery",
+                                                      reason: DemoAnalytics.reason(for: error)))
         }
     }
 }

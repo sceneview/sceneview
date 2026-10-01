@@ -313,11 +313,11 @@ struct ExploreTab: View {
             }
             #if os(iOS)
             .fullScreenCover(item: $trialDemo) { demo in
-                DemoCover(scene: demo) { trialDemo = nil }
+                DemoCover(scene: demo, source: .other) { trialDemo = nil }
             }
             #else
             .sheet(item: $trialDemo) { demo in
-                DemoCover(scene: demo) { trialDemo = nil }
+                DemoCover(scene: demo, source: .other) { trialDemo = nil }
             }
             #endif
             .navigationDestination(item: $viewingModel) { model in

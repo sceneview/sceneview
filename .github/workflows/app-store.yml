@@ -10,6 +10,10 @@ name: Deploy iOS App to App Store
 #    - IOS_PROVISIONING_PROFILE_BASE64: base64-encoded .mobileprovision (iOS)
 #    - MACOS_PROVISIONING_PROFILE_BASE64: base64-encoded .provisionprofile (macOS)
 #    - APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_API_KEY
+#    - DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64: base64 of the demo's Firebase
+#      GoogleService-Info.plist (bundle io.github.sceneview.demo). Optional: without
+#      it both archives build without Firebase (warning, no crash). The plist is
+#      never committed (`**/GoogleService-Info.plist` in .gitignore).
 
 on:
   push:
@@ -184,10 +188,10 @@ jobs:
         uses: actions/cache@v6
         with:
           path: samples/ios-demo/SourcePackages
-          # Hash the checked-in `Package.resolved` (#1360) — the nested
-          # `xcshareddata/swiftpm/Package.resolved` does not exist until
-          # Xcode resolves packages, so it yields a constant empty hash.
-          key: spm-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+          # Hash both checked-in resolved files (#1360): the test package's
+          # `Package.resolved` and the Xcode project's
+          # `xcshareddata/swiftpm/Package.resolved`, which pins Firebase.
+          key: spm-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved', 'samples/ios-demo/SceneViewDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
       - name: Resolve Swift Package dependencies
@@ -209,6 +213,32 @@ jobs:
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: bash .claude/scripts/verify-sketchfab-key.sh
+
+      - name: Stage Firebase config
+        # The demo app (never the SDK) reports analytics, crashes and push
+        # through Firebase. Its GoogleService-Info.plist is never committed: it
+        # comes from this secret and is handed to the "Embed Firebase config"
+        # build phase through SV_GOOGLE_SERVICE_INFO_PLIST. Without the secret
+        # the archive is built without Firebase: FirebaseApp.configure() is
+        # never called, so nothing can crash, and SV_ALLOW_MISSING_FIREBASE=1
+        # lets the Release archive through the phase's store guard.
+        env:
+          DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          if [ -z "${DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64// }" ]; then
+            echo "::warning::DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64 is not set: archiving iOS without Firebase (no analytics, Crashlytics or push)."
+            echo "SV_ALLOW_MISSING_FIREBASE=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          PLIST="$RUNNER_TEMP/GoogleService-Info.plist"
+          printf '%s' "$DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > "$PLIST"
+          plutil -lint "$PLIST" >/dev/null
+          BUNDLE=$(/usr/libexec/PlistBuddy -c "Print :BUNDLE_ID" "$PLIST")
+          if [ "$BUNDLE" != "io.github.sceneview.demo" ]; then
+            echo "::error::DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64 is for bundle '$BUNDLE', expected io.github.sceneview.demo."
+            exit 1
+          fi
+          echo "SV_GOOGLE_SERVICE_INFO_PLIST=$PLIST" >> "$GITHUB_ENV"
 
       - name: Build archive
         # Inject the Sketchfab API key as a user-defined build setting so it
@@ -255,10 +285,26 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM=5G3DZ3TH45 \
-            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
+            SV_IOS_PROFILE="$PROVISIONING_PROFILE_UUID" \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            SV_GOOGLE_SERVICE_INFO_PLIST="${SV_GOOGLE_SERVICE_INFO_PLIST:-}" \
+            SV_ALLOW_MISSING_FIREBASE="${SV_ALLOW_MISSING_FIREBASE:-0}" \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY"
+
+      - name: Upload dSYMs to Crashlytics
+        # Backup for the in-build "Upload Crashlytics dSYM" phase, which skips
+        # when the dSYM is not written yet. Never blocks a release.
+        if: env.SV_GOOGLE_SERVICE_INFO_PLIST != ''
+        continue-on-error: true
+        run: |
+          TOOL=SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols
+          DSYMS="$RUNNER_TEMP/SceneViewDemo.xcarchive/dSYMs"
+          if [ ! -x "$TOOL" ] || [ ! -d "$DSYMS" ]; then
+            echo "::warning::Crashlytics upload-symbols or dSYMs missing, skipped."
+            exit 0
+          fi
+          "$TOOL" -gsp "$SV_GOOGLE_SERVICE_INFO_PLIST" -p ios "$DSYMS"
 
       - name: Export IPA and upload to TestFlight
         env:
@@ -465,10 +511,8 @@ jobs:
         uses: actions/cache@v6
         with:
           path: samples/ios-demo/SourcePackages
-          # Hash the checked-in `Package.resolved` (#1360) — the nested
-          # `xcshareddata/swiftpm/Package.resolved` does not exist until
-          # Xcode resolves packages, so it yields a constant empty hash.
-          key: spm-macos-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+          # Same two resolved files as the iOS job (#1360).
+          key: spm-macos-${{ runner.os }}-${{ hashFiles('samples/ios-demo/Package.resolved', 'samples/ios-demo/SceneViewDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-macos-${{ runner.os }}-
 
       - name: Resolve Swift Package dependencies
@@ -487,6 +531,32 @@ jobs:
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: bash .claude/scripts/verify-sketchfab-key.sh
+
+      - name: Stage Firebase config
+        # The demo app (never the SDK) reports analytics, crashes and push
+        # through Firebase. Its GoogleService-Info.plist is never committed: it
+        # comes from this secret and is handed to the "Embed Firebase config"
+        # build phase through SV_GOOGLE_SERVICE_INFO_PLIST. Without the secret
+        # the archive is built without Firebase: FirebaseApp.configure() is
+        # never called, so nothing can crash, and SV_ALLOW_MISSING_FIREBASE=1
+        # lets the Release archive through the phase's store guard.
+        env:
+          DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          if [ -z "${DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64// }" ]; then
+            echo "::warning::DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64 is not set: archiving macOS without Firebase (no analytics, Crashlytics or push)."
+            echo "SV_ALLOW_MISSING_FIREBASE=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          PLIST="$RUNNER_TEMP/GoogleService-Info.plist"
+          printf '%s' "$DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > "$PLIST"
+          plutil -lint "$PLIST" >/dev/null
+          BUNDLE=$(/usr/libexec/PlistBuddy -c "Print :BUNDLE_ID" "$PLIST")
+          if [ "$BUNDLE" != "io.github.sceneview.demo" ]; then
+            echo "::error::DEMO_GOOGLE_SERVICE_INFO_PLIST_BASE64 is for bundle '$BUNDLE', expected io.github.sceneview.demo."
+            exit 1
+          fi
+          echo "SV_GOOGLE_SERVICE_INFO_PLIST=$PLIST" >> "$GITHUB_ENV"
 
       - name: Build archive
         # See iOS variant above for the rationale on `SKETCHFAB_API_KEY=` —
@@ -518,10 +588,26 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM=5G3DZ3TH45 \
-            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
+            SV_MACOS_PROFILE="$PROVISIONING_PROFILE_UUID" \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            SV_GOOGLE_SERVICE_INFO_PLIST="${SV_GOOGLE_SERVICE_INFO_PLIST:-}" \
+            SV_ALLOW_MISSING_FIREBASE="${SV_ALLOW_MISSING_FIREBASE:-0}" \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY"
+
+      - name: Upload dSYMs to Crashlytics
+        # Backup for the in-build "Upload Crashlytics dSYM" phase, which skips
+        # when the dSYM is not written yet. Never blocks a release.
+        if: env.SV_GOOGLE_SERVICE_INFO_PLIST != ''
+        continue-on-error: true
+        run: |
+          TOOL=SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols
+          DSYMS="$RUNNER_TEMP/SceneViewDemo-macOS.xcarchive/dSYMs"
+          if [ ! -x "$TOOL" ] || [ ! -d "$DSYMS" ]; then
+            echo "::warning::Crashlytics upload-symbols or dSYMs missing, skipped."
+            exit 0
+          fi
+          "$TOOL" -gsp "$SV_GOOGLE_SERVICE_INFO_PLIST" -p mac "$DSYMS"
 
       - name: Export and upload to App Store
         env:

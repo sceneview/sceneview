@@ -278,7 +278,7 @@ struct ShowcaseTab: View {
             }
             #if os(iOS)
             .fullScreenCover(item: $fullScreenScene) { scene in
-                DemoCover(scene: scene) { fullScreenScene = nil }
+                DemoCover(scene: scene, source: searching ? .search : .home) { fullScreenScene = nil }
                     // The row that was tapped expands into the demo, and
                     // collapses back into it on close. Before this, a demo
                     // appeared with the stock cover slide and nothing tied it
@@ -301,7 +301,7 @@ struct ShowcaseTab: View {
             }
             #elseif os(macOS)
             .sheet(item: $fullScreenScene) { scene in
-                DemoCover(scene: scene) { fullScreenScene = nil }
+                DemoCover(scene: scene, source: searching ? .search : .home) { fullScreenScene = nil }
                     // A macOS sheet sizes to its content's ideal size, and a 3D stage
                     // has none: without a floor the demo opened as a 390×100 strip.
                     .frame(minWidth: 960, minHeight: 640)
@@ -428,19 +428,33 @@ struct ShowcaseTab: View {
 /// a camera feed that a user will try to swipe away. It is confined to a
 /// narrow strip at the leading edge so it cannot compete with the orbit / pan
 /// gestures the stage itself installs.
+///
+/// It is also where a sample's analytics session lives: `sample_open` on appear,
+/// `sample_close` on disappear — whichever control closed it (this bar's Close, the
+/// edge swipe, or the demo chrome's own back button) — and the sample id every
+/// `sample_interaction` / `outbound_link` below it is tagged with.
 struct DemoCover: View {
     let title: String
     let destination: AnyView
     let onClose: () -> Void
+    /// Canonical sample id, `nil` for an id that resolves to no screen.
+    let sampleId: String?
+    let category: String
+    let source: SampleOpenSource
 
-    init(scene: DemoItem, onClose: @escaping () -> Void) {
-        self.init(title: scene.title, destination: scene.destination, onClose: onClose)
+    init(scene: DemoItem, source: SampleOpenSource = .other, onClose: @escaping () -> Void) {
+        self.init(title: scene.title, destination: scene.destination, sampleId: scene.sceneId,
+                  category: DemoAnalytics.category(for: scene.section), source: source, onClose: onClose)
     }
 
-    init(title: String, destination: AnyView, onClose: @escaping () -> Void) {
+    init(title: String, destination: AnyView, sampleId: String? = nil, category: String = "other",
+         source: SampleOpenSource = .other, onClose: @escaping () -> Void) {
         self.title = title
         self.destination = destination
         self.onClose = onClose
+        self.sampleId = sampleId
+        self.category = category
+        self.source = source
     }
 
     var body: some View {
@@ -464,9 +478,21 @@ struct DemoCover: View {
                 }
         }
         .environment(\.demoTitle, title)
+        .environment(\.analyticsSampleId, sampleId)
+        .trackOutboundLinks(sampleId: sampleId)
         #if os(iOS)
         .overlay(alignment: .leading) { edgeDismissStrip }
         #endif
+        .onAppear {
+            guard let sampleId else { return }
+            DemoAnalytics.shared.sampleOpened(sampleId, category: category, source: source)
+        }
+        .onDisappear {
+            if let sampleId { DemoAnalytics.shared.sampleClosed(sampleId) }
+            #if os(iOS)
+            PushCenter.shared.homeReturnedAfterSample()
+            #endif
+        }
     }
 
     #if os(iOS)

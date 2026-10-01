@@ -75,6 +75,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     @Namespace private var glassSpace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.demoTitle) private var presenterTitle
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Read here, outside the chrome's pinned dark scheme, so the AR ground
     /// resolves against the user's real appearance as `DESIGN.md` specifies.
@@ -334,6 +335,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             if let accent {
                 AccentButton(item: accent) {
                     accentTaps += 1
+                    if let analyticsSampleId {
+                        DemoAnalytics.shared.interaction(analyticsSampleId, accent.analyticsControl)
+                    }
                     accent.action()
                 }
                 // The dock's one primary action: a firmer tap than a selection.
@@ -370,6 +374,17 @@ public struct DockItem: Identifiable {
         self.enabled = enabled
         self.selected = selected
         self.action = action
+    }
+
+    /// `sample_interaction.control`: the label as a stable snake_case key
+    /// ("Galaxy" → `galaxy`, "View in AR" → `view_in_ar`); the settings FAB is `settings`.
+    var analyticsControl: String {
+        if label == "Demo settings" { return "settings" }
+        return label.lowercased()
+            .replacingOccurrences(of: "&", with: "and")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: "_")
     }
 }
 
@@ -425,10 +440,16 @@ private struct DockButton: View {
     let showsCaption: Bool
 
     @State private var taps = 0
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
 
     var body: some View {
         Button {
             taps += 1
+            // `sample_interaction`: every dock control of every sample, logged here
+            // once (Cosmos: galaxy | star | burst | flow; the settings FAB: settings).
+            if let analyticsSampleId {
+                DemoAnalytics.shared.interaction(analyticsSampleId, item.analyticsControl)
+            }
             item.action()
         } label: {
             VStack(spacing: 2) {

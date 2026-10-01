@@ -140,6 +140,7 @@ final class AppStoreUpdater: ObservableObject {
     /// On iOS `itms-apps://` opens directly inside the App Store app (no
     /// browser bounce); on macOS `macappstore://` opens the Mac App Store app.
     func openAppStore() {
+        DemoAnalytics.shared.log(.outboundLink(target: .store))
         #if canImport(UIKit) && os(iOS)
         guard let url = URL(string: "itms-apps://itunes.apple.com/app/id\(Self.appStoreId)") else { return }
         UIApplication.shared.open(url)

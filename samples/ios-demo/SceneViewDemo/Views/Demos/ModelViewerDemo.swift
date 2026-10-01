@@ -236,6 +236,7 @@ struct ModelViewerDemo: View {
     @State private var selectedModel: BundledViewerModel = ModelViewerDemo.bundledModels[0]
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
     @State private var loadCount = 0
     @State private var recenterGeneration = 0
     /// Android's entrance: the camera flies in to each model that opens, and
@@ -694,6 +695,8 @@ struct ModelViewerDemo: View {
             // The poster would hide the message; the spinner overlay shows it.
             posterModel = nil
             loadError = "Could not load \(model.displayName): \(error.localizedDescription)"
+            DemoAnalytics.shared.log(.modelLoadFailed(sampleId: analyticsSampleId ?? "model-viewer",
+                                                      reason: DemoAnalytics.reason(for: error)))
         }
     }
 

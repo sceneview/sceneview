@@ -35,6 +35,27 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!--
+		Firebase (demo app only, never the SDK). Analytics without advertising: no IDFA
+		(FirebaseAnalyticsCore, no AdSupport), ad consent denied from the first event,
+		screens reported manually (screen_view). The APNs token is handed to FCM by
+		DemoAppDelegate, so the method-swizzling proxy is off. FCM auto-init is off: no
+		FCM token exists until the user grants the notification permission (PushCenter).
+	-->
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_STORAGE</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_USER_DATA</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_ANALYTICS_STORAGE</key>
+	<true/>
+	<key>FirebaseAutomaticScreenReportingEnabled</key>
+	<false/>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>FirebaseMessagingAutoInitEnabled</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>SceneView uses the camera to place 3D objects in your real-world space using augmented reality.</string>
 	<key>NSMotionUsageDescription</key>
