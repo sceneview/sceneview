@@ -26,6 +26,9 @@ import AppKit
 /// transform for the camera path, an index count for the burst's growing tracks.
 struct CosmosDemo: View {
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
+    /// A `?tab=` deep link waiting for its demo (`DeepLinkRouter.setTab`), watched so a link that
+    /// lands while Cosmos is already on screen is taken too, not only one read in `onAppear`.
+    @AppStorage(DeepLinkRouter.tabDefaultsKey) private var requestedTab: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
@@ -41,7 +44,8 @@ struct CosmosDemo: View {
                 .autoCenterContent(false)
                 .cameraGesturesEnabled(false)
                 .cameraPose(CosmosEngine.fixedCamera)
-                .bloom(BloomOptions(strength: engine.bloom, levels: 7, resolution: 512, threshold: true))
+                .bloom(BloomOptions(strength: engine.bloomStrength, levels: 7, resolution: 512, threshold: true,
+                                    thresholdLevel: engine.bloomThreshold))
                 .simultaneousGesture(SpatialTapGesture().onEnded { tap in
                     engine.tap(tap.location, in: geometry.size, minRadius: Float(SceneViewTokens.Space.xl))
                 })
@@ -61,7 +65,19 @@ struct CosmosDemo: View {
         .onAppear {
             engine.frozen = qaMode || reduceMotion
             if engine.frozen { engine.touring = false }
+            // `?tab=starlight|spacetime` (or `0|1`, as Android): open on the Star scene's view, once.
+            if let spacetime = Self.consumeRequestedSpacetime() {
+                engine.scene = .star
+                engine.setSpacetime(spacetime)
+            }
             engine.start()
+        }
+        .onChange(of: requestedTab) { _, tab in
+            // The same link while Cosmos is already showing: go to the Star scene's view from
+            // where the camera is, as a dock pick and the pill would.
+            guard tab != nil, let spacetime = Self.consumeRequestedSpacetime() else { return }
+            engine.select(.star)
+            engine.setSpacetime(spacetime)
         }
         .onDisappear { engine.stop() }
         .onChange(of: qaMode) { _, qa in engine.frozen = qa || reduceMotion }
@@ -74,11 +90,21 @@ struct CosmosDemo: View {
                 }
             },
             onReset: {
+                engine.setSpacetime(false)
                 engine.touring = !engine.frozen
                 engine.animating = true
                 engine.bloom = CosmosEngine.defaultBloom
             },
-            accessory: { DemoHint(engine.scene == .star ? engine.focus.caption : engine.scene.caption) }
+            accessory: {
+                VStack(spacing: SceneViewTokens.Space.sm) {
+                    DemoHint(engine.caption)
+                    // The Star scene's two views, from its first frame — the voyage included.
+                    if engine.scene == .star {
+                        SpacetimeModePicker(spacetime: Binding(get: { engine.spacetime },
+                                                               set: { engine.setSpacetime($0) }))
+                    }
+                }
+            }
         ) {
             VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
                 LabeledSlider(label: "Bloom", value: $engine.bloom, range: 0...1, decimals: 2)
@@ -87,6 +113,14 @@ struct CosmosDemo: View {
             }
             .tint(SceneViewTheme.primary)
         }
+    }
+
+    /// `?tab=` values: Android's names, or its tab indices.
+    static let tabs: [String: Bool] = ["starlight": false, "0": false, "spacetime": true, "1": true]
+
+    /// The Star scene's view a `?tab=` link asks for — `true` for Spacetime — taken once.
+    static func consumeRequestedSpacetime() -> Bool? {
+        DeepLinkRouter.consumeTab(for: "cosmos").flatMap { tabs[$0] }
     }
 
     private func viewport(_ size: CGSize) -> CGSize {
@@ -137,6 +171,22 @@ final class CosmosEngine {
     /// What the Star scene's camera looks at; a tap on the planet or the star flies to it.
     private(set) var focus: CosmosFocus = .system
     private(set) var ready = false
+    /// The Star scene's Spacetime mode: the star and its planets resting in the wells they dig
+    /// into a sheet (`CosmosSpacetime`). Set with `setSpacetime(_:)`.
+    private(set) var spacetime = false
+    /// How far the bloom has moved to the Spacetime mode's, 0…1, in 1/50 steps: the view
+    /// updates its bloom pass only when this changes.
+    private(set) var bloomMix: Float = 0
+    /// The bloom pass: the slider's strength, eased to the Spacetime mode's soft 0.1 with a
+    /// higher threshold, so the lit sheet does not haze over.
+    var bloomStrength: Float { CosmosSystem.mix(bloom, Self.spacetimeBloom, bloomMix) }
+    var bloomThreshold: Float { CosmosSystem.mix(0.6, 0.8, bloomMix) }
+    static let spacetimeBloom: Float = 0.1
+
+    var caption: String {
+        if scene != .star { return scene.caption }
+        return spacetime ? "Spacetime: every mass bends the fabric" : focus.caption
+    }
 
     @ObservationIgnored var viewport = CGSize(width: 1206, height: 2622)
     /// The ringed world's orbit for the current viewport aspect, and the Star camera's flight.
@@ -155,6 +205,11 @@ final class CosmosEngine {
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     /// Whether the built flow field faces a landscape viewport; it is rebuilt when that flips.
     @ObservationIgnored private var flowLandscape: Bool?
+    /// Where the Spacetime transition is, in seconds of `CosmosSpacetime.Timeline`: 0 is
+    /// Starlight, `duration` the settled sheet.
+    @ObservationIgnored private var spacetimeProgress: Double = 0
+    /// The pose the camera left from to fly to the sheet.
+    @ObservationIgnored private var spacetimeFrom: CosmosPose?
 
     func install(in root: Entity) {
         world.name = "cosmos-world"
@@ -168,12 +223,22 @@ final class CosmosEngine {
         ensureBuilt(kind)
     }
 
+    /// Enters or leaves the Star scene's Spacetime mode. It holds still: the tour stops.
+    func setSpacetime(_ on: Bool) {
+        guard on != spacetime else { return }
+        spacetime = on
+        if on {
+            touring = false
+            spacetimeFrom = flight.lastPose
+        }
+    }
+
     /// A tap at `location` on a `size` viewport, both in points. In the Star scene it flies the
     /// camera to what it lands on — the ringed world first, then the star; a second tap on what
     /// is already in focus, or a tap on empty space, pulls back to the whole system. Any tap
     /// hands the camera to the user until the autopilot's `resume` delay has passed idle.
     func tap(_ location: CGPoint, in size: CGSize, minRadius: Float) {
-        guard scene == .star, let pose = flight.lastPose else { return }
+        guard scene == .star, !spacetime, spacetimeProgress == 0, let pose = flight.lastPose else { return }
         autopilot.touched()
         let hit = system.hit(pose: pose, time: flight.lastTime,
                              width: Float(size.width), height: Float(size.height),
@@ -317,6 +382,11 @@ final class CosmosEngine {
             focus = .system
             flight.reset()
             autopilot.reset()
+            // Another scene leaves the Spacetime mode; the Star scene opened on it lands at once
+            // if frozen, else plays the way in.
+            if current != .star { spacetime = false }
+            spacetimeProgress = spacetime && frozen ? CosmosSpacetime.Timeline.duration : 0
+            spacetimeFrom = nil
         } else if animating && !frozen {
             // Clamp a long hitch (backgrounding) so the scene does not jump ahead.
             sceneTime += min(max(dt, 0), 0.1)
@@ -354,14 +424,17 @@ final class CosmosEngine {
         }
         if !ready { ready = true }
 
-        let time = frozen ? Self.qaTime[current.rawValue] : sceneTime
+        let progress = current == .star ? advanceSpacetime(dt) : 0
+        let time = frozen ? (progress > 0 ? CosmosSpacetime.qaTime : Self.qaTime[current.rawValue]) : sceneTime
         let reveal = frozen ? 1 : CosmosFraming.reveal(sceneTime, duration: Self.revealSeconds)
         if abs(system.aspect - aspect) > 1e-4 { system = CosmosSystem(aspect: aspect) }
         let pose: CosmosPose
-        if current == .star {
+        if current == .star && progress > 0 {
+            pose = spacetimePose(progress: progress, time: time)
+        } else if current == .star {
             // Left alone, the camera flies on by itself — ringed world, star, whole system — on
             // the scene's clock, so it pauses with Animate; frozen frames keep their look.
-            if animating && !frozen,
+            if animating && !frozen && !spacetime,
                let next = autopilot.advance(min(max(dt, 0), 0.1), flying: flight.flying, focus: focus) {
                 flight.start()
                 focus = next
@@ -382,9 +455,54 @@ final class CosmosEngine {
         flight.record(pose, time: time)
         placeWorld(pose)
 
-        starField?.setIntensity(reveal * (current == .flow ? 0.35 : 1), time: time)
+        let stars = Float(CosmosSpacetime.Timeline.starField(progress))
+        starField?.setIntensity(reveal * (current == .flow ? 0.35 : 1) * stars, time: time)
+        let mix = (Float(CosmosSpacetime.Timeline.settle(progress)) * 50).rounded() / 50
+        if mix != bloomMix { bloomMix = mix }
         entities.update(time: time, reveal: reveal, bloom: bloom, eye: pose.eye, live: !frozen,
-                        system: system, focal: focal, now: CACurrentMediaTime())
+                        system: system, focal: focal, now: CACurrentMediaTime(), spacetime: progress)
+    }
+
+    /// Moves the Spacetime transition on by `dt` towards the mode chosen — at once when frozen —
+    /// and returns where it is. Back at Starlight, the camera hands over to the system view.
+    private func advanceSpacetime(_ dt: Float) -> Double {
+        typealias T = CosmosSpacetime.Timeline
+        let before = spacetimeProgress
+        let target = spacetime ? T.duration : 0
+        if frozen {
+            spacetimeProgress = target
+        } else {
+            let step = Double(min(max(dt, 0), 0.1))
+            // The way in waits for the sheet: until it is built, Starlight holds, so the camera
+            // never flies over nothing and the sheet never pops in at the end — Android lifts
+            // its cover on the first frame that draws the sheet.
+            let held = built[.star]?.spacetimeReady != true
+            spacetimeProgress = spacetime ? (held ? before : min(before + step, target))
+                : max(before - step * T.duration / T.exitSeconds, 0)
+        }
+        if before > 0, spacetimeProgress == 0 {
+            focus = .system
+            flight.reset()
+            autopilot.reset()
+            spacetimeFrom = nil
+        }
+        return spacetimeProgress
+    }
+
+    /// The camera during and in the Spacetime mode: it flies from where it was to the sheet's
+    /// fixed pose over the first `Timeline.flight` seconds, and back to the system view on the
+    /// way out.
+    private func spacetimePose(progress: Double, time: Float) -> CosmosPose {
+        typealias T = CosmosSpacetime.Timeline
+        let sheet = CosmosSpacetime.pose(aspect: Double(aspect),
+                                         tanHalfVertical: Double(CosmosFraming.tanHalfVerticalFov))
+        let flown = Float(min(progress / T.flight, 1))
+        guard flown < 1 else { return sheet }
+        if spacetime {
+            if spacetimeFrom == nil { spacetimeFrom = flight.lastPose ?? system.systemPose(time) }
+            return CosmosSystem.blend(spacetimeFrom!, sheet, CosmosSystem.easeExpressive(flown))
+        }
+        return CosmosSystem.blend(sheet, system.systemPose(time), CosmosSystem.easeExpressive(1 - flown))
     }
 
     /// Where `kind`'s camera is at `time`, and which way is up on screen. The flow field is
@@ -596,6 +714,12 @@ final class CosmosSceneEntities {
     private let restEye: SIMD3<Float>
     /// The Star scene's ringed world, its rings and its orbit trail.
     private var world: CosmosWorld?
+    /// The Star scene's Spacetime sheet and small planets, built the first time the mode is
+    /// asked for.
+    private var spacetimeScene: CosmosSpacetimeScene?
+    /// The sheet and the small planets are built: the way into Spacetime may start.
+    var spacetimeReady: Bool { spacetimeScene != nil }
+    private var spacetimeTask: Task<Void, Never>?
     /// The eye, as the turned star sees it, and the lens the loops were last laid for; see
     /// `relayLoops`.
     private var loopsEye: SIMD3<Float>
@@ -686,8 +810,10 @@ final class CosmosSceneEntities {
     ///   - live: the clock runs (not a frozen QA or reduced-motion frame), so the star churns.
     ///   - system, focal, now: the ringed world's orbit, the lens and a monotonic clock in
     ///     seconds, for the Star scene's world.
+    ///   - spacetime: where the Star scene's Spacetime transition is, in seconds of
+    ///     `CosmosSpacetime.Timeline`; 0 is Starlight.
     func update(time: Float, reveal: Float, bloom: Float, eye: SIMD3<Float>, live: Bool,
-                system: CosmosSystem, focal: Float, now: Double) {
+                system: CosmosSystem, focal: Float, now: Double, spacetime: Double = 0) {
         strokes?.scrollDashes(time: time)
         switch kind {
         case .galaxy:
@@ -695,18 +821,24 @@ final class CosmosSceneEntities {
             main?.setIntensity(reveal, time: time)
             dust?.setOpacity(reveal)
         case .star:
+            typealias T = CosmosSpacetime.Timeline
             let pulse = sin(time * 2.1)
+            // Spacetime: the star shrinks to its place in the sheet's well and its halo fades.
+            let settle = Float(T.settle(spacetime))
+            let size = CosmosSystem.mix(1, CosmosSpacetime.starScale, settle)
+            let halo = Float(T.haloAlpha(spacetime))
             spin.orientation = CosmosSceneLayers.starOrientation(time)
-            spin.scale = SIMD3(repeating: 1 + 0.012 * pulse)
+            spin.scale = SIMD3(repeating: size * (1 + 0.012 * pulse))
             let surface = reveal * (1 + 0.08 * pulse) / CosmosSceneLayers.starPulse
             churn(time: live ? time : 0, intensity: surface)
             // The camera flies: the limb disc and the corona were sized for the rest distance,
             // so they are resized for the one the eye is at, and the halo — concentric sprites
             // baked facing the rest eye — turns as a whole to face it.
-            let distance = max(simd_length(eye), 1.01)
+            // A star scaled by `size` seen from `distance` looks as one of radius 1 from `distance / size`.
+            let distance = max(simd_length(eye) / size, 1.01)
             let rest = max(simd_length(restEye), 1.01)
             let limbScale = Self.limbSilhouette(distance) / Self.limbSilhouette(rest)
-            let coronaScale = Self.coronaSilhouette(distance) / Self.coronaSilhouette(rest)
+            let coronaScale = size * Self.coronaSilhouette(distance) / Self.coronaSilhouette(rest)
             for limb in limbs {
                 limb.glow.setIntensity(surface)
                 limb.glow.entity.scale = spin.scale * SIMD3(limbScale, limbScale, 1)
@@ -714,12 +846,18 @@ final class CosmosSceneEntities {
             corona?.entity.scale = SIMD3(repeating: coronaScale)
             if let main {
                 main.entity.orientation = simd_quatf(from: simd_normalize(restEye), to: simd_normalize(eye))
+                main.entity.scale = SIMD3(repeating: size)
             }
-            strokes?.setIntensity(reveal)
-            relayLoops(eye: eye, time: time, focal: focal, reveal: reveal, now: now)
-            main?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
-            corona?.setIntensity(reveal * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
-            world?.update(system: system, time: time, eye: eye, reveal: reveal, now: now, focal: focal)
+            strokes?.setIntensity(reveal * halo)
+            // The loops are laid for the free camera; the sheet's camera does not fly, so they
+            // stay as they are while the mode is on and are laid again once it is left.
+            if spacetime == 0 {
+                relayLoops(eye: eye, time: time, focal: focal, reveal: reveal, now: now)
+            }
+            main?.setIntensity(reveal * halo * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
+            corona?.setIntensity(reveal * halo * (1 + 0.12 * pulse) / CosmosSceneLayers.haloPulse)
+            updateSpacetime(spacetime, time: time, system: system, eye: eye, reveal: reveal, now: now,
+                            focal: focal, halo: halo)
         case .burst:
             let envelope = CosmosMeshes.burstEnvelope((time / CosmosEngine.burstPeriod).truncatingRemainder(dividingBy: 1))
             strokes?.reveal(upTo: envelope.x)
@@ -742,6 +880,66 @@ final class CosmosSceneEntities {
         }
         if let corona, simd_length(eye) > 1e-4 {
             corona.entity.orientation = simd_quatf(from: SIMD3(0, 0, 1), to: simd_normalize(eye))
+        }
+    }
+
+    /// The Star scene's ringed world, and — while the Spacetime mode shows — the sheet and the
+    /// small planets. The ringed world leaves its orbit for its well in the sheet, its rings
+    /// turned to lie along the slope, lit from the sheet's sun rather than the star.
+    private func updateSpacetime(_ progress: Double, time: Float, system: CosmosSystem, eye: SIMD3<Float>,
+                                 reveal: Float, now: Double, focal: Float, halo: Float) {
+        typealias T = CosmosSpacetime.Timeline
+        guard progress > 0 else {
+            spacetimeScene?.root.isEnabled = false
+            world?.update(system: system, time: time, eye: eye, reveal: reveal, now: now, focal: focal)
+            // Built while Starlight shows, so the tap on Spacetime doesn't wait for it.
+            buildSpacetimeScene()
+            return
+        }
+        let settle = Float(T.settle(progress))
+        let layout = CosmosSpacetime.Sheet(time: Double(time), weight: T.weight(progress), lift: T.lift(progress))
+        let at = CosmosSpacetime.position(.ringed, time: Double(time))
+        let rested = SIMD3<Float>(Float(at.x), Float(layout.rest(.ringed, at: at)), Float(at.y))
+        let plane = layout.ringPlane(at: at).normal
+        let restTilt = simd_quatf(from: SIMD3(0, 1, 0), to: simd_normalize(SIMD3<Float>(plane)))
+        let orbit = system.planetPosition(time)
+        let center = orbit + (rested - orbit) * settle
+        let tilt = simd_slerp(system.tilt, restTilt, settle)
+        let light = SIMD3<Float>(CosmosSpacetime.light)
+        let sun = center + 1000 * CosmosSystem.slerp(simd_normalize(-orbit), light, settle)
+        world?.update(system: system, time: time, eye: eye, reveal: reveal, now: now, focal: focal,
+                      placement: CosmosWorldPlacement(center: center, tilt: tilt, sun: sun), trailFade: halo)
+
+        guard let spacetimeScene else {
+            buildSpacetimeScene()
+            return
+        }
+        spacetimeScene.root.isEnabled = true
+        spacetimeScene.update(time: time, progress: progress, sheet: layout,
+                              ringed: (center, tilt.act(SIMD3(0, 1, 0))), now: now)
+    }
+
+    /// Builds the sheet and the small planets once, in the background, hidden until the mode shows.
+    private func buildSpacetimeScene() {
+        guard spacetimeScene == nil, spacetimeTask == nil else { return }
+        spacetimeTask = Task { @MainActor [weak self] in
+            let started = Date()
+            let scene: CosmosSpacetimeScene
+            do {
+                scene = try await CosmosSpacetimeScene.make()
+            } catch {
+                NSLog("[Cosmos] spacetime build failed: %@", String(describing: error))
+                // Free the slot a second later, so a frame that wants the sheet tries again —
+                // without a build per frame while it keeps failing.
+                try? await Task.sleep(for: .seconds(1))
+                self?.spacetimeTask = nil
+                return
+            }
+            guard let self else { return }
+            NSLog("[Cosmos] spacetime built in %.3f s", Date().timeIntervalSince(started))
+            scene.root.isEnabled = false
+            self.root.addChild(scene.root)
+            self.spacetimeScene = scene
         }
     }
 

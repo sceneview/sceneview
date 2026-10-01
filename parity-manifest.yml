@@ -690,6 +690,8 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosGlow.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosSystem.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosWorld.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosSpacetime.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CosmosSpacetimeScene.swift
     contract: >-
       Four procedural, real-time scenes in additive HDR light plus bloom: a
       four-arm spiral galaxy of 60 000 camera-facing star sprites with
@@ -733,8 +735,15 @@ demos:
       added in display space with a baked filmic roll-off standing in for
       Filament's tone map. Spacetime: Android shades the sheet per pixel
       (cosmos_spacetime.mat), its hollow's shadow sampled from a horizon map
-      baked once on the CPU (512², CosmosSpacetime.horizonMap); iOS evaluates
-      its penumbra per vertex, and has no drag to orbit the Spacetime camera
+      baked once on the CPU (512², CosmosSpacetime.horizonMap); iOS bakes the
+      same map (same march, same 512² over ±4, unit-tested within 1/255) and
+      reads it per fragment through a premultiplied overlay part of the sheet
+      mesh (UnlitMaterial, no tone map), so the hollow's shadow edge matches
+      Android's; the sphere and ring shadows, the ambient occlusion and the
+      spot stay per vertex, and iOS has no drag to orbit the Spacetime camera.
+      Known gap: the star reads paler in Spacetime on iOS, a flat disc with
+      no bloom halo round it, where Android's star keeps its glow over the
+      sheet.
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working

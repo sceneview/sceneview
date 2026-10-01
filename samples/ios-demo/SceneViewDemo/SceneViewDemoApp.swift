@@ -91,6 +91,9 @@ struct SceneViewDemoApp: App {
            let distance = DeepLinkRouter.validateCameraDistance(Float(args[dIdx + 1])) {
             UserDefaults.standard.set(Double(distance), forKey: DeepLinkRouter.cameraDistanceDefaultsKey)
         }
+        // `-tab <id>` opens a view inside the demo — mirrors the `?tab=` deep-link param.
+        let tIdx = args.firstIndex(of: "-tab")
+        DeepLinkRouter.setTab(tIdx.flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }, for: id)
         return DemoDeepLinkRegistry.allowedIds.contains(id) ? id : nil
     }()
 

@@ -132,6 +132,9 @@
 		C0500000000000000000C055 /* CosmosSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C065 /* CosmosSystem.swift */; };
 		C0500000000000000000C056 /* CosmosWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C066 /* CosmosWorld.swift */; };
 		C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C067 /* CosmosSystemTests.swift */; };
+		C0500000000000000000C058 /* CosmosSpacetime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C068 /* CosmosSpacetime.swift */; };
+		C0500000000000000000C059 /* CosmosSpacetimeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C069 /* CosmosSpacetimeScene.swift */; };
+		C0500000000000000000C05A /* CosmosSpacetimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C06A /* CosmosSpacetimeTests.swift */; };
 		C5D0000000000000000C5D11 /* ContactShadowPreviewDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D0000000000000000C5D01 /* ContactShadowPreviewDemo.swift */; };
 		C5D0000000000000000C5D12 /* ContactShadowPreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D0000000000000000C5D02 /* ContactShadowPreviewScene.swift */; };
 		C5D0000000000000000C5D13 /* ContactShadowMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D0000000000000000C5D03 /* ContactShadowMathTests.swift */; };
@@ -383,6 +386,9 @@
 		C0600000000000000000C065 /* CosmosSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosSystem.swift; sourceTree = "<group>"; };
 		C0600000000000000000C066 /* CosmosWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosWorld.swift; sourceTree = "<group>"; };
 		C0600000000000000000C067 /* CosmosSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosSystemTests.swift; path = SceneViewDemoTests/CosmosSystemTests.swift; sourceTree = SOURCE_ROOT; };
+		C0600000000000000000C068 /* CosmosSpacetime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosSpacetime.swift; sourceTree = "<group>"; };
+		C0600000000000000000C069 /* CosmosSpacetimeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmosSpacetimeScene.swift; sourceTree = "<group>"; };
+		C0600000000000000000C06A /* CosmosSpacetimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosSpacetimeTests.swift; path = SceneViewDemoTests/CosmosSpacetimeTests.swift; sourceTree = SOURCE_ROOT; };
 		C5D0000000000000000C5D01 /* ContactShadowPreviewDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactShadowPreviewDemo.swift; sourceTree = "<group>"; };
 		C5D0000000000000000C5D02 /* ContactShadowPreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContactShadowPreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ContactShadowPreviewScene.swift; sourceTree = SOURCE_ROOT; };
 		C5D0000000000000000C5D03 /* ContactShadowMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContactShadowMathTests.swift; path = SceneViewDemoTests/ContactShadowMathTests.swift; sourceTree = SOURCE_ROOT; };
@@ -670,6 +676,7 @@
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
 				C0600000000000000000C067 /* CosmosSystemTests.swift */,
+				C0600000000000000000C06A /* CosmosSpacetimeTests.swift */,
 				C5D0000000000000000C5D03 /* ContactShadowMathTests.swift */,
 				5A1A71000000000000000004 /* SplatScanTests.swift */,
 				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
@@ -794,6 +801,8 @@
 				C0600000000000000000C063 /* CosmosGlow.swift */,
 				C0600000000000000000C065 /* CosmosSystem.swift */,
 				C0600000000000000000C066 /* CosmosWorld.swift */,
+				C0600000000000000000C068 /* CosmosSpacetime.swift */,
+				C0600000000000000000C069 /* CosmosSpacetimeScene.swift */,
 				C5D0000000000000000C5D01 /* ContactShadowPreviewDemo.swift */,
 				C20000000000000000000018 /* CameraControlsDemo.swift */,
 				C200000000000000000000C1 /* CollisionHitTestDemo.swift */,
@@ -1274,6 +1283,8 @@
 				C0500000000000000000C053 /* CosmosGlow.swift in Sources */,
 				C0500000000000000000C055 /* CosmosSystem.swift in Sources */,
 				C0500000000000000000C056 /* CosmosWorld.swift in Sources */,
+				C0500000000000000000C058 /* CosmosSpacetime.swift in Sources */,
+				C0500000000000000000C059 /* CosmosSpacetimeScene.swift in Sources */,
 				C10000000000000000000018 /* CameraControlsDemo.swift in Sources */,
 				C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */,
 				C100000000000000000000CE /* GestureEditingDemo.swift in Sources */,
@@ -1404,6 +1415,7 @@
 				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
 				C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */,
+				C0500000000000000000C05A /* CosmosSpacetimeTests.swift in Sources */,
 				C5D0000000000000000C5D13 /* ContactShadowMathTests.swift in Sources */,
 				5A1A70000000000000000004 /* SplatScanTests.swift in Sources */,
 				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
