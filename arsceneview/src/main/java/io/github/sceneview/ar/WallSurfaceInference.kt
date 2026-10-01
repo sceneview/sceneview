@@ -168,3 +168,55 @@ private fun horizontalFacing(normal: Direction, towardCamera: Direction): Direct
     if (!length.isFinite() || length < WALL_NORMAL_EPSILON) return null
     return roomFacingNormal(Direction(normal.x / length, 0f, normal.z / length), towardCamera)
 }
+
+// ── A wall rises above the furniture (#4199 device proof) ──────────────────────────────────
+
+/**
+ * A wall found without a plane (a depth hit or a floor seam) must show upright surface at least
+ * this high above the floor. The front of a bed (mattress top 0.45–0.65 m), a TV unit or a
+ * sideboard (0.4–0.8 m) or a desk (0.75 m) is upright too and stands where the floor's polygon
+ * ends: on the Pixel 4a tape of #4199 the TV landed on a bed's side panel. A wall goes on above
+ * them. 0.8 m, not 1 m: a window sill sits at 0.85–1 m, and the wall under a window is a wall.
+ */
+internal const val WALL_MIN_RISE_M = 0.8f
+
+/**
+ * A probe hit within this distance of the candidate's vertical plane is the same surface. It
+ * covers the depth API's noise at 1–3 m (a few centimetres) and a skirting board. A bed
+ * (≥ 0.9 m wide) or a cabinet (≥ 0.3 m deep) puts the wall behind it well past this.
+ */
+internal const val WALL_SAME_SURFACE_M = 0.15f
+
+/**
+ * Where to look for the wall going on above [wallPoint]: on its vertical line,
+ * [WALL_MIN_RISE_M] above [floorY]. `null` when [wallPoint] is already that high, since the hit
+ * itself is then the proof.
+ */
+internal fun wallRiseProbe(wallPoint: Position, floorY: Float): Position? =
+    if (wallPoint.y - floorY >= WALL_MIN_RISE_M) null
+    else Position(wallPoint.x, floorY + WALL_MIN_RISE_M, wallPoint.z)
+
+/**
+ * Whether an upright surface at [wallPoint] (horizontal [wallNormal], either sign) is a wall
+ * and not the front of a bed or a cabinet. Either [wallPoint] is already [WALL_MIN_RISE_M]
+ * above [floorY], or [probeHit] (the nearest hit on the camera ray toward [wallRiseProbe]) lies
+ * on the same vertical plane, within [WALL_SAME_SURFACE_M], about that high up.
+ *
+ * Over a bed, the probe ray meets the mattress top or the wall behind it: off the plane, refused.
+ * No probe hit (the probe off screen, nothing tracked there) is no proof, so it is refused too,
+ * until the camera sees more of the wall.
+ */
+internal fun wallRisesAboveFurniture(
+    wallPoint: Position,
+    wallNormal: Direction,
+    floorY: Float,
+    probeHit: Position?,
+): Boolean {
+    if (wallPoint.y - floorY >= WALL_MIN_RISE_M) return true
+    val hit = probeHit ?: return false
+    val length = sqrt(wallNormal.x * wallNormal.x + wallNormal.z * wallNormal.z)
+    if (!length.isFinite() || length < WALL_NORMAL_EPSILON) return false
+    val offPlane = ((hit.x - wallPoint.x) * wallNormal.x + (hit.z - wallPoint.z) * wallNormal.z) / length
+    return kotlin.math.abs(offPlane) <= WALL_SAME_SURFACE_M &&
+        hit.y - floorY >= WALL_MIN_RISE_M - WALL_SAME_SURFACE_M
+}

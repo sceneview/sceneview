@@ -514,6 +514,65 @@ class WallPlacementMathTest {
         )
     }
 
+    // ── A wall rises above the furniture (#4199 device proof) ─────────────────────────────────
+    // Camera 1.4 m above the floor at the origin, looking down -Z; the upright surface faces +Z.
+
+    @Test
+    fun `bed front 0_45 m high is not a wall`() {
+        // Seam at the base of a bed's front, 2 m away; the bed is 2 m long, mattress at 0.45 m.
+        val seam = Position(0f, 0f, -2f)
+        val probe = wallRiseProbe(seam, floorY = 0f)!!
+        assertEquals(WALL_MIN_RISE_M, probe.y, eps)
+        // The ray from (0, 1.4, 0) toward (0, 0.8, -2) clears the bed front and meets the
+        // mattress top at y = 0.45, z ≈ -3.17: 1.17 m behind the front, off its plane.
+        val mattressTop = Position(0f, 0.45f, -3.17f)
+        assertFalse(wallRisesAboveFurniture(seam, Direction(0f, 0f, 1f), 0f, mattressTop))
+    }
+
+    @Test
+    fun `depth hit on a bed's side panel is not a wall`() {
+        // The centre ray meets the side panel at 0.3 m; above it the probe reaches the real
+        // wall 1.6 m behind (the bed's width).
+        val panel = Position(0f, 0.3f, -2f)
+        assertFalse(wallRisesAboveFurniture(panel, Direction(0f, 0f, 1f), 0f, Position(0f, 0.75f, -3.6f)))
+    }
+
+    @Test
+    fun `cabinet front 0_45 m deep is not a wall`() {
+        val front = Position(0f, 0f, -2f)
+        assertFalse(wallRisesAboveFurniture(front, Direction(0f, 0f, -1f), 0f, Position(0f, 0.8f, -2.45f)))
+    }
+
+    @Test
+    fun `wall continuing to 2 m is a wall`() {
+        // Seam at the base of a plain wall; the probe at 0.8 m lands on the same wall, depth
+        // noise putting it 3 cm in front.
+        val seam = Position(0f, 0f, -2f)
+        val probe = wallRiseProbe(seam, floorY = 0f)!!
+        val onWall = Position(probe.x, probe.y + 0.02f, probe.z + 0.03f)
+        assertTrue(wallRisesAboveFurniture(seam, Direction(0f, 0f, 1f), 0f, onWall))
+        // Same wall, a depth hit at 0.5 m: the probe at 0.8 m is on it too.
+        assertTrue(wallRisesAboveFurniture(Position(0f, 0.5f, -2f), Direction(0f, 0f, 1f), 0f, onWall))
+    }
+
+    @Test
+    fun `a hit already above the furniture needs no probe`() {
+        val high = Position(0.4f, 1.2f, -2f)
+        assertNull(wallRiseProbe(high, floorY = 0f))
+        assertTrue(wallRisesAboveFurniture(high, Direction(0f, 0f, 1f), 0f, probeHit = null))
+    }
+
+    @Test
+    fun `no probe hit is no proof`() {
+        assertFalse(wallRisesAboveFurniture(Position(0f, 0f, -2f), Direction(0f, 0f, 1f), 0f, probeHit = null))
+    }
+
+    @Test
+    fun `a probe hit on the plane but at bed height is no proof`() {
+        val seam = Position(0f, 0f, -2f)
+        assertFalse(wallRisesAboveFurniture(seam, Direction(0f, 0f, 1f), 0f, Position(0f, 0.45f, -2f)))
+    }
+
     private fun assertVecEquals(expected: Float3, actual: Float3) {
         assertEquals("x", expected.x, actual.x, eps)
         assertEquals("y", expected.y, actual.y, eps)

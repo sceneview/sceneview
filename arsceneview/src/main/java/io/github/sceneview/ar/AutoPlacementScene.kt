@@ -143,7 +143,9 @@ private fun planeOf(trackable: Trackable, kind: WallHitKind?): Plane? = when (ki
  * A [PlacementSurface.WALL] search also takes what ARKit's `.existingPlaneInfinite` and
  * `.estimatedPlane` would (#4070): a wall plane hit up to a metre outside its polygon, a depth
  * hit on a vertical surface (with the depth API on), and last a wall inferred from where the
- * tracked floor ends under the centre of the screen ([seamWallCandidate]).
+ * tracked floor ends under the centre of the screen ([seamWallCandidate]). The last two must
+ * show upright surface [WALL_MIN_RISE_M] above the floor ([wallRisesAboveFurniture]), or the
+ * front of a bed or a cabinet passes for a wall.
  */
 fun findAutoPlacementSurface(
     frame: Frame,
@@ -160,8 +162,18 @@ fun findAutoPlacementSurface(
         }
     val camera = frame.camera.pose
     val hits = runCatching { frame.hitTest(width / 2f, height / 2f) }.getOrDefault(emptyList())
+    val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
+    val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
+    val viewProjection = ViewportProjection.multiply(projection, view)
+    // Without a tracked floor, the wall must reach the camera's own height: a phone held standing
+    // or seated is above a bed or a cabinet.
+    val floorY = trackedFloorY(planes) ?: (camera.ty() - WALL_MIN_RISE_M)
+    val risesAboveFurniture = { point: Position, normal: Float3 ->
+        val probe = wallRiseProbe(point, floorY)?.let { probeHit(frame, viewProjection, it, width, height) }
+        wallRisesAboveFurniture(point, normal, floorY, probe)
+    }
     when (surface) {
-        PlacementSurface.WALL -> wallRayCandidate(hits, camera)?.let { return it }
+        PlacementSurface.WALL -> wallRayCandidate(hits, camera, risesAboveFurniture)?.let { return it }
         PlacementSurface.SURFACE -> {
             val hit = hits.firstOrNull { hit ->
                 val plane = hit.trackable as? Plane
@@ -174,9 +186,6 @@ fun findAutoPlacementSurface(
             if (hit != null) return AutoPlacementCandidate(hit.trackable as Plane, hit.hitPose)
         }
     }
-    val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
-    val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
-    val viewProjection = ViewportProjection.multiply(projection, view)
     val candidates = planes.filter { supported(it) && it.isPoseInPolygon(it.centerPose) }.map { plane ->
         val pose = plane.centerPose
         FallbackCandidate(
@@ -186,11 +195,39 @@ fun findAutoPlacementSurface(
         )
     }
     return UsableSurfacePolicy.rankFallback(candidates).firstOrNull()
-        ?: if (surface == PlacementSurface.WALL) seamCandidate(hits, planes, camera) else null
+        ?: if (surface == PlacementSurface.WALL) seamCandidate(hits, planes, camera, risesAboveFurniture) else null
 }
 
-/** The most trusted wall among the centre ray's hits ([WallHitKind] order), nearest first. */
-private fun wallRayCandidate(hits: List<HitResult>, camera: Pose): AutoPlacementCandidate? {
+/** Height of the lowest tracked upward-facing plane, the floor; `null` before one is tracked. */
+private fun trackedFloorY(planes: Collection<Plane>): Float? = planes
+    .filter {
+        it.type == Plane.Type.HORIZONTAL_UPWARD_FACING && it.trackingState == TrackingState.TRACKING &&
+            it.subsumedBy == null
+    }
+    .minOfOrNull { it.centerPose.ty() }
+
+/**
+ * Where the camera ray toward [target] first meets tracked geometry (a depth point, a plane, a
+ * feature point), or `null` when [target] is off screen or the ray meets nothing.
+ */
+private fun probeHit(frame: Frame, viewProjection: FloatArray, target: Position, width: Int, height: Int): Position? {
+    val ndc = ViewportProjection.project(viewProjection, target.x, target.y, target.z)
+        ?.takeIf { it.isInsideViewport } ?: return null
+    val x = (ndc.x + 1f) / 2f * width
+    val y = (1f - ndc.y) / 2f * height
+    val hit = runCatching { frame.hitTest(x, y) }.getOrNull()?.firstOrNull() ?: return null
+    return Position(hit.hitPose.tx(), hit.hitPose.ty(), hit.hitPose.tz())
+}
+
+/**
+ * The most trusted wall among the centre ray's hits ([WallHitKind] order), nearest first. A
+ * depth hit is a wall only if [risesAboveFurniture]: a vertical plane is ARCore's own call.
+ */
+private fun wallRayCandidate(
+    hits: List<HitResult>,
+    camera: Pose,
+    risesAboveFurniture: (Position, Float3) -> Boolean,
+): AutoPlacementCandidate? {
     var best: HitResult? = null
     var bestKind: WallHitKind? = null
     for (hit in hits) {
@@ -201,7 +238,12 @@ private fun wallRayCandidate(hits: List<HitResult>, camera: Pose): AutoPlacement
         }
     }
     val hit = best ?: return null
-    val pose = orientedPlacementPose(hit.hitPose, wallNormalOf(hit), camera)
+    val normal = wallNormalOf(hit)
+    if (bestKind == WallHitKind.DEPTH_POINT && !risesAboveFurniture(
+            Position(hit.hitPose.tx(), hit.hitPose.ty(), hit.hitPose.tz()), Float3(normal[0], normal[1], normal[2]),
+        )
+    ) return null
+    val pose = orientedPlacementPose(hit.hitPose, normal, camera)
     return AutoPlacementCandidate(hit.trackable, pose, bestKind)
 }
 
@@ -210,9 +252,15 @@ private const val SEAM_PROBE_MARGIN_M = 0.1f
 
 /**
  * A wall inferred from the floor seam: the centre ray meets the tracked floor near where its
- * polygon ends ([seamWallCandidate]). The anchor rides the floor plane, which is tracked.
+ * polygon ends ([seamWallCandidate]), and the wall rises above it ([risesAboveFurniture]): the
+ * floor also ends at the foot of a bed. The anchor rides the floor plane, which is tracked.
  */
-private fun seamCandidate(hits: List<HitResult>, planes: Collection<Plane>, camera: Pose): AutoPlacementCandidate? {
+private fun seamCandidate(
+    hits: List<HitResult>,
+    planes: Collection<Plane>,
+    camera: Pose,
+    risesAboveFurniture: (Position, Float3) -> Boolean,
+): AutoPlacementCandidate? {
     val floors = planes.filter {
         it.type == Plane.Type.HORIZONTAL_UPWARD_FACING && it.trackingState == TrackingState.TRACKING &&
             it.subsumedBy == null
@@ -247,7 +295,7 @@ private fun seamCandidate(hits: List<HitResult>, planes: Collection<Plane>, came
         edgeDirection = Float3(edgeWorld[0], edgeWorld[1], edgeWorld[2]),
         depthNormal = depthNormal,
         floorEndsBeyond = floorEndsBeyond,
-    ) ?: return null
+    )?.takeIf { risesAboveFurniture(it.point, it.normal) } ?: return null
     val point = Pose.makeTranslation(wall.point.x, wall.point.y, wall.point.z)
     val normal = floatArrayOf(wall.normal.x, wall.normal.y, wall.normal.z)
     return AutoPlacementCandidate(floor, orientedPlacementPose(point, normal, camera), WallHitKind.FLOOR_SEAM)
