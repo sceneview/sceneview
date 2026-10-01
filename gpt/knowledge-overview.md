@@ -653,7 +653,7 @@ disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the shared anonymous en
 
 ### Claude Code plugin (optional, Claude Code only)
 
-Everything above works without this. For Claude Code users, install the dedicated plugin to get the MCP **plus** 11 namespaced contributor commands and cross-platform reminder hooks in a single step:
+Everything above works without this. In Claude Code, the plugin installs the MCP server **plus** the three SceneView skills in one step — the same skills the Codex plugin carries:
 
 ```
 /plugin marketplace add sceneview/claude-marketplace
@@ -662,8 +662,9 @@ Everything above works without this. For Claude Code users, install the dedicate
 
 Plugin contents:
 - `sceneview-mcp` server starts automatically
-- `/sceneview:contribute`, `/sceneview:release`, `/sceneview:review`, `/sceneview:test`, `/sceneview:document`, `/sceneview:quality-gate`, `/sceneview:publish-check`, `/sceneview:sync-check`, `/sceneview:version-bump`, `/sceneview:evaluate`, `/sceneview:maintain`
-- Hooks that fire on edits to remind you to keep API parity across Android (Filament), iOS (RealityKit), Web (Filament.js), Flutter, and React Native
+- Skills `sceneview` (Jetpack Compose + Filament + ARCore), `sceneview-ios` (SwiftUI + RealityKit) and `sceneview-web` (Filament.js + WebXR), copied from `agents/` in this repository
+
+Contributors to this repository can add `/plugin install sceneview-contrib@sceneview` for the maintainer commands (`/sceneview-contrib:release`, `:review`, `:version-bump`...) and cross-platform reminder hooks.
 
 Marketplace repo: [github.com/sceneview/claude-marketplace](https://github.com/sceneview/claude-marketplace).
 

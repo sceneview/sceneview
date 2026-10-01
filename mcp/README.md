@@ -56,7 +56,8 @@ Or commit `.mcp.json` at the repository root so the whole team gets it:
 ```
 
 Optionally, the [SceneView Claude Code plugin](https://github.com/sceneview/claude-marketplace)
-bundles this server with 11 namespaced contributor commands and cross-platform reminder hooks:
+bundles this server with the three SceneView skills (Compose, SwiftUI, web), the same ones the
+Codex plugin carries:
 
 ```bash
 /plugin marketplace add sceneview/claude-marketplace
