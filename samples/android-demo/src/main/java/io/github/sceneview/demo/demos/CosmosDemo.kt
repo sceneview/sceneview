@@ -335,6 +335,13 @@ fun CosmosDemo(onBack: () -> Unit) {
         val sheet = sheetMesh
         onDispose { sheet?.destroy(engine) }
     }
+    // The sheet's material samples the horizon map. The binding runs when the composition that
+    // first holds both is applied, before the next frame renders the sheet, and once per pair.
+    DisposableEffect(sheetMesh, fabric) {
+        val sheet = sheetMesh
+        if (sheet != null && fabric != null) fabric.sheet.bindHorizon(sheet.horizon)
+        onDispose { }
+    }
 
     val clock = remember { CosmosClock() }
     // The Star scene's camera: what it looks at, and the eased flight between two looks.
@@ -823,7 +830,6 @@ fun CosmosDemo(onBack: () -> Unit) {
                         }
                         val sheet = sheetMesh
                         if (sheet != null && fabric != null) {
-                            remember(sheet, fabric) { fabric.sheet.bindHorizon(sheet.horizon) }
                             // Spacetime's sheet, opaque and drawn under everything else; hidden
                             // until the entry sequence brings it in.
                             MeshNode(

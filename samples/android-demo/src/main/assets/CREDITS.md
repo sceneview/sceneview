@@ -69,7 +69,7 @@ Assets bundled: **39**.
   Compiled from `samples/android-demo/src/main/materials/cosmos_ribbon.mat` (Cosmos demo, #4152)
 - `materials/cosmos_ring.filamat` — **[cosmos_ring.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (44 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_ring.mat` (Cosmos ringed world, #4192)
-- `materials/cosmos_spacetime.filamat` — **[cosmos_spacetime.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (51 KB)  
+- `materials/cosmos_spacetime.filamat` — **[cosmos_spacetime.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (52 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_spacetime.mat` (Cosmos Spacetime view)
 - `materials/cosmos_sprite.filamat` — **[cosmos_sprite.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (43 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_sprite.mat` (Cosmos demo, #4152)
