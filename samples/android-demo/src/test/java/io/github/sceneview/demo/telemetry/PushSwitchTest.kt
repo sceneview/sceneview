@@ -57,6 +57,25 @@ class PushSwitchTest {
     }
 
     @Test
+    fun `on, off, on, off while the first disable runs disables again once it lands`() {
+        turnOn()
+        turnOff()
+        turnOn() // clears the pending flag and turns FCM back on
+        turnOff() // the first disable is still in flight
+        assertTrue(store.pushDisablePending)
+        assertEquals(1, backend.disables)
+        backend.finishDisable()
+        // The "on" may have put a new token and subscriptions behind the first disable.
+        assertEquals(2, backend.disables)
+        assertTrue("pending until the second disable lands", store.pushDisablePending)
+        backend.finishDisable()
+        assertFalse(store.pushDisablePending)
+        assertEquals(2, backend.enables)
+        push.sync()
+        assertEquals("nothing left to redo", 2, backend.disables)
+    }
+
+    @Test
     fun `on again without the system permission waits for it instead`() {
         turnOn()
         turnOff()

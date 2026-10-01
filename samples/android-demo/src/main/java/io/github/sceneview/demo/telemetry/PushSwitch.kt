@@ -23,6 +23,8 @@ interface PushDisableStore {
  * never said yes. An opt-out stays pending until the topics are left and the token deleted;
  * offline, the next [sync] retries it.
  *
+ * Main thread only (the cold-start path goes through `@Synchronized` [Telemetry.ensureInit]).
+ *
  * @param wanted the user's choice (About -> Privacy & notifications, or the pre-prompt).
  * @param systemAllows whether the system lets the app post (POST_NOTIFICATIONS on API 33+).
  */
@@ -40,6 +42,10 @@ class PushSwitch(
     /** Set while a disable runs, so a resume during it does not start a second one. */
     @Volatile
     private var disableInFlight = false
+
+    /** The user turned push off again while a disable ran: run one more once it lands. */
+    @Volatile
+    private var redoDisable = false
 
     /**
      * Idempotent. Runs at launch, on every resume and when the user turns push on, so a
@@ -60,6 +66,14 @@ class PushSwitch(
     fun turnOff(wasOn: Boolean) {
         if (!wasOn && !activated) return
         activated = false
+        if (disableInFlight) {
+            // Off -> on -> off while the first disable runs: the "on" cleared the pending flag
+            // and turned auto-init back on, and its subscriptions may land on a new token.
+            // The disable in flight cannot undo that; the one after it will.
+            redoDisable = true
+            store.pushDisablePending = true
+            return
+        }
         disable()
     }
 
@@ -72,9 +86,13 @@ class PushSwitch(
             if (wanted()) {
                 // Turned back on while this ran: the topics the re-enable joined went with the
                 // token just deleted, and `activated` would keep sync() from joining them again.
+                redoDisable = false
                 store.pushDisablePending = false
                 activated = false
                 sync()
+            } else if (redoDisable) {
+                redoDisable = false
+                disable()
             } else if (left && deleted) {
                 store.pushDisablePending = false
             }
