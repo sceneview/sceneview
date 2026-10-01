@@ -78,4 +78,30 @@ class ConsentRegionTest {
         assertTrue(ConsentRegion.requiresConsent(signals(locale = "fr")))
         assertTrue(ConsentRegion.requiresConsent(signals(network = " Fr ")))
     }
+
+    @Test
+    fun `Cyprus is in the zone by its Asia time zones`() {
+        assertTrue(ConsentRegion.requiresConsent(signals(locale = "US", zone = "Asia/Nicosia")))
+        assertTrue(ConsentRegion.requiresConsent(signals(locale = "US", zone = "Asia/Famagusta")))
+    }
+
+    @Test
+    fun `the Crown Dependencies are in the zone`() {
+        listOf("IM", "JE", "GG").forEach { country ->
+            assertTrue(country, ConsentRegion.requiresConsent(signals(sim = country, zone = "America/New_York")))
+        }
+    }
+
+    @Test
+    fun `a placeless time zone is no signal and fails closed`() {
+        listOf("UTC", "GMT", "Etc/UTC", "Etc/GMT+3", "Zulu").forEach { zone ->
+            assertTrue(zone, ConsentRegion.requiresConsent(signals(zone = zone)))
+        }
+    }
+
+    @Test
+    fun `a placeless time zone does not outweigh a country outside the zone`() {
+        assertFalse(ConsentRegion.requiresConsent(signals(locale = "US", zone = "Etc/UTC")))
+        assertFalse(ConsentRegion.requiresConsent(signals(network = "us", zone = "GMT")))
+    }
 }

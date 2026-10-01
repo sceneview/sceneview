@@ -60,8 +60,9 @@ object ConsentRegion {
         // United Kingdom ("UK" is not ISO, but some carriers and locales report it) and Switzerland
         "GB", "UK", "CH",
         // Territories with their own code: French overseas regions and Saint-Martin (EU),
-        // Åland (Finland), Svalbard (Norway), Gibraltar (UK)
-        "GF", "GP", "MQ", "RE", "YT", "MF", "AX", "SJ", "GI",
+        // Åland (Finland), Svalbard (Norway), Gibraltar (UK), and the Crown Dependencies that
+        // carriers and locales report on their own: Isle of Man, Jersey, Guernsey
+        "GF", "GP", "MQ", "RE", "YT", "MF", "AX", "SJ", "GI", "IM", "JE", "GG",
         // Greece's legacy code, still reported by some carriers
         "EL",
     )
@@ -71,20 +72,34 @@ object ConsentRegion {
         "Atlantic/Canary", "Atlantic/Madeira", "Atlantic/Azores", "Atlantic/Reykjavik",
         "Africa/Ceuta", "Indian/Reunion", "Indian/Mayotte", "America/Guadeloupe",
         "America/Martinique", "America/Cayenne", "America/Marigot", "Arctic/Longyearbyen",
+        // Cyprus is in the EU but files its zones under Asia/
+        "Asia/Nicosia", "Asia/Famagusta",
         // Legacy aliases the tz database still resolves
         "GB", "GB-Eire", "Eire", "Iceland", "Poland", "Portugal", "WET", "CET", "MET", "EET",
     )
 
     private const val EUROPE_PREFIX = "Europe/"
 
+    /**
+     * Zones that say nothing about where the device is (a server-style default, or a device set
+     * to UTC on purpose). Treated as no signal at all, so a device with only one of these and no
+     * readable country is asked.
+     */
+    internal val PLACELESS_TIME_ZONES: Set<String> = setOf(
+        "UTC", "UCT", "GMT", "GMT0", "GMT+0", "GMT-0", "Greenwich", "Universal", "Zulu",
+    )
+    private const val ETC_PREFIX = "Etc/"
+
     /** True when the consent sheet must be shown before anything is collected. */
     fun requiresConsent(signals: ConsentSignals): Boolean {
         val countries = listOf(signals.networkCountry, signals.simCountry, signals.localeRegion)
             .mapNotNull { it?.trim()?.uppercase()?.takeIf(String::isNotEmpty) }
-        val zone = signals.timeZoneId?.trim()?.takeIf(String::isNotEmpty)
+        val zone = signals.timeZoneId?.trim()?.takeIf { it.isNotEmpty() && !isPlaceless(it) }
         if (countries.isEmpty() && zone == null) return true
         return countries.any { it in COUNTRIES } || (zone != null && isInZone(zone))
     }
 
     private fun isInZone(zone: String): Boolean = zone.startsWith(EUROPE_PREFIX) || zone in TIME_ZONES
+
+    private fun isPlaceless(zone: String): Boolean = zone.startsWith(ETC_PREFIX) || zone in PLACELESS_TIME_ZONES
 }

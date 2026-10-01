@@ -109,7 +109,7 @@ object Telemetry {
         if (prefs != null) return
         val app = context.applicationContext
         val p = TelemetryPrefs(app)
-        TelemetryConsent.migrate(p)
+        migrateConsent(app, p)
         consentZone = forceAsk || ConsentRegion.requiresConsent(ConsentSignals.read(app))
         firebaseAvailable = runCatching { FirebaseOptions.fromResource(app) != null }.getOrDefault(false)
         notificationsEnabled = p.notificationsEnabled
@@ -184,7 +184,7 @@ object Telemetry {
         Log.i(TAG, "Debug consent override: $debug")
         if (prefs == null) {
             val seed = TelemetryPrefs(context.applicationContext)
-            TelemetryConsent.migrate(seed)
+            migrateConsent(context.applicationContext, seed)
             when (debug) {
                 DebugConsent.Granted -> TelemetryConsent.record(seed, granted = true, now = System.currentTimeMillis())
                 DebugConsent.Denied -> TelemetryConsent.record(seed, granted = false, now = System.currentTimeMillis())
@@ -272,6 +272,15 @@ object Telemetry {
             UserProperty.NotifEnabled,
             (notificationsEnabled && systemAllowsNotifications(app)).toString(),
         )
+    }
+
+    /**
+     * The consent migration, plus the Firebase settings an older build persisted: they would
+     * otherwise override the manifest the first time Firebase starts ([FirebaseLeftovers]).
+     */
+    private fun migrateConsent(app: Context, store: ConsentStore) {
+        if (store.consentVersion < TelemetryConsent.VERSION) FirebaseLeftovers.clear(app)
+        TelemetryConsent.migrate(store)
     }
 
     /** Re-derives what the consent allows and mirrors it for Compose. */
