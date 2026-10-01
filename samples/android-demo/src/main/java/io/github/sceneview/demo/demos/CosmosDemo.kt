@@ -401,7 +401,8 @@ fun CosmosDemo(onBack: () -> Unit) {
     }
     val spacetimeLegend = stringResource(R.string.demo_cosmos_spacetime_legend)
     // Opened on Spacetime (`?tab=spacetime`), the cover and "Scene ready" also wait for the
-    // sheet, built off the main thread: lifted earlier they would show an empty frame.
+    // sheet, built off the main thread: lifted earlier they would show an empty frame. The render
+    // loop also counts only the frames that draw the opening picture (see the end of onFrame).
     val openedOnSpacetime = remember { spacetime }
     firstFrame.holdUntil(landed = !openedOnSpacetime || (sheetMesh != null && fabric != null))
     val coverLifted = remember(firstFrame, fabric) {
@@ -529,7 +530,6 @@ fun CosmosDemo(onBack: () -> Unit) {
             },
             ),
             onFrame = { nanos ->
-                firstFrame.onFrame(nanos)
                 val frozen = DemoSettings.qaMode || !motionEnabled
                 val current = scene
                 // The clock waits for the loading cover to lift: the voyage's opening shot would
@@ -751,6 +751,13 @@ fun CosmosDemo(onBack: () -> Unit) {
                     view.bloomOptions = view.bloomOptions.also { it.strength = strength }
                 }
                 if (current == CosmosScene.Galaxy) dust?.setParameter("opacity", reveal * ignition.level)
+                // Opened on Spacetime, a frame counts towards lifting the cover only once it draws
+                // the opening picture: the Star scene's nodes, and with QA or reduced motion the
+                // sheet already in. Counted from the first frame instead, the cover drained frames
+                // queued before the Star scene was built: it lifted on an empty star field, then a
+                // Starlight frame, and the sheet came in a second later on the emulator.
+                val opening = sheetNode[0]?.let { sheet -> sheet.isVisible || !frozen } ?: false
+                if (!openedOnSpacetime || opening) firstFrame.onFrame(nanos)
             },
         ) {
             val sceneMeshes = meshes[scene]
