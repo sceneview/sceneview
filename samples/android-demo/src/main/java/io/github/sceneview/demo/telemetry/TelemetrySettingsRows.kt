@@ -59,8 +59,10 @@ fun UsageStatisticsSettingsRow() {
 /**
  * About → "Notifications". Shows ON only when the setting is on AND Android lets the app post,
  * so the switch never claims notifications that cannot arrive. Turning it on asks for the
- * Android 13+ permission; once Android stops showing its dialog (refused twice), the app's
- * notification settings open instead — the only place left where the user can say yes.
+ * Android 13+ permission and turns the setting on only if it is granted; once Android stops
+ * showing its dialog (refused twice), the app's notification settings open instead — the only
+ * place left where the user can say yes — and the user taps the switch again on the way back.
+ * The FCM resync on return lives in MainActivity.onResume.
  */
 @Composable
 fun NotificationsSettingsRow() {
@@ -68,15 +70,13 @@ fun NotificationsSettingsRow() {
     var systemAllows by remember { mutableStateOf(Telemetry.systemAllowsNotifications(context)) }
     LifecycleResumeEffect(Unit) {
         systemAllows = Telemetry.systemAllowsNotifications(context)
-        // A permission granted in system settings makes an opted-in push possible now.
-        Telemetry.syncPush(context)
-        Telemetry.refreshUserProperties(context)
         onPauseOrDispose { }
     }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         systemAllows = Telemetry.systemAllowsNotifications(context)
-        Telemetry.setNotificationsEnabled(context, true)
-        if (!granted) {
+        if (granted) {
+            Telemetry.setNotificationsEnabled(context, true)
+        } else {
             val activity = generateSequence(context) { (it as? ContextWrapper)?.baseContext }
                 .filterIsInstance<Activity>().firstOrNull()
             val canAskAgain = activity != null &&
@@ -95,12 +95,9 @@ fun NotificationsSettingsRow() {
                 systemAllows -> Telemetry.setNotificationsEnabled(context, true)
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                else -> {
-                    // Below 13 there is no runtime permission: notifications were blocked in
-                    // system settings, and only system settings can unblock them.
-                    Telemetry.setNotificationsEnabled(context, true)
-                    openAppNotificationSettings(context)
-                }
+                // Below 13 there is no runtime permission: notifications were blocked in system
+                // settings, and only system settings can unblock them. The setting stays off.
+                else -> openAppNotificationSettings(context)
             }
         },
     )

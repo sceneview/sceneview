@@ -21,61 +21,67 @@ class PushPromptPolicyTest {
 
     @Test
     fun `never on first launch - waits for the second return to Home`() {
-        assertFalse(policy.shouldShow(eligible = true))
-        policy.onReturnedHome()
-        assertFalse(policy.shouldShow(eligible = true))
-        policy.onReturnedHome()
-        assertTrue(policy.shouldShow(eligible = true))
+        assertFalse(policy.onReturnedHome(eligible = true))
+        assertTrue(policy.onReturnedHome(eligible = true))
     }
 
     @Test
     fun `never when not eligible (API below 33, already granted, no push, setting off)`() {
-        repeat(5) { policy.onReturnedHome() }
-        assertFalse(policy.shouldShow(eligible = false))
+        repeat(5) { assertFalse(policy.onReturnedHome(eligible = false)) }
     }
 
     @Test
     fun `not now hides it for seven days`() {
-        repeat(2) { policy.onReturnedHome() }
+        repeat(2) { policy.onReturnedHome(eligible = true) }
         policy.onShown()
         policy.onLater()
-        repeat(2) { policy.onReturnedHome() }
+        assertFalse(policy.onReturnedHome(eligible = true))
         now += PushPromptPolicy.SNOOZE_MILLIS - 1
-        assertFalse(policy.shouldShow(eligible = true))
+        assertFalse(policy.onReturnedHome(eligible = true))
         now += 1
-        assertTrue(policy.shouldShow(eligible = true))
+        assertTrue(policy.onReturnedHome(eligible = true))
+    }
+
+    @Test
+    fun `not now starts the returns over - an expired snooze alone never shows it`() {
+        // Returns piled up during the snooze (the sheet dismissed without onShown resetting
+        // them, e.g. a swipe) must not carry over: after "Not now" the count restarts at zero.
+        store.homeReturns = 5
+        policy.onLater()
+        assertEquals(0, store.homeReturns)
+        now += PushPromptPolicy.SNOOZE_MILLIS
+        assertFalse(policy.onReturnedHome(eligible = true))
+        assertTrue(policy.onReturnedHome(eligible = true))
     }
 
     @Test
     fun `showing resets the return count`() {
-        repeat(2) { policy.onReturnedHome() }
+        repeat(2) { policy.onReturnedHome(eligible = true) }
         policy.onShown()
         assertEquals(0, store.homeReturns)
         policy.onLater()
         now += PushPromptPolicy.SNOOZE_MILLIS
-        assertFalse(policy.shouldShow(eligible = true))
+        assertFalse(policy.onReturnedHome(eligible = true))
     }
 
     @Test
     fun `shown at most three times, then never again`() {
         repeat(PushPromptPolicy.MAX_SHOWS) {
-            repeat(2) { policy.onReturnedHome() }
-            assertTrue(policy.shouldShow(eligible = true))
+            assertFalse(policy.onReturnedHome(eligible = true))
+            assertTrue(policy.onReturnedHome(eligible = true))
             policy.onShown()
             policy.onLater()
             now += PushPromptPolicy.SNOOZE_MILLIS
         }
-        repeat(10) { policy.onReturnedHome() }
         now += PushPromptPolicy.SNOOZE_MILLIS * 10
-        assertFalse(policy.shouldShow(eligible = true))
+        repeat(10) { assertFalse(policy.onReturnedHome(eligible = true)) }
     }
 
     @Test
     fun `an answer at the system dialog settles it for good`() {
-        repeat(2) { policy.onReturnedHome() }
+        repeat(2) { policy.onReturnedHome(eligible = true) }
         policy.onShown()
         policy.onAnswered()
-        repeat(10) { policy.onReturnedHome() }
-        assertFalse(policy.shouldShow(eligible = true))
+        repeat(10) { assertFalse(policy.onReturnedHome(eligible = true)) }
     }
 }

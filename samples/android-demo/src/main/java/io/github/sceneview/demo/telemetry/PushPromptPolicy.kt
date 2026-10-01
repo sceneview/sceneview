@@ -32,12 +32,17 @@ class PushPromptPolicy(
     private val store: PushPromptStore,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    /** Call when Home comes back after a sample was open. */
-    fun onReturnedHome() {
+    /**
+     * Home came back after a sample: counts the return, then says whether the sheet shows now.
+     * The only way in — the sheet never shows at launch, over the Home hero, even when an
+     * earlier session left enough returns behind and the snooze has run out.
+     */
+    fun onReturnedHome(eligible: Boolean): Boolean {
         store.homeReturns = store.homeReturns + 1
+        return shouldShow(eligible)
     }
 
-    fun shouldShow(eligible: Boolean): Boolean = eligible &&
+    private fun shouldShow(eligible: Boolean): Boolean = eligible &&
         !store.settled &&
         store.timesShown < MAX_SHOWS &&
         now() >= store.snoozedUntil &&
@@ -49,9 +54,13 @@ class PushPromptPolicy(
         store.homeReturns = 0
     }
 
-    /** "Not now", or the sheet dismissed without an answer. */
+    /**
+     * "Not now", or the sheet dismissed without an answer. The returns start over too: once
+     * the snooze runs out, the sheet waits for two fresh returns to Home.
+     */
     fun onLater() {
         store.snoozedUntil = now() + SNOOZE_MILLIS
+        store.homeReturns = 0
     }
 
     /** The system dialog answered, either way. */

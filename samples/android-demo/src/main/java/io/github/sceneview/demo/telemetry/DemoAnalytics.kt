@@ -13,11 +13,17 @@ interface DemoAnalytics {
     fun setUserProperty(property: UserProperty, value: String)
 
     /**
-     * Turns usage statistics and crash reports on or off together (the About → Privacy switch).
-     * Turning them off also resets the analytics app-instance id, so nothing collected before
-     * the opt-out can be joined to anything collected after an opt-in.
+     * Turns usage statistics and crash reports on or off together (About → Privacy &
+     * notifications). Re-applied at every launch.
      */
     fun setCollectionEnabled(enabled: Boolean)
+
+    /**
+     * Clears the analytics data waiting on the device and resets the app-instance id, so
+     * nothing collected before an opt-out can be joined to anything collected after an opt-in.
+     * Called once, when the switch goes from on to off.
+     */
+    fun resetData()
 }
 
 /** Used when this build has no Firebase config, or Firebase failed to start. Does nothing. */
@@ -27,6 +33,8 @@ object NoOpDemoAnalytics : DemoAnalytics {
     override fun setUserProperty(property: UserProperty, value: String) = Unit
 
     override fun setCollectionEnabled(enabled: Boolean) = Unit
+
+    override fun resetData() = Unit
 }
 
 /**
@@ -51,6 +59,11 @@ class GatedDemoAnalytics(
 
     override fun setCollectionEnabled(enabled: Boolean) {
         runCatching { delegate.setCollectionEnabled(enabled) }
+    }
+
+    /** Not gated: it runs right after collection was turned off. */
+    override fun resetData() {
+        runCatching { delegate.resetData() }
     }
 
     private companion object {

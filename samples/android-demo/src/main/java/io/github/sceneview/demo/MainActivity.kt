@@ -165,7 +165,9 @@ class MainActivity : ComponentActivity() {
         // navigation through PlaceholderDemo. See #958.
         pendingDemoId.value = DeepLinkRouter.validate(intent?.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent?.data)
-        handleEntry(intent)
+        // A push is handled once: a recreation (rotation, process death) or a relaunch from
+        // Recents hands back the same intent, which must not log `push_opened` or navigate again.
+        if (savedInstanceState == null && !launchedFromHistory(intent)) handleEntry(intent)
         // "Open with SceneView": a supported model file handed over by another app (#3482).
         stageOpenedModel(intent)
         // QA mode ingress: `--ez qa_mode true` freezes auto-rotation / orbit / animations
@@ -348,6 +350,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun launchedFromHistory(intent: Intent?): Boolean =
+        intent != null && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+
     /**
      * Where this launch came from, for `sample_open.source`, and a tapped push:
      * `push_opened` is logged, the pushed sample opens, and a sample id this build does not
@@ -417,6 +422,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // A notification permission granted in system settings makes an opted-in push
+        // possible now; a disable that failed offline is retried. Both idempotent.
+        Telemetry.syncPush(this)
+        Telemetry.refreshUserProperties(this)
         // ONE call: it picks up a download a previous foreground left running or
         // finished, and asks Play for a newer release. Called from onResume (not
         // onCreate) so a backgrounded-then-resumed app re-checks. It never pops the
@@ -497,10 +506,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     }
 
     // A tapped push: the sample opens over Home (whatever was on screen), so back shows Home.
+    // When Home is not on the stack (the app was cold-started on a sample by a deep link),
+    // it is put back first: popUpTo("list") alone would be a no-op and back would leave the app.
     val pushDemo by (activity?.pendingPushDemoFlow?.collectAsState()
         ?: remember { MutableStateFlow<String?>(null) }.collectAsState())
     LaunchedEffect(pushDemo) {
         val id = pushDemo ?: return@LaunchedEffect
+        val hasHome = runCatching { navController.getBackStackEntry("list") }.isSuccess
+        if (!hasHome) {
+            navController.navigate("list") { popUpTo(navController.graph.id) { inclusive = true } }
+        }
         navController.navigate("demo/$id") { popUpTo("list") }
         activity?.consumePendingPushDemo()
     }

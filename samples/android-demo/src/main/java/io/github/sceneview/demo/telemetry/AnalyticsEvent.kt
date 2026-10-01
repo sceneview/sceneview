@@ -5,8 +5,9 @@ package io.github.sceneview.demo.telemetry
  * parameters. **Shared word for word with the iOS demo**: rename nothing here without renaming
  * it there, or the two platforms stop being comparable in one dashboard.
  *
- * Names are snake_case and at most [MAX_NAME] characters (Firebase's limit); string values are
- * cut to [MAX_VALUE] characters by [params]. No event carries a model file, a pose, a camera
+ * Event and parameter names are snake_case and at most [MAX_NAME] characters, user-property
+ * names at most [MAX_USER_PROPERTY_NAME] (GA4's limits); string values are cut to [MAX_VALUE]
+ * characters by [params]. No event carries a model file, a pose, a camera
  * frame, free text typed by the user or anything else that could identify a person — the funnel
  * needs counts, not content.
  *
@@ -42,30 +43,9 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("sample_id" to sampleId, "control" to control)
     }
 
-    data class ModelLoadFailed(val sampleId: String, val reason: String) : AnalyticsEvent("model_load_failed") {
-        override fun rawParams() = mapOf("sample_id" to sampleId, "reason" to reason)
-    }
-
-    // ── AR funnel — the five steps of docs/docs/recipes/measure-ar-funnel.md ──────────
-
-    data class ArSessionCreated(val sampleId: String) : AnalyticsEvent("ar_session_created") {
-        override fun rawParams() = mapOf("sample_id" to sampleId)
-    }
-
-    data class ArTrackingReady(val sampleId: String) : AnalyticsEvent("ar_tracking_ready") {
-        override fun rawParams() = mapOf("sample_id" to sampleId)
-    }
-
-    data class ArFirstPlacement(val sampleId: String) : AnalyticsEvent("ar_first_placement") {
-        override fun rawParams() = mapOf("sample_id" to sampleId)
-    }
-
-    data class ArTrackingLost(val sampleId: String, val reason: String) : AnalyticsEvent("ar_tracking_lost") {
-        override fun rawParams() = mapOf("sample_id" to sampleId, "reason" to reason)
-    }
-
-    data class ArSessionFailed(val sampleId: String, val reason: String) : AnalyticsEvent("ar_session_failed") {
-        override fun rawParams() = mapOf("sample_id" to sampleId, "reason" to reason)
+    data class ModelLoadFailed(val sampleId: String, val reason: ModelLoadFailure) :
+        AnalyticsEvent("model_load_failed") {
+        override fun rawParams() = mapOf("sample_id" to sampleId, "reason" to reason.value)
     }
 
     // ── Leaving the app, push, settings ──────────────────────────────────────────────
@@ -94,8 +74,11 @@ sealed class AnalyticsEvent(val name: String) {
     }
 
     companion object {
-        /** Firebase's cap on event, parameter and user-property names. */
+        /** GA4's cap on event and parameter names. */
         const val MAX_NAME = 40
+
+        /** GA4's cap on user-property names. */
+        const val MAX_USER_PROPERTY_NAME = 24
 
         /** Firebase's cap on a string parameter value. */
         const val MAX_VALUE = 100
@@ -134,6 +117,20 @@ enum class LinkTarget(val value: String) {
     }
 }
 
+/** Why a model failed to load, for `model_load_failed.reason`. Same codes on iOS. */
+enum class ModelLoadFailure(val value: String) {
+    /** The file was there but could not be parsed into a model. */
+    DecodeFailed("decode_failed"),
+
+    /** The model loaded but has no geometry to frame (empty bounding box). */
+    NoBounds("no_bounds"),
+
+    /** The asset or file the sample asked for does not exist. */
+    AssetMissing("asset_missing"),
+
+    Unknown("unknown"),
+}
+
 /** The answer to the notification pre-prompt, for `push_prompt_result.result`. */
 enum class PromptResult(val value: String) {
     Granted("granted"),
@@ -143,9 +140,6 @@ enum class PromptResult(val value: String) {
 
 /** User properties, set once and updated when they change. Values are the strings listed. */
 enum class UserProperty(val key: String) {
-    /** `true` | `false` | `unknown` — whether ARCore can run on this device. */
-    ArSupported("ar_supported"),
-
     /** `light` | `dark` — the theme the app is showing. */
     AppTheme("app_theme"),
 

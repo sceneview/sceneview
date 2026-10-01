@@ -6,8 +6,9 @@ import androidx.core.content.edit
 
 /**
  * The two About -> Privacy & notifications switches (usage statistics, notifications) and the pre-prompt's
- * memory. Usage statistics default to on: they are anonymous and ad-free (consent mode denies
- * every ad signal) and the switch turns them off. Notifications default to **off**: push is
+ * memory. Usage statistics default to on: they are pseudonymous (keyed by a resettable app-instance
+ * id, never linked to an identity) and ad-free (consent mode denies every ad signal), and the
+ * switch turns them off. Notifications default to **off**: push is
  * opt-in, turned on by the pre-prompt (the system permission on Android 13+, "Notify me"
  * below) or by the switch. No FCM token exists before that.
  */
@@ -23,6 +24,11 @@ class TelemetryPrefs(context: Context) : PushPromptStore {
     var notificationsEnabled: Boolean
         get() = prefs.getBoolean(KEY_NOTIFICATIONS, false)
         set(value) = prefs.edit { putBoolean(KEY_NOTIFICATIONS, value) }
+
+    /** A push opt-out whose unsubscribe or token deletion has not succeeded yet (offline). */
+    var pushDisablePending: Boolean
+        get() = prefs.getBoolean(KEY_PUSH_DISABLE_PENDING, false)
+        set(value) = prefs.edit { putBoolean(KEY_PUSH_DISABLE_PENDING, value) }
 
     override var homeReturns: Int
         get() = prefs.getInt(KEY_HOME_RETURNS, 0)
@@ -44,6 +50,7 @@ class TelemetryPrefs(context: Context) : PushPromptStore {
         const val FILE = "sceneview_demo_telemetry"
         const val KEY_ANALYTICS = "analytics_enabled"
         const val KEY_NOTIFICATIONS = "notifications_enabled"
+        const val KEY_PUSH_DISABLE_PENDING = "push_disable_pending"
         const val KEY_HOME_RETURNS = "push_prompt_home_returns"
         const val KEY_TIMES_SHOWN = "push_prompt_times_shown"
         const val KEY_SNOOZED_UNTIL = "push_prompt_snoozed_until"

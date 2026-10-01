@@ -1,8 +1,5 @@
 package io.github.sceneview.demo.common.placement
 
-import io.github.sceneview.demo.telemetry.AR_VIEW_SAMPLE_ID
-import io.github.sceneview.demo.telemetry.ArFunnelLog
-import io.github.sceneview.demo.telemetry.LocalSampleId
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -172,11 +169,6 @@ fun TapToPlaceArSession(
     val cameraStream = rememberARCameraStream(materialLoader)
     val qaBackdrop = rememberQaCameraBackdropActive(state.cameraReady)
 
-    // AR funnel (docs/docs/recipes/measure-ar-funnel.md), demo-app analytics only. The AR View
-    // tab hosts this session outside any sample, hence its own id.
-    val funnel = remember { ArFunnelLog() }
-    funnel.sampleId = LocalSampleId.current ?: AR_VIEW_SAMPLE_ID
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -198,8 +190,6 @@ fun TapToPlaceArSession(
             planeFindingMode = Config.PlaneFindingMode.HORIZONTAL,
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
             sessionConfiguration = sessionConfiguration,
-            onSessionCreated = { funnel.sessionCreated() },
-            onSessionFailure = { failure -> funnel.sessionFailed(failure) },
             onSessionUpdated = { session, frame: Frame ->
                 state.cameraReady = true
                 // The #1881 QA shim forces a tracking failure on the emulator; the
@@ -254,7 +244,6 @@ fun TapToPlaceArSession(
                             // Open the one-shot "drag / pinch / twist" window. The
                             // placement haptic comes from ARHapticFeedback.
                             state.lastPlacedAtMillis = now
-                            funnel.placed()
                             onModelPlaced?.invoke(spec)
                         }
                     }
@@ -270,7 +259,6 @@ fun TapToPlaceArSession(
             onARCoreAvailability = { state.arCoreAvailability = it },
             onTrackingFailureChanged = { reason ->
                 state.trackingFailureReason = reason
-                funnel.trackingFailureChanged(reason)
             },
             onGestureListener = rememberOnGestureListener(
                 // A tap on the object selects it (§2.4) — felt, not drawn: the demo has no

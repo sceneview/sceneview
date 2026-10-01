@@ -60,7 +60,8 @@ fun PushPromptHost(returnedHomeFromSample: Int, onHome: Boolean) {
     }
 
     LaunchedEffect(returnedHomeFromSample) {
-        if (returnedHomeFromSample > 0) policy.onReturnedHome()
+        // 0 is the launch: never a reason to show the sheet (it would open over the Home hero).
+        if (returnedHomeFromSample <= 0) return@LaunchedEffect
         // Push is opt-in: offered while it is off. Below Android 13 there is no permission to
         // ask, so the sheet's "Notify me" is the opt-in, pointless if the system blocks posting.
         val eligible = Telemetry.firebaseAvailable &&
@@ -69,7 +70,7 @@ fun PushPromptHost(returnedHomeFromSample: Int, onHome: Boolean) {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ||
                     Telemetry.systemAllowsNotifications(context)
                 )
-        if (!showing && policy.shouldShow(eligible)) {
+        if (!showing && policy.onReturnedHome(eligible)) {
             policy.onShown()
             Telemetry.analytics.log(AnalyticsEvent.PushPromptShown)
             showing = true

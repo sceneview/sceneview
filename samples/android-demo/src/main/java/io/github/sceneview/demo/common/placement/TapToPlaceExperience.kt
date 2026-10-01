@@ -1,11 +1,5 @@
 package io.github.sceneview.demo.common.placement
 
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import io.github.sceneview.demo.telemetry.AR_VIEW_SAMPLE_ID
-import io.github.sceneview.demo.telemetry.LocalSampleId
-import io.github.sceneview.demo.telemetry.logModelLoadFailed
-import io.github.sceneview.demo.telemetry.logSampleInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -68,14 +62,6 @@ fun TapToPlaceExperience(
 ) {
     val armed = models.armed(picker)
     val haptic = rememberHapticFeedback()
-    val telemetrySampleId = LocalSampleId.current ?: AR_VIEW_SAMPLE_ID
-    // `sample_interaction` / `model`: a model picked after the first one armed.
-    val firstArmedId = remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(armed?.id) {
-        val id = armed?.id ?: return@LaunchedEffect
-        if (firstArmedId.value == null) firstArmedId.value = id
-        else logSampleInteraction(telemetrySampleId, "model")
-    }
 
     // One ticket per (selection, resolution). Keyed on what the row resolves to, so a
     // streamed row is re-offered — with a fresh ticket — the moment its file lands, and a
@@ -103,7 +89,6 @@ fun TapToPlaceExperience(
         state.modelLoading = false
         if (instance == null) {
             state.modelError = true
-            logModelLoadFailed(telemetrySampleId, "decode_failed")
             return@LaunchedEffect
         }
         state.modelInstance = instance

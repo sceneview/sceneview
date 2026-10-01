@@ -55,9 +55,12 @@ internal class FirebaseDemoAnalytics(context: Context) : DemoAnalytics {
         if (BuildConfig.DEBUG) Log.d(TAG, "collection enabled=$enabled")
         analytics.setAnalyticsCollectionEnabled(enabled)
         runCatching { FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(enabled) }
-        // Opting out also forgets the app-instance id: what was collected before cannot be
-        // joined to anything collected after a later opt-in (the privacy policy says so).
-        if (!enabled) analytics.resetAnalyticsData()
+    }
+
+    /** The privacy policy's promise for the opt-out: pending data cleared, app-instance id reset. */
+    override fun resetData() {
+        if (BuildConfig.DEBUG) Log.d(TAG, "analytics data reset")
+        analytics.resetAnalyticsData()
     }
 
     private companion object {

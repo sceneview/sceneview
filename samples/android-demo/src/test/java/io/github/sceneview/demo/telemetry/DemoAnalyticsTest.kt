@@ -20,6 +20,10 @@ class DemoAnalyticsTest {
         override fun setCollectionEnabled(enabled: Boolean) {
             collection += enabled
         }
+        var resets = 0
+        override fun resetData() {
+            resets++
+        }
     }
 
     private val recorder = Recorder()
@@ -40,7 +44,9 @@ class DemoAnalyticsTest {
     fun `the opt-out itself always reaches the sink`() {
         enabled = false
         analytics.setCollectionEnabled(false)
+        analytics.resetData()
         assertEquals(listOf(false), recorder.collection)
+        assertEquals(1, recorder.resets)
     }
 
     @Test
@@ -50,19 +56,37 @@ class DemoAnalyticsTest {
                 override fun log(event: AnalyticsEvent) = error("boom")
                 override fun setUserProperty(property: UserProperty, value: String) = error("boom")
                 override fun setCollectionEnabled(enabled: Boolean) = error("boom")
+                override fun resetData() = error("boom")
             },
         ) { true }
         throwing.log(AnalyticsEvent.PushPromptShown)
         throwing.setUserProperty(UserProperty.NotifEnabled, "true")
         throwing.setCollectionEnabled(false)
+        throwing.resetData()
     }
 
     @Test
     fun `string values are capped at 100 characters, user properties at 36`() {
-        analytics.log(AnalyticsEvent.ModelLoadFailed("model-viewer", "x".repeat(300)))
-        assertEquals(100, (recorder.events.single().params()["reason"] as String).length)
-        analytics.setUserProperty(UserProperty.ArSupported, "y".repeat(80))
-        assertEquals(36, recorder.properties.getValue(UserProperty.ArSupported).length)
+        analytics.log(AnalyticsEvent.SampleInteraction("model-viewer", "x".repeat(300)))
+        assertEquals(100, (recorder.events.single().params()["control"] as String).length)
+        analytics.setUserProperty(UserProperty.AppTheme, "y".repeat(80))
+        assertEquals(36, recorder.properties.getValue(UserProperty.AppTheme).length)
+    }
+
+    @Test
+    fun `user property names fit GA4's 24 characters`() {
+        UserProperty.entries.forEach {
+            assertTrue(it.key, it.key.length <= AnalyticsEvent.MAX_USER_PROPERTY_NAME)
+            assertTrue(it.key, it.key.matches(Regex("[a-z][a-z0-9_]*")))
+        }
+    }
+
+    @Test
+    fun `model_load_failed reasons are the codes shared with iOS`() {
+        assertEquals(
+            listOf("decode_failed", "no_bounds", "asset_missing", "unknown"),
+            ModelLoadFailure.entries.map { it.value },
+        )
     }
 
     @Test
@@ -76,8 +100,8 @@ class DemoAnalyticsTest {
                 ("sample_close" to mapOf("sample_id" to "cosmos", "duration_s" to 42L)),
             AnalyticsEvent.SampleInteraction("cosmos", "burst") to
                 ("sample_interaction" to mapOf("sample_id" to "cosmos", "control" to "burst")),
-            AnalyticsEvent.ArTrackingLost("ar-placement", "insufficient_light") to
-                ("ar_tracking_lost" to mapOf("sample_id" to "ar-placement", "reason" to "insufficient_light")),
+            AnalyticsEvent.ModelLoadFailed("model-viewer", ModelLoadFailure.NoBounds) to
+                ("model_load_failed" to mapOf("sample_id" to "model-viewer", "reason" to "no_bounds")),
             AnalyticsEvent.OutboundLink(LinkTarget.GitHub) to ("outbound_link" to mapOf("target" to "github")),
             AnalyticsEvent.PushPromptShown to ("push_prompt_shown" to emptyMap()),
             AnalyticsEvent.PushPromptResult(PromptResult.NotNow) to

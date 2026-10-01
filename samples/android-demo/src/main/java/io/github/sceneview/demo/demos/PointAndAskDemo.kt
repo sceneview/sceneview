@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import io.github.sceneview.demo.telemetry.logOutboundLink
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -1454,7 +1453,6 @@ private fun Context.openAicoreStoreListing() {
         Intent(Intent.ACTION_VIEW, "market://details?id=$AICORE_PACKAGE".toUri()),
         Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$AICORE_PACKAGE".toUri()),
     )
-    logOutboundLink("market://details?id=$AICORE_PACKAGE", sampleId = "point-and-ask")
     for (intent in targets) {
         if (runCatching { startActivity(intent) }.isSuccess) return
     }

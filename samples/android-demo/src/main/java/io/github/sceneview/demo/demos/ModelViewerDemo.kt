@@ -91,6 +91,7 @@ import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.telemetry.LocalSampleId
+import io.github.sceneview.demo.telemetry.ModelLoadFailure
 import io.github.sceneview.demo.telemetry.logModelLoadFailed
 import io.github.sceneview.demo.telemetry.logSampleInteraction
 import io.github.sceneview.demo.R
@@ -1682,7 +1683,8 @@ private fun rememberStreamedModelInstance(
                 value = StreamedModel(location, loaded)
                 loaded = null
             } else {
-                logModelLoadFailed(telemetrySampleId, if (loaded == null) "decode_failed" else "no_bounds")
+                val reason = if (loaded == null) ModelLoadFailure.DecodeFailed else ModelLoadFailure.NoBounds
+                logModelLoadFailed(telemetrySampleId, reason)
                 rejected.value(location)
             }
         } finally {
@@ -1747,7 +1749,8 @@ private fun rememberBundledModel(
                 withFrameNanos { }
             }
             if (created == null) {
-                logModelLoadFailed(telemetrySampleId, if (buffer == null) "asset_missing" else "decode_failed")
+                val reason = if (buffer == null) ModelLoadFailure.AssetMissing else ModelLoadFailure.DecodeFailed
+                logModelLoadFailed(telemetrySampleId, reason)
             }
             value = BundledModel(path, created)
             created = null
