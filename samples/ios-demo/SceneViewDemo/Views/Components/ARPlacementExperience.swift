@@ -83,8 +83,6 @@ struct ARPlacementExperience: View {
     @State private var showShare = false
     @State private var viewBox = PlacementARViewBox()
     @State private var hintShown = false
-    @State private var placementLogged = false
-    @Environment(\.analyticsSampleId) private var analyticsSampleId
     @State private var showHint = false
     @State private var showingActualSize = false
 
@@ -168,10 +166,6 @@ struct ARPlacementExperience: View {
         // One `onChange` on purpose: automatic placement raises `hasPlacement` and `selection`
         // in the same update, and only the placement opens the gesture hint.
         .onChange(of: PlacementFeedback(placed: controller.hasPlacement, selected: controller.selection)) { old, new in
-            if PlacementFeedback.haptic(from: old, to: new) == .placed, !placementLogged {
-                placementLogged = true
-                DemoAnalytics.shared.log(.arFirstPlacement(sampleId: analyticsSampleId ?? "ar_view"))
-            }
             if PlacementFeedback.haptic(from: old, to: new) == .placed, !hintShown {
                 hintShown = true
                 showHint = true
@@ -262,8 +256,6 @@ struct ARPlacementExperience: View {
             guard !Task.isCancelled, controller.acceptsAsset(ticket) else { return }
             loading = false
             loadError = true
-            DemoAnalytics.shared.log(.modelLoadFailed(sampleId: analyticsSampleId ?? "ar_view",
-                                                      reason: DemoAnalytics.reason(for: error)))
             SceneViewHaptic.shared.error()
         }
     }

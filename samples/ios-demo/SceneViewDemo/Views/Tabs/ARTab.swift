@@ -44,7 +44,6 @@ struct ARTab: View {
                     requirement: .forScene(id: demo.id),
                     onBack: { presentedDemo = nil }
                 ) { demo.destination }
-                .environment(\.analyticsSampleId, demo.id)
                 .navigationTitle(demo.title)
                 .navigationBarTitleInline()
                 .toolbar {
@@ -53,12 +52,6 @@ struct ARTab: View {
                     }
                 }
             }
-            // Opened from the AR tab, not through `DemoCover`: same sample session.
-            .onAppear {
-                let section = GeneratedScenes.all().first { $0.sceneId == demo.id }?.section
-                DemoAnalytics.shared.sampleOpened(demo.id, category: DemoAnalytics.category(for: section), source: .other)
-            }
-            .onDisappear { DemoAnalytics.shared.sampleClosed(demo.id) }
         }
     }
 }

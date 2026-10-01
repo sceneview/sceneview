@@ -325,7 +325,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             // sheet for Send feedback and QA mode — one settings surface.
             DockButton(
                 item: DockItem(icon: "slider.horizontal.3", label: "Demo settings", caption: "Settings",
-                               selected: controlsPresented) {
+                               control: "settings", selected: controlsPresented) {
                     controlsPresented = true
                 },
                 showsCaption: captions
@@ -335,8 +335,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             if let accent {
                 AccentButton(item: accent) {
                     accentTaps += 1
-                    if let analyticsSampleId {
-                        DemoAnalytics.shared.interaction(analyticsSampleId, accent.analyticsControl)
+                    if let analyticsSampleId, let control = accent.control {
+                        DemoAnalytics.shared.interaction(analyticsSampleId, control)
                     }
                     accent.action()
                 }
@@ -364,27 +364,21 @@ public struct DockItem: Identifiable {
     public let caption: String
     public var enabled: Bool
     public var selected: Bool
+    /// `sample_interaction.control`: a stable id shared with the Android demo
+    /// (`galaxy`, `view_in_ar`, `settings`…), never derived from the label, which is
+    /// copy and may change. `nil`: the control is not logged.
+    public let control: String?
     public let action: () -> Void
 
-    public init(icon: String, label: String, caption: String? = nil, enabled: Bool = true,
-                selected: Bool = false, action: @escaping () -> Void) {
+    public init(icon: String, label: String, caption: String? = nil, control: String? = nil,
+                enabled: Bool = true, selected: Bool = false, action: @escaping () -> Void) {
         self.icon = icon
         self.label = label
         self.caption = caption ?? label
+        self.control = control
         self.enabled = enabled
         self.selected = selected
         self.action = action
-    }
-
-    /// `sample_interaction.control`: the label as a stable snake_case key
-    /// ("Galaxy" → `galaxy`, "View in AR" → `view_in_ar`); the settings FAB is `settings`.
-    var analyticsControl: String {
-        if label == "Demo settings" { return "settings" }
-        return label.lowercased()
-            .replacingOccurrences(of: "&", with: "and")
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .joined(separator: "_")
     }
 }
 
@@ -447,8 +441,8 @@ private struct DockButton: View {
             taps += 1
             // `sample_interaction`: every dock control of every sample, logged here
             // once (Cosmos: galaxy | star | burst | flow; the settings FAB: settings).
-            if let analyticsSampleId {
-                DemoAnalytics.shared.interaction(analyticsSampleId, item.analyticsControl)
+            if let analyticsSampleId, let control = item.control {
+                DemoAnalytics.shared.interaction(analyticsSampleId, control)
             }
             item.action()
         } label: {

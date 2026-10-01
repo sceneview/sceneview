@@ -26,6 +26,9 @@ appId: io.github.sceneview.demo
     appId: io.github.sceneview.demo
     stopApp: true
     clearState: false
+    # No push pre-prompt sheet over the screens this flow taps (PushCenter).
+    arguments:
+      push_preprompt: "off"
 
 - openLink: "sceneview://demo/${DEMO_ID}"
 

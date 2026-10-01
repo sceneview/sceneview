@@ -135,7 +135,7 @@ struct SceneGalleryDemo: View {
         } catch {
             loadError = error.localizedDescription
             DemoAnalytics.shared.log(.modelLoadFailed(sampleId: analyticsSampleId ?? "scene-gallery",
-                                                      reason: DemoAnalytics.reason(for: error)))
+                                                      reason: DemoAnalytics.modelLoadReason(for: error)))
         }
     }
 }

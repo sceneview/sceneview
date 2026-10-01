@@ -1,4 +1,5 @@
 import Foundation
+import SceneViewSwift
 
 // App-only analytics facade for the SceneView demo.
 //
@@ -6,7 +7,7 @@ import Foundation
 // target and nowhere else. Call sites talk to `DemoAnalytics.shared` only, never to
 // Firebase: the backend is swapped at launch (`FirebaseTelemetry.start()`) and stays a
 // no-op when Firebase is not configured (no `GoogleService-Info.plist` in the bundle),
-// when the user turned "Share anonymous usage statistics" off, and in unit tests.
+// when the user turned "Share usage statistics" off, and in unit tests.
 //
 // The event taxonomy is shared byte-for-byte with the Android demo. Do not rename an
 // event or a parameter here without renaming it there: the two apps report into the
@@ -167,7 +168,7 @@ struct NoopAnalyticsBackend: AnalyticsBackend {
 final class DemoAnalytics: @unchecked Sendable {
     static let shared = DemoAnalytics()
 
-    /// `UserDefaults` key of the "Share anonymous usage statistics" switch. Default ON.
+    /// `UserDefaults` key of the "Share usage statistics" switch. Default ON.
     static let usageStatsKey = "telemetry.usageStatsEnabled"
 
     private let lock = NSLock()
@@ -185,7 +186,7 @@ final class DemoAnalytics: @unchecked Sendable {
         self.now = now
     }
 
-    /// Whether the user allows anonymous usage statistics (Analytics + Crashlytics).
+    /// Whether the user allows usage statistics (Analytics + Crashlytics).
     var usageStatsEnabled: Bool {
         defaults.object(forKey: Self.usageStatsKey) as? Bool ?? true
     }
@@ -196,7 +197,7 @@ final class DemoAnalytics: @unchecked Sendable {
         backend.setCollectionEnabled(usageStatsEnabled)
     }
 
-    /// Settings switch ("Share anonymous usage statistics"). Turning it off stops
+    /// Settings switch ("Share usage statistics"). Turning it off stops
     /// Analytics and Crashlytics collection and resets the analytics ID. As on Android,
     /// the opt-out is logged while collection is still on (`settings_changed
     /// analytics=false`), so it is the last event this install reports.
@@ -249,7 +250,7 @@ final class DemoAnalytics: @unchecked Sendable {
 
     /// The Android category key of a sample (`sample_open.category`).
     static func category(for section: DemoSection?) -> String {
-        guard let section else { return "other" }
+        guard let section else { return "unknown" }
         switch section {
         case .view3d: return "View 3D"
         case .create: return "Create & Record"
@@ -259,8 +260,44 @@ final class DemoAnalytics: @unchecked Sendable {
         }
     }
 
-    /// `model_load_failed.reason` from an error: `domain:code`, never a message that
-    /// could carry a file path or a URL.
+    /// `model_load_failed.reason`, the Android keys: `asset_missing` (the file could not
+    /// be fetched or opened), `decode_failed` (it was read but could not be turned into a
+    /// model), `no_bounds` (it loaded with nothing to show), else `unknown`.
+    static func modelLoadReason(for error: Error) -> String {
+        switch error {
+        case let error as ModelLoadingError:
+            switch error {
+            case .unreadableFile: return "asset_missing"
+            case .emptyMesh: return "no_bounds"
+            case .unsupportedFormat, .malformed, .unreadableGeometry: return "decode_failed"
+            }
+        case is SketchfabAssetResolver.Error, is SketchfabError, is GallerySourceError, is URLError:
+            return "asset_missing"
+        default:
+            break
+        }
+        let ns = error as NSError
+        if ns.domain == NSCocoaErrorDomain {
+            switch ns.code {
+            case NSFileNoSuchFileError, NSFileReadNoSuchFileError, NSFileReadNoPermissionError,
+                 NSFileReadUnknownError:
+                return "asset_missing"
+            case NSFileReadCorruptFileError, NSPropertyListReadCorruptError:
+                return "decode_failed"
+            default:
+                break
+            }
+        }
+        if ns.domain == NSURLErrorDomain { return "asset_missing" }
+        // RealityKit / ModelIO refusing a file that was read.
+        if ["RealityKit", "RealityFoundation", "ModelIO"].contains(where: ns.domain.contains) {
+            return "decode_failed"
+        }
+        return "unknown"
+    }
+
+    /// An error as `domain:code`, never a message that could carry a file path or a URL
+    /// (`ar_session_failed.reason`, logs).
     static func reason(for error: Error) -> String {
         let ns = error as NSError
         return "\(ns.domain):\(ns.code)"

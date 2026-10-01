@@ -447,7 +447,7 @@ struct DemoCover: View {
                   category: DemoAnalytics.category(for: scene.section), source: source, onClose: onClose)
     }
 
-    init(title: String, destination: AnyView, sampleId: String? = nil, category: String = "other",
+    init(title: String, destination: AnyView, sampleId: String? = nil, category: String = "unknown",
          source: SampleOpenSource = .other, onClose: @escaping () -> Void) {
         self.title = title
         self.destination = destination
@@ -490,7 +490,11 @@ struct DemoCover: View {
         .onDisappear {
             if let sampleId { DemoAnalytics.shared.sampleClosed(sampleId) }
             #if os(iOS)
-            PushCenter.shared.homeReturnedAfterSample()
+            // Only a sample opened from Home (a card or its search) brings Home back;
+            // Explore, a deep link or a push lands elsewhere and does not count.
+            if source == .home || source == .search {
+                PushCenter.shared.homeReturnedAfterSample()
+            }
             #endif
         }
     }

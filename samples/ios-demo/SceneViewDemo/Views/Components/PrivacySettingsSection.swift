@@ -24,8 +24,8 @@ struct PrivacySettingsSection: View {
             VStack(spacing: 0) {
                 SettingsToggleRow(
                     icon: "chart.bar.fill",
-                    title: "Share anonymous usage statistics",
-                    subtitle: "Which samples are opened and crash reports. No ads, no advertising ID. Turning it off also resets the ID.",
+                    title: "Share usage statistics",
+                    subtitle: "Which samples are opened, and crash reports. No ads, no advertising ID. Turning it off also resets the ID.",
                     isOn: Binding(
                         get: { usageStats },
                         set: { value in

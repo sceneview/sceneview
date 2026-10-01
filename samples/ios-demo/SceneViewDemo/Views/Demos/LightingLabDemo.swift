@@ -343,7 +343,7 @@ struct LightingLabDemo: View {
         } catch {
             heroLoadFailed = true
             DemoAnalytics.shared.log(.modelLoadFailed(sampleId: analyticsSampleId ?? "lighting-lab",
-                                                      reason: DemoAnalytics.reason(for: error)))
+                                                      reason: DemoAnalytics.modelLoadReason(for: error)))
         }
     }
 

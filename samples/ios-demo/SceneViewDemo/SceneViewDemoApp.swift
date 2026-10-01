@@ -277,7 +277,7 @@ struct ContentView: View {
         .trackOutboundLinks()
         .onChange(of: selectedTab, initial: true) { _, tab in
             let name = tab == 0 ? "home" : tab == 1 ? "ar_view" : "about"
-            DemoAnalytics.shared.log(.screenView(name: name, screenClass: "ContentView"))
+            DemoAnalytics.shared.log(.screenView(name: name, screenClass: "Tab"))
         }
         .onChange(of: colorScheme, initial: true) { _, scheme in
             DemoAnalytics.shared.setUserProperty(scheme == .dark ? "dark" : "light", for: .appTheme)

@@ -254,6 +254,7 @@
 		FB1000000000000000000008 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000008 /* PrivacyInfo.xcprivacy */; };
 		FB100000000000000000000A /* DemoAnalyticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000A /* DemoAnalyticsTests.swift */; };
 		FB100000000000000000000B /* PushPrePromptPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000B /* PushPrePromptPolicyTests.swift */; };
+		FB100000000000000000000C /* PushCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000C /* PushCenterTests.swift */; };
 		FB3000000000000000000002 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = FB2000000000000000000002 /* FirebaseAnalyticsCore */; };
 		FB3000000000000000000003 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = FB2000000000000000000003 /* FirebaseCrashlytics */; };
 		FB3000000000000000000004 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = FB2000000000000000000004 /* FirebaseMessaging */; };
@@ -532,6 +533,7 @@
 		FB0000000000000000000009 /* SceneViewDemo-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = SceneViewDemo-iOS.entitlements; path = SceneViewDemo/SceneViewDemo-iOS.entitlements; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000A /* DemoAnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoAnalyticsTests.swift; path = SceneViewDemoTests/DemoAnalyticsTests.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000B /* PushPrePromptPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushPrePromptPolicyTests.swift; path = SceneViewDemoTests/PushPrePromptPolicyTests.swift; sourceTree = SOURCE_ROOT; };
+		FB000000000000000000000C /* PushCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushCenterTests.swift; path = SceneViewDemoTests/PushCenterTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -658,6 +660,7 @@
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				FB000000000000000000000A /* DemoAnalyticsTests.swift */,
 				FB000000000000000000000B /* PushPrePromptPolicyTests.swift */,
+				FB000000000000000000000C /* PushCenterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
 				C0600000000000000000C067 /* CosmosSystemTests.swift */,
@@ -1398,6 +1401,7 @@
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				FB100000000000000000000A /* DemoAnalyticsTests.swift in Sources */,
 				FB100000000000000000000B /* PushPrePromptPolicyTests.swift in Sources */,
+				FB100000000000000000000C /* PushCenterTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
 				A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */,
 				A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */,

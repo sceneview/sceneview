@@ -50,7 +50,15 @@ final class PushCenter: NSObject, ObservableObject {
 
     private let defaults: UserDefaults
     private let policy: PushPrePromptPolicy
+    private let messaging: any PushMessaging
+    private let system: PushSystem
     private var promptAnswered = false
+    /// An explicit token request is out (switch back ON after `deleteToken`).
+    private var tokenRequestInFlight = false
+    /// Unsubscribes + `deleteToken` are out: nothing subscribes until they land,
+    /// or the new subscriptions would ride the token being deleted.
+    private var tokenDeletionInFlight = false
+    private var pendingUnsubscribes = 0
 
     struct PushTap: Equatable, Identifiable {
         let id = UUID()
@@ -58,15 +66,42 @@ final class PushCenter: NSObject, ObservableObject {
         let campaign: String?
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         messaging: any PushMessaging = FirebasePushMessaging(),
+         system: PushSystem = .live) {
         self.defaults = defaults
         self.policy = PushPrePromptPolicy(store: DefaultsPushPrePromptStore(defaults: defaults))
+        self.messaging = messaging
+        self.system = system
         self.notificationsEnabled = defaults.object(forKey: Self.notificationsKey) as? Bool ?? true
         super.init()
     }
 
     /// Whether push can work in this build at all.
-    var isAvailable: Bool { FirebaseTelemetry.isConfigured }
+    var isAvailable: Bool { messaging.isAvailable }
+
+    /// The topics this build subscribes to (`qa` in Debug builds only).
+    static var subscribedTopics: [String] { topics }
+
+    /// `-push_preprompt off` (UI tests, Maestro, scripted captures): the pre-prompt never
+    /// shows and Home returns are not counted. The Notifications switch still works.
+    static let prePromptDisabledByLaunchArgument: Bool = {
+        let args = CommandLine.arguments
+        if args.contains(where: { ["push_preprompt=off", "-push_preprompt=off"].contains($0.lowercased()) }) {
+            return true
+        }
+        for flag in ["-push_preprompt", "push_preprompt"] {
+            if let index = args.firstIndex(of: flag), index + 1 < args.count,
+               ["off", "false", "0"].contains(args[index + 1].lowercased()) {
+                return true
+            }
+        }
+        // `-push_preprompt off` also lands in the arguments domain of UserDefaults.
+        if let value = UserDefaults.standard.string(forKey: "push_preprompt") {
+            return ["off", "false", "0"].contains(value.lowercased())
+        }
+        return false
+    }()
 
     // MARK: Launch
 
@@ -90,17 +125,14 @@ final class PushCenter: NSObject, ObservableObject {
 
     func didRegister(deviceToken: Data) {
         guard isAvailable else { return }
-        #if canImport(FirebaseMessaging)
-        Messaging.messaging().apnsToken = deviceToken
-        #endif
+        messaging.setAPNsToken(deviceToken)
     }
 
     func refreshAuthorization(registerIfAllowed: Bool = false) async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        authorization = settings.authorizationStatus
+        authorization = await system.authorizationStatus()
         DemoAnalytics.shared.setUserProperty(notifEnabledValue, for: .notifEnabled)
         if registerIfAllowed, pushAllowed, isAvailable {
-            UIApplication.shared.registerForRemoteNotifications()
+            system.registerForRemoteNotifications()
         }
     }
 
@@ -115,6 +147,7 @@ final class PushCenter: NSObject, ObservableObject {
 
     /// Home is back after a sample closed (`DemoCover.onDisappear`).
     func homeReturnedAfterSample() {
+        guard !Self.prePromptDisabledByLaunchArgument else { return }
         policy.onReturnedHome()
         Task {
             await refreshAuthorization()
@@ -151,8 +184,7 @@ final class PushCenter: NSObject, ObservableObject {
 
     @discardableResult
     private func requestSystemPermission() async -> Bool {
-        let granted = (try? await UNUserNotificationCenter.current()
-            .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        let granted = await system.requestAuthorization()
         await refreshAuthorization(registerIfAllowed: true)
         syncTopics()
         return granted
@@ -162,71 +194,111 @@ final class PushCenter: NSObject, ObservableObject {
 
     /// About → "Notifications".
     func setNotificationsEnabled(_ enabled: Bool) {
+        recordSwitch(enabled)
+        Task { await syncAfterSwitch(enabled) }
+    }
+
+    /// `setNotificationsEnabled`, awaited to the end (tests).
+    func applyNotificationsSwitch(_ enabled: Bool) async {
+        recordSwitch(enabled)
+        await syncAfterSwitch(enabled)
+    }
+
+    private func recordSwitch(_ enabled: Bool) {
         notificationsEnabled = enabled
         defaults.set(enabled, forKey: Self.notificationsKey)
         DemoAnalytics.shared.log(.settingsChanged(key: "notifications", value: enabled ? "true" : "false"))
-        Task {
-            if enabled {
-                await refreshAuthorization()
-                if authorization == .notDetermined {
-                    // The switch itself is the user's request: no pre-prompt in front of it.
-                    let granted = await requestSystemPermission()
-                    policy.onAnswered()
-                    DemoAnalytics.shared.log(.pushPromptResult(granted ? .granted : .denied))
-                } else {
-                    await refreshAuthorization(registerIfAllowed: true)
-                }
+    }
+
+    private func syncAfterSwitch(_ enabled: Bool) async {
+        if enabled {
+            await refreshAuthorization()
+            if authorization == .notDetermined {
+                // The switch itself is the user's request: no pre-prompt in front of it.
+                let granted = await requestSystemPermission()
+                policy.onAnswered()
+                DemoAnalytics.shared.log(.pushPromptResult(granted ? .granted : .denied))
             } else {
-                await refreshAuthorization()
+                // Already granted (OFF → ON): register again and resubscribe. The
+                // token was deleted when the switch went OFF, so `syncTopics` asks
+                // FCM for a new one first.
+                await refreshAuthorization(registerIfAllowed: true)
                 syncTopics()
             }
+        } else {
+            await refreshAuthorization()
+            syncTopics()
         }
     }
 
     /// Brings FCM in line with the switch and the system permission. Allowed: auto-init
-    /// on and the topics subscribed (FCM queues them until its token exists). Not
-    /// allowed after having been: leave the topics, then delete the FCM token.
+    /// on, a token, then the topics. Not allowed after having been: leave the topics,
+    /// then delete the FCM token.
     func syncTopics() {
         guard isAvailable else { return }
-        #if canImport(FirebaseMessaging)
-        let messaging = Messaging.messaging()
         if pushAllowed {
-            messaging.isAutoInitEnabled = true
-            // No token yet: auto-init fetches one and `didReceiveRegistrationToken`
-            // calls back here, so subscribing now would only fail.
-            guard messaging.fcmToken != nil else { return }
+            messaging.setAutoInit(true)
+            // A deletion still running would take these subscriptions with it; its
+            // completion calls back here.
+            guard !tokenDeletionInFlight else { return }
+            guard messaging.hasToken else {
+                requestToken()
+                return
+            }
             for topic in Self.topics {
-                messaging.subscribe(toTopic: topic) { error in
+                messaging.subscribe(topic) { ok in
                     #if DEBUG
-                    Self.log.debug("topic \(topic, privacy: .public) subscribed ok=\(error == nil)")
+                    Self.log.debug("topic \(topic, privacy: .public) subscribed ok=\(ok)")
                     #endif
                 }
             }
             defaults.set(true, forKey: Self.subscribedKey)
         } else {
-            messaging.isAutoInitEnabled = false
-            guard defaults.bool(forKey: Self.subscribedKey) else { return }
+            messaging.setAutoInit(false)
+            guard defaults.bool(forKey: Self.subscribedKey), !tokenDeletionInFlight else { return }
             defaults.set(false, forKey: Self.subscribedKey)
-            let group = DispatchGroup()
+            tokenDeletionInFlight = true
+            pendingUnsubscribes = Self.topics.count
             for topic in Self.topics {
-                group.enter()
-                messaging.unsubscribe(fromTopic: topic) { error in
+                messaging.unsubscribe(topic) { [weak self] ok in
                     #if DEBUG
-                    Self.log.debug("topic \(topic, privacy: .public) unsubscribed ok=\(error == nil)")
+                    Self.log.debug("topic \(topic, privacy: .public) unsubscribed ok=\(ok)")
                     #endif
-                    group.leave()
-                }
-            }
-            // The token goes last: an unsubscribe needs it.
-            group.notify(queue: .main) {
-                Messaging.messaging().deleteToken { error in
-                    #if DEBUG
-                    Self.log.debug("FCM token deleted ok=\(error == nil)")
-                    #endif
+                    guard let self else { return }
+                    pendingUnsubscribes -= 1
+                    // The token goes last: an unsubscribe needs it.
+                    if pendingUnsubscribes == 0 { deleteToken() }
                 }
             }
         }
-        #endif
+    }
+
+    private func deleteToken() {
+        messaging.deleteToken { [weak self] ok in
+            #if DEBUG
+            Self.log.debug("FCM token deleted ok=\(ok)")
+            #endif
+            guard let self else { return }
+            tokenDeletionInFlight = false
+            // Switched back ON while the deletion ran: subscribe again now.
+            if pushAllowed { syncTopics() }
+        }
+    }
+
+    /// No FCM token. The first one comes from auto-init once APNs answers
+    /// (`didReceiveRegistrationToken` calls back here). After a `deleteToken`, FCM does
+    /// not fetch a replacement on its own: ask, as soon as APNs has a token.
+    private func requestToken() {
+        guard messaging.hasAPNsToken, !tokenRequestInFlight else { return }
+        tokenRequestInFlight = true
+        messaging.fetchToken { [weak self] ok in
+            guard let self else { return }
+            tokenRequestInFlight = false
+            #if DEBUG
+            Self.log.debug("FCM token requested ok=\(ok)")
+            #endif
+            if ok { syncTopics() }
+        }
     }
 
     // MARK: Taps
@@ -277,6 +349,93 @@ extension PushCenter: MessagingDelegate {
     }
 }
 #endif
+
+// MARK: - Seams
+
+/// The FCM calls `PushCenter` makes, behind a seam so the switch logic is unit tested.
+/// Completions are delivered on the main actor.
+@MainActor
+protocol PushMessaging: AnyObject {
+    /// Firebase is configured in this process.
+    var isAvailable: Bool { get }
+    var hasToken: Bool { get }
+    var hasAPNsToken: Bool { get }
+    func setAPNsToken(_ token: Data)
+    func setAutoInit(_ enabled: Bool)
+    func fetchToken(_ completion: @escaping @MainActor (Bool) -> Void)
+    func subscribe(_ topic: String, _ completion: @escaping @MainActor (Bool) -> Void)
+    func unsubscribe(_ topic: String, _ completion: @escaping @MainActor (Bool) -> Void)
+    func deleteToken(_ completion: @escaping @MainActor (Bool) -> Void)
+}
+
+/// The system side: notification permission and APNs registration.
+struct PushSystem {
+    var authorizationStatus: @MainActor () async -> UNAuthorizationStatus
+    var requestAuthorization: @MainActor () async -> Bool
+    var registerForRemoteNotifications: @MainActor () -> Void
+
+    static let live = PushSystem(
+        authorizationStatus: { await UNUserNotificationCenter.current().notificationSettings().authorizationStatus },
+        requestAuthorization: {
+            (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        },
+        registerForRemoteNotifications: { UIApplication.shared.registerForRemoteNotifications() }
+    )
+}
+
+/// `PushMessaging` on Firebase Cloud Messaging. Never touches `Messaging.messaging()`
+/// unless Firebase was configured (it asserts otherwise).
+@MainActor
+final class FirebasePushMessaging: PushMessaging {
+    var isAvailable: Bool { FirebaseTelemetry.isConfigured }
+
+    #if canImport(FirebaseMessaging)
+    private var fcm: Messaging? { isAvailable ? Messaging.messaging() : nil }
+
+    var hasToken: Bool { fcm?.fcmToken != nil }
+    var hasAPNsToken: Bool { fcm?.apnsToken != nil }
+    func setAPNsToken(_ token: Data) { fcm?.apnsToken = token }
+    func setAutoInit(_ enabled: Bool) { fcm?.isAutoInitEnabled = enabled }
+
+    func fetchToken(_ completion: @escaping @MainActor (Bool) -> Void) {
+        guard let fcm else { return completion(false) }
+        fcm.token { token, error in
+            let ok = token != nil && error == nil
+            Task { @MainActor in completion(ok) }
+        }
+    }
+
+    func subscribe(_ topic: String, _ completion: @escaping @MainActor (Bool) -> Void) {
+        guard let fcm else { return completion(false) }
+        fcm.subscribe(toTopic: topic) { error in
+            Task { @MainActor in completion(error == nil) }
+        }
+    }
+
+    func unsubscribe(_ topic: String, _ completion: @escaping @MainActor (Bool) -> Void) {
+        guard let fcm else { return completion(false) }
+        fcm.unsubscribe(fromTopic: topic) { error in
+            Task { @MainActor in completion(error == nil) }
+        }
+    }
+
+    func deleteToken(_ completion: @escaping @MainActor (Bool) -> Void) {
+        guard let fcm else { return completion(false) }
+        fcm.deleteToken { error in
+            Task { @MainActor in completion(error == nil) }
+        }
+    }
+    #else
+    var hasToken: Bool { false }
+    var hasAPNsToken: Bool { false }
+    func setAPNsToken(_ token: Data) {}
+    func setAutoInit(_ enabled: Bool) {}
+    func fetchToken(_ completion: @escaping @MainActor (Bool) -> Void) { completion(false) }
+    func subscribe(_ topic: String, _ completion: @escaping @MainActor (Bool) -> Void) { completion(false) }
+    func unsubscribe(_ topic: String, _ completion: @escaping @MainActor (Bool) -> Void) { completion(false) }
+    func deleteToken(_ completion: @escaping @MainActor (Bool) -> Void) { completion(false) }
+    #endif
+}
 
 /// The app delegate: HD pack background transfers (inherited), Firebase start, APNs.
 final class DemoAppDelegate: HDPackAppDelegate {

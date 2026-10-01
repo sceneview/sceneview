@@ -6,6 +6,7 @@
 // taxonomy helpers shared with the Android demo.
 
 import XCTest
+import SceneViewSwift
 @testable import SceneViewDemo
 
 private final class RecordingBackend: AnalyticsBackend, @unchecked Sendable {
@@ -164,12 +165,26 @@ final class DemoAnalyticsTests: XCTestCase {
         XCTAssertEqual(DemoAnalytics.category(for: .placeAR), "Place in AR")
         XCTAssertEqual(DemoAnalytics.category(for: .understand), "Understand the World")
         XCTAssertEqual(DemoAnalytics.category(for: .devTools), "Developer Tools")
-        XCTAssertEqual(DemoAnalytics.category(for: nil), "other")
+        XCTAssertEqual(DemoAnalytics.category(for: nil), "unknown")
     }
 
     func testErrorReasonCarriesNoMessage() {
         let error = NSError(domain: "SceneView", code: 7,
                             userInfo: [NSLocalizedDescriptionKey: "/Users/someone/private/model.usdz"])
         XCTAssertEqual(DemoAnalytics.reason(for: error), "SceneView:7")
+    }
+
+    func testModelLoadReasonsMatchAndroidKeys() {
+        let file = URL(fileURLWithPath: "/tmp/m.usdz")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: ModelLoadingError.unreadableFile(file)), "asset_missing")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: ModelLoadingError.emptyMesh), "no_bounds")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: ModelLoadingError.malformed(reason: "x")), "decode_failed")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: ModelLoadingError.unsupportedFormat(fileExtension: "fbx")),
+                       "decode_failed")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: URLError(.notConnectedToInternet)), "asset_missing")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: SketchfabError.downloadFailed), "asset_missing")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: CocoaError(.fileNoSuchFile)), "asset_missing")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: CocoaError(.fileReadCorruptFile)), "decode_failed")
+        XCTAssertEqual(DemoAnalytics.modelLoadReason(for: NSError(domain: "Elsewhere", code: 1)), "unknown")
     }
 }

@@ -41,6 +41,14 @@ final class SceneViewDemoUITests: XCTestCase {
     /// Attach the app's current screen as a keep-always PNG named `name`.
     /// `.keepAlways` is required — a passing test discards its attachments by
     /// default, which would leave the screenshot job with an empty artifact.
+    /// Every launch turns the push pre-prompt off: a sheet that may appear after the
+    /// second sample closed must not cover the screen a test is about to tap.
+    private static func makeApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-push_preprompt", "off"]
+        return app
+    }
+
     private func snapshot(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
@@ -60,7 +68,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// Launch, then walk the tab bar. Anchored on the tab bar (not any demo
     /// id), so it always produces launch + one PNG per tab (≥4 total on iOS).
     func testLaunchAndTabScreenshots() {
-        let app = XCUIApplication()
+        let app = Self.makeApp()
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "app never reached the foreground")
@@ -97,10 +105,10 @@ final class SceneViewDemoUITests: XCTestCase {
             "lighting",
         ]
         for (index, id) in demos.enumerated() {
-            let app = XCUIApplication()
+            let app = Self.makeApp()
             // `-demo <id>` routes straight to the demo on the first frame;
             // `-qa_mode 1` freezes auto-rotation for a deterministic capture.
-            app.launchArguments = ["-demo", id, "-qa_mode", "1"]
+            app.launchArguments += ["-demo", id, "-qa_mode", "1"]
             app.launch()
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                           "app never reached the foreground for -demo \(id)")
@@ -116,8 +124,8 @@ final class SceneViewDemoUITests: XCTestCase {
     /// Exercise the real renderer: advancing animation must change the character pixels,
     /// while pausing must hold them. The crop excludes all controls and the status bar.
     func testFoxAnimationTransport() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-demo", "animation"]
+        let app = Self.makeApp()
+        app.launchArguments += ["-demo", "animation"]
         app.launch()
         let pause = app.buttons["Pause"]
         XCTAssertTrue(pause.waitForExistence(timeout: 30))
@@ -243,8 +251,8 @@ final class SceneViewDemoUITests: XCTestCase {
         ) ?? 8
         let label = ProcessInfo.processInfo.environment["SV_PROBE_LABEL"] ?? "run"
 
-        let app = XCUIApplication()
-        app.launchArguments = ["-demo", "animation"]
+        let app = Self.makeApp()
+        app.launchArguments += ["-demo", "animation"]
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "app never reached the foreground")
@@ -280,7 +288,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// hero on purpose: the `-demo` launch path has no zoom transition, so it
     /// cannot reproduce this.
     func testPinchOnDemoStageDoesNotDismissTheDemo() {
-        let app = XCUIApplication()
+        let app = Self.makeApp()
         app.launch()
         let hero = app.descendants(matching: .any)["home-hero"]
         XCTAssertTrue(hero.waitForExistence(timeout: 30), "Showcase hero never appeared")
@@ -308,7 +316,7 @@ final class SceneViewDemoUITests: XCTestCase {
         // Portrait on purpose: #4015 was reported in landscape, but the bug is
         // the same in portrait, and forcing landscape from XCUITest on the
         // iPad simulator leaves the hit-test frames rotated (taps miss).
-        let app = XCUIApplication()
+        let app = Self.makeApp()
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "app never reached the foreground")

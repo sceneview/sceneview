@@ -295,8 +295,10 @@ jobs:
           # the file is absent, `hashFiles()` returns an empty string, and
           # the key is the constant `spm-<os>-demo-` for every run (no cache
           # invalidation when dependencies change). The checked-in resolved
-          # file lives at `samples/ios-demo/Package.resolved`; hash that.
-          key: spm-${{ runner.os }}-demo-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+          # file lives at `samples/ios-demo/Package.resolved`; hash that, plus
+          # the project's own resolved file (committed since the demo pins
+          # Firebase), the same pair `app-store.yml` hashes.
+          key: spm-${{ runner.os }}-demo-${{ hashFiles('samples/ios-demo/Package.resolved', 'samples/ios-demo/SceneViewDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             spm-${{ runner.os }}-demo-
 
@@ -417,7 +419,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: samples/ios-demo/SourcePackages
-          key: spm-xcode27-${{ runner.os }}-demo-${{ hashFiles('samples/ios-demo/Package.resolved') }}
+          key: spm-xcode27-${{ runner.os }}-demo-${{ hashFiles('samples/ios-demo/Package.resolved', 'samples/ios-demo/SceneViewDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             spm-xcode27-${{ runner.os }}-demo-
 
