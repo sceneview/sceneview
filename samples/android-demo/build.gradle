@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.roborazzi)
+    // Firebase (analytics, crash reports, push) — applied below ONLY when a
+    // google-services.json is present, so forks and secret-less CI still build.
+    alias(libs.plugins.google.services) apply false
+    alias(libs.plugins.firebase.crashlytics) apply false
 }
 
 // Resolve store secrets once, at android-block scope, so both `defaultConfig`
@@ -53,6 +57,40 @@ if (sketchfabApiKey.isEmpty()) {
 def demoPlainDebug = providers.gradleProperty("demoPlainDebug")
         .map { it.toBoolean() }
         .getOrElse(false)
+
+// ── Firebase: optional, secret-free by default ──────────────────────────────
+// GOOGLE_SERVICES_JSON (env var, or repo-root local.properties) points at the
+// google-services.json kept out of VCS (`**/google-services.json` is gitignored —
+// this is a public repo). It is copied next to this file at configuration time so
+// the conditional plugin apply below sees it in the same run, and release builds
+// always carry the google_app_id resource Crashlytics needs. A key present but
+// blank counts as absent.
+//
+// Without the file: no Google Services / Crashlytics plugin, no google_app_id,
+// FirebaseApp never initialises, and the app's telemetry façade degrades to a
+// no-op (see io.github.sceneview.demo.telemetry). The build, the tests and the
+// app all work exactly as before. See PLAY_STORE_SETUP.md § Firebase.
+def googleServicesJsonPath = (System.getenv("GOOGLE_SERVICES_JSON") ?: "").trim()
+if (googleServicesJsonPath.isEmpty()) {
+    googleServicesJsonPath = loadFromLocalProperties("GOOGLE_SERVICES_JSON").trim()
+}
+def googleServicesJson = file("google-services.json")
+if (!googleServicesJsonPath.isEmpty()) {
+    def source = file(googleServicesJsonPath)
+    if (!source.exists()) {
+        logger.warn("GOOGLE_SERVICES_JSON points at ${source} but the file does not exist — Firebase stays disabled")
+    } else if (!googleServicesJson.exists() || source.bytes != googleServicesJson.bytes) {
+        googleServicesJson.bytes = source.bytes
+        logger.lifecycle("google-services.json refreshed from GOOGLE_SERVICES_JSON")
+    }
+}
+// Both plugins or neither: an initialised FirebaseApp without the Crashlytics
+// plugin's build id makes Crashlytics throw at startup.
+def firebaseConfigured = googleServicesJson.exists()
+if (firebaseConfigured) {
+    apply plugin: "com.google.gms.google-services"
+    apply plugin: "com.google.firebase.crashlytics"
+}
 
 android {
     namespace = "io.github.sceneview.demo"
@@ -328,6 +366,13 @@ dependencies {
     // IllegalStateException complaining about missing FLP classes and the
     // Streetscape demo renders a black screen.
     implementation libs.play.services.location
+    // Firebase — this app only, never a library module (the SDK ships no telemetry).
+    // Always on the classpath so the code compiles the same with or without a config;
+    // without google-services.json nothing initialises and the façade is a no-op.
+    implementation platform(libs.firebase.bom)
+    implementation libs.firebase.analytics
+    implementation libs.firebase.crashlytics
+    implementation libs.firebase.messaging
 
     // ML Kit Object Detection — bundled model so ARMLObjectLabelDemo works
     // offline. The default options classify generic categories (Home good,

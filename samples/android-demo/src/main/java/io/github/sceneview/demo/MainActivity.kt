@@ -34,6 +34,12 @@ import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.rememberMotionEnabled
+import io.github.sceneview.demo.telemetry.AnalyticsEvent
+import io.github.sceneview.demo.telemetry.OpenSource
+import io.github.sceneview.demo.telemetry.PushIntent
+import io.github.sceneview.demo.telemetry.PushPromptHost
+import io.github.sceneview.demo.telemetry.SampleTelemetry
+import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.ui.RootScreen
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.QaAppUpdateManager
@@ -49,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
@@ -119,6 +126,8 @@ class MainActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Usage statistics + push (demo app only). A no-op in a build without a Firebase config.
+        Telemetry.ensureInit(this)
         // Clean up any feedback recording stranded in the cache by a prior run.
         sweepStaleFeedbackMedia(this)
         // HD pack: queue the Wi-Fi-only download of the demo's full-resolution models. A no-op
@@ -156,6 +165,7 @@ class MainActivity : ComponentActivity() {
         // navigation through PlaceholderDemo. See #958.
         pendingDemoId.value = DeepLinkRouter.validate(intent?.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent?.data)
+        handleEntry(intent)
         // "Open with SceneView": a supported model file handed over by another app (#3482).
         stageOpenedModel(intent)
         // QA mode ingress: `--ez qa_mode true` freezes auto-rotation / orbit / animations
@@ -209,6 +219,7 @@ class MainActivity : ComponentActivity() {
         // dropped rather than routed to PlaceholderDemo. See #958.
         pendingDemoId.value = DeepLinkRouter.validate(intent.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent.data)
+        handleEntry(intent)
         stageOpenedModel(intent)
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
@@ -337,6 +348,50 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Where this launch came from, for `sample_open.source`, and a tapped push:
+     * `push_opened` is logged, the pushed sample opens, and a sample id this build does not
+     * know (an older install, a typo in a campaign) lands on Home instead of nowhere.
+     */
+    private fun handleEntry(intent: Intent?) {
+        val tap = PushIntent.from(intent)
+        if (tap == null) {
+            if (pendingDemoId.value != null) Telemetry.nextOpenSource = OpenSource.DeepLink
+            return
+        }
+        val sample = DeepLinkRouter.validate(tap.sample)
+        Telemetry.analytics.log(
+            AnalyticsEvent.PushOpened(campaign = tap.campaign ?: "none", sampleId = sample ?: tap.sample ?: "none"),
+        )
+        pendingDemoId.value = null
+        if (sample != null) {
+            Telemetry.nextOpenSource = OpenSource.Push
+            pendingPushDemo.value = sample
+        } else {
+            pendingHome.value = true
+        }
+    }
+
+    /**
+     * A sample opened from a push. Kept apart from [pendingDemoId], which on a cold start
+     * becomes the NavHost's start destination (back would leave the app): a push opens the
+     * sample on top of Home, so back lands on Home.
+     */
+    private val pendingPushDemo = MutableStateFlow<String?>(null)
+    val pendingPushDemoFlow: StateFlow<String?> get() = pendingPushDemo.asStateFlow()
+
+    fun consumePendingPushDemo() {
+        pendingPushDemo.value = null
+    }
+
+    /** Set by a push whose sample is unknown: the UI returns to Home, then clears it. */
+    private val pendingHome = MutableStateFlow(false)
+    val pendingHomeFlow: StateFlow<Boolean> get() = pendingHome.asStateFlow()
+
+    fun consumePendingHome() {
+        pendingHome.value = false
+    }
+
     fun consumePendingOpenedModel() {
         pendingOpenedModel.value = null
     }
@@ -430,6 +485,26 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         activity?.consumePendingOpenedModel()
     }
 
+    // A push naming a sample this build does not know lands on Home, from any screen.
+    val pendingHome by (activity?.pendingHomeFlow?.collectAsState()
+        ?: remember { MutableStateFlow(false) }.collectAsState())
+    LaunchedEffect(pendingHome) {
+        if (!pendingHome) return@LaunchedEffect
+        if (!navController.popBackStack("list", inclusive = false)) {
+            navController.navigate("list") { popUpTo(navController.graph.id) { inclusive = true } }
+        }
+        activity?.consumePendingHome()
+    }
+
+    // A tapped push: the sample opens over Home (whatever was on screen), so back shows Home.
+    val pushDemo by (activity?.pendingPushDemoFlow?.collectAsState()
+        ?: remember { MutableStateFlow<String?>(null) }.collectAsState())
+    LaunchedEffect(pushDemo) {
+        val id = pushDemo ?: return@LaunchedEffect
+        navController.navigate("demo/$id") { popUpTo("list") }
+        activity?.consumePendingPushDemo()
+    }
+
     LaunchedEffect(pendingId) {
         val id = pendingId ?: return@LaunchedEffect
         // If the cold-start `initialDemo` already matches `pendingId`, NavHost picked the
@@ -499,7 +574,9 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 DemoSettings.requestedModel = backStackEntry.arguments?.getString("model")
                 val onBack: () -> Unit = { navController.popBackStack() }
-                DemoRouter(id = id, onBack = onBack)
+                SampleTelemetry(sampleId = id) {
+                    DemoRouter(id = id, onBack = onBack)
+                }
             }
             // Note: the legacy `composable("about") { AboutScreen(...) }` route was
             // removed (alongside `AboutScreen.kt`) because RootScreen's bottom-tab
@@ -527,6 +604,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // the sheet itself is never in the screenshot. Not rememberSaveable:
         // a Bitmap can't ride a config change; the sheet simply closes, and
         // re-opening re-captures in <100 ms.
+        // Returns to Home after a sample, for the notification pre-prompt (telemetry/PushPrompt.kt).
+        var homeReturns by remember { mutableIntStateOf(0) }
+        var lastRoute by remember { mutableStateOf<String?>(null) }
+        val route = currentEntry?.destination?.route
+        LaunchedEffect(route) {
+            if (route == "list" && lastRoute?.startsWith("demo/") == true) homeReturns++
+            lastRoute = route
+        }
+        PushPromptHost(returnedHomeFromSample = homeReturns, onHome = onListScreen)
+
         var bugReport by remember { mutableStateOf<PendingBugReport?>(null) }
         val reportScope = rememberCoroutineScope()
 

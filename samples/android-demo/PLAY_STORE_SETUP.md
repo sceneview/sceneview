@@ -180,6 +180,48 @@ Go to your GitHub repo → **Settings → Secrets and variables → Actions** an
 | `DEMO_KEY_ALIAS` | `sceneview-demo` |
 | `DEMO_KEY_PASSWORD` | Your key password |
 | `PLAY_STORE_SERVICE_ACCOUNT_JSON` | Full content of the service account JSON key file |
+| `DEMO_GOOGLE_SERVICES_JSON_BASE64` | Base64-encoded Firebase config listing both app ids: `base64 -i google-services.json` (section 7a) |
+
+### 7a. Firebase (Analytics, Crashlytics, Cloud Messaging)
+
+The demo app, and only the demo app, reports usage through Firebase. The
+SceneView libraries ship no telemetry and never depend on Firebase.
+
+`google-services.json` is **never committed** (`.gitignore` blocks every copy).
+The build reads its location from `GOOGLE_SERVICES_JSON`, an environment
+variable or a `local.properties` key, and copies the file into the module:
+
+```properties
+# local.properties (not committed)
+GOOGLE_SERVICES_JSON=/absolute/path/to/google-services.json
+```
+
+The config must list both application ids: `io.github.sceneview.demo`
+(release) and `io.github.sceneview.demo.qa` (debug).
+
+The `com.google.gms.google-services` and `com.google.firebase.crashlytics`
+plugins are applied **only when the file exists**. Without it, every build —
+local, CI, release — compiles and runs as before: Firebase never initializes,
+the analytics façade is a no-op, and the *About → Privacy & notifications* switches
+are hidden.
+
+For a release that reports, `main-internal-deploy.yml` and `play-store.yml`
+decode the `DEMO_GOOGLE_SERVICES_JSON_BASE64` secret to
+`samples/android-demo/google-services.json` just before the Gradle build (the
+secret goes through `env:`, never interpolated into `run:`), and delete it with
+the keystore at the end of the job. When the secret is empty the step emits a
+`::warning::` and the release builds without Firebase, collecting nothing.
+
+Every other workflow (`ci`, `build-apks`, `device-qa`, `preview`,
+`render-tests`) builds **without** the config on purpose: they are the
+standing proof that the no-config path compiles and runs.
+
+Push campaigns go to the FCM topics `all` and `new_samples` (debug builds also
+join `qa`). The data payload carries `sample`, a sample id the notification
+opens, and `campaign`, reported in `push_opened`. An unknown sample id opens
+Home. To check events live on a debug build:
+`adb shell setprop debug.firebase.analytics.app io.github.sceneview.demo.qa`,
+then Firebase console → DebugView.
 
 ---
 

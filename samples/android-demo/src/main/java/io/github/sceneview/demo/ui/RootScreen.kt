@@ -88,6 +88,13 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.hdpack.HdPackSettingsRow
 import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.feedback.CurrentRootScreen
+import io.github.sceneview.demo.telemetry.AnalyticsEvent
+import io.github.sceneview.demo.telemetry.NotificationsSettingsRow
+import io.github.sceneview.demo.telemetry.OpenSource
+import io.github.sceneview.demo.telemetry.SCREEN_CLASS_TAB
+import io.github.sceneview.demo.telemetry.Telemetry
+import io.github.sceneview.demo.telemetry.UsageStatisticsSettingsRow
+import io.github.sceneview.demo.telemetry.logOutboundLink
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -144,6 +151,15 @@ fun RootScreen(
         selectedTab == RootTab.ArView && arSessionActive -> "AR View tab · session active"
         else -> selectedTab.reportLabel
     }
+    // Manual screen_view for the tab host: one Activity hosts every screen, so the automatic
+    // report would only ever say MainActivity. Re-logged when Home comes back from a sample.
+    val analyticsScreen = when {
+        selectedTab == RootTab.Showcase && galleryOpen -> "explore"
+        else -> selectedTab.analyticsName
+    }
+    LaunchedEffect(analyticsScreen) {
+        Telemetry.analytics.log(AnalyticsEvent.ScreenView(analyticsScreen, SCREEN_CLASS_TAB))
+    }
     DisposableEffect(reportScreenLabel) {
         CurrentRootScreen.label = reportScreenLabel
         // A demo on top removes the tab host from composition; it names itself.
@@ -159,6 +175,7 @@ fun RootScreen(
             seenVersion = whatsNewSince.seenVersion,
             onDemoClick = { id ->
                 showWhatsNewSince = false
+                Telemetry.nextOpenSource = OpenSource.Other
                 onDemoClick(id)
             },
             onMarkSeen = {
@@ -283,7 +300,10 @@ fun RootScreen(
                     ExploreTabScreen(
                         onBack = { galleryOpen = false },
                         curatedSamples = curatedSamplesForExplore(),
-                        onSampleClick = { sample -> onDemoClick(sample.id) },
+                        onSampleClick = { sample ->
+                            Telemetry.nextOpenSource = OpenSource.Other
+                            onDemoClick(sample.id)
+                        },
                     )
                 } else {
                     HomeScreen(
@@ -292,14 +312,21 @@ fun RootScreen(
                         onCategoryChange = { selectedCategory = it.orEmpty() },
                         query = query,
                         onQueryChange = { query = it },
-                        onDemoClick = onDemoClick,
+                        onDemoClick = { id ->
+                            // `sample_open.source`: a tap in filtered results is a search.
+                            Telemetry.nextOpenSource = if (query.isBlank()) OpenSource.Home else OpenSource.Search
+                            onDemoClick(id)
+                        },
                         onBrowseOnlineClick = { galleryOpen = true },
                         hasUnseenWhatsNew = whatsNewSince.hasUnseen,
                         onWhatsNewSinceClick = { showWhatsNewSince = true },
                     )
                 }
                 RootTab.ArView -> ArViewTabContent(
-                    onDemoClick = onDemoClick,
+                    onDemoClick = { id ->
+                        Telemetry.nextOpenSource = OpenSource.Other
+                        onDemoClick(id)
+                    },
                     onSessionActiveChange = { arSessionActive = it },
                 )
                 RootTab.About -> AboutTabContent()
@@ -329,10 +356,12 @@ enum class RootTab(
     @StringRes val labelRes: Int,
     val icon: ImageVector,
     val reportLabel: String,
+    /** `screen_view.screen_name` — shared with the iOS demo. */
+    val analyticsName: String,
 ) {
-    Showcase(R.string.tab_showcase, Icons.Filled.GridView, "Showcase tab"),
-    ArView(R.string.tab_ar_view, Icons.Filled.ViewInAr, "AR View tab"),
-    About(R.string.tab_about, Icons.Filled.Info, "About tab"),
+    Showcase(R.string.tab_showcase, Icons.Filled.GridView, "Showcase tab", "home"),
+    ArView(R.string.tab_ar_view, Icons.Filled.ViewInAr, "AR View tab", "ar_view"),
+    About(R.string.tab_about, Icons.Filled.Info, "About tab", "about"),
 }
 
 /**
@@ -377,6 +406,7 @@ private fun AboutTabContent() {
     val context = LocalContext.current
     val noBrowserMessage = stringResource(R.string.about_no_browser)
     val openLink: (String) -> Unit = { url ->
+        logOutboundLink(url)
         // Devices without a browser (Android Go, stripped AOSP, uninstalled Chrome)
         // throw ActivityNotFoundException → the app crashes. #1208
         runCatching {
@@ -447,6 +477,15 @@ private fun AboutTabContent() {
                 title = stringResource(R.string.about_release_notes),
                 onClick = { openLink("https://github.com/sceneview/sceneview/releases") },
             )
+        }
+        // Only in a build that carries a Firebase config: without one there is nothing to
+        // collect and no push can arrive, so a switch would promise something false.
+        if (Telemetry.firebaseAvailable) {
+            AboutGroup(title = stringResource(R.string.about_group_privacy)) {
+                UsageStatisticsSettingsRow()
+                AboutRowDivider()
+                NotificationsSettingsRow()
+            }
         }
         AboutGroup(title = stringResource(R.string.about_group_legal)) {
             AboutActionRow(

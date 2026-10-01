@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import io.github.sceneview.demo.telemetry.LocalSampleId
+import io.github.sceneview.demo.telemetry.logSampleInteraction
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
@@ -308,6 +310,7 @@ fun CosmosDemo(onBack: () -> Unit) {
     val firstFrame = rememberFirstFrameState(engine)
     val galaxyShown = remember { booleanArrayOf(false) }
 
+    val telemetrySampleId = LocalSampleId.current
     DemoScaffold(
         title = stringResource(R.string.demo_cosmos_title),
         onBack = onBack,
@@ -325,6 +328,8 @@ fun CosmosDemo(onBack: () -> Unit) {
                 // The scene picked is shown still; a few seconds of calm and the voyage goes on.
                 voyage.pick(flight)
                 scene = it
+                // `galaxy` | `star` | `burst` | `flow` — the taxonomy shared with iOS.
+                logSampleInteraction(telemetrySampleId, it.name.lowercase())
             }
         },
         dockAccent = if (voyageOn && voyageCaption != null) {

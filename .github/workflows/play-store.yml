@@ -229,6 +229,24 @@ jobs:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: bash .claude/scripts/verify-sketchfab-key.sh
 
+      # Firebase (Analytics, Crashlytics, Messaging) for the demo app only. The
+      # secret is the base64 of a google-services.json carrying both clients
+      # (io.github.sceneview.demo and .demo.qa); it is decoded next to the module
+      # and never committed (`**/google-services.json` is gitignored). Without it
+      # the build still succeeds and simply ships without Firebase: the Gradle
+      # plugins are applied only when the file exists. The other workflows (ci,
+      # build-apks, device-qa, preview, render-tests) build without it on purpose.
+      - name: Decode Firebase config (demo app)
+        env:
+          DEMO_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.DEMO_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$DEMO_GOOGLE_SERVICES_JSON_BASE64" ]; then
+            printf '%s' "$DEMO_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > samples/android-demo/google-services.json
+            echo "Firebase config decoded ($(wc -c < samples/android-demo/google-services.json) bytes)"
+          else
+            echo "::warning::DEMO_GOOGLE_SERVICES_JSON_BASE64 is not set: this build ships without Firebase (no analytics, crash reports or push)"
+          fi
+
       - name: Build release AAB
         env:
           SCENEVIEW_DEMO_KEYSTORE_FILE: release.keystore
@@ -300,7 +318,7 @@ jobs:
 
       - name: Clean up keystore
         if: always()
-        run: rm -f samples/android-demo/release.keystore
+        run: rm -f samples/android-demo/release.keystore samples/android-demo/google-services.json
 
   publish:
     name: Publish to ${{ matrix.track }}

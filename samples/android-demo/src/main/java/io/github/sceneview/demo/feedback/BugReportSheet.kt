@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.feedback
 
+import io.github.sceneview.demo.telemetry.logOutboundLink
 import android.app.Activity
 import android.content.ClipData
 import android.content.Context
@@ -457,6 +458,7 @@ private fun shareReport(
  */
 private fun openGitHubIssue(context: Context, info: BugReportInfo, note: String): Boolean {
     val url = buildGitHubIssueUrl(info, note)
+    logOutboundLink(url)
     return runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }.isSuccess
