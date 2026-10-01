@@ -978,7 +978,12 @@ demos:
       (shared meshes and textures) instead of Filament's two Views on one
       scene. Gaps: the Top preset stops at SceneView's 85 deg elevation clamp
       (Android ~89.7 deg); no stage fog, so the floor shows a horizon; the
-      angle picker is an option strip above the dock (also in the sheet)
+      angle picker is an option strip above the dock (also in the sheet);
+      floor and grid are unlit (a lit floor washes out under the studio IBL)
+      with a radial contact-shadow disc under the helmet instead of
+      GroundingShadow; on the simulator the inset presents an edit seconds
+      after the main view (RealityKit frame pacing of a second RealityView),
+      to confirm on a device
   - id: spatial-audio
     androidStatus: Working
     iosStatus: working

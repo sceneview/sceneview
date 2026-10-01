@@ -395,7 +395,6 @@ final class SecondaryCameraStage {
             _ = node.scaleToUnits(SecondaryCameraMath.helmetSize)
             // Stands on the floor: the bounds' bottom centre onto the origin.
             _ = node.centerOrigin(normalized: SIMD3(0, -1, 0))
-            Self.castShadows(node.entity)
             mainSet.pivot.addChild(node.entity)
             // Shares meshes and textures with the main copy.
             insetSet.pivot.addChild(node.entity.clone(recursive: true))
@@ -460,13 +459,6 @@ final class SecondaryCameraStage {
             }
         }
     }
-
-    private static func castShadows(_ entity: Entity) {
-        if entity.components.has(ModelComponent.self) {
-            entity.components.set(GroundingShadowComponent(castsShadow: true))
-        }
-        for child in entity.children { castShadows(child) }
-    }
 }
 
 /// One view's floor, grid and helmet pivot.
@@ -479,7 +471,6 @@ private final class StageEntities {
     init() {
         let size = SecondaryCameraMath.floorSize
         floor = ModelEntity(mesh: .generatePlane(width: size, depth: size), materials: [])
-        floor.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: true))
 
         // 25 cm squares, 4 either side: a 2 m grid round the stage.
         let spacing = SecondaryCameraMath.gridSpacing
@@ -499,24 +490,59 @@ private final class StageEntities {
             lines.append(contentsOf: [zLine, xLine])
         }
         grid = lines
+
+        // A soft contact shadow that travels and turns with the helmet. The
+        // floor is unlit (see `recolour`), so RealityKit's grounding shadow has
+        // nothing to land on; this disc stands in for Android's shadow.
+        if let shadow = Self.contactShadow() {
+            shadow.position.y = height + 0.0005
+            pivot.addChild(shadow)
+        }
         recolour(dark: false)
     }
 
-    /// Android: floor `SurfaceLight` #E9ECEF / `SurfaceDim` #161B22, roughness
-    /// 0.7; grid `outline` #D6DAE0 / `outlineVariant` #46516A, roughness 0.8.
+    /// Radial black fade, 35 % at the centre to clear at the rim, shared by
+    /// both views' discs. `nil` only if the texture cannot be made — the demo
+    /// then runs without a shadow.
+    private static let shadowTexture: TextureResource? = {
+        let side = 128
+        guard let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                        colors: [UIColor(white: 0, alpha: 0.35).cgColor,
+                                                 UIColor(white: 0, alpha: 0).cgColor] as CFArray,
+                                        locations: [0, 1]) else { return nil }
+        let centre = CGPoint(x: side / 2, y: side / 2)
+        context.drawRadialGradient(gradient, startCenter: centre, startRadius: 0,
+                                   endCenter: centre, endRadius: CGFloat(side) / 2, options: [])
+        guard let image = context.makeImage() else { return nil }
+        return try? TextureResource(image: image, withName: nil,
+                                    options: .init(semantic: .color, mipmapsMode: .none))
+    }()
+
+    private static func contactShadow() -> ModelEntity? {
+        guard let texture = shadowTexture else { return nil }
+        var material = UnlitMaterial(applyPostProcessToneMap: false)
+        material.color = .init(tint: .white, texture: .init(texture))
+        material.blending = .transparent(opacity: .init(floatLiteral: 1))
+        let size = SecondaryCameraMath.helmetSize * 1.3
+        return ModelEntity(mesh: .generatePlane(width: size, depth: size), materials: [material])
+    }
+
+    /// Android: floor `SurfaceLight` #E9ECEF / `SurfaceDim` #161B22; grid
+    /// `outline` #D6DAE0 / `outlineVariant` #46516A. Unlit and untone-mapped:
+    /// under the studio light a lit floor this large washes out to white in
+    /// light mode and to mid-grey in dark, and the grid disappears into it.
     func recolour(dark: Bool) {
-        var floorMaterial = PhysicallyBasedMaterial()
-        floorMaterial.baseColor = .init(tint: SceneViewTokens.Stage.trayFloor(dark: dark))
-        floorMaterial.metallic = 0
-        floorMaterial.roughness = 0.7
+        var floorMaterial = UnlitMaterial(applyPostProcessToneMap: false)
+        floorMaterial.color = .init(tint: SceneViewTokens.Stage.trayFloor(dark: dark))
         floor.model?.materials = [floorMaterial]
 
-        var gridMaterial = PhysicallyBasedMaterial()
-        gridMaterial.baseColor = .init(tint: dark
+        var gridMaterial = UnlitMaterial(applyPostProcessToneMap: false)
+        gridMaterial.color = .init(tint: dark
             ? UIColor(red: 0x46 / 255, green: 0x51 / 255, blue: 0x6A / 255, alpha: 1)
             : UIColor(red: 0xD6 / 255, green: 0xDA / 255, blue: 0xE0 / 255, alpha: 1))
-        gridMaterial.metallic = 0
-        gridMaterial.roughness = 0.8
         for line in grid { line.model?.materials = [gridMaterial] }
     }
 }
