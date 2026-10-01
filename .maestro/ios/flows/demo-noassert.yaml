@@ -28,9 +28,10 @@ appId: io.github.sceneview.demo
     appId: io.github.sceneview.demo
     stopApp: true
     clearState: false
-    # No push pre-prompt sheet over the screens this flow taps (PushCenter).
+    # No push pre-prompt or consent sheet over the screens this flow taps (PushCenter, ConsentStore).
     arguments:
       push_preprompt: "off"
+      telemetry_consent: "denied"
 
 - openLink: "sceneview://demo/${DEMO_ID}"
 

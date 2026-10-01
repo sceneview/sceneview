@@ -112,7 +112,8 @@ struct SceneViewDemoApp: App {
     init() {
         #if os(macOS)
         // iOS starts Firebase from `DemoAppDelegate`; macOS has no delegate here.
-        FirebaseTelemetry.start()
+        // In the EEA, UK and Switzerland, not before the user's yes (`ConsentStore`).
+        FirebaseTelemetry.startAtLaunch()
         #endif
     }
 
@@ -208,6 +209,8 @@ struct ContentView: View {
     #if os(iOS)
     @ObservedObject private var push = PushCenter.shared
     #endif
+    /// The usage-statistics consent (EEA, UK, Switzerland): its sheet comes up over Home.
+    @ObservedObject private var consent = TelemetryConsent.shared
 
     /// Guards the one-shot launch-argument presentation so a view refresh
     /// doesn't re-present the demo.
@@ -287,6 +290,17 @@ struct ContentView: View {
         }
         .task {
             DemoAnalytics.shared.setUserProperty(Self.arSupported ? "true" : "false", for: .arSupported)
+        }
+        // Home first, then the consent — or once a demo opened at launch has closed.
+        .task(id: presentedDemo == nil) {
+            guard presentedDemo == nil else { return }
+            await consent.presentIfNeeded { presentedDemo == nil }
+        }
+        .sheet(isPresented: $consent.sheetPresented, onDismiss: { consent.sheetDismissed() }) {
+            ConsentSheet(
+                onShare: { consent.share() },
+                onDecline: { consent.decline() }
+            )
         }
         #if os(iOS)
         // A tapped "What's new" push: its sample, or Home for an id this build lacks.

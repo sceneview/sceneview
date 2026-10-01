@@ -29,7 +29,9 @@ struct AboutTab: View {
                         HDPackSettingsRow()
                     }
                     aboutCards
-                    if FirebaseTelemetry.isConfigured {
+                    // Shown before Firebase is configured too: in the consent zone the
+                    // switch is how a refusal is reversed.
+                    if FirebaseTelemetry.hasBundledConfig {
                         PrivacySettingsSection()
                     }
                     footer

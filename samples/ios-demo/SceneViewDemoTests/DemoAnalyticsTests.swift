@@ -15,6 +15,7 @@ private final class RecordingBackend: AnalyticsBackend, @unchecked Sendable {
         case userProperty(String?, AnalyticsUserProperty)
         case collection(Bool)
         case reset
+        case deleteUnsent
     }
 
     private let lock = NSLock()
@@ -37,6 +38,7 @@ private final class RecordingBackend: AnalyticsBackend, @unchecked Sendable {
     func setUserProperty(_ value: String?, for property: AnalyticsUserProperty) { record(.userProperty(value, property)) }
     func setCollectionEnabled(_ enabled: Bool) { record(.collection(enabled)) }
     func resetAnalyticsData() { record(.reset) }
+    func deleteUnsentReports() { record(.deleteUnsent) }
 }
 
 private final class Clock: @unchecked Sendable {
@@ -71,13 +73,21 @@ final class DemoAnalyticsTests: XCTestCase {
         XCTAssertEqual(backend.calls, [.collection(true)])
     }
 
-    func testInstallHonoursAPreviousOptOut() {
+    /// A tester install that had turned the switch OFF before the consent existed.
+    private func makeAnalyticsAfterLegacyOptOut(requiresConsent: Bool = false) -> DemoAnalytics {
         defaults.set(false, forKey: DemoAnalytics.usageStatsKey)
+        let clock = self.clock!
+        let store = ConsentStore(defaults: defaults, requiresConsent: requiresConsent, now: { clock.date })
+        return DemoAnalytics(backend: NoopAnalyticsBackend(), defaults: defaults, consent: store, now: { clock.date })
+    }
+
+    func testInstallHonoursAPreviousOptOut() {
+        let analytics = makeAnalyticsAfterLegacyOptOut()
         analytics.install(backend)
         XCTAssertEqual(backend.calls, [.collection(false)])
     }
 
-    func testOptOutLogsFirstThenDisablesThenResets() {
+    func testOptOutLogsFirstThenDisablesThenResetsThenDeletesReports() {
         analytics.install(backend)
         analytics.setUsageStatsEnabled(false)
         XCTAssertEqual(backend.calls, [
@@ -85,9 +95,47 @@ final class DemoAnalyticsTests: XCTestCase {
             .log("settings_changed", ["key": "analytics", "value": "false"]),
             .collection(false),
             .reset,
+            .deleteUnsent,
         ])
         XCTAssertFalse(analytics.usageStatsEnabled)
-        XCTAssertEqual(defaults.object(forKey: DemoAnalytics.usageStatsKey) as? Bool, false)
+        XCTAssertEqual(defaults.string(forKey: ConsentStore.stateKey), "denied")
+    }
+
+    /// Consent zone, nothing answered: collection off, nothing logged.
+    func testConsentZoneCollectsNothingBeforeTheAnswer() {
+        let store = ConsentStore(defaults: defaults, requiresConsent: true)
+        let analytics = DemoAnalytics(backend: NoopAnalyticsBackend(), defaults: defaults, consent: store)
+        analytics.install(backend)
+        analytics.log(.pushPromptShown)
+        analytics.sampleOpened("cosmos", category: "View 3D", source: .home)
+        XCTAssertEqual(backend.calls, [.collection(false)])
+    }
+
+    /// Consent zone, "Share": the backend starts (strict mode) with collection off, the
+    /// reports cached before are deleted, then collection goes on and the opt-in is logged.
+    func testConsentZoneShareStartsTheBackendThenEnables() {
+        let clock = self.clock!
+        let store = ConsentStore(defaults: defaults, requiresConsent: true, now: { clock.date })
+        let analytics = DemoAnalytics(backend: NoopAnalyticsBackend(), defaults: defaults, consent: store)
+        analytics.setUsageStatsEnabled(true) { analytics.install(self.backend) }
+        XCTAssertEqual(backend.calls, [
+            .collection(false),
+            .deleteUnsent,
+            .collection(true),
+            .log("settings_changed", ["key": "analytics", "value": "true"]),
+        ])
+        XCTAssertEqual(store.state, .granted)
+        XCTAssertEqual(store.consentedAt, clock.date)
+    }
+
+    /// Consent zone, "Don't share" before anything was allowed: nothing is logged.
+    func testConsentZoneRefusalLogsNothing() {
+        let store = ConsentStore(defaults: defaults, requiresConsent: true)
+        let analytics = DemoAnalytics(backend: NoopAnalyticsBackend(), defaults: defaults, consent: store)
+        analytics.install(backend)
+        analytics.setUsageStatsEnabled(false)
+        XCTAssertEqual(backend.calls, [.collection(false), .collection(false), .reset, .deleteUnsent])
+        XCTAssertEqual(store.state, .denied)
     }
 
     func testNothingIsSentAfterOptOut() {
@@ -102,11 +150,12 @@ final class DemoAnalyticsTests: XCTestCase {
     }
 
     func testOptInEnablesThenLogs() {
-        defaults.set(false, forKey: DemoAnalytics.usageStatsKey)
+        let analytics = makeAnalyticsAfterLegacyOptOut()
         analytics.install(backend)
         analytics.setUsageStatsEnabled(true)
         XCTAssertEqual(backend.calls, [
             .collection(false),
+            .deleteUnsent,
             .collection(true),
             .log("settings_changed", ["key": "analytics", "value": "true"]),
         ])
