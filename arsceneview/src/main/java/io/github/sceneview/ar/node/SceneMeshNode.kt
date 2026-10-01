@@ -91,8 +91,10 @@ fun StreetscapeGeometry.Type.toMeshClassification(): MeshClassification = when (
  *
  * ### Rendering
  *
- * The mesh is built once in [StreetscapeGeometryNode]'s constructor; subsequent [update] calls
- * only refresh the node's world [pose]. For classification-driven colour coding, pass a different
+ * The mesh is built in [StreetscapeGeometryNode]'s constructor, with a bounding box computed from
+ * its vertices; subsequent [update] calls refresh the node's world [pose] and rebuild the mesh
+ * only if ARCore changed its vertex or index count. An empty mesh builds no renderable
+ * ([meshNode] is `null`). For classification-driven colour coding, pass a different
  * [meshMaterialInstance] per geometry type or use the [classification] property after construction.
  *
  * ### Threading

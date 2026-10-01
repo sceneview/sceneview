@@ -25,6 +25,14 @@ import io.github.sceneview.node.MeshNode
  * [Config.StreetscapeGeometryMode] is set to [Config.StreetscapeGeometryMode.ENABLED] and
  * [Config.GeospatialMode] is set to [Config.GeospatialMode.ENABLED].
  *
+ * ### Empty meshes
+ *
+ * The renderable [meshNode] is built with an axis-aligned bounding box computed from the mesh
+ * vertices. When ARCore reports a mesh with no vertex or no whole triangle, no renderable is
+ * built and [meshNode] is `null`; the node then draws nothing. Each time ARCore reports the
+ * geometry as updated with a different vertex or index count, the renderable is rebuilt (or
+ * dropped, if the mesh became empty).
+ *
  * ### Geospatial Depth (ARCore 1.54+, #1731)
  *
  * Enabling Streetscape Geometry together with [Config.DepthMode.AUTOMATIC] activates ARCore's
@@ -48,66 +56,21 @@ open class StreetscapeGeometryNode(
     onTrackingStateChanged = onTrackingStateChanged,
     onUpdated = onUpdated
 ) {
-    val meshNode = MeshNode(
-        engine = engine,
-        primitiveType = PrimitiveType.TRIANGLES,
-        vertexBuffer = VertexBuffer.Builder()
-            // POSITION + TANGENTS + UV0, one backing buffer each (#3215).
-            //
-            // ARCore ships positions only, but the lit materials this node is normally given
-            // (`opaque_colored` / `transparent_colored` from MaterialLoader.createColorInstance)
-            // require POSITION|TANGENTS|UV0 (MAT_REQA 0xB). Filament does not fail the
-            // mismatch — it logs `missing required attributes (0xb), declared=0x1` and shades
-            // the overlay with a constant fallback normal. So the node derives smooth
-            // per-vertex normals from the mesh once, at construction, and encodes them as
-            // tangent quaternions; UV0 is a zero buffer (no natural parameterisation, and the
-            // colored materials never sample it). See StreetscapeMeshAttributes.kt.
-            .bufferCount(BUFFER_COUNT)
-            // Position Attribute (x, y, z)
-            .attribute(VertexAttribute.POSITION, BUFFER_INDEX_POSITION, AttributeType.FLOAT3)
-            // Tangent frame quaternion (x, y, z, w) — Filament's per-vertex normal input.
-            // No `.normalized(TANGENTS)`: that flag is for integer formats, these are FLOAT4.
-            .attribute(
-                VertexAttribute.TANGENTS,
-                BUFFER_INDEX_TANGENT,
-                AttributeType.FLOAT4,
-                0,
-                STREETSCAPE_TANGENT_STRIDE
-            )
-            .attribute(
-                VertexAttribute.UV0,
-                BUFFER_INDEX_UV,
-                AttributeType.FLOAT2,
-                0,
-                STREETSCAPE_UV_STRIDE
-            )
-            .vertexCount(streetscapeGeometry.mesh.vertexListSize)
-            .build(engine)
-            .apply {
-                val mesh = streetscapeGeometry.mesh
-                setBufferAt(engine, BUFFER_INDEX_POSITION, mesh.vertexList)
-                setBufferAt(
-                    engine,
-                    BUFFER_INDEX_TANGENT,
-                    computeStreetscapeTangents(mesh.vertexList, mesh.indexList, mesh.vertexListSize)
-                )
-                setBufferAt(engine, BUFFER_INDEX_UV, zeroStreetscapeUvs(mesh.vertexListSize))
-            },
-        indexBuffer = IndexBuffer.Builder()
-            .bufferType(IndexBuffer.Builder.IndexType.UINT)
-            .indexCount(streetscapeGeometry.mesh.indexListSize)
-            .build(engine)
-            .apply {
-                setBuffer(engine, streetscapeGeometry.mesh.indexList)
-            },
-        materialInstance = meshMaterialInstance,
-        // This node builds the VertexBuffer/IndexBuffer above just for this MeshNode and
-        // owns them exclusively — free them when the node is destroyed (#2037). The mesh
-        // node is a child of this node, so Node.destroy()'s recursive child teardown
-        // (#2036) reaches it when the StreetscapeGeometryNode is destroyed.
-        destroyBuffersOnDispose = true,
-        builder = builder
-    ).apply { parent = this@StreetscapeGeometryNode }
+    private val meshMaterialInstance = meshMaterialInstance
+    private val meshBuilder = builder
+
+    // Vertex / index counts of the mesh the current [meshNode] was built from — a change on a
+    // geometry update triggers a rebuild.
+    private var builtVertexCount = 0
+    private var builtIndexCount = 0
+
+    /**
+     * The renderable mesh of [streetscapeGeometry], or `null` while ARCore reports an empty
+     * mesh (no vertex or no whole triangle). Filament cannot build a renderable for an empty
+     * mesh, so none is created; the node draws nothing until a geometry update brings vertices.
+     */
+    var meshNode: MeshNode? = buildMeshNode()
+        private set
 
     val type get() = streetscapeGeometry.type
     val quality get() = streetscapeGeometry.quality
@@ -133,6 +96,8 @@ open class StreetscapeGeometryNode(
         // Bail while the constructor dispatch is in flight (#2624) — init applies the state below.
         if (!constructed) return
         applyTrackableState()
+        // Only reached when ARCore reported this geometry as updated this frame.
+        rebuildMeshIfChanged()
     }
 
     /** The class-specific trackable refresh — gated behind [constructed] (#2624). */
@@ -140,6 +105,94 @@ open class StreetscapeGeometryNode(
         if (streetscapeGeometry.trackingState == TrackingState.TRACKING) {
             pose = streetscapeGeometry.meshPose
         }
+    }
+
+    /**
+     * Rebuilds [meshNode] when the mesh's vertex or index count changed since it was built, and
+     * drops it when the mesh became empty.
+     */
+    private fun rebuildMeshIfChanged() {
+        val mesh = streetscapeGeometry.mesh
+        if (mesh.vertexListSize == builtVertexCount && mesh.indexListSize == builtIndexCount) return
+        meshNode?.destroy()
+        meshNode = buildMeshNode()
+    }
+
+    /**
+     * Builds the renderable for the current mesh, or returns `null` when the mesh is empty.
+     *
+     * The bounding box is mandatory: without one Filament aborts in
+     * `RenderableManager.Builder.build` ("AABB can't be empty") because the renderable receives
+     * shadows by default.
+     */
+    private fun buildMeshNode(): MeshNode? {
+        val mesh = streetscapeGeometry.mesh
+        val vertexCount = mesh.vertexListSize
+        val indexCount = mesh.indexListSize
+        builtVertexCount = vertexCount
+        builtIndexCount = indexCount
+        if (!isStreetscapeMeshRenderable(vertexCount, indexCount)) return null
+        val boundingBox = computeStreetscapeAabb(mesh.vertexList, vertexCount) ?: return null
+        return MeshNode(
+            engine = engine,
+            primitiveType = PrimitiveType.TRIANGLES,
+            vertexBuffer = VertexBuffer.Builder()
+                // POSITION + TANGENTS + UV0, one backing buffer each (#3215).
+                //
+                // ARCore ships positions only, but the lit materials this node is normally given
+                // (`opaque_colored` / `transparent_colored` from MaterialLoader.createColorInstance)
+                // require POSITION|TANGENTS|UV0 (MAT_REQA 0xB). Filament does not fail the
+                // mismatch — it logs `missing required attributes (0xb), declared=0x1` and shades
+                // the overlay with a constant fallback normal. So the node derives smooth
+                // per-vertex normals from the mesh once, at construction, and encodes them as
+                // tangent quaternions; UV0 is a zero buffer (no natural parameterisation, and the
+                // colored materials never sample it). See StreetscapeMeshAttributes.kt.
+                .bufferCount(BUFFER_COUNT)
+                // Position Attribute (x, y, z)
+                .attribute(VertexAttribute.POSITION, BUFFER_INDEX_POSITION, AttributeType.FLOAT3)
+                // Tangent frame quaternion (x, y, z, w) — Filament's per-vertex normal input.
+                // No `.normalized(TANGENTS)`: that flag is for integer formats, these are FLOAT4.
+                .attribute(
+                    VertexAttribute.TANGENTS,
+                    BUFFER_INDEX_TANGENT,
+                    AttributeType.FLOAT4,
+                    0,
+                    STREETSCAPE_TANGENT_STRIDE
+                )
+                .attribute(
+                    VertexAttribute.UV0,
+                    BUFFER_INDEX_UV,
+                    AttributeType.FLOAT2,
+                    0,
+                    STREETSCAPE_UV_STRIDE
+                )
+                .vertexCount(vertexCount)
+                .build(engine)
+                .apply {
+                    setBufferAt(engine, BUFFER_INDEX_POSITION, mesh.vertexList)
+                    setBufferAt(
+                        engine,
+                        BUFFER_INDEX_TANGENT,
+                        computeStreetscapeTangents(mesh.vertexList, mesh.indexList, vertexCount)
+                    )
+                    setBufferAt(engine, BUFFER_INDEX_UV, zeroStreetscapeUvs(vertexCount))
+                },
+            indexBuffer = IndexBuffer.Builder()
+                .bufferType(IndexBuffer.Builder.IndexType.UINT)
+                .indexCount(indexCount)
+                .build(engine)
+                .apply {
+                    setBuffer(engine, mesh.indexList)
+                },
+            boundingBox = boundingBox,
+            materialInstance = meshMaterialInstance,
+            // This node builds the VertexBuffer/IndexBuffer above just for this MeshNode and
+            // owns them exclusively — free them when the node is destroyed (#2037). The mesh
+            // node is a child of this node, so Node.destroy()'s recursive child teardown
+            // (#2036) reaches it when the StreetscapeGeometryNode is destroyed.
+            destroyBuffersOnDispose = true,
+            builder = meshBuilder
+        ).apply { parent = this@StreetscapeGeometryNode }
     }
 }
 

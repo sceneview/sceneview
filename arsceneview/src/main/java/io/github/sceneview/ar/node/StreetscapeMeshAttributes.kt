@@ -1,5 +1,6 @@
 package io.github.sceneview.ar.node
 
+import com.google.android.filament.Box
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.cross
 import dev.romainguy.kotlin.math.dot
@@ -118,3 +119,64 @@ private fun vertexAt(positions: FloatBuffer, index: Int): Float3 = Float3(
     positions.get(index * 3 + 1),
     positions.get(index * 3 + 2),
 )
+
+/**
+ * Smallest half-extent (metres) of a Streetscape mesh's bounding box. A flat terrain patch has a
+ * zero extent on its up axis, and Filament treats a box with a zero half-extent as empty.
+ */
+internal const val STREETSCAPE_MIN_AABB_HALF_EXTENT_M: Float = 1e-3f
+
+/**
+ * `true` when an ARCore Streetscape mesh has something to draw: at least one vertex and one
+ * whole triangle. [StreetscapeGeometryNode] builds no renderable for any other mesh.
+ */
+internal fun isStreetscapeMeshRenderable(vertexCount: Int, indexCount: Int): Boolean =
+    vertexCount > 0 && indexCount >= 3
+
+/**
+ * Axis-aligned bounding box of the first [vertexCount] `xyz` positions of a Streetscape mesh.
+ *
+ * Filament's `RenderableManager.Builder.build` aborts with `AABB can't be empty, unless culling
+ * is disabled and the object is not a shadow caster/receiver` when a renderable has no box, and
+ * a renderable receives shadows by default. [StreetscapeGeometryNode] used to build its mesh
+ * without a box, so the first geometry ARCore delivered aborted the app.
+ *
+ * Every half-extent is clamped to at least [STREETSCAPE_MIN_AABB_HALF_EXTENT_M] so a flat or
+ * single-point mesh still yields a non-empty box. Non-finite coordinates are ignored.
+ *
+ * @param positions `xyz` floats, read from index 0; the buffer's position is left unchanged.
+ * @param vertexCount number of vertices to read, clamped to what [positions] holds.
+ * @return the box, or `null` when there is no finite vertex to bound (empty mesh).
+ */
+internal fun computeStreetscapeAabb(positions: FloatBuffer, vertexCount: Int): Box? {
+    val count = minOf(vertexCount, positions.limit() / 3)
+    var minX = Float.POSITIVE_INFINITY
+    var minY = Float.POSITIVE_INFINITY
+    var minZ = Float.POSITIVE_INFINITY
+    var maxX = Float.NEGATIVE_INFINITY
+    var maxY = Float.NEGATIVE_INFINITY
+    var maxZ = Float.NEGATIVE_INFINITY
+    var bounded = 0
+    for (v in 0 until count) {
+        val x = positions.get(v * 3)
+        val y = positions.get(v * 3 + 1)
+        val z = positions.get(v * 3 + 2)
+        if (!x.isFinite() || !y.isFinite() || !z.isFinite()) continue
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (z < minZ) minZ = z
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+        if (z > maxZ) maxZ = z
+        bounded++
+    }
+    if (bounded == 0) return null
+    return Box(
+        (minX + maxX) * 0.5f,
+        (minY + maxY) * 0.5f,
+        (minZ + maxZ) * 0.5f,
+        ((maxX - minX) * 0.5f).coerceAtLeast(STREETSCAPE_MIN_AABB_HALF_EXTENT_M),
+        ((maxY - minY) * 0.5f).coerceAtLeast(STREETSCAPE_MIN_AABB_HALF_EXTENT_M),
+        ((maxZ - minZ) * 0.5f).coerceAtLeast(STREETSCAPE_MIN_AABB_HALF_EXTENT_M),
+    )
+}
