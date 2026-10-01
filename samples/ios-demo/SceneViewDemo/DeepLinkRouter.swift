@@ -61,6 +61,34 @@ enum DeepLinkRouter {
     /// Read via `@AppStorage("qa_mode") var qaMode: Bool` in any demo view.
     static let qaModeDefaultsKey: String = "qa_mode"
 
+    /// Query parameter naming a view inside the opened demo, e.g.
+    /// `sceneview://demo/cosmos?tab=spacetime` opens Cosmos on the Star scene's
+    /// Spacetime mode. Mirrors Android's `tab` deep-link parameter.
+    static let tabParam: String = "tab"
+
+    /// UserDefaults key the `tab` parameter is written to, as `<demo id>:<tab>`.
+    /// The demo takes it once when it appears (`consumeTab(for:)`), so a later
+    /// plain visit opens on its default view.
+    static let tabDefaultsKey: String = "demo_tab"
+
+    /// Records the view `demo` should open on, or clears any left over.
+    static func setTab(_ tab: String?, for demo: String) {
+        if let tab, !tab.isEmpty {
+            UserDefaults.standard.set("\(demo):\(tab)", forKey: tabDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: tabDefaultsKey)
+        }
+    }
+
+    /// The view `demo` was asked to open on, lower-cased, if any — read once.
+    static func consumeTab(for demo: String) -> String? {
+        guard let stored = UserDefaults.standard.string(forKey: tabDefaultsKey) else { return nil }
+        UserDefaults.standard.removeObject(forKey: tabDefaultsKey)
+        let prefix = demo + ":"
+        guard stored.hasPrefix(prefix) else { return nil }
+        return String(stored.dropFirst(prefix.count)).lowercased()
+    }
+
     /// `true` when the process was launched by a script rather than by a human
     /// — the App Store screenshot pipeline, or the XCUITest suite. Both route
     /// straight to a demo with `-demo <id>`, which no interactive launch ever
@@ -111,7 +139,9 @@ enum DeepLinkRouter {
     static func parse(_ url: URL?, allowedDemos: Set<String>) -> String? {
         guard let url = url, let candidate = extractCandidate(url) else { return nil }
         applyQAModeIfPresent(url)
-        return allowedDemos.contains(candidate) ? candidate : nil
+        let demo = allowedDemos.contains(candidate) ? candidate : nil
+        if let demo { applyTab(url, for: demo) }
+        return demo
     }
 
     /// Extracts the raw id token from a URL without validating it
@@ -144,5 +174,12 @@ enum DeepLinkRouter {
               let items = comps.queryItems else { return }
         let enabled = items.first { $0.name == qaModeParam }?.value == "1"
         UserDefaults.standard.set(enabled, forKey: qaModeDefaultsKey)
+    }
+
+    /// Reads `?tab=` from the URL's query items for the opened demo to pick up
+    /// once (`consumeTab(for:)`); a link without one clears any left over.
+    private static func applyTab(_ url: URL, for demo: String) {
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        setTab(comps?.queryItems?.first(where: { $0.name == tabParam })?.value, for: demo)
     }
 }

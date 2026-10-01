@@ -51,6 +51,14 @@ struct CosmosWorldLight: Sendable, Equatable {
         spin = CosmosSystem.spinAngle(time)
     }
 
+    /// The light of a world placed off its orbit (`CosmosWorldPlacement`).
+    init(placement: CosmosWorldPlacement, time: Float, eye: SIMD3<Float>) {
+        let inverse = placement.tilt.inverse
+        sun = inverse.act(placement.sun - placement.center)
+        self.eye = inverse.act(eye - placement.center)
+        spin = CosmosSystem.spinAngle(time)
+    }
+
     /// Whether a bake for `other` would show something this one does not: the star, the
     /// camera or the surface moved by more than a fraction of a degree as seen from the planet.
     func differs(from other: CosmosWorldLight) -> Bool {
@@ -59,6 +67,14 @@ struct CosmosWorldLight: Sendable, Equatable {
         let eyeMoved = simd_length(eye - other.eye) > max(simd_length(eye), 1) * turn
         return sunMoved || eyeMoved || abs(spin - other.spin) > turn
     }
+}
+
+/// Where the Spacetime mode puts the ringed world instead of its orbit: its centre, the frame
+/// its rings lie in (`CosmosSystem.tilt`'s role), and where its light comes from.
+struct CosmosWorldPlacement: Sendable, Equatable {
+    var center: SIMD3<Float>
+    var tilt: simd_quatf
+    var sun: SIMD3<Float>
 }
 
 /// The CPU half of the planet and ring shaders: pure functions over preallocated buffers.
@@ -401,6 +417,8 @@ final class CosmosWorld {
     private var lastBake: Double = -.infinity
     private var reveal: Float = -1
     private var trailTint: Float = -1
+    /// The Spacetime mode's place for the world this frame, if any.
+    private var placement: CosmosWorldPlacement?
 
     /// Bakes per second at most, while something moves: the orbit turns 6°/s, so light and
     /// shadow step by under a degree.
@@ -482,8 +500,12 @@ final class CosmosWorld {
     ///   - eye: the camera, in scene coordinates.
     ///   - now: a monotonic clock, in seconds, for the bake rate.
     ///   - focal: pixels per world unit at distance 1, for the trail's least width.
-    func update(system: CosmosSystem, time: Float, eye: SIMD3<Float>, reveal: Float, now: Double, focal: Float) {
-        planet.position = system.planetPosition(time)
+    ///   - placement: the Spacetime mode's place for the world, instead of its orbit.
+    ///   - trailFade: how much of the orbit trail shows; the Spacetime mode fades it out.
+    func update(system: CosmosSystem, time: Float, eye: SIMD3<Float>, reveal: Float, now: Double, focal: Float,
+                placement: CosmosWorldPlacement? = nil, trailFade: Float = 1) {
+        self.placement = placement
+        planet.position = placement?.center ?? system.planetPosition(time)
 
         // Low Power Mode or a hot device: the surface holds its turn, as the star's churn
         // does, and the light follows the orbit once a second instead of eight times.
@@ -513,7 +535,7 @@ final class CosmosWorld {
         // last bake round by the spin since, and its light with it — under 1.2° at 9°/s and
         // 8 bakes a second — while the rings, whose map holds the planet's shadow, stay put.
         let turn = held || holdingTurn ? 0 : light.spin - (shownSpin ?? light.spin)
-        planet.orientation = system.tilt * simd_quatf(angle: turn, axis: SIMD3(0, 1, 0))
+        planet.orientation = (placement?.tilt ?? system.tilt) * simd_quatf(angle: turn, axis: SIMD3(0, 1, 0))
         ring.orientation = simd_quatf(angle: -turn, axis: SIMD3(0, 1, 0))
 
         if abs(reveal - self.reveal) > 1e-4 {
@@ -525,7 +547,7 @@ final class CosmosWorld {
         }
 
         let energy = placeTrail(system: system, time: time, eye: eye, focal: focal, now: now)
-        let tint = min(max(reveal * system.trailVisibility(eye: eye, time: time) * energy, 0), 1)
+        let tint = min(max(reveal * system.trailVisibility(eye: eye, time: time) * energy * trailFade, 0), 1)
         // A new material only once the change would show (under one 8-bit step otherwise).
         if abs(tint - trailTint) > 1.0 / 512 || (tint <= 1e-3) != (trailTint <= 1e-3) {
             trailTint = tint
@@ -551,7 +573,8 @@ final class CosmosWorld {
 
     /// The light a bake for `eye` would use: under a hold, the surface keeps the spin on screen.
     private func bakeLight(system: CosmosSystem, time: Float, eye: SIMD3<Float>) -> CosmosWorldLight {
-        var light = CosmosWorldLight(system: system, time: time, eye: eye)
+        var light = placement.map { CosmosWorldLight(placement: $0, time: time, eye: eye) }
+            ?? CosmosWorldLight(system: system, time: time, eye: eye)
         if CosmosPowerState.shared.constrained, let shownSpin { light.spin = shownSpin }
         return light
     }
@@ -696,7 +719,7 @@ final class CosmosWorld {
 
     /// A UV sphere whose texture coordinates follow the bakes' equirectangular layout: texel
     /// (x, y) is longitude (x + ½) / w · 2π from +Z towards +X, latitude from the top row down.
-    private static func sphere(radius: Float, stacks: Int = 64, slices: Int = 96) throws -> MeshResource {
+    static func sphere(radius: Float, stacks: Int = 64, slices: Int = 96) throws -> MeshResource {
         var positions: [SIMD3<Float>] = []
         var normals: [SIMD3<Float>] = []
         var uvs: [SIMD2<Float>] = []
