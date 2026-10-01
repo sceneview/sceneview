@@ -6,11 +6,15 @@ import io.github.sceneview.ar.PlacementPhase
 /**
  * What the Wall Placement demo tells the user while it looks for a wall (#4070).
  *
- * The SDK's coaching glyph shows *where* to aim; it cannot say *why* nothing is happening.
- * Before this, the demo hid all copy while the glyph played, so a user aiming at a plain wall
- * watched a glyph for half a minute: ARCore finds no features on a blank wall, tracking never
- * starts, the flow stays in [PlacementPhase.INITIALIZING], and the "No surface found" card —
- * which only counts *tracked* scanning time — never comes up.
+ * The SDK's coaching glyph shows *where* to aim; on its own it cannot say *why* nothing is
+ * happening. Before #4070 a user aiming at a plain wall watched the glyph for half a minute:
+ * ARCore finds no features on a blank wall, tracking never starts, the flow stays in
+ * [PlacementPhase.INITIALIZING], and the "No surface found" card — which only counts
+ * *tracked* scanning time — never comes up.
+ *
+ * The hint is spoken by the glyph itself, as its caption (#4190): the glyph is on screen the
+ * whole time the demo searches, and a second sentence in the bottom pill put two instructions
+ * on screen at once. See [wallStatus] for the pill.
  *
  * Pure (no Compose, no ARCore session), so `WallCoachingTest` pins it on the JVM.
  */
@@ -67,3 +71,44 @@ internal fun wallCoachingHint(
  */
 internal fun isSearchingForWall(phase: PlacementPhase, cameraLive: Boolean): Boolean =
     cameraLive && (phase == PlacementPhase.INITIALIZING || phase == PlacementPhase.SCANNING)
+
+/** What the Wall demo's bottom pill says, when the coaching glyph is silent. */
+internal enum class WallStatus {
+    SCANNING,
+    TRACKING_PAUSED,
+    TRACKING_PAUSED_LOW_LIGHT,
+    FINDING_PLACEMENT,
+    KEEP_ON_WALL,
+    GESTURE_HINT,
+    SCALE,
+}
+
+/**
+ * The bottom pill for the current frame, or `null` for "say nothing".
+ *
+ * One instruction on screen at a time (#4190): while the coaching glyph speaks ([coaching],
+ * i.e. `ArGuidanceState.isCoaching`) the pill steps aside, and it comes back only once the
+ * glyph is gone. The glyph carries the search hints ([wallCoachingHint]) and its own
+ * low-light sentence, so the pill has nothing to add while it is up. A card that offers a
+ * choice ([cardShown]) never shares the screen with the pill either.
+ */
+internal fun wallStatus(
+    phase: PlacementPhase,
+    cardShown: Boolean,
+    coaching: Boolean,
+    invalidMove: Boolean,
+    showGestureHint: Boolean,
+    lowLight: Boolean,
+): WallStatus? = when {
+    cardShown || coaching -> null
+    invalidMove -> WallStatus.KEEP_ON_WALL
+    else -> when (phase) {
+        PlacementPhase.SCANNING -> WallStatus.SCANNING
+        PlacementPhase.TRACKING_LOST ->
+            if (lowLight) WallStatus.TRACKING_PAUSED_LOW_LIGHT else WallStatus.TRACKING_PAUSED
+        PlacementPhase.RECOVERING -> WallStatus.FINDING_PLACEMENT
+        PlacementPhase.PLACED -> if (showGestureHint) WallStatus.GESTURE_HINT else null
+        PlacementPhase.ADJUSTING -> WallStatus.SCALE
+        else -> null
+    }
+}

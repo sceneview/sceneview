@@ -28,8 +28,9 @@ internal enum class ScanRoomStatus {
  * The status pill for the current frame, or null when it should stay quiet.
  *
  * Priorities, highest first: the recording is still opening; an action card owns the screen
- * ([cardShown]); the SDK coaching owns it ([coaching], except that a tracking loss caused by
- * darkness is still worth saying); a rejected move; then the placement phase.
+ * ([cardShown]); the SDK coaching owns it ([coaching] — one instruction at a time, and the
+ * glyph's own sentence already asks for a brighter spot, #4190); a rejected move; then the
+ * placement phase.
  */
 internal fun scanRoomStatus(
     phase: PlacementPhase,
@@ -42,7 +43,8 @@ internal fun scanRoomStatus(
 ): ScanRoomStatus? = when {
     !scanReady -> ScanRoomStatus.OpeningScan
     cardShown -> null
-    coaching && !(phase == PlacementPhase.TRACKING_LOST && lowLight) -> null
+    // One instruction at a time (#4190): the glyph's own sentence covers low light.
+    coaching -> null
     invalidMove -> ScanRoomStatus.KeepOnSurface
     else -> when (phase) {
         PlacementPhase.SCANNING -> ScanRoomStatus.MoveSlowly

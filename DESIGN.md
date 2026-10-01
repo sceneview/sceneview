@@ -787,7 +787,11 @@ to resize. Twist to turn." pill stays 6s and leaves at the first gesture.
 
 - **Hide the chrome while it shows** (Apple HIG): status pills and hints step aside while
   the glyph is up and come back when it leaves. Action cards never do — the glyph is
-  silent whenever a card explains the state.
+  silent whenever a card explains the state. No exception, low light included (the
+  "Paused" sentence already asks for a brighter spot): the screen never shows two
+  instructions at once. When the app knows more than the cue — Wall Placement naming a
+  plain wall, darkness or a search that lingers — that sentence replaces the glyph's own
+  caption (`ARCoachingOverlay(caption = …)`) instead of going into a second pill.
 - Copy never says "ARKit", "ARCore", "tracking" or "plane": *Scan*, *Paused*, *Look back*.
 
 ### AR Overlay Card

@@ -18,7 +18,8 @@ public final class io/github/sceneview/ar/ARCameraPermissionState {
 }
 
 public final class io/github/sceneview/ar/ARCoachingOverlayKt {
-	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Ljava/lang/String;Landroidx/compose/runtime/Composer;II)V
 	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 

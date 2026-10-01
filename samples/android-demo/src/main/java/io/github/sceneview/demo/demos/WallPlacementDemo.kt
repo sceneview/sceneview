@@ -22,8 +22,10 @@ import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.demo.common.placement.PlacementPreviewSheet
 import io.github.sceneview.demo.demos.internal.WALL_COACHING_LINGER_MS
 import io.github.sceneview.demo.demos.internal.WallCoachingHint
+import io.github.sceneview.demo.demos.internal.WallStatus
 import io.github.sceneview.demo.demos.internal.isSearchingForWall
 import io.github.sceneview.demo.demos.internal.wallCoachingHint
+import io.github.sceneview.demo.demos.internal.wallStatus
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.ar.ARHapticFeedback
@@ -56,8 +58,8 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val state = rememberAutoPlacementState()
-    // The scene draws the animated wall coaching itself; the pill only adds what the glyph
-    // cannot say — why no wall has come up yet (#4070, see `wallCoachingHint`).
+    // The demo draws the animated wall coaching itself so the glyph can also say why no wall
+    // has come up yet (#4070, see `wallCoachingHint`); the pill waits until it is gone.
     val guidance = rememberArGuidanceState(state, PlacementSurface.WALL)
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
@@ -93,6 +95,17 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             delay(AR_CAMERA_INIT_SCRIM_TIMEOUT_MS)
             state.cameraFailed()
         }
+    }
+    // The glyph is silent under the SDK's "AR unavailable" card, exactly as AutoPlacementScene
+    // keeps it (#3986). While it speaks, it says the #4070 hint when there is one.
+    val coachingCue = if (availability == null) guidance.cue else ArGuidanceCue.NONE
+    val coachingHint = wallCoachingHint(state.phase, state.hasCameraFrame, trackingFailure, searchLingered)
+    val coachingCaption = when (coachingHint) {
+        WallCoachingHint.NONE -> null
+        WallCoachingHint.MOVE_SIDEWAYS -> stringResource(R.string.wall_coach_move_sideways)
+        WallCoachingHint.PLAIN_WALL -> stringResource(R.string.wall_coach_plain_wall)
+        WallCoachingHint.TOO_DARK -> stringResource(R.string.ar_place_try_brighter_area)
+        WallCoachingHint.SLOW_DOWN -> stringResource(R.string.tracking_failure_excessive_motion)
     }
     fun reset() {
         invalidMove = false
@@ -134,37 +147,27 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             }
         },
         bottomOverlay = {
-            val coaching = wallCoachingHint(state.phase, state.hasCameraFrame, trackingFailure, searchLingered)
-            val text = when {
-                card != null -> null
-                // Said under the glyph, not instead of it: the glyph shows where to aim, this
-                // says what to change when nothing is found (#4070).
-                coaching != WallCoachingHint.NONE -> stringResource(
-                    when (coaching) {
-                        WallCoachingHint.PLAIN_WALL -> R.string.wall_coach_plain_wall
-                        WallCoachingHint.TOO_DARK -> R.string.ar_place_try_brighter_area
-                        WallCoachingHint.SLOW_DOWN -> R.string.tracking_failure_excessive_motion
-                        else -> R.string.wall_coach_move_sideways
-                    },
+            val status = wallStatus(
+                phase = state.phase,
+                cardShown = card != null,
+                coaching = coachingCue != ArGuidanceCue.NONE,
+                invalidMove = invalidMove,
+                showGestureHint = showHint,
+                lowLight = trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT,
+            )
+            val text = when (status) {
+                null -> null
+                WallStatus.SCANNING -> stringResource(R.string.wall_phase_scanning)
+                WallStatus.TRACKING_PAUSED -> stringResource(R.string.ar_place_tracking_paused)
+                WallStatus.TRACKING_PAUSED_LOW_LIGHT -> stringResource(R.string.ar_place_tracking_paused) +
+                    " " + stringResource(R.string.ar_place_try_brighter_area)
+                WallStatus.FINDING_PLACEMENT -> stringResource(R.string.ar_place_finding_placement)
+                WallStatus.KEEP_ON_WALL -> stringResource(R.string.ar_place_keep_on_surface)
+                WallStatus.GESTURE_HINT -> stringResource(R.string.ar_place_gesture_hint)
+                WallStatus.SCALE -> stringResource(
+                    R.string.ar_scale_preview_size,
+                    (state.scaleFactor * 100).toInt(),
                 )
-                guidance.isCoaching &&
-                    !(state.phase == PlacementPhase.TRACKING_LOST &&
-                        trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) -> null
-                invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
-                else -> when (state.phase) {
-                    PlacementPhase.SCANNING -> stringResource(R.string.wall_phase_scanning)
-                    PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused) +
-                        if (trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT)
-                            " " + stringResource(R.string.ar_place_try_brighter_area) else ""
-                    PlacementPhase.RECOVERING -> stringResource(R.string.ar_place_finding_placement)
-                    PlacementPhase.PLACED -> if (showHint) stringResource(R.string.ar_place_gesture_hint) else null
-                    PlacementPhase.ADJUSTING ->
-                        stringResource(
-                            R.string.ar_scale_preview_size,
-                            (state.scaleFactor * 100).toInt(),
-                        )
-                    else -> null
-                }
             }
             DemoStatusBanner(text, tone = DemoStatusTone.Guidance)
             PlacementActionCard(card, { show3D = true },
@@ -182,6 +185,8 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             materialLoader = materialLoader,
             // No synthetic wall shadow. See the documented renderer parity limitation.
             groundShadows = false,
+            // Drawn below with the #4070 hint as its caption: one voice on screen.
+            coaching = false,
             playbackDataset = playbackDataset,
             onARCoreAvailability = { availability = it },
             onTrackingFailureChanged = { trackingFailure = it },
@@ -190,6 +195,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
                 onInvalidMove = { invalidMove = it },
             ) { opacity -> WallTV(opacity) }
         }
+        ARCoachingOverlay(cue = coachingCue, surface = PlacementSurface.WALL, caption = coachingCaption)
         // Keyed on the first camera frame, not on INITIALIZING: untracked start-up frames
         // already show the camera, and the coaching overlay speaks over them.
         ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING && !state.hasCameraFrame, availability)

@@ -94,16 +94,29 @@ fun BoxScope.ARCoachingOverlay(
 /**
  * Stateless renderer for one [cue] — for previews, screenshot tests, or a guidance state
  * machine of your own. [ArGuidanceCue.NONE] renders nothing (with an exit fade).
+ *
+ * @param caption a sentence of your own in place of the built-in one, when your app knows
+ *   more than the cue does — why nothing has been found yet, say ("Not enough detail to track
+ *   here. Aim at a frame or a switch."). The glyph is the one voice on screen while it shows,
+ *   so put that sentence here rather than in a second pill. `null` keeps the built-in
+ *   sentence. Also the accessible name. Ignored for [ArGuidanceCue.SURFACE_FOUND], whose
+ *   600 ms beat is too short to read.
  */
 @Composable
 fun BoxScope.ARCoachingOverlay(
     cue: ArGuidanceCue,
     surface: PlacementSurface = PlacementSurface.SURFACE,
     modifier: Modifier = Modifier,
+    caption: String? = null,
 ) {
-    // Latch the last visible cue so the exit fade keeps drawing it instead of blanking.
+    // Latch the last visible cue and caption so the exit fade keeps drawing them instead of
+    // blanking.
     var shown by remember { mutableStateOf(cue) }
-    if (cue != ArGuidanceCue.NONE) shown = cue
+    var shownCaption by remember { mutableStateOf(caption) }
+    if (cue != ArGuidanceCue.NONE) {
+        shown = cue
+        shownCaption = caption
+    }
     val rise = with(LocalDensity.current) { CoachMotion.RISE.roundToPx() }
     AnimatedVisibility(
         visible = cue != ArGuidanceCue.NONE,
@@ -113,16 +126,33 @@ fun BoxScope.ARCoachingOverlay(
         exit = fadeOut(tween(CoachMotion.EXIT_MS)) +
             slideOutVertically(tween(CoachMotion.EXIT_MS)) { rise },
     ) {
-        CoachingContent(cue = shown, surface = surface)
+        CoachingContent(cue = shown, surface = surface, customCaption = shownCaption)
     }
 }
 
+/**
+ * Binary-compatibility shim for the pre-`caption` descriptor of [ARCoachingOverlay]. The
+ * Compose compiler puts every parameter in the JVM signature, so adding `caption` retyped the
+ * method (CONTRIBUTING.md — a retyped public symbol is a breaking change).
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the ARCoachingOverlay overload that takes `caption`.",
+    level = DeprecationLevel.HIDDEN,
+)
 @Composable
-private fun CoachingContent(cue: ArGuidanceCue, surface: PlacementSurface) {
+fun BoxScope.ARCoachingOverlay(
+    cue: ArGuidanceCue,
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    modifier: Modifier = Modifier,
+) = ARCoachingOverlay(cue = cue, surface = surface, modifier = modifier, caption = null)
+
+@Composable
+private fun CoachingContent(cue: ArGuidanceCue, surface: PlacementSurface, customCaption: String?) {
     val dark = isSystemInDarkTheme()
     val scrim = if (dark) CoachColors.ScrimDark else CoachColors.ScrimLight
     val border = if (dark) CoachColors.ScrimBorderDark else CoachColors.ScrimBorderLight
-    val sentence = coachingSentence(cue, surface)
+    val sentence = customCaption?.takeIf { it.isNotBlank() && cue.hasCaption }
+        ?: coachingSentence(cue, surface)
     val caption = sentence.takeIf { cue.hasCaption }
     Column(
         modifier = Modifier.semantics(mergeDescendants = false) {

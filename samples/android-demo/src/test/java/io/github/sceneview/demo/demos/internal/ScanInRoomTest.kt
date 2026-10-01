@@ -47,10 +47,11 @@ class ScanInRoomTest {
     }
 
     @Test
-    fun `darkness is still worth saying over the coaching`() {
+    fun `darkness waits for the coaching too - its sentence already asks for light`() {
+        assertNull(status(PlacementPhase.TRACKING_LOST, coaching = true, lowLight = true))
         assertEquals(
             ScanRoomStatus.TrackingPausedLowLight,
-            status(PlacementPhase.TRACKING_LOST, coaching = true, lowLight = true),
+            status(PlacementPhase.TRACKING_LOST, lowLight = true),
         )
     }
 

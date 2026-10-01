@@ -57,6 +57,9 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
     var cameraReady by remember { mutableStateOf(false) }
     var cameraFailed by remember { mutableStateOf(false) }
     var startupTimedOut by remember { mutableStateOf(false) }
+    // Silent while a card explains that AR could not start (#3986). The pill reads the same
+    // value, so it steps aside exactly while the glyph is on screen.
+    val coachingCue = if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE
     var model by remember { mutableStateOf<ModelInstance?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
@@ -177,10 +180,9 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                     model == null -> stringResource(R.string.ar_place_loading_model)
                     effectFailed -> stringResource(R.string.ar_comparison_failed)
                     card != null -> null
-                    // The animated coaching speaks; the pill only adds what it cannot say.
-                    guidance.isCoaching &&
-                        !(state.phase == PlacementPhase.TRACKING_LOST &&
-                            trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) -> null
+                    // One instruction at a time (#4190): while the coaching glyph speaks, the
+                    // pill steps aside. Its sentence already covers low light.
+                    coachingCue != ArGuidanceCue.NONE -> null
                     invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
                     state.phase == PlacementPhase.SCANNING -> stringResource(R.string.ar_place_move_slowly)
                     state.phase == PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused) +
@@ -274,10 +276,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                 } }
             }
             // Silent while a card explains that AR could not start (#3986).
-            ARCoachingOverlay(
-                cue = if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
-                surface = guidance.surface,
-            )
+            ARCoachingOverlay(cue = coachingCue, surface = guidance.surface)
             ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
             if (startupTimedOut && availability == null) {
                 PlacementActionCard(PlacementCard.CAMERA_ERROR, null, {}, ::reset, onRestart)
