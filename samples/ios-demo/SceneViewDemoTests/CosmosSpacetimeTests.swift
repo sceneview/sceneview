@@ -16,8 +16,8 @@ final class CosmosSpacetimeTests: XCTestCase {
     func testGoldenHeights() {
         let sheet = S.Sheet(time: qa, weight: 1)
         let golden: [(Double, Double, Double)] = [
-            (0, 0, -0.3375), (1, 0, 0.2820), (0, -2, 0.8055), (-3, 1.5, 1.3044),
-            (4, 4, 1.7011), (6, -6, 1.9831), (10.5, 0, 2.0883), (12, 0, 2.1321),
+            (0, 0, -0.3375), (1, 0, 0.2812), (0, -2, 0.8139), (-3, 1.5, 1.2977),
+            (4, 4, 1.7000), (6, -6, 1.9835), (10.5, 0, 2.0882), (12, 0, 2.1321),
         ]
         for (x, z, h) in golden {
             XCTAssertEqual(sheet.height(x, z), h, accuracy: tolerance, "H(\(x), \(z))")
@@ -29,13 +29,13 @@ final class CosmosSpacetimeTests: XCTestCase {
     func testGoldenRests() {
         let sheet = S.Sheet(time: qa, weight: 1)
         let golden: [(S.Body, SIMD2<Double>, Double)] = [
-            (.ember, SIMD2(-1.296, -0.104), 0.0125),
-            (.azure, SIMD2(-1.649, 1.131), 0.4535),
-            (.ringed, SIMD2(1.600, -2.886), 1.0819),
-            (.ochre, SIMD2(-4.330, -2.695), 1.2100),
-            (.ice, SIMD2(5.116, 4.629), 1.4944),
-            (.moonI, SIMD2(5.602, 4.982), 1.4389),
-            (.moonO, SIMD2(-3.830, -2.007), 0.9465),
+            (.ember, SIMD2(-1.2185, 0.4531), -0.0599),
+            (.azure, SIMD2(-1.649, 1.131), 0.4144),
+            (.ringed, SIMD2(1.600, -2.886), 1.0843),
+            (.ochre, SIMD2(-4.330, -2.695), 1.2130),
+            (.ice, SIMD2(5.116, 4.629), 1.4937),
+            (.moonI, SIMD2(5.602, 4.982), 1.4382),
+            (.moonO, SIMD2(-3.830, -2.007), 0.9509),
         ]
         for (body, p, y) in golden {
             let at = S.position(body, time: qa)

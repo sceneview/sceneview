@@ -84,9 +84,9 @@ enum CosmosSpacetime {
     static let horizonReach: Double = 6
     static let horizonSoftness: Double = 0.03
     /// Ember's and Azure's orbit angles at time zero, in degrees: Spacetime's own, chosen so that
-    /// at `qaTime` Ember sits beside the star and Azure in front of it, both on the lit wall and
-    /// clear of the hollow's shadow.
-    static let emberPhaseDegrees: Double = 317
+    /// at `qaTime` both sit in front of the star and left of it, on the lit wall and clear of the
+    /// lobe of its shadow on screen.
+    static let emberPhaseDegrees: Double = 342
     static let azurePhaseDegrees: Double = 100
     static let gain: Double = 0.6
     static let ceiling: Double = 1.25
