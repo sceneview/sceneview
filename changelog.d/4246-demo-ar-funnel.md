@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Android demo app: AR funnel statistics ([#4246](https://github.com/sceneview/sceneview/pull/4246)).** When usage statistics are on, the SceneView Demo app records where an AR session stops (session started, tracking ready, first object placed, tracking lost, session failed) so the AR samples can be improved where people get stuck. No camera image, pose or location is sent. Off with the rest of the statistics in **About → Privacy & notifications**.
