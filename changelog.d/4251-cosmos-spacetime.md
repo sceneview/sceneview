@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Android demo**: Cosmos's Star scene gains a **Spacetime** view. A "Starlight | Spacetime" pill above the dock lays the star system down on a lit spacetime sheet: the camera rises and the glow drops away, then five worlds and two moons fall into wells the masses carve in the fabric, shadowed by a low key light. A drag orbits the camera (pitch 30–70°). `sceneview://demo/cosmos?tab=spacetime` opens it directly.
