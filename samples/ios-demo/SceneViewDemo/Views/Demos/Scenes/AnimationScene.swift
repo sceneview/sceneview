@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        figure.run
-// @order       31
+// @order       32
 // @tags        animation,skeletal,physics,rigid-body,collision,gltf
 // @updatedIn   4.48.0
 import SwiftUI

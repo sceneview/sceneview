@@ -6,7 +6,7 @@
 // @available   true
 // @icon        person.fill.viewfinder
 // @iosOnly     true
-// @order       41
+// @order       42
 // @tags        ar,occlusion,people,segmentation,depth
 import SwiftUI
 

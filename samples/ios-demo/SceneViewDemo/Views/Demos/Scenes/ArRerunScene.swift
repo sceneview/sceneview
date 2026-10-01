@@ -6,7 +6,7 @@
 // @available   true
 // @icon        point.3.connected.trianglepath.dotted
 // @iosOnly     true
-// @order       19
+// @order       20
 // @tags        ar,rerun,replay,record,export,point cloud,plane,pose,usdz,glb,ply
 // @updatedIn   4.46.0
 import SwiftUI

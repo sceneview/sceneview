@@ -7,7 +7,7 @@
 // @status      knownIssue
 // @icon        icloud.fill
 // @iosOnly     true
-// @order       26
+// @order       27
 // @tags        ar,cloud-anchor,multi-user,persistence,arcore
 import SwiftUI
 

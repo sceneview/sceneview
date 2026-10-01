@@ -387,9 +387,11 @@ final class ContactShadowStage {
     // MARK: Frame
 
     private func tick(_ delta: TimeInterval) {
-        if qaMode {
+        // As on Android, QA mode and the Motion toggle both park the clock at t = 0: the box
+        // lands and the pool shows at full strength, instead of freezing mid-hop.
+        if qaMode || !motionEnabled {
             clock = 0
-        } else if motionEnabled && active {
+        } else if active {
             clock += min(delta, 0.1)
         }
         updateFrame()

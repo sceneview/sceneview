@@ -6,7 +6,7 @@
 // @available   true
 // @icon        arkit
 // @iosOnly     true
-// @order       22
+// @order       23
 // @tags        ar,plane,automatic-placement,anchor,gltf,model
 // @updatedIn   4.39.0
 import SwiftUI

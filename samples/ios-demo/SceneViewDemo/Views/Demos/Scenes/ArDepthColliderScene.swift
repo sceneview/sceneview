@@ -7,7 +7,7 @@
 // @icon        basketball.fill
 // @iosOnly     true
 // @status      knownIssue
-// @order       45
+// @order       46
 // @tags        ar,depth,physics,collision,rigid-body
 import SwiftUI
 
