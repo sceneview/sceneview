@@ -12,10 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
-import com.google.firebase.messaging.FirebaseMessaging
-import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.R
 
 /**
@@ -67,9 +64,9 @@ object Telemetry {
     var notificationsEnabled by mutableStateOf(false)
         private set
 
-    /** Whether this process already turned FCM on (auto-init, topics); see [syncPush]. */
+    /** Push on and off; null in a build without Firebase. */
     @Volatile
-    private var pushActivated = false
+    private var push: PushSwitch? = null
 
     /** Idempotent. Called by MainActivity and by the messaging service, whichever runs first. */
     @Synchronized
@@ -91,6 +88,13 @@ object Telemetry {
         // Re-applied at every launch; the reset is not (see setAnalyticsEnabled).
         runCatching { delegate.setCollectionEnabled(p.analyticsEnabled) }
         createChannel(app)
+        push = PushSwitch(
+            backend = FirebasePushBackend(),
+            store = p,
+            topics = topics(app),
+            wanted = { notificationsEnabled },
+            systemAllows = { systemAllowsNotifications(app) },
+        )
         syncPush(app)
         refreshUserProperties(app)
     }
@@ -106,7 +110,10 @@ object Telemetry {
         val p = prefs ?: return
         val wasEnabled = p.analyticsEnabled
         if (!enabled && wasEnabled) {
-            // Logged while still on, so the opt-out itself is the last thing sent.
+            // Best effort, and usually lost: logged while collection is still on, but the
+            // resetData() below also clears the events still waiting on the device, this one
+            // with them. Accepted rather than delaying the reset, which is what the opt-out
+            // promises.
             analytics.log(AnalyticsEvent.SettingsChanged("analytics", "false"))
         }
         p.analyticsEnabled = enabled
@@ -144,33 +151,18 @@ object Telemetry {
         val wasEnabled = p.notificationsEnabled
         p.notificationsEnabled = enabled
         notificationsEnabled = enabled
-        if (enabled) {
-            syncPush(context)
-        } else if (wasEnabled || pushActivated) {
-            pushActivated = false
-            disablePush(context)
-        }
+        if (enabled) syncPush(context) else push?.turnOff(wasOn = wasEnabled)
         refreshUserProperties(context)
     }
 
     /**
-     * Turns FCM on once the user opted in AND the system lets the app post, never before, so
-     * no registration token exists for someone who never said yes (the manifest sets
-     * `firebase_messaging_auto_init_enabled` to false). While opted out, retries a disable
-     * that failed (offline) until the topics are left and the token deleted. Idempotent;
-     * MainActivity re-runs it on every resume, so a permission granted in system settings
-     * makes push possible as soon as the user comes back.
+     * Turns FCM on once the user opted in AND the system lets the app post, or retries an
+     * opt-out that failed offline; see [PushSwitch]. Idempotent: MainActivity re-runs it on every
+     * resume, so a permission granted in system settings makes push possible on return.
      */
     fun syncPush(context: Context) {
-        if (!firebaseAvailable) return
-        val p = prefs ?: return
-        if (!notificationsEnabled) {
-            if (p.pushDisablePending) disablePush(context.applicationContext)
-            return
-        }
-        if (pushActivated || !systemAllowsNotifications(context)) return
-        pushActivated = true
-        enablePush(context.applicationContext)
+        ensureInit(context)
+        push?.sync()
     }
 
     /** True when the system lets this app post (the POST_NOTIFICATIONS grant on API 33+). */
@@ -210,58 +202,4 @@ object Telemetry {
 
     private fun topics(context: Context): List<String> =
         if (context.packageName.endsWith(".qa")) TOPICS + TOPIC_QA else TOPICS
-
-    private fun enablePush(context: Context) {
-        prefs?.pushDisablePending = false
-        runCatching {
-            val messaging = FirebaseMessaging.getInstance()
-            messaging.isAutoInitEnabled = true
-            topics(context).forEach { topic ->
-                val task = messaging.subscribeToTopic(topic)
-                if (BuildConfig.DEBUG) {
-                    task.addOnCompleteListener { Log.d(TAG, "topic $topic subscribed ok=${it.isSuccessful}") }
-                }
-            }
-            if (BuildConfig.DEBUG) {
-                messaging.token.addOnSuccessListener { Log.d(TAG, "FCM token: $it") }
-            }
-        }.onFailure { Log.w(TAG, "FCM unavailable (no Play services?)", it) }
-    }
-
-    /** Set while a disable runs, so a resume during it does not start a second one. */
-    @Volatile
-    private var disableInFlight = false
-
-    /**
-     * Leaves every topic, then deletes the registration token: nothing can reach this install.
-     * Persisted as pending until both succeed; offline, [syncPush] retries it on a later resume.
-     */
-    private fun disablePush(context: Context) {
-        if (disableInFlight) return
-        disableInFlight = true
-        prefs?.pushDisablePending = true
-        runCatching {
-            val messaging = FirebaseMessaging.getInstance()
-            messaging.isAutoInitEnabled = false
-            val leaving = topics(context).map { messaging.unsubscribeFromTopic(it) }
-            Tasks.whenAllComplete(leaving).addOnCompleteListener {
-                val left = leaving.all { it.isSuccessful }
-                messaging.deleteToken().addOnCompleteListener { deleted ->
-                    val done = left && deleted.isSuccessful
-                    // Re-enabled meanwhile: enablePush already cleared the flag, keep it so.
-                    if (done || notificationsEnabled) prefs?.pushDisablePending = false
-                    disableInFlight = false
-                    if (BuildConfig.DEBUG) {
-                        Log.d(
-                            TAG,
-                            "topics left ok=$left, FCM token deleted ok=${deleted.isSuccessful}, pending=${!done}",
-                        )
-                    }
-                }
-            }
-        }.onFailure {
-            disableInFlight = false
-            Log.w(TAG, "FCM unavailable (no Play services?)", it)
-        }
-    }
 }
