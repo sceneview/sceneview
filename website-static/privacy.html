@@ -21,11 +21,11 @@
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
   <title>Privacy Policy — SceneView</title>
-  <meta name="description" content="Privacy Policy for the SceneView Demo app. No tracking, offline by default, and an opt-in in-app feedback feature.">
+  <meta name="description" content="Privacy policy for SceneView. The SDK collects nothing. The SceneView Demo app uses Firebase for usage analytics, crash reports and optional notifications: no ads, no advertising ID, opt-out in Settings.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://sceneview.github.io/privacy.html">
   <meta property="og:title" content="Privacy Policy — SceneView">
-  <meta property="og:description" content="SceneView Demo collects no personal data during normal use. The only exception is the opt-in in-app feedback feature.">
+  <meta property="og:description" content="The SceneView SDK collects nothing. The SceneView Demo app uses Firebase analytics, crash reports and optional notifications, with no ads, no advertising ID and an opt-out in Settings.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://sceneview.github.io/privacy.html">
   <meta property="og:image" content="https://sceneview.github.io/og-image.png">
@@ -33,7 +33,7 @@
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Privacy Policy — SceneView">
-  <meta name="twitter:description" content="SceneView Demo privacy policy. No tracking; opt-in feedback feature disclosed.">
+  <meta name="twitter:description" content="The SceneView SDK collects nothing. The SceneView Demo app uses Firebase analytics, crash reports and optional notifications, with no ads, no advertising ID and an opt-out in Settings.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
   <meta name="theme-color" content="#005bc1">
   <meta property="og:site_name" content="SceneView">
@@ -192,6 +192,20 @@
       opacity: 0.85;
     }
 
+    .privacy-content code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      background: var(--color-surface-container-low);
+      color: var(--color-on-surface);
+      overflow-wrap: anywhere;
+    }
+
+    .privacy-content p code {
+      white-space: nowrap;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .privacy-hero { padding: 48px 0 32px; }
@@ -266,7 +280,7 @@
     <section class="privacy-hero">
       <div class="privacy-hero__container">
         <h1 class="privacy-hero__title reveal">Privacy Policy</h1>
-        <p class="privacy-hero__updated reveal"><strong>SceneView Demo</strong> &mdash; Last updated: June 12, 2026</p>
+        <p class="privacy-hero__updated reveal"><strong>SceneView SDK, SceneView Demo app and this website</strong> &mdash; Last updated: October 1, 2026</p>
       </div>
     </section>
 
@@ -274,82 +288,120 @@
     <div class="privacy-content">
 
       <div class="privacy-content__summary reveal">
-        SceneView Demo collects no personal data during normal use &mdash; no accounts, no analytics, no tracking. The one exception is the optional in-app feedback feature: if you choose to send feedback, it records your screen and microphone audio and uploads them to the SceneView feedback service. Nothing is recorded or sent unless you explicitly start a feedback report and agree.
+        The <strong>SceneView SDK</strong> collects nothing: the open-source library has no analytics, no crash reporter and no server of its own. The <strong>SceneView Demo app</strong> (Android and iOS) uses Google Firebase to count which demos are used, to report crashes, and to deliver notifications you allow. It has no accounts and no ads, never asks for your name or email, never reads an advertising identifier, and does not track you across other apps or websites. You can turn analytics and crash reporting off in the app&rsquo;s Settings.
       </div>
 
-      <h2>Data Collection (Normal Use)</h2>
+      <h2 id="scope">What This Policy Covers</h2>
+      <table>
+        <thead>
+          <tr><th>Surface</th><th>What it collects</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><a href="#sdk">SceneView SDK</a> (the library developers add to their apps)</td><td>Nothing. No telemetry of any kind.</td></tr>
+          <tr><td><a href="#demo-app">SceneView Demo app</a> (Google Play <code>io.github.sceneview.demo</code>, App Store)</td><td>Usage analytics, crash reports and a notification token, through Google Firebase.</td></tr>
+          <tr><td><a href="#website">This website</a> (sceneview.github.io)</td><td>Page-view analytics with Google Analytics.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="sdk">The SceneView SDK</h2>
+      <p>The SDK sends nothing anywhere. It contains no analytics or crash-reporting dependency, has no opt-out flag because there is nothing to opt out of, and talks to no server of ours. It only loads the files your app asks it to load. An app built with SceneView is covered by that app&rsquo;s own privacy policy, not this one. If you want to measure your own app, the <a href="/docs/recipes/measure-ar-funnel/">Measure your AR funnel</a> recipe shows how to do it with your own analytics account.</p>
+
+      <h2 id="demo-app">The SceneView Demo App</h2>
+      <p>SceneView Demo is the free showcase app for the SDK. Everything below applies to it on both Android and iOS.</p>
+
+      <h3>Usage analytics (Google Analytics for Firebase)</h3>
       <ul>
-        <li><strong>No personal data collected</strong> &mdash; Outside the feedback feature, the app does not collect names, email addresses, IP addresses, or any other personally identifiable information.</li>
-        <li><strong>No analytics or tracking</strong> &mdash; No analytics SDKs, telemetry, fingerprinting, or behavioral tracking of any kind.</li>
-        <li><strong>Offline by default</strong> &mdash; 3D models, textures, and environments are bundled locally or downloaded for demos; no personal data is sent during downloads. The only feature that uploads data is the opt-in feedback reporter below.</li>
-        <li><strong>No accounts</strong> &mdash; The app does not require or support user accounts.</li>
+        <li><strong>Events:</strong> which demos you open and how long you stay, interactions inside a demo (for example placing or moving a model), the steps of the AR flow (session started, surface found, first model placed, tracking lost), taps on links that leave the app, your answer to the notification prompt, and changes to the app&rsquo;s settings. Firebase also records standard events such as first open, session start and screen views.</li>
+        <li><strong>Device and app information:</strong> device model, operating system version, app version, language, and an approximate location (country, region or city) that Google derives from your IP address. Google Analytics does not log or store IP addresses.</li>
+        <li><strong>An app instance ID:</strong> a random identifier that Firebase creates for this installation. It is not your name, email, phone number or advertising ID, and reinstalling the app creates a new one.</li>
+        <li><strong>Why:</strong> to see which demos are useful, where the AR flow fails, and what to fix or improve next.</li>
       </ul>
 
-      <h2>Camera Usage (AR Features)</h2>
+      <h3>Crash reports (Firebase Crashlytics)</h3>
       <ul>
-        <li>The app uses the device camera <strong>exclusively</strong> for augmented reality features powered by Google ARCore.</li>
-        <li>Camera data for AR is processed <strong>locally on-device</strong> in real time for plane detection and object placement.</li>
-        <li><strong>No camera images or AR video are stored, recorded, or transmitted</strong> to any server.</li>
-        <li>Camera access is only requested when the user navigates to the AR tab. A feedback screen recording may capture the AR viewfinder if an AR demo is open &mdash; only while you are actively recording feedback.</li>
+        <li><strong>What:</strong> when the app crashes or hits a serious error, a report with the stack trace, the app&rsquo;s state at that moment, device model, operating system version, free memory and disk space, app version, a random Crashlytics installation ID, and the last few analytics events before the crash.</li>
+        <li><strong>Why:</strong> to find and fix crashes.</li>
       </ul>
 
-      <h2>Face Data (TrueDepth API / ARKit Face Tracking)</h2>
+      <h3>Notifications (Firebase Cloud Messaging)</h3>
       <ul>
-        <li><strong>What is collected:</strong> when you open an AR face demo on iOS, the app uses Apple&rsquo;s ARKit face tracking (which relies on the TrueDepth camera) to obtain a real-time facial mesh &mdash; face geometry and expression coefficients. On Android, the equivalent demo uses Google ARCore Augmented Faces. No photographs of your face are taken by the app.</li>
+        <li><strong>What:</strong> if you allow notifications, the app registers a push token with Firebase Cloud Messaging, along with the app version, device model, language and time zone that Firebase needs to deliver messages.</li>
+        <li><strong>How they are sent:</strong> notifications (for example about new demos or releases) go to topics &mdash; groups of devices &mdash; never to a person picked out by name or behaviour. We do not build a profile of you.</li>
+        <li><strong>Why:</strong> to deliver the notifications you agreed to receive.</li>
+      </ul>
+
+      <h3>What the app does not collect</h3>
+      <ul>
+        <li>No account, name, email address, phone number, contacts, photos or files.</li>
+        <li>No advertising identifier (Android advertising ID or Apple IDFA), no advertising SDK, and no cross-app or cross-site tracking &mdash; which is also why the app never shows Apple&rsquo;s tracking prompt.</li>
+        <li>No location of our own: analytics only get the approximate location Google derives from the IP address. The Android Geospatial demos use your precise location, but only through Google ARCore, as described below.</li>
+        <li>No camera images, AR video or face data in analytics or crash reports &mdash; see below.</li>
+        <li>Nothing is sold, used for advertising, or shared with data brokers.</li>
+      </ul>
+
+      <h3>Camera and AR</h3>
+      <ul>
+        <li>The app uses the camera only for augmented reality, through Google ARCore on Android and Apple ARKit on iOS. Camera access is requested when you open an AR demo.</li>
+        <li>Camera frames are processed <strong>on your device</strong>, in real time, for plane detection and object placement. They are never sent to us or included in analytics or crash reports. A recording is made only when you start one in a recording demo, and it stays on your device (or in your Photos library on iOS) unless you share it.</li>
+        <li>The Android app runs on Google Play Services for AR (ARCore), which is provided by Google and governed by the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>. While AR is in use, ARCore itself sends Google usage, performance and diagnostic data with its own identifiers, to measure and improve ARCore.</li>
+      </ul>
+
+      <h3>Google ARCore cloud features (Android)</h3>
+      <p>A few Android demos &mdash; Cloud Anchors and the Geospatial demos (Rooftop, Terrain, Streetscape) &mdash; rely on Google&rsquo;s ARCore cloud services. <strong>To power these sessions, Google processes sensor data (e.g., camera and location).</strong> When you host or resolve a Cloud Anchor, visual data from the camera is sent to Google to map the anchor; the Geospatial demos also send your precise location, after you grant the location permission. Google uses this data only to provide the feature, and marks the camera data for automatic deletion. None of it is sent to us. <a href="https://support.google.com/ar?p=how-google-play-services-for-ar-handles-your-data" target="_blank" rel="noopener">Learn more about how Google Play Services for AR handles your data</a>. The iOS app does not use these services.</p>
+
+      <h3>Face data (TrueDepth API / ARKit face tracking)</h3>
+      <ul>
+        <li><strong>What is used:</strong> when you open an AR face demo on iOS, the app uses Apple&rsquo;s ARKit face tracking (which relies on the TrueDepth camera) to obtain a real-time facial mesh &mdash; face geometry and expression coefficients. On Android, the equivalent demo uses Google ARCore Augmented Faces. The app takes no photographs of your face.</li>
         <li><strong>Purpose:</strong> face data is used <strong>solely</strong> to render real-time 3D effects anchored to your face inside the demo, on screen, while the demo is open. It is not used for identification, authentication, profiling, or any other purpose.</li>
-        <li><strong>Storage &amp; retention:</strong> face data is processed <strong>in memory, on your device only</strong>. It is never recorded, stored, written to disk, or retained &mdash; it is discarded as each camera frame is rendered, and entirely released when you leave the demo.</li>
-        <li><strong>Sharing:</strong> face data <strong>never leaves your device</strong>. It is not transmitted to us or to any third party, and the app contains no analytics or tracking SDKs.</li>
+        <li><strong>Storage and retention:</strong> face data is processed <strong>in memory, on your device only</strong>. It is never recorded, stored, written to disk, or retained &mdash; it is discarded as each camera frame is rendered, and entirely released when you leave the demo.</li>
+        <li><strong>Sharing:</strong> face data <strong>never leaves your device</strong>. It is not sent to us, to Google Firebase, or to any other third party, and it is never part of analytics events or crash reports.</li>
       </ul>
 
-      <h2>In-App Feedback (Opt-In)</h2>
-      <p>The app includes a feedback button that lets you report a bug or share an idea by recording your screen and voice. It is <strong>opt-in and consent-gated</strong> &mdash; it does nothing until you tap the button, work through its consent screens, and approve Android's own screen-capture dialog. You can cancel at any point and discard a recording before it is sent.</p>
-      <p><strong>What is captured</strong> when you submit feedback: a short screen recording (<code>.mp4</code>), your microphone audio, any text you type, and device/app context (app version and build, Android version and API level, device manufacturer and model, locale, free RAM). No advertising ID, no IP address, no account identifier.</p>
-      <p><strong>Where it goes:</strong> the recording, audio, and context are uploaded over HTTPS to the SceneView feedback service &mdash; an open-source Cloudflare Worker operated by the SceneView project. The service stores the screen recording and audio <strong>privately</strong> in Cloudflare R2 object storage, transcribes the audio to text with Cloudflare Workers AI (the OpenAI Whisper model), and creates a <strong>public GitHub issue</strong> so maintainers can triage it.</p>
-      <p><strong>What becomes public:</strong> the GitHub issue contains only the transcript, any text you typed, and the device/app context table &mdash; the raw screen recording and audio are never attached to the public issue. Please avoid showing or saying personal information while recording.</p>
-      <p><strong>Access control &amp; retention:</strong> the screen recording and audio are accessible only to SceneView maintainers, through an admin-token-gated viewer. They are <strong>automatically deleted after 90 days</strong>; the transcript and context (already public on the issue) are kept. The service hashes the request IP for rate limiting only &mdash; the raw IP is never stored.</p>
+      <h3>Online 3D content</h3>
+      <p>Some demos search for or download free 3D models and environments from public libraries (Poly Haven, Sketchfab, Icosa Gallery) and from GitHub or sceneview.github.io. These requests go straight from your device to those services, which see your IP address as any website you visit would. The app sends them no identifier and no personal data; their own privacy policies apply.</p>
 
-      <h2>Third-Party SDKs</h2>
+      <h3>In-app bug reports (Android)</h3>
+      <p>The Android app has an optional &ldquo;Report a bug&rdquo; sheet. It needs no permission, records neither screen nor audio, and <strong>never uploads anything itself</strong>. It assembles, on your device, an optional screenshot of the app&rsquo;s own window, the app&rsquo;s own recent log lines, any text you type, and device and app context (app version and build, Android version, device manufacturer and model, ABI, screen size, locale). You then choose where it goes: an app you pick in the Android share sheet, or a pre-filled public GitHub issue that you review and submit yourself. If you dismiss the sheet, the report is discarded.</p>
+      <p>Releases up to 4.18.x shipped a consent-gated screen and voice recorder that uploaded to the SceneView feedback service. It has been removed; recordings sent by those versions are deleted automatically 90 days after they were received.</p>
+
+      <h2 id="processors">Who Processes the Data, and for How Long</h2>
+      <p>Firebase is provided by Google, which processes this data on our behalf as a service provider: Crashlytics and Cloud Messaging under the <a href="https://firebase.google.com/terms/data-processing-terms" target="_blank" rel="noopener">Firebase data processing terms</a>, and Google Analytics for Firebase under the <a href="https://www.google.com/analytics/terms/" target="_blank" rel="noopener">Google Analytics terms</a>. Data may be processed on Google servers outside your country, including in the United States. All of it travels over encrypted connections (TLS).</p>
       <table>
         <thead>
-          <tr><th>SDK</th><th>Purpose</th><th>Data collected</th></tr>
+          <tr><th>Service</th><th>Data</th><th>Kept for</th></tr>
         </thead>
         <tbody>
-          <tr><td>Google Filament</td><td>3D rendering engine</td><td>None</td></tr>
-          <tr><td>Google ARCore</td><td>Augmented reality</td><td>Camera processed locally, no data sent</td></tr>
-          <tr><td>Jetpack Compose</td><td>UI framework</td><td>None</td></tr>
-          <tr><td>Android MediaProjection / MediaRecorder</td><td>Screen + audio capture for the opt-in feedback feature</td><td>Only when you record feedback</td></tr>
+          <tr><td>Google Analytics for Firebase</td><td>Usage events, device and app information, app instance ID, approximate location</td><td>14 months, then deleted. Aggregated reports with no identifier can be kept longer.</td></tr>
+          <tr><td>Firebase Crashlytics</td><td>Crash reports, Crashlytics installation ID</td><td>90 days</td></tr>
+          <tr><td>Firebase Cloud Messaging</td><td>Push token, Firebase installation ID</td><td>While the token is valid. Uninstalling the app invalidates it, and Firebase expires tokens unused for 270 days.</td></tr>
         </tbody>
       </table>
+      <p>More detail: <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">Privacy and Security in Firebase</a> and the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>.</p>
 
-      <h2>Third-Party Processors (Feedback Feature Only)</h2>
-      <p>These processors handle data <strong>only</strong> when you choose to submit feedback:</p>
-      <table>
-        <thead>
-          <tr><th>Service</th><th>Role</th><th>Data handled</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Cloudflare R2</td><td>Private object storage</td><td>Screen recording, audio</td></tr>
-          <tr><td>Cloudflare Workers AI (Whisper)</td><td>Speech-to-text transcription</td><td>Audio</td></tr>
-          <tr><td>GitHub</td><td>Public issue tracker</td><td>Transcript, typed text, device/app context</td></tr>
-        </tbody>
-      </table>
+      <h2 id="your-choices">Your Choices</h2>
+      <ul>
+        <li><strong>Turn off analytics and crash reporting:</strong> in the app, open <strong>Settings</strong> and switch off usage and crash reporting. From then on, that device sends no analytics events and no crash reports. Switching it off also clears the analytics data waiting on the device and resets its app instance ID, so if you turn it back on, the app starts with a new one.</li>
+        <li><strong>Turn off notifications:</strong> use the notification switch in the app&rsquo;s Settings, or your phone&rsquo;s notification settings for SceneView Demo. You can also decline the permission when the app asks.</li>
+        <li><strong>Start over:</strong> uninstalling the app removes its identifiers from your device; a new installation gets new ones.</li>
+        <li><strong>Ask for deletion or access:</strong> email <a href="mailto:thomas.gorisse@gmail.com?subject=SceneView%20Demo%20privacy%20request">thomas.gorisse@gmail.com</a>. Because the app has no accounts, we can only find data through an identifier from your device; we will tell you what we can find and delete it. Anything we cannot single out expires on the schedule above.</li>
+      </ul>
+      <p><strong>Legal basis (EEA, UK and Switzerland):</strong> analytics and crash reports rely on our legitimate interest in keeping a free app working and improving it, and you can object at any time with the Settings switch; notifications rely on your consent, given through the system permission prompt and withdrawable at any time. You have the right to access, correct, delete, restrict or port your data, and to lodge a complaint with your data protection authority (in France, the CNIL).</p>
 
-      <h2>Data Sharing</h2>
-      <p>Outside the feedback feature, no data is shared with third parties. For the feedback feature, data is shared only with the processors above, and the feedback transcript and context become public on a GitHub issue. No data is sold or used for advertising.</p>
+      <h2 id="website">This Website (sceneview.github.io)</h2>
+      <p>The documentation and showcase website uses Google Analytics 4 (measurement ID <code>G-HX1JWGSMTH</code>) to count page views and which links visitors follow, so we know which docs and platforms are worth maintaining. Google Analytics does not store IP addresses, no advertising features are enabled, and the tag is not loaded at all when your browser sends Do Not Track or Global Privacy Control. The site works fully without it, including with content blockers. Website and app analytics use different identifiers and are never combined to identify a person.</p>
 
-      <h2>This Website (sceneview.github.io)</h2>
-      <p>Everything above describes the <strong>SceneView Demo app</strong> and the SceneView SDK, neither of which contains any analytics SDK. The documentation and marketing <strong>website</strong> is a separate surface: it uses Google Analytics 4 (measurement ID <code>G-HX1JWGSMTH</code>) to count page views and which links visitors follow, so we know which docs and platforms are worth maintaining. IP addresses are anonymised by Google Analytics, no advertising features are enabled, and no data collected on the website is linked to app usage. Browser &ldquo;Do Not Track&rdquo; and content blockers are respected &mdash; the site works fully without the tag.</p>
-
-      <h2>Children's Privacy</h2>
-      <p>The app does not knowingly collect any data from children under 13. The app is rated for ages 13 and older.</p>
+      <h2>Children&rsquo;s Privacy</h2>
+      <p>The app is not directed at children under 13 and does not knowingly collect data from them.</p>
 
       <h2>Changes to This Policy</h2>
-      <p>We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated date.</p>
+      <p>When the app starts collecting something new, this page is updated, with a new date at the top, before that version is released.</p>
 
       <h2>Contact</h2>
+      <p>SceneView is an open-source project maintained by Thomas Gorisse, who is responsible for the data described on this page.</p>
       <ul>
-        <li><strong>Website:</strong> <a href="https://sceneview.github.io">sceneview.github.io</a></li>
-        <li><strong>GitHub:</strong> <a href="https://github.com/sceneview/sceneview">github.com/sceneview/sceneview</a></li>
+        <li><strong>Email:</strong> <a href="mailto:thomas.gorisse@gmail.com">thomas.gorisse@gmail.com</a></li>
+        <li><strong>GitHub:</strong> <a href="https://github.com/sceneview/sceneview/issues">github.com/sceneview/sceneview/issues</a></li>
+        <li><strong>Source code:</strong> the SDK and both demo apps are open source at <a href="https://github.com/sceneview/sceneview">github.com/sceneview/sceneview</a>.</li>
       </ul>
 
     </div>
