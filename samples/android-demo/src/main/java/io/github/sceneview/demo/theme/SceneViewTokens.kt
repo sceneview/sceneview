@@ -565,6 +565,27 @@ object SceneViewTokens {
     }
 
     /**
+     * `DESIGN.md` — the over-media **mode pill** (`mode-pill-*`): Cosmos's "Starlight |
+     * Spacetime" switch, stacked over the dock in the scaffold's `bottomOverlay` band.
+     *
+     * Opaque and theme-independent, like [ArOverlay]: it sits on a scene that goes from a
+     * black sky to a lit grey sheet, so no glass fill reads on every ground. The container
+     * (L 0.0135) clears 3:1 against any ground of luminance ≥ 0.14, and the outline (L 0.64)
+     * against any ground ≤ 0.18 — together they cover every ground. White label on the
+     * container 16.5:1; the selected segment's label 19.2:1.
+     */
+    object ModePill {
+        val container = Color(0xFF1A1F28)
+        val outline = Color(0xFFD1D2D4)
+        val onContainer = Color(0xFFFFFFFF)
+        val selectedContainer = Color(0xFFFFFFFF)
+        val onSelected = Color(0xFF0B0F16)
+
+        /** The outline's width: one hairline, opaque. */
+        val outlineWidth = 1.dp
+    }
+
+    /**
      * `DESIGN.md` — AR Debug View: the in-app 3D view of the Rerun demo (#3950).
      *
      * Two palettes, one per ground (#4080). [Dark] is drawn on [Stage.background] — the live

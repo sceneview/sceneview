@@ -228,6 +228,17 @@ internal object DeepLinkRouter {
     )
 
     /**
+     * Named `?tab=` tokens of live demos, for a mode that was never a demo of its own and so
+     * has no retired id in [ALIAS_INITIAL_TAB]: `sceneview://demo/cosmos?tab=spacetime` opens
+     * Cosmos on its Star scene's Spacetime view.
+     */
+    val TAB_NAMES: Map<String, Int> = mapOf(
+        // cosmos — [Starlight, Spacetime], the Star scene's two views.
+        "starlight" to 0,
+        "spacetime" to 1,
+    )
+
+    /**
      * Tabs that left their demo for a demo of their own, keyed by (demo, 0-based tab). A link
      * that still asks for one — `sceneview://demo/animation-physics?tab=1`, the old Physics
      * tab — opens the new demo instead (#4083). See [resolveLaunch].
@@ -250,6 +261,7 @@ internal object DeepLinkRouter {
         "model-viewer",
         "ar-geospatial-anchors",
         "lighting",
+        "cosmos",
     )
 
     /** Where an incoming link lands: the demo to open and the tab it should pre-select. */
@@ -400,7 +412,7 @@ internal object DeepLinkRouter {
     internal fun parseTabValue(raw: String?): Int? {
         val token = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
         token.toIntOrNull()?.let { index -> return index.takeIf { it >= 0 } }
-        return ALIAS_INITIAL_TAB[token]
+        return ALIAS_INITIAL_TAB[token] ?: TAB_NAMES[token]
     }
 
     /**

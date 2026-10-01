@@ -4,13 +4,16 @@ import io.github.sceneview.demo.telemetry.LocalSampleId
 import io.github.sceneview.demo.telemetry.logSampleInteraction
 import android.os.SystemClock
 import android.util.Log
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cyclone
 import androidx.compose.material.icons.filled.Flare
@@ -18,9 +21,12 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,17 +65,22 @@ import io.github.sceneview.demo.demos.internal.CosmosFraming
 import io.github.sceneview.demo.demos.internal.CosmosMeshes
 import io.github.sceneview.demo.demos.internal.CosmosRig
 import io.github.sceneview.demo.demos.internal.CosmosScene
+import io.github.sceneview.demo.demos.internal.CosmosSpacetime
 import io.github.sceneview.demo.demos.internal.CosmosSystem
 import io.github.sceneview.demo.demos.internal.CosmosVoyage
 import io.github.sceneview.demo.demos.internal.CosmosVoyageCamera
 import io.github.sceneview.demo.demos.internal.GlowMesh
 import io.github.sceneview.demo.demos.internal.RIBBON_STRIDE
+import io.github.sceneview.demo.demos.internal.SpacetimeField
+import io.github.sceneview.demo.demos.internal.SpacetimeTransition
 import io.github.sceneview.demo.demos.internal.VoyageExit
 import io.github.sceneview.demo.demos.internal.VoyageState
 import io.github.sceneview.demo.demos.internal.orbitPose
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -163,10 +174,13 @@ fun CosmosDemo(onBack: () -> Unit) {
         return
     }
 
-    var scene by remember { mutableStateOf(CosmosScene.Galaxy) }
+    // The Star scene's view: Starlight (false) or Spacetime (true), switched by the pill over the
+    // dock. `?tab=spacetime` opens straight on it, the voyage stopped.
+    var spacetime by remember { mutableStateOf(initialDemoMode(listOf(false, true), false)) }
+    var scene by remember { mutableStateOf(if (spacetime) CosmosScene.Star else CosmosScene.Galaxy) }
     // The voyage is on unless the user stopped it; `voyage` holds where it is in the render loop.
-    var voyageOn by remember { mutableStateOf(!DemoSettings.qaMode) }
-    val voyage = remember { VoyageState(playing = !DemoSettings.qaMode) }
+    var voyageOn by remember { mutableStateOf(!DemoSettings.qaMode && !spacetime) }
+    val voyage = remember { VoyageState(playing = !DemoSettings.qaMode && !spacetime) }
     val voyageCamera = remember { CosmosVoyageCamera() }
     // The caption of the shot on screen while the voyage plays, null while the user has the camera.
     var voyageCaption by remember { mutableStateOf<String?>(null) }
@@ -230,6 +244,18 @@ fun CosmosDemo(onBack: () -> Unit) {
     val dust = remember(materialLoader, dustMaterial) {
         dustMaterial?.let { material -> materialLoader.createInstance(material).apply { setParameter("opacity", 0f) } }
     }
+    val sheetMaterial by produceState<Material?>(null, materialLoader) {
+        value = materialLoader.loadMaterial("materials/cosmos_spacetime.filamat")
+    }
+    // Spacetime's sheet and the six worlds that come to rest on it beside the ringed one.
+    val fabric = remember(materialLoader, sheetMaterial, planetMaterial) {
+        val sheetBase = sheetMaterial ?: return@remember null
+        val planetBase = planetMaterial ?: return@remember null
+        FabricInstances(
+            sheet = materialLoader.createInstance(sheetBase),
+            worlds = List(FABRIC_WORLDS.size) { materialLoader.createInstance(planetBase) },
+        )
+    }
 
     // GPU meshes, built per scene on first use. The arrays are computed off the main thread;
     // the Filament buffers are created on it. Declared before the SceneView so they are
@@ -286,6 +312,19 @@ fun CosmosDemo(onBack: () -> Unit) {
         val mesh = warpStreaks
         onDispose { mesh?.destroy(engine) }
     }
+    // The sheet's grid (40 k vertices, each with its horizon baked) is built the first time the
+    // Star scene is on screen, off the main thread, and kept.
+    val sheetWanted = scene == CosmosScene.Star
+    val sheetMesh by produceState<GpuMesh?>(null, engine, sheetWanted) {
+        if (value == null && sheetWanted) {
+            val staged = withContext(Dispatchers.Default) { CosmosSpacetime.grid().stagedSheet() }
+            value = staged.uploadSheet(engine)
+        }
+    }
+    DisposableEffect(engine, sheetMesh) {
+        val mesh = sheetMesh
+        onDispose { mesh?.destroy(engine) }
+    }
 
     val clock = remember { CosmosClock() }
     // The Star scene's camera: what it looks at, and the eased flight between two looks.
@@ -309,15 +348,54 @@ fun CosmosDemo(onBack: () -> Unit) {
     val starNode = remember { arrayOfNulls<NodeImpl>(1) }
     val firstFrame = rememberFirstFrameState(engine)
     val galaxyShown = remember { booleanArrayOf(false) }
+    // Spacetime: where the entry sequence is, the sheet at this frame, the camera's turn (yaw,
+    // elevation) and the nodes the sequence shows and hides.
+    val transition = remember { SpacetimeTransition() }
+    val field = remember { SpacetimeField() }
+    val spacetimeView = remember { floatArrayOf(0f, CosmosSpacetime.ELEVATION_DEGREES) }
+    val spacetimePose = remember { FloatArray(CosmosSystem.POSE_FLOATS) }
+    val basePose = remember { FloatArray(CosmosSystem.POSE_FLOATS) }
+    val fabricFrame = remember { FabricFrame() }
+    val sheetNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val fabricNodes = remember { arrayOfNulls<NodeImpl>(FABRIC_WORLDS.size) }
+    val haloNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val prominenceNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val starFieldNode = remember { arrayOfNulls<NodeImpl>(1) }
+    val appliedBloom = remember { floatArrayOf(-1f) }
 
     val telemetrySampleId = LocalSampleId.current
+    val showSpacetime: (Boolean) -> Unit = { on ->
+        if (on != spacetime) {
+            spacetime = on
+            spacetimeView[0] = 0f
+            spacetimeView[1] = CosmosSpacetime.ELEVATION_DEGREES
+            if (on) {
+                // Spacetime holds the camera still: the voyage stops (a pick would restart it),
+                // the free camera lets go of any drag or close-up, and it all eases from the
+                // pose on screen while the sheet comes in.
+                voyageOn = false
+                voyage.stop(flight)
+                voyage.resetDrag()
+                flight.start()
+                focus = CosmosFocus.System
+                logSampleInteraction(telemetrySampleId, "spacetime")
+            }
+        }
+    }
+    val spacetimeLegend = stringResource(R.string.demo_cosmos_spacetime_legend)
     DemoScaffold(
         title = stringResource(R.string.demo_cosmos_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.demo_cosmos_loading),
-        peekHeader = voyageCaption ?: if (scene == CosmosScene.Star) focus.caption else scene.caption,
+        peekHeader = when {
+            voyageCaption != null -> voyageCaption
+            scene == CosmosScene.Star && spacetime -> spacetimeLegend
+            scene == CosmosScene.Star -> focus.caption
+            else -> scene.caption
+        },
         onResetSettings = {
+            showSpacetime(false)
             voyageOn = true
             voyage.resumeNow()
             animating = true
@@ -325,6 +403,10 @@ fun CosmosDemo(onBack: () -> Unit) {
         },
         dock = CosmosScene.entries.map { target ->
             sceneDockItem(target, scene) {
+                // Star again while in Spacetime: already there, the voyage stays stopped.
+                if (it == CosmosScene.Star && spacetime) return@sceneDockItem
+                // Any other scene leaves Spacetime.
+                showSpacetime(false)
                 // The scene picked is shown still; a few seconds of calm and the voyage goes on.
                 voyage.pick(flight)
                 scene = it
@@ -339,10 +421,19 @@ fun CosmosDemo(onBack: () -> Unit) {
             })
         } else {
             DockItem(Icons.Filled.RocketLaunch, "Start the voyage", {
+                // The voyage goes back to Starlight before it moves on.
+                showSpacetime(false)
                 voyageOn = true
                 animating = true
                 voyage.resumeNow()
             })
+        },
+        // The Star scene's two views, over the dock whenever the star is on screen — the
+        // voyage's Star shot included. The scaffold measures the band; nothing here places it.
+        bottomOverlay = if (scene == CosmosScene.Star) {
+            { SpacetimePill(spacetime, showSpacetime) }
+        } else {
+            null
         },
         controls = {
             LabeledSlider(
@@ -354,6 +445,7 @@ fun CosmosDemo(onBack: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             ToggleRow("Voyage", voyageOn) { on ->
+                if (on) showSpacetime(false)
                 voyageOn = on
                 if (on) voyage.resumeNow() else voyage.stop(flight)
             }
@@ -372,13 +464,26 @@ fun CosmosDemo(onBack: () -> Unit) {
             frameRatePolicy = FrameRatePolicy.Continuous(),
             renderInvalidator = renderInvalidator,
             onGestureListener = rememberOnGestureListener(
-                onDown = { _, _ -> voyage.takeOver(flight) },
+                // In Spacetime the voyage is stopped and stays so: a touch hands nothing back.
+                onDown = { _, _ -> if (!spacetime) voyage.takeOver(flight) },
                 onScroll = { _, _, _, distance ->
-                    voyage.takeOver(flight)
-                    voyage.drag(scene, distance.x * dragDegreesPerPx, -distance.y * dragDegreesPerPx)
+                    if (spacetime && scene == CosmosScene.Star) {
+                        // A drag turns the camera round the sheet, kept above it: the sheet has
+                        // one face.
+                        spacetimeView[0] += distance.x * dragDegreesPerPx
+                        spacetimeView[1] = (spacetimeView[1] - distance.y * dragDegreesPerPx).coerceIn(
+                            CosmosSpacetime.MIN_ELEVATION_DEGREES,
+                            CosmosSpacetime.MAX_ELEVATION_DEGREES,
+                        )
+                    } else {
+                        voyage.takeOver(flight)
+                        voyage.drag(scene, distance.x * dragDegreesPerPx, -distance.y * dragDegreesPerPx)
+                    }
                 },
                 onSingleTapConfirmed = { event, _ ->
-                if (scene == CosmosScene.Star) {
+                // Tap-to-frame is Starlight's: in Spacetime, and on the way in or out, a tap
+                // does nothing.
+                if (scene == CosmosScene.Star && !spacetime && !transition.active) {
                     val viewport = view.viewport
                     val hit = CosmosSystem.hit(
                         pose = flight.lastPose,
@@ -406,7 +511,12 @@ fun CosmosDemo(onBack: () -> Unit) {
                 // The clock waits for the loading cover to lift: the voyage's opening shot would
                 // otherwise play out under it.
                 clock.advance(nanos, current, running = animating && !frozen && firstFrame.rendered.value)
-                val time = if (frozen) QA_TIME[current.ordinal] else clock.sceneTime
+                val inSpacetime = spacetime && current == CosmosScene.Star
+                val time = when {
+                    !frozen -> clock.sceneTime
+                    inSpacetime -> CosmosSpacetime.QA_TIME
+                    else -> QA_TIME[current.ordinal]
+                }
                 // The opening scene is not revealed: the loading cover already fades it in, and a
                 // reveal started under the cover finished after it, as a pop (#4160).
                 val sceneReveal = if (frozen || !clock.switched) {
@@ -424,8 +534,8 @@ fun CosmosDemo(onBack: () -> Unit) {
                 } else if (voyage.dueToResume()) {
                     voyage.resumeNow()
                 }
-                val pose: FloatArray
-                val focal: Float
+                val voyagePose: FloatArray
+                val voyageFocal: Float
                 val caption: String?
                 // Where a jump away from the free camera lands, on the frame it does.
                 var landing: CosmosScene? = null
@@ -438,8 +548,8 @@ fun CosmosDemo(onBack: () -> Unit) {
                         scene = CosmosVoyage.next(current)
                     }
                     voyageCamera.evaluate(shot, clock.sceneTime, time, aspect, voyage.arrivedByWarp)
-                    pose = voyageCamera.pose
-                    focal = voyageCamera.focal
+                    voyagePose = voyageCamera.pose
+                    voyageFocal = voyageCamera.focal
                     voyage.show(voyageCamera.fade, voyageCamera.streaks)
                     // The caption changes with the scene, not a frame after it.
                     caption = if (ending) {
@@ -464,8 +574,8 @@ fun CosmosDemo(onBack: () -> Unit) {
                         // Jumping away from the free camera, on to the voyage's next scene.
                         voyage.leaving += step / CosmosVoyageCamera.WARP_OUT_SECONDS
                         voyageCamera.warpAway(free, freeFocal, voyage.leaving)
-                        pose = voyageCamera.pose
-                        focal = voyageCamera.focal
+                        voyagePose = voyageCamera.pose
+                        voyageFocal = voyageCamera.focal
                         voyage.show(voyageCamera.fade, voyageCamera.streaks)
                         if (voyage.leaving >= 1f) {
                             // A scene picked in the dock gets its own shot before the voyage moves on.
@@ -474,13 +584,33 @@ fun CosmosDemo(onBack: () -> Unit) {
                             voyage.arrive()
                         }
                     } else {
-                        pose = free
-                        focal = freeFocal
+                        voyagePose = free
+                        voyageFocal = freeFocal
                         voyage.settle(step)
                     }
                     caption = landing?.let(CosmosVoyage::openingCaption)
                 }
                 if (voyageCaption != caption) voyageCaption = caption
+                // Spacetime: the sequence runs once the sheet is built and the cover has lifted,
+                // at once for QA and reduced motion; leaving the Star scene drops it.
+                transition.enter(inSpacetime && sheetMesh != null && fabric != null)
+                if (current != CosmosScene.Star || frozen || firstFrame.rendered.value) {
+                    transition.advance(nanos, instant = frozen || current != CosmosScene.Star)
+                }
+                val sequence = transition.clock
+                val flown = CosmosSpacetime.flight(sequence)
+                val pose: FloatArray
+                val focal: Float
+                if (sequence > 0f) {
+                    // The camera flies from wherever Starlight has it to Spacetime's still pose.
+                    voyagePose.copyInto(basePose)
+                    CosmosSpacetime.pose(aspect, spacetimeView[0], spacetimeView[1], spacetimePose)
+                    pose = rig.blend(basePose, spacetimePose, flown)
+                    focal = voyageFocal + (CosmosVoyageCamera.DEFAULT_FOCAL - voyageFocal) * flown
+                } else {
+                    pose = voyagePose
+                    focal = voyageFocal
+                }
                 val exposure = if (current == CosmosScene.Galaxy) {
                     CosmosVoyage.galaxyExposure(sqrt(pose[0] * pose[0] + pose[1] * pose[1] + pose[2] * pose[2]))
                 } else {
@@ -518,31 +648,84 @@ fun CosmosDemo(onBack: () -> Unit) {
                 }
                 galaxyNode[0]?.rotation = Rotation(y = -time * GALAXY_SPIN_DEGREES_PER_SECOND)
                 starNode[0]?.rotation = Rotation(y = time * STAR_SPIN_DEGREES_PER_SECOND, x = 12f)
-                starNode[0]?.scale = Scale(1f + 0.012f * sin(time * 2.1f))
-                sprites?.update(current, time, reveal)
-                ribbons?.update(current, time, reveal)
+                // In Spacetime the star shrinks to its place among the worlds, its glow goes out
+                // before the sheet reaches it, and so does the sky.
+                val starScale = 1f + (CosmosSpacetime.STAR_SCALE - 1f) * flown
+                starNode[0]?.scale = Scale((1f + 0.012f * sin(time * 2.1f)) * starScale)
+                val glow = CosmosSpacetime.glow(sequence)
+                val sky = CosmosSpacetime.starField(sequence)
+                sprites?.update(current, time, reveal, glow, sky)
+                ribbons?.update(current, time, reveal * glow)
                 plasma?.update(current, time, reveal)
+                haloNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
+                prominenceNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
+                starFieldNode[0]?.let { if (it.isVisible != sky > 0f) it.isVisible = sky > 0f }
+                orbitNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
+                // The halo is drawn over the sheet while it fades, never cut by it.
+                if (fabricFrame.haloCulled == sequence > 0f) {
+                    fabricFrame.haloCulled = sequence <= 0f
+                    sprites?.halo?.setDepthCulling(fabricFrame.haloCulled)
+                }
                 if (current == CosmosScene.Star) {
                     orbitNode[0]?.quaternion = rig.trailRotation(time, aspect).toQuaternion()
-                    planetNode[0]?.apply {
-                        val at = rig.planetPosition(time, aspect)
-                        position = Position(at[0], at[1], at[2])
-                        quaternion = rig.planetRotation(time, aspect).toQuaternion()
+                    val at = rig.planetPosition(time, aspect)
+                    val spin = rig.planetRotation(time, aspect)
+                    if (sequence > 0f && fabric != null) {
+                        // The sheet at this moment, and the worlds on it.
+                        fabricFrame.place(field, fabric, time, sequence, at, spin, reveal)
+                        planetNode[0]?.apply {
+                            val p = fabricFrame.ringed
+                            position = Position(p[0], p[1], p[2])
+                            quaternion = fabricFrame.ringedSpin.toQuaternion()
+                        }
+                        world?.light(fabricFrame.ringedSun)
+                        fabricNodes.forEachIndexed { slot, node ->
+                            node ?: return@forEachIndexed
+                            val body = FABRIC_WORLDS[slot]
+                            val arrived = CosmosSpacetime.arrival(body, sequence)
+                            if (node.isVisible != arrived > 0f) node.isVisible = arrived > 0f
+                            if (arrived > 0f) {
+                                node.position = Position(
+                                    fabricFrame.positions[body * 3],
+                                    fabricFrame.positions[body * 3 + 1],
+                                    fabricFrame.positions[body * 3 + 2],
+                                )
+                                node.scale = Scale(arrived)
+                            }
+                        }
+                    } else {
+                        planetNode[0]?.apply {
+                            position = Position(at[0], at[1], at[2])
+                            quaternion = spin.toQuaternion()
+                        }
+                        if (fabricFrame.lit) {
+                            fabricFrame.lit = false
+                            world?.light(null)
+                            fabricNodes.forEach { node -> if (node?.isVisible == true) node.isVisible = false }
+                        }
+                    }
+                    sheetNode[0]?.let { node ->
+                        val visible = sequence > CosmosSpacetime.SHEET_IN_START
+                        if (node.isVisible != visible) node.isVisible = visible
                     }
                     world?.update(time, reveal)
                     // The trail fades out as the camera closes on the planet: from the follow view
                     // the arc behind it runs past the lens.
                     val trail = rig.trailVisibility(pose[0], pose[1], pose[2], time, aspect)
-                    ribbons?.trail?.setParameter("intensity", reveal * trail)
+                    ribbons?.trail?.setParameter("intensity", reveal * trail * glow)
                 }
-                if (ignition.advance(nanos, firstFrame.rendered.value, instant = frozen)) {
-                    view.bloomOptions = view.bloomOptions.also { it.strength = bloom * ignition.level }
+                ignition.advance(nanos, firstFrame.rendered.value, instant = frozen)
+                // Spacetime takes the bloom down to a trace on the way in; flight 0 leaves it as set.
+                val strength = CosmosSpacetime.bloom(bloom, sequence) * ignition.level
+                if (strength != appliedBloom[0]) {
+                    appliedBloom[0] = strength
+                    view.bloomOptions = view.bloomOptions.also { it.strength = strength }
                 }
                 if (current == CosmosScene.Galaxy) dust?.setParameter("opacity", reveal * ignition.level)
             },
         ) {
             val sceneMeshes = meshes[scene]
-            stars?.let { mesh -> sprites?.let { GlowMeshNode(mesh, it.starField) } }
+            stars?.let { mesh -> sprites?.let { GlowMeshNode(mesh, it.starField) { starFieldNode[0] = this } } }
             val streaks = warpStreaks
             if (streaks != null && ribbons != null) {
                 // The jump's light streaks ride with the camera, hidden outside a jump. The node
@@ -592,9 +775,11 @@ fun CosmosDemo(onBack: () -> Unit) {
                                     isShadowReceiver = false
                                 },
                             )
-                            GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Strokes), ribbons.prominences)
+                            GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Strokes), ribbons.prominences) {
+                                prominenceNode[0] = this
+                            }
                         }
-                        GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Main), sprites.halo)
+                        GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Main), sprites.halo) { haloNode[0] = this }
                         if (world != null) {
                             // The trail turns with the planet: a static arc under a rotating node.
                             Node(apply = { orbitNode[0] = this }) {
@@ -612,6 +797,37 @@ fun CosmosDemo(onBack: () -> Unit) {
                                 },
                             ) {
                                 GlowMeshNode(sceneMeshes.parts.getValue(CosmosPart.Ring), world.ring)
+                            }
+                        }
+                        val sheet = sheetMesh
+                        if (sheet != null && fabric != null) {
+                            // Spacetime's sheet, opaque and drawn under everything else; hidden
+                            // until the entry sequence brings it in.
+                            MeshNode(
+                                primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+                                vertexBuffer = sheet.vertexBuffer,
+                                indexBuffer = sheet.indexBuffer,
+                                boundingBox = sheet.box,
+                                materialInstance = fabric.sheet,
+                                apply = {
+                                    sheetNode[0] = this
+                                    configureGlow()
+                                    isVisible = false
+                                },
+                            )
+                            FABRIC_WORLDS.forEachIndexed { slot, body ->
+                                SphereNode(
+                                    radius = CosmosSpacetime.RADIUS[body],
+                                    stacks = 32,
+                                    slices = 48,
+                                    materialInstance = fabric.worlds[slot],
+                                    apply = {
+                                        fabricNodes[slot] = this
+                                        isShadowCaster = false
+                                        isShadowReceiver = false
+                                        isVisible = false
+                                    },
+                                )
                             }
                         }
                     }
@@ -660,6 +876,8 @@ fun CosmosDemo(onBack: () -> Unit) {
             view.bloomOptions = view.bloomOptions.also { options ->
                 options.enabled = bloom > 0f && onScreen
                 options.strength = bloom * ignition.level
+                // The render loop sets the strength again on its next frame (Spacetime lowers it).
+                appliedBloom[0] = -1f
                 options.levels = 7
                 options.resolution = 512
                 options.threshold = true
@@ -700,15 +918,57 @@ private fun sceneDockItem(target: CosmosScene, current: CosmosScene, select: (Co
 )
 
 @Composable
-private fun io.github.sceneview.SceneScope.GlowMeshNode(mesh: GpuMesh, material: MaterialInstance) {
+private fun io.github.sceneview.SceneScope.GlowMeshNode(
+    mesh: GpuMesh,
+    material: MaterialInstance,
+    apply: MeshNodeImpl.() -> Unit = {},
+) {
     MeshNode(
         primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
         vertexBuffer = mesh.vertexBuffer,
         indexBuffer = mesh.indexBuffer,
         boundingBox = mesh.box,
         materialInstance = material,
-        apply = { configureGlow() },
+        apply = {
+            configureGlow()
+            apply()
+        },
     )
+}
+
+/**
+ * The Star scene's two views, Starlight and Spacetime: a segmented pill over the dock, in the
+ * fixed over-media palette of `DESIGN.md` (`mode-pill-*`) — opaque, so it reads on the black sky
+ * and on the lit sheet alike, in light and dark theme.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun SpacetimePill(spacetime: Boolean, onSelect: (Boolean) -> Unit) {
+    val pill = SceneViewTokens.ModePill
+    val starlight = stringResource(R.string.demo_cosmos_starlight)
+    val spacetimeLabel = stringResource(R.string.demo_cosmos_spacetime)
+    Surface(
+        shape = CircleShape,
+        color = pill.container,
+        contentColor = pill.onContainer,
+        border = BorderStroke(pill.outlineWidth, pill.outline),
+    ) {
+        ConnectedChoiceRow(
+            options = listOf(false, true),
+            selected = spacetime,
+            onSelect = onSelect,
+            label = { if (it) spacetimeLabel else starlight },
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.xs),
+            optionTestTag = { if (it) "cosmos_spacetime" else "cosmos_starlight" },
+            colors = ToggleButtonDefaults.colors(
+                containerColor = pill.container,
+                contentColor = pill.onContainer,
+                checkedContainerColor = pill.selectedContainer,
+                checkedContentColor = pill.onSelected,
+            ),
+            fillWidth = false,
+        )
+    }
 }
 
 private fun MeshNodeImpl.configureGlow() {
@@ -897,16 +1157,17 @@ private class SpriteInstances(all: List<MaterialInstance>) {
         dust.setParameter("minPixels", 1.3f)
     }
 
-    fun update(scene: CosmosScene, time: Float, reveal: Float) {
+    /** [glow] fades the star's halo and [sky] the star field: both 1 but on the way to Spacetime. */
+    fun update(scene: CosmosScene, time: Float, reveal: Float, glow: Float = 1f, sky: Float = 1f) {
         starField.setParameter("time", time)
-        starField.setParameter("intensity", reveal * if (scene == CosmosScene.Flow) 0.35f else 1f)
+        starField.setParameter("intensity", reveal * sky * if (scene == CosmosScene.Flow) 0.35f else 1f)
         when (scene) {
             CosmosScene.Galaxy -> {
                 galaxy.setParameter("time", time)
                 galaxy.setParameter("intensity", reveal)
             }
             CosmosScene.Star -> {
-                halo.setParameter("intensity", reveal * (1f + 0.12f * sin(time * 2.1f)))
+                halo.setParameter("intensity", reveal * glow * (1f + 0.12f * sin(time * 2.1f)))
             }
             CosmosScene.Burst -> {
                 val envelope = CosmosMeshes.burstEnvelope((time / BURST_PERIOD_SECONDS) % 1f)
@@ -1075,7 +1336,195 @@ private class WorldInstances(val planet: MaterialInstance, val ring: MaterialIns
         planet.setParameter("intensity", reveal)
         ring.setParameter("intensity", reveal)
     }
+
+    /** Lights the world from [sun] (Spacetime's key light, far off), or from the star when null. */
+    fun light(sun: FloatArray?) {
+        val x = sun?.get(0) ?: 0f
+        val y = sun?.get(1) ?: 0f
+        val z = sun?.get(2) ?: 0f
+        planet.setParameter("sunPosition", x, y, z)
+        ring.setParameter("sunPosition", x, y, z)
+    }
 }
 
 /** The blue star's light as it reaches the planet, linear. */
 private val SUN_COLOR = floatArrayOf(0.95f, 1.15f, 1.55f)
+
+/** The worlds Spacetime adds round the star, in [CosmosSpacetime]'s body order. */
+private val FABRIC_WORLDS = intArrayOf(
+    CosmosSpacetime.EMBER,
+    CosmosSpacetime.AZURE,
+    CosmosSpacetime.OCHRE,
+    CosmosSpacetime.ICE,
+    CosmosSpacetime.MOON_O,
+    CosmosSpacetime.MOON_I,
+)
+
+/** Pale band, dark belt and atmosphere rim of each of [FABRIC_WORLDS], linear rgb. */
+private val FABRIC_LOOKS = arrayOf(
+    floatArrayOf(0.85f, 0.42f, 0.22f, 0.45f, 0.16f, 0.08f, 0.5f, 0.2f, 0.08f),
+    floatArrayOf(0.35f, 0.6f, 0.95f, 0.12f, 0.28f, 0.6f, 0.2f, 0.45f, 1.0f),
+    floatArrayOf(0.85f, 0.65f, 0.35f, 0.5f, 0.33f, 0.14f, 0.4f, 0.3f, 0.15f),
+    floatArrayOf(0.8f, 0.9f, 0.95f, 0.5f, 0.65f, 0.75f, 0.3f, 0.5f, 0.7f),
+    floatArrayOf(0.6f, 0.58f, 0.55f, 0.35f, 0.33f, 0.31f, 0.05f, 0.05f, 0.05f),
+    floatArrayOf(0.6f, 0.58f, 0.55f, 0.35f, 0.33f, 0.31f, 0.05f, 0.05f, 0.05f),
+)
+
+/**
+ * A ring-shadow band no ringless world has: `cosmos_planet.mat` divides by outer − inner, so the
+ * band is put far outside the sphere rather than zeroed.
+ */
+private const val NO_RING_INNER = 10f
+private const val NO_RING_OUTER = 11f
+
+/** Spacetime's materials: the sheet and one planet instance per world of [FABRIC_WORLDS]. */
+private class FabricInstances(val sheet: MaterialInstance, val worlds: List<MaterialInstance>) {
+    init {
+        val base = CosmosSpacetime.sheetBaseLinear()
+        val light = CosmosSpacetime.LIGHT
+        sheet.setParameter("lightDir", light[0], light[1], light[2])
+        sheet.setParameter("baseColor", base[0], base[1], base[2])
+        sheet.setParameter("intensity", 0f)
+        worlds.forEachIndexed { slot, world ->
+            val look = FABRIC_LOOKS[slot]
+            world.setParameter("time", 0f)
+            world.setParameter("sunPosition", 0f, 0f, 0f)
+            world.setParameter("sunColor", SUN_COLOR[0], SUN_COLOR[1], SUN_COLOR[2])
+            world.setParameter("bandLight", look[0], look[1], look[2])
+            world.setParameter("bandDark", look[3], look[4], look[5])
+            world.setParameter("atmosphere", look[6], look[7], look[8])
+            world.setParameter("ringInner", NO_RING_INNER)
+            world.setParameter("ringOuter", NO_RING_OUTER)
+            world.setParameter("intensity", 0f)
+        }
+    }
+}
+
+/**
+ * One Spacetime frame, without allocating: lays the sheet out, rests every world on it, and
+ * writes the sheet's uniforms and the worlds' light. The render loop holds one.
+ */
+private class FabricFrame {
+    /** World positions (x, y, z) per body, in [CosmosSpacetime]'s order. */
+    val positions = FloatArray(CosmosSpacetime.BODY_COUNT * 3)
+
+    /** The ringed world's centre, orientation and "sun" for this frame. */
+    val ringed = FloatArray(3)
+    val ringedSpin = FloatArray(4)
+    val ringedSun = FloatArray(3)
+
+    /** Whether the halo is depth-culled (Starlight) or not (on the way to Spacetime). */
+    var haloCulled = true
+
+    /** Whether the worlds are lit by Spacetime's key light. */
+    var lit = false
+
+    private val spheres = FloatArray(CosmosSpacetime.BODY_COUNT * 4)
+    private val flatSpin = FloatArray(4)
+    private val sun = FloatArray(3)
+
+    @Suppress("LongParameterList")
+    fun place(
+        field: SpacetimeField,
+        fabric: FabricInstances,
+        time: Float,
+        sequence: Float,
+        orbit: FloatArray,
+        orbitSpin: FloatArray,
+        reveal: Float,
+    ) {
+        lit = true
+        val flown = CosmosSpacetime.flight(sequence)
+        val well = CosmosSpacetime.wellDepth(sequence)
+        val lift = CosmosSpacetime.LIFT * (1f - flown)
+        field.prepare(time, well)
+        val light = CosmosSpacetime.LIGHT
+        for (body in 0 until CosmosSpacetime.BODY_COUNT) {
+            val y = if (body == CosmosSpacetime.STAR) 0f else field.rest(body) - lift
+            positions[body * 3] = field.x(body)
+            positions[body * 3 + 1] = y + CosmosSpacetime.fallHeight(body, sequence)
+            positions[body * 3 + 2] = field.z(body)
+        }
+        // The ringed world leaves its tipped orbit for its rest on the sheet as the plane lays down.
+        val r = CosmosSpacetime.RINGED * 3
+        for (i in 0..2) ringed[i] = orbit[i] + (positions[r + i] - orbit[i]) * flown
+        // field.rest(RINGED) above left the ring plane's normal in field.ringNormal.
+        CosmosSpacetime.ringedRotation(field.ringNormal, time, flatSpin)
+        CosmosSpacetime.slerp(orbitSpin, flatSpin, flown, ringedSpin)
+        // Its light turns from the star at the origin to the key light: a point far off along
+        // the blend of the two directions.
+        val d = sqrt(ringed[0] * ringed[0] + ringed[1] * ringed[1] + ringed[2] * ringed[2]).coerceAtLeast(1e-4f)
+        for (i in 0..2) sun[i] = -ringed[i] / d + (light[i] + ringed[i] / d) * flown
+        val m = sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]).coerceAtLeast(1e-4f)
+        for (i in 0..2) ringedSun[i] = ringed[i] + CosmosSpacetime.SUN_DISTANCE * sun[i] / m
+        for (i in 0..2) positions[r + i] = ringed[i]
+        // Shadow casters: every world but the star, shrunk by its arrival.
+        for (body in 0 until CosmosSpacetime.BODY_COUNT) {
+            val arrived = if (body == CosmosSpacetime.STAR) 0f else CosmosSpacetime.arrival(body, sequence)
+            spheres[body * 4] = positions[body * 3]
+            spheres[body * 4 + 1] = positions[body * 3 + 1]
+            spheres[body * 4 + 2] = positions[body * 3 + 2]
+            spheres[body * 4 + 3] = CosmosSpacetime.RADIUS[body] * arrived
+        }
+        val sheet = fabric.sheet
+        sheet.setParameter("bodies", MaterialInstance.FloatElement.FLOAT4, field.bodies, 0, CosmosSpacetime.BODY_COUNT)
+        sheet.setParameter("spheres", MaterialInstance.FloatElement.FLOAT4, spheres, 0, CosmosSpacetime.BODY_COUNT)
+        sheet.setParameter("ringCenter", ringed[0], ringed[1], ringed[2], CosmosSystem.RING_INNER)
+        val n = field.ringNormal
+        sheet.setParameter("ringNormal", n[0], n[1], n[2], CosmosSystem.RING_OUTER)
+        sheet.setParameter("offset", field.offset - lift)
+        sheet.setParameter("well", well)
+        sheet.setParameter("intensity", CosmosSpacetime.sheetIntensity(sequence) * reveal)
+        // The other worlds are lit by the key light alone.
+        fabric.worlds.forEachIndexed { slot, world ->
+            val body = FABRIC_WORLDS[slot]
+            val o = body * 3
+            world.setParameter(
+                "sunPosition",
+                positions[o] + CosmosSpacetime.SUN_DISTANCE * light[0],
+                positions[o + 1] + CosmosSpacetime.SUN_DISTANCE * light[1],
+                positions[o + 2] + CosmosSpacetime.SUN_DISTANCE * light[2],
+            )
+            world.setParameter("time", time)
+            world.setParameter("intensity", CosmosSpacetime.arrival(body, sequence) * reveal)
+        }
+    }
+}
+
+/** The sheet's grid copied into direct buffers, ready for Filament — built off the main thread. */
+private class StagedSheet(val vertices: ByteBuffer, val indices: ByteBuffer)
+
+private fun CosmosSpacetime.Grid.stagedSheet(): StagedSheet {
+    val v = ByteBuffer.allocateDirect(vertices.size * Float.SIZE_BYTES).order(ByteOrder.nativeOrder())
+    v.asFloatBuffer().put(vertices)
+    val i = ByteBuffer.allocateDirect(indices.size * Short.SIZE_BYTES).order(ByteOrder.nativeOrder())
+    i.asShortBuffer().put(indices)
+    return StagedSheet(v, i)
+}
+
+/**
+ * Main thread only. Position (x, 0, z) and the baked horizon visibility in `uv0.x`; 16-bit
+ * indices (39 520 vertices). The box is static: y spans every well depth and lift the entry
+ * passes through.
+ */
+private fun StagedSheet.uploadSheet(engine: Engine): GpuMesh {
+    val strideBytes = CosmosSpacetime.GRID_STRIDE * Float.SIZE_BYTES
+    val vertexBuffer = VertexBuffer.Builder()
+        .bufferCount(1)
+        .vertexCount(CosmosSpacetime.GRID_VERTICES)
+        .attribute(VertexBuffer.VertexAttribute.POSITION, 0, VertexBuffer.AttributeType.FLOAT3, 0, strideBytes)
+        .attribute(VertexBuffer.VertexAttribute.UV0, 0, VertexBuffer.AttributeType.FLOAT2, 12, strideBytes)
+        .build(engine)
+    vertexBuffer.setBufferAt(engine, 0, vertices)
+    val indexBuffer = IndexBuffer.Builder()
+        .indexCount(CosmosSpacetime.GRID_TRIANGLES * 3)
+        .bufferType(IndexBuffer.Builder.IndexType.USHORT)
+        .build(engine)
+    indexBuffer.setBuffer(engine, indices)
+    val r = CosmosSpacetime.SHEET_RADIUS
+    val box = FilamentBox(
+        0f, (CosmosSpacetime.BOX_MIN_Y + CosmosSpacetime.BOX_MAX_Y) / 2f, 0f,
+        r, (CosmosSpacetime.BOX_MAX_Y - CosmosSpacetime.BOX_MIN_Y) / 2f, r,
+    )
+    return GpuMesh(vertexBuffer, indexBuffer, box)
+}
