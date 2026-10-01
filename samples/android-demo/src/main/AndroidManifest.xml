@@ -111,10 +111,27 @@
         <!-- Firebase (this app only — the SDK ships no telemetry). Everything below is inert
              in a build without google-services.json: FirebaseApp never initialises.
 
+             Prior consent (EEA, UK, Switzerland): Firebase does not start with the process.
+             FirebaseInitProvider is removed, and Telemetry calls FirebaseApp.initializeApp
+             only once collection is allowed (consent given, or outside the zone) or push is
+             turned on — so nothing, not even a Firebase Installations call, reaches Google
+             before the user answers. Collection is off by default and turned on at runtime
+             by FirebaseDemoAnalytics when the consent allows it.
+
              No advertising identifier and no ad signals, ever: the demo shows no ads and
              Analytics is only used to see which demos people open. Consent mode defaults
-             match (ad_storage / ad_user_data / ad_personalization denied, analytics_storage
-             granted) and are re-applied at runtime by FirebaseDemoAnalytics. -->
+             match (every type denied) and are re-applied at runtime by FirebaseDemoAnalytics,
+             analytics_storage following the user's consent. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
         <meta-data
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />
@@ -129,7 +146,7 @@
             android:value="false" />
         <meta-data
             android:name="google_analytics_default_allow_analytics_storage"
-            android:value="true" />
+            android:value="false" />
         <!-- screen_view is logged by hand with the route / demo id: one Activity hosts every
              screen, so the automatic Activity-based report would only ever say MainActivity. -->
         <meta-data

@@ -5,21 +5,36 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 
 /**
- * The two About -> Privacy & notifications switches (usage statistics, notifications) and the pre-prompt's
- * memory. Usage statistics default to on: they are pseudonymous (keyed by a resettable app-instance
- * id, never linked to an identity) and ad-free (consent mode denies every ad signal), and the
- * switch turns them off. Notifications default to **off**: push is
- * opt-in, turned on by the pre-prompt (the system permission on Android 13+, "Notify me"
- * below) or by the switch. No FCM token exists before that.
+ * The consent behind About -> Privacy & notifications -> "Share usage statistics", the
+ * Notifications switch and the pre-prompt's memory.
+ *
+ * Usage statistics and crash reports follow the consent ([TelemetryConsent]): asked first in the
+ * EEA, the UK and Switzerland, on by default elsewhere, and the switch gives or withdraws it.
+ * Notifications default to **off**: push is opt-in, turned on by the pre-prompt (the system
+ * permission on Android 13+, "Notify me" below) or by the switch. No FCM token exists before that.
  */
-class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore {
+class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore, ConsentStore {
 
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    var analyticsEnabled: Boolean
-        get() = prefs.getBoolean(KEY_ANALYTICS, true)
-        set(value) = prefs.edit { putBoolean(KEY_ANALYTICS, value) }
+    override var consentState: ConsentState
+        get() = ConsentState.fromKey(prefs.getString(KEY_CONSENT_STATE, null))
+        set(value) = prefs.edit { putString(KEY_CONSENT_STATE, value.key) }
+
+    override var consentAt: Long
+        get() = prefs.getLong(KEY_CONSENT_AT, 0L)
+        set(value) = prefs.edit { putLong(KEY_CONSENT_AT, value) }
+
+    override var consentVersion: Int
+        get() = prefs.getInt(KEY_CONSENT_VERSION, 0)
+        set(value) = prefs.edit { putInt(KEY_CONSENT_VERSION, value) }
+
+    override var legacyAnalyticsEnabled: Boolean?
+        get() = if (prefs.contains(KEY_LEGACY_ANALYTICS)) prefs.getBoolean(KEY_LEGACY_ANALYTICS, true) else null
+        set(value) = prefs.edit {
+            if (value == null) remove(KEY_LEGACY_ANALYTICS) else putBoolean(KEY_LEGACY_ANALYTICS, value)
+        }
 
     var notificationsEnabled: Boolean
         get() = prefs.getBoolean(KEY_NOTIFICATIONS, false)
@@ -48,7 +63,12 @@ class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore {
 
     private companion object {
         const val FILE = "sceneview_demo_telemetry"
-        const val KEY_ANALYTICS = "analytics_enabled"
+        const val KEY_CONSENT_STATE = "consent_state"
+        const val KEY_CONSENT_AT = "consent_at"
+        const val KEY_CONSENT_VERSION = "consent_version"
+
+        /** The pre-consent About switch: read once by [TelemetryConsent.migrate], then removed. */
+        const val KEY_LEGACY_ANALYTICS = "analytics_enabled"
         const val KEY_NOTIFICATIONS = "notifications_enabled"
         const val KEY_PUSH_DISABLE_PENDING = "push_disable_pending"
         const val KEY_HOME_RETURNS = "push_prompt_home_returns"

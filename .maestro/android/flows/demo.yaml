@@ -71,6 +71,7 @@ appId: io.github.sceneview.demo.qa
       demo: ${DEMO_ID}
       qa_mode: true
       qa_backdrop: true
+      telemetry_consent: "denied"
 
 # --- Wait for real pixels, then interact (#3444) ---------------------------
 # Liveness alone let a BLANK demo pass: `materials` renders a black viewport for
@@ -187,6 +188,7 @@ appId: io.github.sceneview.demo.qa
             demo: ${DEMO_ID}
             qa_mode: true
             qa_backdrop: true
+            telemetry_consent: "denied"
             camera_distance: ${CAMERA_DISTANCE}
       - waitForAnimationToEnd:
           timeout: 6000
@@ -250,6 +252,7 @@ appId: io.github.sceneview.demo.qa
             demo: ${DEMO_ID}
             qa_mode: true
             qa_backdrop: true
+            telemetry_consent: "denied"
             camera_distance: "40"
       - waitForAnimationToEnd:
           timeout: 6000

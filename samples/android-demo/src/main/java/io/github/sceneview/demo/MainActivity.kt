@@ -35,6 +35,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.rememberMotionEnabled
 import io.github.sceneview.demo.telemetry.AnalyticsEvent
+import io.github.sceneview.demo.telemetry.ConsentHost
 import io.github.sceneview.demo.telemetry.OpenSource
 import io.github.sceneview.demo.telemetry.PushIntent
 import io.github.sceneview.demo.telemetry.PushPromptHost
@@ -126,7 +127,15 @@ class MainActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Usage statistics + push (demo app only). A no-op in a build without a Firebase config.
+        // `--es telemetry_consent granted|denied|ask` (debug builds only): automation passes
+        // `denied` so no capture or test run shows the consent sheet or sends anything. Applied
+        // before ensureInit, so Firebase never starts on a value about to change.
+        // Not on a recreation (theme switch, rotation): the extra would undo the answer given since.
+        if (BuildConfig.DEBUG && savedInstanceState == null) {
+            Telemetry.applyDebugConsent(this, intent?.getStringExtra("telemetry_consent"))
+        }
+        // Usage statistics + push (demo app only). A no-op in a build without a Firebase config,
+        // and Firebase itself only starts once the consent allows it (telemetry/Telemetry.kt).
         Telemetry.ensureInit(this)
         // Clean up any feedback recording stranded in the cache by a prior run.
         sweepStaleFeedbackMedia(this)
@@ -229,6 +238,7 @@ class MainActivity : ComponentActivity() {
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
+        if (BuildConfig.DEBUG) Telemetry.applyDebugConsent(this, intent.getStringExtra("telemetry_consent"))
         applyLaunch(intent)
     }
 
@@ -627,6 +637,9 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             if (route == "list" && lastRoute?.startsWith("demo/") == true) homeReturns++
             lastRoute = route
         }
+        // The usage-statistics consent first (EEA, UK, Switzerland), over Home once it shows;
+        // the push pre-prompt waits for a later session (TelemetryConsent.pushPromptAllowed).
+        ConsentHost(onHome = onListScreen)
         PushPromptHost(returnedHomeFromSample = homeReturns, onHome = onListScreen)
 
         var bugReport by remember { mutableStateOf<PendingBugReport?>(null) }

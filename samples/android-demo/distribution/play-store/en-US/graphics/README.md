@@ -291,7 +291,9 @@ regenerated on the next boot (this frees ~5 GB per tablet AVD).
 > landscape-native while a 7" one is portrait-native.
 
 The script builds a debug APK, launches each demo cold via
-`am start --es demo <id>`, captures with the Google `android` CLI (no
+`am start --es demo <id> --es telemetry_consent denied` (the debug-only extra
+that keeps the usage-statistics consent sheet out of the frame on an EEA-locale
+emulator, and sends nothing), captures with the Google `android` CLI (no
 `adb shell screencap` LF/CRLF corruption), crops the status bar, and runs a
 **variance check** on each capture so a blank/uniform frame fails loudly rather
 than silently shipping to the store — the #917 failure mode. It also writes

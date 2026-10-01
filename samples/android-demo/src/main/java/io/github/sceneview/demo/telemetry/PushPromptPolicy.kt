@@ -36,10 +36,14 @@ class PushPromptPolicy(
      * Home came back after a sample: counts the return, then says whether the sheet shows now.
      * The only way in — the sheet never shows at launch, over the Home hero, even when an
      * earlier session left enough returns behind and the snooze has run out.
+     *
+     * @param consentSettled false while the usage-statistics consent is owed or was answered in
+     *   this session ([TelemetryConsent.pushPromptAllowed]): the returns still count, the sheet
+     *   waits for a later session.
      */
-    fun onReturnedHome(eligible: Boolean): Boolean {
+    fun onReturnedHome(eligible: Boolean, consentSettled: Boolean = true): Boolean {
         store.homeReturns = store.homeReturns + 1
-        return shouldShow(eligible)
+        return consentSettled && shouldShow(eligible)
     }
 
     private fun shouldShow(eligible: Boolean): Boolean = eligible &&
