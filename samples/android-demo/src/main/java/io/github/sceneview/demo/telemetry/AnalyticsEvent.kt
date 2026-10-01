@@ -48,6 +48,31 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("sample_id" to sampleId, "reason" to reason.value)
     }
 
+    // ── AR funnel — the five steps of docs/docs/recipes/measure-ar-funnel.md ──────────
+
+    data class ArSessionCreated(val sampleId: String) : AnalyticsEvent("ar_session_created") {
+        override fun rawParams() = mapOf("sample_id" to sampleId)
+    }
+
+    /** The first frame whose camera is TRACKING, once per session. */
+    data class ArTrackingReady(val sampleId: String) : AnalyticsEvent("ar_tracking_ready") {
+        override fun rawParams() = mapOf("sample_id" to sampleId)
+    }
+
+    data class ArFirstPlacement(val sampleId: String) : AnalyticsEvent("ar_first_placement") {
+        override fun rawParams() = mapOf("sample_id" to sampleId)
+    }
+
+    /** `reason`: ARCore's TrackingFailureReason, lowercased (`insufficient_light`…). */
+    data class ArTrackingLost(val sampleId: String, val reason: String) : AnalyticsEvent("ar_tracking_lost") {
+        override fun rawParams() = mapOf("sample_id" to sampleId, "reason" to reason)
+    }
+
+    /** `reason`: a snake_case code from [ArFunnelLog.failureReason] (`arcore_not_installed`…). */
+    data class ArSessionFailed(val sampleId: String, val reason: String) : AnalyticsEvent("ar_session_failed") {
+        override fun rawParams() = mapOf("sample_id" to sampleId, "reason" to reason)
+    }
+
     // ── Leaving the app, push, settings ──────────────────────────────────────────────
 
     data class OutboundLink(val target: LinkTarget, val sampleId: String? = null) : AnalyticsEvent("outbound_link") {
@@ -140,6 +165,9 @@ enum class PromptResult(val value: String) {
 
 /** User properties, set once and updated when they change. Values are the strings listed. */
 enum class UserProperty(val key: String) {
+    /** `true` | `false` | `unknown` — whether ARCore can run on this device. */
+    ArSupported("ar_supported"),
+
     /** `light` | `dark` — the theme the app is showing. */
     AppTheme("app_theme"),
 

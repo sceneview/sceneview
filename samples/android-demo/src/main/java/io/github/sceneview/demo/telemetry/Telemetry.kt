@@ -13,9 +13,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.google.ar.core.ArCoreApk
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import io.github.sceneview.demo.R
+import java.util.concurrent.Executors
 
 /**
  * The demo app's usage statistics and push, in one place.
@@ -126,7 +128,21 @@ object Telemetry {
         startFirebaseIfNeeded(app)
         syncPush(app)
         refreshUserProperties(app)
+        // ArCoreApk may hit the Play Store service: off the main thread.
+        background.execute {
+            val supported = runCatching {
+                val availability = ArCoreApk.getInstance().checkAvailability(app)
+                when {
+                    availability.isTransient -> "unknown"
+                    availability.isSupported -> "true"
+                    else -> "false"
+                }
+            }.getOrDefault("unknown")
+            analytics.setUserProperty(UserProperty.ArSupported, supported)
+        }
     }
+
+    private val background by lazy { Executors.newSingleThreadExecutor() }
 
     fun promptStore(context: Context): PushPromptStore {
         ensureInit(context)

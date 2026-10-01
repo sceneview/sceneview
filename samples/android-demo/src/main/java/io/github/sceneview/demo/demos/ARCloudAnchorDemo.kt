@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import io.github.sceneview.demo.telemetry.ModelLoadFailure
+import io.github.sceneview.demo.telemetry.logModelLoadFailed
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -252,6 +254,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     val status = flow.status()
     var modelInstance by remember { mutableStateOf<ModelInstance?>(null) }
     var modelFailed by remember { mutableStateOf(false) }
+    val telemetrySampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
     var modelRetry by remember { mutableStateOf(0) }
     LaunchedEffect(modelRetry) {
         val ticket = placementState.selectModel()
@@ -262,6 +265,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         if (placementState.acceptsAsset(ticket)) {
             modelInstance = loaded
             modelFailed = loaded == null
+            if (loaded == null) logModelLoadFailed(telemetrySampleId, ModelLoadFailure.DecodeFailed)
         } else loaded?.let { modelLoader.destroyModel(it.model) }
     }
     DisposableEffect(modelInstance) {
