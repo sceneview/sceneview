@@ -46,6 +46,24 @@ class DeepLinkRouterTest {
     }
 
     @Test
+    fun `cosmos spacetime link opens cosmos on the spacetime view`() {
+        val uri = Uri.parse("sceneview://demo/cosmos?tab=spacetime")
+        val launch = DeepLinkRouter.resolveLaunch(
+            DeepLinkRouter.parse(uri),
+            DeepLinkRouter.extractCandidate(uri),
+            DeepLinkRouter.parseTabParam(uri),
+        )
+        assertEquals(DeepLinkRouter.Launch("cosmos", 1), launch)
+        assertEquals(
+            DeepLinkRouter.Launch("cosmos", 0),
+            DeepLinkRouter.resolveLaunch("cosmos", "cosmos", "starlight"),
+        )
+        // The names are Cosmos's own: on another tabbed demo they mean nothing.
+        assertNull(DeepLinkRouter.resolveInitialTab("materials", "spacetime"))
+        assertNull(DeepLinkRouter.resolveInitialTab("model-viewer", "starlight"))
+    }
+
+    @Test
     fun `tab for a demo without tabs is dropped`() {
         // Kept, it would linger and open the next tabbed demo (Materials) on Streaming.
         assertEquals(

@@ -6,4 +6,8 @@
     <string name="demo_cosmos_title">Cosmos</string>
     <string name="demo_cosmos_subtitle">Watch a galaxy, a star and particle storms glow</string>
     <string name="demo_cosmos_loading">Lighting up the cosmos</string>
+    <!-- The Star scene's two views, switched by the pill over the dock. -->
+    <string name="demo_cosmos_starlight">Starlight</string>
+    <string name="demo_cosmos_spacetime">Spacetime</string>
+    <string name="demo_cosmos_spacetime_legend">Spacetime: every mass bends the fabric</string>
 </resources>

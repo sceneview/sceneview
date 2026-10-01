@@ -257,7 +257,9 @@ internal class CosmosRig {
 
         /** How far the orbit plane is tipped toward the camera, so its ellipse opens up. */
         private const val INCLINATION_DEGREES = 9f
-        private const val PLANET_SPIN_DEGREES_PER_SECOND = 9f
+
+        /** The planet turns on its axis this fast; Spacetime keeps the same spin. */
+        const val PLANET_SPIN_DEGREES_PER_SECOND = 9f
 
         /** How far above the orbit plane the overview looks down: enough to open the ellipse. */
         private const val SYSTEM_ELEVATION_DEGREES = 16f

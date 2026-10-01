@@ -700,7 +700,13 @@ demos:
       system: a ringed world orbits the star, lit by it (terminator,
       atmosphere rim, ring shadow on the planet, planet shadow on the rings,
       fading orbit trail); tapping the planet or the star flies the camera
-      there on ease-expressive, round the star (#4192). Dock picks a scene;
+      there on ease-expressive, round the star (#4192). Whenever the star is
+      on screen, a Starlight | Spacetime pill above the dock lays the system
+      down on a spacetime sheet: the camera rises, the glow drops away, five
+      more worlds and two moons fall into wells the masses carve in a lit
+      fabric (Plummer wells, horizon and sphere shadows, the ringed
+      world's ring shadow), and a drag orbits the camera within 30-70 degrees
+      of pitch; `?tab=spacetime` deep-links to it. Dock picks a scene;
       an optional tour cycles them and flies to the planet once; Bloom
       slider; no video, no texture.
     parity: diverges
@@ -725,7 +731,10 @@ demos:
       not churn, the galaxy is built in one pass, the Settings sheet has no
       "Settings" title (DemoChrome has no parameter for it), and the bloom is
       added in display space with a baked filmic roll-off standing in for
-      Filament's tone map
+      Filament's tone map. Spacetime: Android shades the sheet per pixel
+      (cosmos_spacetime.mat), its hollow's shadow sampled from a horizon map
+      baked once on the CPU (512², CosmosSpacetime.horizonMap); iOS evaluates
+      its penumbra per vertex, and has no drag to orbit the Spacetime camera
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working

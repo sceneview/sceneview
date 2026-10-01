@@ -228,6 +228,17 @@ internal object DeepLinkRouter {
     )
 
     /**
+     * Named `?tab=` tokens of live demos, for a mode that was never a demo of its own and so
+     * has no retired id in [ALIAS_INITIAL_TAB]: `sceneview://demo/cosmos?tab=spacetime` opens
+     * Cosmos on its Star scene's Spacetime view. Keyed by demo id: a name means a tab of its
+     * own demo only, so `?tab=spacetime` on any other demo is unrecognised.
+     */
+    val TAB_NAMES: Map<String, Map<String, Int>> = mapOf(
+        // cosmos — [Starlight, Spacetime], the Star scene's two views.
+        "cosmos" to mapOf("starlight" to 0, "spacetime" to 1),
+    )
+
+    /**
      * Tabs that left their demo for a demo of their own, keyed by (demo, 0-based tab). A link
      * that still asks for one — `sceneview://demo/animation-physics?tab=1`, the old Physics
      * tab — opens the new demo instead (#4083). See [resolveLaunch].
@@ -250,6 +261,7 @@ internal object DeepLinkRouter {
         "model-viewer",
         "ar-geospatial-anchors",
         "lighting",
+        "cosmos",
     )
 
     /** Where an incoming link lands: the demo to open and the tab it should pre-select. */
@@ -377,7 +389,7 @@ internal object DeepLinkRouter {
      * out-of-range index is left for the demo to clamp to its default tab.
      */
     fun resolveInitialTab(rawId: String?, tabParam: String?): Int? {
-        parseTabValue(tabParam)?.let { return it }
+        parseTabValue(tabParam, rawId)?.let { return it }
         return rawId?.let { ALIAS_INITIAL_TAB[it] }
     }
 
@@ -394,13 +406,13 @@ internal object DeepLinkRouter {
     /**
      * Parses a `?tab=` / `--es tab` value into a 0-based tab index: a non-negative integer
      * literal is taken as-is; any other token is looked up in [ALIAS_INITIAL_TAB] (so
-     * `?tab=texture-streaming` selects the Streaming tab of `materials`). A blank, negative, or unrecognised value returns
-     * `null`. Never throws.
+     * `?tab=texture-streaming` selects the Streaming tab of `materials`), then in [demoId]'s
+     * own [TAB_NAMES]. A blank, negative, or unrecognised value returns `null`. Never throws.
      */
-    internal fun parseTabValue(raw: String?): Int? {
+    internal fun parseTabValue(raw: String?, demoId: String? = null): Int? {
         val token = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
         token.toIntOrNull()?.let { index -> return index.takeIf { it >= 0 } }
-        return ALIAS_INITIAL_TAB[token]
+        return ALIAS_INITIAL_TAB[token] ?: demoId?.let { TAB_NAMES[it]?.get(token) }
     }
 
     /**

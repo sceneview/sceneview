@@ -1,0 +1,140 @@
+// cosmos_spacetime.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The rubber sheet of the Cosmos demo's Spacetime view: a flat polar grid that the
+//             vertex stage hollows into one windowed Plummer well per mass, lit by a grazing key
+//             light so the star's hollow falls into black shadow and its far wall catches the
+//             light. The worlds resting on it cast their shadows across it (a soft sphere test per
+//             world, a ray-plane test for the rings). The background is black: the sheet fades
+//             out in a spot centred on the star, so it has no visible edge.
+// Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
+// Geometry:   the polar grid of CosmosSpacetime.grid(), flat (y = 0) on its node's XZ plane, the
+//             node at the world origin with no transform. `position` is (x, 0, z), nothing else.
+// Parameters:
+//   bodies     — float4[8], (x, z, D·w, ε) per mass: centre, depth times the well depth, width.
+//   spheres    — float4[8], (x, y, z, ρ) per shadow caster; ρ 0 casts nothing (the star).
+//   ringCenter — float4, the ringed world's centre (xyz) and its rings' inner radius (w).
+//   ringNormal — float4, the rings' plane normal (xyz) and outer radius (w); w 0 casts nothing.
+//   offset     — float, C(w) − lift: what keeps the star's centre at the origin, minus the drop
+//                the sheet rises from on the way in.
+//   well       — float, the well depth w; the baked horizon visibility is mixed in by it.
+//   horizon    — sampler2d, R8, CosmosSpacetime.horizonMap(): the key light's horizon visibility
+//                over the star's well, baked once on the CPU over x, z in ±4 (HORIZON_MAP_EXTENT),
+//                sampled per fragment with bilinear filtering and clamp-to-edge (lit past it).
+//   lightDir   — float3, unit vector toward the key light.
+//   baseColor  — float3, the flat lit sheet's colour on screen, linear (#6E7680).
+//   intensity  — float, master fade.
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// The profile, its gradient and the light are CosmosSpacetime.kt's, value for value (the sheet
+// radius 12, the window from 0.85 R, ambient 0.02, wrap 0.10, the 0.6 gain over S_flat 0.3246,
+// the 1.25 ceiling, the spot from 3 to R): CosmosSpacetimeTest holds them, and iOS shades the
+// same numbers. The colour written is the inverse of the Filmic tone mapper, so the
+// screen shows the target value (ViewerBackdrop does the same for the viewer's backdrop).
+material {
+    "name" : "Cosmos Spacetime",
+    "parameters" : [
+        { "type" : "float4[8]", "name" : "bodies", "precision" : "high" },
+        { "type" : "float4[8]", "name" : "spheres", "precision" : "high" },
+        { "type" : "float4", "name" : "ringCenter", "precision" : "high" },
+        { "type" : "float4", "name" : "ringNormal", "precision" : "high" },
+        { "type" : "float",  "name" : "offset" },
+        { "type" : "float",  "name" : "well" },
+        { "type" : "sampler2d", "name" : "horizon" },
+        { "type" : "float3", "name" : "lightDir" },
+        { "type" : "float3", "name" : "baseColor" },
+        { "type" : "float",  "name" : "intensity" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "sheet", "slope" ],
+    "shadingModel" : "unlit",
+    "blending" : "opaque",
+    "doubleSided" : false
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float3 p = getPosition().xyz;
+        highp float2 xz = p.xz;
+        highp float raw = 0.0;
+        highp float2 g = float2(0.0);
+        for (int i = 0; i < 8; i++) {
+            highp float4 b = materialParams.bodies[i];
+            highp float2 d = xz - b.xy;
+            highp float e2 = b.w * b.w;
+            highp float s = inversesqrt(dot(d, d) + e2);
+            raw -= b.z * b.w * (s - inversesqrt(144.0 + e2));
+            g += b.z * b.w * s * s * s * d;
+        }
+        // The rim window, 1 inside 0.85 R and 0 at R, and its own slope.
+        highp float r = length(xz);
+        highp float t = clamp((r - 10.2) / 1.8, 0.0, 1.0);
+        highp float window = 1.0 - t * t * (3.0 - 2.0 * t);
+        highp float windowSlope = (r > 10.2 && r < 12.0) ? -6.0 * t * (1.0 - t) / 1.8 : 0.0;
+        g *= window;
+        if (r > 0.0) g += raw * windowSlope * xz / r;
+        highp float h = raw * window + materialParams.offset;
+        material.worldPosition.y += h;
+        material.sheet = float4(xz.x, h, xz.y, 0.0);
+        material.slope = float4(g, 0.0, 0.0);
+    }
+}
+fragment {
+    // Ring opacity at a normalised radius x in [0, 1] across the ring — cosmos_planet.mat's.
+    float ringDensity(float x) {
+        float inside = smoothstep(0.0, 0.03, x) * (1.0 - smoothstep(0.97, 1.0, x));
+        float body = mix(0.3, 1.0, smoothstep(0.12, 0.3, x)) * mix(1.0, 0.65, smoothstep(0.66, 0.72, x));
+        float gap = smoothstep(0.012, 0.03, abs(x - 0.62));
+        float fine = 0.68 + 0.32 * sin(x * 97.0) * sin(x * 41.0 + 1.3);
+        return inside * body * gap * fine;
+    }
+
+    // Filament's Inverse_Tonemap_Filmic, one channel: the linear value Filmic maps onto y.
+    float inverseFilmic(float y) {
+        float c = clamp(y, 0.0, 0.999);
+        return (0.03 - 0.59 * c - sqrt(0.0009 + 1.3702 * c - 1.0127 * c * c)) / (-5.02 + 4.86 * c);
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        highp float3 p = variable_sheet.xyz;
+        highp float3 L = materialParams.lightDir;
+
+        // Shadows of the worlds: a soft sphere test each, the nearest first out.
+        float shadow = 1.0;
+        for (int i = 0; i < 8; i++) {
+            highp float4 s = materialParams.spheres[i];
+            if (s.w <= 0.0) continue;
+            highp float3 oc = s.xyz - p;
+            highp float along = dot(oc, L);
+            if (along <= 0.0) continue;
+            highp float dist = length(oc - along * L);
+            shadow *= smoothstep(0.55 * s.w, 1.35 * s.w, dist);
+            if (shadow < 0.004) break;
+        }
+        // The rings' shadow: follow the light to the ring plane and read the ring's opacity.
+        highp float3 rn = materialParams.ringNormal.xyz;
+        highp float outer = materialParams.ringNormal.w;
+        highp float denom = dot(L, rn);
+        if (outer > 0.0 && abs(denom) > 1e-4) {
+            highp float3 c = materialParams.ringCenter.xyz;
+            highp float along = dot(c - p, rn) / denom;
+            if (along > 0.0) {
+                highp float inner = materialParams.ringCenter.w;
+                highp float x = (length(p + L * along - c) - inner) / (outer - inner);
+                if (x > 0.0 && x < 1.0) shadow *= 1.0 - 0.85 * ringDensity(x);
+            }
+        }
+
+        highp float2 g = variable_slope.xy;
+        float3 n = normalize(float3(-g.x, 1.0, -g.y));
+        float lit = max(0.0, (dot(n, L) + 0.10) / 1.10);
+        // The horizon map covers x, z in ±4: uv = xz / 8 + 0.5.
+        float horizon = texture(materialParams_horizon, p.xz * 0.125 + 0.5).r;
+        float vis = mix(1.0, horizon, clamp(materialParams.well, 0.0, 1.0));
+        float d = length(p.xz);
+        float ao = 1.0 - 0.2 * (1.0 - smoothstep(0.0, 2.4, d));
+        float S = (0.02 + 0.98 * lit * vis * shadow) * ao;
+        float k = min(0.6 * S / 0.3246, 1.25) * (1.0 - smoothstep(3.0, 12.0, d)) * materialParams.intensity;
+        float3 c = materialParams.baseColor * k;
+        material.baseColor = float4(inverseFilmic(c.r), inverseFilmic(c.g), inverseFilmic(c.b), 1.0);
+    }
+}

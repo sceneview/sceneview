@@ -3,9 +3,11 @@
 package io.github.sceneview.demo.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -43,6 +45,11 @@ import io.github.sceneview.demo.theme.SceneViewTokens
  * @param onSelect Called with the newly picked option — never with [selected].
  * @param label Visible (and accessible) text for an option.
  * @param optionTestTag Optional UI-test tag for an option's button.
+ * @param colors The buttons' colours. Themed by default; a control over media passes a fixed
+ *   palette (Cosmos's mode pill, `SceneViewTokens.ModePill`).
+ * @param fillWidth Whether the row spans the width it is given (the default, a settings row) or
+ *   only its widest option's width times the number of options, for its parent to centre — a
+ *   pill floating over the scene.
  */
 @Composable
 fun <T> ConnectedChoiceRow(
@@ -52,11 +59,15 @@ fun <T> ConnectedChoiceRow(
     label: @Composable (T) -> String,
     modifier: Modifier = Modifier,
     optionTestTag: ((T) -> String)? = null,
+    colors: ToggleButtonColors = demoToggleButtonColors(),
+    fillWidth: Boolean = true,
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
         modifier = modifier
-            .fillMaxWidth()
+            // Not filling, the options still share the width equally: the row is its widest
+            // option's intrinsic width times the count, and `weight` splits it.
+            .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(IntrinsicSize.Max))
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
@@ -82,7 +93,7 @@ fun <T> ConnectedChoiceRow(
                 // Three labels share a phone's width: the default 24 dp side padding would
                 // ellipsize "Icosa Gallery" at 1.0× font scale.
                 contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
-                colors = demoToggleButtonColors(),
+                colors = colors,
             ) {
                 Text(
                     text = label(option),
