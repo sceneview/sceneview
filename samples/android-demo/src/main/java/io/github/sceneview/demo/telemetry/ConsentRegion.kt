@@ -63,9 +63,16 @@ object ConsentRegion {
         // Åland (Finland), Svalbard (Norway), Gibraltar (UK), and the Crown Dependencies that
         // carriers and locales report on their own: Isle of Man, Jersey, Guernsey
         "GF", "GP", "MQ", "RE", "YT", "MF", "AX", "SJ", "GI", "IM", "JE", "GG",
+        // Region codes the locale data gives EU territories: Canary Islands, Ceuta and Melilla
+        "IC", "EA",
         // Greece's legacy code, still reported by some carriers
         "EL",
+        // Groupings a locale can carry: European Union, Europe (UN M49)
+        "EU", "150",
     )
+
+    /** Region codes that name no place (World, Unknown): treated as no signal. */
+    internal val PLACELESS_REGIONS: Set<String> = setOf("001", "ZZ")
 
     /** Zones outside `Europe/` that belong to the zone. */
     internal val TIME_ZONES: Set<String> = setOf(
@@ -86,14 +93,15 @@ object ConsentRegion {
      * readable country is asked.
      */
     internal val PLACELESS_TIME_ZONES: Set<String> = setOf(
-        "UTC", "UCT", "GMT", "GMT0", "GMT+0", "GMT-0", "Greenwich", "Universal", "Zulu",
+        "UTC", "UCT", "GMT", "GMT0", "GMT+0", "GMT-0", "Greenwich", "Universal", "Zulu", "Factory",
     )
     private const val ETC_PREFIX = "Etc/"
 
     /** True when the consent sheet must be shown before anything is collected. */
     fun requiresConsent(signals: ConsentSignals): Boolean {
         val countries = listOf(signals.networkCountry, signals.simCountry, signals.localeRegion)
-            .mapNotNull { it?.trim()?.uppercase()?.takeIf(String::isNotEmpty) }
+            .mapNotNull { it?.trim()?.uppercase() }
+            .filter { it.isNotEmpty() && it !in PLACELESS_REGIONS }
         val zone = signals.timeZoneId?.trim()?.takeIf { it.isNotEmpty() && !isPlaceless(it) }
         if (countries.isEmpty() && zone == null) return true
         return countries.any { it in COUNTRIES } || (zone != null && isInZone(zone))

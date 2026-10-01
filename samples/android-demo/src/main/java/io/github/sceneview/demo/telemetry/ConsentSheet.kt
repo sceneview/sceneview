@@ -53,7 +53,7 @@ fun ConsentHost(onHome: Boolean) {
 }
 
 /**
- * "Help improve SceneView Demo" — Share / Don't share. The two answers carry the same weight:
+ * "Help improve SceneView Demo" — Don't share / Share. The two answers carry the same weight:
  * same component, same width, same emphasis, side by side.
  */
 @Composable
@@ -104,14 +104,15 @@ fun ConsentSheet(onShare: () -> Unit, onDontShare: () -> Unit) {
                     .padding(top = SceneViewTokens.Space.sm),
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
-                ConsentButton(
-                    label = stringResource(R.string.consent_share),
-                    onClick = onShare,
-                    modifier = Modifier.weight(1f),
-                )
+                // Same order as the iOS demo: decline on the start side, accept on the end side.
                 ConsentButton(
                     label = stringResource(R.string.consent_dont_share),
                     onClick = onDontShare,
+                    modifier = Modifier.weight(1f),
+                )
+                ConsentButton(
+                    label = stringResource(R.string.consent_share),
+                    onClick = onShare,
                     modifier = Modifier.weight(1f),
                 )
             }

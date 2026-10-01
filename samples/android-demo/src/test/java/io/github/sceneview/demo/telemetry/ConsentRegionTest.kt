@@ -104,4 +104,23 @@ class ConsentRegionTest {
         assertFalse(ConsentRegion.requiresConsent(signals(locale = "US", zone = "Etc/UTC")))
         assertFalse(ConsentRegion.requiresConsent(signals(network = "us", zone = "GMT")))
     }
+
+    @Test
+    fun `locale-only EU territory and grouping codes are in the zone`() {
+        listOf("IC", "EA", "EU", "150").forEach { code ->
+            assertTrue(code, ConsentRegion.requiresConsent(signals(locale = code, zone = "America/New_York")))
+        }
+    }
+
+    @Test
+    fun `placeless region codes are no signal`() {
+        assertTrue(ConsentRegion.requiresConsent(signals(locale = "001", zone = "UTC")))
+        assertTrue(ConsentRegion.requiresConsent(signals(locale = "ZZ", zone = "Factory")))
+        assertFalse(ConsentRegion.requiresConsent(signals(locale = "001", zone = "America/New_York")))
+    }
+
+    @Test
+    fun `UTC with no country is asked`() {
+        assertTrue(ConsentRegion.requiresConsent(signals(network = "", sim = "", locale = "", zone = "UTC")))
+    }
 }
