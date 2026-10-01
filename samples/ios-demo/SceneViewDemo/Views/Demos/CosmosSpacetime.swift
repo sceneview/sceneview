@@ -37,8 +37,8 @@ enum CosmosSpacetime {
         var spec: CosmosSpacetimeBody {
             switch self {
             case .star: .init(orbit: 0, radius: 0.45, depth: 2.4, width: 1.2, phaseDegrees: 0, moonRate: nil, parent: nil)
-            case .ember: .init(orbit: 1.3, radius: 0.10, depth: 0.60, width: 0.20, phaseDegrees: 40, moonRate: nil, parent: nil)
-            case .azure: .init(orbit: 2.0, radius: 0.16, depth: 0.70, width: 0.26, phaseDegrees: 200, moonRate: nil, parent: nil)
+            case .ember: .init(orbit: 1.3, radius: 0.10, depth: 0.60, width: 0.20, phaseDegrees: CosmosSpacetime.emberPhaseDegrees, moonRate: nil, parent: nil)
+            case .azure: .init(orbit: 2.0, radius: 0.16, depth: 0.70, width: 0.26, phaseDegrees: CosmosSpacetime.azurePhaseDegrees, moonRate: nil, parent: nil)
             case .ringed: .init(orbit: 3.3, radius: 0.30, depth: 0.80, width: 0.50, phaseDegrees: nil, moonRate: nil, parent: nil)
             case .ochre: .init(orbit: 5.1, radius: 0.36, depth: 0.75, width: 0.50, phaseDegrees: 120, moonRate: nil, parent: nil)
             case .ice: .init(orbit: 6.9, radius: 0.20, depth: 0.50, width: 0.28, phaseDegrees: 300, moonRate: nil, parent: nil)
@@ -76,10 +76,18 @@ enum CosmosSpacetime {
     static let wrap: Double = 0.10
     static let aoDepth: Double = 0.2
     static let aoReach: Double = 2.4
-    static let horizonSteps = 8
-    static let horizonFirstStep: Double = 0.25
-    static let horizonGrowth: Double = 1.57
+    /// The horizon test: a march toward the light in even `horizonStep`s out to
+    /// `horizonReach`, the steepest rise softened by ±`horizonSoftness` on the slope. Dense, so
+    /// the shadow's contour has no corners where the steepest sample hands over from one step
+    /// to the next (eight growing steps left the lobe of the star's shadow lumpy).
+    static let horizonStep: Double = 0.03
+    static let horizonReach: Double = 6
     static let horizonSoftness: Double = 0.03
+    /// Ember's and Azure's orbit angles at time zero, in degrees: Spacetime's own, chosen so that
+    /// at `qaTime` Ember sits beside the star and Azure in front of it, both on the lit wall and
+    /// clear of the hollow's shadow.
+    static let emberPhaseDegrees: Double = 317
+    static let azurePhaseDegrees: Double = 100
     static let gain: Double = 0.6
     static let ceiling: Double = 1.25
     static let spotInner: Double = 3
@@ -306,8 +314,9 @@ enum CosmosSpacetime {
     /// The shade of a flat, open, unshadowed sheet: what `gain` is relative to.
     static let flatShade: Double = ambient + (1 - ambient) * (sin(lightElevationDegrees * .pi / 180) + wrap) / (1 + wrap)
 
-    /// Horizon steps along the light's ground direction.
-    static let horizonDistances: [Double] = (0..<horizonSteps).map { horizonFirstStep * pow(horizonGrowth, Double($0)) }
+    /// Horizon steps along the light's ground direction: `horizonStep`, 2·`horizonStep`, … out
+    /// to `horizonReach`.
+    static let horizonDistances: [Double] = (1...Int((horizonReach / horizonStep).rounded())).map { horizonStep * Double($0) }
 
     /// How much of the light the star's well lets reach (x, z): 0 in the shadow of its rim.
     static func horizon(_ x: Double, _ z: Double, star: Field) -> Double {
@@ -373,7 +382,9 @@ enum CosmosSpacetime {
         let pitch = phi - delta
         let forward = SIMD3(0, -sin(pitch), -cos(pitch))
         let up = SIMD3(0, cos(pitch), -sin(pitch))
-        return CosmosPose(eye: SIMD3<Float>(eye), target: SIMD3<Float>(eye + forward), up: SIMD3<Float>(up))
+        // The target sits `d` down the view, by the star, as on Android: the flight blends the
+        // target linearly, and one a unit from the eye swung the view off the star on the way in.
+        return CosmosPose(eye: SIMD3<Float>(eye), target: SIMD3<Float>(eye + d * forward), up: SIMD3<Float>(up))
     }
 
     /// Where `p` lands on screen under `pose`: x in −1…1 across, y as a share of the height

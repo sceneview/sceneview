@@ -869,6 +869,8 @@ final class CosmosSceneEntities {
         guard progress > 0 else {
             spacetimeScene?.root.isEnabled = false
             world?.update(system: system, time: time, eye: eye, reveal: reveal, now: now, focal: focal)
+            // Built while Starlight shows, so the tap on Spacetime doesn't wait for it.
+            buildSpacetimeScene()
             return
         }
         let settle = Float(T.settle(progress))
@@ -886,26 +888,32 @@ final class CosmosSceneEntities {
                       placement: CosmosWorldPlacement(center: center, tilt: tilt, sun: sun), trailFade: halo)
 
         guard let spacetimeScene else {
-            guard spacetimeTask == nil else { return }
-            spacetimeTask = Task { @MainActor [weak self] in
-                let started = Date()
-                let scene: CosmosSpacetimeScene
-                do {
-                    scene = try await CosmosSpacetimeScene.make()
-                } catch {
-                    NSLog("[Cosmos] spacetime build failed: %@", String(describing: error))
-                    return
-                }
-                guard let self else { return }
-                NSLog("[Cosmos] spacetime built in %.3f s", Date().timeIntervalSince(started))
-                self.root.addChild(scene.root)
-                self.spacetimeScene = scene
-            }
+            buildSpacetimeScene()
             return
         }
         spacetimeScene.root.isEnabled = true
         spacetimeScene.update(time: time, progress: progress, sheet: layout,
                               ringed: (center, tilt.act(SIMD3(0, 1, 0))), now: now)
+    }
+
+    /// Builds the sheet and the small planets once, in the background, hidden until the mode shows.
+    private func buildSpacetimeScene() {
+        guard spacetimeScene == nil, spacetimeTask == nil else { return }
+        spacetimeTask = Task { @MainActor [weak self] in
+            let started = Date()
+            let scene: CosmosSpacetimeScene
+            do {
+                scene = try await CosmosSpacetimeScene.make()
+            } catch {
+                NSLog("[Cosmos] spacetime build failed: %@", String(describing: error))
+                return
+            }
+            guard let self else { return }
+            NSLog("[Cosmos] spacetime built in %.3f s", Date().timeIntervalSince(started))
+            scene.root.isEnabled = false
+            self.root.addChild(scene.root)
+            self.spacetimeScene = scene
+        }
     }
 
     /// The star's surface keeps boiling, as Android's shader does with `time · flow`: the

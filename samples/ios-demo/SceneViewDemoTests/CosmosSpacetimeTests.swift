@@ -16,8 +16,8 @@ final class CosmosSpacetimeTests: XCTestCase {
     func testGoldenHeights() {
         let sheet = S.Sheet(time: qa, weight: 1)
         let golden: [(Double, Double, Double)] = [
-            (0, 0, -0.3375), (1, 0, 0.2095), (0, -2, 0.8234), (-3, 1.5, 1.3984),
-            (4, 4, 1.6744), (6, -6, 1.9800), (10.5, 0, 2.0829), (12, 0, 2.1321),
+            (0, 0, -0.3375), (1, 0, 0.2820), (0, -2, 0.8055), (-3, 1.5, 1.3044),
+            (4, 4, 1.7011), (6, -6, 1.9831), (10.5, 0, 2.0883), (12, 0, 2.1321),
         ]
         for (x, z, h) in golden {
             XCTAssertEqual(sheet.height(x, z), h, accuracy: tolerance, "H(\(x), \(z))")
@@ -29,13 +29,13 @@ final class CosmosSpacetimeTests: XCTestCase {
     func testGoldenRests() {
         let sheet = S.Sheet(time: qa, weight: 1)
         let golden: [(S.Body, SIMD2<Double>, Double)] = [
-            (.ember, SIMD2(-0.261, 1.273), 0.0908),
-            (.azure, SIMD2(1.401, 1.428), 0.4767),
-            (.ringed, SIMD2(1.600, -2.886), 1.0784),
-            (.ochre, SIMD2(-4.330, -2.695), 1.2321),
-            (.ice, SIMD2(5.116, 4.629), 1.4774),
-            (.moonI, SIMD2(5.602, 4.982), 1.4250),
-            (.moonO, SIMD2(-3.830, -2.007), 0.9781),
+            (.ember, SIMD2(-1.296, -0.104), 0.0125),
+            (.azure, SIMD2(-1.649, 1.131), 0.4535),
+            (.ringed, SIMD2(1.600, -2.886), 1.0819),
+            (.ochre, SIMD2(-4.330, -2.695), 1.2100),
+            (.ice, SIMD2(5.116, 4.629), 1.4944),
+            (.moonI, SIMD2(5.602, 4.982), 1.4389),
+            (.moonO, SIMD2(-3.830, -2.007), 0.9465),
         ]
         for (body, p, y) in golden {
             let at = S.position(body, time: qa)
@@ -161,6 +161,8 @@ final class CosmosSpacetimeTests: XCTestCase {
         XCTAssertEqual(S.triangleCount, 78_208)
         XCTAssertEqual(S.gridRadii.first, 0)
         XCTAssertEqual(S.gridRadii[76], 7.6, accuracy: 1e-5)
+        XCTAssertEqual(S.horizonDistances.count, 200)
+        XCTAssertEqual(S.horizonDistances.last!, 6, accuracy: 1e-9)
         XCTAssertEqual(S.gridRadii.last!, 12, accuracy: 1e-4)
         XCTAssertLessThan(S.vertexCount, Int(UInt16.max) + 1, "indices fit in 16 bits")
     }
