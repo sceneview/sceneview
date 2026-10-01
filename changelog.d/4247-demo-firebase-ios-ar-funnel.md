@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **iOS demo app: AR funnel analytics ([#4247](https://github.com/sceneview/sceneview/pull/4247)).** The AR samples of SceneView Demo on iOS report when the AR session starts, when tracking is ready or lost (with the reason), the first placement, session failures and model load failures. Picking a model in tap-to-place is reported the same way as on Android. A failure is reported as an error domain and code, never as a message, so no file path or URL is collected. Turning off "Share usage statistics" in About stops these events too.
