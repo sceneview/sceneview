@@ -473,7 +473,11 @@ final class CosmosEngine {
             spacetimeProgress = target
         } else {
             let step = Double(min(max(dt, 0), 0.1))
-            spacetimeProgress = spacetime ? min(before + step, target)
+            // The way in waits for the sheet: until it is built, Starlight holds, so the camera
+            // never flies over nothing and the sheet never pops in at the end — Android lifts
+            // its cover on the first frame that draws the sheet.
+            let held = built[.star]?.spacetimeReady != true
+            spacetimeProgress = spacetime ? (held ? before : min(before + step, target))
                 : max(before - step * T.duration / T.exitSeconds, 0)
         }
         if before > 0, spacetimeProgress == 0 {
@@ -713,6 +717,8 @@ final class CosmosSceneEntities {
     /// The Star scene's Spacetime sheet and small planets, built the first time the mode is
     /// asked for.
     private var spacetimeScene: CosmosSpacetimeScene?
+    /// The sheet and the small planets are built: the way into Spacetime may start.
+    var spacetimeReady: Bool { spacetimeScene != nil }
     private var spacetimeTask: Task<Void, Never>?
     /// The eye, as the turned star sees it, and the lens the loops were last laid for; see
     /// `relayLoops`.
