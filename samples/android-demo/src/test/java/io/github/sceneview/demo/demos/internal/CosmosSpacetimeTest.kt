@@ -9,8 +9,13 @@ import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -28,12 +33,12 @@ class CosmosSpacetimeTest {
         val f = field()
         val golden = listOf(
             Triple(0f, 0f, -0.3375f),
-            Triple(1f, 0f, 0.2095f),
-            Triple(0f, -2f, 0.8234f),
-            Triple(-3f, 1.5f, 1.3984f),
-            Triple(4f, 4f, 1.6744f),
-            Triple(6f, -6f, 1.9800f),
-            Triple(10.5f, 0f, 2.0829f),
+            Triple(1f, 0f, 0.2812f),
+            Triple(0f, -2f, 0.8139f),
+            Triple(-3f, 1.5f, 1.2977f),
+            Triple(4f, 4f, 1.7000f),
+            Triple(6f, -6f, 1.9835f),
+            Triple(10.5f, 0f, 2.0882f),
             Triple(12f, 0f, 2.1321f),
         )
         for ((x, z, h) in golden) assertEquals("H($x, $z)", h, f.height(x, z), 1e-3f)
@@ -43,16 +48,16 @@ class CosmosSpacetimeTest {
     @Test
     fun `rest heights at 9 s`() {
         val f = field()
-        assertEquals(-0.261f, f.x(CosmosSpacetime.EMBER), 1e-3f)
-        assertEquals(1.273f, f.z(CosmosSpacetime.EMBER), 1e-3f)
+        assertEquals(-1.2185f, f.x(CosmosSpacetime.EMBER), 1e-3f)
+        assertEquals(0.4531f, f.z(CosmosSpacetime.EMBER), 1e-3f)
         val expected = mapOf(
-            CosmosSpacetime.EMBER to 0.0908f,
-            CosmosSpacetime.AZURE to 0.4767f,
-            CosmosSpacetime.RINGED to 1.0784f,
-            CosmosSpacetime.OCHRE to 1.2321f,
-            CosmosSpacetime.ICE to 1.4774f,
-            CosmosSpacetime.MOON_I to 1.4250f,
-            CosmosSpacetime.MOON_O to 0.9781f,
+            CosmosSpacetime.EMBER to -0.0599f,
+            CosmosSpacetime.AZURE to 0.4144f,
+            CosmosSpacetime.RINGED to 1.0843f,
+            CosmosSpacetime.OCHRE to 1.2130f,
+            CosmosSpacetime.ICE to 1.4937f,
+            CosmosSpacetime.MOON_I to 1.4382f,
+            CosmosSpacetime.MOON_O to 0.9509f,
         )
         for ((index, y) in expected) assertEquals(CosmosSpacetime.NAMES[index], y, f.rest(index), 1e-3f)
     }
@@ -112,15 +117,78 @@ class CosmosSpacetimeTest {
     }
 
     @Test
-    fun `the rings clear the sheet all round the orbit`() {
+    fun `the rings clear the sheet as drawn, all round ten minutes of orbit`() {
+        // Independent of ringedRest's own edge sampler: the whole annulus, nine radii by 192
+        // angles, against the sheet as the GPU draws it — the grid's triangles, linearly
+        // interpolated between vertex heights.
         val f = SpacetimeField()
-        for (step in 0 until 240) {
+        val ringed = CosmosSpacetime.RINGED
+        var worst = Float.MAX_VALUE
+        var worstProfile = Float.MAX_VALUE
+        for (step in 0..1200) {
             f.prepare(step * 0.5f, 1f)
-            val i = CosmosSpacetime.RINGED
+            val cx = f.x(ringed)
+            val cz = f.z(ringed)
             val y = f.ringedRest()
-            assertTrue("t=${step * 0.5f}", f.ringGap(f.x(i), y, f.z(i)) > 0.004f)
-            // The rings lie along the slope: their normal tilts, but stays mostly up.
-            assertTrue(f.ringNormal[1] > 0.8f)
+            val n = f.ringNormal
+            // The rings stay mostly level, along the slope.
+            assertTrue(n[1] > 0.8f)
+            val u = floatArrayOf(1f - n[0] * n[0], -n[0] * n[1], -n[0] * n[2])
+            val ul = sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2])
+            for (k in 0..2) u[k] /= ul
+            val v = floatArrayOf(n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0])
+            for (r in 0..8) {
+                val radius = CosmosSystem.RING_INNER + r * (CosmosSystem.RING_OUTER - CosmosSystem.RING_INNER) / 8f
+                for (i in 0 until 192) {
+                    val a = 2f * PI.toFloat() * i / 192
+                    val ca = cos(a)
+                    val sa = sin(a)
+                    val qx = cx + radius * (ca * u[0] + sa * v[0])
+                    val qy = y + radius * (ca * u[1] + sa * v[1])
+                    val qz = cz + radius * (ca * u[2] + sa * v[2])
+                    worst = min(worst, qy - drawnHeight(f, qx, qz))
+                    worstProfile = min(worstProfile, qy - f.height(qx, qz))
+                }
+            }
+        }
+        // Over the profile itself the gap stays within a hair of RING_CLEARANCE (0.014); the
+        // drawn chords sit a little higher in the hollows, and still leave over 0.013.
+        assertTrue("worst gap over the profile $worstProfile", worstProfile >= 0.0135f)
+        assertTrue("worst gap over the drawn sheet $worst", worst >= 0.013f)
+    }
+
+    /** The sheet's height at ([x], [z]) as drawn: the grid triangle under it, interpolated. */
+    private fun drawnHeight(f: SpacetimeField, x: Float, z: Float): Float {
+        val r = hypot(x, z)
+        val ring = (r / CosmosSpacetime.INNER_EXTENT * CosmosSpacetime.INNER_RINGS).toInt()
+        assertTrue("inside the even rings", ring < CosmosSpacetime.INNER_RINGS)
+        var theta = atan2(z, x)
+        if (theta < 0f) theta += 2f * PI.toFloat()
+        val sector = (theta / (2f * PI.toFloat()) * CosmosSpacetime.SECTORS).toInt() % CosmosSpacetime.SECTORS
+        fun vertex(ring: Int, sector: Int): FloatArray {
+            val rr = CosmosSpacetime.ringRadius(ring)
+            val aa = 2f * PI.toFloat() * (sector % CosmosSpacetime.SECTORS) / CosmosSpacetime.SECTORS
+            val vx = rr * cos(aa)
+            val vz = rr * sin(aa)
+            return floatArrayOf(vx, vz, f.height(vx, vz))
+        }
+        val a = vertex(ring, sector)
+        val b = vertex(ring, sector + 1)
+        val c = vertex(ring + 1, sector)
+        val d = vertex(ring + 1, sector + 1)
+        // The grid's two triangles per cell, (a, b, c) and (b, d, c): the one holding the point.
+        fun weights(p: FloatArray, q: FloatArray, s: FloatArray): FloatArray {
+            val det = (q[1] - s[1]) * (p[0] - s[0]) + (s[0] - q[0]) * (p[1] - s[1])
+            val w0 = ((q[1] - s[1]) * (x - s[0]) + (s[0] - q[0]) * (z - s[1])) / det
+            val w1 = ((s[1] - p[1]) * (x - s[0]) + (p[0] - s[0]) * (z - s[1])) / det
+            return floatArrayOf(w0, w1, 1f - w0 - w1)
+        }
+        val first = weights(a, b, c)
+        val second = weights(b, d, c)
+        return if ((first.minOrNull() ?: 0f) >= (second.minOrNull() ?: 0f)) {
+            first[0] * a[2] + first[1] * b[2] + first[2] * c[2]
+        } else {
+            second[0] * b[2] + second[1] * d[2] + second[2] * c[2]
         }
     }
 
@@ -242,6 +310,90 @@ class CosmosSpacetimeTest {
         assertTrue("wall $wall vs plane $plane", wall >= plane)
         // No visible rim: the spot is out before the sheet ends.
         assertTrue(screen(0f, -11.8f) <= 0.02f * plane)
+    }
+
+    @Test
+    fun `the horizon map is the march, texel for texel, and clear on its border`() {
+        val map = CosmosSpacetime.horizonMap()
+        val n = CosmosSpacetime.HORIZON_MAP_SIZE
+        assertEquals(n * n, map.size)
+        fun texel(i: Int, j: Int) = (map[j * n + i].toInt() and 0xFF) / 255f
+        for ((i, j) in listOf(0 to 0, 300 to 220, 330 to 200, 260 to 270, 511 to 400, 150 to 256)) {
+            val x = CosmosSpacetime.horizonTexel(i)
+            val z = CosmosSpacetime.horizonTexel(j)
+            val expected = CosmosSpacetime.horizonVisibility(x, z)
+            assertEquals("texel ($i, $j)", expected, texel(i, j), 1f / 255f)
+        }
+        // Clamp-to-edge repeats the border past the map: it must be fully lit.
+        for (k in 0 until n) {
+            for ((i, j) in listOf(k to 0, k to n - 1, 0 to k, n - 1 to k)) assertEquals(1f, texel(i, j), 1e-6f)
+        }
+        // Texel (i, j) is at (x, z) = (horizonTexel i, horizonTexel j): the hollow on the light's
+        // side (+x, −z) is dark, the wall facing the light (−x, +z) is lit.
+        val l = CosmosSpacetime.LIGHT
+        val lh = hypot(l[0], l[2])
+        fun at(x: Float, z: Float): Float {
+            val i = ((x / CosmosSpacetime.HORIZON_MAP_EXTENT + 1f) * n / 2f).toInt()
+            val j = ((z / CosmosSpacetime.HORIZON_MAP_EXTENT + 1f) * n / 2f).toInt()
+            return texel(i, j)
+        }
+        assertTrue(at(1.2f * l[0] / lh, 1.2f * l[2] / lh) < 0.01f)
+        assertTrue(at(-1.2f * l[0] / lh, -1.2f * l[2] / lh) > 0.99f)
+    }
+
+    @Test
+    fun `the baked march matches a plain one, every step and the exact well`() {
+        // The bake reads the star's well from a table and walks coarse steps, then fine ones
+        // round the peak. Against every step of the exact formula: within a byte, map-wide.
+        val l = CosmosSpacetime.LIGHT
+        val lh = hypot(l[0], l[2])
+        val te = kotlin.math.tan(CosmosSpacetime.LIGHT_ELEVATION_DEGREES * PI.toFloat() / 180f)
+        fun exact(x: Float, z: Float): Float {
+            val d2 = x * x + z * z
+            val well = CosmosSpacetime.well(d2, CosmosSpacetime.DEPTH[0], CosmosSpacetime.WIDTH[0])
+            return well * CosmosSpacetime.window(kotlin.math.sqrt(d2))
+        }
+        fun plain(x: Float, z: Float): Float {
+            val h0 = exact(x, z)
+            var steepest = -Float.MAX_VALUE
+            var k = 1
+            while (k * CosmosSpacetime.HORIZON_STEP <= CosmosSpacetime.HORIZON_REACH) {
+                val s = k * CosmosSpacetime.HORIZON_STEP
+                steepest = maxOf(steepest, (exact(x + s * l[0] / lh, z + s * l[2] / lh) - h0) / s)
+                k++
+            }
+            val soft = CosmosSpacetime.HORIZON_SOFTNESS
+            return 1f - CosmosSpacetime.smoothstep(te - soft, te + soft, steepest)
+        }
+        var worst = 0f
+        for (j in 0 until CosmosSpacetime.HORIZON_MAP_SIZE step 3) {
+            for (i in 0 until CosmosSpacetime.HORIZON_MAP_SIZE step 3) {
+                val x = CosmosSpacetime.horizonTexel(i)
+                val z = CosmosSpacetime.horizonTexel(j)
+                worst = maxOf(worst, kotlin.math.abs(CosmosSpacetime.horizonVisibility(x, z) - plain(x, z)))
+            }
+        }
+        assertTrue("worst $worst", worst <= 1f / 255f)
+    }
+
+    @Test
+    fun `at the QA frame every world rests clear of the hollow's shadow`() {
+        val f = field()
+        for (body in 1 until BODY_COUNT) {
+            val x = f.x(body)
+            val z = f.z(body)
+            // The body's footprint: its centre and a ring of its radius round it.
+            var least = CosmosSpacetime.horizonVisibility(x, z)
+            for (k in 0 until 8) {
+                val a = k * PI.toFloat() / 4f
+                val edge = CosmosSpacetime.horizonVisibility(x + RADIUS[body] * cos(a), z + RADIUS[body] * sin(a))
+                least = min(least, edge)
+            }
+            assertTrue("${CosmosSpacetime.NAMES[body]} at ($x, $z): $least", least > 0.9f)
+        }
+        // Ember and Azure in front of the star and left of it, on the wall facing the light.
+        assertTrue(f.x(CosmosSpacetime.EMBER) < -1.1f && f.z(CosmosSpacetime.EMBER) > 0.3f)
+        assertTrue(f.x(CosmosSpacetime.AZURE) < -1.2f && f.z(CosmosSpacetime.AZURE) > 0.8f)
     }
 
     @Test

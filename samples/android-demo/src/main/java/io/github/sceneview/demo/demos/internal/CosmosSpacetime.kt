@@ -85,8 +85,12 @@ internal object CosmosSpacetime {
     /** Orbit radius round the star — or, for a moon, round its parent. */
     val ORBIT = floatArrayOf(0f, 1.3f, 2.0f, CosmosSystem.ORBIT_RADIUS, 5.1f, 6.9f, 0.85f, 0.60f)
 
-    /** Angle at t = 0, degrees, from +x toward −z. The ringed world's is [CosmosSystem.orbitAngle]'s. */
-    val PHASE_DEGREES = floatArrayOf(0f, 40f, 200f, 7f, 120f, 300f, 90f, 0f)
+    /**
+     * Angle at t = 0, degrees, from +x toward −z. The ringed world's is [CosmosSystem.orbitAngle]'s;
+     * the others are Spacetime's own, chosen so that at [QA_TIME] Ember and Azure sit in front of
+     * the star, left of it, on the lit wall and clear of the hollow's shadow on screen.
+     */
+    val PHASE_DEGREES = floatArrayOf(0f, 342f, 100f, 7f, 120f, 300f, 90f, 0f)
 
     /** A moon's parent body, −1 for the star and the worlds. */
     val PARENT = intArrayOf(-1, -1, -1, -1, -1, -1, OCHRE, ICE)
@@ -123,11 +127,28 @@ internal object CosmosSpacetime {
     const val SHADE_CEILING = 1.25f
     const val SPOT_START = 3f
 
-    /** The horizon test: eight steps toward the light, 0.25 × 1.57ᵏ, softened by ±0.03 on the slope. */
-    const val HORIZON_STEPS = 8
-    const val HORIZON_FIRST_STEP = 0.25f
-    const val HORIZON_GROWTH = 1.57f
+    /**
+     * The horizon test: a march toward the light in even [HORIZON_STEP]s out to [HORIZON_REACH],
+     * the steepest rise softened by ±[HORIZON_SOFTNESS] on the slope. Dense, so the shadow's
+     * contour has no corners where the steepest sample hands over from one step to the next. It
+     * walks every [HORIZON_COARSE]th step, then the steps round the steepest of those: the chord
+     * slope along the march has a single peak, so that finds the dense march's answer.
+     */
+    const val HORIZON_STEP = 0.03f
+    const val HORIZON_REACH = 6f
     const val HORIZON_SOFTNESS = 0.03f
+    const val HORIZON_COARSE = 4
+
+    /** The star's well alone, tabulated over the squared distance 0…R² for the horizon march. */
+    const val STAR_PROFILE_SIZE = 16384
+
+    /**
+     * The horizon visibility is baked once into a [HORIZON_MAP_SIZE]² texture over the square
+     * ±[HORIZON_MAP_EXTENT] round the star (the hollow's shadow spans x −1.2…3.0, z −2.7…1.3),
+     * which the sheet samples per fragment with bilinear filtering. Outside it the light is clear.
+     */
+    const val HORIZON_MAP_SIZE = 512
+    const val HORIZON_MAP_EXTENT = 4f
 
     /** `S` on flat, unshadowed sheet: what [SHADE_GAIN] scales to the base colour. */
     val SHADE_FLAT = AMBIENT + (1f - AMBIENT) * (LIGHT[1] + WRAP) / (1f + WRAP)
@@ -160,8 +181,8 @@ internal object CosmosSpacetime {
     const val GRID_VERTICES = GRID_RINGS * SECTORS
     const val GRID_TRIANGLES = 2 * (GRID_RINGS - 1) * SECTORS
 
-    /** Floats per grid vertex: position (x, 0, z) and the baked horizon visibility (vis, 0). */
-    const val GRID_STRIDE = 5
+    /** Floats per grid vertex: its position (x, 0, z). */
+    const val GRID_STRIDE = 3
 
     /** The sheet's static bounds, y over every well depth and lift the entry passes through. */
     const val BOX_MIN_Y = -2.4f
@@ -240,27 +261,78 @@ internal object CosmosSpacetime {
 
     /**
      * Horizon visibility of the key light at ([x], [z]) over the star's well alone, at full depth:
-     * 1 lit, 0 in the hollow's shadow. Baked once per grid vertex.
+     * 1 lit, 0 in the hollow's shadow. Baked once into [horizonMap].
      */
     fun horizonVisibility(x: Float, z: Float): Float {
         val lh = sqrt(LIGHT[0] * LIGHT[0] + LIGHT[2] * LIGHT[2])
         val lx = LIGHT[0] / lh
         val lz = LIGHT[2] / lh
         val h0 = starOnly(x, z)
+        val te = tan(LIGHT_ELEVATION_DEGREES * DEG)
+        val low = te - HORIZON_SOFTNESS
+        val high = te + HORIZON_SOFTNESS
+        // Two exits that leave the answer unchanged: the sheet never rises above 0, so no step
+        // past −h0 / low can reach the penumbra; and a slope past it is full shadow already.
+        val last = (min(HORIZON_REACH, -h0 / low) / HORIZON_STEP).toInt()
         var steepest = -Float.MAX_VALUE
-        var s = HORIZON_FIRST_STEP
-        repeat(HORIZON_STEPS) {
+        var peak = 0
+        var k = HORIZON_COARSE
+        while (k <= last && steepest < high) {
+            val s = k * HORIZON_STEP
+            val slope = (starOnly(x + s * lx, z + s * lz) - h0) / s
+            if (slope > steepest) {
+                steepest = slope
+                peak = k
+            }
+            k += HORIZON_COARSE
+        }
+        // The steps either side of the steepest coarse one (all of the first few when none rose).
+        val from = max(1, peak - HORIZON_COARSE + 1)
+        val to = min(last, max(peak, 1) + HORIZON_COARSE - 1)
+        for (fine in from..to) {
+            if (fine % HORIZON_COARSE == 0) continue
+            val s = fine * HORIZON_STEP
             val slope = (starOnly(x + s * lx, z + s * lz) - h0) / s
             if (slope > steepest) steepest = slope
-            s *= HORIZON_GROWTH
         }
-        val te = tan(LIGHT_ELEVATION_DEGREES * DEG)
-        return 1f - smoothstep(te - HORIZON_SOFTNESS, te + HORIZON_SOFTNESS, steepest)
+        return 1f - smoothstep(low, high, steepest)
     }
 
+    /** Centre of horizon-map texel [i] along x (or z), world units. */
+    fun horizonTexel(i: Int): Float = HORIZON_MAP_EXTENT * (2f * (i + 0.5f) / HORIZON_MAP_SIZE - 1f)
+
+    /**
+     * [horizonVisibility] over the map's square, one byte per texel (0 shadow, 255 lit), row by
+     * row along z, each row along x: texel (i, j) is at ([horizonTexel] i, [horizonTexel] j).
+     */
+    fun horizonMap(): ByteArray = ByteArray(HORIZON_MAP_SIZE * HORIZON_MAP_SIZE).also {
+        horizonRows(it, 0, HORIZON_MAP_SIZE)
+    }
+
+    /** Rows [from] until [until] of [horizonMap] into [map]: rows are independent, so bands bake in parallel. */
+    fun horizonRows(map: ByteArray, from: Int, until: Int) {
+        val n = HORIZON_MAP_SIZE
+        for (j in from until until) {
+            val z = horizonTexel(j)
+            for (i in 0 until n) {
+                map[j * n + i] = (horizonVisibility(horizonTexel(i), z) * 255f + 0.5f).toInt().toByte()
+            }
+        }
+    }
+
+    /** The star's well alone at ([x], [z]), read from [starProfile] (0 past the rim). */
     private fun starOnly(x: Float, z: Float): Float {
-        val d2 = x * x + z * z
-        return well(d2, DEPTH[STAR], WIDTH[STAR]) * window(sqrt(d2))
+        val f = (x * x + z * z) * PROFILE_PER_D2
+        if (f >= STAR_PROFILE_SIZE - 1) return 0f
+        val k = f.toInt()
+        return starProfile[k] + (starProfile[k + 1] - starProfile[k]) * (f - k)
+    }
+
+    private const val PROFILE_PER_D2 = (STAR_PROFILE_SIZE - 1) / (SHEET_RADIUS * SHEET_RADIUS)
+
+    private val starProfile = FloatArray(STAR_PROFILE_SIZE) { k ->
+        val d2 = k / PROFILE_PER_D2
+        well(d2, DEPTH[STAR], WIDTH[STAR]) * window(sqrt(d2))
     }
 
     /**
@@ -288,7 +360,7 @@ internal object CosmosSpacetime {
         INNER_EXTENT * (SHEET_RADIUS / INNER_EXTENT).pow((ring - INNER_RINGS).toFloat() / OUTER_RINGS)
     }
 
-    /** The sheet's polar grid: flat, every vertex with its baked horizon visibility. */
+    /** The sheet's polar grid, flat: the vertex stage hollows it. */
     class Grid(val vertices: FloatArray, val indices: ShortArray)
 
     fun grid(): Grid {
@@ -303,8 +375,6 @@ internal object CosmosSpacetime {
                 vertices[v++] = x
                 vertices[v++] = 0f
                 vertices[v++] = z
-                vertices[v++] = horizonVisibility(x, z)
-                vertices[v++] = 0f
             }
         }
         val indices = ShortArray(GRID_TRIANGLES * 3)

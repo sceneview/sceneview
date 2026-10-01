@@ -732,8 +732,9 @@ demos:
       "Settings" title (DemoChrome has no parameter for it), and the bloom is
       added in display space with a baked filmic roll-off standing in for
       Filament's tone map. Spacetime: Android shades the sheet per pixel
-      (cosmos_spacetime.mat); iOS evaluates its penumbra per vertex, and has
-      no drag to orbit the Spacetime camera
+      (cosmos_spacetime.mat), its hollow's shadow sampled from a horizon map
+      baked once on the CPU (512², CosmosSpacetime.horizonMap); iOS evaluates
+      its penumbra per vertex, and has no drag to orbit the Spacetime camera
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working

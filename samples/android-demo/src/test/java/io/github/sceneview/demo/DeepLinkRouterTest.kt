@@ -58,6 +58,9 @@ class DeepLinkRouterTest {
             DeepLinkRouter.Launch("cosmos", 0),
             DeepLinkRouter.resolveLaunch("cosmos", "cosmos", "starlight"),
         )
+        // The names are Cosmos's own: on another tabbed demo they mean nothing.
+        assertNull(DeepLinkRouter.resolveInitialTab("materials", "spacetime"))
+        assertNull(DeepLinkRouter.resolveInitialTab("model-viewer", "starlight"))
     }
 
     @Test

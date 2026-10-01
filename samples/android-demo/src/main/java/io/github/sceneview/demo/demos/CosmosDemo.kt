@@ -30,6 +30,7 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -50,6 +51,8 @@ import com.google.android.filament.IndexBuffer
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
+import com.google.android.filament.Texture
+import com.google.android.filament.TextureSampler
 import com.google.android.filament.VertexBuffer
 import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.FrameRatePolicy
@@ -94,9 +97,13 @@ import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.safeDestroyIndexBuffer
+import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -312,18 +319,21 @@ fun CosmosDemo(onBack: () -> Unit) {
         val mesh = warpStreaks
         onDispose { mesh?.destroy(engine) }
     }
-    // The sheet's grid (40 k vertices, each with its horizon baked) is built the first time the
-    // Star scene is on screen, off the main thread, and kept.
+    // The sheet's grid (40 k vertices) and its horizon map (the key light's visibility over the
+    // star's hollow, 512² texels) are built the first time the Star scene is on screen, off the
+    // main thread, and kept: the star and the light never move in Spacetime.
     val sheetWanted = scene == CosmosScene.Star
-    val sheetMesh by produceState<GpuMesh?>(null, engine, sheetWanted) {
+    val sheetMesh by produceState<GpuSheet?>(null, engine, sheetWanted) {
         if (value == null && sheetWanted) {
+            val started = SystemClock.elapsedRealtime()
             val staged = withContext(Dispatchers.Default) { CosmosSpacetime.grid().stagedSheet() }
             value = staged.uploadSheet(engine)
+            Log.i(TAG, "spacetime sheet built in ${SystemClock.elapsedRealtime() - started} ms")
         }
     }
     DisposableEffect(engine, sheetMesh) {
-        val mesh = sheetMesh
-        onDispose { mesh?.destroy(engine) }
+        val sheet = sheetMesh
+        onDispose { sheet?.destroy(engine) }
     }
 
     val clock = remember { CosmosClock() }
@@ -367,8 +377,8 @@ fun CosmosDemo(onBack: () -> Unit) {
     val showSpacetime: (Boolean) -> Unit = { on ->
         if (on != spacetime) {
             spacetime = on
-            spacetimeView[0] = 0f
-            spacetimeView[1] = CosmosSpacetime.ELEVATION_DEGREES
+            // The camera's turn is kept on the way back, so the return flight leaves from the
+            // pose on screen; it is reset once the sequence is back at Starlight (onFrame).
             if (on) {
                 // Spacetime holds the camera still: the voyage stops (a pick would restart it),
                 // the free camera lets go of any drag or close-up, and it all eases from the
@@ -383,10 +393,17 @@ fun CosmosDemo(onBack: () -> Unit) {
         }
     }
     val spacetimeLegend = stringResource(R.string.demo_cosmos_spacetime_legend)
+    // Opened on Spacetime (`?tab=spacetime`), the cover and "Scene ready" also wait for the
+    // sheet, built off the main thread: lifted earlier they would show an empty frame.
+    val openedOnSpacetime = remember { spacetime }
+    firstFrame.holdUntil(landed = !openedOnSpacetime || (sheetMesh != null && fabric != null))
+    val coverLifted = remember(firstFrame, fabric) {
+        derivedStateOf { firstFrame.rendered.value && (!openedOnSpacetime || (sheetMesh != null && fabric != null)) }
+    }
     DemoScaffold(
         title = stringResource(R.string.demo_cosmos_title),
         onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
+        firstFrameRendered = coverLifted,
         loadingLabel = stringResource(R.string.demo_cosmos_loading),
         peekHeader = when {
             voyageCaption != null -> voyageCaption
@@ -598,6 +615,10 @@ fun CosmosDemo(onBack: () -> Unit) {
                     transition.advance(nanos, instant = frozen || current != CosmosScene.Star)
                 }
                 val sequence = transition.clock
+                if (sequence <= 0f && !inSpacetime) {
+                    spacetimeView[0] = 0f
+                    spacetimeView[1] = CosmosSpacetime.ELEVATION_DEGREES
+                }
                 val flown = CosmosSpacetime.flight(sequence)
                 val pose: FloatArray
                 val focal: Float
@@ -657,16 +678,17 @@ fun CosmosDemo(onBack: () -> Unit) {
                 sprites?.update(current, time, reveal, glow, sky)
                 ribbons?.update(current, time, reveal * glow)
                 plasma?.update(current, time, reveal)
-                haloNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
-                prominenceNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
                 starFieldNode[0]?.let { if (it.isVisible != sky > 0f) it.isVisible = sky > 0f }
-                orbitNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
                 // The halo is drawn over the sheet while it fades, never cut by it.
                 if (fabricFrame.haloCulled == sequence > 0f) {
                     fabricFrame.haloCulled = sequence <= 0f
                     sprites?.halo?.setDepthCulling(fabricFrame.haloCulled)
                 }
                 if (current == CosmosScene.Star) {
+                    // The Star scene's own nodes: outside it these slots hold destroyed nodes.
+                    haloNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
+                    prominenceNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
+                    orbitNode[0]?.let { if (it.isVisible != glow > 0f) it.isVisible = glow > 0f }
                     orbitNode[0]?.quaternion = rig.trailRotation(time, aspect).toQuaternion()
                     val at = rig.planetPosition(time, aspect)
                     val spin = rig.planetRotation(time, aspect)
@@ -801,13 +823,14 @@ fun CosmosDemo(onBack: () -> Unit) {
                         }
                         val sheet = sheetMesh
                         if (sheet != null && fabric != null) {
+                            remember(sheet, fabric) { fabric.sheet.bindHorizon(sheet.horizon) }
                             // Spacetime's sheet, opaque and drawn under everything else; hidden
                             // until the entry sequence brings it in.
                             MeshNode(
                                 primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
-                                vertexBuffer = sheet.vertexBuffer,
-                                indexBuffer = sheet.indexBuffer,
-                                boundingBox = sheet.box,
+                                vertexBuffer = sheet.mesh.vertexBuffer,
+                                indexBuffer = sheet.mesh.indexBuffer,
+                                boundingBox = sheet.mesh.box,
                                 materialInstance = fabric.sheet,
                                 apply = {
                                     sheetNode[0] = this
@@ -1476,7 +1499,8 @@ private class FabricFrame {
         sheet.setParameter("well", well)
         sheet.setParameter("intensity", CosmosSpacetime.sheetIntensity(sequence) * reveal)
         // The other worlds are lit by the key light alone.
-        fabric.worlds.forEachIndexed { slot, world ->
+        for (slot in fabric.worlds.indices) {
+            val world = fabric.worlds[slot]
             val body = FABRIC_WORLDS[slot]
             val o = body * 3
             world.setParameter(
@@ -1491,29 +1515,66 @@ private class FabricFrame {
     }
 }
 
-/** The sheet's grid copied into direct buffers, ready for Filament — built off the main thread. */
-private class StagedSheet(val vertices: ByteBuffer, val indices: ByteBuffer)
+/**
+ * The sheet's grid and horizon map copied into direct buffers, ready for Filament — built off
+ * the main thread.
+ */
+private class StagedSheet(val vertices: ByteBuffer, val indices: ByteBuffer, val horizon: ByteBuffer)
 
-private fun CosmosSpacetime.Grid.stagedSheet(): StagedSheet {
+private suspend fun CosmosSpacetime.Grid.stagedSheet(): StagedSheet = coroutineScope {
     val v = ByteBuffer.allocateDirect(vertices.size * Float.SIZE_BYTES).order(ByteOrder.nativeOrder())
     v.asFloatBuffer().put(vertices)
     val i = ByteBuffer.allocateDirect(indices.size * Short.SIZE_BYTES).order(ByteOrder.nativeOrder())
     i.asShortBuffer().put(indices)
-    return StagedSheet(v, i)
+    // The horizon map is the long part (a march per texel): one band of rows per core.
+    val n = CosmosSpacetime.HORIZON_MAP_SIZE
+    val map = ByteArray(n * n)
+    val bands = Runtime.getRuntime().availableProcessors().coerceIn(1, MAX_BAKE_BANDS)
+    (0 until bands).map { band ->
+        async { CosmosSpacetime.horizonRows(map, band * n / bands, (band + 1) * n / bands) }
+    }.awaitAll()
+    val h = ByteBuffer.allocateDirect(map.size).order(ByteOrder.nativeOrder())
+    h.put(map).flip()
+    StagedSheet(v, i, h)
+}
+
+/** At most this many cores bake the horizon map at once. */
+private const val MAX_BAKE_BANDS = 8
+
+/** Spacetime's sheet on the GPU: its grid and the horizon map its material samples. */
+private class GpuSheet(val mesh: GpuMesh, val horizon: Texture) {
+    fun destroy(engine: Engine) {
+        mesh.destroy(engine)
+        engine.safeDestroyTexture(horizon)
+    }
 }
 
 /**
- * Main thread only. Position (x, 0, z) and the baked horizon visibility in `uv0.x`; 16-bit
- * indices (39 520 vertices). The box is static: y spans every well depth and lift the entry
+ * Binds the horizon map: bilinear, clamped (past the map's edge the light is clear, as on its
+ * border texels). The sampler is made here, not in a top-level val: it is a JNI call, and this
+ * file's statics load before Filament's native library.
+ */
+private fun MaterialInstance.bindHorizon(horizon: Texture) = setParameter(
+    "horizon",
+    horizon,
+    TextureSampler(
+        TextureSampler.MinFilter.LINEAR,
+        TextureSampler.MagFilter.LINEAR,
+        TextureSampler.WrapMode.CLAMP_TO_EDGE,
+    ),
+)
+
+/**
+ * Main thread only. Position (x, 0, z) per vertex, 16-bit indices (39 520 vertices); the
+ * horizon map as one R8 texture. The box is static: y spans every well depth and lift the entry
  * passes through.
  */
-private fun StagedSheet.uploadSheet(engine: Engine): GpuMesh {
+private fun StagedSheet.uploadSheet(engine: Engine): GpuSheet {
     val strideBytes = CosmosSpacetime.GRID_STRIDE * Float.SIZE_BYTES
     val vertexBuffer = VertexBuffer.Builder()
         .bufferCount(1)
         .vertexCount(CosmosSpacetime.GRID_VERTICES)
         .attribute(VertexBuffer.VertexAttribute.POSITION, 0, VertexBuffer.AttributeType.FLOAT3, 0, strideBytes)
-        .attribute(VertexBuffer.VertexAttribute.UV0, 0, VertexBuffer.AttributeType.FLOAT2, 12, strideBytes)
         .build(engine)
     vertexBuffer.setBufferAt(engine, 0, vertices)
     val indexBuffer = IndexBuffer.Builder()
@@ -1526,5 +1587,14 @@ private fun StagedSheet.uploadSheet(engine: Engine): GpuMesh {
         0f, (CosmosSpacetime.BOX_MIN_Y + CosmosSpacetime.BOX_MAX_Y) / 2f, 0f,
         r, (CosmosSpacetime.BOX_MAX_Y - CosmosSpacetime.BOX_MIN_Y) / 2f, r,
     )
-    return GpuMesh(vertexBuffer, indexBuffer, box)
+    val n = CosmosSpacetime.HORIZON_MAP_SIZE
+    val texture = Texture.Builder()
+        .width(n)
+        .height(n)
+        .levels(1)
+        .sampler(Texture.Sampler.SAMPLER_2D)
+        .format(Texture.InternalFormat.R8)
+        .build(engine)
+    texture.setImage(engine, 0, Texture.PixelBufferDescriptor(horizon, Texture.Format.R, Texture.Type.UBYTE, 1))
+    return GpuSheet(GpuMesh(vertexBuffer, indexBuffer, box), texture)
 }

@@ -8,8 +8,7 @@
 //             out in a spot centred on the star, so it has no visible edge.
 // Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
 // Geometry:   the polar grid of CosmosSpacetime.grid(), flat (y = 0) on its node's XZ plane, the
-//             node at the world origin with no transform. `position` is (x, 0, z); `uv0.x` is the
-//             key light's horizon visibility over the star's well, baked once per vertex.
+//             node at the world origin with no transform. `position` is (x, 0, z), nothing else.
 // Parameters:
 //   bodies     — float4[8], (x, z, D·w, ε) per mass: centre, depth times the well depth, width.
 //   spheres    — float4[8], (x, y, z, ρ) per shadow caster; ρ 0 casts nothing (the star).
@@ -18,6 +17,9 @@
 //   offset     — float, C(w) − lift: what keeps the star's centre at the origin, minus the drop
 //                the sheet rises from on the way in.
 //   well       — float, the well depth w; the baked horizon visibility is mixed in by it.
+//   horizon    — sampler2d, R8, CosmosSpacetime.horizonMap(): the key light's horizon visibility
+//                over the star's well, baked once on the CPU over x, z in ±4 (HORIZON_MAP_EXTENT),
+//                sampled per fragment with bilinear filtering and clamp-to-edge (lit past it).
 //   lightDir   — float3, unit vector toward the key light.
 //   baseColor  — float3, the flat lit sheet's colour on screen, linear (#6E7680).
 //   intensity  — float, master fade.
@@ -26,7 +28,7 @@
 // The profile, its gradient and the light are CosmosSpacetime.kt's, value for value (the sheet
 // radius 12, the window from 0.85 R, ambient 0.02, wrap 0.10, the 0.6 gain over S_flat 0.3246,
 // the 1.25 ceiling, the spot from 3 to R): CosmosSpacetimeTest holds them, and iOS shades the
-// same numbers per vertex. The colour written is the inverse of the Filmic tone mapper, so the
+// same numbers. The colour written is the inverse of the Filmic tone mapper, so the
 // screen shows the target value (ViewerBackdrop does the same for the viewer's backdrop).
 material {
     "name" : "Cosmos Spacetime",
@@ -37,11 +39,12 @@ material {
         { "type" : "float4", "name" : "ringNormal", "precision" : "high" },
         { "type" : "float",  "name" : "offset" },
         { "type" : "float",  "name" : "well" },
+        { "type" : "sampler2d", "name" : "horizon" },
         { "type" : "float3", "name" : "lightDir" },
         { "type" : "float3", "name" : "baseColor" },
         { "type" : "float",  "name" : "intensity" }
     ],
-    "requires" : [ "position", "uv0" ],
+    "requires" : [ "position" ],
     "variables" : [ "sheet", "slope" ],
     "shadingModel" : "unlit",
     "blending" : "opaque",
@@ -70,7 +73,7 @@ vertex {
         if (r > 0.0) g += raw * windowSlope * xz / r;
         highp float h = raw * window + materialParams.offset;
         material.worldPosition.y += h;
-        material.sheet = float4(xz.x, h, xz.y, material.uv0.x);
+        material.sheet = float4(xz.x, h, xz.y, 0.0);
         material.slope = float4(g, 0.0, 0.0);
     }
 }
@@ -124,7 +127,9 @@ fragment {
         highp float2 g = variable_slope.xy;
         float3 n = normalize(float3(-g.x, 1.0, -g.y));
         float lit = max(0.0, (dot(n, L) + 0.10) / 1.10);
-        float vis = mix(1.0, variable_sheet.w, clamp(materialParams.well, 0.0, 1.0));
+        // The horizon map covers x, z in ±4: uv = xz / 8 + 0.5.
+        float horizon = texture(materialParams_horizon, p.xz * 0.125 + 0.5).r;
+        float vis = mix(1.0, horizon, clamp(materialParams.well, 0.0, 1.0));
         float d = length(p.xz);
         float ao = 1.0 - 0.2 * (1.0 - smoothstep(0.0, 2.4, d));
         float S = (0.02 + 0.98 * lit * vis * shadow) * ao;
