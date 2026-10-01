@@ -116,7 +116,7 @@ raw, kept or rejected, with its exact prompt, ref and reason is archived outside
 |---|---|---|---|
 | `animation-physics` | Android, iOS `preview_animation` (light only) | `fox_animation.webp` | The light raw, first run. The dark card stays the real night-mode capture of #4223 (table above); the dark raw is archived but not shipped. |
 | `double-pendulum` | Android, iOS `preview_double_pendulum` | `double_pendulum_rig.webp` | Dark from the committed prompt. Light from the first run, whose prompt lacked the sentence "There are exactly three balls in the image…": with it the light run still drew a second bob, without it the first light run did not. |
-| `contact-shadow-preview` | Android | `contact_shadow_scene.webp` | Fourth prompt, both themes. Earlier runs drew the contact shadow as a hole, a light room box inside the dark field or an inverted halo; the committed prompt edits the capture instead of describing a scene. |
+| `contact-shadow-preview` | Android, iOS `preview_contact_shadow_preview` (JPEG q90 re-encode of the two WebPs) | `contact_shadow_scene.webp` | Fourth prompt, both themes. Earlier runs drew the contact shadow as a hole, a light room box inside the dark field or an inverted halo; the committed prompt edits the capture instead of describing a scene. |
 | `secondary-camera` | Android | `secondary_camera_pip.webp` | Light and dark, first run. |
 | `video-recording` | Android | `damaged_helmet.webp` | Light and dark, first run: the helmet mid-turn with a slight motion blur under the red recording dot. |
 | `billboard` | iOS, universal | `billboard_labels.webp` | The dark raw only: on the light field the golden "Treasure" label measured about 2.2:1 (< 3:1). |
