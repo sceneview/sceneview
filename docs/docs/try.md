@@ -45,7 +45,7 @@ Run `./tools/try-demo.sh --help` for the full list.
 <a href="https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk" class="md-button md-button--primary">
 Download APK
 </a>
-<p class="try-download-note">Debug-signed — works on any device, no Play Store needed.</p>
+<p class="try-download-note">Signed with the SceneView key — installs on any device, no Play Store needed.</p>
 </div>
 
 <div class="try-download-card">

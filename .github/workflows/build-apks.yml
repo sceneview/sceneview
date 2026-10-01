@@ -58,8 +58,40 @@ jobs:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: bash .claude/scripts/verify-sketchfab-key.sh
 
+      # One stable signing key for both APKs. Without it the runner signs them
+      # with its own throwaway debug key, a new one every run: a release APK
+      # could not update the previous one, and Android developer verification
+      # (enforced since 2026-09-30) blocks sideloading a package whose signing
+      # key is not registered in the Play Console. This key is registered there
+      # for io.github.sceneview.demo and io.github.sceneview.sample.tv. The
+      # samples' `githubApk` signing config takes over the debug build type only
+      # when SCENEVIEW_GITHUB_KEYSTORE_FILE is set, so ci.yml and local builds
+      # keep the debug key. Tag refs fail fast on a missing secret (same rule as
+      # #1909); a plain manual dispatch falls back to the debug key. The file
+      # lives in RUNNER_TEMP, which the runner empties at the end of the job.
+      - name: Decode GitHub APK signing key
+        env:
+          SCENEVIEW_GITHUB_KEYSTORE_BASE64: ${{ secrets.SCENEVIEW_GITHUB_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$SCENEVIEW_GITHUB_KEYSTORE_BASE64" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo "::error::SCENEVIEW_GITHUB_KEYSTORE_BASE64 is not set: release APKs must be signed with the registered key."
+              exit 1
+            fi
+            echo "::warning::SCENEVIEW_GITHUB_KEYSTORE_BASE64 is not set: these APKs are signed with the runner's throwaway debug key."
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/sceneview-github-apk.jks"
+          printf '%s' "$SCENEVIEW_GITHUB_KEYSTORE_BASE64" | base64 -d > "$keystore"
+          echo "SCENEVIEW_GITHUB_KEYSTORE_FILE=$keystore" >> "$GITHUB_ENV"
+
       - name: Build all sample APKs
         env:
+          # Read by the `githubApk` signing config only when the step above
+          # exported SCENEVIEW_GITHUB_KEYSTORE_FILE.
+          SCENEVIEW_GITHUB_KEYSTORE_PASSWORD: ${{ secrets.SCENEVIEW_GITHUB_KEYSTORE_PASSWORD }}
+          SCENEVIEW_GITHUB_KEY_ALIAS: ${{ secrets.SCENEVIEW_GITHUB_KEY_ALIAS }}
+          SCENEVIEW_GITHUB_KEY_PASSWORD: ${{ secrets.SCENEVIEW_GITHUB_KEY_PASSWORD }}
           # Optional. When unset (forks, PRs from forks), the demo's runtime
           # check disables Streetscape / Geospatial / Cloud Anchors gracefully.
           ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
