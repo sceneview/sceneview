@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **iOS demo: Secondary Camera (PiP) ([#0000](https://github.com/sceneview/sceneview/pull/0000)).** The `secondary-camera` demo now opens on iOS. It shows the helmet on a gridded floor in an orbitable main view, and a picture-in-picture inset with Top / Side / Front / Corner / Orbit angles. A tap in either view moves or turns the helmet, and both views show the change. The deep link `sceneview://demo/secondary-camera` now opens this screen instead of the placeholder.
