@@ -12,7 +12,7 @@ import androidx.core.content.edit
  * opt-in, turned on by the pre-prompt (the system permission on Android 13+, "Notify me"
  * below) or by the switch. No FCM token exists before that.
  */
-class TelemetryPrefs(context: Context) : PushPromptStore {
+class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore {
 
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -26,7 +26,7 @@ class TelemetryPrefs(context: Context) : PushPromptStore {
         set(value) = prefs.edit { putBoolean(KEY_NOTIFICATIONS, value) }
 
     /** A push opt-out whose unsubscribe or token deletion has not succeeded yet (offline). */
-    var pushDisablePending: Boolean
+    override var pushDisablePending: Boolean
         get() = prefs.getBoolean(KEY_PUSH_DISABLE_PENDING, false)
         set(value) = prefs.edit { putBoolean(KEY_PUSH_DISABLE_PENDING, value) }
 
