@@ -1,0 +1,14 @@
+// @sceneId     secondary-camera
+// @title       Secondary Camera (PiP)
+// @subtitle    Add an independent camera inset to a 3D viewer
+// @category    advanced
+// @section     devTools
+// @available   true
+// @icon        pip
+// @order       14
+// @tags        camera,pip,multi-view,render-target
+import SwiftUI
+
+enum SecondaryCameraScene: DemoScene {
+    @MainActor static var destination: AnyView { AnyView(SecondaryCameraDemo()) }
+}
