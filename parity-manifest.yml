@@ -963,27 +963,31 @@ demos:
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/SecondaryCameraDemo.swift
     contract: >-
-      Helmet on a gridded floor under the stage sky, seen by an orbitable main
+      Helmet on a gridded floor on the stage backdrop, seen by an orbitable main
       camera and a 192x128 picture-in-picture camera; Top/Side/Front/Corner/
       Orbit move the PiP camera (Orbit: one turn per 12 s). A tap in either
       view, cast from that view's camera, walks the helmet on the floor or
       turns it a quarter turn, and both views show the edit; Reset the helmet.
     parity: diverges
     evidence: >-
-      SecondaryCameraDemo.swift: same eye positions, stage centre, 24 deg main
-      framing, 0.5 m helmet, 0.35 m stage, 0.2 m pick radius, 450 ms glide,
-      2 m grid, PiP size, captions and status lines; ray maths unit-tested
-      (SecondaryCameraMathTests). RealityKit has one scene per RealityView, so
-      iOS runs two SceneViews over one shared state with a cloned helmet
-      (shared meshes and textures) instead of Filament's two Views on one
-      scene. Gaps: the Top preset stops at SceneView's 85 deg elevation clamp
-      (Android ~89.7 deg); no stage fog, so the floor shows a horizon; the
-      angle picker is an option strip above the dock (also in the sheet);
-      floor and grid are unlit (a lit floor washes out under the studio IBL)
-      with a radial contact-shadow disc under the helmet instead of
-      GroundingShadow; on the simulator the inset presents an edit seconds
-      after the main view (RealityKit frame pacing of a second RealityView),
-      to confirm on a device
+      SecondaryCameraDemo.swift: same lines of sight, stage centre, 24 deg
+      main framing, 0.5 m helmet, 0.35 m stage, 0.2 m pick radius, 450 ms
+      glide, 25 cm grid squares, PiP size, captions and status lines; ray maths
+      unit-tested (SecondaryCameraMathTests). RealityKit has one scene per
+      RealityView, so iOS runs two SceneViews over one shared state with a
+      cloned helmet (shared meshes and textures) instead of Filament's two
+      Views on one scene. Gaps: the PiP camera sits at 80 % of Android's
+      distance (the helmet fills a third of the inset, not a quarter); the
+      Top preset stops at SceneView's 85 deg elevation clamp (Android ~89.7
+      deg); no stage fog or sky gradient: the 4 m floor fades into a flat
+      backdrop (#F1F3F5 / #0B0F16) so no view shows its edge; floor and grid
+      are unlit, and the grid (3:1 on the floor, Stage.pipGrid) runs across
+      the fading floor instead of Android's 2 m square, with a radial
+      contact-shadow disc
+      under the helmet instead of GroundingShadow; the angle picker is an
+      option strip above the dock (also in the sheet). The simulator's
+      one-edit inset lag is fixed in RenderSurfaceResizer
+      (presentsWithTransaction); device check pending
   - id: spatial-audio
     androidStatus: Working
     iosStatus: working

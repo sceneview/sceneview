@@ -6,13 +6,15 @@ import SceneViewSwift
 /// picture-in-picture inset render the same helmet on the same floor.
 ///
 /// iOS twin of Android's `SecondaryCameraDemo`
-/// (`samples/android-demo/.../demos/SecondaryCameraDemo.kt`), value for value:
+/// (`samples/android-demo/.../demos/SecondaryCameraDemo.kt`):
 ///
 /// - The **main view** orbits under the user's finger and is framed on the stage
 ///   the helmet can walk on, 24° above it.
 /// - The **inset** is a second `SceneView` whose camera the user never drags: the
-///   Top / Side / Front / Corner / Orbit strip parks it at Android's eye
-///   positions, and Orbit sweeps it round the stage once every 12 s.
+///   Top / Side / Front / Corner / Orbit strip parks it on Android's lines of
+///   sight, at ``SecondaryCameraMath/insetZoom`` of their distance so the helmet
+///   reads in a 192 × 128 pt inset, and Orbit sweeps it round the stage once
+///   every 12 s.
 /// - **The edit is shared.** A tap in either view casts a ray with *that* view's
 ///   camera: through the helmet it turns it a quarter turn, on the floor it walks
 ///   the helmet there (kept on a 70 cm stage). Both views show the change, each
@@ -27,6 +29,12 @@ import SceneViewSwift
 /// and textures — the RealityKit counterpart of Android's
 /// `createInstancedModel(count = 2)`. An edit writes the state once and moves
 /// both copies.
+///
+/// Android's floor runs out into the stage sky's fog. RealityKit has no fog,
+/// and a semi-transparent floor composites too bright over SwiftUI, so the iOS
+/// floor is opaque and its texture fades, in colour, into a flat backdrop
+/// (``SceneViewTokens/Stage/pipBackdropColor``) drawn behind both views: no
+/// angle shows the floor's edge.
 struct SecondaryCameraDemo: View {
     @State private var stage = SecondaryCameraStage()
     @State private var preset: SecondaryCameraPreset = .corner
@@ -85,24 +93,17 @@ struct SecondaryCameraDemo: View {
 
     // MARK: Overlay
 
-    /// The inset at the leading edge, the main view's caption under it at the
-    /// trailing edge — Android's `topOverlay`, same order.
+    /// The inset at the leading edge, the main view's caption right under it on
+    /// the same edge — Android's `topOverlay`, same order.
     private var overlay: some View {
-        VStack(alignment: .trailing, spacing: SceneViewTokens.Space.sm) {
-            SecondaryCameraInset(stage: stage, preset: preset, border: pipBorder,
-                                 reduceMotion: reduceMotion)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            SecondaryCameraInset(stage: stage, preset: preset, reduceMotion: reduceMotion)
+                // The chrome pins a dark scheme; the inset's outline and shadow
+                // follow the app's, so the light theme gets its light contour.
+                .environment(\.colorScheme, colorScheme)
             SecondaryCameraCaption(text: "Main camera · drag to orbit, tap to edit")
         }
-    }
-
-    /// Android's PiP outline is the theme's `outline` — #D6DAE0 light, #8B95A6
-    /// dark. Resolved here, outside the chrome's pinned dark scheme, so the light
-    /// theme gets its light contour.
-    private var pipBorder: Color {
-        colorScheme == .dark
-            ? Color(red: 0x8B / 255, green: 0x95 / 255, blue: 0xA6 / 255)
-            : Color(red: 0xD6 / 255, green: 0xDA / 255, blue: 0xE0 / 255)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var statusText: String {
@@ -166,13 +167,13 @@ struct SecondaryCameraDemo: View {
     }()
 }
 
-/// Android's stage sky (`themedStageSky()`): white to #F1F3F5 light, #232A39 to
-/// `stage-background` dark. Shared by both views so the inset reads as the same
-/// place seen from elsewhere.
+/// The flat backdrop both views draw the stage on, so the inset reads as the
+/// same place seen from elsewhere. Android draws its stage sky as a gradient
+/// (`themedStageSky()`); here the floor fades into this one colour instead, which
+/// a gradient would not match all the way round the rim.
 private struct SecondaryCameraSky: View {
     var body: some View {
-        LinearGradient(colors: [SceneViewTokens.Stage.skyHorizon, SceneViewTokens.Stage.skyGround],
-                       startPoint: .top, endPoint: .bottom)
+        SceneViewTokens.Stage.pipBackdropColor
     }
 }
 
@@ -247,8 +248,9 @@ private struct SecondaryCameraInset: View {
 
     let stage: SecondaryCameraStage
     let preset: SecondaryCameraPreset
-    let border: Color
     let reduceMotion: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous)
@@ -284,7 +286,22 @@ private struct SecondaryCameraInset: View {
         }
         .frame(width: Self.size.width, height: Self.size.height)
         .clipShape(shape)
-        .overlay(shape.strokeBorder(border, lineWidth: SceneViewTokens.Layout.selectedOutlineWidth))
+        // Android's PiP outline is the theme's `outline`, #D6DAE0 / #8B95A6.
+        .overlay(shape.strokeBorder(SceneViewTokens.HomeColor.controlOutline,
+                                    lineWidth: SceneViewTokens.Layout.selectedOutlineWidth))
+        // Light: `shadow-md` lifts the inset off the same pale stage it shows.
+        // Cast by a plain shape behind it, so the live render is never drawn
+        // offscreen for the shadow.
+        .background {
+            if colorScheme != .dark {
+                let layers = SceneViewTokens.Shadow.md
+                ForEach(layers.indices, id: \.self) { index in
+                    shape.fill(SceneViewTokens.Stage.pipBackdropColor)
+                        .shadow(color: .black.opacity(layers[index].opacity),
+                                radius: layers[index].radius, x: 0, y: layers[index].y)
+                }
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Picture-in-picture camera view: \(preset.label)")
         .onChange(of: preset) { _, newPreset in stage.insetPose = newPreset.pose }
@@ -302,7 +319,7 @@ private struct SecondaryCameraCaption: View {
             .foregroundStyle(SceneViewTokens.Glass.onGlass)
             .lineLimit(2)
             .padding(.horizontal, SceneViewTokens.Space.sm)
-            .padding(.vertical, SceneViewTokens.Space.xs + 2)
+            .padding(.vertical, SceneViewTokens.Space.xs)
             .background(SceneViewTokens.Chrome.scrim,
                         in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xs, style: .continuous))
     }
@@ -328,7 +345,7 @@ enum SecondaryCameraPreset: String, CaseIterable, Identifiable {
     }
 
     /// Android's eye positions, metres.
-    var eye: SIMD3<Float> {
+    var androidEye: SIMD3<Float> {
         switch self {
         case .top: return SIMD3(0.01, 1.9, 0)
         case .side: return SIMD3(1.5, 0.35, 0)
@@ -337,6 +354,13 @@ enum SecondaryCameraPreset: String, CaseIterable, Identifiable {
         // Where the 12 s sweep starts: radius 1.45 m, 0.75 m up, azimuth 0.
         case .orbit: return SIMD3(0, SecondaryCameraMath.orbitHeight, SecondaryCameraMath.orbitRadius)
         }
+    }
+
+    /// Where the inset's camera sits: Android's eye, brought in towards the stage
+    /// centre by ``SecondaryCameraMath/insetZoom`` along the same line of sight.
+    var eye: SIMD3<Float> {
+        let centre = SecondaryCameraMath.stageCentre
+        return centre + (androidEye - centre) * SecondaryCameraMath.insetZoom
     }
 
     var pose: SceneCameraPose {
@@ -376,12 +400,11 @@ final class SecondaryCameraStage {
     @ObservationIgnored private var loadStarted = false
     @ObservationIgnored private var dark = false
 
-    /// Adds this view's floor, grid and helmet pivot to its scene root. The
-    /// content closure runs once per `RealityView`; re-adding re-parents.
+    /// Adds this view's floor and helmet pivot to its scene root. The content
+    /// closure runs once per `RealityView`; re-adding re-parents.
     func install(in root: Entity, slot: Slot) {
         let set = entities(for: slot)
         root.addChild(set.floor)
-        for line in set.grid { root.addChild(line) }
         root.addChild(set.pivot)
         set.pivot.transform = helmetTransform
     }
@@ -398,6 +421,9 @@ final class SecondaryCameraStage {
             mainSet.pivot.addChild(node.entity)
             // Shares meshes and textures with the main copy.
             insetSet.pivot.addChild(node.entity.clone(recursive: true))
+        } catch is CancellationError {
+            // The demo closed mid-load: nothing failed, nothing to report.
+            loadStarted = false
         } catch {
             loadFailed = true
             DemoAnalytics.shared.log(.modelLoadFailed(sampleId: sampleId,
@@ -429,7 +455,7 @@ final class SecondaryCameraStage {
         applyHelmet(animated: animated)
     }
 
-    /// Floor and grid take Android's `StageSky` colours for the scheme.
+    /// Floor and grid take the scheme's `Stage.pipFloor` / `Stage.pipGrid`.
     func setDark(_ isDark: Bool) {
         guard isDark != dark else { return }
         dark = isDark
@@ -461,41 +487,27 @@ final class SecondaryCameraStage {
     }
 }
 
-/// One view's floor, grid and helmet pivot.
+/// One view's floor (its grid drawn in) and helmet pivot.
 @MainActor
 private final class StageEntities {
     let pivot = Entity()
     let floor: ModelEntity
-    let grid: [ModelEntity]
+
+    /// The contact shadow is see-through and lies a hair above the floor: it
+    /// always draws after it, whichever is nearer the camera.
+    private static let sortGroup = ModelSortGroup(depthPass: nil)
 
     init() {
         let size = SecondaryCameraMath.floorSize
         floor = ModelEntity(mesh: .generatePlane(width: size, depth: size), materials: [])
-
-        // 25 cm squares, 4 either side: a 2 m grid round the stage.
-        let spacing = SecondaryCameraMath.gridSpacing
-        let half = SecondaryCameraMath.gridHalfLines
-        let span = spacing * Float(half) * 2
-        let width = SecondaryCameraMath.gridLineWidth
-        let height = SecondaryCameraMath.gridLineHeight
-        let alongZ = MeshResource.generateBox(width: width, height: height, depth: span)
-        let alongX = MeshResource.generateBox(width: span, height: height, depth: width)
-        var lines: [ModelEntity] = []
-        for index in 0...(half * 2) {
-            let offset = Float(index - half) * spacing
-            let zLine = ModelEntity(mesh: alongZ, materials: [])
-            zLine.position = SIMD3(offset, height / 2, 0)
-            let xLine = ModelEntity(mesh: alongX, materials: [])
-            xLine.position = SIMD3(0, height / 2, offset)
-            lines.append(contentsOf: [zLine, xLine])
-        }
-        grid = lines
+        floor.components.set(ModelSortGroupComponent(group: Self.sortGroup, order: 0))
 
         // A soft contact shadow that travels and turns with the helmet. The
         // floor is unlit (see `recolour`), so RealityKit's grounding shadow has
         // nothing to land on; this disc stands in for Android's shadow.
         if let shadow = Self.contactShadow() {
-            shadow.position.y = height + 0.0005
+            shadow.position.y = 0.0005
+            shadow.components.set(ModelSortGroupComponent(group: Self.sortGroup, order: 1))
             pivot.addChild(shadow)
         }
         recolour(dark: false)
@@ -530,20 +542,79 @@ private final class StageEntities {
         return ModelEntity(mesh: .generatePlane(width: size, depth: size), materials: [material])
     }
 
-    /// Android: floor `SurfaceLight` #E9ECEF / `SurfaceDim` #161B22; grid
-    /// `outline` #D6DAE0 / `outlineVariant` #46516A. Unlit and untone-mapped:
-    /// under the studio light a lit floor this large washes out to white in
-    /// light mode and to mid-grey in dark, and the grid disappears into it.
-    func recolour(dark: Bool) {
-        var floorMaterial = UnlitMaterial(applyPostProcessToneMap: false)
-        floorMaterial.color = .init(tint: SceneViewTokens.Stage.trayFloor(dark: dark))
-        floor.model?.materials = [floorMaterial]
+    /// One floor texture per scheme, made on first use and shared by both views.
+    private static var floorTextures: [Bool: TextureResource] = [:]
 
-        var gridMaterial = UnlitMaterial(applyPostProcessToneMap: false)
-        gridMaterial.color = .init(tint: dark
-            ? UIColor(red: 0x46 / 255, green: 0x51 / 255, blue: 0x6A / 255, alpha: 1)
-            : UIColor(red: 0xD6 / 255, green: 0xDA / 255, blue: 0xE0 / 255, alpha: 1))
-        for line in grid { line.model?.materials = [gridMaterial] }
+    /// The floor and its 25 cm grid, fading at the rim into the backdrop colour
+    /// (`Stage.pipBackdrop`) — opaque all the way, so the stage dissolves into
+    /// the flat backdrop and no view, the main camera low over it or the inset
+    /// from any preset, ever shows an edge. Fully opaque on purpose: a see-through
+    /// rim reaches the screen brighter than the backdrop behind it (RealityKit's
+    /// surface is composited as premultiplied, its alpha is not), a white halo
+    /// in the light theme.
+    private static func floorTexture(dark: Bool) -> TextureResource? {
+        if let cached = floorTextures[dark] { return cached }
+        let side = floorTextureSide
+        let rect = CGRect(x: 0, y: 0, width: side, height: side)
+        let metres = CGFloat(SecondaryCameraMath.floorSize)
+        let perMetre = CGFloat(side) / metres
+        let backdrop = SceneViewTokens.Stage.pipBackdrop(dark: dark)
+        guard let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: srgb,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+              let fade = CGGradient(colorsSpace: srgb, colors: [
+                  backdrop.withAlphaComponent(0).cgColor, backdrop.withAlphaComponent(0).cgColor,
+                  backdrop.withAlphaComponent(0.65).cgColor, backdrop.cgColor,
+              ] as CFArray, locations: [0, CGFloat(SecondaryCameraMath.floorFadeStart * 2) / metres, 0.8, 1])
+        else { return nil }
+        context.setFillColor(SceneViewTokens.Stage.pipFloor(dark: dark).cgColor)
+        context.fill(rect)
+        context.setFillColor(SceneViewTokens.Stage.pipGrid(dark: dark).cgColor)
+        let spacing = CGFloat(SecondaryCameraMath.gridSpacing) * perMetre
+        let width = CGFloat(SecondaryCameraMath.gridLineWidth) * perMetre
+        var offset = rect.midX.truncatingRemainder(dividingBy: spacing)
+        while offset < rect.width {
+            context.fill(CGRect(x: offset - width / 2, y: 0, width: width, height: rect.height))
+            context.fill(CGRect(x: 0, y: offset - width / 2, width: rect.width, height: width))
+            offset += spacing
+        }
+        // Past the disc the square's corners are backdrop too.
+        let centre = CGPoint(x: rect.midX, y: rect.midY)
+        context.drawRadialGradient(fade, startCenter: centre, startRadius: 0,
+                                   endCenter: centre, endRadius: rect.width / 2,
+                                   options: [.drawsAfterEndLocation])
+        guard let image = context.makeImage(),
+              let texture = try? TextureResource(image: image, withName: nil,
+                                                 options: .init(semantic: .color,
+                                                                mipmapsMode: .allocateAndGenerateAll))
+        else { return nil }
+        floorTextures[dark] = texture
+        return texture
+    }
+
+    /// 1024 px for 4 m: 256 px a metre, the 8 mm grid lines two pixels wide.
+    private static let floorTextureSide = 1024
+
+    /// Unlit and untone-mapped: under the studio light a lit floor washes out
+    /// to white in light mode and to mid-grey in dark, and the grid disappears
+    /// into it.
+    func recolour(dark: Bool) {
+        var material = UnlitMaterial(applyPostProcessToneMap: false)
+        if let texture = Self.floorTexture(dark: dark) {
+            let sampler = MTLSamplerDescriptor()
+            sampler.minFilter = .linear
+            sampler.magFilter = .linear
+            sampler.mipFilter = .linear
+            // The main camera looks along the floor: without anisotropy the grid
+            // blurs into the ground a metre out.
+            sampler.maxAnisotropy = 8
+            material.color = .init(tint: .white,
+                                   texture: .init(texture, sampler: .init(sampler)))
+        } else {
+            material.color = .init(tint: SceneViewTokens.Stage.pipFloor(dark: dark))
+        }
+        floor.model?.materials = [material]
     }
 }
 
@@ -565,11 +636,16 @@ enum SecondaryCameraMath {
     static let mainElevation: Float = 24 * .pi / 180
     static let orbitRadius: Float = 1.45
     static let orbitHeight: Float = 0.75
-    static let floorSize: Float = 90
+    /// The floor: 4 m across, its own colour to 0.9 m from the centre, the
+    /// backdrop's at 2 m.
+    static let floorSize: Float = 4
+    static let floorFadeStart: Float = 0.9
     static let gridSpacing: Float = 0.25
-    static let gridHalfLines = 4
     static let gridLineWidth: Float = 0.008
-    static let gridLineHeight: Float = 0.002
+    /// The inset's camera sits at 80 % of Android's distance from the stage
+    /// centre: in a 192 × 128 pt window the helmet then fills a third of the
+    /// height instead of a quarter, and the 70 cm stage still fits every preset.
+    static let insetZoom: Float = 0.8
     /// SceneView's vertical field of view.
     static let verticalFov: Float = 60 * .pi / 180
 

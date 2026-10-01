@@ -81,6 +81,7 @@ struct RenderSurfaceResizer: UIViewRepresentable {
             guard markerFrame.width > 0, markerFrame.height > 0 else { return }
             if let arView = pairedRealityView(markerFrame: markerFrame, in: window) {
                 retriesLeft = 0
+                Self.presentWithoutTransaction(arView)
                 if Self.fitSurface(of: arView) { onResize?() }
             } else if retriesLeft < 5 {
                 // Mid-rotation, the ARView may not have its new frame yet.
@@ -134,6 +135,22 @@ struct RenderSurfaceResizer: UIViewRepresentable {
         private static func sameRect(_ a: CGRect, _ b: CGRect) -> Bool {
             abs(a.minX - b.minX) < 1 && abs(a.minY - b.minY) < 1
                 && abs(a.width - b.width) < 1 && abs(a.height - b.height) < 1
+        }
+
+        /// Lets the surface present each frame as soon as it is rendered.
+        ///
+        /// In the iOS 26 Simulator, a `RealityView` laid out over another one (a
+        /// picture-in-picture inset) comes up with `presentsWithTransaction` set on its
+        /// Metal layer, while the full-screen one does not. Its frames then reach the
+        /// screen only when a Core Animation transaction commits, that is on the next
+        /// SwiftUI update, and each shows the scene as it was one edit earlier: the inset
+        /// keeps the previous camera angle until something else on screen changes.
+        private static func presentWithoutTransaction(_ arView: UIView) {
+            for surface in arView.subviews {
+                guard let layer = surface.layer as? CAMetalLayer,
+                      layer.presentsWithTransaction else { continue }
+                layer.presentsWithTransaction = false
+            }
         }
 
         /// Returns `true` when the surface had to be resized.

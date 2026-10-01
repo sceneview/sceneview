@@ -1,7 +1,7 @@
 // SecondaryCameraMathTests.swift
 //
-// The geometry behind the Secondary Camera (PiP) demo: the preset poses sit at
-// Android's eye positions, a tap ray leaves the camera it was made through, and
+// The geometry behind the Secondary Camera (PiP) demo: the preset poses sit on
+// Android's lines of sight, a tap ray leaves the camera it was made through, and
 // the floor / helmet tests resolve the edit the way Android's do.
 
 import XCTest
@@ -13,7 +13,21 @@ import SceneViewSwift
 final class SecondaryCameraMathTests: XCTestCase {
     private let accuracy: Float = 1e-4
 
-    func testPresetPosesPutTheCameraAtAndroidsEyePositions() {
+    func testPresetEyesSitOnAndroidsLinesOfSight() {
+        // Each eye is Android's, brought in towards the stage centre: same
+        // direction, `insetZoom` of the distance.
+        let centre = SecondaryCameraMath.stageCentre
+        for preset in SecondaryCameraPreset.allCases {
+            let android = preset.androidEye - centre
+            let iOS = preset.eye - centre
+            XCTAssertEqual(simd_length(iOS), simd_length(android) * SecondaryCameraMath.insetZoom,
+                           accuracy: accuracy, "\(preset)")
+            XCTAssertEqual(simd_distance(simd_normalize(iOS), simd_normalize(android)), 0,
+                           accuracy: accuracy, "\(preset)")
+        }
+    }
+
+    func testPresetPosesPutTheCameraAtTheirEyes() {
         // Top sits within SceneView's 85° elevation clamp, so it is checked apart.
         for preset in SecondaryCameraPreset.allCases where preset != .top {
             let eye = preset.pose.cameraPosition()
@@ -27,7 +41,7 @@ final class SecondaryCameraMathTests: XCTestCase {
     func testTopPresetLooksStraightDown() {
         let pose = SecondaryCameraPreset.top.pose
         XCTAssertGreaterThan(pose.elevation, 89 * .pi / 180)
-        XCTAssertEqual(pose.distance, 1.7, accuracy: 1e-3)
+        XCTAssertEqual(pose.distance, 1.7 * SecondaryCameraMath.insetZoom, accuracy: 1e-3)
     }
 
     func testOrbitTurnsOncePerTwelveSeconds() {
