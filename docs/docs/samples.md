@@ -20,7 +20,7 @@ git clone https://github.com/sceneview/sceneview.git
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
 3-tab showcase (**Showcase / AR View / About**) backed by an
-append-only demo registry of **49 demos**, grouped into five catalogue sections:
+append-only demo registry of **51 demos**, grouped into five catalogue sections:
 
 - **Showcase tab** (home): a featured hero, a **Featured** shelf of the flagship and
   most recently reworked demos in priority order, category filter chips and a grid of

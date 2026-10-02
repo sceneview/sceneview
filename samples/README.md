@@ -50,7 +50,7 @@ The sample names below (except `android-demo`) are `sceneview-mcp` sample IDs �
 
 | Sample | Description |
 |---|---|
-| `android-demo` | Play Store demo app — Showcase, AR View, About tabs (48 demos in 9 catalogue sections: 18 non-AR + 30 AR, Material 3) |
+| `android-demo` | Play Store demo app — Showcase, AR View, About tabs (51 demos in 5 catalogue sections: 20 non-AR + 31 AR, Material 3) |
 
 ## Common recipes (copy-paste ready)
 
@@ -304,4 +304,3 @@ so it is spelled in full after the `/`.
 > the previous build on the device. Seen three times in this repo (#2796, #2854,
 > #2990). Use `adb install -r` and check the install actually landed:
 > `adb shell dumpsys package io.github.sceneview.demo.qa | grep lastUpdateTime`.
-
