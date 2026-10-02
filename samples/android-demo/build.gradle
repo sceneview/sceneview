@@ -178,6 +178,14 @@ android {
             if (System.getenv("SCENEVIEW_GITHUB_KEYSTORE_FILE") != null) {
                 signingConfig signingConfigs.githubApk
             }
+            // The debug APK is the universal one (GitHub Releases, QA installs): it would carry
+            // every ABI build of Filament, ARCore and LiteRT. Keep what a phone (arm64-v8a) and
+            // the emulator (x86_64) run — the two ABIs where every native dependency of the demo,
+            // LiteRT included, ships a library. Release goes to Play as an AAB, which already
+            // serves one ABI per device, so it keeps all of them.
+            ndk {
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
         }
         release {
             minifyEnabled = true

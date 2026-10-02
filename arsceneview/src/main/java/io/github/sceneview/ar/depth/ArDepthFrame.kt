@@ -5,24 +5,6 @@ import java.nio.ByteBuffer
 import java.nio.ShortBuffer
 
 /**
- * Where an [ArDepthFrame] came from.
- *
- * Every consumer of depth (occlusion, depth hits, meshes) reads the same [ArDepthFrame]
- * whatever its source; the source is there for logging, for a debug overlay, and for a
- * consumer that wants to be stricter with an estimated map than with a measured one.
- */
-enum class DepthFrameSource {
-    /** ARCore's Depth API (`Frame.acquireDepthImage16Bits`), measured by the device. */
-    ARCORE,
-
-    /**
-     * A monocular depth network ([MonocularDepthEstimator]) run on the CPU camera image and
-     * scaled to metres against ARCore's own plane hits and feature points ([MlDepthSession]).
-     */
-    ML,
-}
-
-/**
  * Pinhole intrinsics of a depth map, in **its own** pixel grid ([ArDepthFrame.width] ×
  * [ArDepthFrame.height]).
  *
@@ -64,8 +46,30 @@ class ArDepthFrame(
     val confidence: ByteBuffer?,
     val intrinsics: DepthIntrinsics,
     val cameraPose: Pose,
-    val source: DepthFrameSource,
+    val source: Source,
 ) {
+
+    /**
+     * Where an [ArDepthFrame] came from. Same cases on iOS: `ARDepthFrame.Source.native` /
+     * `.ml`.
+     *
+     * Every consumer of depth (occlusion, depth hits, meshes) reads the same [ArDepthFrame]
+     * whatever its source; the source is there for logging, for a debug overlay, and for a
+     * consumer that wants to be stricter with an estimated map than with a measured one.
+     */
+    enum class Source {
+        /**
+         * The platform's own depth, measured by the device: ARCore's Depth API
+         * (`Frame.acquireDepthImage16Bits`).
+         */
+        Native,
+
+        /**
+         * A monocular depth network ([MonocularDepthEstimator]) run on the CPU camera image and
+         * scaled to metres against ARCore's own plane hits and feature points ([MlDepthSession]).
+         */
+        Ml,
+    }
     /** Depth in metres at pixel ([x], [y]) of this map, or `NaN` where there is none. */
     fun depthMetersAt(x: Int, y: Int): Float {
         if (x !in 0 until width || y !in 0 until height) return Float.NaN

@@ -60,14 +60,17 @@ sealed interface MlDepthState {
     /** The device is hot (thermal status SEVERE or worse): inference is paused. */
     data object Throttled : MlDepthState
 
-    /** The model could not be loaded or run. The session publishes nothing more. */
+    /**
+     * The model could not be loaded, or failed three runs in a row (a single failed run only
+     * skips that frame, as on iOS). The session publishes nothing more.
+     */
     data class Failed(val error: Throwable) : MlDepthState
 }
 
 /**
  * Monocular depth for devices without ARCore's Depth API: runs a [MonocularDepthEstimator] on
  * the CPU camera image and scales its output to metres against ARCore's own plane hits and
- * feature points, then publishes an [ArDepthFrame] with [DepthFrameSource.ML].
+ * feature points, then publishes an [ArDepthFrame] with [ArDepthFrame.Source.Ml].
  *
  * ```kotlin
  * val mlDepth = remember { MlDepthSession(DepthAnythingV2Estimator(context), context = context) }
@@ -138,6 +141,7 @@ class MlDepthSession(
     private val publishedAtMs = LongArray(STATS_WINDOW)
     private var inferenceCount = 0
     private var publishedCount = 0
+    private var consecutiveErrors = 0
 
     @Volatile
     private var lastResultValid = false
@@ -210,11 +214,19 @@ class MlDepthSession(
 
     private fun process(capture: Capture) {
         try {
-            if (!closed.get()) runPipeline(capture)
+            if (!closed.get()) {
+                runPipeline(capture)
+                consecutiveErrors = 0
+            }
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-            Log.e(TAG, "ML depth frame failed", e)
-            _state.value = MlDepthState.Failed(e)
-            ready.set(false)
+            // One bad frame (a transient GPU or driver error) skips that frame only; the session
+            // gives up after MAX_CONSECUTIVE_ERRORS in a row — the same policy as iOS.
+            consecutiveErrors++
+            Log.e(TAG, "ML depth frame failed ($consecutiveErrors in a row)", e)
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                _state.value = MlDepthState.Failed(e)
+                ready.set(false)
+            }
         } finally {
             inFlight.set(false)
         }
@@ -276,7 +288,7 @@ class MlDepthSession(
             confidence = output.confidence.duplicate(),
             intrinsics = intrinsics,
             cameraPose = capture.pose,
-            source = DepthFrameSource.ML,
+            source = ArDepthFrame.Source.Ml,
         )
         lastResultValid = true
         publishedAtMs[publishedCount % STATS_WINDOW] = SystemClock.elapsedRealtime()
@@ -431,6 +443,7 @@ class MlDepthSession(
         const val MAX_ANCHORS = 768
         const val MAX_PLANES = 8
         const val STATS_WINDOW = 30
+        const val MAX_CONSECUTIVE_ERRORS = 3
         const val NANOS_PER_SECOND = 1_000_000_000f
         const val NANOS_PER_MS = 1_000_000f
         const val MS_PER_SECOND = 1000f

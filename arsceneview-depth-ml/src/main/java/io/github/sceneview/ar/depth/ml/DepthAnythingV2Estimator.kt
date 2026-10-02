@@ -106,6 +106,9 @@ class DepthAnythingV2Estimator(
         }
         inputs[0].writeFloat(input)
         model.run(inputs, outputs)
+        // LiteRT's Kotlin API has no read-into-array overload (2.1.5 and 2.2.0 alike):
+        // `readFloat()` returns a fresh 1.4 MB array from JNI on every run. At 5 Hz that is
+        // short-lived young-generation garbage; switch to a read-into call once LiteRT has one.
         val result = outputs[0].readFloat()
         result.copyInto(out, endIndex = minOf(result.size, out.size))
     }

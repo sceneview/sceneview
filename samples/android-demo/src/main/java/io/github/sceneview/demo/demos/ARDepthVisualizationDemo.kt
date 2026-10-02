@@ -109,7 +109,8 @@ import io.github.sceneview.rememberModelLoader
  * Depth Anything V2 Small on LiteRT, from `arsceneview-depth-ml` — scaled to metres on
  * ARCore's planes and feature points by [MlDepthSession]. It works where ARCore's Depth API
  * does not, so it stays available when the device reports no depth support. The model
- * (27.7 MB) is downloaded on first use and checked against its SHA-256.
+ * (27.7 MB) is downloaded on first use and checked against its SHA-256. While ML is shown,
+ * ARCore's own depth is switched off (`depthMode = DISABLED`): nothing reads it.
  *
  * Closes [#1714](https://github.com/sceneview/sceneview/issues/1714).
  */
@@ -372,10 +373,18 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
+                // ARCore's Depth API costs camera and CPU time on every frame: it runs only while
+                // it feeds the overlay, and is switched off live when ML depth is picked (the ML
+                // session scales its maps against planes and feature points, never ARCore depth).
+                depthMode = if (source == DepthSource.ARCore && depthSupported != false) {
+                    Config.DepthMode.AUTOMATIC
+                } else {
+                    Config.DepthMode.DISABLED
+                },
                 sessionConfiguration = { session: Session, config: Config ->
                     val supported = session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
                     depthSupported = supported
-                    config.depthMode = if (supported) {
+                    config.depthMode = if (supported && source == DepthSource.ARCore) {
                         Config.DepthMode.AUTOMATIC
                     } else {
                         Config.DepthMode.DISABLED

@@ -7,6 +7,7 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /** Where a depth model file comes from. */
 sealed interface ModelSource {
@@ -51,11 +52,22 @@ sealed interface ModelSource {
     }
 }
 
-/** Downloads a [ModelSource.Url] once and verifies it. Blocking: call it off the main thread. */
+/**
+ * Downloads a [ModelSource.Url] once and verifies it. Blocking: call it off the main thread.
+ *
+ * Safe to call concurrently for the same file: callers in this process wait for the one download
+ * in flight, and every download streams into its own temporary file that is renamed over the
+ * target only after its digest matched, so a reader never sees a partial or foreign file.
+ */
 object ModelDownloader {
 
     private const val BUFFER_SIZE = 64 * 1024
     private const val TIMEOUT_MS = 30_000
+
+    /** A temporary file nobody has written to for this long belongs to a dead download. */
+    private const val STALE_PART_MS = 10 * 60 * 1000L
+
+    private val locks = ConcurrentHashMap<String, Any>()
 
     /**
      * Returns the verified local copy of [source] in [directory], downloading it first if it is
@@ -66,18 +78,44 @@ object ModelDownloader {
      */
     fun ensure(source: ModelSource.Url, directory: File, onProgress: (Float) -> Unit = {}): File {
         val target = File(directory, source.fileName)
-        if (target.isFile && sha256(target).equals(source.sha256, ignoreCase = true)) return target
-        directory.mkdirs()
-        val part = File(directory, source.fileName + ".part")
-        part.delete()
-        val digest = download(source, part, onProgress)
-        if (!digest.equals(source.sha256, ignoreCase = true)) {
-            part.delete()
-            throw IOException("Model digest mismatch for ${source.fileName}: expected ${source.sha256}, got $digest")
+        if (isValid(target, source)) return target
+        val lock = locks.computeIfAbsent(target.absolutePath) { Any() }
+        synchronized(lock) {
+            // Another caller may have finished the download while this one waited.
+            if (isValid(target, source)) return target
+            directory.mkdirs()
+            deleteStaleParts(directory, source.fileName)
+            val part = File.createTempFile(source.fileName + ".", ".part", directory)
+            try {
+                val digest = download(source, part, onProgress)
+                if (!digest.equals(source.sha256, ignoreCase = true)) {
+                    throw IOException(
+                        "Model digest mismatch for ${source.fileName}: expected ${source.sha256}, got $digest",
+                    )
+                }
+                // rename(2) replaces the target atomically: a concurrent reader sees either the
+                // old file or the complete new one. Platforms whose rename refuses to replace
+                // get one retry after the old file is removed.
+                if (!part.renameTo(target) && !(target.delete() && part.renameTo(target))) {
+                    throw IOException("Could not move ${part.name} into place")
+                }
+                return target
+            } finally {
+                part.delete()
+            }
         }
-        target.delete()
-        if (!part.renameTo(target)) throw IOException("Could not move ${part.name} into place")
-        return target
+    }
+
+    private fun isValid(target: File, source: ModelSource.Url): Boolean =
+        target.isFile && sha256(target).equals(source.sha256, ignoreCase = true)
+
+    /** Removes temporary files left by a download whose process died (no write for 10 min). */
+    private fun deleteStaleParts(directory: File, fileName: String) {
+        val now = System.currentTimeMillis()
+        directory.listFiles { file ->
+            file.name.startsWith("$fileName.") && file.name.endsWith(".part") &&
+                now - file.lastModified() > STALE_PART_MS
+        }?.forEach { it.delete() }
     }
 
     private fun download(source: ModelSource.Url, part: File, onProgress: (Float) -> Unit): String {

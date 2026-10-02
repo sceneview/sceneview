@@ -1804,7 +1804,7 @@ public final class io/github/sceneview/ar/depth/ArDepthFrame {
 	public static final field MAX_U16 I
 	public static final field MAX_U8 I
 	public static final field MM_PER_METER F
-	public fun <init> (JIILjava/nio/ShortBuffer;Ljava/nio/ByteBuffer;Lio/github/sceneview/ar/depth/DepthIntrinsics;Lcom/google/ar/core/Pose;Lio/github/sceneview/ar/depth/DepthFrameSource;)V
+	public fun <init> (JIILjava/nio/ShortBuffer;Ljava/nio/ByteBuffer;Lio/github/sceneview/ar/depth/DepthIntrinsics;Lcom/google/ar/core/Pose;Lio/github/sceneview/ar/depth/ArDepthFrame$Source;)V
 	public final fun confidenceAt (II)F
 	public final fun depthMetersAt (II)F
 	public final fun getCameraPose ()Lcom/google/ar/core/Pose;
@@ -1812,17 +1812,17 @@ public final class io/github/sceneview/ar/depth/ArDepthFrame {
 	public final fun getHeight ()I
 	public final fun getIntrinsics ()Lio/github/sceneview/ar/depth/DepthIntrinsics;
 	public final fun getMillimetres ()Ljava/nio/ShortBuffer;
-	public final fun getSource ()Lio/github/sceneview/ar/depth/DepthFrameSource;
+	public final fun getSource ()Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
 	public final fun getTimestampNs ()J
 	public final fun getWidth ()I
 }
 
-public final class io/github/sceneview/ar/depth/DepthFrameSource : java/lang/Enum {
-	public static final field ARCORE Lio/github/sceneview/ar/depth/DepthFrameSource;
-	public static final field ML Lio/github/sceneview/ar/depth/DepthFrameSource;
+public final class io/github/sceneview/ar/depth/ArDepthFrame$Source : java/lang/Enum {
+	public static final field Ml Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
+	public static final field Native Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/depth/DepthFrameSource;
-	public static fun values ()[Lio/github/sceneview/ar/depth/DepthFrameSource;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
+	public static fun values ()[Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
 }
 
 public final class io/github/sceneview/ar/depth/DepthIntrinsics {
@@ -1847,6 +1847,7 @@ public final class io/github/sceneview/ar/depth/MlDepthSession : java/io/Closeab
 	public static final field $stable I
 	public static final field CAPTURE_POOL I
 	public static final field MAX_ANCHORS I
+	public static final field MAX_CONSECUTIVE_ERRORS I
 	public static final field MAX_PLANES I
 	public static final field MS_PER_SECOND F
 	public static final field NANOS_PER_MS F

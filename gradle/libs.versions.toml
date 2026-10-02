@@ -130,7 +130,11 @@ mlkitGenaiPrompt = "1.0.0-beta4"
 mediapipeTasksVision = "0.10.26"
 # LiteRT (ex-TensorFlow Lite) — runtime of the optional `arsceneview-depth-ml` module
 # (monocular depth, Depth Anything V2 Small). Never a dependency of `arsceneview` itself.
-litert = "2.2.0"
+# Pinned to 2.1.5, the last single-AAR release: 2.2.0 splits into `litert` + `litert-api`,
+# two AARs declaring the same namespace, which fails AGP 9's app manifest merge unless
+# `android.uniquePackageNames=false` is set for the whole build. Bump only once Google gives
+# the two halves distinct namespaces (`:samples:android-demo:processDebugMainManifest` is the proof).
+litert = "2.1.5"
 
 # Publishing & Docs
 mavenPublish = "0.37.0"
