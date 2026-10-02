@@ -536,6 +536,21 @@ final class DemoRegistryGuardTests: XCTestCase {
         XCTAssertNil(DeepLinkRouter.consumeTab(for: "materials"),
                      "an alias with no mode opens its card on the default mode")
     }
+
+    /// `cover(for:)` builds the whole catalogue (`GeneratedScenes.all()`) before
+    /// the linked screen, which constructs every umbrella card's host. Those
+    /// copies never reach the screen, so they must not take the `?tab=`: a cold
+    /// `-demo rolling-balls -tab pendulum` launch opened on Balls before this.
+    @MainActor
+    func testBuildingTheCatalogueLeavesTheTabForTheLinkedScreen() {
+        DeepLinkRouter.setTab("pendulum", for: "rolling-balls")
+        _ = DemoDeepLinkRegistry.cover(for: "rolling-balls") {}
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "rolling-balls"), "pendulum")
+
+        DemoDeepLinkRegistry.routeTab(for: "dynamic-sky")
+        _ = DemoDeepLinkRegistry.cover(for: "dynamic-sky") {}
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "lighting"), "sun")
+    }
 }
 
 

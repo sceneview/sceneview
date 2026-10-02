@@ -80,6 +80,18 @@ enum DeepLinkRouter {
         }
     }
 
+    /// The view `demo` was asked to open on, lower-cased, if any — read without taking it.
+    /// For a view's `init`: the catalogue builds every card's view eagerly (`DemoItem`,
+    /// `GeneratedScenes.all()`, called again by `DemoDeepLinkRegistry.cover(for:)` before
+    /// the linked screen), so an `init` that consumed the tab lost it to a copy that never
+    /// reaches the screen. The view that does appear consumes it in `onAppear`.
+    static func peekTab(for demo: String) -> String? {
+        let prefix = demo + ":"
+        guard let stored = UserDefaults.standard.string(forKey: tabDefaultsKey),
+              stored.hasPrefix(prefix) else { return nil }
+        return String(stored.dropFirst(prefix.count)).lowercased()
+    }
+
     /// The view `demo` was asked to open on, lower-cased, if any — read once. A tab meant for
     /// another demo is left for it: a demo on screen watches the key (`@AppStorage`) and must
     /// not swallow a link that opens a different one.

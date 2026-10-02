@@ -115,7 +115,8 @@ struct LightingDemo: View {
     /// — `environment` (Image), `movable-light` (Studio), `dynamic-sky` (Sun),
     /// re-keyed to `lighting` by `DemoDeepLinkRegistry.routeTab(for:)`. Same
     /// indices as Android's `ALIAS_INITIAL_TAB`.
-    @State private var rig: Rig = Rig.initial(DeepLinkRouter.consumeTab(for: "lighting"))
+    /// Peeked here, taken in `onAppear` (see `DeepLinkRouter.peekTab(for:)`).
+    @State private var rig: Rig = Rig.initial(DeepLinkRouter.peekTab(for: "lighting"))
     /// Index into ``imageEnvironments``. Held as an index, not a
     /// `SceneEnvironment`, because `SceneEnvironment` is not `Equatable` and
     /// `.contentID(_:)` needs a `Hashable` key.

@@ -51,7 +51,9 @@ struct DemoModeHost: View {
         precondition(!modes.isEmpty, "An umbrella card needs at least one mode")
         self.demoId = demoId
         self.modes = modes
-        let requested = DeepLinkRouter.consumeTab(for: demoId)
+        // Peeked, not taken: this init also runs for the catalogue's copies of the
+        // card, which never reach the screen. `onAppear` takes it.
+        let requested = DeepLinkRouter.peekTab(for: demoId)
         let initial = requested.flatMap { token in modes.first { $0.matches(token) } } ?? modes[0]
         _selection = State(initialValue: initial.id)
     }
@@ -70,9 +72,10 @@ struct DemoModeHost: View {
                 options: modes.map { ($0.id, $0.title) },
                 selection: $selection
             ))
-            // The tab is normally taken in `init`, so the first frame is
-            // already the asked-for mode. A link that lands after this host
-            // was built (a cover re-presented) is taken here instead.
+            // `init` already chose the asked-for mode from a peek, so the first
+            // frame is right; the tab is taken here, by the copy on screen. A
+            // link that lands after this host was built (a cover re-presented)
+            // switches the mode here too.
             .onAppear {
                 if let token = DeepLinkRouter.consumeTab(for: demoId),
                    let mode = modes.first(where: { $0.matches(token) }) {
