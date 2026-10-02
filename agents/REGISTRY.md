@@ -14,7 +14,7 @@ one SceneView platform.
 | [`sceneview-web`](sceneview-web/SKILL.md) | Web — Filament.js (WebGL2/WASM) + WebXR | `.claude/scripts/install-sceneview-web-skill.sh` |
 
 All three are Apache-2.0 (see each `SKILL.md` frontmatter `license` field) and
-maintained by the [`sceneview-tools`](https://github.com/sceneview) org.
+maintained in this repository by the [`sceneview`](https://github.com/sceneview) org.
 
 ## Local install (primary distribution)
 
@@ -44,6 +44,23 @@ Codex discovers the skills in any checkout through the
 metadata in `agents/<skill>/agents/openai.yaml`. Listing copy, starter prompts, test
 cases and the owner gestures for the submission portal live in
 [`OPENAI-PLUGIN.md`](OPENAI-PLUGIN.md).
+
+## Claude Code plugin
+
+The same three skills ship in the `sceneview` plugin of the
+[`sceneview/claude-marketplace`](https://github.com/sceneview/claude-marketplace)
+repository, together with the MCP server:
+
+```
+/plugin marketplace add sceneview/claude-marketplace
+/plugin install sceneview@sceneview
+```
+
+The marketplace holds copies of `SKILL.md` and `references/` (not the Codex-only
+`agents/openai.yaml`). Its `scripts/sync-plugin-versions.sh` diffs them against
+this directory on `main`, and `--fix` refreshes them, so an edit here reaches the
+plugin through a marketplace PR. Contributor commands live in a separate plugin
+there, `sceneview-contrib`.
 
 ## Google `android-cli` registry submission (#1082)
 

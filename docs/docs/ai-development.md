@@ -68,9 +68,10 @@ project-scoped file named by the documentation (local and user scopes live in
 ```
 
 Verify with `claude mcp list` — `sceneview` should show `✔ Connected`. There is
-also a plugin that bundles the MCP server with the contributor commands below:
-`/plugin marketplace add sceneview/claude-marketplace`, then
-`/plugin install sceneview@sceneview`.
+also a plugin carrying the same three skills as the Codex plugin — `sceneview`
+(Compose), `sceneview-ios` (SwiftUI) and `sceneview-web` (Filament.js / WebXR) —
+together with the MCP server: `/plugin marketplace add sceneview/claude-marketplace`,
+then `/plugin install sceneview@sceneview`.
 References: [code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp)
 and [code.claude.com/docs/en/plugin-marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)
 
@@ -268,21 +269,21 @@ finds its own.
 ### Slash commands
 
 Slash commands are a Claude Code feature, so this section is specific to it.
-Working in the repo with another assistant? `AGENTS.md` describes the same
-workflows in prose — ask for them by name.
+Working in the repo with another assistant? The commands are plain Markdown
+files in the plugin's `commands/` folder, so you can point it at the same file.
 
-Inside the SceneView repo with Claude Code (commands shown unprefixed work
-locally; with the [SceneView plugin](https://github.com/sceneview/claude-marketplace)
-installed they are available everywhere as `/sceneview:*`):
+They ship in a separate contributor plugin, `sceneview-contrib`, kept apart from
+the `sceneview` plugin app developers install:
+`/plugin marketplace add sceneview/claude-marketplace`, then
+`/plugin install sceneview-contrib@sceneview`. Run them from a checkout of this
+repository.
 
 | Command | What it does |
 |---|---|
-| `/contribute` | Full guided workflow — understand the codebase, make changes, prepare a PR |
-| `/review` | Threading, Compose API, style, module boundaries — plus `--score` (weighted eval), `--coverage` (test gaps), `high` (multi-agent triptych) |
-| `/document` | Generate/update KDoc for changed public APIs, update `llms.txt` |
-| `/release`, `/quality-gate`, `/sync-check`, `/store-status`, `/version-bump`, `/maintain` | Pre-PR + release lifecycle |
-
-> **Tip — namespace conflict:** the bare `/review` command shadows a Claude Code built-in. With the plugin installed, prefer the prefixed form `/sceneview:review` to disambiguate.
+| `/sceneview-contrib:contribute` | Full guided workflow — understand the codebase, make changes, prepare a PR |
+| `/sceneview-contrib:review` | Threading, Compose API, style, module boundaries — plus `--score` (weighted eval), `--coverage` (test gaps), `high` (multi-agent triptych) |
+| `/sceneview-contrib:document` | Generate/update KDoc for changed public APIs, update `llms.txt` |
+| `/sceneview-contrib:test`, `:evaluate`, `:quality-gate`, `:sync-check`, `:publish-check`, `:version-bump`, `:release`, `:maintain` | Pre-PR + release lifecycle |
 
 ---
 
@@ -331,11 +332,11 @@ check it against the version you have installed.
 
 | Layer | Where it lives |
 |---|---|
-| Install descriptors | `gemini-extension.json` at the repo root (Gemini CLI), `mcp/manifest.json` (MCP Bundle) |
+| Install descriptors | `gemini-extension.json` at the repo root (Gemini CLI), `mcp/manifest.json` (MCP Bundle), `.codex-plugin/plugin.json` (ChatGPT, Codex), [`sceneview/claude-marketplace`](https://github.com/sceneview/claude-marketplace) (Claude Code) |
 | Machine-readable API reference | `llms.txt`, at the repo root and at [sceneview.github.io/llms.txt](https://sceneview.github.io/llms.txt) |
 | MCP server | `sceneview-mcp`, over stdio or Streamable HTTP |
 | Rules files | one per convention, in every checkout |
-| Skills | `agents/sceneview`, `agents/sceneview-ios`, `agents/sceneview-web` |
+| Skills | `agents/sceneview`, `agents/sceneview-ios`, `agents/sceneview-web`, shipped in the Codex and Claude Code plugins |
 
 All five are maintained alongside the source and updated with every release, so
 an assistant reading them is reading the API that actually shipped.

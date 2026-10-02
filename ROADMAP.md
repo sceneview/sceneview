@@ -33,8 +33,8 @@
 - [x] Separate modules intentionally: `sceneview` (3D-only) + `arsceneview` (opt-in AR)
 - [x] Render tests CI (SwiftShader)
 - [x] Anonymous telemetry (Cloudflare Worker + D1)
-- [x] Claude playground on website
-- [x] Claude Code plugin marketplace (Apache-2.0, single `sceneview` plugin)
+- [x] AI prompt playground on website
+- [x] Claude Code plugin marketplace (Apache-2.0, `sceneview` + `sceneview-contrib` plugins)
 - [x] iOS V1 parity sprint — LightSlot, RenderQuality, NodeGesture, AR anchors (v4.1–v4.3)
 - [x] iOS App Store release — demo app live (`id6761329763`)
 - [x] visionOS spatial features — immersive-space skybox, `SceneViewSwift` visionOS target builds (v4.5, v4.10)

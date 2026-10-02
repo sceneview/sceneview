@@ -5,7 +5,7 @@ OpenAI's unit of distribution is the **plugin**: a folder with a manifest at
 listed in one **Plugins Directory shared by ChatGPT and Codex**
 (<https://developers.openai.com/plugins>). This repository *is* that plugin: the
 manifest sits at the repo root and points at the skills that already live under
-`agents/` and at the free `sceneview-mcp` server.
+`agents/` and at the `sceneview-mcp` server.
 
 | Component | Where | Directory type |
 |---|---|---|
@@ -33,8 +33,8 @@ source by `.claude/scripts/check-sceneview-skill.sh`, and a second copy under
    explicit hosting decision; nothing in the package assumes one.
 
 Both shapes are compliant with the directory's monetization rule (no selling or promoting
-subscriptions inside the plugin): there is nothing to sell — every tool is free, and the
-remote surface simply omits the three that need your own third-party credentials, because a
+subscriptions inside the plugin): the plugin contains no purchase or subscription flow. The
+remote surface omits the three tools that need your own third-party credentials, because a
 shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 sources.
 
 ## Listing copy (English, as submitted)

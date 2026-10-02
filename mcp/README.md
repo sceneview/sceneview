@@ -56,7 +56,8 @@ Or commit `.mcp.json` at the repository root so the whole team gets it:
 ```
 
 Optionally, the [SceneView Claude Code plugin](https://github.com/sceneview/claude-marketplace)
-bundles this server with 11 namespaced contributor commands and cross-platform reminder hooks:
+bundles this server with the three SceneView skills (Compose, SwiftUI, web), the same ones the
+Codex plugin carries:
 
 ```bash
 /plugin marketplace add sceneview/claude-marketplace
@@ -92,6 +93,14 @@ args = ["-y", "sceneview-mcp"]
 ```
 
 The same config serves the Codex CLI, the IDE extension and the app.
+
+Optionally, the SceneView repository is itself a Codex plugin that bundles this server with the
+three SceneView skills. From a checkout (the path must be absolute):
+
+```bash
+codex plugin marketplace add "$PWD"
+codex plugin add sceneview@sceneview-local
+```
 
 ### Cursor
 
@@ -450,7 +459,7 @@ The MCP server is tested with **2,015 unit tests** across 91 test files covering
 - Code validator rules (true positives and false-positive resistance)
 - Node reference parsing (all node types extracted correctly from `llms.txt`)
 - Resource responses (API reference, GitHub issues integration, the 3D viewer widget)
-- The Streamable HTTP surface end to end (initialize, free-only tools/list, widget resource, health, OpenAI challenge)
+- The Streamable HTTP surface end to end (initialize, the remote tools/list, widget resource, health, OpenAI challenge)
 
 ```
  Test Files  91 passed (91)

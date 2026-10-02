@@ -299,8 +299,9 @@ conversation. Listing copy and test prompts: [agents/OPENAI-PLUGIN.md](agents/OP
 ### Claude Code plugin
 
 `/plugin marketplace add sceneview/claude-marketplace`, then `/plugin install sceneview@sceneview`,
-installs the MCP server together with the contributor commands used to work on this repository —
-see [sceneview/claude-marketplace](https://github.com/sceneview/claude-marketplace).
+installs the same three skills as the Codex plugin together with the MCP server. The commands used
+to work on this repository are a separate plugin, `sceneview-contrib@sceneview` — see
+[sceneview/claude-marketplace](https://github.com/sceneview/claude-marketplace).
 
 Vertical MCP servers (Rerun AR debugging and others) are listed in the [MCP README](./mcp/README.md).
 
