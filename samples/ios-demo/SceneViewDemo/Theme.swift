@@ -607,11 +607,9 @@ enum SceneViewTokens {
         /// `radius-xl`. The same picture in light and dark: it is the
         /// product's identity, not a themed surface.
         static let markSize: CGFloat = 80
-        /// The band the SceneView mark floats in, in 3D. iOS is ahead here:
-        /// Android `main` still shows the flat icon, and its 3D stage
-        /// (`About.stageHeight`, with the `DESIGN.md` token) comes with the
-        /// Android PR from `wow/demo-shell-android`. The launcher icon
-        /// (`markSize`) stands at the band's centre until the stage has drawn.
+        /// The band the SceneView mark floats in, in 3D. Android still shows
+        /// the flat icon at `SceneViewTokens.About.markSize`. On iOS that icon
+        /// stands at the band's centre until the stage has drawn.
         static let stageHeight: CGFloat = 176
         /// Width of the soft contact shadow under the floating mark.
         static let stageShadowWidth: CGFloat = 132
@@ -619,7 +617,7 @@ enum SceneViewTokens {
         static let stageShadowHeight: CGFloat = 18
     }
 
-    /// The SceneView mark as a 3D object — Android's `SceneViewTokens.MarkColor`.
+    /// The SceneView mark as a 3D object (`mark-color` in `DESIGN.md`).
     enum MarkColor {
         /// The cube body — the mark's right face (`#3D7FD9`); the key light
         /// shades the rest.

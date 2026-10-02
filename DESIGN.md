@@ -222,7 +222,11 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Value | Usage |
 |---|---|---|
-| `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero` on Android, the `about_mark` image set cut from `AppIcon` on iOS), never a Material glyph or an SF Symbol |
+| `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — a 3D cube with two orbit rings on iOS. Android uses `ic_sceneview_hero`; iOS keeps the `about_mark` image set as its placeholder until the 3D mark is ready. Never use a Material glyph or an SF Symbol |
+| `about-stage-height` | 176pt | Height of the iOS 3D mark band (`About.stageHeight`) |
+| `about-stage-shadow-size` | 132 × 18pt | Soft contact-shadow ellipse under the floating iOS mark |
+| `mark-color` | Body `#3D7FD9`, lid `#BDD3FF`, orbit `#A4C1FF` | iOS `MarkColor` palette for the 3D cube, inset, rings and satellites |
+| `mark-shadow` | `#0B1B3A` | Light-mode core colour of the contact shadow; it fades to transparent at the rim |
 | `about-row-icon` | 20dp | Leading glyph of an action row |
 | `about-row-affordance` | 16dp open-in-new / 20dp chevron | Trailing glyph — leaves the app, or stays in it. Two sizes because the chevron is the thinner drawing: matched boxes read as two icon sets. |
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
