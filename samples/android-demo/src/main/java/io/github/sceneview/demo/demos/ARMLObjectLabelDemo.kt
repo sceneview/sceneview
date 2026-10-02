@@ -398,8 +398,9 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 // each slot rebuilt its AnchorNode and destroyed the old one together with
                 // its billboard, while the billboard slot, `remember`ed on a shared cached
                 // bitmap, kept the destroyed node and destroyed it again later, after its
-                // Filament entity id had been recycled. Most likely cause of the crash reported
-                // once four or more objects were labelled (needs a device run to confirm).
+                // Filament entity id had been recycled. This removes the double destroy only;
+                // the "Invalid texture still bound to MaterialInstance" abort at the sixth label
+                // is a separate issue, still reproducible with this change.
                 detections.forEach { entry ->
                     key(entry.anchor) {
                         val anchor = entry.anchor
