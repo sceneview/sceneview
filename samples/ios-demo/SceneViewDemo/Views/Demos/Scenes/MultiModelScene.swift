@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        tree.fill
-// @order       34
+// @order       35
 // @addedIn     4.4.0
 // @updatedIn   4.32.0
 import SwiftUI

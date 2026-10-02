@@ -6,7 +6,7 @@
 // @available   true
 // @icon        square.3.layers.3d.down.right
 // @iosOnly     true
-// @order       43
+// @order       44
 // @tags        ar,depth,occlusion,arcore
 // @addedIn     4.15.2
 // @updatedIn   4.40.0

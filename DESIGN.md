@@ -84,6 +84,9 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-tray-steel` | #D7DCE3 | #D7DCE3 | Chrome ball of the Rolling Balls demo (Android `TrayStage.STEEL_COLOR`, metallic, roughness 0.06): near-neutral so it mirrors the studio. Fixed in both themes |
 | `stage-tray-glass` | #BFE6EA | #BFE6EA | Glass marble of the Rolling Balls demo (Android `TrayStage.GLASS_COLOR`, full transmission, IOR 1.5): the aqua tint the light picks up through it, and its chip swatch. Fixed in both themes |
 | `stage-tray-rubber-1`…`-5` | #F2654B · #2E86F0 · #F5B029 · #2FBF8F · #9B5DE5 | same | Rubber balls of the Rolling Balls demo, in turn (Android `TrayStage.RUBBER_COLORS`, clear-coated): coral, azure, amber, mint, orchid — each holds on the maple and on the walnut. Fixed in both themes |
+| `stage-pip-floor` | #E2E6EB | #161B22 | Floor of the iOS Secondary Camera (PiP) stage (iOS `Stage.pipFloor`; dark is Android's `StageSky.floor`). Light is a step under `surface-container-highest` so the ground reads against the backdrop (1.13:1 on `stage-pip-backdrop`, enough for a fill; the grid carries the edge) |
+| `stage-pip-grid` | #7A8494 | #5C6780 | Grid lines on `stage-pip-floor` (iOS `Stage.pipGrid`): 3.0:1 on the floor in both themes, where Android's `outline` / `outline-subtle` measured 1.18:1 / 2.18:1 |
+| `stage-pip-backdrop` | #F1F3F5 | #0B0F16 | Flat backdrop of the Secondary Camera stage (iOS `Stage.pipBackdrop`, = `surface-container-high` light / `stage-background` dark). The floor texture fades into exactly this colour at its rim, so no camera angle shows the floor's edge |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
 

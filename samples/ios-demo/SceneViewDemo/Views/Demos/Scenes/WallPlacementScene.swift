@@ -7,7 +7,7 @@
 // @icon        tv.fill
 // @iosOnly     true
 // @status      inReview
-// @order       28
+// @order       29
 // @tags        ar,wall,vertical-plane,placement,tv
 // @addedIn     4.25.0
 // @updatedIn   4.40.0

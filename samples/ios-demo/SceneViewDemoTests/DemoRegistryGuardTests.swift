@@ -223,7 +223,7 @@ final class DemoRegistryGuardTests: XCTestCase {
     func testAndroidOnlyIdsAreUnregisteredAndStillReachThePlaceholder() {
         let androidOnly = [
             "ar-rooftop", "ar-terrain",             // #2799 canonicalized ids, Geospatial-backed
-            "post-processing", "secondary-camera",  // no RealityKit equivalent wired up
+            "post-processing",                      // no RealityKit equivalent wired up
             "ar-collaborative",                     // CollaborativeSession not ported
         ]
         for id in androidOnly {

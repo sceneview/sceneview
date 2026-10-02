@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        square.grid.3x3.fill
-// @order       35
+// @order       36
 // @addedIn     4.0.0
 // @updatedIn   4.32.0
 import SwiftUI

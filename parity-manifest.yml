@@ -63,11 +63,12 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-10-01): 51 rows, 33 working / 0 stub / 18 android-only.
+# Current slice-5 ledger (2026-10-01): 51 rows, 34 working / 0 stub / 17 android-only.
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
 # (android-only -> working: `contact-shadow-preview` — procedural contact-shadow quads.)
+# (android-only -> working: `secondary-camera` — two SceneViews over one shared state, cloned helmet.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -953,6 +954,40 @@ demos:
       Shapes + tap-highlight match (CollisionHitTestDemo.swift:36-45,66-83);
       no in-scene UI card (vs PickingAndCollisionDemo.kt:310-340). D3/D5 fixed
       (.demoChrome+DemoHint :93-100); D7 code-only
+  - id: secondary-camera
+    androidStatus: Working
+    iosStatus: working
+    category: DEV_TOOLS
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SecondaryCameraDemo.kt
+    ios: [secondary-camera]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/SecondaryCameraDemo.swift
+    contract: >-
+      Helmet on a gridded floor on the stage backdrop, seen by an orbitable main
+      camera and a 192x128 picture-in-picture camera; Top/Side/Front/Corner/
+      Orbit move the PiP camera (Orbit: one turn per 12 s). A tap in either
+      view, cast from that view's camera, walks the helmet on the floor or
+      turns it a quarter turn, and both views show the edit; Reset the helmet.
+    parity: diverges
+    evidence: >-
+      SecondaryCameraDemo.swift: same lines of sight, stage centre, 24 deg
+      main framing, 0.5 m helmet, 0.35 m stage, 0.2 m pick radius, 450 ms
+      glide, 25 cm grid squares, PiP size, captions and status lines; ray maths
+      unit-tested (SecondaryCameraMathTests). RealityKit has one scene per
+      RealityView, so iOS runs two SceneViews over one shared state with a
+      cloned helmet (shared meshes and textures) instead of Filament's two
+      Views on one scene. Gaps: the PiP camera sits at 80 % of Android's
+      distance (the helmet fills a third of the inset, not a quarter); the
+      Top preset stops at SceneView's 85 deg elevation clamp (Android ~89.7
+      deg); no stage fog or sky gradient: the 4 m floor fades into a flat
+      backdrop (#F1F3F5 / #0B0F16) so no view shows its edge; floor and grid
+      are unlit, and the grid (3:1 on the floor, Stage.pipGrid) runs across
+      the fading floor instead of Android's 2 m square, with a radial
+      contact-shadow disc
+      under the helmet instead of GroundingShadow; the angle picker is an
+      option strip above the dock (also in the sheet). The simulator's
+      one-edit inset lag is fixed in RenderSurfaceResizer
+      (presentsWithTransaction); device check pending
   - id: spatial-audio
     androidStatus: Working
     iosStatus: working
@@ -1300,24 +1335,6 @@ demos:
     evidence: >-
       No iOS scene; PointAndAskDemo.kt:229-233. Apple Foundation Models on
       device, no SDK surface yet (#3654, #2648)
-  - id: secondary-camera
-    androidStatus: Working
-    iosStatus: android-only
-    reason: >-
-      No iOS screen — picture-in-picture camera view not implemented. Its
-      coming-soon Scene stub was deleted in #3231.
-    category: DEV_TOOLS
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SecondaryCameraDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      Helmet in the main view + a picture-in-picture second camera;
-      Top/Side/Front/Corner/Orbit chips move the PiP camera
-    parity: missing
-    evidence: >-
-      SecondaryCameraDemo.kt:144 pipCameraNode, :345-352 presets. Feasible: a
-      2nd non-AR RealityView with its own PerspectiveCamera over a cloned
-      entity (or RealityRenderer, iOS 18)
   - id: video-recording
     androidStatus: Working
     iosStatus: android-only

@@ -7,7 +7,7 @@
 // @icon        scope
 // @iosOnly     true
 // @status      working
-// @order       30
+// @order       31
 // @tags        ar,reticle,placement,shadow,preview,no-camera
 // @addedIn     4.15.2
 // @updatedIn   4.46.0

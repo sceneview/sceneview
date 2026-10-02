@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        camera.metering.matrix
-// @order       31
+// @order       32
 // @tags        splat,point-cloud,scan,spz
 // @addedIn     4.25.0
 import SwiftUI
