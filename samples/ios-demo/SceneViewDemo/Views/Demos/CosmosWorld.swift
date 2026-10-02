@@ -33,7 +33,9 @@ enum CosmosWorldLook {
     /// the same on-screen brightness, as the flow's strokes are (`CosmosSceneLayers.flowGain`).
     static let ringGain: Float = 1.45
     /// The top-down Spacetime pose loses more of the translucent rings to RealityKit's second
-    /// tone map than Starlight's grazing view; this is the gain that matches Android there.
+    /// tone map than Starlight's grazing view. Measured on the QA frame (#4256): ring peak
+    /// luma 130 here, 120 at `ringGain`, 188 on Android; the filmic roll-off and the 0.62
+    /// opacity cap the rest, so the gap is declared in `parity-manifest.yml`.
     static let spacetimeRingGain: Float = 1.8
     /// The orbit trail at its brightest, just behind the planet.
     static let trailColor = SIMD3<Float>(0.3, 0.55, 1.1)

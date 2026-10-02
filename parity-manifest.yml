@@ -743,7 +743,11 @@ demos:
       spot stay per vertex, and iOS has no drag to orbit the Spacetime camera.
       Known gap: the star reads paler in Spacetime on iOS, a flat disc with
       no bloom halo round it, where Android's star keeps its glow over the
-      sheet.
+      sheet; and the ringed world's rings stay translucent grey in Spacetime
+      where Android's read near-opaque white (ring peak luma 130 on iOS at
+      CosmosWorldLook.spacetimeRingGain 1.8, 120 at 1.45, 188 on Android, same
+      QA frame, #4256): the gain is rolled off by the CPU filmic and the
+      ring's opacity tops out at 0.62, so a larger gain cannot close it.
   - id: custom-geometry
     androidStatus: Working
     iosStatus: working
