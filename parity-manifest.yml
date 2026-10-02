@@ -70,13 +70,14 @@
 #  row changes status; the `ios:` lists name the 35 scene ids only. iOS allowedIds:
 #  35 scenes + 22 aliases = 57.)
 # Current ledger (2026-10-02, Android samples step 0): 43 rows, 31 working / 0 stub / 12 android-only.
-# (Android samples step 0: six android-only ids retired into the cards that absorbed them —
-#  `placement-scene`, `ar-collaborative`, `secondary-camera`, `video-recording`,
-#  `ar-hand-tracking`, `ar-xr-face` — DROPPED per the ledger rule; +1 android-only `ar-xr`.
-#  Three working ids retired the same way and DROPPED: `ar-pose` (Free pose mode of
-#  `ar-placement`), `ar-record-playback` (Session MP4 mode of `ar-rerun`) and
-#  `double-pendulum` (Pendulum mode of `rolling-balls`); their iOS scenes are listed
-#  in those rows' `ios:` until the iOS step-0 PR folds them.)
+# (Android samples step 0: five android-only ids retired into the cards that absorbed them —
+#  `placement-scene`, `ar-collaborative`, `video-recording`, `ar-hand-tracking`,
+#  `ar-xr-face` — DROPPED per the ledger rule; +1 android-only `ar-xr`.
+#  Four working ids retired the same way and DROPPED: `ar-pose` (Free pose mode of
+#  `ar-placement`), `ar-record-playback` (Session MP4 mode of `ar-rerun`),
+#  `double-pendulum` (Pendulum mode of `rolling-balls`) and `secondary-camera` (PiP mode
+#  of `camera-gestures`, working on iOS since #4250); their iOS scenes are listed in
+#  those rows' `ios:` until the iOS step-0 PR folds them.)
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
