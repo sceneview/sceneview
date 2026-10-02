@@ -11,12 +11,22 @@ import Foundation
 ///
 /// Scene reconstruction requires a LiDAR-equipped device (iPhone 12 Pro+, iPad Pro).
 ///
+/// With ``ARSceneView``, ask for the mesh in its configuration — it then
+/// survives every re-run the view does:
+///
 /// ```swift
-/// ARSceneView(planeDetection: .horizontal)
-///     .onSessionStarted { arView in
-///         SceneReconstructionNode.enableReconstruction(in: arView)
-///     }
+/// ARSceneView(
+///     configuration: ARSessionConfiguration(
+///         sceneReconstruction: SceneReconstructionNode.isSupported ? .mesh : .none
+///     )
+/// )
+/// .onSessionStarted { arView in
+///     SceneReconstructionNode.enablePhysics(in: arView)
+/// }
 /// ```
+///
+/// ``enableReconstruction(in:classification:showDebugMeshOverlay:)`` is for
+/// an `ARView` whose session the host runs itself.
 public enum SceneReconstructionNode {
 
     /// Whether the device supports scene reconstruction (LiDAR).
@@ -43,6 +53,16 @@ public enum SceneReconstructionNode {
     /// `showDebugMeshOverlay: true` to draw it, and remove it again with
     /// ``hideMeshVisualization(in:)``.
     ///
+    /// - Important: Inside an ``ARSceneView`` the amendment lasts only until
+    ///   the view runs its own configuration again. When a later render
+    ///   passes a different ``ARSessionConfiguration`` (or changes a
+    ///   parameter of the classic initializer), the view re-runs the session
+    ///   from that value, and its `sceneReconstruction` — `.none` by
+    ///   default — replaces the mesh turned on here. Resuming after an
+    ///   interruption keeps it. To keep the mesh through every re-run, pass
+    ///   ``ARSessionConfiguration/sceneReconstruction`` to the view instead
+    ///   of calling this function.
+    ///
     /// - Parameters:
     ///   - arView: The ARView whose session gets the mesh.
     ///   - classification: Whether to enable mesh classification. Default false.
@@ -53,6 +73,7 @@ public enum SceneReconstructionNode {
     ///   classification support), or when the session runs a configuration
     ///   other than `ARWorldTrackingConfiguration` (face or body tracking),
     ///   which is left untouched rather than replaced.
+    @MainActor
     @discardableResult
     public static func enableReconstruction(
         in arView: ARView,
@@ -94,6 +115,7 @@ public enum SceneReconstructionNode {
     /// - Any other configuration class yields `nil`: swapping a face- or
     ///   body-tracking session for world tracking would change camera and
     ///   throw the host's whole session away.
+    @MainActor
     static func amend(
         _ current: ARConfiguration?,
         with reconstruction: ARConfiguration.SceneReconstruction

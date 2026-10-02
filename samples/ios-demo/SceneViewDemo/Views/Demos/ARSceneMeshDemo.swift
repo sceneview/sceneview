@@ -44,8 +44,16 @@ struct ARSceneMeshDemo: View {
 
     #if !targetEnvironment(simulator)
     private var arSceneView: some View {
+        // The mesh is part of the configuration the view runs, so it
+        // survives every re-run ARSceneView does. Without LiDAR the camera
+        // still runs, under the "LiDAR not available" banner.
         ARSceneView(
-            planeDetection: .both,
+            configuration: ARSessionConfiguration(
+                planeDetection: .both,
+                sceneReconstruction: SceneReconstructionNode.isClassificationSupported
+                    ? .meshWithClassification
+                    : .none
+            ),
             showCoachingOverlay: true
         )
         .onSessionStarted { arView in
@@ -53,13 +61,8 @@ struct ARSceneMeshDemo: View {
             isLiDARSupported = SceneReconstructionNode.isClassificationSupported
             guard isLiDARSupported else { return }
 
-            // Amends the running session (no tracking reset, options kept).
             // The wireframe is this demo's explicit, user-toggled choice.
-            SceneReconstructionNode.enableReconstruction(
-                in: arView,
-                classification: true,
-                showDebugMeshOverlay: showMeshDebug
-            )
+            applyDebugOption(arView: arView, enabled: showMeshDebug)
             arView.environment.sceneUnderstanding.options.insert([.physics, .occlusion])
         }
     }
