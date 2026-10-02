@@ -187,6 +187,25 @@ android {
             if (keystoreFile != null) {
                 signingConfig signingConfigs.release
             }
+            // Native crash symbols. FULL puts every native library's debug info
+            // (or symbol table, for the prebuilt stripped ones) in the bundle's
+            // BUNDLE-METADATA, which Play reads to symbolicate native crashes and
+            // ANRs and never delivers to devices: installed APKs do not grow.
+            // AGP needs the NDK to extract them — CI runners have it; a local
+            // build without one logs "Unable to strip" and ships no symbols.
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
+            if (firebaseConfigured) {
+                firebaseCrashlytics {
+                    // R8 mapping: uploaded by the build itself, after R8.
+                    mappingFileUploadEnabled = true
+                    // Native symbols: only generated and uploaded by an explicit
+                    // `uploadCrashlyticsSymbolFileRelease`, which the Play deploy
+                    // workflows run after the bundle is built.
+                    nativeSymbolUploadEnabled = true
+                }
+            }
         }
     }
 
@@ -391,7 +410,10 @@ dependencies {
     // without google-services.json nothing initialises and the façade is a no-op.
     implementation platform(libs.firebase.bom)
     implementation libs.firebase.analytics
-    implementation libs.firebase.crashlytics
+    // The NDK flavour of Crashlytics (it pulls `firebase-crashlytics` in): without
+    // it a native crash (Filament, ARCore, MediaPipe) never reaches Crashlytics,
+    // and that is where most of this app's crashes come from.
+    implementation libs.firebase.crashlytics.ndk
     implementation libs.firebase.messaging
 
     // ML Kit Object Detection — bundled model so ARMLObjectLabelDemo works

@@ -316,6 +316,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Native crash symbols for Crashlytics. The plugin uploads the R8 mapping
+      # during the build, but only generates and uploads native symbols when
+      # this task is asked for. Same version properties as the build, so Gradle
+      # reuses its native-library outputs and no secret is needed here. Best
+      # effort, like the manifest check: a Crashlytics outage must never cost a
+      # release. Needs the Firebase config, deleted by the next step.
+      - name: Upload native symbols to Crashlytics
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          if [ ! -f samples/android-demo/google-services.json ]; then
+            echo "::notice::No Firebase config in this build: native symbol upload skipped"
+            exit 0
+          fi
+          ./gradlew :samples:android-demo:uploadCrashlyticsSymbolFileRelease \
+            -PversionCode=${{ steps.version.outputs.code }} \
+            -PversionName=${{ steps.version.outputs.name }}
+
       - name: Clean up keystore
         if: always()
         run: rm -f samples/android-demo/release.keystore samples/android-demo/google-services.json

@@ -246,7 +246,7 @@ play-app-update-ktx = { group = "com.google.android.play", name = "app-update-kt
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
-firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
+firebase-crashlytics-ndk = { group = "com.google.firebase", name = "firebase-crashlytics-ndk" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 # Nearby Connections — backs the optional `NearbyCollaborativeTransport` reference
 # transport for collaborative AR (#2008). Declared `compileOnly` in `arsceneview`
