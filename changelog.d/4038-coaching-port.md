@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Demo app: placement and measuring speak like the 3D AR Model Viewer app.** After a placement, "Drag to move. Pinch to resize. Twist to turn." stays 6 s instead of 3.5 s, and leaves at your first drag, pinch or twist instead of coming back when it ends. When no surface turns up, the card suggests "a brighter area with a rug or visible floor detail". Measure now shows the AR coaching card until the target first lands on a surface, and its first hint waits for the card to finish. ([#4038](https://github.com/sceneview/sceneview/issues/4038))

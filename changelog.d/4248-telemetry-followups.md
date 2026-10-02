@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Android demo app: notifications could stop after turning them off and quickly back on ([#4248](https://github.com/sceneview/sceneview/pull/4248)).** If you switched Notifications off and on again in **About → Privacy & notifications** before the app had finished unsubscribing, the switch showed "on" but no notification arrived anymore. The app now subscribes again once the unsubscribe completes.

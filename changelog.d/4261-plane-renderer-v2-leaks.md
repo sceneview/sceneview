@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **`PlaneRendererV2` no longer leaks MaterialInstances or churns merged planes ([#4261](https://github.com/sceneview/sceneview/pull/4261)).** Subsumed planes were given a new visualizer on every plane update and destroyed right after, and each removed plane left its two MaterialInstances alive until the AR session ended; both are now skipped or freed with the plane. The focus ripples no longer stutter, then freeze, after a few minutes of uptime.
