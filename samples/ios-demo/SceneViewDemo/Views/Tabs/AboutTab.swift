@@ -244,17 +244,16 @@ private struct AboutCard: View {
 
 // MARK: - About mark stage
 
-/// The SceneView mark as a real object — the iOS twin of Android's
-/// `AboutMarkStage`: the launcher icon's cube, glossy, lit by the studio HDR,
-/// floating over the About page between two tilted orbit rings (the Cosmos
+/// The SceneView mark as a real object: the launcher icon's cube, glossy, lit
+/// by the studio HDR, floating over the About page between two tilted orbit rings (the Cosmos
 /// ringed world, told with the brand's own shape). It turns a sixteenth of a
 /// turn a second and bobs; two satellites ride the rings. No card behind it:
 /// the identity block is not a card (#3565).
 ///
-/// Until the stage has drawn its first frame the launcher icon stands where the
-/// cube will be, and the two crossfade. Under Reduce Motion the stage holds
-/// Android's rest pose and nothing moves. It only renders while the About tab
-/// is on screen, and holds still while the app is not active.
+/// Until the lighting has settled and the reveal frame has drawn, the launcher
+/// icon stands where the cube will be; then the two crossfade. Under Reduce
+/// Motion the stage holds its rest pose and nothing moves. It only renders
+/// while the About tab is on screen, and holds still while the app is not active.
 private struct AboutMarkStage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -282,7 +281,7 @@ private struct AboutMarkStage: View {
             if visible {
                 AboutMarkScene(renderer: host.renderer,
                                moving: scenePhase == .active && !reduceMotion,
-                               onFirstFrame: {
+                               onReveal: {
                                    // A cut under Reduce Motion, the fade otherwise.
                                    withAnimation(reduceMotion ? nil : SceneViewTokens.Spring.fade) { drawn = true }
                                })
@@ -331,12 +330,12 @@ private final class AboutMarkHost {
 private struct AboutMarkScene: View {
     let renderer: AboutMarkRenderer
     let moving: Bool
-    let onFirstFrame: () -> Void
+    let onReveal: () -> Void
 
     var body: some View {
         RealityView { content in
             content.camera = .virtual
-            renderer.install(in: &content, onFirstFrame: onFirstFrame)
+            renderer.install(in: &content, onReveal: onReveal)
         }
         .onAppear { renderer.moving = moving }
         .onChange(of: moving) { _, value in renderer.moving = value }
@@ -345,8 +344,7 @@ private struct AboutMarkScene: View {
 }
 
 /// Builds the mark once and poses it every frame from a clock that only runs
-/// while the stage is moving — Android's `MarkScene` art direction, in the same
-/// world units, degrees and seconds.
+/// while the stage is moving.
 @MainActor
 private final class AboutMarkRenderer {
     /// Whether the clock runs. A held stage stops its per-frame callback once
@@ -366,8 +364,8 @@ private final class AboutMarkRenderer {
     /// Scene seconds; starts on the rest pose so the first frame is composed.
     private var seconds = Mark.restSeconds
     private var stopUpdates: (() -> Void)?
-    /// The stage's reveal, called once the frame is final (`update`).
-    private var onFirstFrame: (() -> Void)?
+    /// Called once after the lighting has settled and the final look has drawn.
+    private var onReveal: (() -> Void)?
     /// The studio IBL has landed, or failed to: the lighting is final.
     private var lightingSettled = false
     /// Frames drawn since the lighting settled, for this `RealityView`.
@@ -375,11 +373,11 @@ private final class AboutMarkRenderer {
     /// Whether a `RealityView` shows this renderer right now.
     private var attached = false
 
-    func install(in content: inout RealityViewCameraContent, onFirstFrame: @escaping () -> Void) {
+    func install(in content: inout RealityViewCameraContent, onReveal: @escaping () -> Void) {
         content.add(root)
         content.add(camera)
         attached = true
-        self.onFirstFrame = onFirstFrame
+        self.onReveal = onReveal
         framesLit = 0
         stopUpdates?()
         let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak self] event in
@@ -399,16 +397,15 @@ private final class AboutMarkRenderer {
     private func update(_ delta: Double) {
         // Reveal only on a finished frame: the IBL loads asynchronously, and a
         // cube drawn before it lands is lit by the key alone. The frame that
-        // first carries the IBL is followed by one more before the crossfade,
-        // like Android's `FRAMES_BEFORE_REVEAL`.
+        // first carries the IBL is followed by one more before the crossfade.
         if lightingSettled { framesLit += 1 }
-        if let onFirstFrame, framesLit >= Mark.framesBeforeReveal {
-            self.onFirstFrame = nil
-            onFirstFrame()
+        if let onReveal, framesLit >= Mark.framesBeforeReveal {
+            self.onReveal = nil
+            onReveal()
         }
         if moving {
             // One long frame (the app back from the background) must not jump
-            // the mark forward: `HeroClock` and Android's `StageClock` cap it.
+            // the mark forward, just as Android's `HeroClock` caps its step.
             seconds += min(max(delta, 0), Mark.maxFrameSeconds)
         }
         pose()
@@ -421,7 +418,7 @@ private final class AboutMarkRenderer {
     /// reveal frame itself left the band blank under Reduce Motion — the view
     /// had last drawn while still transparent.
     private func idleIfDone() {
-        guard !moving, onFirstFrame == nil,
+        guard !moving, onReveal == nil,
               framesLit >= Mark.framesBeforeReveal + Mark.framesHeldAfterReveal else { return }
         stopUpdates?()
         stopUpdates = nil
@@ -568,7 +565,7 @@ private final class AboutMarkRenderer {
             * simd_quatf(angle: roll * d, axis: [0, 0, 1])
     }
 
-    /// Android's `MarkScene`: art direction in world units, degrees and seconds.
+    /// Art direction in world units, degrees and seconds.
     private enum Mark {
         /// Raised ~24°, so the top face reads as the mark's lit rhombus.
         static let eye = SIMD3<Float>(0, 1.32, 3.0)
