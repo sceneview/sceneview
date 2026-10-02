@@ -64,20 +64,19 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-10-01): 51 rows, 34 working / 0 stub / 17 android-only.
+# Current ledger (2026-10-03, after iOS and Android samples step 0): 43 rows, 31 working / 0 stub / 12 android-only.
 # (2026-10-02, iOS samples step 0: 49 -> 35 iOS cards, `secondary-camera` included. Every
 #  absorbed iOS card is now a mode of the card that absorbed it and its id an alias, so no
 #  row changes status; the `ios:` lists name the 35 scene ids only. iOS allowedIds:
 #  35 scenes + 22 aliases = 57.)
-# Current ledger (2026-10-02, Android samples step 0): 43 rows, 31 working / 0 stub / 12 android-only.
-# (Android samples step 0: five android-only ids retired into the cards that absorbed them —
-#  `placement-scene`, `ar-collaborative`, `video-recording`, `ar-hand-tracking`,
-#  `ar-xr-face` — DROPPED per the ledger rule; +1 android-only `ar-xr`.
+# (Android samples step 0, 51 -> 43 rows: five android-only ids retired into the cards that
+#  absorbed them — `placement-scene`, `ar-collaborative`, `video-recording`,
+#  `ar-hand-tracking`, `ar-xr-face` — DROPPED per the ledger rule; +1 android-only `ar-xr`.
 #  Four working ids retired the same way and DROPPED: `ar-pose` (Free pose mode of
 #  `ar-placement`), `ar-record-playback` (Session MP4 mode of `ar-rerun`),
 #  `double-pendulum` (Pendulum mode of `rolling-balls`) and `secondary-camera` (PiP mode
-#  of `camera-gestures`, working on iOS since #4250); their iOS scenes are listed in
-#  those rows' `ios:` until the iOS step-0 PR folds them.)
+#  of `camera-gestures`); on iOS the first three are aliases of those same cards, and the
+#  `secondary-camera` scene is listed in `camera-gestures`' `ios:`.)
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
@@ -315,9 +314,10 @@ demos:
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RollingBallsDemo.kt
-    ios: [rolling-balls, double-pendulum]
+    ios: [rolling-balls]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/RollingBallsScene.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift
     contract: >-
       Rubber/Steel/Foam ball tray on the themed stage sky (light and dark); opening shot of a
@@ -332,9 +332,10 @@ demos:
       impacts 113 on both), and the same drag tilt (tip toward you: impacts
       151 on both; tip sideways: balls pile in one corner). Both stages follow
       the theme from the same tokens. Diverges in chrome only: iOS puts Drop,
-      Tilt, Reset and Settings in one bottom toolbar. Pendulum mode: iOS keeps
-      its own `double-pendulum` card (grey links, orange pivot, no bobs,
-      DoublePendulumDemo.swift:198-221), the rewrite's delete list
+      Tilt, Reset and Settings in one bottom toolbar. Pendulum mode: both
+      platforms since step 0 (RollingBallsScene.swift:24-25, `double-pendulum`
+      an alias of it); iOS draws grey links, an orange pivot and no bobs
+      (DoublePendulumDemo.swift:198-221)
   - id: splat-preview
     androidStatus: Working
     iosStatus: working
@@ -676,7 +677,7 @@ demos:
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt
-    ios: [camera-gestures]
+    ios: [camera-gestures, secondary-camera]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/CameraControlsDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/GestureEditingDemo.swift
