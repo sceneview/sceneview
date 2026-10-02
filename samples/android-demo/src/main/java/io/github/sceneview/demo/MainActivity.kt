@@ -278,6 +278,14 @@ class MainActivity : ComponentActivity() {
      * unparseable value resolves to `null` so the demo keeps its default first tab.
      */
     private fun applyLaunch(intent: Intent?) {
+        if (PushIntent.from(intent) != null) {
+            // A tapped push opens through [pendingPushDemo], resolved by [handleEntry]: only its
+            // mode is left to settle, and only once (a recreation hands back the same intent).
+            DemoSettings.initialTab = pushLaunch?.initialTab
+            DemoSettings.openRecordAction = pushLaunch?.openRecord ?: false
+            pushLaunch = null
+            return
+        }
         val rawId = intent?.getStringExtra("demo")
             ?: intent?.data?.let(DeepLinkRouter::extractCandidate)
         val tabParam = intent?.getStringExtra(DeepLinkRouter.QUERY_PARAM_TAB)
@@ -392,8 +400,12 @@ class MainActivity : ComponentActivity() {
         )
         pendingDemoId.value = null
         if (sample != null) {
+            // A retired id opens the mode that holds its content, exactly as its deep link does
+            // (`double-pendulum` → Rolling Balls on Pendulum). [applyLaunch] hands the tab over.
+            val launch = DeepLinkRouter.resolveLaunch(sample, tap.sample, tabParam = null)
+            pushLaunch = launch
             Telemetry.nextOpenSource = OpenSource.Push
-            pendingPushDemo.value = sample
+            pendingPushDemo.value = launch.demoId
         } else {
             pendingHome.value = true
         }
@@ -405,6 +417,9 @@ class MainActivity : ComponentActivity() {
      * sample on top of Home, so back lands on Home.
      */
     private val pendingPushDemo = MutableStateFlow<String?>(null)
+
+    /** The launch [handleEntry] resolved for a tapped push, until [applyLaunch] settles it. */
+    private var pushLaunch: DeepLinkRouter.Launch? = null
     val pendingPushDemoFlow: StateFlow<String?> get() = pendingPushDemo.asStateFlow()
 
     fun consumePendingPushDemo() {

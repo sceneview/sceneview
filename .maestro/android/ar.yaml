@@ -17,8 +17,8 @@
 # `ar-streetscape` leg is KEPT and drives the retired id, which ALIAS_INITIAL_TAB
 # lands on the Streetscape mode, while the `ar-scene-mesh` leg exercises the mesh.
 #
-# Samples step 0 (2026-10-02) retired `ar-pose`, `placement-scene` (→ `ar-placement`),
-# `ar-record-playback` (→ `ar-rerun`, Session MP4 mode), `ar-collaborative`
+# Samples step 0 (2026-10-02) retired `ar-pose` and `placement-scene` (→ `ar-placement`,
+# Free pose and One call modes), `ar-record-playback` (→ `ar-rerun`, Session MP4 mode), `ar-collaborative`
 # (→ `ar-cloud-anchor`, Collaborative mode) and `ar-hand-tracking` / `ar-xr-face`
 # (→ `ar-xr`). Their legs are KEPT on the retired ids: each one proves its deep-link
 # alias still opens the mode that holds the old content.

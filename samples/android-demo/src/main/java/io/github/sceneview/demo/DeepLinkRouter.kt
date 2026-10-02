@@ -191,9 +191,8 @@ internal object DeepLinkRouter {
         // Samples step 0 — consolidation before any redesign (samples audit, 2026-10-02).
         // Each retired card is a mode of the card that absorbed it; the mode is
         // pre-selected through [ALIAS_INITIAL_TAB] when it is not the default one.
-        // `ar-pose` is the Free pose mode of `ar-placement`; `placement-scene` was the
-        // one-call `PlacementScene` version of the same tap-to-place flow, so it lands on
-        // the Place mode it duplicated.
+        // `ar-pose` is the Free pose mode of `ar-placement`; `placement-scene`, the same
+        // flow as one `AutoPlacementScene` call, is its One call mode.
         "ar-pose" to "ar-placement",
         "placement-scene" to "ar-placement",
         "secondary-camera" to "camera-gestures",
@@ -267,6 +266,8 @@ internal object DeepLinkRouter {
         // Samples step 0. ar-placement — launch tab 2 is the Free pose mode (tabs 0 and 1
         // stay the floor and wall placements inside the Place mode).
         "ar-pose" to 2,
+        // ar-placement — launch tab 3 is the One call mode.
+        "placement-scene" to 3,
         // camera-gestures — [Camera, PiP].
         "secondary-camera" to 1,
         // rolling-balls — [Balls, Pendulum].
@@ -289,7 +290,8 @@ internal object DeepLinkRouter {
         // cosmos — [Starlight, Spacetime], the Star scene's two views.
         "cosmos" to mapOf("starlight" to 0, "spacetime" to 1),
         // Samples step 0 — each consolidated card's modes, by the [DemoMode] key its pill uses.
-        "ar-placement" to mapOf("place" to 0, "free-pose" to 2),
+        // ar-placement — `wall` is the wall placement inside Place, the token iOS uses too.
+        "ar-placement" to mapOf("place" to 0, "wall" to 1, "free-pose" to 2, "one-call" to 3),
         "camera-gestures" to mapOf("camera" to 0, "pip" to 1),
         "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1),
         "ar-rerun" to mapOf("rerun" to 0, "session-mp4" to 1),

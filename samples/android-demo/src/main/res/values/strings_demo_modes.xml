@@ -5,6 +5,7 @@
 <resources>
     <string name="demo_mode_place">Place</string>
     <string name="demo_mode_free_pose">Free pose</string>
+    <string name="demo_mode_one_call">One call</string>
     <string name="demo_mode_camera">Camera</string>
     <string name="demo_mode_pip">PiP</string>
     <string name="demo_mode_balls">Balls</string>

@@ -106,16 +106,16 @@ class HomeScreenSnapshotTest {
         // a snapshot suite cannot report on itself, since an image with no chips
         // is a perfectly valid image. Badging *everything* is the same blind spot
         // from the other side.
-        val marked = freshDemos(ALL_DEMOS, PINNED_BUILD_VERSION)
+        val marked = freshDemos(PHONE_DEMOS, PINNED_BUILD_VERSION)
         assertTrue(
             "no demo is fresh at $PINNED_BUILD_VERSION — the home goldens no longer " +
                 "cover the freshness chips or the \"What's new\" featured page",
             marked.isNotEmpty(),
         )
         assertTrue(
-            "${marked.size} of ${ALL_DEMOS.size} demos are fresh at $PINNED_BUILD_VERSION — " +
+            "${marked.size} of ${PHONE_DEMOS.size} demos are fresh at $PINNED_BUILD_VERSION — " +
                 "the goldens pin a grid that no release ever looks like",
-            marked.size * 3 <= ALL_DEMOS.size,
+            marked.size * 3 <= PHONE_DEMOS.size,
         )
     }
 
@@ -124,7 +124,7 @@ class HomeScreenSnapshotTest {
         CompositionLocalProvider(LocalInspectionMode provides true) {
             Surface {
                 HomeScreen(
-                    demos = ALL_DEMOS,
+                    demos = PHONE_DEMOS,
                     selectedCategory = null,
                     onCategoryChange = {},
                     query = "",
@@ -138,6 +138,13 @@ class HomeScreenSnapshotTest {
     }
 
     private companion object {
+        /**
+         * The catalogue a phone shows: [ALL_DEMOS] without the cards listed on an Android XR
+         * device only (`ar-xr`, samples step 0). These goldens are the phone and tablet Home,
+         * so they render what `rememberListedDemos` gives those devices.
+         */
+        val PHONE_DEMOS: List<DemoEntry> = listedDemos(ALL_DEMOS, xrDevice = false)
+
         /**
          * The version these goldens are rendered at: the newest version any demo
          * declares, never `BuildConfig.VERSION_NAME` (#3666).
@@ -161,7 +168,7 @@ class HomeScreenSnapshotTest {
          * needed here and saves the test its own semver parser.
          */
         val PINNED_BUILD_VERSION: String =
-            ALL_DEMOS.flatMap { listOfNotNull(it.addedIn, it.updatedIn) }
+            PHONE_DEMOS.flatMap { listOfNotNull(it.addedIn, it.updatedIn) }
                 .reduceOrNull { newest, candidate ->
                     if (isRecentVersion(candidate, newest, window = 0)) candidate else newest
                 }

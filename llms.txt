@@ -3047,7 +3047,7 @@ session.start()
 
 **Trust model & hardening:** by default the transport auto-accepts every device advertising the same `serviceId` (the id is broadcast in cleartext — a rendezvous key, not a secret). For a real trust boundary pass the optional `shouldAcceptConnection: (peerId, authenticationDigits) -> Boolean` constructor parameter and compare the digits out of band; returning `false` rejects the connection before any payload flows. Defense in depth is built in: inbound messages are bound to the *connection-bound* transport peer id (a body claiming another `peer` is dropped as spoofed; a second live connection claiming an already-connected peer id is rejected — but peer ids are self-advertised names, so real identity assurance still requires the digits comparison), `CollaborativeState` rosters are capped (`MAX_PARTICIPANTS` = 64, `MAX_NODES` = 1024, overridable via its constructor), and `PlacedNode.modelKey` arrives from an untrusted peer — validate it against an allow-list, never use it directly in an asset path.
 
-**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. The `ar-collaborative` sample demo proves the full sync end-to-end on one device via the loopback transport.
+**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. The Collaborative mode of the `ar-cloud-anchor` sample demo (the retired `ar-collaborative` deep link opens it) proves the full sync end-to-end on one device via the loopback transport.
 
 ### TrackableNode — generic trackable
 ```kotlin
@@ -3495,7 +3495,7 @@ The composable refreshes the skeleton in a `SideEffect` (per recomposition) — 
 
 **Pure joint math** (`XrHandSkeleton`) is JVM-testable and runtime-free: `XrHandSkeleton.BONES` (the bone topology), `boneLength`, `boneMidpoint`, `lerp`, `totalBoneLength`, `trackedJointCount`. The `XrHandJoint` / `XrHandedness` enums and `XrHandSkeleton` carry no `androidx.xr.arcore` dependency, so they are safe to use on a phone-only build.
 
-Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
+Sample: the Hands mode of the `ar-xr` demo ("Android XR (preview)", listed on Android XR devices; the retired `ar-hand-tracking` deep link opens it) renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
 
 ### XrFaceNode — face tracking (Slice 3)
 
@@ -3529,7 +3529,7 @@ The composable refreshes the face in a `SideEffect` (per recomposition) — reco
 
 **Threading:** `XrFaceNode.update()` writes only Filament `Node` transforms and decodes the mesh into plain arrays (no JNI resource creation) but, like every node mutation, MUST run on the main thread.
 
-**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the `ar-xr-face` demo renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
+**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the Face mode of the `ar-xr` demo (the retired `ar-xr-face` deep link opens it) renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
 
 **Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`, face mesh by `ARFaceTrackingConfiguration`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section ([#1904](https://github.com/sceneview/sceneview/issues/1904)).
 

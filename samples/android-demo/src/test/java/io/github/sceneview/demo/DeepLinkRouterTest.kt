@@ -491,7 +491,8 @@ class DeepLinkRouterTest {
             DeepLinkRouter.resolveLaunch(DeepLinkRouter.validate(rawId, ALL_DEMOS), rawId, tab)
 
         assertEquals(DeepLinkRouter.Launch("ar-placement", 2), launch("ar-pose"))
-        assertEquals(DeepLinkRouter.Launch("ar-placement", null), launch("placement-scene"))
+        // `placement-scene` is the One call mode: the AutoPlacementScene screen, not Place.
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 3), launch("placement-scene"))
         assertEquals(DeepLinkRouter.Launch("camera-gestures", 1), launch("secondary-camera"))
         assertEquals(DeepLinkRouter.Launch("rolling-balls", 1), launch("double-pendulum"))
         assertEquals(DeepLinkRouter.Launch("ar-rerun", 1), launch("ar-record-playback"))
@@ -508,6 +509,10 @@ class DeepLinkRouterTest {
         assertEquals(DeepLinkRouter.Launch("ar-rerun", 1), launch("ar-rerun", "session-mp4"))
         assertEquals(DeepLinkRouter.Launch("ar-cloud-anchor", 1), launch("ar-cloud-anchor", "collaborative"))
         assertEquals(DeepLinkRouter.Launch("ar-placement", 2), launch("ar-placement", "free-pose"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 3), launch("ar-placement", "one-call"))
+        // `?tab=wall` is the token iOS accepts for the wall placement; Android reads it too.
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 1), launch("ar-placement", "wall"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 1), launch("wall-placement", "wall"))
         assertEquals(DeepLinkRouter.Launch("ar-geospatial-anchors", 2), launch("ar-geospatial-anchors", "streetscape"))
         assertEquals(DeepLinkRouter.Launch("ar-xr", 1), launch("ar-xr", "face"))
         // The old in-card tabs keep their index inside the default mode.
