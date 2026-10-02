@@ -3047,7 +3047,7 @@ session.start()
 
 **Trust model & hardening:** by default the transport auto-accepts every device advertising the same `serviceId` (the id is broadcast in cleartext — a rendezvous key, not a secret). For a real trust boundary pass the optional `shouldAcceptConnection: (peerId, authenticationDigits) -> Boolean` constructor parameter and compare the digits out of band; returning `false` rejects the connection before any payload flows. Defense in depth is built in: inbound messages are bound to the *connection-bound* transport peer id (a body claiming another `peer` is dropped as spoofed; a second live connection claiming an already-connected peer id is rejected — but peer ids are self-advertised names, so real identity assurance still requires the digits comparison), `CollaborativeState` rosters are capped (`MAX_PARTICIPANTS` = 64, `MAX_NODES` = 1024, overridable via its constructor), and `PlacedNode.modelKey` arrives from an untrusted peer — validate it against an allow-list, never use it directly in an asset path.
 
-**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. The `ar-collaborative` sample demo proves the full sync end-to-end on one device via the loopback transport.
+**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. The Collaborative mode of the `ar-cloud-anchor` sample demo (the retired `ar-collaborative` deep link opens it) proves the full sync end-to-end on one device via the loopback transport.
 
 ### TrackableNode — generic trackable
 ```kotlin
@@ -3495,7 +3495,7 @@ The composable refreshes the skeleton in a `SideEffect` (per recomposition) — 
 
 **Pure joint math** (`XrHandSkeleton`) is JVM-testable and runtime-free: `XrHandSkeleton.BONES` (the bone topology), `boneLength`, `boneMidpoint`, `lerp`, `totalBoneLength`, `trackedJointCount`. The `XrHandJoint` / `XrHandedness` enums and `XrHandSkeleton` carry no `androidx.xr.arcore` dependency, so they are safe to use on a phone-only build.
 
-Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
+Sample: the Hands mode of the `ar-xr` demo ("Android XR (preview)", listed on Android XR devices; the retired `ar-hand-tracking` deep link opens it) renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
 
 ### XrFaceNode — face tracking (Slice 3)
 
@@ -3529,7 +3529,7 @@ The composable refreshes the face in a `SideEffect` (per recomposition) — reco
 
 **Threading:** `XrFaceNode.update()` writes only Filament `Node` transforms and decodes the mesh into plain arrays (no JNI resource creation) but, like every node mutation, MUST run on the main thread.
 
-**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the `ar-xr-face` demo renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
+**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the Face mode of the `ar-xr` demo (the retired `ar-xr-face` deep link opens it) renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
 
 **Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`, face mesh by `ARFaceTrackingConfiguration`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section ([#1904](https://github.com/sceneview/sceneview/issues/1904)).
 
@@ -4659,7 +4659,7 @@ Key facts:
 - Audio: add `setAudioSource(...)` / `setAudioEncoder(...)` to the `MediaRecorder` for mic audio (needs `RECORD_AUDIO` permission).
 - Don't confuse with **AR Recording & Playback** below: `ARRecorder` records an ARCore *dataset* MP4 (camera + sensor tracks, for session replay/debugging — virtual content is NOT in the video). `SurfaceMirrorer` records the *rendered* scene — the shareable video with virtual content composited.
 
-Sample: `VideoRecordingDemo` (Android demo registry id `video-recording`) — Record/Stop button over a rotating model, saves an MP4 to app files.
+Sample: `SceneRecorderState` (`samples/android-demo/.../recording/SceneRecorderState.kt`) — the shared Record action of the Android demo app's `DemoScaffold` (shown on `cosmos`; the retired `video-recording` id opens it), saves an MP4 to app files.
 
 ---
 
@@ -5874,71 +5874,63 @@ and surfaces in the Samples tab. This section is generated from the per-demo
 fragments under `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/`
 by `samples/android-demo/scripts/collate-demos.sh` — never edit between the markers (#1871).
 
-### View in 3D
+### Create & record
 
-- `model-viewer` — Models. Explore a model in 3D or in your room.
-- `splat-preview` — Real-World Scan. A tree stump and its raccoons, scanned with a phone.
-- `animation-physics` — Animation. Play character animations under cinematic camera shots.
-- `rolling-balls` — Rolling Balls. Drop, tilt and knock over a tray of balls.
-- `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
-- `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
-- `double-pendulum` — Double Pendulum. Explore two linked arms in chaotic motion.
+- `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
+- `lighting-lab` — Lighting Lab. See how light and reflections shape a model.
+- `materials` — Materials. Compare metal, glass, fabric and glow.
+- `lighting` — Lighting. Compare studio light, daylight and reflections.
+- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
+- `lines-paths` — Lines & Paths. Follow animated curves and paths.
+- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
+- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
+- `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
+- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
+
+### Developer tools
+
+- `ar-rerun` — Rerun AR Replay. Watch a real AR session rebuild itself in 3D.
+- `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
 
 ### Place in AR
 
 - `ar-splat-room` — Your Room, as a Dollhouse. The room you recorded, standing on your table as a miniature.
 - `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
-- `placement-scene` — One-Call AR. The same tap-to-place screen, in a single SDK call.
-- `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
-- `ar-plane-renderer-v2` — Plane Renderer V2. See floors, walls and ceilings as they are found.
-- `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
-- `ar-measure` — Measure. Add two points, read the distance.
 - `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
-- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
-- `ar-collaborative` — Collaborative AR. Place one object in two shared views.
 - `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
+- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
+- `ar-measure` — Measure. Add two points, read the distance.
+- `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
+- `ar-plane-renderer-v2` — Plane Renderer V2. Soft dots show each surface your phone finds.
 
-### Developer tools
+### View in 3D
 
-- `ar-rerun` — Rerun AR Replay. Watch a real AR session rebuild itself in 3D.
-- `ar-record-playback` — AR Recording. Record an AR session and replay it anywhere.
-- `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
-- `secondary-camera` — Secondary Camera (PiP). Add an independent camera inset to a 3D viewer.
-
-### Create & record
-
-- `materials` — Materials. Compare metal, glass, fabric and glow.
-- `lighting` — Lighting. Compare studio light, daylight and reflections.
-- `lighting-lab` — Lighting Lab. See how light and reflections shape a model.
-- `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
-- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
-- `lines-paths` — Lines & Paths. Follow animated curves and paths.
-- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
-- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `video-recording` — Scene to MP4. Record and share a moving 3D model.
-- `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
+- `splat-preview` — Real-World Scan. A tree stump and its raccoons, scanned with a phone.
+- `animation-physics` — Animation. Play character animations under cinematic camera shots.
+- `model-viewer` — Models. Explore a model in 3D or in your room.
+- `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
+- `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
+- `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 
 ### Understand the world
 
 - `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
-- `ar-image` — Image Tracking. Detect and track reference images.
-- `ar-image-stabilization` — Image Stabilization. Electronic stabilization of the AR feed.
-- `ar-body-tracker` — AR Body Tracker. Follow a person with a live skeleton.
-- `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
 - `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
-- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
-- `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
-- `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
-- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Explore the shape of your surroundings.
-- `ar-point-cloud` — Point Cloud. See the points your camera tracks.
-- `ar-scene-semantics` — Scene Semantics. Recognize parts of the outdoor scene.
-- `ar-ml-object-label` — ML Kit Object Labels. Recognize objects and label them in space.
+- `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
 - `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
+- `ar-body-tracker` — AR Body Tracker. Follow a person with a live skeleton.
+- `ar-scene-semantics` — Scene Semantics. Recognize parts of the outdoor scene.
+- `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
+- `ar-image` — Image Tracking. Detect and track reference images.
+- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
+- `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
+- `ar-point-cloud` — Point Cloud. See the points your camera tracks.
+- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Explore the shape of your surroundings.
+- `ar-ml-object-label` — ML Kit Object Labels. Recognize objects and label them in space.
+- `ar-image-stabilization` — Image Stabilization. Electronic stabilization of the AR feed.
 - `ar-scene-mesh` — Scene Geometry. Explore the shape of nearby buildings.
-- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
-- `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
+- `ar-xr` — Android XR (preview). Hand skeleton and face mesh on Android XR headsets.
 
 <!-- END GENERATED DEMOS -->
 

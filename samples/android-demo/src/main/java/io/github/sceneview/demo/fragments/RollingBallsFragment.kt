@@ -5,7 +5,10 @@ import androidx.compose.material.icons.filled.Workspaces
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.DemoMode
+import io.github.sceneview.demo.DemoModeHost
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.DoublePendulumDemo
 import io.github.sceneview.demo.demos.RollingBallsDemo
 
 /**
@@ -14,6 +17,8 @@ import io.github.sceneview.demo.demos.RollingBallsDemo
  * The tray of rubber, steel and foam balls was the Physics tab of `animation-physics`
  * until #4083 made it its own demo. The retired `physics` deep link routes here through
  * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
+ *
+ * Samples step 0 added `double-pendulum` as the Pendulum mode (`?tab=pendulum`).
  */
 object RollingBallsFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
@@ -25,11 +30,25 @@ object RollingBallsFragment : DemoFragment {
         order = 30,
         addedIn = "4.48.0",
         updatedIn = "4.51.0",
-        tags = setOf("physics", "rigid-body", "collision", "simulation", "tilt", "balls"),
+        tags = setOf(
+            "physics", "rigid-body", "collision", "simulation", "tilt", "balls",
+            "pendulum", "chaos", "kmp",
+        ),
     )
 
     @Composable
     override fun Screen(onBack: () -> Unit) {
-        RollingBallsDemo(onBack)
+        DemoModeHost(
+            modes = listOf(
+                DemoMode("balls", R.string.demo_mode_balls),
+                DemoMode("pendulum", R.string.demo_mode_pendulum),
+            ),
+            tabToMode = mapOf(0 to 0, 1 to 1),
+        ) { mode ->
+            when (mode) {
+                1 -> DoublePendulumDemo(onBack)
+                else -> RollingBallsDemo(onBack)
+            }
+        }
     }
 }

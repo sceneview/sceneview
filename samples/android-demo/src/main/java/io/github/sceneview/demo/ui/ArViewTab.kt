@@ -73,6 +73,7 @@ import io.github.sceneview.demo.common.placement.TapToPlaceExperience
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.ALL_DEMOS
+import io.github.sceneview.demo.rememberListedDemos
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.freshness
@@ -595,8 +596,9 @@ private fun ArLauncherScreen(
         // half the AR feature surface was hidden on this screen. Since #2239 split AR
         // across four catalogue sections the test is [isArDemo], not one category
         // equality.
-        val remainingArDemos = remember(featuredIds) {
-            ALL_DEMOS
+        val listedDemos = rememberListedDemos()
+        val remainingArDemos = remember(featuredIds, listedDemos) {
+            listedDemos
                 .filter { it.isArDemo }
                 .filterNot { it.id in featuredIds }
         }
@@ -683,9 +685,8 @@ private val FEATURED_AR_DEMOS = listOf(
         titleRes = R.string.featured_ar_cloud_anchor_title,
         subtitleRes = R.string.featured_ar_cloud_anchor_subtitle,
     ),
-    // #3463 — `ar-streetscape` became the second mode of the Scene Geometry card. The
-    // featured tile names the live id, not the retired one: the "All AR demos" grid below
-    // filters on ALL_DEMOS minus the featured ids, so a retired id here would have shown
+    // Featured tiles name live ids, never retired ones: the "All AR demos" grid below
+    // filters on the listed demos minus the featured ids, so a retired id here would show
     // the same demo twice under two different names.
     FeaturedArDemo(
         id = "ar-scene-mesh",
@@ -697,12 +698,9 @@ private val FEATURED_AR_DEMOS = listOf(
         titleRes = R.string.featured_ar_depth_occlusion_title,
         subtitleRes = R.string.featured_ar_depth_occlusion_subtitle,
     ),
-    FeaturedArDemo(
-        id = "ar-pose",
-        titleRes = R.string.featured_ar_pose_title,
-        subtitleRes = R.string.featured_ar_pose_subtitle,
-    ),
 )
+// Samples step 0 dropped the `ar-pose` tile: Free pose is a mode of `ar-placement`, which
+// the grid below already lists.
 
 @Composable
 private fun ArPermissionPlaceholder(granted: Boolean) {

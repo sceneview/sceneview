@@ -82,6 +82,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import io.github.sceneview.demo.ALL_DEMOS
+import io.github.sceneview.demo.rememberListedDemos
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
@@ -309,7 +310,7 @@ fun RootScreen(
                     )
                 } else {
                     HomeScreen(
-                        demos = ALL_DEMOS,
+                        demos = rememberListedDemos(),
                         selectedCategory = selectedCategory.ifEmpty { null },
                         onCategoryChange = { selectedCategory = it.orEmpty() },
                         query = query,

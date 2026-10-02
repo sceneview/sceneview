@@ -7,16 +7,15 @@ import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.demos.ARSceneGeometryDemo
+import io.github.sceneview.demo.demos.ARSceneMeshDemo
 
 /**
  * Append-only fragment for the `ar-scene-mesh` demo — the "Scene Geometry" card.
  * See [DemoFragment].
  *
- * #3463 folded the retired `ar-streetscape` demo in as this card's second mode. The id is
- * unchanged on purpose: it is a public deep-link surface and iOS ships a screen under the
- * same one. `ar-streetscape` resolves here through
- * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES] and lands on mode 1.
+ * #3463 folded the retired `ar-streetscape` demo in as this card's second mode; samples
+ * step 0 moved that mode to `ar-geospatial-anchors`, where the Geospatial anchors live, so
+ * this card is the classified mesh alone. The `ar-streetscape` link follows Streetscape.
  */
 object ArSceneMeshFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
@@ -27,18 +26,14 @@ object ArSceneMeshFragment : DemoFragment {
         icon = Icons.Filled.GridOn,
         order = 49,
         addedIn = "4.15.2",
-        tags = setOf(
-            "ar", "geospatial", "streetscape", "mesh", "terrain", "building", "classification",
-        ),
+        tags = setOf("ar", "geospatial", "mesh", "building", "classification"),
         // Requires an outdoor location with Street View coverage + a Cloud API key, which
-        // no CI device and no default build has. The `ar-streetscape` half carried the
-        // KnownIssue badge before the merge; the merged card keeps it, because the
-        // capability that could not be verified is still here.
+        // no CI device and no default build has, so nobody has verified it outdoors.
         status = DemoStatus.KnownIssue,
     )
 
     @Composable
     override fun Screen(onBack: () -> Unit) {
-        ARSceneGeometryDemo(onBack)
+        ARSceneMeshDemo(onBack)
     }
 }

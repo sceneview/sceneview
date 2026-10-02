@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strings for the `ar-hand-tracking` demo (registered by
-     `ArHandTrackingFragment.kt`). Android's resource merger
+     `ArXrFragment.kt`, Hands mode since samples step 0). Android's resource merger
      fans every `res/values/*.xml` file in, so `R.string.demo_ar_hand_tracking_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->

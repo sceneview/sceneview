@@ -24,7 +24,10 @@
 # every merged-in capability gets its own QA leg. That is why `fog`,
 # `gesture-feedback-preview`, `ar-terrain`, `ar-rooftop` and `ar-streetscape`
 # still appear below after #2239 / #3463 retired their cards: driving the
-# retired id is how the merged mode gets exercised. Flow entries:
+# retired id is how the merged mode gets exercised. Samples step 0 (2026-10-02)
+# retired nine more ids the same way (ar.yaml and advanced.yaml headers), so the
+# registry now holds 43 cards; `ar-xr` is reached through its `ar-hand-tracking`
+# and `ar-xr-face` legs. Flow entries:
 #   3d-basics.yaml ....... 5
 #   lighting.yaml ........ 5
 #   content.yaml ......... 2
@@ -32,7 +35,7 @@
 #   advanced.yaml ........ 14
 #   ar.yaml .............. 33
 #                          --
-#   Total entries ........ 63  (covering 49 registered demos, 63 capabilities)
+#   Total entries ........ 63  (covering 43 registered demos, 63 capabilities)
 #
 # Crash detection:
 #   - Per-demo: flows/demo.yaml asserts the "Navigate back" button is visible

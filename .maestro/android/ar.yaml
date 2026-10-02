@@ -12,11 +12,16 @@
 # on the Terrain and Rooftop modes respectively, so both capabilities keep their
 # own QA leg.
 #
-# `ar-streetscape` was folded into `ar-scene-mesh` — the "Scene Geometry" card,
-# Mesh / Streetscape modes (#3463). Same treatment: the `ar-streetscape` leg is
-# KEPT and drives the retired id, which ALIAS_INITIAL_TAB lands on the
-# Streetscape mode, while the `ar-scene-mesh` leg exercises the Mesh mode. Two
-# legs, two capabilities, one card — so the leg count is unchanged by the merge.
+# `ar-streetscape` was folded into `ar-scene-mesh` (#3463), then moved to the
+# Streetscape mode of `ar-geospatial-anchors` by samples step 0. Same treatment: the
+# `ar-streetscape` leg is KEPT and drives the retired id, which ALIAS_INITIAL_TAB
+# lands on the Streetscape mode, while the `ar-scene-mesh` leg exercises the mesh.
+#
+# Samples step 0 (2026-10-02) retired `ar-pose` and `placement-scene` (→ `ar-placement`,
+# Free pose and One call modes), `ar-record-playback` (→ `ar-rerun`, Session MP4 mode), `ar-collaborative`
+# (→ `ar-cloud-anchor`, Collaborative mode) and `ar-hand-tracking` / `ar-xr-face`
+# (→ `ar-xr`). Their legs are KEPT on the retired ids: each one proves its deep-link
+# alias still opens the mode that holds the old content.
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/ar.yaml
@@ -66,7 +71,7 @@ appId: io.github.sceneview.demo.qa
     file: flows/demo.yaml
     env:
       DEMO_ID: ar-streetscape
-      DEMO_NAME: AR Scene Geometry - Streetscape mode
+      DEMO_NAME: AR Geospatial Anchors - Streetscape mode
 - runFlow:
     file: flows/demo.yaml
     env:

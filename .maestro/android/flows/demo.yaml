@@ -4,7 +4,7 @@
 # `env:` block. It never appears in a flow runner by itself.
 #
 # Required parameters (passed by the caller):
-#   DEMO_ID    Stable demo id from ALL_DEMOS (e.g. "model-viewer", "ar-pose").
+#   DEMO_ID    Stable demo id from ALL_DEMOS (e.g. "model-viewer", "ar-placement").
 #   DEMO_NAME  Human label, used only for screenshot file naming / readable logs.
 #
 # Optional parameters:

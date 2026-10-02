@@ -184,11 +184,50 @@ internal object DeepLinkRouter {
         // (`Config.StreetscapeGeometryMode.ENABLED` +
         // `frame.getUpdatedTrackables(StreetscapeGeometry)`); the whole difference is
         // which node consumes the trackable — the classified `SceneMeshNode` or its raw
-        // `StreetscapeGeometryNode` base. The live id stays `ar-scene-mesh` because iOS
-        // ships a screen under it too. `ar-streetscape` pre-selects mode 1 (#2315 — see
-        // [ALIAS_INITIAL_TAB]).
-        "ar-streetscape" to "ar-scene-mesh",
+        // `StreetscapeGeometryNode` base. Samples step 0 then moved the Streetscape mode
+        // to `ar-geospatial-anchors`: the raw Streetscape trackables sit with the Geospatial
+        // anchors, and `ar-scene-mesh` keeps the classified `SceneMeshNode` alone.
+        "ar-streetscape" to "ar-geospatial-anchors",
+        // Samples step 0 — consolidation before any redesign (samples audit, 2026-10-02).
+        // Each retired card is a mode of the card that absorbed it; the mode is
+        // pre-selected through [ALIAS_INITIAL_TAB] when it is not the default one.
+        // `ar-pose` is the Free pose mode of `ar-placement`; `placement-scene`, the same
+        // flow as one `AutoPlacementScene` call, is its One call mode.
+        "ar-pose" to "ar-placement",
+        "placement-scene" to "ar-placement",
+        "secondary-camera" to "camera-gestures",
+        "double-pendulum" to "rolling-balls",
+        "ar-record-playback" to "ar-rerun",
+        "ar-collaborative" to "ar-cloud-anchor",
+        // The two Android XR cards became the Hands and Face modes of `ar-xr`.
+        "ar-hand-tracking" to "ar-xr",
+        "ar-xr-face" to "ar-xr",
+        // `video-recording` became the shared Record action of `DemoScaffold`; its link
+        // opens Cosmos with the Record pill shown ([ALIAS_OPENS_RECORD]).
+        "video-recording" to "cosmos",
     )
+
+    /**
+     * Ids removed from the catalogue with nothing that replaces them, mapped to the title
+     * they shipped under. Same contract as iOS `DemoDeepLinkRegistry.removedIds`: a printed QR
+     * code or a bookmark still resolves, and the user is told the truth — the demo is gone,
+     * not pending. [MainActivity] says so and stays on the home screen.
+     *
+     * `placement-reticle-preview` left Android in #3275 and iOS in samples step 0; links to
+     * it still come from iOS builds and docs that predate the removal.
+     */
+    val REMOVED_DEMO_IDS: Map<String, String> = mapOf(
+        "placement-reticle-preview" to "Placement reticle preview",
+    )
+
+    /** The title of a [REMOVED_DEMO_IDS] id, or `null` for any other id. Never throws. */
+    fun removedTitle(rawId: String?): String? = rawId?.trim()?.let { REMOVED_DEMO_IDS[it] }
+
+    /**
+     * Retired ids whose link opens the shared Record action of the card they now point to:
+     * `video-recording` was a card of its own until the Record action replaced it.
+     */
+    val ALIAS_OPENS_RECORD: Set<String> = setOf("video-recording")
 
     /**
      * Retired alias ids whose content lives on a **non-default** tab of the consolidated
@@ -221,10 +260,24 @@ internal object DeepLinkRouter {
         // default first mode, so it is deliberately absent: an absent entry means
         // "no pre-selection needed", which is exactly right for index 0.
         "ar-rooftop" to 1,
-        // ar-scene-mesh — [Mesh, Streetscape] (#3463). The Mesh mode is what the
-        // surviving `ar-scene-mesh` id already opened, so only the retired id needs
-        // an entry.
-        "ar-streetscape" to 1,
+        // ar-geospatial-anchors — launch tab 2 is the Streetscape mode since samples
+        // step 0 (tabs 0 and 1 stay Terrain and Rooftop inside the Anchors mode).
+        "ar-streetscape" to 2,
+        // Samples step 0. ar-placement — launch tab 2 is the Free pose mode (tabs 0 and 1
+        // stay the floor and wall placements inside the Place mode).
+        "ar-pose" to 2,
+        // ar-placement — launch tab 3 is the One call mode.
+        "placement-scene" to 3,
+        // camera-gestures — [Camera, PiP].
+        "secondary-camera" to 1,
+        // rolling-balls — [Balls, Pendulum].
+        "double-pendulum" to 1,
+        // ar-rerun — [Rerun, Session MP4].
+        "ar-record-playback" to 1,
+        // ar-cloud-anchor — [Cloud anchors, Collaborative].
+        "ar-collaborative" to 1,
+        // ar-xr — [Hands, Face]. `ar-hand-tracking` is the default mode, so it is absent.
+        "ar-xr-face" to 1,
     )
 
     /**
@@ -236,6 +289,15 @@ internal object DeepLinkRouter {
     val TAB_NAMES: Map<String, Map<String, Int>> = mapOf(
         // cosmos — [Starlight, Spacetime], the Star scene's two views.
         "cosmos" to mapOf("starlight" to 0, "spacetime" to 1),
+        // Samples step 0 — each consolidated card's modes, by the [DemoMode] key its pill uses.
+        // ar-placement — `wall` is the wall placement inside Place, the token iOS uses too.
+        "ar-placement" to mapOf("place" to 0, "wall" to 1, "free-pose" to 2, "one-call" to 3),
+        "camera-gestures" to mapOf("camera" to 0, "pip" to 1),
+        "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1),
+        "ar-rerun" to mapOf("rerun" to 0, "session-mp4" to 1),
+        "ar-cloud-anchor" to mapOf("cloud-anchors" to 0, "collaborative" to 1),
+        "ar-geospatial-anchors" to mapOf("anchors" to 0, "streetscape" to 2),
+        "ar-xr" to mapOf("hands" to 0, "face" to 1),
     )
 
     /**
@@ -256,27 +318,44 @@ internal object DeepLinkRouter {
      */
     val TABBED_DEMOS: Set<String> = setOf(
         "materials",
-        "ar-scene-mesh",
         "ar-placement",
         "model-viewer",
         "ar-geospatial-anchors",
         "lighting",
         "cosmos",
+        // Samples step 0 — the cards whose `DemoModeHost` reads the launch tab.
+        "camera-gestures",
+        "rolling-balls",
+        "ar-rerun",
+        "ar-cloud-anchor",
+        "ar-xr",
     )
 
-    /** Where an incoming link lands: the demo to open and the tab it should pre-select. */
-    data class Launch(val demoId: String?, val initialTab: Int?)
+    /**
+     * Where an incoming link lands: the demo to open, the tab it should pre-select, and
+     * whether it opens with the shared Record action shown ([ALIAS_OPENS_RECORD]).
+     */
+    data class Launch(val demoId: String?, val initialTab: Int?, val openRecord: Boolean = false)
 
     /**
      * Combines the validated [demoId] with the tab resolved by [resolveInitialTab] from
      * [rawId] and [tabParam]: a tab listed in [SPLIT_OUT_TABS] opens its new demo with no
-     * tab, and a tab for a demo outside [TABBED_DEMOS] is dropped. Never throws.
+     * tab, and a tab for a demo outside [TABBED_DEMOS] is dropped. A retired [rawId] that
+     * names no mode of its new home (absent from [ALIAS_INITIAL_TAB]) drops its tab too: that
+     * index counted the retired demo's own tabs, not the modes the absorbing demo has now
+     * (`physics?tab=1` must not open Rolling Balls on Pendulum). A [rawId] in
+     * [ALIAS_OPENS_RECORD] sets [Launch.openRecord]. Never throws.
      */
     fun resolveLaunch(demoId: String?, rawId: String?, tabParam: String?): Launch {
         if (demoId == null) return Launch(null, null)
-        val tab = resolveInitialTab(rawId, tabParam)
+        val retiredWithoutMode = rawId != demoId && rawId in DEMO_ID_ALIASES && rawId !in ALIAS_INITIAL_TAB
+        val tab = if (retiredWithoutMode) null else resolveInitialTab(rawId, tabParam)
         if (tab != null) SPLIT_OUT_TABS[demoId to tab]?.let { return Launch(it, null) }
-        return Launch(demoId, tab?.takeIf { demoId in TABBED_DEMOS })
+        return Launch(
+            demoId = demoId,
+            initialTab = tab?.takeIf { demoId in TABBED_DEMOS },
+            openRecord = rawId in ALIAS_OPENS_RECORD,
+        )
     }
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {
