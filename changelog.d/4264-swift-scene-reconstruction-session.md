@@ -3,4 +3,4 @@
 
 <!-- category: Changed -->
 <!-- breaking -->
-- **iOS: `SceneReconstructionNode.enableReconstruction` no longer draws RealityKit's `.showSceneUnderstanding` debug wireframe ([#4264](https://github.com/sceneview/sceneview/pull/4264)).** Pass `showDebugMeshOverlay: true` to keep it. A host that relied on the implicit overlay sees no wireframe after upgrading.
+- **iOS: `SceneReconstructionNode.enableReconstruction` no longer draws RealityKit's `.showSceneUnderstanding` debug wireframe ([#4264](https://github.com/sceneview/sceneview/pull/4264)).** Pass `showDebugMeshOverlay: true` to keep it. The function is now `@MainActor`: a Swift 6 caller outside the main actor needs an `await MainActor.run { … }`. A host that relied on the implicit overlay sees no wireframe after upgrading.
