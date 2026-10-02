@@ -216,6 +216,24 @@ Every other workflow (`ci`, `build-apks`, `device-qa`, `preview`,
 `render-tests`) builds **without** the config on purpose: they are the
 standing proof that the no-config path compiles and runs.
 
+Readable crash reports need two kinds of symbols, sent to both consoles:
+
+- **R8 mapping** (Java/Kotlin frames). Play reads it from the bundle
+  (`BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`), and
+  the Crashlytics plugin uploads it during the build, right after R8.
+- **Native symbols** (Filament, ARCore, MediaPipe frames). The release build
+  type sets `ndk.debugSymbolLevel = "FULL"`, so Play gets them from the bundle
+  too (`BUNDLE-METADATA/com.android.tools.build.debugsymbols/`). They never
+  reach devices, and extracting them needs the NDK, which CI runners have.
+  Crashlytics gets them only from an explicit
+  `./gradlew :samples:android-demo:uploadCrashlyticsSymbolFileRelease`, a
+  best-effort step of both deploy workflows. The app depends on
+  `firebase-crashlytics-ndk`, without which native crashes never reach
+  Crashlytics at all.
+
+Most of the native libraries ship pre-stripped (only their exported symbols are
+left), so their internal frames stay as offsets whatever the build does.
+
 Push campaigns go to the FCM topics `all` and `new_samples` (debug builds also
 join `qa`). The data payload carries `sample`, a sample id the notification
 opens, and `campaign`, reported in `push_opened`. An unknown sample id opens
