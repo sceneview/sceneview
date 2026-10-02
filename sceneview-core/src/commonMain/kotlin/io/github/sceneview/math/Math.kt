@@ -218,6 +218,9 @@ private const val POLAR_MAX_ITERATIONS = 20
  * axes. A left-handed basis (`det ≤ 0`) is a mirror rather than a rotation: `null` keeps
  * [quaternion]'s established finite best-effort result for it.
  */
+// The 3×3 algebra is unrolled into locals so the hot path allocates nothing, which makes the body
+// long; each early `null` is a distinct numerical guard (non-finite or non-positive determinant).
+@Suppress("LongMethod", "ReturnCount")
 private fun Mat4.polarQuaternionOrNull(): Quaternion? {
     // Column-major: element(row, column) lives at the corresponding component of x/y/z.
     var a00 = x.x
