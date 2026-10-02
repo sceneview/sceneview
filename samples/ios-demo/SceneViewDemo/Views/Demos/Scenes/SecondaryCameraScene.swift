@@ -7,6 +7,7 @@
 // @icon        pip
 // @order       22
 // @tags        camera,pip,multi-view,render-target
+// @addedIn     4.52.0
 import SwiftUI
 
 enum SecondaryCameraScene: DemoScene {
