@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -26,8 +27,10 @@ import io.github.sceneview.demo.R
  *
  * Firebase does not start with the process: the manifest removes `FirebaseInitProvider`, and
  * [FirebaseApp.initializeApp] runs only once collection is allowed (consent given in the EEA, the
- * UK and Switzerland; on by default elsewhere) or the user turned push on. Before that, no
- * Firebase component runs and nothing reaches Google — not even a Firebase Installations call.
+ * UK and Switzerland; on by default elsewhere) or the user turned push on. Except for push the
+ * user already turned on (FCM needs Firebase, and starts it before the consent is answered), no
+ * Firebase component runs before that and nothing reaches Google — not even a Firebase
+ * Installations call. A start without consent always has collection off ([initializeFirebase]).
  */
 object Telemetry {
 
@@ -300,7 +303,10 @@ object Telemetry {
         if (firebaseStarted || !firebaseAvailable) return
         val p = prefs ?: return
         if (!collecting && !p.notificationsEnabled && !p.pushDisablePending) return
-        val started = runCatching { FirebaseApp.getApps(app).firstOrNull() ?: FirebaseApp.initializeApp(app) }
+        val started = runCatching {
+            FirebaseApp.getApps(app).firstOrNull()
+                ?: initializeFirebase(app, collecting) { FirebaseApp.initializeApp(app) }
+        }
             .onFailure { Log.w(TAG, "Firebase failed to start", it) }
             .getOrNull() != null
         if (!started) return
@@ -318,6 +324,23 @@ object Telemetry {
             wanted = { notificationsEnabled },
             systemAllows = { systemAllowsNotifications(app) },
         )
+    }
+
+    /**
+     * Runs [initialize] (`FirebaseApp.initializeApp`), first clearing the collection flags Firebase
+     * saved earlier ([FirebaseLeftovers]) whenever this start must not collect.
+     *
+     * Not only after a consent-version change: an install that collected outside the zone, never
+     * answered, then moved inside it (a US phone on a French network) with push on still holds
+     * `measurement_enabled=true` and the Crashlytics flag. Left in place, Firebase would start
+     * collecting until [DemoAnalytics.setCollectionEnabled] turns it off — time enough for
+     * Crashlytics to send cached reports. Cleared, the manifest's "off" applies from the first
+     * instant, and the consent re-applies its own value right after.
+     */
+    @VisibleForTesting
+    internal fun <T> initializeFirebase(app: Context, collecting: Boolean, initialize: () -> T): T {
+        if (!collecting) FirebaseLeftovers.clear(app)
+        return initialize()
     }
 
     private fun createChannel(context: Context) {

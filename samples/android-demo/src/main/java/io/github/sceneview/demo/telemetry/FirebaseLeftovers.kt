@@ -14,10 +14,14 @@ import android.util.Log
  * is answered: Analytics would queue `app_update` and `session_start`, Crashlytics would upload
  * the crash reports cached by the old build.
  *
+ * This build persists them too, whenever collection is allowed outside the zone without an
+ * answer: the same leak follows if that install later counts as inside the zone.
+ *
  * Clearing them hands the decision back to the manifest (collection off, analytics_storage
- * denied) until [Telemetry] applies the consent. Runs on every consent-version migration, before
- * any [com.google.firebase.FirebaseApp.initializeApp]: a new consent version also takes back the
- * old answer. Key names checked against Analytics 23.2 and Crashlytics 20.1.
+ * denied) until [Telemetry] applies the consent. Runs on every consent-version migration (a new
+ * consent version also takes back the old answer) and before every
+ * [com.google.firebase.FirebaseApp.initializeApp] that must not collect
+ * ([Telemetry.initializeFirebase]). Key names checked against Analytics 23.2 and Crashlytics 20.1.
  */
 internal object FirebaseLeftovers {
 

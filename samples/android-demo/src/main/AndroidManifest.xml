@@ -115,9 +115,10 @@
              Prior consent (EEA, UK, Switzerland): Firebase does not start with the process.
              FirebaseInitProvider is removed, and Telemetry calls FirebaseApp.initializeApp
              only once collection is allowed (consent given, or outside the zone) or push is
-             turned on — so nothing, not even a Firebase Installations call, reaches Google
-             before the user answers. Collection is off by default and turned on at runtime
-             by FirebaseDemoAnalytics when the consent allows it.
+             turned on — so, except for push the user already turned on, nothing, not even a
+             Firebase Installations call, reaches Google before the user answers. Collection is
+             off by default (any value an earlier run saved is cleared before such a start) and
+             turned on at runtime by FirebaseDemoAnalytics when the consent allows it.
 
              No advertising identifier and no ad signals, ever: the demo shows no ads and
              Analytics is only used to see which demos people open. Consent mode defaults
