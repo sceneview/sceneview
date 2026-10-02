@@ -15,6 +15,12 @@
  *   sv.setBloom(true);
  *   sv.addLight({ type: "point", position: [2, 3, 0], color: [1, 0.9, 0.8] });
  *
+ * Transparent canvas, camera, render on demand:
+ *   const sv = await SceneView.create("canvas", { transparent: true, renderMode: "onDemand" });
+ *   await sv.loadModel("model.glb");
+ *   sv.frameModel({ fill: 0.8 }).setCameraOrbit({ angle: 0.6 });
+ *   sv.onFrame((canvas) => mirrorCtx.drawImage(canvas, 0, 0));
+ *
  * Powered by Filament.js v1.72.1 (Google's PBR renderer, WASM).
  * https://sceneview.github.io
  *
@@ -547,6 +553,14 @@
       // Base lights created by _createEngine — tracked so clearLights() can remove them
       this._baseLights = [];
 
+      // Render on demand: 'continuous' draws every animation frame while visible (the
+      // default); 'onDemand' parks the loop once nothing moves (see _isIdle) and
+      // requestRender() wakes it. Both share the single loop below and its visibility gate.
+      this._renderMode = "continuous";
+      this._pendingLoads = 0; // glTF texture decodes still landing (loadResources)
+      this._animationDone = false; // a non-looping animation reached its last frame
+      this._frameCallbacks = new Set(); // onFrame() listeners
+
       this._setupControls();
       this._setupResizeObserver();
       this._setupVisibilityGating();
@@ -642,9 +656,11 @@
       // returns: until onDone, a frame shows the geometry with no material
       // (a black silhouette). Redraw once they have all landed, so a viewer
       // parked off-screen does not keep that frame (#3690).
-      var self = this;
-      asset.loadResources(function() {
-        if (self._asset === asset) self._primeFrame();
+      // The pending count keeps an 'onDemand' loop awake until the decode finishes.
+      this._pendingLoads++;
+      asset.loadResources(() => {
+        this._pendingLoads = Math.max(0, this._pendingLoads - 1);
+        if (this._asset === asset) this.requestRender();
       });
       this._scene.addEntity(asset.getRoot());
       this._scene.addEntities(asset.getRenderableEntities());
@@ -662,42 +678,203 @@
       this._animationIndex = -1;
       this._animationPauseTime = -1;
 
-      // Auto-frame the model
-      try {
-        var bbox = asset.getBoundingBox();
-        var cx = (bbox.min[0] + bbox.max[0]) / 2;
-        var cy = (bbox.min[1] + bbox.max[1]) / 2;
-        var cz = (bbox.min[2] + bbox.max[2]) / 2;
-        var sx = bbox.max[0] - bbox.min[0];
-        var sy = bbox.max[1] - bbox.min[1];
-        var sz = bbox.max[2] - bbox.min[2];
-        var maxDim = Math.max(sx, sy, sz);
-        if (maxDim > 0) {
-          this._orbitTarget = [cx, cy, cz];
-          // Tighter framing than before (1.8x instead of 2.5x). The FOV is vertical,
-          // so a portrait canvas (phones) backs off to keep the width in frame too.
-          var frameCanvas = this._canvas;
-          var aspect = frameCanvas && frameCanvas.clientHeight > 0
-            ? frameCanvas.clientWidth / frameCanvas.clientHeight : 1;
-          this._orbitRadius = maxDim * 1.8 / Math.max(0.5, Math.min(1, aspect));
-          this._orbitHeight = cy;
-          // Scale the near plane and zoom limits with the model, so a 5 cm part is
-          // not clipped by a 10 cm near plane and a 100 m scene can still zoom out.
-          this._nearPlane = Math.min(0.1, this._orbitRadius / 100);
-          this._minRadius = Math.min(0.5, this._orbitRadius * 0.25);
-          this._maxRadius = Math.max(50, this._orbitRadius * 5);
-          if (frameCanvas && frameCanvas.height > 0) {
-            this._camera.setProjectionFov(
-              this._fov || 45, frameCanvas.width / frameCanvas.height, this._nearPlane, 1000,
-              Filament.Camera$Fov.VERTICAL
-            );
-          }
-        }
-      } catch (e) { /* use defaults */ }
+      this._animationDone = false;
+
+      // Auto-frame the model (default fill, unchanged since #3690)
+      this._frameAsset(asset);
+      this.requestRender();
     }
 
-    setAutoRotate(enabled) { this._autoRotate = enabled; this._wantsAutoRotate = enabled; return this; }
-    setCameraDistance(d) { this._orbitRadius = d; return this; }
+    /**
+     * Fit the orbit camera around an asset's bounding box: target its centre, set the
+     * radius so the model fills `fill` of the vertical field of view, and scale the near
+     * plane and zoom limits with the model. Without `fill` the historical on-load
+     * framing is kept (1.8 x the largest dimension). A portrait canvas backs off so the
+     * width stays in frame too, since the FOV is vertical.
+     *
+     * @param {Object} asset - a gltfio FilamentAsset
+     * @param {number} [fill] - fraction of the view height the model should cover, (0, 1]
+     * @returns {boolean} true when the asset had a non-empty bounding box
+     * @private
+     */
+    _frameAsset(asset, fill) {
+      try {
+        const bbox = asset.getBoundingBox();
+        const cx = (bbox.min[0] + bbox.max[0]) / 2;
+        const cy = (bbox.min[1] + bbox.max[1]) / 2;
+        const cz = (bbox.min[2] + bbox.max[2]) / 2;
+        const maxDim = Math.max(
+          bbox.max[0] - bbox.min[0],
+          bbox.max[1] - bbox.min[1],
+          bbox.max[2] - bbox.min[2]
+        );
+        if (!(maxDim > 0)) return false;
+        const k = fill > 0
+          ? 1 / (Math.min(fill, 1) * 2 * Math.tan(((this._fov || 45) * Math.PI) / 360))
+          : 1.8;
+        const canvas = this._canvas;
+        const aspect = canvas && canvas.clientHeight > 0
+          ? canvas.clientWidth / canvas.clientHeight : 1;
+        this._orbitTarget = [cx, cy, cz];
+        this._orbitRadius = (maxDim * k) / Math.max(0.5, Math.min(1, aspect));
+        this._orbitHeight = cy;
+        // Scale the near plane and zoom limits with the model, so a 5 cm part is
+        // not clipped by a 10 cm near plane and a 100 m scene can still zoom out.
+        this._nearPlane = Math.min(0.1, this._orbitRadius / 100);
+        this._minRadius = Math.min(0.5, this._orbitRadius * 0.25);
+        this._maxRadius = Math.max(50, this._orbitRadius * 5);
+        this._applyProjection();
+        return true;
+      } catch (_e) {
+        return false; // keep the current camera
+      }
+    }
+
+    /**
+     * Re-apply the vertical-FOV projection for the current canvas size, FOV and near
+     * plane. Used by resize, framing and setCameraOrbit({ fov }).
+     * @private
+     */
+    _applyProjection() {
+      const canvas = this._canvas;
+      if (!canvas || !(canvas.height > 0)) return;
+      this._camera.setProjectionFov(
+        this._fov || 45, canvas.width / canvas.height, this._nearPlane || 0.1, 1000,
+        Filament.Camera$Fov.VERTICAL
+      );
+    }
+
+    setAutoRotate(enabled) { this._autoRotate = enabled; this._wantsAutoRotate = enabled; return this.requestRender(); }
+    setCameraDistance(d) { this._orbitRadius = d; return this.requestRender(); }
+
+    /**
+     * Read the orbit camera. The eye sits at
+     * (target.x + sin(angle) * radius, height, target.z + cos(angle) * radius) and looks
+     * at `target`; `height` is an absolute world Y.
+     *
+     * @returns {{angle: number, height: number, radius: number, target: number[], fov: number}}
+     *   a copy: mutating it does not move the camera
+     */
+    getCameraOrbit() {
+      return {
+        angle: this._angle,
+        height: this._orbitHeight,
+        radius: this._orbitRadius,
+        target: this._orbitTarget.slice(),
+        fov: this._fov || 45,
+      };
+    }
+
+    /**
+     * Move the orbit camera. Every field is optional; omitted or invalid ones keep their
+     * current value. Cancels drag inertia but leaves auto-rotate as it is (call
+     * setAutoRotate(false) to hold a pose). Redraws even when the loop is parked.
+     *
+     * @param {Object} orbit
+     * @param {number} [orbit.angle] - azimuth in radians around the target's Y axis
+     * @param {number} [orbit.height] - eye height, absolute world Y
+     * @param {number} [orbit.radius] - horizontal distance from the target, > 0
+     * @param {number[]} [orbit.target] - [x, y, z] point the camera looks at
+     * @param {number} [orbit.fov] - vertical field of view in degrees, (0, 180)
+     * @returns {SceneViewInstance} this (for chaining)
+     */
+    setCameraOrbit(orbit) {
+      const o = orbit || {};
+      if (Number.isFinite(o.angle)) this._angle = o.angle;
+      if (Number.isFinite(o.height)) this._orbitHeight = o.height;
+      if (Number.isFinite(o.radius) && o.radius > 0) this._orbitRadius = o.radius;
+      if (Array.isArray(o.target) && o.target.length >= 3 && o.target.slice(0, 3).every(Number.isFinite)) {
+        this._orbitTarget = [o.target[0], o.target[1], o.target[2]];
+      }
+      if (Number.isFinite(o.fov) && o.fov > 0 && o.fov < 180) {
+        this._fov = o.fov;
+        this._applyProjection();
+      }
+      this._velocityAngle = 0;
+      this._velocityHeight = 0;
+      return this.requestRender();
+    }
+
+    /**
+     * Frame the loaded model: target its bounding-box centre and set the radius so its
+     * largest bounding-box dimension covers `fill` of the view height. The camera height goes to the model centre;
+     * angle and auto-rotate are untouched. Without `fill`, the on-load framing is reused.
+     * No-op before a model is loaded.
+     *
+     * @param {Object} [options]
+     * @param {number} [options.fill] - fraction of the view height to fill, (0, 1]; e.g. 0.8
+     * @returns {SceneViewInstance} this (for chaining)
+     */
+    frameModel(options) {
+      const fill = options && Number.isFinite(options.fill) ? options.fill : undefined;
+      if (this._asset) this._frameAsset(this._asset, fill);
+      this._velocityAngle = 0;
+      this._velocityHeight = 0;
+      return this.requestRender();
+    }
+
+    /**
+     * Choose when frames are drawn.
+     * - 'continuous' (default): every animation frame while the canvas is visible.
+     * - 'onDemand': only while something moves (auto-rotate, drag, inertia, a playing
+     *   animation, textures still decoding, a video quad), then the loop parks until
+     *   requestRender(), an input event, a camera call or a scene change wakes it.
+     * Both modes still stop off-screen and in hidden tabs.
+     *
+     * @param {'continuous'|'onDemand'} mode
+     * @returns {SceneViewInstance} this (for chaining)
+     */
+    setRenderMode(mode) {
+      if (mode !== 'continuous' && mode !== 'onDemand') {
+        console.warn(`SceneView: unknown renderMode "${mode}", expected 'continuous' or 'onDemand'`);
+        return this;
+      }
+      this._renderMode = mode;
+      return this.requestRender();
+    }
+
+    /**
+     * Ask for a redraw. In 'onDemand' mode this wakes the parked loop for at least one
+     * frame; in 'continuous' mode it is a no-op while the loop runs. Off-screen, one
+     * frame is still drawn so the canvas is current when it scrolls back in.
+     * Coalesced: several calls in the same task draw once.
+     *
+     * @returns {SceneViewInstance} this (for chaining)
+     */
+    requestRender() {
+      if (!this._running || this._rafId !== null) return this;
+      if (this._shouldRender()) this._startRenderLoop();
+      else this._primeFrame(true);
+      return this;
+    }
+
+    /**
+     * Run `callback(canvas)` after every drawn frame, synchronously, while the WebGL
+     * drawing buffer still holds the image: the place to copy the canvas elsewhere
+     * (a reflection, a thumbnail) with drawImage. Errors are caught and logged.
+     *
+     * @param {function(HTMLCanvasElement): void} callback
+     * @returns {function(): void} call it to unsubscribe
+     */
+    onFrame(callback) {
+      if (typeof callback !== 'function') return () => {};
+      this._frameCallbacks.add(callback);
+      return () => { this._frameCallbacks.delete(callback); };
+    }
+
+    /**
+     * True when an 'onDemand' loop has nothing left to animate.
+     * @private
+     */
+    _isIdle() {
+      if (this._autoRotate || this._isDragging) return false;
+      if (this._velocityAngle !== 0 || this._velocityHeight !== 0) return false;
+      if (this._pendingLoads > 0) return false;
+      // Video quads are not listed: each new video frame calls requestRender itself.
+      if (this._animator && this._animationIndex >= 0 && this._animationPauseTime < 0
+          && (this._animationLoop || !this._animationDone)) return false;
+      return true;
+    }
 
     /**
      * Set camera manipulator type.
@@ -712,7 +889,7 @@
         this._orbitHeight = this._orbitTarget[1] + this._orbitRadius;
         this._angle = 0;
       }
-      return this;
+      return this.requestRender();
     }
 
     /**
@@ -738,7 +915,7 @@
           } catch (e) {
             console.warn('SceneView: loadEnvironment failed', e);
           }
-          return self;
+          return self.requestRender();
         });
     }
 
@@ -759,12 +936,12 @@
       } catch (e) {
         console.warn('SceneView: setEnvironmentSH failed', e);
       }
-      return this;
+      return this.requestRender();
     }
 
     setBackgroundColor(r, g, b, a) {
       this._renderer.setClearOptions({ clearColor: [r, g, b, a !== undefined ? a : 1], clear: true });
-      return this;
+      return this.requestRender();
     }
 
     // ---------------------------------------------------------------
@@ -794,7 +971,7 @@
           this._view.setAntiAliasing(Filament.View$AntiAliasing.FXAA);
         }
       } catch (e) { console.warn('SceneView: setQuality not supported', e); }
-      return this;
+      return this.requestRender();
     }
 
     /**
@@ -819,7 +996,7 @@
           });
         }
       } catch (e) { console.warn('SceneView: setBloom not supported', e); }
-      return this;
+      return this.requestRender();
     }
 
     /**
@@ -869,6 +1046,7 @@
 
       builder.build(this._engine, entity);
       this._scene.addEntity(entity);
+      this.requestRender();
       return entity;
     }
 
@@ -1205,7 +1383,7 @@
       } else {
         this._billboards.delete(entity);
       }
-      return this;
+      return this.requestRender();
     }
 
     /**
@@ -1408,6 +1586,7 @@
           this._updateQuadTexture(entity, canvas);
         }
       }
+      this.requestRender();
     }
 
     // ---------------------------------------------------------------
@@ -1537,6 +1716,7 @@
             self._billboards.add(entityId);
           }
 
+          self.requestRender();
           resolve(entityId);
         } catch (e) {
           reject(e);
@@ -1579,6 +1759,7 @@
       // Remove from tracking
       this._billboards.delete(entity);
       this._mediaNodes.delete(entity);
+      this.requestRender();
     }
 
     // ---------------------------------------------------------------
@@ -1656,6 +1837,7 @@
         self._velocityAngle = 0;
         self._velocityHeight = 0;
         if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
+        self.requestRender();
       });
       this._addListener(canvas, 'mousemove', function(e) {
         if (!self._isDragging) return;
@@ -1666,18 +1848,19 @@
         self._angle -= dx;
         self._orbitHeight += dy;
         self._lastMouse = { x: e.clientX, y: e.clientY };
+        self.requestRender();
       });
       this._addListener(canvas, 'mouseup', function() {
         self._isDragging = false;
         // Resume auto-rotate after 3s idle (like model-viewer)
         if (self._wantsAutoRotate) {
-          self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
+          self._autoRotateTimer = setTimeout(() => { self._autoRotate = true; self.requestRender(); }, 3000);
         }
       });
       this._addListener(canvas, 'mouseleave', function() {
         self._isDragging = false;
         if (self._wantsAutoRotate) {
-          self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
+          self._autoRotateTimer = setTimeout(() => { self._autoRotate = true; self.requestRender(); }, 3000);
         }
       });
 
@@ -1685,6 +1868,7 @@
         e.preventDefault();
         self._orbitRadius *= (1 + e.deltaY * 0.001);
         self._orbitRadius = Math.max(self._minRadius || 0.5, Math.min(self._maxRadius || 50, self._orbitRadius));
+        self.requestRender();
       }, { passive: false });
 
       this._addListener(canvas, 'touchstart', function(e) {
@@ -1695,6 +1879,7 @@
           self._velocityAngle = 0;
           self._velocityHeight = 0;
           if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
+          self.requestRender();
         }
       });
       this._addListener(canvas, 'touchmove', function(e) {
@@ -1707,11 +1892,12 @@
         self._angle -= dx;
         self._orbitHeight += dy;
         self._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        self.requestRender();
       }, { passive: false });
       this._addListener(canvas, 'touchend', function() {
         self._isDragging = false;
         if (self._wantsAutoRotate) {
-          self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
+          self._autoRotateTimer = setTimeout(() => { self._autoRotate = true; self.requestRender(); }, 3000);
         }
       });
     }
@@ -1768,11 +1954,9 @@
         canvas.width = canvas.clientWidth * dpr;
         canvas.height = canvas.clientHeight * dpr;
         self._view.setViewport([0, 0, canvas.width, canvas.height]);
-        self._camera.setProjectionFov(
-          self._fov || 45, canvas.width / canvas.height, self._nearPlane || 0.1, 1000,
-          Filament.Camera$Fov.VERTICAL
-        );
-        // Resizing clears the drawing buffer: redraw if the loop is parked.
+        self._applyProjection();
+        // Resizing clears the drawing buffer: redraw now if the loop is parked
+        // (off-screen, or idle in 'onDemand' mode), synchronously to avoid a blank flash.
         self._primeFrame();
       });
       this._resizeObserver.observe(this._canvas);
@@ -1810,7 +1994,12 @@
         // Drive glTF animation playback (if any)
         self._updateAnimator();
 
-        self._drawFrame();
+        // 'onDemand': park once a frame is on screen and nothing moves any more.
+        // requestRender() (input, camera and scene calls) re-arms the loop.
+        if (self._drawFrame() && self._renderMode === 'onDemand' && self._isIdle()) {
+          self._rafId = null;
+          return;
+        }
         self._rafId = requestAnimationFrame(render);
       }
       self._rafId = requestAnimationFrame(render);
@@ -1860,6 +2049,7 @@
         if (self._renderer.beginFrame(self._swapChain)) {
           self._renderer.renderView(self._view);
           self._renderer.endFrame();
+          self._emitFrame();
           return true;
         }
       } catch (e) {
@@ -1868,6 +2058,22 @@
         self._running = false;
       }
       return false;
+    }
+
+    /**
+     * Hand the just-drawn canvas to onFrame() listeners. Runs in the same task as the
+     * draw, so drawImage(canvas) still sees the frame (no preserveDrawingBuffer).
+     * @private
+     */
+    _emitFrame() {
+      if (this._frameCallbacks.size === 0) return;
+      for (const callback of this._frameCallbacks) {
+        try {
+          callback(this._canvas);
+        } catch (e) {
+          console.error('SceneView: onFrame callback failed', e);
+        }
+      }
     }
 
     /**
@@ -1880,9 +2086,13 @@
      * frame pays for the shader compile and texture upload at the moment the
      * reader arrives. One frame once the model, the IBL or the canvas size
      * changes keeps the canvas current at the cost of a single draw. It never
-     * re-arms the loop: the gate still decides when rendering runs.
+     * re-arms the loop: the gate still decides when rendering runs. Also redraws a
+     * loop parked by 'onDemand' mode after a resize.
+     *
+     * @param {boolean} [deferred=false] - draw on the next animation frame instead of
+     *   now, so several requestRender() calls in one task draw once
      */
-    _primeFrame() {
+    _primeFrame(deferred) {
       var self = this;
       if (self._primeRafId) return;  // a retry is already queued
       var attempts = 0;
@@ -1896,7 +2106,8 @@
           self._primeRafId = requestAnimationFrame(attempt);
         }
       }
-      attempt();
+      if (deferred) self._primeRafId = requestAnimationFrame(attempt);
+      else attempt();
     }
 
     // ---------------------------------------------------------------
@@ -1939,6 +2150,7 @@
         });
         this._mediaNodes.clear();
       }
+      this.requestRender();
     }
 
     // ---------------------------------------------------------------
@@ -1972,7 +2184,8 @@
       this._animationLoop = loop !== false; // default true
       this._animationStart = performance.now();
       this._animationPauseTime = -1;
-      return this;
+      this._animationDone = false;
+      return this.requestRender();
     }
 
     /**
@@ -1982,7 +2195,7 @@
     stopAnimation() {
       this._animationIndex = -1;
       this._animationPauseTime = -1;
-      return this;
+      return this.requestRender();
     }
 
     /** @private Drive the animator from the render loop. */
@@ -2000,6 +2213,7 @@
             t = t - Math.floor(t / dur) * dur;
           } else if (t > dur) {
             t = dur;
+            this._animationDone = true; // lets an 'onDemand' loop park on the last pose
           }
         }
         this._animator.applyAnimation(this._animationIndex, t);
@@ -2022,7 +2236,7 @@
      */
     removeLight(entity) {
       try { this._scene.remove(entity); } catch (e) { /* ignore */ }
-      return this;
+      return this.requestRender();
     }
 
     /**
@@ -2045,7 +2259,7 @@
       }
       // Also drop IBL so the user-provided lights dominate
       try { this._scene.setIndirectLight(null); } catch (e) { /* ignore */ }
-      return this;
+      return this.requestRender();
     }
 
     /**
@@ -2291,6 +2505,7 @@
         this._scene.addEntity(asset.getRoot());
         this._scene.addEntities(asset.getRenderableEntities());
         this._primitiveAssets.push(asset);
+        this.requestRender();
         return asset;
       } catch (e) {
         console.warn('SceneView: createPrimitive error', e);
@@ -2327,7 +2542,11 @@
     canvas.width = cssW * dpr;
     canvas.height = cssH * dpr;
 
-    var engine = Filament.Engine.create(canvas);
+    // transparent: an alpha WebGL context, so the page shows through cleared pixels.
+    var transparent = options.transparent === true;
+    var engine = transparent
+      ? Filament.Engine.create(canvas, { alpha: true })
+      : Filament.Engine.create(canvas);
     var scene = engine.createScene();
     var renderer = engine.createRenderer();
     var cameraEntity = Filament.EntityManager.get().create();
@@ -2338,8 +2557,14 @@
     view.setCamera(camera);
     view.setScene(scene);
     view.setViewport([0, 0, canvas.width, canvas.height]);
+    if (transparent) {
+      // Blend the view over a transparent clear instead of writing opaque pixels.
+      try { view.setBlendMode(Filament.View$BlendMode.TRANSLUCENT); } catch (_e) { /* older Filament */ }
+      // Temporal dithering writes noise into the alpha channel: a speckled halo on the page.
+      try { view.setDithering(Filament.View$Dithering.NONE); } catch (_e) { /* older Filament */ }
+    }
 
-    var bg = options.backgroundColor || [0.05, 0.06, 0.1, 1.0];
+    var bg = options.backgroundColor || (transparent ? [0, 0, 0, 0] : [0.05, 0.06, 0.1, 1.0]);
     renderer.setClearOptions({ clearColor: bg, clear: true });
 
     var fov = options.fov || 45;
@@ -2401,11 +2626,11 @@
           console.warn('SceneView: createIblFromKtx1 failed, using SH fallback', e);
           _applySyntheticIBL(engine, scene);
         }
-        if (instance) instance._primeFrame();
+        if (instance) instance.requestRender();
       })
       .catch(function() {
         _applySyntheticIBL(engine, scene);
-        if (instance) instance._primeFrame();
+        if (instance) instance.requestRender();
       });
 
     var loader = engine.createAssetLoader();
@@ -2415,6 +2640,7 @@
     instance._baseLights = [sun, fill, back];
 
     if (options.autoRotate === false) instance.setAutoRotate(false);
+    if (options.renderMode !== undefined) instance.setRenderMode(options.renderMode);
 
     return instance;
   }
@@ -2442,6 +2668,23 @@
     } catch (e) { /* skip */ }
   }
 
+  /**
+   * Create a viewer on a canvas.
+   *
+   * @param {string|HTMLCanvasElement} canvasOrId - canvas element or its id
+   * @param {Object} [options]
+   * @param {boolean} [options.transparent=false] - alpha canvas: cleared pixels show the
+   *   page behind it (backgroundColor defaults to [0, 0, 0, 0])
+   * @param {number[]} [options.backgroundColor] - clear colour [r, g, b, a], 0-1
+   * @param {'continuous'|'onDemand'} [options.renderMode='continuous'] - see setRenderMode()
+   * @param {boolean} [options.autoRotate=true] - orbit slowly until the user drags
+   * @param {number} [options.fov=45] - vertical field of view in degrees
+   * @param {string} [options.iblUrl] - KTX1 environment for image-based lighting
+   * @param {number} [options.iblIntensity=40000]
+   * @param {number} [options.lightIntensity=110000] - key (sun) light
+   * @param {number} [options.initTimeoutMs=15000] - engine-init watchdog, <= 0 disables it
+   * @returns {Promise<SceneViewInstance>}
+   */
   function create(canvasOrId, options) {
     options = options || {};
     // Engine-init watchdog (#2563): Filament.init only takes a success callback,
