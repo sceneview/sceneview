@@ -91,8 +91,10 @@ fun StreetscapeGeometry.Type.toMeshClassification(): MeshClassification = when (
  *
  * ### Rendering
  *
- * The mesh is built once in [StreetscapeGeometryNode]'s constructor; subsequent [update] calls
- * only refresh the node's world [pose]. For classification-driven colour coding, pass a different
+ * The mesh is built in [StreetscapeGeometryNode]'s constructor, with a bounding box computed from
+ * its vertices; subsequent [update] calls refresh the node's world [pose] and rebuild the mesh
+ * only if ARCore changed its vertex or index count. An empty mesh builds no renderable
+ * ([meshNode] is `null`). For classification-driven colour coding, pass a different
  * [meshMaterialInstance] per geometry type or use the [classification] property after construction.
  *
  * ### Threading
@@ -139,8 +141,10 @@ open class SceneMeshNode(
     val classification: MeshClassification = streetscapeGeometry.type.toMeshClassification()
 
     init {
-        // Invoke the per-face callback synchronously during construction — the mesh is built once
-        // in StreetscapeGeometryNode's constructor so all face data is already available here.
+        // Invoke the per-face callback synchronously during construction — StreetscapeGeometryNode's
+        // constructor has already built the mesh (with a bounding box computed from its vertices,
+        // or no renderable at all when it is empty), so all face data is available here. A later
+        // rebuild on a geometry update does not re-invoke the callback.
         // On ARCore every face carries the same geometry-level classification; the per-face
         // signature matches ARKit's ARMeshGeometry.classificationOf(faceWithIndex:) for parity.
         if (onClassifiedFace != null) {

@@ -1801,8 +1801,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param primitiveType    How vertices are interpreted (TRIANGLES, LINES, POINTS, etc.).
      * @param vertexBuffer     The GPU vertex buffer.
      * @param indexBuffer      The GPU index buffer.
-     * @param boundingBox      Optional bounding box for culling. When `null` (default), culling is
-     *                         disabled and Filament auto-computes the bounding box.
+     * @param boundingBox      Optional bounding box, in local space. Pass one whenever the vertices
+     *                         are known. When `null` (default), Filament computes none: culling,
+     *                         shadow casting and shadow receiving are all disabled.
      * @param materialInstance Optional material to apply to the mesh.
      * @param apply            Additional configuration on the [MeshNodeImpl].
      * @param content          Optional child nodes.
