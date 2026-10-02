@@ -134,6 +134,30 @@ downloads it on first use and checks its SHA-256. Only the Small variant is
 Apache-2.0; the Base, Large and Giant variants are CC-BY-NC-4.0 and must not be
 used with SceneView.
 
+--------------------------------------------------------------------------------
+Website fonts and icons  —  website-static/assets/
+--------------------------------------------------------------------------------
+
+The website self-hosts these fonts, under the SIL Open Font License 1.1:
+
+  - Geist, Copyright 2024 The Geist Project Authors
+    (https://github.com/vercel/geist-font), license in fonts/geist/OFL.txt.
+  - JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors
+    (https://github.com/JetBrains/JetBrainsMono), license in
+    fonts/jetbrains-mono/OFL.txt.
+  - Inter, Copyright 2020 The Inter Project Authors
+    (https://github.com/rsms/inter).
+  - Plus Jakarta Sans, Copyright 2020 The Plus Jakarta Sans Project Authors
+    (https://github.com/tokotype/PlusJakartaSans).
+
+The full OFL text is at https://openfontlicense.org. The fonts are served as
+downloaded from Google Fonts, without modification.
+
+Material Symbols Outlined, Copyright Google LLC, Apache License 2.0
+(https://github.com/google/material-design-icons): the icon font in
+fonts/material-symbols/ and the ms-* symbols of icons.svg, which reproduce the
+24 px drawings of the same icons.
+
 ================================================================================
 
 3D models shipped with the samples, documentation and website are third-party

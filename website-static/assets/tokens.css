@@ -1,0 +1,180 @@
+/* SceneView site — design tokens (prototype, direction "Stage").
+ * Dark is the reference theme; light is derived and measured separately.
+ * Every ratio quoted here is WCAG 2.x relative luminance, measured
+ * (table and method in the design doc site-wow.md, "Couleurs").
+ * The stage (3D studio) follows the theme; code blocks stay dark in both themes
+ * (decision of the 2026-10-02 review). */
+
+:root {
+  /* ── Type ─────────────────────────────────────────────── */
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --fs-display: clamp(2.5rem, 1.4rem + 4.6vw, 5.25rem);  /* 40 → 84 */
+  --fs-h1: clamp(2.25rem, 1.6rem + 2.8vw, 3.75rem);      /* 36 → 60 */
+  --fs-h2: clamp(1.875rem, 1.4rem + 2vw, 3rem);          /* 30 → 48 */
+  --fs-h3: clamp(1.25rem, 1.1rem + .6vw, 1.5rem);        /* 20 → 24 */
+  --fs-lead: clamp(1.0625rem, 1rem + .35vw, 1.3125rem);  /* 17 → 21 */
+  --fs-body: 1rem;                                       /* 16 */
+  --fs-small: .875rem;                                   /* 14 */
+  --fs-micro: .75rem;                                    /* 12, mono labels only */
+  --lh-tight: 1.02;
+  --lh-head: 1.12;
+  --lh-body: 1.6;
+  --tracking-display: -0.045em;
+  --tracking-head: -0.03em;
+  --tracking-label: 0.08em;
+
+  /* ── Space (4-pt) ─────────────────────────────────────── */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px;
+  --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 96px; --s-10: 128px;
+  --gutter: clamp(16px, 4vw, 40px);           /* 16 px at 375 */
+  --content-max: 1280px;           /* one container for header, sections and footer */
+  --wide-max: 1360px;
+  --section-y: clamp(64px, 7vw, 112px);
+  --header-h: 64px;
+
+  /* ── Shape ────────────────────────────────────────────── */
+  --r-xs: 8px; --r-sm: 12px; --r-md: 16px; --r-lg: 24px; --r-xl: 32px; --r-full: 999px;
+
+  /* ── Motion ───────────────────────────────────────────── */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);          /* expo-out: reveals, sheets */
+  --ease-inout: cubic-bezier(.65, 0, .35, 1);       /* camera moves, cross-fades */
+  --ease-spring: linear(0, .009, .035 2.1%, .141 4.4%, .723 12.9%, .938 16.7%, 1.017 20.5%, 1.043 24.5%, 1.035 28.4%, 1.007 36.1%, .997 45.4%, 1);
+  --d-fast: 140ms; --d-base: 220ms; --d-slow: 420ms; --d-reveal: 700ms; --d-stage: 1100ms;
+
+  /* ── Code (dark in both themes) ───────────────────────── */
+  --code-bg: #0C1017;
+  --code-fg: #DCE3EE;
+  --code-surface: #1C2230;
+  --code-muted: #8D97A8;      /* 6.1:1 on code-bg */
+  --code-accent: #8AB4FF;     /* 9.1:1 on code-bg — selected tab underline */
+  --code-edge: #6B7791;       /* 4.2:1 on code-bg — control edges inside code */
+  --syn-key: #C3A6FF; --syn-fn: #8AB4FF; --syn-str: #FFB86B; --syn-num: #5BD49A; --syn-com: #7F8A9C;
+}
+
+/* ── Dark (reference) ────────────────────────────────────── */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #07090D;
+  --surface-1: #1C2230;   /* card            1.25:1 vs bg */
+  --surface-2: #262E3D;   /* card on card    1.46:1 vs bg, 1.17:1 vs s1 + hairline */
+  --surface-3: #303A4C;   /* chip / field    1.74:1 vs bg */
+  --hairline: #3A4456;    /* decorative only 2.03 bg · 1.62 s1 — never the sole edge of a control */
+  --outline: #6B7791;     /* control edge    4.43 bg · 3.54 s1 · 3.03 s2 */
+  --text: #F3F5F9;        /* 18.3 bg · 14.6 s1 · 10.5 s3 */
+  --text-2: #B4BCCB;      /* 10.4 bg · 8.3 s1 · 6.0 s3 */
+  --text-3: #8D97A8;      /*  6.8 bg · 5.4 s1 · 4.6 s2 — never on s3 (3.9) */
+  --accent: #8AB4FF;      /*  9.5 bg · 7.6 s1 · 5.5 s3 — links, focus */
+  --accent-fill: #8AB4FF; /* primary button fill */
+  --on-accent: #06080C;   /*  9.5 on accent-fill */
+  --warm: #FFB86B;        /* 11.7 bg · 9.3 s1 — highlight in code, "live" dot */
+  --ok: #5BD49A;          /* 10.8 bg · 8.6 s1 — status Stable */
+  --alpha: #F5C66B;       /* 12.5 bg · 10.0 s1 — status Alpha */
+  --glow-a: rgba(91, 140, 255, .16);
+  --glow-b: rgba(255, 184, 107, .10);
+  --shadow-1: 0 1px 0 rgba(255,255,255,.04) inset, 0 12px 32px -12px rgba(0,0,0,.6);
+  --shadow-2: 0 1px 0 rgba(255,255,255,.06) inset, 0 32px 80px -24px rgba(0,0,0,.75);
+  --header-glass: rgba(7, 9, 13, .72);
+  /* Stage — a dark studio: cyclorama wall, floor with a light pool,
+   * contact shadow and reflection (site.css .studio). */
+  --stage-bg: #07090D;
+  --stage-wall: #161D2B;      /* backdrop light pool behind the object */
+  --stage-floor: #0B0F17;
+  --stage-floor-hi: #1B2333;  /* light pool on the floor */
+  --stage-grid: rgba(170, 190, 240, .20);
+  --stage-shadow: 0, 0, 0;    /* rgb triplet, alpha set per layer */
+  --stage-shadow-a: .9;
+  --stage-reflect: .26;
+  --stage-fg: #F3F5F9;        /* 18.3:1 on stage-bg, 14.9 on stage-wall */
+  --stage-fg-2: #B4BCCB;      /* 10.4:1 on stage-bg, 8.5 on stage-wall */
+  --stage-key: #FFB86B;
+  --stage-rim: #5B8CFF;
+  --stage-chip: rgba(28, 34, 48, .72);           /* glass chip over the 3D */
+  --stage-chip-border: rgba(255, 255, 255, .40); /* 3.8:1 on the chip, 3.7:1 on stage */
+  --stage-nav: rgba(7, 9, 13, .0);
+  --display-grad: linear-gradient(100deg, #F3F5F9 10%, #FFD3A1 55%, #8AB4FF 95%);
+}
+
+/* ── Light ────────────────────────────────────────────────────
+ * Follows the OS unless the visitor picked a theme (data-theme on <html>).
+ * :root:not([data-theme="dark"]) is (0,2,0), so it beats the bare :root above. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #F5F6F8;
+    --surface-1: #FFFFFF;   /* lifted by hairline + shadow, not by tone */
+    --surface-2: #ECEFF3;
+    --surface-3: #E1E5EB;
+    --hairline: #C9D0DA;    /* decorative only 1.44 bg · 1.55 white */
+    --outline: #737D8F;     /* control edge 3.84 bg · 4.15 white · 3.60 s2 */
+    --text: #0A0D13;        /* 18.0 bg */
+    --text-2: #465061;      /*  7.5 bg · 6.4 s3 */
+    --text-3: #586272;      /*  5.7 bg · 6.2 white · 4.9 s3 */
+    --accent: #0B5BD3;      /*  5.6 bg · 6.1 white · 4.8 s3 */
+    --accent-fill: #0B5BD3;
+    --on-accent: #FFFFFF;   /*  6.1 */
+    --warm: #A2560A;        /*  5.0 bg · 5.4 white — only on bg / s1 (4.3 on s3) */
+    --ok: #127A4A;          /*  5.0 bg · 5.4 white — only on bg / s1 */
+    --alpha: #8A5A00;       /*  5.5 bg · 5.9 white · 4.7 s3 */
+    --glow-a: rgba(11, 91, 211, .10);
+    --glow-b: rgba(255, 150, 60, .10);
+    --shadow-1: 0 1px 2px rgba(10,13,19,.06), 0 12px 32px -16px rgba(10,13,19,.18);
+    --shadow-2: 0 2px 4px rgba(10,13,19,.06), 0 40px 80px -32px rgba(10,13,19,.28);
+    --header-glass: rgba(245, 246, 248, .78);
+    --stage-bg: #E9ECF1;
+    --stage-wall: #FBFBFC;
+    --stage-floor: #DDE2E9;
+    --stage-floor-hi: #F4F6F9;
+    --stage-grid: rgba(10, 13, 19, .13);
+    --stage-shadow: 10, 13, 19;
+    --stage-shadow-a: .55;
+    --stage-reflect: .18;
+    --stage-fg: #0A0D13;        /* 16.4:1 on stage-bg, 18.3 on stage-wall */
+    --stage-fg-2: #3F4859;      /*  7.8:1 on stage-bg */
+    --stage-key: #FF9A3D;
+    --stage-rim: #0B5BD3;
+    --stage-chip: rgba(255, 255, 255, .80);
+    --stage-chip-border: rgba(10, 13, 19, .50);    /* 3.6:1 on the chip, 3.5:1 on stage */
+    --display-grad: linear-gradient(100deg, #0A0D13 10%, #A2560A 55%, #0B5BD3 95%);
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F5F6F8;
+  --surface-1: #FFFFFF;
+  --surface-2: #ECEFF3;
+  --surface-3: #E1E5EB;
+  --hairline: #C9D0DA;
+  --outline: #737D8F;
+  --text: #0A0D13;
+  --text-2: #465061;
+  --text-3: #586272;
+  --accent: #0B5BD3;
+  --accent-fill: #0B5BD3;
+  --on-accent: #FFFFFF;
+  --warm: #A2560A;
+  --ok: #127A4A;
+  --alpha: #8A5A00;
+  --glow-a: rgba(11, 91, 211, .10);
+  --glow-b: rgba(255, 150, 60, .10);
+  --shadow-1: 0 1px 2px rgba(10,13,19,.06), 0 12px 32px -16px rgba(10,13,19,.18);
+  --shadow-2: 0 2px 4px rgba(10,13,19,.06), 0 40px 80px -32px rgba(10,13,19,.28);
+  --header-glass: rgba(245, 246, 248, .78);
+  --stage-bg: #E9ECF1;
+  --stage-wall: #FBFBFC;
+  --stage-floor: #DDE2E9;
+  --stage-floor-hi: #F4F6F9;
+  --stage-grid: rgba(10, 13, 19, .13);
+  --stage-shadow: 10, 13, 19;
+  --stage-shadow-a: .55;
+  --stage-reflect: .18;
+  --stage-fg: #0A0D13;        /* 16.4:1 on stage-bg, 18.3 on stage-wall */
+  --stage-fg-2: #3F4859;      /*  7.8:1 on stage-bg */
+  --stage-key: #FF9A3D;
+  --stage-rim: #0B5BD3;
+  --stage-chip: rgba(255, 255, 255, .80);
+  --stage-chip-border: rgba(10, 13, 19, .50);    /* 3.6:1 on the chip, 3.5:1 on stage */
+  --display-grad: linear-gradient(100deg, #0A0D13 10%, #A2560A 55%, #0B5BD3 95%);
+}
