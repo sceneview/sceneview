@@ -269,8 +269,8 @@ finds its own.
 ### Slash commands
 
 Slash commands are a Claude Code feature, so this section is specific to it.
-Working in the repo with another assistant? `AGENTS.md` describes the same
-workflows in prose — ask for them by name.
+Working in the repo with another assistant? The commands are plain Markdown
+files in the plugin's `commands/` folder, so you can point it at the same file.
 
 They ship in a separate contributor plugin, `sceneview-contrib`, kept apart from
 the `sceneview` plugin app developers install:

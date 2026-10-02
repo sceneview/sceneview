@@ -651,18 +651,23 @@ HTTP on `POST /mcp`; `GET /mcp` answers `405`, `GET /health` answers `{"status":
 Use `npx sceneview-mcp` locally instead when you need `analyze_project` (it reads a project from
 disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the shared anonymous endpoint has neither.
 
-### Claude Code plugin (optional, Claude Code only)
+### Assistant plugins (optional)
 
-Everything above works without this. In Claude Code, the plugin installs the MCP server **plus** the three SceneView skills in one step — the same skills the Codex plugin carries:
+Everything above works without these. Claude Code and Codex each have a plugin that installs the MCP server **plus** the same three SceneView skills in one step: `sceneview` (Jetpack Compose + Filament + ARCore), `sceneview-ios` (SwiftUI + RealityKit) and `sceneview-web` (Filament.js + WebXR), all from `agents/` in this repository.
+
+Claude Code:
 
 ```
 /plugin marketplace add sceneview/claude-marketplace
 /plugin install sceneview@sceneview
 ```
 
-Plugin contents:
-- `sceneview-mcp` server starts automatically
-- Skills `sceneview` (Jetpack Compose + Filament + ARCore), `sceneview-ios` (SwiftUI + RealityKit) and `sceneview-web` (Filament.js + WebXR), copied from `agents/` in this repository
+Codex: this repository is the plugin. From a checkout (the path must be absolute):
+
+```
+codex plugin marketplace add "$PWD"
+codex plugin add sceneview@sceneview-local
+```
 
 Contributors to this repository can add `/plugin install sceneview-contrib@sceneview` for the maintainer commands (`/sceneview-contrib:release`, `:review`, `:version-bump`...) and cross-platform reminder hooks.
 

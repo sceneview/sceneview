@@ -146,7 +146,7 @@
         "name": "Is there a SceneView plugin for AI coding assistants?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes — the same three skills (Jetpack Compose, SwiftUI, web) and the sceneview-mcp server ship as a plugin for Claude Code and for Codex. In Claude Code, run /plugin marketplace add sceneview/claude-marketplace, then /plugin install sceneview@sceneview. For Codex, the SceneView repository is itself the plugin: its local marketplace catalog is .agents/plugins/marketplace.json (.codex-plugin/plugin.json is kept as the compatibility fallback). From a checkout, run codex plugin marketplace add . — see the Codex documentation for the current install flow. For ChatGPT, npx -y sceneview-mcp --http serves the MCP Streamable HTTP transport plus an inline 3D model viewer widget."
+          "text": "Yes — the same three skills (Jetpack Compose, SwiftUI, web) and the sceneview-mcp server ship as a plugin for Claude Code and for Codex. In Claude Code, run /plugin marketplace add sceneview/claude-marketplace, then /plugin install sceneview@sceneview. For Codex, the SceneView repository is itself the plugin: its local marketplace catalog is .agents/plugins/marketplace.json (.codex-plugin/plugin.json is kept as the compatibility fallback). From a checkout, run codex plugin marketplace add with the checkout's absolute path, then codex plugin add sceneview@sceneview-local. For ChatGPT, npx -y sceneview-mcp --http serves the MCP Streamable HTTP transport plus an inline 3D model viewer widget."
         }
       },
       {
@@ -444,7 +444,7 @@
         <div class="ai-section__content reveal">
           <div class="ai-section__badge">AI-first SDK</div>
           <h2 class="ai-section__title">Built for AI assistants</h2>
-          <p class="ai-section__text">One MCP server, and your assistant stops guessing at the SceneView API. It compile-checks the Kotlin or Swift it just wrote, looks up the exact node API instead of inventing one, and starts you from a sample that already builds &mdash; plus AR setup, gestures, and troubleshooting when you get stuck. Its three skills ship as a plugin for ChatGPT, Claude Code and Codex too, so the same API contract travels wherever you work.</p>
+          <p class="ai-section__text">One MCP server, and your assistant stops guessing at the SceneView API. It compile-checks the Kotlin or Swift it just wrote, looks up the exact node API instead of inventing one, and starts you from a sample that already builds &mdash; plus AR setup, gestures, and troubleshooting when you get stuck. Its three skills ship as a plugin for Claude Code and Codex too, so the same API contract travels wherever you work.</p>
 
           <div class="feature-card__chips ai-tools-strip">
             <span class="feature-card__chip">Claude Code</span>
