@@ -182,7 +182,7 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// non-networked, non-AR demos so constructing the destination view has
     /// no side effects beyond a plain SwiftUI initializer.
     func testWellKnownWorkingDemosResolveToARealDestination() {
-        let mustBeReal = ["model-viewer", "geometry", "animation", "rolling-balls", "materials"]
+        let mustBeReal = ["model-viewer", "geometry", "animation-physics", "rolling-balls", "materials"]
         for id in mustBeReal {
             XCTAssertNotNil(GeneratedScenes.destination(for: id),
                             "'\(id)' is expected to be a real, working demo but resolved to nil " +
@@ -194,9 +194,11 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// removed, not faked. `fog` shipped as a translucent volume standing in
     /// for depth-based fog, which RealityKit has no equivalent of, so the
     /// screen is gone — and must not come back as a card or a live deep link.
+    /// `placement-reticle-preview` was retired by the samples audit (step 0):
+    /// the reticle lives in AR Placement, on a real camera.
     func testRemovedFeatureIdsAreGoneAndStillReachThePlaceholder() {
         let removed = Array(DemoDeepLinkRegistry.removedIds.keys)
-        XCTAssertEqual(Set(removed), ["fog"],
+        XCTAssertEqual(Set(removed), ["fog", "placement-reticle-preview"],
                        "The removed-id table changed — update this pin deliberately.")
         for id in removed {
             XCTAssertNil(GeneratedScenes.destination(for: id),
@@ -223,7 +225,7 @@ final class DemoRegistryGuardTests: XCTestCase {
     func testAndroidOnlyIdsAreUnregisteredAndStillReachThePlaceholder() {
         let androidOnly = [
             "ar-rooftop", "ar-terrain",             // #2799 canonicalized ids, Geospatial-backed
-            "post-processing", "secondary-camera",  // no RealityKit equivalent wired up
+            "post-processing",                      // no RealityKit equivalent wired up
             "ar-collaborative",                     // CollaborativeSession not ported
         ]
         for id in androidOnly {
@@ -268,33 +270,42 @@ final class DemoRegistryGuardTests: XCTestCase {
 
     /// The #2769 regression, pinned directly. Before #2800, `custom-geometry`
     /// et al. silently 404'd because `allowedIds` was a hand-copied literal
-    /// that never got updated; L0.6 (#2804) then closed the REST of #2769's
-    /// real scope by adding umbrella aliases for the 6 #2239-regrouped ids
-    /// (`custom-geometry`, `camera-gestures`, `picking-collision`,
-    /// `animation-physics`, `two-d-in-three-d`, `lighting-lab`) alongside the
-    /// pre-#2799 rename aliases. Two of those rename aliases
-    /// (`ar-rooftop-anchors`, `ar-terrain-anchors`) were dropped when their
-    /// dead-end canonical targets were deleted — an alias may only point at a
-    /// live Scene id, and both ids still reach `DeepLinkPlaceholder` through
-    /// the unregistered-id path. `physics` joined as a retired-scene alias when
-    /// the RealityKit cubes were replaced by the Rolling Balls tray (#4083).
-    /// `lighting-lab` left the umbrella list when it got its own scene, and
-    /// `reflection-probes` joined as the retired id that scene replaced.
-    /// Each of the remaining 9 must keep resolving —
-    /// through its canonical target — to exactly that target's current
-    /// realness.
+    /// that never got updated; L0.6 (#2804) then added umbrella aliases for
+    /// the #2239-regrouped ids. `physics` joined as a retired-scene alias when
+    /// the RealityKit cubes were replaced by the Rolling Balls tray (#4083),
+    /// and `reflection-probes` when the Lighting Lab replaced it.
+    ///
+    /// The samples audit (step 0, 48 → 34 cards) added one alias per absorbed
+    /// iOS card. `camera-gestures` and `animation-physics` stopped being
+    /// aliases: they are the iOS scene ids now, as on Android.
+    ///
+    /// Each alias must keep resolving — through its canonical target — to
+    /// exactly that target's current realness.
     func testLegacyAliasesArePinnedAndInheritTheirCanonicalTargetsRealness() {
         let aliases = DemoDeepLinkRegistry.legacyAliases
         XCTAssertEqual(aliases, [
-            "ar-recording": "ar-record-playback",
             "ar-cloud-anchors": "ar-cloud-anchor",
             "custom-geometry": "custom-mesh",
-            "camera-gestures": "camera-controls",
             "picking-collision": "collision",
-            "animation-physics": "animation",
             "two-d-in-three-d": "text",
             "physics": "rolling-balls",
             "reflection-probes": "lighting-lab",
+            "ar-record-playback": "ar-rerun",
+            "ar-recording": "ar-rerun",
+            "wall-placement": "ar-placement",
+            "ar-pose": "ar-placement",
+            "ar-lighting": "ar-placement",
+            "camera-controls": "camera-gestures",
+            "gesture-editing": "camera-gestures",
+            "animation": "animation-physics",
+            "double-pendulum": "rolling-balls",
+            "dynamic-sky": "lighting",
+            "environment": "lighting",
+            "movable-light": "lighting",
+            "texture-streaming": "materials",
+            "occlusion-material": "materials",
+            "multi-model": "model-viewer",
+            "scene-gallery": "model-viewer",
         ], "legacyAliases changed — update this pin (and re-verify the new/changed alias " +
            "resolves sanely through DemoDeepLinkRegistry.destination(for:))")
 
@@ -416,10 +427,11 @@ final class DemoRegistryGuardTests: XCTestCase {
         }
     }
 
-    /// Cosmos leads the shelf and the Rerun replay follows it, as on Android
-    /// (`FEATURED_SECTION_IDS`).
-    func testCosmosThenRerunLeadTheFeaturedShelf() {
-        XCTAssertEqual(Array(HomeCatalogue.featuredIds.prefix(2)), ["cosmos", "ar-rerun"])
+    /// The Featured shelf is the one list both apps share (samples audit, § 5):
+    /// cosmos as the hero, then placement, models, the Rerun replay, materials.
+    func testFeaturedShelfIsTheCommonList() {
+        XCTAssertEqual(HomeCatalogue.featuredIds,
+                       ["cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials"])
     }
 
     /// A hidden id must still resolve: hiding takes a demo off the home, never
@@ -454,6 +466,92 @@ final class DemoRegistryGuardTests: XCTestCase {
         XCTAssertEqual(sectionIndex, sectionIndex.sorted(),
                        "A demo's @order places it outside its @section's block")
     }
+
+    // MARK: - Absorbed cards open on their mode (samples audit, step 0)
+
+    /// The modes each umbrella card offers, by card id.
+    @MainActor
+    private var umbrellaModes: [String: [DemoMode]] {
+        [
+            "ar-placement": ArPlacementScene.modes,
+            "camera-gestures": CameraGesturesScene.modes,
+            "rolling-balls": RollingBallsScene.modes,
+            "materials": MaterialsScene.modes,
+            "model-viewer": ModelViewerScene.modes,
+        ]
+    }
+
+    /// Every alias that names a mode is an alias, and its mode exists on the
+    /// card it opens — a typo would open the default mode in silence.
+    @MainActor
+    func testEveryAliasModeLandsOnAModeOfItsCard() {
+        for (alias, mode) in DemoDeepLinkRegistry.aliasModes {
+            guard let card = DemoDeepLinkRegistry.legacyAliases[alias] else {
+                XCTFail("aliasModes['\(alias)'] is not a legacy alias"); continue
+            }
+            if card == "lighting" {
+                // Lighting keeps its own rig picker rather than a mode pill.
+                XCTAssertEqual(LightingDemo.Rig.initial(mode).title.lowercased(), mode,
+                               "'\(alias)' asks Lighting for rig '\(mode)', which it does not have")
+                XCTAssertEqual(LightingDemo.Rig.initial(alias).title.lowercased(), mode,
+                               "Lighting must also accept the retired id '\(alias)' itself")
+                continue
+            }
+            guard let modes = umbrellaModes[card] else {
+                XCTFail("'\(alias)' names mode '\(mode)' of '\(card)', which has no modes"); continue
+            }
+            #if os(iOS)
+            XCTAssertTrue(modes.contains { $0.id == mode },
+                          "'\(alias)' opens '\(card)' on '\(mode)', which is not one of its modes")
+            XCTAssertTrue(modes.contains { $0.matches(alias) },
+                          "'\(card)' must also accept the retired id '\(alias)' as a ?tab= token")
+            #else
+            if card != "ar-placement" {
+                XCTAssertTrue(modes.contains { $0.id == mode })
+            }
+            #endif
+        }
+    }
+
+    /// A link to a retired id re-keys its mode onto the card that absorbed
+    /// it; an explicit `?tab=` wins; a canonical id is left alone.
+    @MainActor
+    func testRouteTabHandsTheAliasModeToTheAbsorbingCard() {
+        _ = DeepLinkRouter.consumeTab(for: "lighting")
+        DemoDeepLinkRegistry.routeTab(for: "dynamic-sky")
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "lighting"), "sun")
+
+        DeepLinkRouter.setTab("Gestures", for: "camera-controls")
+        DemoDeepLinkRegistry.routeTab(for: "camera-controls")
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "camera-gestures"), "gestures",
+                       "an explicit ?tab= must win over the alias's own mode")
+
+        DeepLinkRouter.setTab("pendulum", for: "rolling-balls")
+        DemoDeepLinkRegistry.routeTab(for: "rolling-balls")
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "rolling-balls"), "pendulum",
+                       "a canonical id keeps its own tab")
+
+        _ = DeepLinkRouter.consumeTab(for: "materials")
+        DemoDeepLinkRegistry.routeTab(for: "texture-streaming")
+        XCTAssertNil(DeepLinkRouter.consumeTab(for: "materials"),
+                     "an alias with no mode opens its card on the default mode")
+    }
+
+    /// `cover(for:)` builds the whole catalogue (`GeneratedScenes.all()`) before
+    /// the linked screen, which constructs every umbrella card's host. Those
+    /// copies never reach the screen, so they must not take the `?tab=`: a cold
+    /// `-demo rolling-balls -tab pendulum` launch opened on Balls before this.
+    @MainActor
+    func testBuildingTheCatalogueLeavesTheTabForTheLinkedScreen() {
+        DeepLinkRouter.setTab("pendulum", for: "rolling-balls")
+        _ = DemoDeepLinkRegistry.cover(for: "rolling-balls") {}
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "rolling-balls"), "pendulum")
+
+        DemoDeepLinkRegistry.routeTab(for: "dynamic-sky")
+        _ = DemoDeepLinkRegistry.cover(for: "dynamic-sky") {}
+        XCTAssertEqual(DeepLinkRouter.consumeTab(for: "lighting"), "sun")
+    }
 }
+
 
 #endif

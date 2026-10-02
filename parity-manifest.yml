@@ -63,11 +63,16 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current slice-5 ledger (2026-10-01): 51 rows, 33 working / 0 stub / 18 android-only.
+# Current slice-5 ledger (2026-10-01): 51 rows, 34 working / 0 stub / 17 android-only.
+# (2026-10-02, iOS samples step 0: 49 -> 35 iOS cards, `secondary-camera` included. Every
+#  absorbed iOS card is now a mode of the card that absorbed it and its id an alias, so no
+#  row changes status; the `ios:` lists name the 35 scene ids only. iOS allowedIds:
+#  35 scenes + 22 aliases = 57.)
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
 # (android-only -> working: `contact-shadow-preview` — procedural contact-shadow quads.)
+# (android-only -> working: `secondary-camera` — two SceneViews over one shared state, cloned helmet.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
 # Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
 # Historical recounts below retain their measurement dates.
@@ -282,7 +287,7 @@ demos:
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/AnimationPhysicsDemo.kt
-    ios: [animation]
+    ios: [animation-physics]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift
     contract: >-
@@ -543,11 +548,13 @@ demos:
       policy — so there is no "wait for a converged plane" mode as on Android.
     category: PLACE_AR
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt
-    ios: [ar-placement, wall-placement]
+    ios: [ar-placement]
     iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ArPlacementScene.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/ARPlacementDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Components/ARPlacementExperience.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/WallPlacementScene.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/ARPoseDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/ARLightingDemo.swift
     contract: >-
       Pick a model on a still pre-AR chooser (Floor|Wall, 6 bundled + 6
       streamed rows). The camera then auto-places it on the first surface (TV
@@ -557,7 +564,9 @@ demos:
     evidence: >-
       Core matches (AutoPlacementScene.swift:29-33,
       ARPlacementController.swift:215-220). No chooser, 2-model Menu
-      (ARPlacementExperience.swift:112-115,339), wall is its own card
+      (ARPlacementExperience.swift:112-115,339). One card since step 0:
+      Place | Wall | Free pose | Light modes (ArPlacementScene.swift:31-40);
+      Light is the former ar-lighting screen, not a light-estimation toggle
   - id: ar-plane-node
     androidStatus: Working
     iosStatus: working
@@ -597,18 +606,19 @@ demos:
     iosStatus: working
     category: PLACE_AR
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPoseDemo.kt
-    ios: [ar-pose]
+    ios: [ar-placement]
     iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ArPoseScene.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/ARPoseDemo.swift
     contract: >-
       A 0.3 m lantern at a base pose 1 m ahead, set on first tracking. RGB
       axes gizmo at the base, X/Y/Z offset sliders in the sheet, live
       coordinate pill.
     parity: identical
     evidence: >-
-      ArPoseScene.swift:170 axes 0.4/0.005, :196 scaleToUnits(0.3), :210-212
+      ARPoseDemo.swift:142 axes 0.4/0.005, :168 scaleToUnits(0.3), :182-184
       same slider ranges, .ar sheet. Coaching overlay replaces
-      ARCameraInitScrim (platform)
+      ARCameraInitScrim (platform). The Free pose mode of AR Placement since
+      step 0; `ar-pose` opens it
   - id: ar-record-playback
     androidStatus: Working
     iosStatus: working
@@ -620,18 +630,20 @@ demos:
       the app's container.
     category: DEV_TOOLS
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRecordPlaybackDemo.kt
-    ios: [ar-record-playback]
+    ios: [ar-rerun]
     iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Components/DemoScreenRecording.swift
+      - samples/ios-demo/SceneViewDemo/Views/Components/DemoScaffold.swift
     contract: >-
       Live | Record | Playback | Analyze: record the AR session (REC timer,
       tracking pill, health callout), list takes, replay one 1:1 or with a
       live tracking report.
     parity: diverges
     evidence: >-
-      ARRecorderDemo.swift:47-52,97 ReplayKit screen video, no modes, timer,
-      tracking pill or take list (ARRecordPlaybackDemo.kt:493,507,672-676);
-      ARKit has no in-app session replay
+      No card since step 0: its ReplayKit screen video became the Record
+      action every demo's sheet carries (DemoScreenRecording.swift:18-101,
+      DemoScaffold.swift:286,676-678); `ar-record-playback` opens ar-rerun.
+      No Session MP4 mode: ARKit has no in-app session recording or replay
   - id: ar-rerun
     androidStatus: Working
     iosStatus: working
@@ -639,16 +651,22 @@ demos:
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRerunDemo.kt
     ios: [ar-rerun]
     iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/RerunDebugDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunSessionsLanding.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift
     contract: >-
       Streams camera pose, planes and point cloud to the Rerun sidecar; a
       stats card (events, rate, frames, last pose), tap-to-place, Save and
       Share (.rrd) only once connected.
     parity: diverges
     evidence: >-
-      RerunDebugDemo.swift:45-66 no scaffold, sheet, stats or tap-to-place;
-      Save always shown and fails offline :105-128; hardcoded colours
-      :121-150; D9 sidecar pill :141 on device
+      Re-measured 2026-10-02 (the old evidence cited the dead
+      RerunDebugDemo.swift, deleted in step 0). iOS opens on Your sessions
+      (RerunShowcaseDemo.swift:9-11): Record a room on-device
+      (RerunLiveCaptureView, :155-162), replay it in 3D, Share exports
+      .rrd/.glb/.usdz/.ply (:239-241,414-461). Scaffold + sheet; no live
+      sidecar stream or stats card as on Android, no Session MP4 mode
   - id: ar-scene-mesh
     androidStatus: KnownIssue
     iosStatus: working
@@ -678,7 +696,7 @@ demos:
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt
-    ios: [camera-controls, gesture-editing]
+    ios: [camera-gestures]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/CameraControlsDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/GestureEditingDemo.swift
@@ -690,7 +708,8 @@ demos:
     evidence: >-
       Orange cube + grid, Orbit/Pan/Look pickers, hint rows
       (CameraControlsDemo.swift:33-47,90-114); Ferrari on opaque plane in a
-      2nd card (GestureEditingDemo.swift:83-85,248), D7 code-only. Since
+      Gestures mode (GestureEditingDemo.swift:83-85,248; one card since
+      step 0), D7 code-only. Since
       #4218 the Ferrari is bottom-aligned under a pivot on the floor
       (Android's centerOrigin = Position(y = -1f)), so it stands on its
       shadow at any pinch; the 3-subject stage is still Android-only
@@ -806,9 +825,10 @@ demos:
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/DoublePendulumDemo.kt
-    ios: [double-pendulum]
+    ios: [rolling-balls]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/RollingBallsScene.swift
     contract: >-
       Blue lead arm and bob, violet trailing arm and bob, neutral hinge,
       studio_warm IBL, fixed fitted camera; Release pill on the scene; sheet
@@ -817,7 +837,8 @@ demos:
     evidence: >-
       Grey links, orange pivot, no bobs (DoublePendulumDemo.swift:198-221);
       studio + orbit (:177-178); Release only in sheet (:238-251) vs
-      .kt:124-126,154-159,244-252. D5 fixed
+      .kt:124-126,154-159,244-252. D5 fixed. The Pendulum mode of
+      Rolling Balls since step 0; `double-pendulum` opens it
   - id: geometry
     androidStatus: Working
     iosStatus: working
@@ -840,12 +861,9 @@ demos:
     iosStatus: working
     category: CREATE
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/LightingDemo.kt
-    ios: [lighting, dynamic-sky, environment, movable-light]
+    ios: [lighting]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/LightTypesDemo.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/DynamicSkyDemo.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/EnvironmentDemo.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/MovableLightDemo.swift
     contract: >-
       One Lighting card: the helmet with chrome and matte probe balls on a
       floor; rigs Image (7 HDRs, sky, IBL rotation) | Studio (key angle,
@@ -855,7 +873,8 @@ demos:
     evidence: >-
       Helmet, probe balls, slate floor, orbit dock and reset now match
       (#4175); left: LightTypesDemo.swift:172 four of seven HDRs, :559-580
-      one control per rig, no exposure or IBL rotation; plus 3 legacy cards
+      one control per rig, no exposure or IBL rotation. The 3 legacy cards
+      left in step 0; their ids open the matching rig
   - id: lighting-lab
     androidStatus: Working
     iosStatus: working
@@ -898,10 +917,10 @@ demos:
     iosStatus: working
     category: CREATE
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/MaterialsDemo.kt
-    ios: [materials, texture-streaming, occlusion-material]
+    ios: [materials]
     iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/MaterialsScene.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/TextureStreamingDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/OcclusionMaterialDemo.swift
     contract: >-
       Nine studio spheres (PBR, glass, clearcoat...) under a switchable HDR,
@@ -910,20 +929,21 @@ demos:
     parity: diverges
     evidence: >-
       Gallery wall matches since #4175 (nine procedural presets, sweep,
-      tap to focus); left: no Inspect or Occlusion mode and no HDR switch,
+      tap to focus) and an Occlusion mode (step 0); left: no Inspect mode
+      and no HDR switch,
       a pale themed stage instead of Android's blurred grey studio
       (MaterialsDemo.swift:106-110), crystal is transparency not
-      transmission (no RealityKit lobe, :29-31); 3 separate cards
+      transmission (no RealityKit lobe, :29-31)
   - id: model-viewer
     androidStatus: Working
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt
-    ios: [model-viewer, multi-model, scene-gallery]
+    ios: [model-viewer]
     iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ModelViewerScene.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/ModelViewerDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/MultiModelDemo.swift
-      - samples/ios-demo/SceneViewDemo/Views/Demos/SceneGalleryDemo.swift
     contract: >-
       One Models card: helmet on the stage, lit by Chinese Garden IBL with no
       backdrop, camera fly-in; dock Models/Lighting/Animate/Recenter + View in
@@ -933,7 +953,8 @@ demos:
     evidence: >-
       Models Fox/Hovercar/Butterfly vs Sofa/Chair/Dish/Soldier
       (ModelViewerDemo.swift:37-44 vs .kt:277-283); lands on outdoor_cloudy
-      sky (.swift:69,150); no Park row, Browse→ExploreTab (.swift:368); HD
+      sky (.swift:69,150); Park is a mode (MultiModelDemo, step 0), Gallery
+      left; Browse→ExploreTab (.swift:368); HD
       poster capped at 400 pt (Theme.swift Stage.posterMaxWidth), Android's
       spans the stage
   - id: picking-collision
@@ -953,6 +974,40 @@ demos:
       Shapes + tap-highlight match (CollisionHitTestDemo.swift:36-45,66-83);
       no in-scene UI card (vs PickingAndCollisionDemo.kt:310-340). D3/D5 fixed
       (.demoChrome+DemoHint :93-100); D7 code-only
+  - id: secondary-camera
+    androidStatus: Working
+    iosStatus: working
+    category: DEV_TOOLS
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SecondaryCameraDemo.kt
+    ios: [secondary-camera]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/SecondaryCameraDemo.swift
+    contract: >-
+      Helmet on a gridded floor on the stage backdrop, seen by an orbitable main
+      camera and a 192x128 picture-in-picture camera; Top/Side/Front/Corner/
+      Orbit move the PiP camera (Orbit: one turn per 12 s). A tap in either
+      view, cast from that view's camera, walks the helmet on the floor or
+      turns it a quarter turn, and both views show the edit; Reset the helmet.
+    parity: diverges
+    evidence: >-
+      SecondaryCameraDemo.swift: same lines of sight, stage centre, 24 deg
+      main framing, 0.5 m helmet, 0.35 m stage, 0.2 m pick radius, 450 ms
+      glide, 25 cm grid squares, PiP size, captions and status lines; ray maths
+      unit-tested (SecondaryCameraMathTests). RealityKit has one scene per
+      RealityView, so iOS runs two SceneViews over one shared state with a
+      cloned helmet (shared meshes and textures) instead of Filament's two
+      Views on one scene. Gaps: the PiP camera sits at 80 % of Android's
+      distance (the helmet fills a third of the inset, not a quarter); the
+      Top preset stops at SceneView's 85 deg elevation clamp (Android ~89.7
+      deg); no stage fog or sky gradient: the 4 m floor fades into a flat
+      backdrop (#F1F3F5 / #0B0F16) so no view shows its edge; floor and grid
+      are unlit, and the grid (3:1 on the floor, Stage.pipGrid) runs across
+      the fading floor instead of Android's 2 m square, with a radial
+      contact-shadow disc
+      under the helmet instead of GroundingShadow; the angle picker is an
+      option strip above the dock (also in the sheet). The simulator's
+      one-edit inset lag is fixed in RenderSurfaceResizer
+      (presentsWithTransaction); device check pending
   - id: spatial-audio
     androidStatus: Working
     iosStatus: working
@@ -1300,24 +1355,6 @@ demos:
     evidence: >-
       No iOS scene; PointAndAskDemo.kt:229-233. Apple Foundation Models on
       device, no SDK surface yet (#3654, #2648)
-  - id: secondary-camera
-    androidStatus: Working
-    iosStatus: android-only
-    reason: >-
-      No iOS screen — picture-in-picture camera view not implemented. Its
-      coming-soon Scene stub was deleted in #3231.
-    category: DEV_TOOLS
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SecondaryCameraDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      Helmet in the main view + a picture-in-picture second camera;
-      Top/Side/Front/Corner/Orbit chips move the PiP camera
-    parity: missing
-    evidence: >-
-      SecondaryCameraDemo.kt:144 pipCameraNode, :345-352 presets. Feasible: a
-      2nd non-AR RealityView with its own PerspectiveCamera over a cloned
-      entity (or RealityRenderer, iOS 18)
   - id: video-recording
     androidStatus: Working
     iosStatus: android-only
@@ -1360,35 +1397,14 @@ demos:
       The iOS Rerun demo records and replays sessions but has no View in AR
       action; an iOS port reuses its replay layers under an anchor
 
-# ─── iOS-only scenes, no Android row: 2 ─────────────────────────────
+# ─── iOS-only scenes, no Android row: 0 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as
-# stale Android rows. Every other iOS scene is listed in exactly one Android
-# row's `ios:` list above (an Android umbrella still split into iOS cards).
-iosOnly:
-  - iosId: ar-lighting
-    category: PLACE_AR
-    iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/ARLightingDemo.swift
-    contract: >-
-      iOS-only: a phoenix floating at a fixed offset 1 m ahead, with three
-      chips that switch main/fill light presets (10k/5k lux, fill on/off).
-    parity: ios-only
-    evidence: >-
-      ARLightingDemo.swift:128 fixed AnchorNode.world(0,-0.3,-1): no surface,
-      outside the placement flow. Lux-jargon chips (:41), no demoChrome (:96).
-      No Android card
-  - iosId: placement-reticle-preview
-    category: PLACE_AR
-    iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/PlacementReticlePreviewScene.swift
-    contract: >-
-      iOS-only non-AR preview of the searching/ready reticle and a placed
-      model with contact shadow, on a synthetic floor.
-    parity: ios-only
-    evidence: >-
-      Ports PlacementReticlePreviewDemo, which Android retired in #3275. Shows
-      a reticle that placement no longer uses. Hardcoded colours :268-313,
-      grey text :91 (D5, code-only)
+# stale Android rows. Every iOS scene is listed in exactly one Android row's
+# `ios:` list above. Samples step 0 (2026-10-02) emptied this section:
+# `ar-lighting` became the Light mode of `ar-placement`, and
+# `placement-reticle-preview` was removed (its deep link lands on the
+# placeholder) — the reticle lives in AR Placement, on a real camera.
+iosOnly: []
 
 # ─── App shell, what a decision-maker sees before any demo: 6 ───────────
 # Same fields as the rows; `surface` names the screen, not a deep-link id.
@@ -1494,8 +1510,8 @@ shell:
     parity: diverges
     evidence: >-
       9 iOS demos off the scaffold keep the system 'Close' bar
-      ShowcaseTab.swift:262; detent not persisted DemoScaffold.swift:532; no
-      umbrella mode rows; D9 RerunDebugDemo.swift:141
+      ShowcaseTab.swift:262; detent not persisted DemoScaffold.swift:532;
+      umbrella mode pill since step 0 (DemoModeHost.swift)
   - surface: deep-links
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/DeepLinkRouter.kt

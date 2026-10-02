@@ -102,8 +102,8 @@ final class SceneViewDemoUITests: XCTestCase {
     func testWorkingDemoScreenshots() {
         let demos = [
             "model-viewer",
-            "dynamic-sky",
-            "multi-model",
+            "materials",
+            "animation-physics",
             "lighting",
         ]
         for (index, id) in demos.enumerated() {
@@ -127,7 +127,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// while pausing must hold them. The crop excludes all controls and the status bar.
     func testFoxAnimationTransport() throws {
         let app = Self.makeApp()
-        app.launchArguments += ["-demo", "animation"]
+        app.launchArguments += ["-demo", "animation-physics"]
         app.launch()
         let pause = app.buttons["Pause"]
         XCTAssertTrue(pause.waitForExistence(timeout: 30))
@@ -254,7 +254,7 @@ final class SceneViewDemoUITests: XCTestCase {
         let label = ProcessInfo.processInfo.environment["SV_PROBE_LABEL"] ?? "run"
 
         let app = Self.makeApp()
-        app.launchArguments += ["-demo", "animation"]
+        app.launchArguments += ["-demo", "animation-physics"]
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "app never reached the foreground")

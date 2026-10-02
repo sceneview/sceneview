@@ -57,6 +57,21 @@ class DenseFusionWeightTest {
     }
 
     @Test
+    fun `a capped cloud keeps the whole room, thinner, not the corner scanned first`() {
+        val fusion = DenseFusion()
+        // 100 voxels along x, 10 cm apart, each seen by two frames.
+        val row = FloatArray(300) { if (it % 3 == 0) (it / 3) * 0.1f + 0.001f else 0.001f }
+        fusion.add(samples(row))
+        fusion.add(samples(row))
+        assertEquals(100, fusion.count)
+        val capped = fusion.cloud(minViews = DenseFusion.MIN_VIEWS, maxPoints = 25)
+        assertEquals(25, capped.count)
+        val xs = (0 until capped.count).map { capped.positions[it * 3] }
+        assertTrue("reaches the far end: ${xs.max()}", xs.max() > 9f)
+        assertEquals(100, fusion.cloud(minViews = DenseFusion.MIN_VIEWS).count)
+    }
+
+    @Test
     fun `a noisy wall seen near and far fuses at least 30 percent thinner`() {
         val random = Random(SEED)
         val frames = NEAR_X.map { wall(random, NEAR_M, it, NEAR_CONFIDENCE) } +

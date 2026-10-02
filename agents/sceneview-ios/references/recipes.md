@@ -25,9 +25,9 @@ code — the demo is the authoritative recipe.
 [`LightTypesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightTypesDemo.swift)
 — `LightNode.directional / .point / .spot`.
 
-## 6. Movable light
-[`MovableLightDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MovableLightDemo.swift)
-— drag a `LightNode` around the scene.
+## 6. Studio light rig
+[`LightTypesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightTypesDemo.swift) (Studio rig)
+— key, fill and rim `LightNode`s with live angle, intensity and colour.
 
 ## 7. Materials (PBR)
 [`MaterialsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift)
@@ -64,9 +64,9 @@ code — the demo is the authoritative recipe.
 and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift)
 — a fixed-step simulation that moves plain entities every frame, for a result that is identical on Android.
 
-## 15. Dynamic sky & fog
-[`DynamicSkyDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DynamicSkyDemo.swift),
-[`FogDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/FogDemo.swift).
+## 15. Dynamic sky
+[`LightTypesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightTypesDemo.swift) (Sun rig)
+— `DynamicSkyNode`: the hour drives the sun's colour and angle.
 
 ## 16. Image plane
 [`ImagePlaneDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ImagePlaneDemo.swift)
@@ -87,13 +87,14 @@ and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/mai
 — `.mainLight(_:)` / `.fillLight(_:)` on `ARSceneView`.
 
 ## 20. AR recorder (record-only)
-[`ARRecorderDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift)
-— `ARRecorder` via ReplayKit. `startRecording()` / `stopRecording()`,
+[`DemoScreenRecording.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Components/DemoScreenRecording.swift)
+(the Record action of every demo's sheet) — `ARRecorder` via ReplayKit. `startRecording()` / `stopRecording()`,
 `ARRecorder.saveToPhotoLibrary(_:)`. No deterministic playback on iOS.
 
 ## 21. AR debugging (Rerun)
-[`RerunDebugDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RerunDebugDemo.swift)
-— stream AR frame data to a Rerun viewer via `ARSceneView.onFrame`.
+[`RerunLiveCaptureView.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift)
+— record AR frame data via `ARSceneView.onFrame`, replay it in 3D and export
+it to `.rrd` ([`RerunShowcaseDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift)).
 
 ## 22. Collision & hit testing
 [`CollisionHitTestDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CollisionHitTestDemo.swift)
@@ -115,8 +116,8 @@ and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/mai
 [`OcclusionMaterialDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OcclusionMaterialDemo.swift)
 — an invisible occluder plane hides entities behind virtual geometry.
 
-## 27. Texture streaming
-[`TextureStreamingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/TextureStreamingDemo.swift)
+## 27. Material presets
+[`MaterialsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift)
 — swap `PhysicallyBasedMaterial` presets at runtime — no geometry rebuild.
 
 ## 28. Debug overlay (live FPS)

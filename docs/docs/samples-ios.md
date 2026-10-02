@@ -1,6 +1,6 @@
 ---
 title: Samples — SceneView for iOS, macOS, visionOS
-description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer, geometry shapes, camera controls, AR tap-to-place, physics, audio, text, reflections, and 50+ more demos."
+description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer, geometry shapes, camera controls, AR tap-to-place, physics, audio, text, reflections, and 30+ more demos."
 ---
 
 # Samples — Apple Platforms
@@ -8,7 +8,7 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 !!! tip "Looking for Android samples?"
     See [Samples](samples.md) for Jetpack Compose sample apps with source code.
 
-These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **45 demos** covering every category.
+These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **34 demos** covering every category.
 
 ```swift
 .package(url: "https://github.com/sceneview/sceneview.git", from: "4.51.0")
@@ -27,20 +27,15 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Model Viewer | [`ModelViewerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ModelViewerDemo.swift) | Load a USDZ with orbit camera, IBL, and animation |
+| Models | [`ModelViewerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ModelViewerDemo.swift) | Load a USDZ with orbit camera, IBL, and animation; a Park mode loads several models in one scene ([`MultiModelDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MultiModelDemo.swift)) |
 | Geometry | [`GeometryScene.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/GeometryScene.swift) | Procedural shapes — cube, sphere, cylinder, cone, plane |
 | Animation | [`AnimationDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift) | `playAllAnimations()`, `autoRotate`, timeline scrubbing |
-| Multi-Model | [`MultiModelDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MultiModelDemo.swift) | Multiple models loaded and placed in one scene |
-| Scene Gallery | [`SceneGalleryDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/SceneGalleryDemo.swift) | Carousel of USDZ models with Sketchfab integration |
 
 ### Lighting
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Lighting | [`LightTypesScene.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/LightTypesScene.swift) | Directional, point, and spot lights with PBR materials |
-| Movable Light | [`MovableLightDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MovableLightDemo.swift) | Drag a `LightNode` around the scene |
-| Dynamic Sky | [`DynamicSkyDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DynamicSkyDemo.swift) | Time-of-day slider drives `DynamicSkyNode` |
-| Environment | [`EnvironmentDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/EnvironmentDemo.swift) | HDR environment presets (`.studio`, `.outdoor`, `.night`) |
+| Lighting | [`LightTypesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightTypesDemo.swift) | One card, three rigs: Image (HDR environments), Studio (key, fill, rim), Sun (time of day) |
 
 ### Content
 
@@ -51,28 +46,24 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 | Image Planes | [`ImagePlaneDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ImagePlaneDemo.swift) | `ImageNode` — textures on planes in 3D space |
 | Billboard | [`BillboardDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/BillboardDemo.swift) | Camera-facing labels and sprites |
 | Video Texture | [`VideoTextureDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/VideoTextureDemo.swift) | `VideoNode` — play / pause / loop video on a 3D plane |
-| Material presets | [`TextureStreamingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/TextureStreamingDemo.swift) | Swap PBR material presets in real time — no geometry rebuild |
 
 ### Interaction
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Camera Controls | [`CameraControlsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CameraControlsDemo.swift) | `.orbit`, `.pan`, `.firstPerson`; native Apple modes `.none/.tilt/.dolly` (iOS 18+) |
+| Camera & Gestures | [`CameraControlsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CameraControlsDemo.swift) | Camera mode: `.orbit`, `.pan`, `.firstPerson`; native Apple modes `.none/.tilt/.dolly` (iOS 18+). Gestures mode ([`GestureEditingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/GestureEditingDemo.swift)): drag, scale and rotate entities |
 | Collision & Hit Test | [`CollisionHitTestDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CollisionHitTestDemo.swift) | Ray-casting against geometry, highlight on tap |
-| Gesture Editing | [`GestureEditingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/GestureEditingDemo.swift) | Drag, scale, and rotate entities via multi-touch gestures |
 
 ### Advanced
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Rolling Balls | [`RollingBallsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift) | Drop rubber, steel and foam balls on a tray, tilt it, knock the opening pyramid over |
-| Double Pendulum | [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift) | Chaotic double-pendulum physics |
+| Rolling Balls | [`RollingBallsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift) | Drop rubber, steel and foam balls on a tray, tilt it, knock the opening pyramid over; a Pendulum mode runs a chaotic double pendulum ([`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift)) |
 | Custom Mesh | [`CustomMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CustomMeshDemo.swift) | `MeshNode.fromVertices` — raw vertex data |
-| PBR Materials | [`MaterialsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift) | Full PBR material parameter explorer |
+| PBR Materials | [`MaterialsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift) | Full PBR material parameter explorer; an Occlusion mode hides entities behind an occluder plane ([`OcclusionMaterialDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OcclusionMaterialDemo.swift)) |
 | Spatial Audio | [`SpatialAudioDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/SpatialAudioDemo.swift) | `SpatialAudioNode` — positional audio tied to scene entities |
 | Lighting Lab | [`LightingLabDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightingLabDemo.swift) | Environment intensity, sky, sunset reflection probe with a camera zone |
 | Shape Extrude | [`ShapeExtrudeDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ShapeExtrudeDemo.swift) | `ShapeNode` — extrude a 2D path into a 3D solid |
-| Occlusion Material | [`OcclusionMaterialDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OcclusionMaterialDemo.swift) | Occluder plane that hides entities behind virtual geometry |
 | Debug Overlay | [`DebugOverlayDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DebugOverlayDemo.swift) | Live FPS counter + sphere stress test |
 
 ### AR (iOS only)
@@ -83,20 +74,20 @@ people occlusion requires supported person segmentation. Every AR card stays in 
 catalogue on every device: opening one on a device that cannot run it shows the honest
 requirement card before any camera starts, rather than the card disappearing.
 Occlusion comparisons keep perception enabled and change only the renderer effect.
+Every demo's settings sheet carries a shared **Record** action (ReplayKit screen video,
+not AR-session playback), which replaced the former AR Recording card.
 
 | Demo | Source | What it shows |
 |---|---|---|
-| AR Placement | [`ARPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPlacementDemo.swift) | One 0.3 m preview model automatically placed on the first usable horizontal surface; drag, pinch and twist to adjust |
+| AR Placement | [`ARPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPlacementDemo.swift) | One 0.3 m preview model automatically placed on the first usable horizontal surface; drag, pinch and twist to adjust. Modes: Place, Wall, Free pose ([`ARPoseDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPoseDemo.swift)), Light ([`ARLightingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARLightingDemo.swift)) |
 | AR Orbital | [`OrbitalARDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OrbitalARDemo.swift) | Orbit camera in AR passthrough mode |
-| AR Lighting | [`ARLightingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARLightingDemo.swift) | Compare main / fill light presets on an anchored model |
-| AR Recording | [`ARRecorderDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift) | Automatically placed subject with explicit ReplayKit Record/Stop controls; screen video, not AR-session playback |
 | AR Image Tracking | [`ARImageTrackingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARImageTrackingDemo.swift) | Track printed reference images |
 | Face anchor accessories | [`ARAugmentedFacesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARAugmentedFacesDemo.swift) | Accessories pinned to a tracked face anchor — pose only, no morphable mesh |
 | AR Depth Occlusion | [`ARDepthOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARDepthOcclusionDemo.swift) | Bundled helmet placed automatically; toggle LiDAR mesh occlusion without moving or rescaling it |
 | AR People Occlusion | [`ARPeopleOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift) | The same bundled helmet and placement flow; toggle person occlusion without restarting tracking |
 | Body anchor tracking | [`ARBodyTrackerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift) | Follow a detected body anchor — anchor pose, not per-joint data |
 | AR Scene Mesh | [`ARSceneMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift) | LiDAR scene reconstruction mesh |
-| AR Debug (Rerun) | [`RerunDebugDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RerunDebugDemo.swift) | Live AR debug data streamed to [Rerun.io](https://rerun.io) viewer |
+| Rerun AR Replay | [`RerunShowcaseDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift) | Record a room, replay it in 3D, and export it to `.rrd`, `.glb`, `.usdz` and `.ply` |
 
 ---
 

@@ -6,7 +6,7 @@
 // @available   true
 // @icon        photo.artframe
 // @iosOnly     true
-// @order       45
+// @order       46
 // @tags        ar,image,tracking,augmented-image,marker
 // @addedIn     4.15.2
 import SwiftUI

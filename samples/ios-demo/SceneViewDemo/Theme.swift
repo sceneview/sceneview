@@ -143,6 +143,38 @@ enum SceneViewTokens {
                  : UIColor(red: 0xE9 / 255, green: 0xEC / 255, blue: 0xEF / 255, alpha: 1)
         }
 
+        /// The Secondary Camera (PiP) stage floor, DESIGN.md `stage-pip-floor`:
+        /// #E2E6EB light — a step under `surface-container-highest`, so the ground
+        /// reads against ``pipBackdrop(dark:)`` — and #161B22 dark, Android's
+        /// `StageSky.floor`.
+        static func pipFloor(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x16 / 255, green: 0x1B / 255, blue: 0x22 / 255, alpha: 1)
+                 : UIColor(red: 0xE2 / 255, green: 0xE6 / 255, blue: 0xEB / 255, alpha: 1)
+        }
+
+        /// The Secondary Camera (PiP) backdrop, DESIGN.md `stage-pip-backdrop`, flat:
+        /// `surface-container-high`
+        /// (#F1F3F5) light, `stage-background` (#0B0F16) dark. The floor fades
+        /// into exactly this colour at its rim, so the stage has no edge from any
+        /// angle; a sky gradient behind it would show the rim wherever the two
+        /// tones part. ``pipBackdropColor`` is the same pair for SwiftUI.
+        static func pipBackdrop(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255, alpha: 1)
+                 : UIColor(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255, alpha: 1)
+        }
+        static let pipBackdropColor = Color(light: Color(uiColor: pipBackdrop(dark: false)),
+                                            dark: Color(uiColor: pipBackdrop(dark: true)))
+
+        /// The Secondary Camera (PiP) floor grid, DESIGN.md `stage-pip-grid`: 3.0:1 on
+        /// ``pipFloor(dark:)`` in both
+        /// themes (#7A8494 on #E2E6EB light, #5C6780 on #161B22 dark). Android's
+        /// `outline` / `outline-subtle` (#D6DAE0 / #46516A) measured 1.18:1 and 2.18:1,
+        /// and in light the grid vanished into the floor.
+        static func pipGrid(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x5C / 255, green: 0x67 / 255, blue: 0x80 / 255, alpha: 1)
+                 : UIColor(red: 0x7A / 255, green: 0x84 / 255, blue: 0x94 / 255, alpha: 1)
+        }
+
         /// The Rolling Balls tray rails — `accent-deep` (#5A32A3), Android's
         /// `SceneViewColors.AccentDeep`.
         static let trayRail = UIColor(red: 0x5A / 255, green: 0x32 / 255, blue: 0xA3 / 255, alpha: 1)

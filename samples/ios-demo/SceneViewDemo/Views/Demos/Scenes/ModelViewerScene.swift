@@ -5,12 +5,30 @@
 // @section     view3d
 // @available   true
 // @icon        rotate.3d
-// @order       33
-// @tags        gltf,glb,hdr,ibl,orbit,ar,viewer
+// @order       34
+// @tags        gltf,glb,hdr,ibl,orbit,ar,viewer,park,scene,multi-model,gallery
 // @addedIn     4.4.0
 // @updatedIn   4.49.0
 import SwiftUI
 
+/// Models (samples audit, step 0) absorbs `multi-model` — the Park scene, now
+/// its Park mode, at Android's index 1 — and `scene-gallery`, whose streamed
+/// Sketchfab bundles the model picker already covers.
 enum ModelViewerScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(ModelViewerDemo()) }
+    /// The card's modes, in pill order. Also read by `DemoRegistryGuardTests`, which
+    /// checks every `DemoDeepLinkRegistry.aliasModes` token lands on one of them.
+    @MainActor static var modes: [DemoMode] {
+        [
+            DemoMode("models", title: "Models", aliases: ["0", "single", "scene-gallery"]) {
+                ModelViewerDemo()
+            },
+            DemoMode("park", title: "Park", aliases: ["1", "multi-model"]) {
+                MultiModelDemo()
+            },
+        ]
+    }
+
+    @MainActor static var destination: AnyView {
+        AnyView(DemoModeHost(demoId: "model-viewer", modes: modes))
+    }
 }

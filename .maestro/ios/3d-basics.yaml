@@ -26,7 +26,7 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/demo-settings.yaml
     env:
-      DEMO_ID: animation
+      DEMO_ID: animation-physics
       DEMO_NAME: Animation
       ASSERT_TEXT: "Subject"
 - runFlow:
@@ -35,8 +35,3 @@ appId: io.github.sceneview.demo
       DEMO_ID: multi-model
       DEMO_NAME: Multi Model
       ASSERT_TEXT: "Visibility"
-- runFlow:
-    file: flows/demo-noassert.yaml
-    env:
-      DEMO_ID: scene-gallery
-      DEMO_NAME: Scene Gallery

@@ -2,6 +2,7 @@ package io.github.sceneview.node
 
 import android.graphics.Bitmap
 import androidx.annotation.DrawableRes
+import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
@@ -43,14 +44,20 @@ open class ImageNode private constructor(
     center: Position = Plane.DEFAULT_CENTER,
     normal: Direction = Plane.DEFAULT_NORMAL,
     uvScale: UvScale = UvScale(1.0f),
-    builderApply: RenderableManager.Builder.() -> Unit = {}
+    builderApply: RenderableManager.Builder.() -> Unit = {},
+    /**
+     * The instance [materialLoader] created and tracks, kept so [destroy] hands that very object
+     * back. Never passed by a caller: the default runs once, ahead of the `PlaneNode` call.
+     */
+    private val imageMaterialInstance: MaterialInstance =
+        materialLoader.createImageInstance(texture, textureSampler)
 ) : PlaneNode(
     engine = materialLoader.engine,
     size = size ?: normalize(Size(bitmap.width.toFloat(), bitmap.height.toFloat())),
     center = center,
     normal = normal,
     uvScale = uvScale,
-    materialInstance = materialLoader.createImageInstance(texture, textureSampler),
+    materialInstance = imageMaterialInstance,
     builderApply = builderApply
 ) {
     var bitmap = bitmap
@@ -166,14 +173,19 @@ open class ImageNode private constructor(
      * per-`Engine` [io.github.sceneview.EngineDestroyQueue], which destroys it a few rendered
      * frames later (and immediately at Engine teardown). This makes high-churn UIs (feeds,
      * infinite scrollers, particle emitters) safe — see sceneview/sceneview#874.
+     *
+     * The instance destroyed is the one this node created, never [materialInstance]: that getter
+     * reads back from the `RenderableManager` and builds a new wrapper on every call, which
+     * `MaterialLoader` used to miss, so the instance stayed alive and sampled the texture the
+     * queue then freed. That aborted on the next frame (sceneview/sceneview#4285). It is also
+     * right if the caller swapped [materialInstance]: the swapped-in instance is theirs.
      */
     override fun destroy() {
         // Once only (#4259): a second call would free handles, material instances and an
         // entity id that may already belong to another node.
         if (isDestroyed) return
-        val mi = materialInstance
         super.destroy()
-        materialLoader.destroyMaterialInstance(mi)
+        materialLoader.destroyMaterialInstance(imageMaterialInstance)
         // Frame-defer the texture destroy so Filament reclaims the MI first (see KDoc, #874).
         EngineDestroyQueue.of(engine).enqueueTexture(texture)
     }
