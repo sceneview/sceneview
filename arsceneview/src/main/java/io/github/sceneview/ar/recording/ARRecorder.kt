@@ -359,14 +359,20 @@ public class ARRecorder {
      * @param file               Absolute path of the destination MP4. Passed to
      *                           [RecordingConfig.setMp4DatasetFilePath] (no scoped-storage /
      *                           [android.net.Uri] wrapping needed).
-     * @param recordingRotation  Optional [android.view.Display] rotation (`Surface.ROTATION_0` …
-     *                           `Surface.ROTATION_270`) so the MP4 plays back upright when
-     *                           captured in landscape. Pass the current display rotation from
-     *                           the calling context (`display.rotation`). The value is converted
-     *                           to degrees via [surfaceRotationToDegrees] before being handed to
-     *                           [RecordingConfig.setRecordingRotation], which expects degrees
-     *                           (`0`/`90`/`180`/`270`) — not the `Surface.ROTATION_*` ordinal
-     *                           (`0`/`1`/`2`/`3`). Default `null` keeps ARCore's default of 0.
+     * @param recordingRotation  Optional `Surface.ROTATION_*` constant encoding the clockwise,
+     *                           sensor-relative rotation that makes the recorded camera image
+     *                           upright — not the display's own rotation. For a back-facing
+     *                           camera, read [android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION]
+     *                           for the ARCore camera and compute
+     *                           `(sensorOrientation - displayDegrees + 360) % 360`, snap to the
+     *                           nearest multiple of 90, then map `0`/`90`/`180`/`270` back to
+     *                           `Surface.ROTATION_0`/`90`/`180`/`270`. The value is converted to
+     *                           degrees by [surfaceRotationToDegrees] before it is passed to
+     *                           [RecordingConfig.setRecordingRotation]. Passing the raw display
+     *                           rotation produces a sideways recording on most phones, whose
+     *                           sensor orientation is 90°. See `recordingSurfaceRotation` in
+     *                           `samples/android-demo/.../ARRecordingLibrary.kt` for a worked
+     *                           example. Default `null` keeps ARCore's default of 0.
      * @param recordingResolution Optional target CPU-image resolution for the recording. ARCore
      *                           writes the **CPU image stream** into the MP4, whose default is
      *                           the lowest-resolution config the device exposes (often 640×480 on
@@ -451,10 +457,11 @@ public class ARRecorder {
             val config = RecordingConfig(session)
                 .setMp4DatasetFilePath(file.absolutePath)
                 .setAutoStopOnPause(true)
-            // ARCore's RecordingConfig.setRecordingRotation(int) expects the display rotation in
-            // DEGREES (0/90/180/270). Callers pass a Surface.ROTATION_* constant (ordinals
-            // 0/1/2/3) — forwarding it verbatim records a 90° capture as 1° and leaves the
-            // dataset sideways (#1648). Convert to degrees before the ARCore call.
+            // ARCore expects the clockwise, sensor-relative rotation that makes the recorded
+            // camera image upright, in degrees. Callers encode that angle as a
+            // Surface.ROTATION_* constant (ordinal 0/1/2/3); convert it to 0/90/180/270 before
+            // the ARCore call. The raw display rotation is not this value and is sideways on
+            // most phones, whose camera sensor orientation is 90° (#1648, #3915).
             recordingRotation?.let { config.setRecordingRotation(surfaceRotationToDegrees(it)) }
             // Wire any custom data tracks registered via addTrack() into the recording config
             // BEFORE startRecording(). ARCore mandates addTrack happen pre-start (#1770).

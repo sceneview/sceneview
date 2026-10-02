@@ -175,6 +175,8 @@ import io.github.sceneview.node.findActivity
  * @param cameraNode            Active rendering camera. Use [rememberCameraNode].
  * @param collisionSystem       Hit-testing and collision system. Use [rememberCollisionSystem].
  * @param cameraManipulator     Orbit/pan/zoom camera controller. Use [rememberCameraManipulator].
+ *                              A camera pose written from [onFrame] is overwritten while a
+ *                              manipulator is installed — see [onFrame].
  * @param viewNodeWindowManager Off-screen window manager required for [SceneScope.ViewNode].
  * @param surfaceMirrorer       Mirrors every rendered frame to additional [android.view.Surface]s
  *                              — attach a `MediaRecorder` input surface for clean in-app video
@@ -199,6 +201,18 @@ import io.github.sceneview.node.findActivity
  *                              [renderInvalidator], *before* `onFrame` rather than from inside it:
  *                              this fires after the frame it is named for was already presented, so
  *                              what you write here lands in the next one.
+ *
+ *                              **Driving the camera from `onFrame`:** On the next frame, an
+ *                              installed [io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator]
+ *                              is updated, its `getTransform()` is called exactly once, and that
+ *                              pose is passed through the camera-swap continuity resolver. The
+ *                              resolved transform is written to [cameraNode] when it differs from
+ *                              the camera's current transform, overwriting a scripted pose. Either
+ *                              pass `cameraManipulator = null` while the script owns the camera, as
+ *                              [applyCinematicOrbit] requires, or install a manipulator whose
+ *                              `getTransform()` returns the pose you want — for example, a wrapper
+ *                              around the default manipulator that returns `cameraNode.transform`
+ *                              while the script owns the camera.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable
