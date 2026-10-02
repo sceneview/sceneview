@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import io.github.sceneview.demo.recording.rememberSceneRecorderState
+import io.github.sceneview.rememberSurfaceMirrorer
 import io.github.sceneview.demo.telemetry.LocalSampleId
 import io.github.sceneview.demo.telemetry.logSampleInteraction
 import android.os.SystemClock
@@ -198,6 +200,10 @@ fun CosmosDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
     val view = rememberView(engine)
+    // The shared Record action (samples step 0, the former `video-recording` card): the scene's
+    // frames are mirrored into an MP4 encoder, without the Compose chrome.
+    val surfaceMirrorer = rememberSurfaceMirrorer()
+    val recorder = rememberSceneRecorderState(surfaceMirrorer)
     val renderInvalidator = rememberRenderInvalidator()
     val cameraNode = rememberCameraNode(engine) {
         position = Position(0f, 0f, 6f)
@@ -413,6 +419,7 @@ fun CosmosDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = coverLifted,
         loadingLabel = stringResource(R.string.demo_cosmos_loading),
+        recorder = recorder,
         peekHeader = when {
             voyageCaption != null -> voyageCaption
             scene == CosmosScene.Star && spacetime -> spacetimeLegend
@@ -482,6 +489,7 @@ fun CosmosDemo(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             view = view,
+            surfaceMirrorer = surfaceMirrorer,
             materialLoader = materialLoader,
             cameraNode = cameraNode,
             cameraManipulator = null,

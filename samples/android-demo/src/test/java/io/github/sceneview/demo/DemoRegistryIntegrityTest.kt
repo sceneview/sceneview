@@ -6,6 +6,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
+import io.github.sceneview.demo.ui.home.FEATURED_IDS
 import io.github.sceneview.demo.ui.home.FEATURED_SECTION_IDS
 import io.github.sceneview.demo.ui.home.HERO_DEMO_ID
 
@@ -201,7 +202,7 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
-    fun `the featured shelf lists registered demos, once each, Cosmos then Rerun on top`() {
+    fun `the featured shelf lists registered demos, once each, in the common Featured order`() {
         // The shelf under the hero is the home's priority list. A renamed id would
         // drop a card silently (the shelf skips what it cannot resolve), a repeat
         // would collide on its grid key, and the hero repeated here wastes a slot.
@@ -214,10 +215,16 @@ class DemoRegistryIntegrityTest {
             FEATURED_SECTION_IDS.toSet().size,
         )
         assertFalse("The hero demo must not repeat in the shelf", HERO_DEMO_ID in FEATURED_SECTION_IDS)
+        // The common Featured list of the samples audit (§ 5), the same five ids as iOS.
         assertEquals(
-            "Cosmos then ar-rerun lead the Featured shelf, as on iOS",
-            listOf("cosmos", "ar-rerun"),
-            FEATURED_SECTION_IDS.take(2),
+            "The Featured list drifted from the one iOS shows",
+            listOf("cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials"),
+            FEATURED_IDS,
+        )
+        assertEquals(
+            "The shelf is the Featured list minus the hero, in rank order",
+            FEATURED_IDS.filterNot { it == HERO_DEMO_ID },
+            FEATURED_SECTION_IDS,
         )
     }
 

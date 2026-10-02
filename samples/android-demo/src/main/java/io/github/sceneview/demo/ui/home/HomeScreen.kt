@@ -766,35 +766,33 @@ private const val HERO_SUN_X = 0.31f
 /** Fraction of the band's scroll travel the stage's content lags behind. */
 private const val HERO_PARALLAX = 0.35f
 
-/** The demo the first featured page opens. */
+/**
+ * The demo the first featured page opens. The common Featured list (samples audit § 5) ranks
+ * Cosmos first, but this page is the window onto the home's live flight stage (#3948), so the
+ * hero stays the demo that stage stands for until the stage itself is redesigned.
+ */
 const val HERO_DEMO_ID = "model-viewer"
 
 /**
- * Editorial order of the featured pager's demo pages (#3567).
- *
- * Short on purpose: a carousel nobody reaches the end of is a list, and the
- * grid below is already the list. [HERO_DEMO_ID] stays first — it is the demo
- * the store listing, the deep link and the app icon all point at — and keeps its
- * bespoke full-span artwork; the rest reuse their own grid captures.
+ * The common Featured list, identical on Android and iOS (samples audit § 5): the five cards
+ * present and current on both platforms, in rank order.
  */
-private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "ar-rerun", "materials", "lighting")
+internal val FEATURED_IDS = listOf("cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials")
 
 /**
- * The "Featured" group right under the hero: the samples we push, most striking
- * first — the galaxy, the room rebuilt from a scan, then AR and the scan viewer.
- * [HERO_DEMO_ID] is not repeated here; it is the hero itself. The rest stay in their
- * sections, which are themselves ordered the same way
- * (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
+ * Editorial order of the featured pager's demo pages (#3567): [HERO_DEMO_ID] first — it is
+ * the demo the store listing, the deep link and the app icon all point at — then the rest of
+ * [FEATURED_IDS] in rank order. Short on purpose: a carousel nobody reaches the end of is a
+ * list, and the grid below is already the list.
  */
-internal val FEATURED_SECTION_IDS = listOf(
-    "cosmos", // a glowing galaxy, then a flight through it — the app's most striking scene
-    "ar-rerun", // Rerun AR replay — the scanned room rebuilt in 3D, the flagship
-    // Record your room there, then stand it on your table here.
-    "ar-splat-room", // "Your room, as a dollhouse" — your own Rerun recording in AR, 4.46
-    "ar-placement", // tap-to-place, picker shows each model's own thumbnail, 4.39
-    "splat-preview", // Gaussian-splat viewer — oriented, camera-sorted splats in 4.45
-    "ar-record-playback", // records and replays in place (#3914)
-)
+private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID) + FEATURED_IDS.filterNot { it == HERO_DEMO_ID }
+
+/**
+ * The "Featured" group right under the hero: [FEATURED_IDS] in rank order, minus
+ * [HERO_DEMO_ID], which is the hero itself. The rest stay in their sections too, which are
+ * themselves ordered the same way (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
+ */
+internal val FEATURED_SECTION_IDS = FEATURED_IDS.filterNot { it == HERO_DEMO_ID }
 
 @Composable
 private fun HomeHeader(

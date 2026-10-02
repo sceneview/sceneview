@@ -118,13 +118,6 @@ class DeepLinkRouterTest {
         DemoEntry("ar-geospatial-anchors", R.string.demo_ar_geospatial_anchors_title, R.string.demo_ar_geospatial_anchors_subtitle, "AR Anchors", Icons.Filled.ViewInAr, order = 8, tags = setOf("test"), addedIn = "4.0.0"),
     )
 
-    // Registry holding the Scene Geometry card the #3463 merge redirects onto. Unlike the
-    // other regroup merges this one kept the absorbing demo's own id (`ar-scene-mesh`) —
-    // iOS ships a screen under it — so the registry is a single entry.
-    private val sceneGeometryRegistry = listOf(
-        DemoEntry("ar-scene-mesh", R.string.demo_ar_scene_mesh_title, R.string.demo_ar_scene_mesh_subtitle, "AR Understanding", Icons.Filled.ViewInAr, order = 9, tags = setOf("test"), addedIn = "4.0.0"),
-    )
-
     // ── Custom scheme: sceneview://demo/<id> ──────────────────────────────
 
     @Test
@@ -455,53 +448,98 @@ class DeepLinkRouterTest {
         assertNull(DeepLinkRouter.resolveInitialTab("ar-terrain", null))
     }
 
-    // ── #3463 — Scene Geometry: `ar-streetscape` folded into `ar-scene-mesh` ──
+    // ── Samples step 0 — consolidation before any redesign (2026-10-02) ──
     //
-    // The card is now "Scene Geometry" with a Mesh / Streetscape toggle. The absorbing
-    // demo kept its own id, so this merge retires exactly one id — and that one id is on
-    // the public deep-link surface (docs, QR codes, `.maestro/android/ar.yaml`, which
-    // drives it deliberately to reach the Streetscape mode).
+    // Android 51 → 43 cards. Every retired card is a mode of the card that absorbed it, and
+    // its id stays on the public deep-link surface (docs, QR codes, Maestro flows): the link
+    // must open the absorbing card on that mode, never fall through to the demo list.
 
     @Test
-    fun `the retired streetscape link resolves onto the Scene Geometry card`() {
-        assertEquals(
-            "validate('ar-streetscape') must redirect to 'ar-scene-mesh'",
-            "ar-scene-mesh",
-            DeepLinkRouter.validate("ar-streetscape", sceneGeometryRegistry),
+    fun `step 0 retired ids open the card that absorbed them`() {
+        val expected = mapOf(
+            "ar-pose" to "ar-placement",
+            "placement-scene" to "ar-placement",
+            "secondary-camera" to "camera-gestures",
+            "double-pendulum" to "rolling-balls",
+            "ar-record-playback" to "ar-rerun",
+            "ar-collaborative" to "ar-cloud-anchor",
+            "ar-streetscape" to "ar-geospatial-anchors",
+            "ar-hand-tracking" to "ar-xr",
+            "ar-xr-face" to "ar-xr",
+            "video-recording" to "cosmos",
         )
-        assertEquals(
-            "sceneview://demo/ar-streetscape must resolve to 'ar-scene-mesh'",
-            "ar-scene-mesh",
-            DeepLinkRouter.parse(Uri.parse("sceneview://demo/ar-streetscape"), sceneGeometryRegistry),
-        )
-        assertEquals(
-            "the App-Links form must resolve identically",
-            "ar-scene-mesh",
-            DeepLinkRouter.parse(
-                Uri.parse("https://sceneview.github.io/open?demo=ar-streetscape"),
-                sceneGeometryRegistry,
-            ),
-        )
-        assertNull(
-            "'ar-streetscape' must be gone from the real catalogue — it is a retired id",
-            ALL_DEMOS.find { it.id == "ar-streetscape" },
-        )
-        assertTrue(
-            "'ar-scene-mesh' must still be a live card — it is what absorbed the merge",
-            ALL_DEMOS.any { it.id == "ar-scene-mesh" },
-        )
+        expected.forEach { (retired, card) ->
+            assertEquals("validate('$retired')", card, DeepLinkRouter.validate(retired, ALL_DEMOS))
+            assertEquals(
+                "sceneview://demo/$retired",
+                card,
+                DeepLinkRouter.parse(Uri.parse("sceneview://demo/$retired"), ALL_DEMOS),
+            )
+            assertEquals(
+                "the App-Links form of $retired",
+                card,
+                DeepLinkRouter.parse(Uri.parse("https://sceneview.github.io/open?demo=$retired"), ALL_DEMOS),
+            )
+            assertNull("'$retired' is retired", ALL_DEMOS.find { it.id == retired })
+        }
+        assertEquals("Android ships 43 cards after step 0", 43, ALL_DEMOS.size)
     }
 
     @Test
-    fun `the streetscape alias pre-selects the Streetscape mode`() {
-        // ar-scene-mesh — [Mesh, Streetscape]
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("ar-streetscape", null))
-        // The surviving id already opens Mesh, so it carries no entry: an absent entry
-        // means "already lands correctly".
-        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-scene-mesh"])
-        assertNull(DeepLinkRouter.resolveInitialTab("ar-scene-mesh", null))
-        // `?tab=ar-streetscape` reaches the same mode through the explicit param channel.
-        assertEquals(1, DeepLinkRouter.parseTabValue("ar-streetscape"))
+    fun `step 0 retired ids pre-select the mode that holds their content`() {
+        fun launch(rawId: String, tab: String? = null) =
+            DeepLinkRouter.resolveLaunch(DeepLinkRouter.validate(rawId, ALL_DEMOS), rawId, tab)
+
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 2), launch("ar-pose"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", null), launch("placement-scene"))
+        assertEquals(DeepLinkRouter.Launch("camera-gestures", 1), launch("secondary-camera"))
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", 1), launch("double-pendulum"))
+        assertEquals(DeepLinkRouter.Launch("ar-rerun", 1), launch("ar-record-playback"))
+        assertEquals(DeepLinkRouter.Launch("ar-cloud-anchor", 1), launch("ar-collaborative"))
+        assertEquals(DeepLinkRouter.Launch("ar-geospatial-anchors", 2), launch("ar-streetscape"))
+        assertEquals(DeepLinkRouter.Launch("ar-xr", null), launch("ar-hand-tracking"))
+        assertEquals(DeepLinkRouter.Launch("ar-xr", 1), launch("ar-xr-face"))
+        // The Record action replaced `video-recording`: its link opens Cosmos with the pill.
+        assertEquals(DeepLinkRouter.Launch("cosmos", null, openRecord = true), launch("video-recording"))
+        assertEquals(DeepLinkRouter.Launch("cosmos", null), launch("cosmos"))
+        // The modes are addressable by name on the live ids too.
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", 1), launch("rolling-balls", "pendulum"))
+        assertEquals(DeepLinkRouter.Launch("camera-gestures", 1), launch("camera-gestures", "pip"))
+        assertEquals(DeepLinkRouter.Launch("ar-rerun", 1), launch("ar-rerun", "session-mp4"))
+        assertEquals(DeepLinkRouter.Launch("ar-cloud-anchor", 1), launch("ar-cloud-anchor", "collaborative"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 2), launch("ar-placement", "free-pose"))
+        assertEquals(DeepLinkRouter.Launch("ar-geospatial-anchors", 2), launch("ar-geospatial-anchors", "streetscape"))
+        assertEquals(DeepLinkRouter.Launch("ar-xr", 1), launch("ar-xr", "face"))
+        // The old in-card tabs keep their index inside the default mode.
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 1), launch("wall-placement"))
+        assertEquals(DeepLinkRouter.Launch("ar-geospatial-anchors", 1), launch("ar-rooftop"))
+        // `ar-scene-mesh` lost its Streetscape mode, so it reads no tab any more.
+        assertEquals(DeepLinkRouter.Launch("ar-scene-mesh", null), launch("ar-scene-mesh", "1"))
+    }
+
+    @Test
+    fun `every TAB_NAMES mode names a tab of a demo that reads it`() {
+        DeepLinkRouter.TAB_NAMES.forEach { (demo, names) ->
+            assertTrue("$demo must read its launch tab", demo in DeepLinkRouter.TABBED_DEMOS)
+            assertTrue("$demo must be registered", ALL_DEMOS.any { it.id == demo })
+            names.values.forEach { assertTrue("$demo tab $it", it >= 0) }
+        }
+    }
+
+    @Test
+    fun `a removed demo resolves to no demo and keeps its title`() {
+        // Same contract as iOS `removedIds`: the link says the demo is gone.
+        assertNull(DeepLinkRouter.validate("placement-reticle-preview", ALL_DEMOS))
+        assertEquals(
+            "Placement reticle preview",
+            DeepLinkRouter.removedTitle("placement-reticle-preview"),
+        )
+        assertNull(DeepLinkRouter.removedTitle("model-viewer"))
+        assertNull(DeepLinkRouter.removedTitle(null))
+        DeepLinkRouter.REMOVED_DEMO_IDS.keys.forEach { id ->
+            assertNull("$id is removed, not registered", ALL_DEMOS.find { it.id == id })
+            assertNull("$id is removed, not aliased", DeepLinkRouter.DEMO_ID_ALIASES[id])
+        }
     }
 
     // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────

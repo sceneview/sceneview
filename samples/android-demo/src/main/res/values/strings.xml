@@ -151,8 +151,6 @@
     <string name="featured_ar_scene_geometry_subtitle">Geospatial building and terrain meshes</string>
     <string name="featured_ar_depth_occlusion_title">Depth Occlusion</string>
     <string name="featured_ar_depth_occlusion_subtitle">Real-world depth masks virtual objects</string>
-    <string name="featured_ar_pose_title">Pose Placement</string>
-    <string name="featured_ar_pose_subtitle">Free pose positioning</string>
 
     <!-- Samples screen -->
     <string name="samples_feature_count">%d feature demos</string>
@@ -434,6 +432,8 @@
          share sheet when another app hands over a supported model file. -->
     <string name="open_model_filter_label">Open in SceneView Demo</string>
     <!-- Shown when a handed-over file cannot be read, or is not a model this app opens. -->
+    <!-- A deep link to a demo removed with no replacement (DeepLinkRouter.REMOVED_DEMO_IDS). %1$s is its old title. -->
+    <string name="deep_link_removed_demo">%1$s was removed from the SceneView demo app</string>
     <string name="open_model_failed">Couldn\'t open that file — SceneView reads .3mf, .glb, .gltf, .stl, .obj and .ply</string>
     <string name="ar_placement_floor">Surface</string>
     <string name="ar_placement_wall">Wall</string>

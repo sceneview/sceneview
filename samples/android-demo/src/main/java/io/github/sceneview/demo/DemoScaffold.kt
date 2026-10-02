@@ -46,6 +46,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.Science
@@ -113,6 +115,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.common.DemoSheetDefaults
+import io.github.sceneview.demo.recording.SceneRecorderState
+import io.github.sceneview.demo.recording.formatElapsed
+import io.github.sceneview.demo.ui.GlassActionPill
+import androidx.compose.material3.SnackbarResult
 import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -316,6 +322,7 @@ fun DemoScaffold(
     chromeToggleOnTap: Boolean = false,
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
+    recorder: SceneRecorderState? = null,
     scene: @Composable BoxScope.() -> Unit
 ) {
     // The stage's ground and the chrome over it (#4080): media glass unless the demo draws a
@@ -326,6 +333,47 @@ fun DemoScaffold(
     val snackbarHostState = remember { SnackbarHostState() }
     val resetScope = rememberCoroutineScope()
     val resetConfirmation = stringResource(R.string.demo_reset_done)
+
+    // The shared Record action (samples step 0). A demo that hands over a [recorder] gets a
+    // "Record video" row in its settings sheet; while a recording runs, a Stop pill with the
+    // elapsed time sits in the bottom band, and stopping offers Play in a snackbar. Opened
+    // through the retired `video-recording` id, the Record pill shows in the band on arrival.
+    val modeSwitch = LocalDemoModeSwitch.current
+    val recordSampleId = LocalSampleId.current
+    val recordOpenedByLink = remember { recorder != null && DemoSettings.consumeOpenRecordAction() }
+    val recordPillShown = recorder != null && (recorder.isRecording || recordOpenedByLink)
+    val recordSaved = stringResource(R.string.demo_record_saved)
+    val recordPlay = stringResource(R.string.demo_record_play)
+    val recordFailed = stringResource(R.string.demo_record_failed)
+    val toggleRecording: () -> Unit = {
+        if (recorder != null) {
+            haptic.medium()
+            if (recorder.isRecording) {
+                recorder.stop()
+                logSampleInteraction(recordSampleId, "record_stop")
+                resetScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    if (recorder.failed) {
+                        snackbarHostState.showSnackbar(recordFailed, duration = SnackbarDuration.Short)
+                    } else {
+                        val result = snackbarHostState.showSnackbar(
+                            message = recordSaved,
+                            actionLabel = recordPlay,
+                            duration = SnackbarDuration.Long,
+                        )
+                        if (result == SnackbarResult.ActionPerformed) recorder.play()
+                    }
+                }
+            } else if (recorder.start()) {
+                logSampleInteraction(recordSampleId, "record_start")
+            } else {
+                resetScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar(recordFailed, duration = SnackbarDuration.Short)
+                }
+            }
+        }
+    }
 
     // Chrome visibility. Starts visible; a scene tap toggles it. TalkBack users
     // explore by touch, so hiding controls behind a viewport tap would strand
@@ -470,6 +518,15 @@ fun DemoScaffold(
                     DemoSettingsSheet(
                         controlsContent = controls,
                         haptic = haptic,
+                        recording = recorder?.isRecording == true,
+                        onRecord = if (recorder != null) {
+                            {
+                                toggleRecording()
+                                settingsExpanded = false
+                            }
+                        } else {
+                            null
+                        },
                         onReset = onResetConfirmed,
                         onResetSettings = onResetSettings,
                         onClose = {
@@ -688,7 +745,8 @@ fun DemoScaffold(
                     dockClearance + bottomOverlayBand,
                 )
                 AnimatedVisibility(
-                    visible = chromeVisible || bottomOverlay != null || peekHeader != null,
+                    visible = chromeVisible || bottomOverlay != null || peekHeader != null ||
+                        modeSwitch != null || recordPillShown,
                     enter = fadeIn(SceneViewTokens.Motion.fade()),
                     exit = fadeOut(SceneViewTokens.Motion.fade()),
                     modifier = Modifier.align(Alignment.BottomCenter),
@@ -719,7 +777,10 @@ fun DemoScaffold(
                 }
 
                 // Bottom band: status pill + demo overlays stacked above the dock.
-                val hasBottomBandContent = bottomOverlay != null || peekHeader != null
+                // The record pill and the consolidated card's mode pill close the stack,
+                // in that order, so the mode pill always sits just above the dock.
+                val hasBottomBandContent = bottomOverlay != null || peekHeader != null ||
+                    modeSwitch != null || recordPillShown
                 if (!arSessionFailed && arOverlaysEnabled && hasBottomBandContent) {
                     DemoBottomOverlay(
                         reservedBottom = dockClearance,
@@ -729,6 +790,26 @@ fun DemoScaffold(
                         onBandHeightChanged = { bottomOverlayBandPx = it },
                         status = peekHeader,
                         content = bottomOverlay,
+                        footer = if (modeSwitch != null || recordPillShown) {
+                            {
+                                if (recorder != null && recordPillShown) {
+                                    RecordPill(recorder, onClick = toggleRecording)
+                                }
+                                if (modeSwitch != null) DemoModePill(modeSwitch)
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                } else if (modeSwitch != null && arSessionFailed) {
+                    // An AR mode whose session failed still offers the way to the other mode.
+                    DemoBottomOverlay(
+                        reservedBottom = dockClearance,
+                        faded = settingsExpanded || dockHidden,
+                        onBandHeightChanged = { bottomOverlayBandPx = it },
+                        status = null,
+                        content = null,
+                        footer = { DemoModePill(modeSwitch) },
                     )
                 }
 
@@ -1308,6 +1389,9 @@ object DemoScaffoldTestTags {
     const val RESET_ACTION = "demo-reset-action"
     const val FEEDBACK_ACTION = "demo-feedback-action"
     const val QA_MODE_ACTION = "demo-qa-mode-action"
+    /** The shared Record action: its sheet row and its bottom-band pill (samples step 0). */
+    const val RECORD_ACTION = "demo-record-action"
+    const val RECORD_PILL = "demo-record-pill"
     const val QA_PILL = "demo-qa-pill"
     /** The identity pill, tagged only when it carries an asset-source suffix. */
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
@@ -1401,6 +1485,7 @@ private fun BoxScope.DemoBottomOverlay(
     onBandHeightChanged: (Int) -> Unit,
     status: String?,
     content: (@Composable DemoBottomOverlayScope.() -> Unit)?,
+    footer: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val bandAlpha by animateFloatAsState(
         targetValue = if (faded) 0f else 1f,
@@ -1436,7 +1521,30 @@ private fun BoxScope.DemoBottomOverlay(
         if (content != null) {
             DemoBottomOverlayScope(this, 0.dp).content()
         }
+        footer?.invoke(this)
     }
+}
+
+/**
+ * The shared Record action's pill in the bottom band: "Record" while idle, "Stop · m:ss"
+ * while the scene is being recorded.
+ */
+@Composable
+private fun RecordPill(recorder: SceneRecorderState, onClick: () -> Unit) {
+    val recording = recorder.isRecording
+    GlassActionPill(
+        icon = if (recording) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+        label = if (recording) {
+            stringResource(R.string.demo_record_pill_stop, formatElapsed(recorder.elapsedSeconds))
+        } else {
+            stringResource(R.string.demo_record_pill)
+        },
+        onClick = onClick,
+        contentDescription = stringResource(
+            if (recording) R.string.demo_record_stop_action else R.string.demo_record_action,
+        ),
+        modifier = Modifier.testTag(DemoScaffoldTestTags.RECORD_PILL),
+    )
 }
 
 /** Gap between two elements stacked in an overlay slot. */
@@ -1518,6 +1626,8 @@ private fun DemoSettingsSheet(
     onResetSettings: (() -> Unit)?,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    recording: Boolean = false,
+    onRecord: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -1605,6 +1715,19 @@ private fun DemoSettingsSheet(
                 )
             }
 
+            // The shared Record action (samples step 0) leads the app-level actions.
+            if (onRecord != null) {
+                val recordLabel = stringResource(
+                    if (recording) R.string.demo_record_stop_action else R.string.demo_record_action,
+                )
+                SheetActionRow(
+                    icon = if (recording) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+                    label = recordLabel,
+                    contentDescription = recordLabel,
+                    onClick = onRecord,
+                    modifier = Modifier.testTag(DemoScaffoldTestTags.RECORD_ACTION),
+                )
+            }
             // The former overflow-menu actions (#3328), in the order they had there.
             if (onReset != null) {
                 val resetCd = stringResource(R.string.demo_reset_cd)

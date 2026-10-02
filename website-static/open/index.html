@@ -381,22 +381,24 @@
       'custom-mesh': 'Custom Mesh',
       'shape': 'Shape',
       'reflection-probes': 'Reflection Probes',
-      'secondary-camera': 'Secondary Camera',
+      // Samples step 0 — retired ids keep their link and name the card that absorbed
+      // them (the app resolves them through DeepLinkRouter.DEMO_ID_ALIASES).
+      'secondary-camera': 'Camera & Gestures',
       'debug-overlay': 'Debug Overlay',
       'ar-placement': 'Tap to Place',
       'ar-image': 'Image Detection',
       'ar-face': 'Face Tracking',
       'ar-cloud-anchor': 'Cloud Anchors',
       'ar-scene-mesh': 'Scene Geometry',
-      // #3463 — folded into `ar-scene-mesh`, the "Scene Geometry" card, as its
-      // Streetscape mode; the app resolves the old id through
-      // DeepLinkRouter.DEMO_ID_ALIASES and pre-selects that mode via
-      // ALIAS_INITIAL_TAB, so the link still opens the right screen on the right
-      // half of it.
-      'ar-streetscape': 'Scene Geometry',
-      'ar-pose': 'Pose Tracking',
+      // #3463 then samples step 0 — the Streetscape mode of the Geospatial Anchors
+      // card; the app resolves the old id through DeepLinkRouter.DEMO_ID_ALIASES and
+      // pre-selects that mode via ALIAS_INITIAL_TAB.
+      'ar-streetscape': 'Geospatial Anchors',
+      // Samples step 0 — the Free pose mode of `ar-placement`.
+      'ar-pose': 'Tap to Place',
       'ar-rerun': 'Rerun Debug',
-      'ar-record-playback': 'Record & Playback',
+      // Samples step 0 — the Session MP4 mode of `ar-rerun`.
+      'ar-record-playback': 'Rerun Debug',
       'ar-depth-occlusion': 'Depth Occlusion',
       // #3405 — folded into `ar-placement`; the app resolves the old id through
       // DeepLinkRouter.DEMO_ID_ALIASES, so the link still opens the right screen.

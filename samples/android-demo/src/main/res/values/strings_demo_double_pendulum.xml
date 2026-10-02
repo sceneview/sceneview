@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strings for the `double-pendulum` demo (registered by
-     `DoublePendulumFragment.kt`). Android's resource merger
+     `RollingBallsFragment.kt`, Pendulum mode since samples step 0). Android's resource merger
      fans every `res/values/*.xml` file in, so `R.string.demo_double_pendulum_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->

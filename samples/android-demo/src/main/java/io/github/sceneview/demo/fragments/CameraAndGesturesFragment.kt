@@ -5,7 +5,10 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.DemoMode
+import io.github.sceneview.demo.DemoModeHost
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.SecondaryCameraDemo
 import io.github.sceneview.demo.demos.CameraAndGesturesDemo
 
 /**
@@ -16,6 +19,8 @@ import io.github.sceneview.demo.demos.CameraAndGesturesDemo
  * It also absorbs the retired `camera-controls` and `gesture-editing` demos (#2239 Batch 1) —
  * their deep links stay routable through
  * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
+ *
+ * Samples step 0 added `secondary-camera` as the PiP mode (`?tab=pip`).
  */
 object CameraAndGesturesFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
@@ -26,13 +31,27 @@ object CameraAndGesturesFragment : DemoFragment {
         icon = Icons.Filled.PhotoCamera,
         order = 33,
         addedIn = "4.17.0",
-        updatedIn = "4.48.0",
-        tags = setOf("camera", "orbit", "gesture", "pan", "zoom", "manipulator", "edit"),
+        updatedIn = "4.51.0",
+        tags = setOf(
+            "camera", "orbit", "gesture", "pan", "zoom", "manipulator", "edit",
+            "pip", "multi-view", "render-target",
+        ),
         // #3500 rebuilt the screen from scratch around one stage.
     )
 
     @Composable
     override fun Screen(onBack: () -> Unit) {
-        CameraAndGesturesDemo(onBack)
+        DemoModeHost(
+            modes = listOf(
+                DemoMode("camera", R.string.demo_mode_camera),
+                DemoMode("pip", R.string.demo_mode_pip),
+            ),
+            tabToMode = mapOf(0 to 0, 1 to 1),
+        ) { mode ->
+            when (mode) {
+                1 -> SecondaryCameraDemo(onBack)
+                else -> CameraAndGesturesDemo(onBack)
+            }
+        }
     }
 }

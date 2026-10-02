@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,9 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -70,7 +65,6 @@ import io.github.sceneview.demo.common.rememberIsNetworkAvailable
 import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.demos.internal.friendlyArSessionError
-import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
@@ -95,87 +89,43 @@ private const val NO_GEOMETRY_HINT_DELAY_MS = 15_000L
 private const val MESH_OVERLAY_ALPHA = 0.55f
 
 /**
- * Unified "Scene Geometry" demo — consolidates the retired `ar-streetscape` demo into the
- * `ar-scene-mesh` card behind a segmented-button toggle (#2239 / #3463).
+ * The Geospatial scene-geometry screens. They shared the `ar-scene-mesh` card behind a
+ * segmented toggle (#2239 / #3463) until samples step 0 split them by what they teach:
  *
- * - **Mesh** — [io.github.sceneview.ar.node.SceneMeshNode] colour-codes each geometry by its
+ * - **Mesh** ([ARSceneMeshDemo], the `ar-scene-mesh` card) —
+ *   [io.github.sceneview.ar.node.SceneMeshNode] colour-codes each geometry by its
  *   [MeshClassification], the enum that gives ARKit `ARMeshAnchor` parity on Android.
- * - **Streetscape** — [io.github.sceneview.ar.node.StreetscapeGeometryNode], the raw node the
- *   classified one subclasses: one material for every geometry, no classification.
- *   (Formerly `ar-streetscape`.)
+ * - **Streetscape** ([ARStreetscapeDemo], a mode of the `ar-geospatial-anchors` card) —
+ *   [io.github.sceneview.ar.node.StreetscapeGeometryNode], the raw node the classified one
+ *   subclasses: one material for every geometry, no classification. The retired
+ *   `ar-streetscape` link opens it through [io.github.sceneview.demo.DeepLinkRouter].
  *
- * **Why these two are one card.** 246 of 445 lines were identical, and they call the *same*
- * primary API: `Config.StreetscapeGeometryMode.ENABLED` plus
- * `frame.getUpdatedTrackables(StreetscapeGeometry::class.java)`. The whole difference is
- * which node consumes the trackable — the classified subclass or its base — which is the
- * definition of a mode, not of a second screen. Shipping them as two cards taught the reader
- * that ARCore has two scene-geometry APIs when it has one, with an optional classification
- * layer on top.
+ * Each screen keeps its **own** `ARSceneView` and its own [rememberEngine], so leaving one
+ * tears its ARCore session and Filament engine down completely — the leak invariant the
+ * #2239 Batch-1 review pinned.
  *
- * Each mode keeps its **own** `ARSceneView` and its own [rememberEngine], so switching modes
- * tears the inactive ARCore session and Filament engine down completely — the leak invariant
- * the #2239 Batch-1 review pinned. Nothing is hoisted above the `when`.
- *
- * The card keeps `ar-scene-mesh` as its id: an id is a public deep-link surface and iOS ships
- * a screen under the same one. The retired `ar-streetscape` link routes through
- * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES] and pre-selects mode 1 through
- * [io.github.sceneview.demo.DeepLinkRouter.ALIAS_INITIAL_TAB].
- *
- * **Requirements** (both modes):
+ * **Requirements** (both screens):
  * - ARCore Geospatial API enabled in Google Cloud Console + a Cloud API key
  * - Device supports the ARCore Geospatial API
  * - Outdoor environment with Google Street View coverage
  * - CAMERA + ACCESS_FINE_LOCATION permissions
  */
+/** The `ar-scene-mesh` card: classified [io.github.sceneview.ar.node.SceneMeshNode] geometry. */
 @Composable
-fun ARSceneGeometryDemo(onBack: () -> Unit) {
-    var mode by remember {
-        mutableStateOf(initialDemoMode(SceneGeometryMode.entries, SceneGeometryMode.Mesh))
-    }
-    when (mode) {
-        SceneGeometryMode.Mesh -> MeshSection(onBack, mode) { mode = it }
-        SceneGeometryMode.Streetscape -> StreetscapeSection(onBack, mode) { mode = it }
-    }
-}
+fun ARSceneMeshDemo(onBack: () -> Unit) = MeshSection(onBack)
 
 /**
- * Declaration order is the segmented-button order and
- * [io.github.sceneview.demo.DeepLinkRouter.ALIAS_INITIAL_TAB] indexes into it
- * (`ar-streetscape` = 1). Append, never reorder.
+ * The Streetscape mode of the `ar-geospatial-anchors` card (samples step 0): the raw
+ * [io.github.sceneview.ar.node.StreetscapeGeometryNode], one material for every geometry.
  */
-private enum class SceneGeometryMode(@StringRes val labelRes: Int) {
-    Mesh(R.string.demo_ar_scene_mesh_mode_mesh),
-    Streetscape(R.string.demo_ar_scene_mesh_mode_streetscape),
-}
-
 @Composable
-private fun ModeSelector(
-    current: SceneGeometryMode,
-    onModeChange: (SceneGeometryMode) -> Unit,
-) {
-    val modes = SceneGeometryMode.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, m ->
-            SegmentedButton(
-                selected = m == current,
-                onClick = { onModeChange(m) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(stringResource(m.labelRes)) },
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
-}
+fun ARStreetscapeDemo(onBack: () -> Unit) = StreetscapeSection(onBack)
 
 // ─── Mesh section ────────────────────────────────────────────────────────────
-// Formerly the whole of ARSceneMeshDemo (`ar-scene-mesh`).
+// The `ar-scene-mesh` card.
 
 @Composable
-private fun MeshSection(
-    onBack: () -> Unit,
-    mode: SceneGeometryMode,
-    onModeChange: (SceneGeometryMode) -> Unit,
-) = GeospatialPermissionGate(
+private fun MeshSection(onBack: () -> Unit) = GeospatialPermissionGate(
     title = stringResource(R.string.demo_ar_scene_mesh_title),
     deniedReason = stringResource(R.string.demo_ar_scene_mesh_location_denied),
     onBack = onBack,
@@ -214,7 +164,6 @@ private fun MeshSection(
         // The sheet holds the mode toggle and the one-line explainer of what this mode
         // renders; the dev-only ForceTrackingFailureMenu joins it in QA mode (#1620).
         controls = {
-            ModeSelector(mode, onModeChange)
             Text(
                 text = stringResource(R.string.demo_ar_scene_mesh_mode_mesh_explainer),
                 style = MaterialTheme.typography.bodyMedium,
@@ -289,15 +238,11 @@ private fun MeshSection(
 }
 
 // ─── Streetscape section ─────────────────────────────────────────────────────
-// Formerly ARStreetscapeDemo (`ar-streetscape`).
+// The Streetscape mode of `ar-geospatial-anchors` (formerly `ar-streetscape`).
 
 @Composable
-private fun StreetscapeSection(
-    onBack: () -> Unit,
-    mode: SceneGeometryMode,
-    onModeChange: (SceneGeometryMode) -> Unit,
-) = GeospatialPermissionGate(
-    title = stringResource(R.string.demo_ar_scene_mesh_title),
+private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
+    title = stringResource(R.string.demo_ar_geospatial_anchors_title),
     deniedReason = stringResource(R.string.demo_ar_scene_mesh_streetscape_denied),
     onBack = onBack,
 ) {
@@ -324,10 +269,9 @@ private fun StreetscapeSection(
     NoGeometryGuidanceEffect(state, cloudStatus)
 
     DemoScaffold(
-        title = stringResource(R.string.demo_ar_scene_mesh_title),
+        title = stringResource(R.string.demo_ar_geospatial_anchors_title),
         onBack = onBack,
         controls = {
-            ModeSelector(mode, onModeChange)
             Text(
                 text = stringResource(R.string.demo_ar_scene_mesh_mode_streetscape_explainer),
                 style = MaterialTheme.typography.bodyMedium,
