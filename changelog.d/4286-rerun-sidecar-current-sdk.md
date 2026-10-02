@@ -1,0 +1,4 @@
+<!-- category: Fixed -->
+- **The Rerun sidecar works again with current rerun-sdk ([#4286](https://github.com/sceneview/sceneview/pull/4286)).** `tools/rerun-bridge.py` dropped every event on rerun-sdk 0.23 and later (`set_time_nanos` was removed), and live mode stopped at startup because the spawned viewer took the app's port 9876. The viewer now serves on 9877 (`--viewer-port`), and the sidecar needs `rerun-sdk>=0.23`.
+<!-- category: Added -->
+- **Scan-health dashboard and default layout in the Rerun sidecar ([#4286](https://github.com/sceneview/sceneview/pull/4286)).** With no app change, the sidecar logs feature points per frame, surfaces and anchors seen, camera speed and the walked path. Live and saved recordings open on a ready layout: the AR world beside the three graphs. `--replay <session.jsonl>` replays a recorded session without a device.
