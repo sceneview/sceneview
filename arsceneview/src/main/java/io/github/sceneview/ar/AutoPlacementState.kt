@@ -84,6 +84,14 @@ class AutoPlacementState {
     internal var moveAction: ((Float, Float) -> Boolean)? = null
     internal var rotateAction: ((Float) -> Unit)? = null
     internal var scaleAction: ((Float) -> Unit)? = null
+    internal var scaleToggleAction: (() -> Unit)? = null
+
+    /**
+     * Draw the selection ring — a thin white footprint ring on the surface around the placed
+     * [AutoPlacementModel] — while [isSelected] (Scene Viewer's selection affordance). On by
+     * default; set `false` to draw your own selection chrome from [isSelected].
+     */
+    var showsSelectionRing: Boolean by mutableStateOf(true)
 
     /** Gesture-driven haptic events (snap, limit, invalid move); set by [ARHapticFeedback]. */
     internal var gestureHapticSink: ((io.github.sceneview.haptic.ARHapticEvent) -> Unit)? = null
@@ -102,6 +110,19 @@ class AutoPlacementState {
     /** Accessibility alternative: uniform base-size multiplier, clamped to 25–400%. */
     fun scaleTo(factor: Float) {
         if (canManipulate && factor.isFinite()) scaleAction?.invoke(factor.coerceIn(0.25f, 4f))
+    }
+
+    /**
+     * The double-tap on the placed object: selects it, then animates it back to exactly
+     * 100 % if it was resized — or, already at 100 %, back to the size the user had pinched
+     * it to before (a toggle, not a one-way reset). Never resized, it plays the 100 %
+     * rebound so the tap is acknowledged. Wire it to `onDoubleTap` when the tapped node is
+     * the placed model; [AutoPlacementScene] already does.
+     */
+    fun toggleBaseScale() {
+        if (!hasPlacement || (phase != PlacementPhase.PLACED && phase != PlacementPhase.ADJUSTING)) return
+        isSelected = true
+        scaleToggleAction?.invoke()
     }
 
     var phase: PlacementPhase by mutableStateOf(PlacementPhase.INITIALIZING)
@@ -230,6 +251,7 @@ class AutoPlacementState {
         moveAction = null
         rotateAction = null
         scaleAction = null
+        scaleToggleAction = null
         dismissed = true
         sessionGeneration++
         placementRequested = false

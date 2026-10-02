@@ -71,9 +71,12 @@ internal fun FeaturePlacementScene(
         onARCoreAvailability = onARCoreAvailability,
         arCoreAvailabilityOverlay = arCoreAvailabilityOverlay,
         onTrackingFailureChanged = onTrackingFailureChanged,
-        onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
-            if (node == null) state.deselectPlacement() else state.selectPlacement()
-        }),
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { _, node ->
+                if (node == null) state.deselectPlacement() else state.selectPlacement()
+            },
+            onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+        ),
         onSessionUpdated = { session, frame ->
             onSessionUpdated(session, frame)
             if (!state.hasPlacement && placement != null) {

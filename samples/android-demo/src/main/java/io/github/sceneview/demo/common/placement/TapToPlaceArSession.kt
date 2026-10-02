@@ -262,9 +262,10 @@ fun TapToPlaceArSession(
                 state.trackingFailureReason = reason
             },
             onGestureListener = rememberOnGestureListener(
-                // A tap on the object selects it (§2.4) — felt, not drawn: the demo has no
-                // selection chrome to show. A tap on empty space creates nothing; the
-                // controller documents that as a no-op rather than leaving it implicit.
+                // A tap on the object selects it (§2.4): the SDK draws Scene Viewer's white
+                // footprint ring around it while it stays selected. A tap on empty space
+                // deselects and creates nothing; the controller documents that as a no-op
+                // rather than leaving it implicit.
                 onSingleTapConfirmed = { _, node ->
                     if (node != null) {
                         state.controller.selectPlacement()
@@ -272,6 +273,11 @@ fun TapToPlaceArSession(
                         state.controller.deselectPlacement()
                         state.controller.onBackgroundTap()
                     }
+                },
+                // Double-tap on the object: back to real-world size, or — already there —
+                // back to the size the user had pinched to (AR Quick Look's toggle).
+                onDoubleTap = { _, node ->
+                    if (node != null) state.controller.toggleBaseScale()
                 },
                 // Surface which gesture is active so the read-out can tell drag-to-move
                 // from twist-to-rotate from pinch-to-scale. `node == null` ⇒ the touch

@@ -714,6 +714,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getScaleFactor ()F
 	public final fun getSelectionGeneration ()I
 	public final fun getSessionGeneration ()I
+	public final fun getShowsSelectionRing ()Z
 	public final fun getTicket ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun getWantsSurface ()Z
 	public final fun isAdjusting ()Z
@@ -729,6 +730,8 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun scaleTo (F)V
 	public final fun selectModel ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun selectPlacement ()V
+	public final fun setShowsSelectionRing (Z)V
+	public final fun toggleBaseScale ()V
 	public final fun withdrawRequest ()V
 }
 

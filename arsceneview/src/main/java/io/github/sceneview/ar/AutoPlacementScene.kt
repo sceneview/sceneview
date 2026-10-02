@@ -3,6 +3,7 @@ package io.github.sceneview.ar
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.ar.node.AnchorNode
@@ -213,9 +215,15 @@ fun AutoPlacementScene(
             planeRenderer = false,
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
-            onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
-                if (node == null) state.deselectPlacement() else state.selectPlacement()
-            }),
+            onGestureListener = rememberOnGestureListener(
+                // Tap the object to select it (the selection ring appears), tap empty space
+                // to deselect — Scene Viewer's selection model.
+                onSingleTapConfirmed = { _, node ->
+                    if (node == null) state.deselectPlacement() else state.selectPlacement()
+                },
+                // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
+                onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+            ),
             onARCoreAvailability = {
                 availability = it
                 onARCoreAvailability?.invoke(it)
@@ -355,9 +363,20 @@ fun AutoPlacementScene(
 
 /**
  * Grounded model content for [AutoPlacementScene], with a 0.3 m longest-axis preview by
- * default. Pass null [scaleToUnits] to retain authored units. Pinch is limited to 25–400%
- * of that base and snaps to 100 % within ±4 %, with a short elastic rebound. The model's complete bounding volume is selectable, including nested meshes.
- * [assetRotation] corrects authored axes before the grounded bounds are calculated.
+ * default. Pass null [scaleToUnits] to retain authored units. The model's complete bounding
+ * volume is selectable, including nested meshes. [assetRotation] corrects authored axes
+ * before the grounded bounds are calculated.
+ *
+ * Gestures, as Scene Viewer and AR Quick Look:
+ * - **Pinch** follows the fingers 1:1 relative to where they landed (spreading them twice as
+ *   far doubles the object), limited to 25–400 % of the base, snapping to 100 % within ±4 %
+ *   with a short elastic rebound.
+ * - **Twist** turns the object about its base.
+ * - **Double-tap** ([AutoPlacementState.toggleBaseScale]) animates back to 100 %; at 100 % it
+ *   returns to the size last pinched to.
+ * - **Selection** draws a thin white ring on the surface around the object's footprint while
+ *   [AutoPlacementState.isSelected]; opt out with [AutoPlacementState.showsSelectionRing].
+ *   [AutoPlacementNode]'s free-form content draws no ring — it has no bounds to encircle.
  */
 @Composable
 fun ARSceneScope.AutoPlacementModel(
@@ -392,12 +411,127 @@ fun ARSceneScope.AutoPlacementModel(
                 isScaleEditable = false
             }
         }
+        val footprint = remember(model) {
+            // The model's own bounds, already rotated and grounded — the ring hugs the object.
+            val grounded = buildList<Position> {
+                for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
+                    val corner = model.center +
+                        Position(x * model.halfExtent.x, y * model.halfExtent.y, z * model.halfExtent.z)
+                    add(model.quaternion * (corner * model.scale) + model.position)
+                }
+            }
+            SelectionRing.footprint(grounded)
+        }
         // Opaque glTF materials cannot fade, so the model grows into place and shrinks away
         // on tracking loss instead. Scaling about the pivot keeps the contact point fixed.
         Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {
             NodeLifecycle(model, null)
+            SelectionRingNode(state, footprint)
         }
     }
+}
+
+/**
+ * Scene Viewer's selection affordance: a thin white ring lying on the surface around the
+ * placed object's footprint, fading in while [AutoPlacementState.isSelected] and out on
+ * deselection. A real node in the anchor's frame — so it sits on the floor in true perspective,
+ * is hidden behind the object where the object stands in front of it, and scales with the pinch
+ * — rather than a screen-space overlay chasing the object one frame late. Never touchable, never
+ * a shadow caster.
+ */
+@Composable
+private fun io.github.sceneview.NodeScope.SelectionRingNode(
+    state: AutoPlacementState,
+    footprint: SelectionRing.Footprint,
+) {
+    if (footprint.radius <= 0f) return
+    val material = remember(materialLoader) {
+        materialLoader.createUnlitColorInstance(
+            io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA),
+        )
+    }
+    // Declared before the ring's own lifecycle below: Compose disposes in reverse order, so
+    // the renderable is gone before its material instance is.
+    DisposableEffect(material) {
+        onDispose { materialLoader.destroyMaterialInstance(material) }
+    }
+    val ring = remember(engine, footprint) {
+        val tube = SelectionRing.tubeRadius(footprint.radius)
+        io.github.sceneview.node.TorusNode(
+            engine = engine,
+            majorRadius = footprint.radius,
+            minorRadius = tube,
+            // Lifted by its own thickness so it lies ON the surface instead of z-fighting the
+            // shadow catcher that shares y = 0.
+            center = Position(footprint.centerX, tube + SelectionRing.LIFT, footprint.centerZ),
+            majorSegments = SelectionRing.MAJOR_SEGMENTS,
+            minorSegments = SelectionRing.MINOR_SEGMENTS,
+            materialInstance = material,
+        ).apply {
+            // Hidden until the fade below has run once: no one-frame flash when unselected.
+            isVisible = false
+            isTouchable = false
+            isShadowCaster = false
+            isShadowReceiver = false
+        }
+    }
+    val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
+    val opacity = animateFloatAsState(
+        targetValue = if (state.showsSelectionRing && state.isSelected && placed) 1f else 0f,
+        animationSpec = tween(SelectionRing.FADE_MS),
+        label = "selectionRing",
+    )
+    // Every animation frame goes straight to the material, without recomposing: a read of
+    // `opacity` inside a `SideEffect` is not tracked, so the fade would stop at its first frame
+    // and a deselected ring would stay drawn.
+    LaunchedEffect(ring, material) {
+        snapshotFlow { opacity.value }.collect { value ->
+            ring.isVisible = value > 0f
+            material.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * value))
+            // A material parameter is invisible to the frame gate: ask for the frame that shows
+            // the fade, or a scene with no new camera frame (a finished playback, a paused
+            // session) keeps drawing the old ring.
+            ring.requestRender()
+        }
+    }
+    NodeLifecycle(ring, null)
+}
+
+/** Geometry of the selection ring — pure, pinned in `ScaleSnapTest`. */
+internal object SelectionRing {
+    /** Peak opacity: present on any floor, never a solid white hoop. */
+    const val ALPHA = 0.9f
+
+    /** Fade in/out on (de)selection, milliseconds (`motion-fade` family). */
+    const val FADE_MS = 180
+
+    /** Clearance between the object's footprint and the ring, as a fraction of the radius. */
+    const val MARGIN = 0.12f
+
+    /** Lift above the surface, metres — clears the shadow catcher at y = 0. */
+    const val LIFT = 0.001f
+
+    const val MAJOR_SEGMENTS = 96
+    const val MINOR_SEGMENTS = 8
+
+    /** Ring centre on the surface plane (anchor X/Z) and radius, metres. */
+    data class Footprint(val centerX: Float, val centerZ: Float, val radius: Float)
+
+    /**
+     * The circle on the surface plane (anchor X/Z — the floor, or the wall for a wall
+     * placement, whose normal is the anchor's Y) that encloses every grounded bounds corner,
+     * plus [MARGIN].
+     */
+    fun footprint(corners: List<Position>): Footprint {
+        if (corners.isEmpty()) return Footprint(0f, 0f, 0f)
+        val cx = (corners.minOf { it.x } + corners.maxOf { it.x }) / 2f
+        val cz = (corners.minOf { it.z } + corners.maxOf { it.z }) / 2f
+        val r = corners.maxOf { kotlin.math.hypot(it.x - cx, it.z - cz) }
+        return Footprint(cx, cz, if (r.isFinite()) r * (1f + MARGIN) else 0f)
+    }
+
+    /** Tube radius: a hairline that stays visible on a mug and slim under a sofa. */
+    fun tubeRadius(radius: Float): Float = (radius * 0.012f).coerceIn(0.0018f, 0.006f)
 }
 
 /**
@@ -462,24 +596,57 @@ private fun ARSceneScope.AutomaticPlacementPivot(
     }
     NodeLifecycle(root) {
         val pivot = remember(engine, placement) { object : io.github.sceneview.node.Node(engine) {
-            /** The logical scale; [scale] only differs from it during the 100 % rebound. */
+            /**
+             * The logical scale; [scale] only differs from it during the 100 % rebound and
+             * the animated double-tap resize.
+             */
             var logicalScale = 1f
             private var rebound: Boolean? = null // fromAbove, while a rebound is pending or running
             private var reboundStartNanos = 0L
 
+            /** The last size the user pinched to away from 100 % — what a double-tap restores. */
+            var rememberedScale: Float? = null
+
+            /** Visual scale the double-tap animation started from, `null` when none runs. */
+            private var tweenFrom: Float? = null
+            private var tweenStartNanos = 0L
+
             fun startRebound(fromAbove: Boolean) {
+                tweenFrom = null
                 rebound = fromAbove
                 reboundStartNanos = 0L
             }
 
             fun cancelRebound() {
                 rebound = null
+                // Any running double-tap tween lands where it was going, so a pinch that
+                // starts mid-animation grabs the object at its logical size.
+                if (tweenFrom != null) {
+                    tweenFrom = null
+                    scale = Scale(logicalScale)
+                }
             }
 
-            override val isFrameActive: Boolean get() = rebound != null || super.isFrameActive
+            /** Animates the visual scale to [target] (already written to [logicalScale]). */
+            fun animateTo(target: Float) {
+                rebound = null
+                tweenFrom = scale.x
+                tweenStartNanos = 0L
+                logicalScale = target
+            }
+
+            override val isFrameActive: Boolean
+                get() = rebound != null || tweenFrom != null || super.isFrameActive
 
             override fun onFrame(frameTimeNanos: Long) {
                 super.onFrame(frameTimeNanos)
+                tweenFrom?.let { from ->
+                    if (tweenStartNanos == 0L) tweenStartNanos = frameTimeNanos
+                    val elapsedMs = (frameTimeNanos - tweenStartNanos) / 1_000_000f
+                    scale = Scale(ScaleSnap.doubleTapProgress(from, logicalScale, elapsedMs))
+                    if (elapsedMs >= ScaleSnap.DOUBLE_TAP_MS) tweenFrom = null
+                    return
+                }
                 val fromAbove = rebound ?: return
                 if (reboundStartNanos == 0L) reboundStartNanos = frameTimeNanos
                 val elapsedMs = (frameTimeNanos - reboundStartNanos) / 1_000_000f
@@ -504,13 +671,23 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             isPositionEditable = false
             editableScaleRange = ScaleSnap.MIN..ScaleSnap.MAX
             onRotateBegin = { _, _ -> state.beginAdjustment() }
-            var rawScale = 1f
-            onScaleBegin = { _, _ -> rawScale = logicalScale; state.beginAdjustment() }
+            // The pinch is measured against the moment two fingers landed — the scale then,
+            // times the span ratio since — never accumulated event by event: 1:1 with the
+            // fingers (Scene Viewer / Quick Look / the iOS controller), path-independent, and
+            // immune to whether the detector's factor is per-event or cumulative.
+            var pinchStartScale = 1f
+            var pinchStartSpan = 0f
+            onScaleBegin = { detector, _ ->
+                cancelRebound()
+                pinchStartScale = logicalScale
+                pinchStartSpan = detector.currentSpan
+                state.beginAdjustment()
+            }
             onRotate = { _, _, _ -> state.isAdjusting }
-            onScale = { _, _, factor ->
+            onScale = { detector, _, _ ->
                 if (state.isAdjusting) {
                     val previous = logicalScale
-                    rawScale = (rawScale * (1f + (factor - 1f) * scaleGestureSensitivity))
+                    val rawScale = ScaleSnap.pinchRaw(pinchStartScale, pinchStartSpan, detector.currentSpan)
                         .coerceIn(ScaleSnap.MIN, ScaleSnap.MAX)
                     val step = ScaleSnap.step(previous, rawScale)
                     logicalScale = step.displayed
@@ -522,6 +699,7 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                         scale = Scale(step.displayed)
                     }
                     if (step.enteredLimit) state.gestureHapticSink?.invoke(ARHapticEvent.LimitReached)
+                    if (!step.snapped) rememberedScale = step.displayed
                     state.scaleFactor = step.displayed
                     scaleChanged((step.displayed * 100).roundToInt(), step.snapped, step.enteredSnap)
                 }
@@ -537,6 +715,10 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             state.scaleAction = {
                 val previous = pivot.logicalScale
                 pivot.cancelRebound()
+                // Keep the double-tap toggle coherent with the read-out's tap-to-100 % and
+                // the accessibility slider: the size left behind is the size a double-tap
+                // brings back.
+                if (it != 1f) pivot.rememberedScale = it else if (previous != 1f) pivot.rememberedScale = previous
                 pivot.logicalScale = it
                 pivot.scale = Scale(it)
                 state.scaleFactor = it
@@ -547,10 +729,25 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                 }
                 scaleChanged((it * 100).roundToInt(), it == 1f, crossed)
             }
+            state.scaleToggleAction = {
+                val previous = pivot.logicalScale
+                val target = ScaleSnap.doubleTapTarget(previous, pivot.rememberedScale)
+                if (target == null) {
+                    // Nothing to toggle: acknowledge the tap with the 100 % rebound.
+                    pivot.startRebound(fromAbove = false)
+                } else {
+                    if (target == 1f) pivot.rememberedScale = previous
+                    pivot.animateTo(target)
+                    state.scaleFactor = target
+                    if (target == 1f) state.gestureHapticSink?.invoke(ARHapticEvent.ScaleSnapped)
+                    scaleChanged((target * 100).roundToInt(), target == 1f, target == 1f)
+                }
+            }
             onDispose {
                 state.moveAction = null
                 state.rotateAction = null
                 state.scaleAction = null
+                state.scaleToggleAction = null
             }
         }
         NodeLifecycle(pivot, content)
