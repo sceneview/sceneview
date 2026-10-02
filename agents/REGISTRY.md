@@ -81,11 +81,11 @@ iOS and web follow once the Android one is accepted):
 - **License:** Apache-2.0 (declared in the `SKILL.md` frontmatter).
 - **Source of truth:** <https://github.com/sceneview/sceneview> — `llms.txt`
   and the demos under `samples/android-demo/`.
-- **Maintenance contact:** the `sceneview-tools` org
+- **Maintenance contact:** the `sceneview` org
   (<https://github.com/sceneview>); issues at
   <https://github.com/sceneview/sceneview/issues>.
-- **Drift guarantee:** `check-sceneview-skill.sh` is wired into CI so the
-  skill cannot silently drift from the library source.
+- **Drift check:** `check-sceneview-skill.sh` validates the skill against the
+  library source; maintainers run it by hand before each plugin release.
 
 ### Submission steps
 
