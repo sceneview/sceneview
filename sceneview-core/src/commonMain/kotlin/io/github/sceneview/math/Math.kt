@@ -23,8 +23,10 @@ import dev.romainguy.kotlin.math.translation
 import io.github.sceneview.collision.Matrix
 import io.github.sceneview.collision.Vector3
 import kotlin.math.abs
+import kotlin.math.cbrt
 import kotlin.math.exp
 import kotlin.math.max
+import kotlin.math.sqrt
 
 /** 2D position (x, y). */
 typealias Position2 = Float2
@@ -159,15 +161,12 @@ fun Mat4.toColumnsDoubleArray() = doubleArrayOf(
  * answer rather than failing:
  *
  *  - **Shear** — a non-uniformly scaled *ancestor* with a rotation below it leaves a
- *    non-orthogonal world basis (measured `dot(col0, col1) = -0.8` for a parent scaled
- *    `(3, 1, 1)` under a child `rotZ`). Dividing each column by its length rescales the basis;
- *    it does not re-orthogonalise it. What comes back is therefore *a* unit basis, neither the
- *    nearest rotation nor bounded in any useful way: 8.64° off for that parent and child,
- *    29.13° once the parent is itself tilted, and up to ~180° in the worst pose under
- *    `(0.25, 2, 10)`. An exact answer does exist for a chain with one scaled ancestor —
- *    composing the local quaternions, or the orthogonal factor of a polar decomposition, which
- *    lands within 0.056° across a 37 × 19 pose sweep — and this accessor does not compute it;
- *    that is tracked in #3744. Keep an ancestor's scale uniform if you need exactness below it.
+ *    non-orthogonal world basis. On that path only, Higham's polar-decomposition iteration
+ *    extracts the closest orthonormal frame. This recovers the exact composed rotation (within
+ *    float rounding) for one non-uniformly scaled ancestor. With nested non-uniform scales the
+ *    polar factor is still the closest orthonormal frame, but is not necessarily the rotation
+ *    obtained by composing the nodes' quaternions. Orthogonal bases retain the cheaper,
+ *    bit-for-bit column-normalised path.
  *  - **Mirror** — an *odd* number of negative scale axes makes the basis left-handed, which is
  *    not a rotation at all: the result is finite and unit but arbitrary. An *even* number is a
  *    genuine rotation — `(-1, -1, 1)` is a 180° turn about Z — and is extracted exactly. Nothing
@@ -184,11 +183,136 @@ fun Mat4.toColumnsDoubleArray() = doubleArrayOf(
  */
 val Mat4.quaternion: Quaternion
     get() {
-        val quaternion = rotation(this).toQuaternion()
+        val normalizedBasis = rotation(this)
+        val quaternion = normalizedBasis.toQuaternion()
         // `rotation()` divides each column by its length, so a collapsed axis yields NaN.
         // Only then pay for the reconstruction below.
-        return if (quaternion.hasNaNComponent) collapsedBasisQuaternion() else quaternion
+        if (quaternion.hasNaNComponent) return collapsedBasisQuaternion()
+
+        val right = normalizedBasis.x.xyz
+        val up = normalizedBasis.y.xyz
+        val forward = normalizedBasis.z.xyz
+        val isOrthogonal = abs(dot(right, up)) <= ORTHOGONAL_BASIS_EPSILON &&
+            abs(dot(right, forward)) <= ORTHOGONAL_BASIS_EPSILON &&
+            abs(dot(up, forward)) <= ORTHOGONAL_BASIS_EPSILON
+        // Preserve the established result exactly for the overwhelmingly common unsheared path.
+        if (isOrthogonal) return quaternion
+
+        return polarQuaternionOrNull() ?: quaternion
     }
+
+private const val ORTHOGONAL_BASIS_EPSILON = 1e-4f
+private const val POLAR_CONVERGENCE_EPSILON = 1e-6f
+private const val POLAR_MAX_ITERATIONS = 20
+
+/**
+ * Returns the orthogonal factor of this 3×3 basis, or `null` when it cannot be computed safely.
+ *
+ * The original sheared basis is required here: independently normalising its columns changes its
+ * polar factor and does not recover `Rp·Rc` from `Rp·S·Rc`. A uniform scalar, on the other hand,
+ * leaves the polar factor unchanged, so the basis is first divided by `cbrt(det)` — the guards
+ * below then hold for a millimetre-scale model as well as for a kilometre-scale one.
+ *
+ * Higham's Newton iteration `X ← ½(γX + X^-T/γ)` with the Frobenius scaling
+ * `γ = sqrt(‖X^-1‖ / ‖X‖)` converges in a handful of steps whatever the ratio between the scale
+ * axes. A left-handed basis (`det ≤ 0`) is a mirror rather than a rotation: `null` keeps
+ * [quaternion]'s established finite best-effort result for it.
+ */
+private fun Mat4.polarQuaternionOrNull(): Quaternion? {
+    // Column-major: element(row, column) lives at the corresponding component of x/y/z.
+    var a00 = x.x
+    var a01 = y.x
+    var a02 = z.x
+    var a10 = x.y
+    var a11 = y.y
+    var a12 = z.y
+    var a20 = x.z
+    var a21 = y.z
+    var a22 = z.z
+
+    val initialDeterminant =
+        a00 * (a11 * a22 - a12 * a21) -
+            a01 * (a10 * a22 - a12 * a20) +
+            a02 * (a10 * a21 - a11 * a20)
+    if (!initialDeterminant.isFinite() || initialDeterminant <= 0f) return null
+    val unitVolume = (1.0 / cbrt(initialDeterminant.toDouble())).toFloat()
+    if (!unitVolume.isFinite()) return null
+    a00 *= unitVolume; a01 *= unitVolume; a02 *= unitVolume
+    a10 *= unitVolume; a11 *= unitVolume; a12 *= unitVolume
+    a20 *= unitVolume; a21 *= unitVolume; a22 *= unitVolume
+
+    var iterations = 0
+    while (iterations++ < POLAR_MAX_ITERATIONS) {
+        val determinant =
+            a00 * (a11 * a22 - a12 * a21) -
+                a01 * (a10 * a22 - a12 * a20) +
+                a02 * (a10 * a21 - a11 * a20)
+        if (!determinant.isFinite() || determinant <= 0f) return null
+
+        // Cofactor(A) / det(A) is A^-T, exactly the matrix Higham's iteration needs.
+        val inverseTranspose00 = (a11 * a22 - a12 * a21) / determinant
+        val inverseTranspose01 = (a12 * a20 - a10 * a22) / determinant
+        val inverseTranspose02 = (a10 * a21 - a11 * a20) / determinant
+        val inverseTranspose10 = (a02 * a21 - a01 * a22) / determinant
+        val inverseTranspose11 = (a00 * a22 - a02 * a20) / determinant
+        val inverseTranspose12 = (a01 * a20 - a00 * a21) / determinant
+        val inverseTranspose20 = (a01 * a12 - a02 * a11) / determinant
+        val inverseTranspose21 = (a02 * a10 - a00 * a12) / determinant
+        val inverseTranspose22 = (a00 * a11 - a01 * a10) / determinant
+
+        val norm = sqrt(
+            a00 * a00 + a01 * a01 + a02 * a02 +
+                a10 * a10 + a11 * a11 + a12 * a12 +
+                a20 * a20 + a21 * a21 + a22 * a22
+        )
+        val inverseNorm = sqrt(
+            inverseTranspose00 * inverseTranspose00 + inverseTranspose01 * inverseTranspose01 +
+                inverseTranspose02 * inverseTranspose02 + inverseTranspose10 * inverseTranspose10 +
+                inverseTranspose11 * inverseTranspose11 + inverseTranspose12 * inverseTranspose12 +
+                inverseTranspose20 * inverseTranspose20 + inverseTranspose21 * inverseTranspose21 +
+                inverseTranspose22 * inverseTranspose22
+        )
+        val gamma = sqrt(inverseNorm / norm)
+        if (!gamma.isFinite() || gamma <= 0f) return null
+        val half = 0.5f * gamma
+        val halfInverse = 0.5f / gamma
+
+        val n00 = half * a00 + halfInverse * inverseTranspose00
+        val n01 = half * a01 + halfInverse * inverseTranspose01
+        val n02 = half * a02 + halfInverse * inverseTranspose02
+        val n10 = half * a10 + halfInverse * inverseTranspose10
+        val n11 = half * a11 + halfInverse * inverseTranspose11
+        val n12 = half * a12 + halfInverse * inverseTranspose12
+        val n20 = half * a20 + halfInverse * inverseTranspose20
+        val n21 = half * a21 + halfInverse * inverseTranspose21
+        val n22 = half * a22 + halfInverse * inverseTranspose22
+        val maxChange = maxOf(
+            maxOf(abs(n00 - a00), abs(n01 - a01), abs(n02 - a02)),
+            maxOf(abs(n10 - a10), abs(n11 - a11), abs(n12 - a12)),
+            maxOf(abs(n20 - a20), abs(n21 - a21), abs(n22 - a22))
+        )
+        if (!maxChange.isFinite()) return null
+
+        a00 = n00
+        a01 = n01
+        a02 = n02
+        a10 = n10
+        a11 = n11
+        a12 = n12
+        a20 = n20
+        a21 = n21
+        a22 = n22
+        // Newton converges quadratically: a step below 1e-6 leaves an error far under float
+        // rounding, and an absolute bar at float epsilon could oscillate by one ulp forever.
+        if (maxChange < POLAR_CONVERGENCE_EPSILON) break
+    }
+
+    return Transform(
+        right = Float3(a00, a10, a20),
+        up = Float3(a01, a11, a21),
+        forward = Float3(a02, a12, a22)
+    ).toQuaternion().takeUnless { it.hasNaNComponent }
+}
 
 /**
  * True when any component is NaN — what [rotation] hands back for a basis with a zero-length

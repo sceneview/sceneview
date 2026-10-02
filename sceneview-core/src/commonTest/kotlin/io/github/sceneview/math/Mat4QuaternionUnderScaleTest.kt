@@ -6,7 +6,9 @@ import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.inverse
 import dev.romainguy.kotlin.math.normalize
 import dev.romainguy.kotlin.math.rotation
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.acos
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -20,9 +22,10 @@ import kotlin.test.assertTrue
  * therefore reported a wrong world rotation, and every consumer (billboards, `lookAt`, AR anchor
  * alignment, the `worldQuaternion` setter's round trip) inherited it.
  *
- * The fix routes those reads through [Mat4.quaternion], which normalises each basis column first.
- * These cases are pure math on `Mat4`, so they run on every target; the Filament-backed proof on a
- * real `Node` is the instrumented `NodeWorldQuaternionRoundTripTest`.
+ * The fix routes those reads through [Mat4.quaternion], which normalises each basis column and,
+ * when shear makes the columns non-orthogonal, extracts the orthogonal polar factor. These cases
+ * are pure math on `Mat4`, so they run on every target; the Filament-backed proof on a real `Node`
+ * is the instrumented `NodeWorldQuaternionRoundTripTest`.
  */
 class Mat4QuaternionUnderScaleTest {
 
@@ -33,6 +36,23 @@ class Mat4QuaternionUnderScaleTest {
 
     private val rotXMinus90 = Quaternion.fromAxisAngle(Float3(1f, 0f, 0f), -90f)
     private val tilted = Quaternion.fromAxisAngle(normalize(Float3(0.3f, 0.7f, -0.6f)), 37f)
+
+    private data class ParentCase(
+        val name: String,
+        val quaternion: Quaternion,
+        val scale: Scale
+    )
+
+    private val shearedParentCases = listOf(
+        ParentCase("scale (3, 1, 1)", Quaternion(), Scale(3f, 1f, 1f)),
+        ParentCase("scale (0.25, 2, 10)", Quaternion(), Scale(0.25f, 2f, 10f)),
+        ParentCase("rotX(-90), scale (3, 1, 1)", rotXMinus90, Scale(3f, 1f, 1f)),
+        ParentCase("tilted 37 degrees, scale (10, 1, 1)", tilted, Scale(10f, 1f, 1f)),
+        // Absolute scale must not matter: det = 3e-9 here, a millimetre-scale model.
+        ParentCase("tilted 37 degrees, scale (0.003, 0.001, 0.001)", tilted, Scale(0.003f, 0.001f, 0.001f)),
+        // A 1000:1 axis ratio, where an unscaled Newton iteration needs many more steps.
+        ParentCase("rotX(-90), scale (1000, 1, 1)", rotXMinus90, Scale(1000f, 1f, 1f))
+    )
 
     /** Uniform *and* non-uniform, at a single level of the hierarchy. */
     private val scales = listOf(
@@ -66,6 +86,15 @@ class Mat4QuaternionUnderScaleTest {
             "$message — expected a finite unit quaternion but got $quaternion (|q|² = $norm)"
         )
     }
+
+    private fun angularErrorDegrees(expected: Quaternion, actual: Quaternion): Float {
+        val cosHalfAngle = abs(dot(normalize(expected), normalize(actual))).coerceIn(0f, 1f)
+        return (2.0 * acos(cosHalfAngle.toDouble()) * 180.0 / PI).toFloat()
+    }
+
+    private fun childPose(yaw: Int, pitch: Int) =
+        Quaternion.fromAxisAngle(Float3(0f, 1f, 0f), yaw.toFloat()) *
+            Quaternion.fromAxisAngle(Float3(1f, 0f, 0f), pitch.toFloat())
 
     /**
      * The headline case: the rotation read back out of `T·R·S` must be `R`, at any scale.
@@ -218,56 +247,106 @@ class Mat4QuaternionUnderScaleTest {
         }
     }
 
-    /**
-     * A non-uniformly scaled ancestor followed by a rotated descendant shears the world basis
-     * (`dot(col0, col1) = -0.8` here): it is no longer a rotation times a per-axis scale, so
-     * normalising its columns cannot give back the child's rotation. That normalisation rescales
-     * the basis without re-orthogonalising it, so what comes back is *a*
-     * unit rotation — not the nearest one, and not bounded in any useful way once the parent is
-     * itself rotated (29.13° under this scale, ~180° in the worst pose under `(0.25, 2, 10)`).
-     * An exact answer does exist for a single scaled ancestor and is tracked in #3744; this case
-     * pins today's behaviour so that landing it is a visible change rather than a silent one.
-     *
-     * The bar below is empirical, not a contract: it is tight enough to catch a regression on
-     * this fixed parent and child, and says nothing about the general case.
-     */
+    /** A single non-uniformly scaled ancestor has an exact polar-factor world rotation. */
     @Test
-    fun shearedWorldBasisIsApproximatedNotExact() {
+    fun shearedWorldBasisRecoversExactRotation() {
         val parentWorld = Transform(scale = Scale(3f, 1f, 1f))
-        // Every 15°, not just 15/45/90: the error is not monotonic in the angle, and sampling
-        // three points had put the worst case in the wrong place.
         listOf(15f, 30f, 45f, 60f, 75f, 90f).forEach { angle ->
             val childLocal = Quaternion.fromAxisAngle(Float3(0f, 0f, 1f), angle)
             val childWorld = parentWorld * rotation(childLocal)
             val extracted = childWorld.extractWorldQuaternion()
 
             assertFiniteUnit(extracted, "sheared basis, child rotZ($angle)")
-            val cos = abs(dot(normalize(childLocal), normalize(extracted)))
-            // |dot| is the half-angle cosine, so 0.996 allows 10.25° of rotation error against
-            // a worst measured 8.64°. The 0.99 this used to assert allowed 16.22°.
             assertTrue(
-                cos > 0.996f,
-                "the approximation must stay within 10.25° of the child rotation for this " +
-                    "parent (rotZ($angle), |dot| = $cos)"
+                angularErrorDegrees(childLocal, extracted) < 0.1f,
+                "polar extraction must recover child rotZ($angle): expected $childLocal, got $extracted"
             )
         }
-        // Measured on this parent: 6.46° at 15°, 3.71° at 30°, 2.64° at 45°, 8.24° at 60°,
-        // 8.64° at 75°, 0.00° at 90° — so 75°, not 15°, is the worst, and the error is not
-        // monotonic. No exact answer exists here, so the 1e-5 bar every unsheared case meets is
-        // deliberately NOT asserted.
-        val worstAngle = Quaternion.fromAxisAngle(Float3(0f, 0f, 1f), 75f)
-        val worst = (parentWorld * rotation(worstAngle)).extractWorldQuaternion()
-        assertTrue(
-            abs(dot(normalize(worstAngle), normalize(worst))) < 1f - 1e-5f,
-            "a sheared basis is expected to be inexact — if this now passes the 1e-5 bar, " +
-                "the extraction has become shear-aware (#3744) and this case can be tightened"
-        )
+    }
+
+    /** The complete issue sweep: 37 yaw poses × 19 pitch poses for each scaled parent. */
+    @Test
+    fun shearedWorldRotationSweepStaysWithinPointOneDegree() {
+        shearedParentCases.forEach { parent ->
+            val parentWorld = Transform(quaternion = parent.quaternion, scale = parent.scale)
+            var worstError = 0f
+            var worstPose = ""
+            for (yaw in -180..180 step 10) {
+                for (pitch in -90..90 step 10) {
+                    val childLocal = childPose(yaw, pitch)
+                    val expected = parent.quaternion * childLocal
+                    val actual = (parentWorld * rotation(childLocal)).extractWorldQuaternion()
+                    val error = angularErrorDegrees(expected, actual)
+                    if (error > worstError) {
+                        worstError = error
+                        worstPose = "yaw=$yaw, pitch=$pitch"
+                    }
+                }
+            }
+            assertTrue(
+                worstError < 0.1f,
+                "${parent.name}: worst angular error was $worstError degrees at $worstPose"
+            )
+        }
+    }
+
+    /** Setting a world quaternion and extracting the recomposed matrix round-trips under shear. */
+    @Test
+    fun worldQuaternionSetterGetterRoundTripsUnderShearedParents() {
+        shearedParentCases.forEach { parent ->
+            val parentWorld = Transform(quaternion = parent.quaternion, scale = parent.scale)
+            var worstError = 0f
+            var worstPose = ""
+            for (yaw in -180..180 step 10) {
+                for (pitch in -90..90 step 10) {
+                    val target = parent.quaternion * childPose(yaw, pitch)
+                    val localQuaternion = worldToLocalQuaternion(
+                        worldQuaternion = target,
+                        parentWorldQuaternion = parent.quaternion
+                    )
+                    val actual = (parentWorld * rotation(localQuaternion)).extractWorldQuaternion()
+                    val error = angularErrorDegrees(target, actual)
+                    if (error > worstError) {
+                        worstError = error
+                        worstPose = "yaw=$yaw, pitch=$pitch"
+                    }
+                }
+            }
+            assertTrue(
+                worstError < 0.1f,
+                "${parent.name}: setter/getter worst error was $worstError degrees at $worstPose"
+            )
+        }
+    }
+
+    /** Nested non-uniform scales have no exact composed-rotation contract, only a safe result. */
+    @Test
+    fun nestedNonUniformScalesReturnFiniteUnitQuaternion() {
+        val world = Transform(quaternion = tilted, scale = Scale(3f, 1f, 0.5f)) *
+            Transform(
+                quaternion = Quaternion.fromEuler(Rotation(24f, -51f, 13f)),
+                scale = Scale(0.25f, 2f, 10f)
+            ) * rotation(Quaternion.fromEuler(Rotation(-33f, 68f, 17f)))
+
+        assertFiniteUnit(world.extractWorldQuaternion(), "two nested non-uniform scales")
+    }
+
+    /** An odd negative scale on a sheared path must use the finite pre-polar fallback. */
+    @Test
+    fun mirroredShearedBasisReturnsFiniteUnitQuaternion() {
+        val world = Transform(scale = Scale(3f, 1f, 1f)) *
+            Transform(
+                quaternion = Quaternion.fromEuler(Rotation(20f, 35f, -15f)),
+                scale = Scale(-1f, 1f, 1f)
+            )
+
+        assertFiniteUnit(world.extractWorldQuaternion(), "mirrored sheared basis")
     }
 
     /**
-     * `Mat4.rotation` (the Euler decomposition backing `Node.worldRotation`) normalises the basis
-     * internally, so it never had the defect. Pinned so the two world-rotation reads cannot drift
-     * apart again.
+     * `Mat4.rotation` (the Euler decomposition backing `Node.worldRotation`) normalises an
+     * unsheared basis internally, so single-level scale does not affect it. Sheared Euler
+     * extraction has a separate approximate contract documented on `Node.worldRotation`.
      */
     @Test
     fun eulerRotationExtractionIsScaleImmune() {
