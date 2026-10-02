@@ -18,7 +18,8 @@
 # through `DeepLinkRouter.DEMO_ID_ALIASES`). Slice 5 also removes the redundant
 # iOS automatic-placement entries: `ar-placement` is its sole placement route.
 # `placement-scene` kept its row until Android samples step 0 folded that
-# SDK-wrapper card into `ar-placement` too; its row is dropped the same way.
+# SDK-wrapper card into `ar-placement` too (its One call mode); its row is
+# dropped the same way.
 #
 # `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
 #   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
@@ -63,18 +64,20 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current ledger (2026-10-02, Android samples step 0): 46 rows, 33 working / 0 stub / 13 android-only.
+# Current ledger (2026-10-02, Android samples step 0): 43 rows, 30 working / 0 stub / 13 android-only.
 # (Android samples step 0: six android-only ids retired into the cards that absorbed them —
 #  `placement-scene`, `ar-collaborative`, `secondary-camera`, `video-recording`,
 #  `ar-hand-tracking`, `ar-xr-face` — DROPPED per the ledger rule; +1 android-only `ar-xr`.
-#  `ar-pose`, `ar-record-playback` and `double-pendulum` are retired on Android too, but
-#  their rows stay while iOS still maps a scene to them: the iOS step-0 PR settles them.)
+#  Three working ids retired the same way and DROPPED: `ar-pose` (Free pose mode of
+#  `ar-placement`), `ar-record-playback` (Session MP4 mode of `ar-rerun`) and
+#  `double-pendulum` (Pendulum mode of `rolling-balls`); their iOS scenes are listed
+#  in those rows' `ios:` until the iOS step-0 PR folds them.)
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
 # (android-only -> working: `contact-shadow-preview` — procedural contact-shadow quads.)
 # The duplicate iOS one-call placement row was removed by explicit product decision;
-# Android still registers its SDK-wrapper entry (not changed in this iOS consolidation).
+# Android keeps that SDK-wrapper screen as the One call mode of `ar-placement` (step 0).
 # Historical recounts below retain their measurement dates.
 # Every tally in this file lives HERE and in the per-section banners below.
 # Do NOT append a new "and now it is X/Y" paragraph when a port lands: that is
@@ -281,7 +284,7 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (33) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -305,9 +308,10 @@ demos:
     iosStatus: working
     category: VIEW_3D
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RollingBallsDemo.kt
-    ios: [rolling-balls]
+    ios: [rolling-balls, double-pendulum]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/RollingBallsDemo.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift
     contract: >-
       Rubber/Steel/Foam ball tray on the themed stage sky (light and dark); opening shot of a
       steel cue into a six-ball rubber pyramid; material chips drop one ball;
@@ -321,7 +325,9 @@ demos:
       impacts 113 on both), and the same drag tilt (tip toward you: impacts
       151 on both; tip sideways: balls pile in one corner). Both stages follow
       the theme from the same tokens. Diverges in chrome only: iOS puts Drop,
-      Tilt, Reset and Settings in one bottom toolbar
+      Tilt, Reset and Settings in one bottom toolbar. Pendulum mode: iOS keeps
+      its own `double-pendulum` card (grey links, orange pivot, no bobs,
+      DoublePendulumDemo.swift:198-221), the rewrite's delete list
   - id: splat-preview
     androidStatus: Working
     iosStatus: working
@@ -532,21 +538,27 @@ demos:
       policy — so there is no "wait for a converged plane" mode as on Android.
     category: PLACE_AR
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt
-    ios: [ar-placement, wall-placement]
+    ios: [ar-placement, wall-placement, ar-pose]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/ARPlacementDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Components/ARPlacementExperience.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/WallPlacementScene.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ArPoseScene.swift
     contract: >-
-      Pick a model on a still pre-AR chooser (Floor|Wall, 6 bundled + 6
-      streamed rows). The camera then auto-places it on the first surface (TV
-      on the first wall), bottom-aligned with a contact shadow.
-      Drag/twist/pinch; dock has Models and Reset.
+      Place | Free pose | One call. Place: pick a model on a still pre-AR
+      chooser (Floor|Wall, 6 bundled + 6 streamed rows); the camera then
+      auto-places it on the first surface (TV on the first wall),
+      bottom-aligned with a contact shadow; drag/twist/pinch; dock has Models
+      and Reset. Free pose (the former `ar-pose` card, samples step 0): a 0.3 m
+      lantern 1 m ahead, RGB axes gizmo, X/Y/Z offset sliders, live coordinate
+      pill. One call: the same floor flow as a single `AutoPlacementScene` call.
     parity: diverges
     evidence: >-
       Core matches (AutoPlacementScene.swift:29-33,
       ARPlacementController.swift:215-220). No chooser, 2-model Menu
-      (ARPlacementExperience.swift:112-115,339), wall is its own card
+      (ARPlacementExperience.swift:112-115,339), wall is its own card. Free
+      pose matches iOS's own `ar-pose` card (ArPoseScene.swift:170,196,210-212),
+      a separate card there: the rewrite's delete list
   - id: ar-plane-node
     androidStatus: Working
     iosStatus: working
@@ -581,63 +593,17 @@ demos:
       ARPointCloudDemo.swift:66-70 turns on ARView's yellow debug
       .showFeaturePoints plus a show/hide toggle; no slider (ARKit has no
       per-point confidence), material under white text :118
-  - id: ar-pose
-    androidStatus: Working
-    iosStatus: working
-    reason: >-
-      Android retired this card in samples step 0: the screen is the Free pose
-      mode of `ar-placement` (ArPlacementFragment), and the `ar-pose` deep link
-      opens that mode. The row stays while iOS maps its own `ar-pose` scene.
-    category: PLACE_AR
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPoseDemo.kt
-    ios: [ar-pose]
-    iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ArPoseScene.swift
-    contract: >-
-      A 0.3 m lantern at a base pose 1 m ahead, set on first tracking. RGB
-      axes gizmo at the base, X/Y/Z offset sliders in the sheet, live
-      coordinate pill.
-    parity: identical
-    evidence: >-
-      ArPoseScene.swift:170 axes 0.4/0.005, :196 scaleToUnits(0.3), :210-212
-      same slider ranges, .ar sheet. Coaching overlay replaces
-      ARCameraInitScrim (platform)
-  - id: ar-record-playback
-    androidStatus: Working
-    iosStatus: working
-    reason: >-
-      Capability caveat on a `working` row: iOS records the SCREEN via
-      ReplayKit, not the ARKit session, so there is no session playback as on
-      Android — and ReplayKit offers no cancellation, so a capture is stopped
-      explicitly rather than cancelled. Saving to Photos moves the file out of
-      the app's container. Android retired this card in samples step 0: the
-      screen is the Session MP4 mode of `ar-rerun` (ArRerunFragment), and the
-      `ar-record-playback` deep link opens that mode. The row stays while iOS
-      maps its own `ar-record-playback` scene.
-    category: DEV_TOOLS
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRecordPlaybackDemo.kt
-    ios: [ar-record-playback]
-    iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift
-    contract: >-
-      Live | Record | Playback | Analyze: record the AR session (REC timer,
-      tracking pill, health callout), list takes, replay one 1:1 or with a
-      live tracking report.
-    parity: diverges
-    evidence: >-
-      ARRecorderDemo.swift:47-52,97 ReplayKit screen video, no modes, timer,
-      tracking pill or take list (ARRecordPlaybackDemo.kt:493,507,672-676);
-      ARKit has no in-app session replay
   - id: ar-rerun
     androidStatus: Working
     iosStatus: working
     category: DEV_TOOLS
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRerunDemo.kt
-    ios: [ar-rerun]
+    ios: [ar-rerun, ar-record-playback]
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ArRerunScene.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunSessionsLanding.swift
+      - samples/ios-demo/SceneViewDemo/Views/Demos/ARRecorderDemo.swift
     contract: >-
       Rerun | Session MP4. Rerun opens on a landing (Record your room, Watch a
       sample session, Open file, Your sessions); a recording replays as a 3D
@@ -654,7 +620,9 @@ demos:
       RerunDebugDemo.swift is no longer routed. iOS exports .rrd/.glb/.usdz/.ply
       (RerunExportAdapter.swift:13-16), Android shares a .svscan scan plus the
       .rrd of a live 127.0.0.1:9876 stream (ARRerunDemo.kt:156,164-165). No
-      Session MP4 mode on iOS: ARKit has no in-app session replay.
+      Session MP4 mode on iOS: ARKit has no in-app session replay; its separate
+      `ar-record-playback` card records the screen via ReplayKit
+      (ARRecorderDemo.swift:47-52,97), the rewrite's delete list.
   - id: ar-scene-mesh
     androidStatus: KnownIssue
     iosStatus: working
@@ -805,28 +773,6 @@ demos:
       Raw RealityView, one directional light, no IBL or fit dolly
       (DebugOverlayDemo.swift:79-92); ramp capped at 1000 (:30), no threshold
       readout (vs .kt:235,665). D3 fixed (:49)
-  - id: double-pendulum
-    androidStatus: Working
-    iosStatus: working
-    reason: >-
-      Android retired this card in samples step 0: the screen is the Pendulum
-      mode of `rolling-balls` (RollingBallsFragment), and the `double-pendulum`
-      deep link opens that mode. The row stays while iOS maps its own
-      `double-pendulum` scene.
-    category: VIEW_3D
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/DoublePendulumDemo.kt
-    ios: [double-pendulum]
-    iosFiles:
-      - samples/ios-demo/SceneViewDemo/Views/Demos/DoublePendulumDemo.swift
-    contract: >-
-      Blue lead arm and bob, violet trailing arm and bob, neutral hinge,
-      studio_warm IBL, fixed fitted camera; Release pill on the scene; sheet
-      with lead/trailing arm and gravity sliders
-    parity: diverges
-    evidence: >-
-      Grey links, orange pivot, no bobs (DoublePendulumDemo.swift:198-221);
-      studio + orbit (:177-178); Release only in sheet (:238-251) vs
-      .kt:124-126,154-159,244-252. D5 fixed
   - id: geometry
     androidStatus: Working
     iosStatus: working
